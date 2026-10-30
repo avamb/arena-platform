@@ -236,6 +236,17 @@ func (p *GDPRProcessor) processDelete(ctx context.Context, req gen.DataSubjectRe
 	if err := p.queries.ForgetUserRefundScanTraces(ctx, req.UserID); err != nil {
 		return fmt.Errorf("processDelete: forget refund scan traces: %w", err)
 	}
+	// The merchandise shop orders the user placed under their address carry
+	// their name, phone and delivery address: erase those too (orders that
+	// are over; the order and its money stay).
+	erased, err := p.queries.ForgetUserShopOrders(ctx, req.UserID)
+	if err != nil {
+		return fmt.Errorf("processDelete: forget shop orders: %w", err)
+	}
+	if erased > 0 {
+		p.logger.Info("gdpr_processor: shop order personal data erased",
+			slog.String("user_id", req.UserID.String()), slog.Int64("orders", erased))
+	}
 	// AnonymizeUser replaces PII with placeholder values and sets anonymized_at.
 	if err := p.queries.AnonymizeUser(ctx, req.UserID); err != nil {
 		return fmt.Errorf("processDelete: anonymize user: %w", err)

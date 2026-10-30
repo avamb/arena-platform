@@ -10612,13 +10612,44 @@ export interface paths {
          * List the shop orders
          * @description Newest first, with their lines. `q` matches the order number exactly or
          *     the buyer's e-mail or name as a substring; `from` and `to` bound the creation
-         *     time. A full page carries `next_offset`.
+         *     time. `next_offset` is present only when another page follows. A search text
+         *     (a buyer's name or e-mail) belongs in `POST .../shop/orders/search`, whose
+         *     body keeps it out of access logs.
          *
          *     Requires JWT or API key + the `shop.read` permission and membership of the organization.
          */
         get: operations["listShopOrders"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/orders/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search the shop orders
+         * @description The same filters and the same answer as `GET .../shop/orders`, with the
+         *     filters in the JSON body. A buyer's e-mail or name typed into `q` therefore
+         *     stays out of the access logs of the proxy and of Cloudflare. `from` is the
+         *     first instant included and `to` the first instant NOT included, each an
+         *     RFC 3339 time with a zone (the web event center sends the shop's day
+         *     boundaries, so an order placed at 00:30 in the shop's zone falls on the
+         *     right day) or a `YYYY-MM-DD` date (UTC midnight). Every member of the body
+         *     is optional.
+         *
+         *     Requires JWT or API key + the `shop.read` permission and membership of the organization.
+         */
+        post: operations["searchShopOrders"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10786,6 +10817,15 @@ export interface paths {
          *     `v1.shop.order.refunded` is written; a pending refund changes the order when
          *     the provider confirms it. Stock is not put back. From the web event center the request needs
          *     a fresh password confirmation (`X-Step-Up-Token`).
+         *
+         *     The call needs an `Idempotency-Key`. Repeating it with the same key (after a
+         *     dropped connection or a timeout) answers the first refund with `replayed: true`
+         *     and writes no second one, and gives a refund that was recorded but never
+         *     reached the provider another push; the same key with a different order or
+         *     amount is 409 `shop.idempotency_key_reused`. The work is not cut by the request: a
+         *     client that hangs up repeats the call to read the result. AllPay has no key of
+         *     its own, so this key is what keeps one click from returning the money twice.
+         *     Keep one key per open refund dialog.
          *
          *     Requires JWT or API key + the `shop.manage`, `refund.create` and `refund.approve` permissions and membership of the organization.
          */
@@ -31437,6 +31477,23 @@ export interface components {
             /** @description Why, up to 2000 characters. */
             reason?: string;
         };
+        /** @description The filters of the shop order list, in a body. */
+        ShopOrderSearchRequest: {
+            /** @description Order number, or part of the buyer's e-mail or name. */
+            q?: string;
+            /** @description A tab of the list: `to_ship`, `unpaid`, `shipped` or `refunds`. */
+            view?: string;
+            /** @description Only orders of this status. */
+            status?: string;
+            /** @description Created at or after this instant (RFC 3339 with a zone, or YYYY-MM-DD for UTC midnight). */
+            from?: string;
+            /** @description Created before this instant (RFC 3339 with a zone, or YYYY-MM-DD for UTC midnight). */
+            to?: string;
+            /** @description Page size, 1-200 (default 50). */
+            limit?: number;
+            /** @description How many orders to skip (the previous page's `next_offset`). */
+            offset?: number;
+        };
         /** @description A refund of a shop order's payment. */
         ShopRefund: {
             /**
@@ -31462,6 +31519,8 @@ export interface components {
         };
         /** @description The order after a refund, and the refund. */
         ShopRefundResponse: {
+            /** @description True when the `Idempotency-Key` had been used before and this is the first call's refund. Nothing new was written. */
+            replayed?: boolean;
             /** @description The order. */
             order: components["schemas"]["ShopOrder"];
             /** @description The refund. */
@@ -68009,6 +68068,78 @@ export interface operations {
             };
         };
     };
+    searchShopOrders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ShopOrderSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description One page of orders. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopOrderList"];
+                };
+            };
+            /** @description A filter is malformed (`shop.invalid_filter`) or the body is not valid JSON for this route (`shop.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getShopOrderCounts: {
         parameters: {
             query?: never;
@@ -68394,7 +68525,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The order is not paid (`shop.order_not_shippable`), or it is parked in `manual_review` and its goods are not free on the shelf (`shop.out_of_stock`, `details.items` lists the short lines). */
+            /** @description The order is not paid, or it holds only digital or service goods and has nothing to ship (`shop.order_not_shippable`), or it is parked in `manual_review` and its goods are not free on the shelf (`shop.out_of_stock`, `details.items` lists the short lines). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -68514,7 +68645,10 @@ export interface operations {
     refundShopOrder: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-chosen key of 1 to 255 characters (a UUID) that identifies this refund; one per open refund dialog. */
+                "Idempotency-Key": string;
+            };
             path: {
                 /** @description UUID of the organization. */
                 org_id: string;
@@ -68538,7 +68672,7 @@ export interface operations {
                     "application/json": components["schemas"]["ShopRefundResponse"];
                 };
             };
-            /** @description The body is not valid JSON for this route (`shop.invalid_body`). */
+            /** @description The body is not valid JSON for this route (`shop.invalid_body`) or the `Idempotency-Key` header is missing or longer than 255 characters (`shop.idempotency_key_required`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -68574,7 +68708,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The order is not paid or not paid through arena (`shop.order_not_refundable`), or nothing is left to refund (`shop.nothing_to_refund`). */
+            /** @description The order is not paid or not paid through arena (`shop.order_not_refundable`), nothing is left to refund (`shop.nothing_to_refund`), or the `Idempotency-Key` was used for a different order or amount (`shop.idempotency_key_reused`). */
             409: {
                 headers: {
                     [name: string]: unknown;

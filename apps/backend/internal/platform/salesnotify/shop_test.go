@@ -352,3 +352,24 @@ func TestShopTexts_EveryLocaleHasEveryKey(t *testing.T) {
 		}
 	}
 }
+
+// SA-37: thirty long-named lines and a long note still fit Telegram's limit,
+// and the lines that do not fit are counted in the closing line.
+func TestFormatShopOrderPaid_LongTitlesStayUnderTelegramsLimit(t *testing.T) {
+	s := shopSample()
+	s.Order.DeliveryNote = strings.Repeat("n", 700)
+	s.Items = nil
+	for i := 0; i < maxShopItemLines; i++ {
+		s.Items = append(s.Items, gen.ShopOrderItemRow{ProductTitle: strings.Repeat("W", 500), Qty: 1, UnitPriceMinor: 100})
+	}
+	msg := FormatShopOrderPaid(s)
+	if n := len([]rune(msg)); n > 4096 {
+		t.Fatalf("message is %d characters, over Telegram's limit", n)
+	}
+	if !strings.Contains(msg, "more line(s)") {
+		t.Errorf("the lines left out are not counted:\n%s", msg)
+	}
+	if !strings.Contains(msg, "nnnn") {
+		t.Errorf("the closing note was cut instead of the goods list:\n%s", msg)
+	}
+}

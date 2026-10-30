@@ -153,6 +153,58 @@ func (s *Service) applySaleTx(ctx context.Context, q *gen.Queries, o gen.ShopOrd
 	return nil
 }
 
+// ReviewReasonPayment is metadata.review_reason of an order whose PAYMENT, not
+// its stock, needs a human (SA-09).
+const ReviewReasonPayment = "payment_manual_review"
+
+// MarkPaymentReviewTx is called by the payment webhook, inside its
+// transaction, when a shop order's payment intent was parked in manual_review
+// (the paid amount differs from the intent's, the provider's payment status
+// is not one arena trusts). The money may or may not have arrived, so the
+// order must not be left pending, where the expiry sweep would free its goods
+// and expire it under a buyer who may have paid: it is parked in
+// manual_review like a late payment whose goods are gone (the hold is
+// released, v1.shop.order.manual_review is written, the order shows under
+// the manual-review tab) and no letter goes out. The operator then ships it
+// (the goods are taken off the shelf if they are free) or refunds it.
+// handled=false: not a shop payment. An order that is not pending any more
+// is left alone.
+func (s *Service) MarkPaymentReviewTx(ctx context.Context, tx pgx.Tx, paymentIntentID uuid.UUID, meta map[string]any) (handled bool, err error) {
+	q := gen.New(tx)
+	o, err := q.GetShopOrderByPaymentIntentForUpdate(ctx, paymentIntentID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return true, fmt.Errorf("shop: load order of payment %s: %w", paymentIntentID, err)
+	}
+	if o.Status != StatusPendingPayment {
+		return true, nil
+	}
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	meta["review_reason"] = ReviewReasonPayment
+	raw, err := json.Marshal(meta)
+	if err != nil {
+		return true, err
+	}
+	if err := q.LockShopOrderVariants(ctx, o.ID); err != nil {
+		return true, fmt.Errorf("shop: lock the parked order's goods: %w", err)
+	}
+	parked, err := q.SetShopOrderStatus(ctx, o.ID, StatusManualReview, nil, raw)
+	if err != nil {
+		return true, fmt.Errorf("shop: park order for payment review: %w", err)
+	}
+	if err := q.JournalShopOrderHold(ctx, o.ID, o.OrgID, MoveRelease); err != nil {
+		return true, fmt.Errorf("shop: journal release: %w", err)
+	}
+	s.logger.Warn("shop: payment parked in manual_review; order parked with it", "order_id", o.ID.String())
+	return true, s.appendEvent(ctx, tx, EventOrderManualReview, parked, map[string]any{
+		"reason": ReviewReasonPayment,
+	})
+}
+
 // MarkPaymentFailedTx is called by the payment webhook, inside its
 // transaction, when a shop order's payment failed for good (the hosted page
 // expired unpaid, an asynchronous payment failed). A pending order expires
@@ -165,6 +217,15 @@ func (s *Service) MarkPaymentFailedTx(ctx context.Context, tx pgx.Tx, paymentInt
 	}
 	if err != nil {
 		return true, fmt.Errorf("shop: load order of payment %s: %w", paymentIntentID, err)
+	}
+	if o.Status == StatusManualReview && paymentReviewParked(o) {
+		// The payment was parked for review and the operator then decided it
+		// failed: nothing was paid and the goods went back on sale when the
+		// order was parked, so the order simply ends.
+		if _, err := q.SetShopOrderStatus(ctx, o.ID, StatusExpired, nil, []byte(`{"expired_by":"payment_failed"}`)); err != nil {
+			return true, fmt.Errorf("shop: expire order: %w", err)
+		}
+		return true, nil
 	}
 	if o.Status != StatusPendingPayment {
 		return true, nil
@@ -179,4 +240,13 @@ func (s *Service) MarkPaymentFailedTx(ctx context.Context, tx pgx.Tx, paymentInt
 		return true, fmt.Errorf("shop: journal release: %w", err)
 	}
 	return true, nil
+}
+
+// paymentReviewParked: the order was parked by MarkPaymentReviewTx (its
+// payment, not its stock, is what waits for a human).
+func paymentReviewParked(o gen.ShopOrderRow) bool {
+	var m struct {
+		Reason string `json:"review_reason"`
+	}
+	return json.Unmarshal(o.Metadata, &m) == nil && m.Reason == ReviewReasonPayment
 }

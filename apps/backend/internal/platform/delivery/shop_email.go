@@ -39,6 +39,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
@@ -157,7 +158,18 @@ func (h *shopEmail) handle(ctx context.Context, payload []byte) error {
 	if err != nil {
 		return err
 	}
-	if err := h.opts.Sender.Send(ctx, msg); err != nil {
+	// Recorded like every other buyer letter (email_letters, the delivery
+	// status from Brevo's webhook, the dispute passport), tied to the shop
+	// order. Recording is best effort and never blocks the send.
+	locale := ""
+	if o.BuyerLocale != nil {
+		locale = *o.BuyerLocale
+	}
+	letter := emailstatus.NewLetter{
+		OrgID: orgID, ShopOrderID: &orderID, Kind: shopLetterKind(p.Kind), Recipient: o.BuyerEmail,
+		TemplateVersion: templateVersion(h.renderer, kind, locale),
+	}
+	if err := sendRecorded(ctx, h.opts.Sender, h.opts.DB, h.logger, letter, msg, nil); err != nil {
 		h.logger.Warn("delivery: shop e-mail send failed; worker will retry",
 			slog.String("order_id", orderID.String()), slog.String("kind", p.Kind))
 		return fmt.Errorf("delivery: send shop e-mail for order %s: %w", orderID, err)
@@ -169,6 +181,18 @@ func (h *shopEmail) handle(ctx context.Context, payload []byte) error {
 	}
 	h.logger.Info("delivery: shop e-mail sent", slog.String("order_id", orderID.String()), slog.String("kind", p.Kind))
 	return nil
+}
+
+// shopLetterKind is the email_letters kind of a shop letter.
+func shopLetterKind(kind string) string {
+	switch kind {
+	case shop.EmailShipped:
+		return emailstatus.KindShopShipped
+	case shop.EmailRefunded:
+		return emailstatus.KindShopRefunded
+	default:
+		return emailstatus.KindShopReceived
+	}
 }
 
 // shopEmailSkipReason is why a letter must not go out ("" = send it).

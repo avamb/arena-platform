@@ -234,6 +234,34 @@ DELETE FROM refund_scan_notice_sends
 WHERE lower(email) = (SELECT lower(email) FROM users WHERE id = $1::uuid)
 `
 
+const forgetUserShopOrders = `-- name: ForgetUserShopOrders :execrows
+UPDATE shop_orders
+SET    buyer_name = '', buyer_email = '', buyer_phone = '',
+       ship_name = '', ship_address1 = '', ship_address2 = '', ship_city = '', ship_postal = '',
+       delivery_note = '', staff_note = '', staff_note_by = '', staff_note_at = NULL,
+       metadata = metadata || jsonb_build_object('anonymized_at', now()),
+       updated_at = now()
+WHERE  buyer_email <> ''
+  AND  lower(btrim(buyer_email)) = (SELECT lower(btrim(email)) FROM users WHERE id = $1::uuid)
+  AND  (status IN ('shipped', 'cancelled', 'expired', 'refunded') OR shipped_at IS NOT NULL)
+`
+
+// ForgetUserShopOrders erases the buyer's and the delivery details of the
+// merchandise shop orders a user who is being erased placed under their
+// address (SA-30): name, e-mail, phone, delivery address and the notes. Only
+// orders that are over are touched (shipped, cancelled, expired, refunded):
+// one still waiting to be paid or handed over needs its address, and the
+// request is not repeated for it. The order itself, its lines and its money
+// stay (accounting records). Run it BEFORE AnonymizeUser, which replaces the
+// address the orders are found by. Returns how many orders were erased.
+func (q *Queries) ForgetUserShopOrders(ctx context.Context, id uuid.UUID) (int64, error) {
+	tag, err := q.db.Exec(ctx, forgetUserShopOrders, id)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 // ForgetUserRefundScanTraces forgets a user who is being erased in the journal
 // of scan-blocked refunds: the attempts they made lose their name (the counts
 // stay) and the marks of notices delivered to their address are deleted. Run

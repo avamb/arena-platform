@@ -24155,6 +24155,32 @@ components:
           type: string
           description: Why, up to 2000 characters.
 
+    ShopOrderSearchRequest:
+      type: object
+      description: The filters of the shop order list, in a body.
+      properties:
+        q:
+          type: string
+          description: Order number, or part of the buyer's e-mail or name.
+        view:
+          type: string
+          description: "A tab of the list: `to_ship`, `unpaid`, `shipped` or `refunds`."
+        status:
+          type: string
+          description: Only orders of this status.
+        from:
+          type: string
+          description: Created at or after this instant (RFC 3339 with a zone, or YYYY-MM-DD for UTC midnight).
+        to:
+          type: string
+          description: Created before this instant (RFC 3339 with a zone, or YYYY-MM-DD for UTC midnight).
+        limit:
+          type: integer
+          description: Page size, 1-200 (default 50).
+        offset:
+          type: integer
+          description: How many orders to skip (the previous page's `next_offset`).
+
     ShopRefund:
       type: object
       description: A refund of a shop order's payment.
@@ -24189,6 +24215,9 @@ components:
       description: The order after a refund, and the refund.
       required: [order, refund]
       properties:
+        replayed:
+          type: boolean
+          description: True when the `Idempotency-Key` had been used before and this is the first call's refund. Nothing new was written.
         order:
           allOf:
             - $ref: "#/components/schemas/ShopOrder"
@@ -59241,7 +59270,9 @@ paths:
       description: |
         Newest first, with their lines. `q` matches the order number exactly or
         the buyer's e-mail or name as a substring; `from` and `to` bound the creation
-        time. A full page carries `next_offset`.
+        time. `next_offset` is present only when another page follows. A search text
+        (a buyer's name or e-mail) belongs in `POST .../shop/orders/search`, whose
+        body keeps it out of access logs.
 
         Requires JWT or API key + the `shop.read` permission and membership of the organization.
       tags: [v1]
@@ -59306,6 +59337,75 @@ paths:
                 $ref: "#/components/schemas/ShopOrderList"
         "400":
           description: A filter is malformed (`shop.invalid_filter`, also for an unknown `view`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.read` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/orders/search:
+    post:
+      operationId: searchShopOrders
+      summary: Search the shop orders
+      description: |
+        The same filters and the same answer as `GET .../shop/orders`, with the
+        filters in the JSON body. A buyer's e-mail or name typed into `q` therefore
+        stays out of the access logs of the proxy and of Cloudflare. `from` is the
+        first instant included and `to` the first instant NOT included, each an
+        RFC 3339 time with a zone (the web event center sends the shop's day
+        boundaries, so an order placed at 00:30 in the shop's zone falls on the
+        right day) or a `YYYY-MM-DD` date (UTC midnight). Every member of the body
+        is optional.
+
+        Requires JWT or API key + the `shop.read` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShopOrderSearchRequest"
+      responses:
+        "200":
+          description: One page of orders.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopOrderList"
+        "400":
+          description: A filter is malformed (`shop.invalid_filter`) or the body is not valid JSON for this route (`shop.invalid_body`).
           content:
             application/json:
               schema:
@@ -59685,7 +59785,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
-          description: The order is not paid (`shop.order_not_shippable`), or it is parked in `manual_review` and its goods are not free on the shelf (`shop.out_of_stock`, `details.items` lists the short lines).
+          description: The order is not paid, or it holds only digital or service goods and has nothing to ship (`shop.order_not_shippable`), or it is parked in `manual_review` and its goods are not free on the shelf (`shop.out_of_stock`, `details.items` lists the short lines).
           content:
             application/json:
               schema:
@@ -59810,6 +59910,15 @@ paths:
         the provider confirms it. Stock is not put back. From the web event center the request needs
         a fresh password confirmation (`X-Step-Up-Token`).
 
+        The call needs an `Idempotency-Key`. Repeating it with the same key (after a
+        dropped connection or a timeout) answers the first refund with `replayed: true`
+        and writes no second one, and gives a refund that was recorded but never
+        reached the provider another push; the same key with a different order or
+        amount is 409 `shop.idempotency_key_reused`. The work is not cut by the request: a
+        client that hangs up repeats the call to read the result. AllPay has no key of
+        its own, so this key is what keeps one click from returning the money twice.
+        Keep one key per open refund dialog.
+
         Requires JWT or API key + the `shop.manage`, `refund.create` and `refund.approve` permissions and membership of the organization.
       tags: [v1]
       security:
@@ -59829,6 +59938,14 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Client-chosen key of 1 to 255 characters (a UUID) that identifies this refund; one per open refund dialog.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
       requestBody:
         required: true
         content:
@@ -59843,7 +59960,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ShopRefundResponse"
         "400":
-          description: The body is not valid JSON for this route (`shop.invalid_body`).
+          description: The body is not valid JSON for this route (`shop.invalid_body`) or the `Idempotency-Key` header is missing or longer than 255 characters (`shop.idempotency_key_required`).
           content:
             application/json:
               schema:
@@ -59855,7 +59972,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
-          description: The order is not paid or not paid through arena (`shop.order_not_refundable`), or nothing is left to refund (`shop.nothing_to_refund`).
+          description: The order is not paid or not paid through arena (`shop.order_not_refundable`), nothing is left to refund (`shop.nothing_to_refund`), or the `Idempotency-Key` was used for a different order or amount (`shop.idempotency_key_reused`).
           content:
             application/json:
               schema:

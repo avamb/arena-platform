@@ -3,6 +3,8 @@ package salesnotify
 import (
 	"fmt"
 	"strings"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 )
 
 // shopCurrencySymbols are the currencies a shop message prints as a symbol.
@@ -41,7 +43,12 @@ func formatShopMoney(amount int64, currency, locale string) string {
 	if neg {
 		amount = -amount
 	}
-	digits := fmt.Sprintf("%d", amount/100)
+	exp := shop.CurrencyExponent(currency)
+	unit := int64(1)
+	for i := 0; i < exp; i++ {
+		unit *= 10
+	}
+	digits := fmt.Sprintf("%d", amount/unit)
 	var grouped strings.Builder
 	for i, r := range digits {
 		if i > 0 && (len(digits)-i)%3 == 0 {
@@ -49,7 +56,10 @@ func formatShopMoney(amount int64, currency, locale string) string {
 		}
 		grouped.WriteRune(r)
 	}
-	out := fmt.Sprintf("%s%s%02d", grouped.String(), f.decimal, amount%100)
+	out := grouped.String()
+	if exp > 0 {
+		out = fmt.Sprintf("%s%s%0*d", out, f.decimal, exp, amount%unit)
+	}
 	if neg {
 		out = "-" + out
 	}

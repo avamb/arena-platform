@@ -181,8 +181,19 @@ func (f *shopFixture) cleanup() {
 	}
 }
 
-// do sends one request through the real router.
+// do sends one request through the real router. A refund call gets a fresh
+// Idempotency-Key (the route requires one); doKeyed names it.
 func (f *shopFixture) do(method, path, token, body string) (int, map[string]any, http.Header) {
+	f.t.Helper()
+	key := ""
+	if method == http.MethodPost && strings.HasSuffix(path, "/refund") {
+		key = uuid.NewString()
+	}
+	return f.doKeyed(method, path, token, body, key)
+}
+
+// doKeyed is do with an explicit Idempotency-Key ("" sends none).
+func (f *shopFixture) doKeyed(method, path, token, body, key string) (int, map[string]any, http.Header) {
 	f.t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	if body != "" {
@@ -190,6 +201,9 @@ func (f *shopFixture) do(method, path, token, body string) (int, map[string]any,
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if key != "" {
+		req.Header.Set("Idempotency-Key", key)
 	}
 	switch {
 	case f.remote != "":
