@@ -114,6 +114,7 @@ var roleSecrets = []roleSecret{
 	{"BREVO_API_KEY", []Role{RoleAPI, RoleWorker}, func(c *Config) string { return c.BrevoAPIKey }},
 	{"ONBOARDING_TURNSTILE_SECRET", []Role{RoleAPI, RoleWorker}, func(c *Config) string { return c.OnboardingTurnstileSecret }},
 	{"CONTACT_FORM_TURNSTILE_SECRET", []Role{RoleAPI, RoleWorker}, func(c *Config) string { return c.ContactFormTurnstileSecret }},
+	{"SHOP_TURNSTILE_SECRET", []Role{RoleAPI}, func(c *Config) string { return c.ShopTurnstileSecret }},
 	{"MEDIA_SIGNING_SECRET", []Role{RoleAPI, RoleWorker}, func(c *Config) string { return c.MediaSigningSecret }},
 	{"MEDIA_S3_ACCESS_KEY_ID", []Role{RoleAPI, RoleWorker}, func(c *Config) string { return c.MediaS3AccessKeyID }},
 	{"MEDIA_S3_SECRET_ACCESS_KEY", []Role{RoleAPI, RoleWorker}, func(c *Config) string { return c.MediaS3SecretAccessKey }},

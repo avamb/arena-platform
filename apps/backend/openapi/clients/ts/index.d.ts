@@ -10906,8 +10906,12 @@ export interface paths {
          *     of the order (spec 47 section 1b). Only while the order's payment stands
          *     (`paid`, `shipped` or `partially_refunded`); an order that is pending,
          *     expired, cancelled, refunded or parked for review answers 404 like a
-         *     token that names nothing. The token in the path is the credential. No
-         *     login; rate-limited per address and per token; never cached.
+         *     token that names nothing. Each line serves the file it was sold with,
+         *     fixed at purchase. The period is bounded: 30 days after payment and 20
+         *     links per line, counted each time this route issues one; after that the
+         *     answer is 410 `shop.download_expired`. The token in the path is the
+         *     credential. No login; rate-limited per address and per token; never
+         *     cached.
          */
         get: operations["listPublicShopCheckoutDownloads"];
         put?: never;
@@ -10950,8 +10954,9 @@ export interface paths {
          * Storefront catalog
          * @description The shop's public settings, its active products with their variants
          *     and pictures, and the list of its static pages. A variant's `available` is
-         *     null when it does not track stock. No login; rate-limited per client
-         *     address.
+         *     capped at the shop's `max_line_qty` (the exact shelf and the article number
+         *     are not published); `in_stock` says whether anything is left. No login;
+         *     rate-limited per client address.
          */
         get: operations["getPublicShopCatalog"];
         put?: never;
@@ -11032,8 +11037,11 @@ export interface paths {
          *     services takes no address, pays no shipping and gets delivery_kind `none`.
          *     A line may hold
          *     at most the shop's `max_line_qty` units (422 `shop.invalid_items` with
-         *     `details.max_line_qty`), and one buyer e-mail may have at most 3 orders
-         *     waiting for payment in the shop (409 `shop.too_many_pending`). No login;
+         *     `details.max_line_qty`), and one buyer e-mail, and one client address
+         *     (an IPv6 address counts by its /64 prefix), may each have at most 3 orders
+         *     waiting for payment in the shop (409 `shop.too_many_pending`). When the
+         *     shop publishes a `captcha_site_key` the request must carry the widget's
+         *     `captcha_token`; the test runs before any stock is held. No login;
          *     rate-limited per client address: 30 valid checkout requests a minute per
          *     shop, on top of the public routes' shared budget.
          */
@@ -31549,6 +31557,8 @@ export interface components {
              * @description How many units of one variant an order may hold; the quantity picker stops there.
              */
             max_line_qty?: number;
+            /** @description Cloudflare Turnstile site key the checkout form renders its widget with; the widget's token goes to checkout as `captcha_token`. Absent while the shop's checkout has no captcha. */
+            captcha_site_key?: string;
         };
         /** @description The organization behind a storefront. */
         ShopPublicOrg: {
@@ -31568,8 +31578,6 @@ export interface components {
             id: string;
             /** @description Variant title. */
             title: string;
-            /** @description Stock keeping unit. */
-            sku?: string | null;
             /**
              * Format: int64
              * @description Price, minor units.
@@ -31580,7 +31588,7 @@ export interface components {
              * @description Former price, or null.
              */
             compare_at_minor?: number | null;
-            /** @description Units still for sale; null when unlimited. */
+            /** @description How many units a buyer can put in a cart, the real stock capped at the shop's `max_line_qty` (the exact shelf is never shown; an untracked variant reports the cap). Null only when the shop has no line limit and the variant does not track stock. The article number is not published. */
             available?: number | null;
             /** @description Whether at least one unit can be bought. */
             in_stock: boolean;
@@ -31673,6 +31681,8 @@ export interface components {
             return_url?: string;
             /** @description The buyer confirmed the shop's minimum age; required when the shop has an age gate. */
             age_confirmed?: boolean;
+            /** @description The Cloudflare Turnstile response the widget produced; required while the catalog settings publish a `captcha_site_key` (422 `shop.captcha_required` without it, 422 `shop.captcha_failed` when the test did not pass). */
+            captcha_token?: string;
         };
         /** @description A placed order and where to pay it. */
         ShopCheckoutResponse: {
@@ -68959,6 +68969,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description The download period of the order is over (`shop.download_expired`), 30 days after payment or when every digital line used its 20 links. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again. */
             429: {
                 headers: {
@@ -69287,7 +69306,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Some items are not available in the quantity requested (`shop.out_of_stock`), or the buyer already has 3 orders waiting for payment here (`shop.too_many_pending`). */
+            /** @description Some items are not available in the quantity requested (`shop.out_of_stock`), or the buyer's e-mail or address already has 3 orders waiting for payment here (`shop.too_many_pending`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -69296,7 +69315,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The cart, buyer or address is invalid (`shop.invalid_items`, `shop.invalid_item`, `shop.invalid_buyer`, `shop.invalid_address`, `shop.postal_required`, `shop.invalid_postal`, `shop.text_too_long`, `shop.age_confirmation_required`), or online payment is not set up (`checkout.payment_not_configured`, `checkout.payment_provider_unsupported`). */
+            /** @description The cart, buyer or address is invalid (`shop.invalid_items`, `shop.invalid_item`, `shop.invalid_buyer`, `shop.invalid_address`, `shop.postal_required`, `shop.invalid_postal`, `shop.text_too_long`, `shop.age_confirmation_required`), the anti-robot test is missing or failed (`shop.captcha_required`, `shop.captcha_failed`), or online payment is not set up (`checkout.payment_not_configured`, `checkout.payment_provider_unsupported`). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -69323,7 +69342,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The database is unavailable (`dependency.database_unavailable`), or the payment provider could not start the payment (`checkout.payment_start_failed`, `checkout.payment_not_configured`). */
+            /** @description The database is unavailable (`dependency.database_unavailable`), the anti-robot test could not be checked (`shop.captcha_unavailable`), or the payment provider could not start the payment (`checkout.payment_start_failed`, `checkout.payment_not_configured`). */
             503: {
                 headers: {
                     [name: string]: unknown;

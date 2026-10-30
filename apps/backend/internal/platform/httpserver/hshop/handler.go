@@ -36,6 +36,8 @@ package hshop
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -91,6 +93,23 @@ type Options struct {
 	// stock, so it is far tighter than reading the catalog. 0 means
 	// DefaultCheckoutIPLimit, a negative value switches it off.
 	CheckoutIPLimit int
+	// Captcha verifies the Turnstile token of a checkout. Nil switches the
+	// captcha off (the storefront then gets no captcha_site_key); set, a
+	// checkout without a valid token is refused 422 before it holds stock.
+	Captcha CaptchaVerifier
+	// CaptchaSiteKey is the public Turnstile site key handed to the
+	// storefront in the catalog settings; only published while Captcha is set.
+	CaptchaSiteKey string
+	// IPSalt salts the hash of the client key stored on an order (the cap on
+	// live unpaid orders per address counts it); the server passes the JWT
+	// secret, like the other tables that keep an address hash.
+	IPSalt string
+}
+
+// CaptchaVerifier checks a Cloudflare Turnstile response token
+// (honboarding.TurnstileVerifier is the implementation).
+type CaptchaVerifier interface {
+	Verify(ctx context.Context, token, remoteIP string) (bool, error)
 }
 
 // DefaultCheckoutIPLimit is how many checkouts one client address may start
@@ -232,13 +251,36 @@ func (h *Handler) writeAudit(r *http.Request, action, resourceType, resourceID s
 		IP:           httputil.ExtractClientIP(r),
 		Metadata:     meta,
 	}); err != nil {
-		h.o.Logger.Warn("shop: audit write failed", slog.String("action", action), slog.String("error", err.Error()))
+		// The change itself already committed, so the answer stands; the log
+		// line carries what the missing audit row would have named.
+		h.o.Logger.Error("shop: audit write failed",
+			slog.String("action", action), slog.String("resource_type", resourceType),
+			slog.String("resource_id", resourceID), slog.String("org_id", orgID.String()),
+			slog.String("error", err.Error()))
 	}
 }
 
 // clientIP keys the per-IP bucket (never the raw X-Forwarded-For).
 func (h *Handler) clientIP(r *http.Request) string {
 	return httputil.TrustedClientIP(r, h.o.TrustedProxies)
+}
+
+// clientKey is the address the checkout is counted under: an IPv4 address,
+// or the /64 prefix of an IPv6 one (httputil.ClientKey, the rule every other
+// per-address limit of the API uses).
+func (h *Handler) clientKey(r *http.Request) string {
+	return httputil.ClientKey(h.clientIP(r))
+}
+
+// clientKeyHash is the salted sha256 of the client key stored on an order
+// ("" when the address is unknown), never the address itself.
+func (h *Handler) clientKeyHash(r *http.Request) string {
+	key := h.clientKey(r)
+	if key == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(h.o.IPSalt + "|shop|" + key))
+	return hex.EncodeToString(sum[:])
 }
 
 // limited applies the per-IP bucket and, when token is not empty, the
@@ -267,7 +309,7 @@ func (h *Handler) checkoutLimited(w http.ResponseWriter, r *http.Request, shopKe
 	if h.checkout == nil {
 		return false
 	}
-	ok, retry := h.checkout.allow(shopKey+"|"+h.clientIP(r), time.Now())
+	ok, retry := h.checkout.allow(shopKey+"|"+h.clientKey(r), time.Now())
 	if ok {
 		return false
 	}
