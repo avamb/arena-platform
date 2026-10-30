@@ -255,7 +255,8 @@ var orgIsolationAuditedSafe = map[string]string{
 	// every product and order by (id, org_id) and answers the route's own 404;
 	// a page is keyed by (org_id, slug), a picture's media must be the
 	// organization's own. shop_integration_test.go TestShop_OrganizationIsolation,
-	// shop_parity_integration_test.go (the note and the repeat e-mail answer 404 for another organization).
+	// shop_parity_integration_test.go (the note and the repeat e-mail answer 404 for another organization),
+	// shop_third_pass_integration_test.go (resolve answers 404 for another organization's order).
 	"DELETE /v1/organizations/{org_id}/shop/pages/{slug}":                            "shop",
 	"DELETE /v1/organizations/{org_id}/shop/products/{product_id}":                   "shop",
 	"DELETE /v1/organizations/{org_id}/shop/products/{product_id}/images/{media_id}": "shop",
@@ -267,6 +268,7 @@ var orgIsolationAuditedSafe = map[string]string{
 	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/cancel":                  "shop",
 	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/refund":                  "shop",
 	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/resend-email":            "shop",
+	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/resolve":                 "shop",
 	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/ship":                    "shop",
 	"POST /v1/organizations/{org_id}/shop/products/{product_id}/images":              "shop",
 	"PUT /v1/organizations/{org_id}/shop/pages/{slug}":                               "shop",

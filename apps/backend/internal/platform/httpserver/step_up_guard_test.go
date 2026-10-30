@@ -170,6 +170,8 @@ var stepUpMoneyRoutes = []string{
 	// an unpaid order.
 	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/refund",
 	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/cancel",
+	// Resolving a late payment may return the whole payment (SB-04).
+	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/resolve",
 }
 
 // stepUpExempt are writes whose path looks like money but which are not a

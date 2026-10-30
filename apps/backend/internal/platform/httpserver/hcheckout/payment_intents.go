@@ -601,14 +601,22 @@ func (h *Handler) HandleTransitionPaymentIntent(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Persist the transition.
-	updated, err := h.paymentIntentQueries.UpdatePaymentIntentState(ctx,
-		id, req.State,
-		req.ScaRedirectURL, req.ClientSecret,
-		req.FailureCode, req.FailureMessage,
-		req.ProviderPaymentID,
-		nil, // provider_charge_ref is learned from provider webhooks only
-	)
+	// Persist the transition. A payment of a shop order (no checkout session)
+	// advances the order on the same transaction, exactly as the provider's
+	// webhook does (SB-04): an operator who settles a payment parked in
+	// manual_review as succeeded or failed must not leave the order behind.
+	var updated gen.PaymentIntentRow
+	if h.shopPayments != nil && current.CheckoutSessionID == nil {
+		updated, err = h.transitionShopPayment(ctx, id, current, req)
+	} else {
+		updated, err = h.paymentIntentQueries.UpdatePaymentIntentState(ctx,
+			id, req.State,
+			req.ScaRedirectURL, req.ClientSecret,
+			req.FailureCode, req.FailureMessage,
+			req.ProviderPaymentID,
+			nil, // provider_charge_ref is learned from provider webhooks only
+		)
+	}
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("payment_intent.not_found", "payment intent not found", r))

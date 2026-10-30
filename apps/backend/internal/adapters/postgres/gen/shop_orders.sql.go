@@ -55,6 +55,10 @@ type ShopOrderRow struct {
 	StaffNote       string          `json:"staff_note"`
 	StaffNoteBy     string          `json:"staff_note_by"`
 	StaffNoteAt     *time.Time      `json:"staff_note_at"`
+	// ReviewReason says why a manual_review order waits for a person:
+	// late_payment_no_stock or payment_unconfirmed (migration 0180); nil
+	// otherwise.
+	ReviewReason *string `json:"review_reason"`
 }
 
 const shopOrderColumns = `id, org_id, number, order_token, customer_id, status, buyer_name, buyer_email, buyer_phone,
@@ -62,7 +66,7 @@ const shopOrderColumns = `id, org_id, number, order_token, customer_id, status, 
        delivery_note, currency, subtotal, discount, shipping_fee, total, refunded_minor,
        payment_intent_id, provider, buyer_locale, source, external_ref, paid_at, shipped_at,
        cancelled_at, tracking_note, expires_at, metadata, created_at, updated_at,
-       staff_note, staff_note_by, staff_note_at`
+       staff_note, staff_note_by, staff_note_at, review_reason`
 
 func scanShopOrderRow(row interface{ Scan(dest ...any) error }) (ShopOrderRow, error) {
 	var o ShopOrderRow
@@ -72,7 +76,7 @@ func scanShopOrderRow(row interface{ Scan(dest ...any) error }) (ShopOrderRow, e
 		&o.Discount, &o.ShippingFee, &o.Total, &o.RefundedMinor, &o.PaymentIntentID, &o.Provider,
 		&o.BuyerLocale, &o.Source, &o.ExternalRef, &o.PaidAt, &o.ShippedAt, &o.CancelledAt,
 		&o.TrackingNote, &o.ExpiresAt, &o.Metadata, &o.CreatedAt, &o.UpdatedAt,
-		&o.StaffNote, &o.StaffNoteBy, &o.StaffNoteAt)
+		&o.StaffNote, &o.StaffNoteBy, &o.StaffNoteAt, &o.ReviewReason)
 	return o, err
 }
 
@@ -200,7 +204,7 @@ UPDATE shop_order_items SET download_count = download_count + 1
 WHERE  id = $1 AND order_id = $2 AND download_count < $3
 RETURNING download_count`
 
-// ConsumeShopOrderDownload counts one issued download link on a line of the
+// ConsumeShopOrderDownload counts one served download on a line of the
 // order, in one atomic statement; false when the line has already used its
 // limit (or is not a line of the order).
 func (q *Queries) ConsumeShopOrderDownload(ctx context.Context, itemID, orderID uuid.UUID, limit int32) (bool, error) {
@@ -405,7 +409,8 @@ func (q *Queries) SetShopOrderPayment(ctx context.Context, id, paymentIntentID u
 const setShopOrderStatus = `-- name: SetShopOrderStatus :one
 UPDATE shop_orders
 SET    status = $2,
-       paid_at = CASE WHEN $2 IN ('paid', 'manual_review') THEN COALESCE(paid_at, now()) ELSE paid_at END,
+       paid_at = CASE WHEN $2 = 'paid' THEN COALESCE(paid_at, now()) ELSE paid_at END,
+       review_reason = CASE WHEN $2 = 'manual_review' THEN review_reason ELSE NULL END,
        shipped_at = CASE WHEN $2 = 'shipped' THEN now() ELSE shipped_at END,
        cancelled_at = CASE WHEN $2 = 'cancelled' THEN now() ELSE cancelled_at END,
        tracking_note = COALESCE($3, tracking_note),
@@ -414,13 +419,34 @@ SET    status = $2,
 WHERE  id = $1
 RETURNING ` + shopOrderColumns
 
-// SetShopOrderStatus moves an order to status, stamping paid_at (paid, and
-// manual_review: a late payment parked for the operator), shipped_at or
-// cancelled_at for those statuses. trackingNote nil keeps the note; meta is
+// SetShopOrderStatus moves an order to status, stamping paid_at (paid only: a
+// parked order gets its paid_at from SetShopOrderReview, and only when money
+// was really taken), shipped_at or cancelled_at for those statuses, and
+// clearing review_reason once the order leaves manual_review. trackingNote nil keeps the note; meta is
 // merged into metadata (nil merges nothing). The caller decides whether the
 // transition is allowed, under the order's lock.
 func (q *Queries) SetShopOrderStatus(ctx context.Context, id uuid.UUID, status string, trackingNote *string, meta json.RawMessage) (ShopOrderRow, error) {
 	return scanShopOrderRow(q.db.QueryRow(ctx, setShopOrderStatus, id, status, trackingNote, nullIfEmptyJSON(meta)))
+}
+
+const setShopOrderReview = `-- name: SetShopOrderReview :one
+UPDATE shop_orders
+SET    status = 'manual_review',
+       review_reason = $2,
+       paid_at = CASE WHEN $3::boolean THEN COALESCE(paid_at, now()) ELSE paid_at END,
+       metadata = metadata || COALESCE($4::jsonb, '{}'::jsonb),
+       updated_at = now()
+WHERE  id = $1
+RETURNING ` + shopOrderColumns
+
+// SetShopOrderReview parks an order in manual_review for reason
+// (late_payment_no_stock or payment_unconfirmed). moneyTaken stamps paid_at:
+// true for a late payment whose money arrived, false while the payment is not
+// confirmed, so an order with an unconfirmed payment never reads as paid.
+// meta is merged into metadata (nil merges nothing). The caller decides
+// whether the transition is allowed, under the order's lock.
+func (q *Queries) SetShopOrderReview(ctx context.Context, id uuid.UUID, reason string, moneyTaken bool, meta json.RawMessage) (ShopOrderRow, error) {
+	return scanShopOrderRow(q.db.QueryRow(ctx, setShopOrderReview, id, reason, moneyTaken, nullIfEmptyJSON(meta)))
 }
 
 const setShopOrderRefunded = `-- name: SetShopOrderRefunded :one

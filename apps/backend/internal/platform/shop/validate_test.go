@@ -89,6 +89,34 @@ func TestPublicStatus(t *testing.T) {
 	}
 }
 
+// SB-02: a parked order reads by its cause. An unconfirmed payment is not paid
+// (still pending, no payment page, the cause named); a late payment whose
+// goods are gone is paid.
+func TestPublicStatusOfAParkedOrder(t *testing.T) {
+	unconfirmed, late := ReviewPaymentUnconfirmed, ReviewLatePaymentNoStock
+	for _, c := range []struct {
+		name        string
+		reason      *string
+		status, why string
+	}{
+		{"unconfirmed payment", &unconfirmed, "pending", ReviewPaymentUnconfirmed},
+		{"late payment, goods gone", &late, "paid", ReviewLatePaymentNoStock},
+		{"legacy row without a reason", nil, "paid", ""},
+	} {
+		o := gen.ShopOrderRow{Status: StatusManualReview, ReviewReason: c.reason}
+		if got := PublicStatus(o, true); got != c.status {
+			t.Errorf("%s: PublicStatus = %s, want %s", c.name, got, c.status)
+		}
+		if got := PublicReview(o); got != c.why {
+			t.Errorf("%s: PublicReview = %q, want %q", c.name, got, c.why)
+		}
+	}
+	// The reason of an order that is not parked is never shown.
+	if got := PublicReview(gen.ShopOrderRow{Status: StatusPaid, ReviewReason: &unconfirmed}); got != "" {
+		t.Errorf("PublicReview of a paid order = %q, want empty", got)
+	}
+}
+
 func TestCourierText(t *testing.T) {
 	o := gen.ShopOrderRow{
 		BuyerName: "Anna K", BuyerPhone: "+972500000000", ShipCity: "Haifa",
@@ -258,6 +286,8 @@ func TestSanitizeBody_RefusesWhatTheSanitizerRefuses(t *testing.T) {
 	}
 }
 
+var lateNoStock = ReviewLatePaymentNoStock
+
 func TestRefundStatus(t *testing.T) {
 	shipped := time.Now()
 	paid := gen.ShopOrderRow{Status: StatusPaid, Total: 1000}
@@ -276,7 +306,7 @@ func TestRefundStatus(t *testing.T) {
 		{"manual review, part back", gen.ShopOrderRow{Status: StatusManualReview, Total: 1000}, 300, StatusManualReview},
 		{"manual review, all back", gen.ShopOrderRow{Status: StatusManualReview, Total: 1000}, 1000, StatusRefunded},
 		{"refunded parked order, reversed", gen.ShopOrderRow{Status: StatusRefunded, Total: 1000,
-			Metadata: []byte(`{"review_reason": "stock_short"}`)}, 0, StatusManualReview},
+			ReviewReason: &lateNoStock}, 0, StatusManualReview},
 		{"expired keeps its status", gen.ShopOrderRow{Status: StatusExpired, Total: 1000}, 1000, StatusExpired},
 	}
 	for _, c := range cases {

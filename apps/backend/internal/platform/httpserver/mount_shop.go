@@ -95,6 +95,7 @@ func (s *Server) shopHandler() *hshop.Handler {
 		Logger:       s.logger,
 		MediaURL:     s.signedMediaURL,
 		DownloadURL:  s.shopDownloadURL,
+		APIBaseURL:   s.apiPublicURL(),
 		ReturnPolicy: s.checkoutReturnURLPolicy(),
 		Window:       widgetPaymentWindow(s.cfg),
 		Grace:        widgetPaymentGrace(s.cfg),
@@ -155,6 +156,7 @@ func (s *Server) mountShopRoutes(r chi.Router) {
 	r.Get("/public/shop/by-host", h.HandleByHost)
 	r.Get("/public/shop/checkout/{order_token}", h.HandlePublicCheckoutStatus)
 	r.Get("/public/shop/checkout/{order_token}/downloads", h.HandlePublicCheckoutDownloads)
+	r.Get("/public/shop/checkout/{order_token}/downloads/{item_id}", h.HandlePublicCheckoutDownload)
 	r.Get("/public/shop/pages/{org_slug}", h.HandlePublicPages)
 	r.Get("/public/shop/{org_slug}", h.HandlePublicCatalog)
 	r.Get("/public/shop/{org_slug}/products/{slug}", h.HandlePublicProduct)
@@ -210,5 +212,8 @@ func (s *Server) mountShopRoutes(r chi.Router) {
 		pr.Use(permissions.RequirePermission(s.perms, "refund.approve", "refunds"))
 		pr.Use(s.requireWebStepUp)
 		pr.Post(base+"/orders/{order_id}/refund", s.orgGated(h.HandleRefundOrder))
+		// Resolving a parked order may return the whole payment (SB-04), so
+		// it carries the refund permissions and the password check as well.
+		pr.Post(base+"/orders/{order_id}/resolve", s.orgGated(h.HandleResolveOrder))
 	})
 }

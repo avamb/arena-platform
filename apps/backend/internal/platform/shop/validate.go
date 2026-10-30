@@ -190,7 +190,7 @@ func refundStatus(o gen.ShopOrderRow, accepted int64) string {
 		switch {
 		case o.ShippedAt != nil:
 			base = StatusShipped
-		case strings.Contains(string(o.Metadata), `"review_reason"`):
+		case o.ReviewReason != nil:
 			base = StatusManualReview
 		}
 	default:
@@ -210,7 +210,12 @@ func refundStatus(o gen.ShopOrderRow, accepted int64) string {
 
 // PublicStatus maps an order status to the buyer-facing checkout status:
 // pending, paid, expired or cancelled. A pending order whose hold has passed
-// already reads as expired, before the sweep flips it.
+// already reads as expired, before the sweep flips it. An order parked for
+// review reads by its cause (SB-02): with an unconfirmed payment it is still
+// "pending" (nothing is known to be paid; the buyer is told the payment is
+// being checked and is not offered the payment page again), and with a late
+// payment whose goods are gone it is "paid" (the money was taken; the buyer is
+// told the stock is being checked). PublicReview carries the cause.
 func PublicStatus(o gen.ShopOrderRow, holdPassed bool) string {
 	switch o.Status {
 	case StatusPendingPayment:
@@ -218,7 +223,12 @@ func PublicStatus(o gen.ShopOrderRow, holdPassed bool) string {
 			return "expired"
 		}
 		return "pending"
-	case StatusPaid, StatusShipped, StatusRefunded, StatusPartiallyRefunded, StatusManualReview:
+	case StatusManualReview:
+		if reviewReasonIs(o, ReviewPaymentUnconfirmed) {
+			return "pending"
+		}
+		return "paid"
+	case StatusPaid, StatusShipped, StatusRefunded, StatusPartiallyRefunded:
 		return "paid"
 	case StatusExpired:
 		return "expired"
@@ -300,4 +310,15 @@ func FormatMinor(amount int64, currency string) string {
 		unit *= 10
 	}
 	return fmt.Sprintf("%s%d.%0*d %s", sign, amount/unit, exp, amount%unit, currency)
+}
+
+// PublicReview is the cause of a parked order as the buyer's page shows it:
+// "payment_unconfirmed" (the payment is being checked), "late_payment_no_stock"
+// (paid, the availability is being checked) or "" for any order that is not
+// parked for review.
+func PublicReview(o gen.ShopOrderRow) string {
+	if o.Status != StatusManualReview || o.ReviewReason == nil {
+		return ""
+	}
+	return *o.ReviewReason
 }

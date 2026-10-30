@@ -4677,6 +4677,18 @@ other = "💰 Pagado: <b>{{.Amount}}</b>"
 ["salesnotify.shop.review_body"]
 other = "El pago del pedido {{.Number}} llegó cuando la reserva ya había terminado y el producto ya no estaba libre. Revisa el pedido en el centro de eventos."
 
+["salesnotify.shop.review_unconfirmed_amount"]
+other = "⏳ Pago aún sin confirmar: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_unconfirmed_body"]
+other = "La pasarela de pago no ha confirmado el pago del pedido {{.Number}}, puede que el dinero no haya llegado. No envíe ni entregue la mercancía hasta que se confirme: cuando ocurra, el pedido se anunciará como pagado. Los detalles están en el centro de eventos."
+
+["shop.public.review_payment_unconfirmed"]
+other = "Estamos comprobando su pago y le escribiremos."
+
+["shop.public.review_late_payment_no_stock"]
+other = "Su pago ha llegado. Estamos comprobando la disponibilidad de su pedido y le escribiremos."
+
 # --- salesnotify.shop.courier_*: the plain courier text of an order card ---
 ["salesnotify.shop.courier_order"]
 other = "Pedido n.º {{.Number}}"

@@ -90,4 +90,6 @@ var shopKeys = []string{
 	"salesnotify.shop.review_title",
 	"salesnotify.shop.review_paid",
 	"salesnotify.shop.review_body",
+	"salesnotify.shop.review_unconfirmed_amount",
+	"salesnotify.shop.review_unconfirmed_body",
 }

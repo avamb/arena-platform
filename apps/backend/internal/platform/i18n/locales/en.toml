@@ -4825,6 +4825,18 @@ other = "💰 Paid: <b>{{.Amount}}</b>"
 ["salesnotify.shop.review_body"]
 other = "Payment for order {{.Number}} arrived after the hold ended, the goods were no longer free. Check the order in the event center."
 
+["salesnotify.shop.review_unconfirmed_amount"]
+other = "⏳ Payment not confirmed yet: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_unconfirmed_body"]
+other = "The payment for order {{.Number}} is not confirmed by the payment provider, the money may not have arrived. Do not ship or hand over the goods until it is confirmed: the order will be announced as paid once it is. Details are in the event center."
+
+["shop.public.review_payment_unconfirmed"]
+other = "We are checking your payment and will write to you."
+
+["shop.public.review_late_payment_no_stock"]
+other = "Your payment arrived. We are checking the availability of your goods and will write to you."
+
 # --- salesnotify.shop.courier_*: the plain courier text of an order card ---
 ["salesnotify.shop.courier_order"]
 other = "Order #{{.Number}}"
