@@ -8,7 +8,8 @@ import { MAX_NOTE_LEN, needsShipping, postalHint, subtotalMinor, shippingMinor, 
 import type { DownloadLink, OrderStatus } from '../lib/api';
 import { sized } from '../lib/cdn';
 import { esc } from '../lib/html';
-import { T } from '../lib/i18n';
+import { MSG, resumeOrderText, T } from '../lib/i18n';
+import type { StatusPhase } from '../lib/poll';
 import { cartSrcset, icon, money, optionPairs, ratioOf, url, type Ctx } from './common';
 
 export const EMPTY_FORM: CheckoutForm = {
@@ -79,7 +80,34 @@ export interface CheckoutViewState {
   errors: FormErrors;
   /** A request-level problem (out of stock, payment unavailable, network). */
   message?: string;
+  /** What changed in the basket after a shortage answer, one line each. */
+  notes?: string[];
+  /** An unpaid order of this buyer is still waiting: offered instead of a second order. */
+  resume?: ResumeOffer;
   submitting?: boolean;
+}
+
+export interface ResumeOffer {
+  paymentUrl: string;
+  number?: string | number | null;
+  /** The order's total, already formatted. */
+  totalLabel?: string;
+}
+
+function resumePanel(r: ResumeOffer): string {
+  return `<div class="shop-checkout__resume form__message" role="alert" id="checkout-resume">
+        <strong>${MSG.resumeTitle}</strong>
+        <p>${esc(resumeOrderText(r.number, r.totalLabel))} ${MSG.resumeText}</p>
+        <a href="${esc(r.paymentUrl)}" class="button" id="return-to-payment">${MSG.returnToPayment}</a>
+        <button type="button" class="button button--secondary" data-resume-ignore>${MSG.resumeNew}</button>
+      </div>`;
+}
+
+function messageBlock(st: CheckoutViewState): string {
+  if (!st.message && !(st.notes && st.notes.length > 0)) return '';
+  const notes = st.notes && st.notes.length > 0 ? `<ul class="list-unstyled shop-checkout__notes" role="list">${st.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : '';
+  return `
+      <div class="form__message shop-checkout__error" role="alert">${icon('error')}${st.message ? esc(st.message) : ''}${notes}</div>`;
 }
 
 /** The country's name in the storefront's language ("IL" -> "Израиль"); the code itself when the browser does not know it. */
@@ -165,8 +193,8 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
         <label for="Checkout-consent18">Подтверждаю, что мне исполнилось ${minAge} лет</label>
       </div>${e.consent18 ? `<small class="form__message" id="Checkout-consent18-error"><span class="visually-hidden">Ошибка</span>${icon('error')}${esc(e.consent18)}</small>` : ''}`
           : ''
-      }${st.message ? `
-      <div class="form__message shop-checkout__error" role="alert">${icon('error')}${esc(st.message)}</div>` : ''}
+      }${s.captcha_site_key ? `
+      <div id="checkout-captcha" class="shop-checkout__captcha" data-sitekey="${esc(s.captcha_site_key)}"></div>` : ''}${messageBlock(st)}${st.resume ? resumePanel(st.resume) : ''}
       <button type="submit" class="button button--full-width shop-checkout__pay" id="checkout-pay"${st.submitting ? ' disabled' : ''}>
         Оплатить ${esc(money(ctx, total))}
       </button>
@@ -257,14 +285,17 @@ function downloadsBlock(dl: DownloadsState): string {
   return body ? `<div class="shop-downloads"><h2 class="h3">Ваши файлы</h2>${body}</div>` : '';
 }
 
-export function statusView(ctx: Ctx, st: OrderStatus | 'loading' | 'error', dl?: DownloadsState): string {
+export function statusView(ctx: Ctx, st: OrderStatus | 'loading' | 'error', dl?: DownloadsState, phase: StatusPhase = 'late'): string {
   const all = esc(url(ctx, '/collections/all'));
   const wrap = (title: string, body: string): string => `<div class="template-404 page-width page-margin center shop-status">
   <h1 class="title">${esc(title)}</h1>${body}
 </div>`;
   if (st === 'loading') return wrap(T.loading, '');
+  const checking = (): string => wrap(MSG.checking, `<p role="status">${MSG.checkingText}</p>`);
   if (st === 'error') {
-    return wrap('Не удалось загрузить заказ', `<p>Проверьте соединение и обновите страницу.</p><a href="${all}" class="button">${T.continueShopping}</a>`);
+    // One failed request is not the end: while the page is still polling it keeps saying it is checking.
+    if (phase !== 'timeout') return checking();
+    return wrap(MSG.timeoutTitle, `<p>${MSG.timeoutText}</p><a href="${all}" class="button">${T.continueShopping}</a>`);
   }
   const number = st.number != null && st.number !== '' ? ` № ${esc(st.number)}` : '';
   switch (st.status) {
@@ -273,13 +304,16 @@ export function statusView(ctx: Ctx, st: OrderStatus | 'loading' | 'error', dl?:
         'Спасибо за заказ!',
         `<p>Заказ${number} оплачен. Мы отправили подтверждение на вашу почту${hasPhysicalLines(st) ? ' и свяжемся с вами по доставке' : ''}.</p>${dl ? downloadsBlock(dl) : ''}<a href="${all}" class="button">${T.continueShopping}</a>`,
       );
-    case 'pending':
+    case 'pending': {
+      // The buyer is usually back from the provider before its webhook reaches us: no "go back and pay" for the first minutes.
+      if (phase === 'checking') return checking();
+      const back = st.payment_url ? `<a href="${esc(st.payment_url)}" class="button" id="return-to-payment">${MSG.returnToPayment}</a>` : '';
+      if (phase === 'timeout') return wrap(MSG.timeoutTitle, `<p>${MSG.timeoutText}</p>${back}`);
       return wrap(
-        'Ожидаем оплату',
-        `<p>Заказ${number} ещё не оплачен. Если вы закрыли страницу оплаты, вернитесь к ней по ссылке.</p>${
-          st.payment_url ? `<a href="${esc(st.payment_url)}" class="button" id="return-to-payment">Вернуться к оплате</a>` : ''
-        }`,
+        MSG.waitingTitle,
+        `<p>Заказ${number} ещё не оплачен. Если вы закрыли страницу оплаты, вернитесь к ней по ссылке.</p>${back}`,
       );
+    }
     case 'cancelled':
       return wrap('Заказ отменён', `<p>Заказ${number} отменён.</p><a href="${all}" class="button">${T.continueShopping}</a>`);
     default:

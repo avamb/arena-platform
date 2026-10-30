@@ -27,6 +27,10 @@ type ImportVariant struct {
 	Option1        *string
 	Option2        *string
 	Option3        *string
+	// WeightGrams is "Variant Grams" (nil = the column is empty or zero),
+	// Barcode "Variant Barcode" (or "Variant Barcodes", the newer spelling).
+	WeightGrams *int32
+	Barcode     string
 }
 
 // ImportImage is one picture row (Image Src, Image Position, Image Alt Text).
@@ -38,17 +42,21 @@ type ImportImage struct {
 
 // ImportProduct is one product (all CSV rows of one Handle).
 type ImportProduct struct {
-	Line          int // CSV line of the first row (1 = header)
-	Handle        string
-	Slug          string
-	Title         string
-	BodyHTML      string
-	Vendor        string
-	Type          string
-	Tags          string
-	ShopifyStatus string // active, draft, archived, unlisted
-	Status        string // shop status: active, draft or archived
-	SortOrder     int32
+	Line     int // CSV line of the first row (1 = header)
+	Handle   string
+	Slug     string
+	Title    string
+	BodyHTML string
+	Vendor   string
+	Type     string
+	// Tags are the comma-separated "Tags" column split, trimmed and de-duplicated.
+	Tags []string
+	// SEOTitle and SEODescription are "SEO Title" and "SEO Description".
+	SEOTitle       string
+	SEODescription string
+	ShopifyStatus  string // active, draft, archived, unlisted
+	Status         string // shop status: active, draft or archived
+	SortOrder      int32
 	// OptionNames are the labels of the variant options (Option1 Name..
 	// Option3 Name), in order. Shopify's placeholder "Title" (the option of
 	// a product that has only the Default Title variant) is left out.
@@ -172,7 +180,8 @@ func ParseProducts(r io.Reader, currency string) (*ProductsFile, error) {
 			p.BodyHTML = h.raw(rec, "Body (HTML)")
 			p.Vendor = h.get(rec, "Vendor")
 			p.Type = h.get(rec, "Type")
-			p.Tags = h.get(rec, "Tags")
+			p.Tags = parseTags(h.get(rec, "Tags"))
+			p.SEOTitle, p.SEODescription = h.get(rec, "SEO Title"), h.get(rec, "SEO Description")
 			p.ShopifyStatus = strings.ToLower(h.get(rec, "Status"))
 			if p.ShopifyStatus == "" {
 				p.ShopifyStatus = "draft"
@@ -225,6 +234,9 @@ func ParseProducts(r io.Reader, currency string) (*ProductsFile, error) {
 	}
 
 	for i, handle := range order {
+		if byHandle[handle] != nil {
+			clampSEO(byHandle[handle])
+		}
 		if reason, isBad := bad[handle]; isBad {
 			out.Problems = append(out.Problems, reason)
 			continue
@@ -326,6 +338,22 @@ func parseVariant(h csvHeader, rec []string, currency string, line int, position
 		v.Title = shop.DefaultVariantTitle
 	}
 	v.SKU = h.get(rec, "Variant SKU")
+	if raw := h.get(rec, "Variant Grams"); raw != "" {
+		g, err := strconv.ParseFloat(raw, 64)
+		if err != nil || g < 0 || g > maxWeightGrams {
+			return v, fmt.Errorf("variant grams %q is not a weight", raw)
+		}
+		if w := int32(g + 0.5); w > 0 { //nolint:gosec // bounded by maxWeightGrams
+			v.WeightGrams = &w
+		}
+	}
+	v.Barcode = h.get(rec, "Variant Barcode")
+	if v.Barcode == "" {
+		v.Barcode = h.get(rec, "Variant Barcodes")
+	}
+	if utf8.RuneCountInString(v.Barcode) > maxBarcodeRunes {
+		v.Barcode = string([]rune(v.Barcode)[:maxBarcodeRunes])
+	}
 	if q := h.get(rec, "Variant Inventory Qty"); q != "" {
 		n, err := strconv.ParseInt(q, 10, 32)
 		if err != nil {
@@ -357,4 +385,52 @@ func SelectProducts(all []ImportProduct, includeDrafts bool) (keep []ImportProdu
 		skipped[p.ShopifyStatus]++
 	}
 	return keep, skipped
+}
+
+// Limits of the columns migration 0178 adds (its CHECK constraints). A longer
+// text is cut and reported, never refused: the product must still import.
+const (
+	maxSEOTitleRunes       = 255
+	maxSEODescriptionRunes = 1000
+	maxTags                = 50
+	maxTagRunes            = 100
+	maxWeightGrams         = 100000000
+	maxBarcodeRunes        = 64
+)
+
+// parseTags splits Shopify's "Tags" cell ("red, wine, Gift") into trimmed,
+// non-empty tags, case-insensitively de-duplicated, in the order written.
+func parseTags(raw string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, t := range strings.Split(raw, ",") {
+		t = strings.Join(strings.Fields(t), " ")
+		if t == "" || seen[strings.ToLower(t)] {
+			continue
+		}
+		seen[strings.ToLower(t)] = true
+		out = append(out, t)
+	}
+	return out
+}
+
+// clampSEO cuts the SEO texts and the tag list to what the columns hold and
+// records a warning when something was cut.
+func clampSEO(p *ImportProduct) {
+	cut := func(s string, n int, what string) string {
+		if utf8.RuneCountInString(s) <= n {
+			return s
+		}
+		p.Warnings = append(p.Warnings, fmt.Sprintf("%s is longer than %d characters, cut", what, n))
+		return string([]rune(s)[:n])
+	}
+	p.SEOTitle = cut(p.SEOTitle, maxSEOTitleRunes, "SEO title")
+	p.SEODescription = cut(p.SEODescription, maxSEODescriptionRunes, "SEO description")
+	for i, t := range p.Tags {
+		p.Tags[i] = cut(t, maxTagRunes, "tag")
+	}
+	if len(p.Tags) > maxTags {
+		p.Warnings = append(p.Warnings, fmt.Sprintf("%d tags, only the first %d kept", len(p.Tags), maxTags))
+		p.Tags = p.Tags[:maxTags]
+	}
 }

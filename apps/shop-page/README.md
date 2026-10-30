@@ -54,6 +54,8 @@ npm run fixtures -- C:/Projects/arena_new/.local/einatwinery_export
 Against the real API set `VITE_API_BASE_URL` to its origin (for example
 `https://api-staging.arenasoldout.com`). The API must answer CORS for the shop
 origin and `return_url` of the checkout must be on its allow-list.
+Step by step release of a shop on the organizer's domain (DNS, Dokploy, CORS, opening the shop,
+payment channel, 301, robots/sitemap): `docs/ops/shop_release_checklist_ru.md` in the repo root.
 
 ## Scripts
 
@@ -140,10 +142,13 @@ the model the views use. Read it with `apps/backend/internal/platform/httpserver
 
 ## Before the domain moves
 
-- Logo, banner and footer logo (`src/lib/theme.ts`) and the product pictures
-  (fixtures) still point at the old shop's CDN (`www.einatwinery.com/cdn`,
-  `cdn.shopify.com`). Re-upload them as arena media first; the CSP already
-  allows `https:` images.
+- Logo, banner and footer logo (`src/lib/theme.ts`) are served from this app
+  (`public/theme/brand/`), so they survive the DNS switch. The product pictures
+  come from the API (arena media). Only the mock fixtures (`mock/fixtures`)
+  still carry old-shop CDN links; they are never served in production.
+- Checkout captcha: when the public shop answer carries `captcha_site_key`, the
+  checkout form renders Cloudflare Turnstile and sends `captcha_token`; the CSP
+  (`security-headers.conf.template`) allows `challenges.cloudflare.com` for it.
 - The age-gate texts and contact e-mail are static / from settings.
 - Old URL shapes and their fate: `docs/redirects_301.md`.
 
