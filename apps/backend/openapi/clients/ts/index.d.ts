@@ -68544,7 +68544,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The order is not paid, or it holds only digital or service goods and has nothing to ship (`shop.order_not_shippable`), or it is parked in `manual_review` and its goods are not free on the shelf (`shop.out_of_stock`, `details.items` lists the short lines). */
+            /** @description The order is not paid, or it holds only digital or service goods and has nothing to ship (`shop.order_not_shippable`), or it is parked in `manual_review` and its goods are not free on the shelf (`shop.out_of_stock`, `details.items` lists the short lines), or it is parked in `manual_review` because its payment waits for a human and that payment has not succeeded (`shop.payment_unconfirmed`). */
             409: {
                 headers: {
                     [name: string]: unknown;

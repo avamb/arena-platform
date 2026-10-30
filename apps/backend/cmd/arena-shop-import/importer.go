@@ -317,7 +317,11 @@ func planVariants(existing []gen.ShopVariantRow, want []ImportVariant, syncStock
 		id := e.ID
 		in.ID = &id
 		if !syncStock {
+			// The service writes back the stock it finds under its own lock,
+			// so a sale between this read and the write is never undone and
+			// no phantom manual move is journaled.
 			in.Stock = e.Stock
+			in.KeepStock = true
 		}
 		same := e.Title == in.Title && optEq(e.SKU, in.SKU) && e.PriceMinor == in.PriceMinor &&
 			int64PtrEq(e.CompareAtMinor, in.CompareAtMinor) && e.Stock == in.Stock && e.TrackStock == track &&
@@ -339,6 +343,7 @@ func planVariants(existing []gen.ShopVariantRow, want []ImportVariant, syncStock
 		plan.Inputs = append(plan.Inputs, shop.VariantInput{
 			ID: &id, Title: e.Title, SKU: e.SKU, PriceMinor: e.PriceMinor, CompareAtMinor: e.CompareAtMinor,
 			Stock: e.Stock, TrackStock: &track, Position: &pos, Option1: e.Option1, Option2: e.Option2, Option3: e.Option3,
+			KeepStock: true,
 		})
 		plan.Kept++
 	}

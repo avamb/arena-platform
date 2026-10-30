@@ -57,9 +57,23 @@ func TestPlanVariants_MatchesBySkuOptionsTitle(t *testing.T) {
 		t.Errorf("kept variant: %+v", last)
 	}
 
+	// Without --sync-stock every stored variant keeps the stock the service
+	// finds under its lock, so a sale during the import is never undone.
+	for i, in := range plan.Inputs {
+		if wantKeep := in.ID != nil; in.KeepStock != wantKeep {
+			t.Errorf("input %d (%s): KeepStock=%v, want %v", i, in.Title, in.KeepStock, wantKeep)
+		}
+	}
+
 	synced := planVariants(existing, want, true)
 	if synced.Inputs[0].Stock != 50 {
 		t.Errorf("--sync-stock must take the CSV stock, got %d", synced.Inputs[0].Stock)
+	}
+	if synced.Inputs[0].KeepStock {
+		t.Error("--sync-stock must write the CSV stock, not keep the stored one")
+	}
+	if last := synced.Inputs[len(synced.Inputs)-1]; !last.KeepStock {
+		t.Error("a variant the CSV does not name keeps its stock even with --sync-stock")
 	}
 }
 

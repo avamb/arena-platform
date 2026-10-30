@@ -425,6 +425,8 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "shop.invalid_variant": "shopVariantsInvalid",
   "shop.invalid_media": "shopMediaInvalid",
   "shop.order_not_shippable": "shopNotShippable",
+  // A manual_review order whose payment is still unsettled (second audit pass, SB-01).
+  "shop.payment_unconfirmed": "shopNotShippable",
   "shop.order_not_cancellable": "shopNotCancellable",
   "shop.order_not_refundable": "shopNotRefundable",
   "shop.nothing_to_refund": "shopNothingToRefund",
