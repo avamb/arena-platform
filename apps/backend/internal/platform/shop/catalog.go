@@ -860,7 +860,7 @@ func writeVariants(ctx context.Context, q *gen.Queries, orgID, productID uuid.UU
 			if err != nil {
 				return err
 			}
-			if d := v.Stock - prev; d != 0 && kind != KindDigital {
+			if d := p.Stock - prev; d != 0 && kind != KindDigital {
 				if err := q.InsertShopStockMove(ctx, orgID, p.ID, nil, d, MoveManual); err != nil {
 					return err
 				}
