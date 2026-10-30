@@ -767,7 +767,7 @@ export const es: Record<MessageKey, string> = {
   // 4-4
   "nav.invitations": "Invitaciones",
   "invitations.title": "Invitaciones",
-  "invitations.intro": "Entradas gratis para los invitados que nombras. Cada invitado recibe un e-mail con su entrada. Las invitaciones no son ventas.",
+  "invitations.intro": "Entradas gratis para los invitados que nombras. La entrada puede ir al invitado por e-mail, a ti, o solo como PDF para descargar. Las invitaciones no son ventas.",
   "invitations.noAccess": "No tienes acceso a las invitaciones de esta organización. Pide al propietario que te dé el rol de gestor.",
   "invitations.issue.title": "Invitar a gente",
   "invitations.issue.event": "Evento",
@@ -2576,6 +2576,8 @@ export const es: Record<MessageKey, string> = {
   "seatInv.cancel.place": "Cancelar la entrada de {place}",
   "seatInv.cancel.placeTitle": "¿Cancelar la entrada de {place}?",
   "seatInv.cancel.placeDone": "La entrada de {place} está cancelada.",
+  "seatInv.cancel.placeConfirm": "Cancelar la entrada",
+  "seatInv.place.scanned": "Usada en la entrada",
   "apiError.invitationUnknownSeat.title": "Uno de los asientos elegidos no está en esta sala.",
   "apiError.invitationUnknownSeat.next": "Volvimos a leer el plano y el asiento salió de tu selección. Elige los asientos otra vez.",
   "apiError.invitationTooManyPlaces.title": "Son más plazas de las que admite una invitación.",

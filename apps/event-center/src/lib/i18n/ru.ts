@@ -767,7 +767,7 @@ export const ru: Record<MessageKey, string> = {
   // 4-4
   "nav.invitations": "Пригласительные",
   "invitations.title": "Пригласительные",
-  "invitations.intro": "Бесплатные билеты для гостей, которых вы называете. Каждый гость получает письмо со своим билетом. Пригласительные не считаются продажами.",
+  "invitations.intro": "Бесплатные билеты для гостей, которых вы называете. Билет можно отправить гостю на e-mail, себе или только скачать в PDF. Пригласительные не считаются продажами.",
   "invitations.noAccess": "У вас нет доступа к пригласительным в этой организации. Попросите владельца выдать вам роль менеджера.",
   "invitations.issue.title": "Пригласить гостей",
   "invitations.issue.event": "Мероприятие",
@@ -2576,6 +2576,8 @@ export const ru: Record<MessageKey, string> = {
   "seatInv.cancel.place": "Отменить билет на {place}",
   "seatInv.cancel.placeTitle": "Отменить билет на {place}?",
   "seatInv.cancel.placeDone": "Билет на {place} отменён.",
+  "seatInv.cancel.placeConfirm": "Отменить билет",
+  "seatInv.place.scanned": "Использован на входе",
   "apiError.invitationUnknownSeat.title": "Одного из выбранных мест нет на этой схеме.",
   "apiError.invitationUnknownSeat.next": "Схему перечитали, и место убрано из выбора. Выберите места ещё раз.",
   "apiError.invitationTooManyPlaces.title": "Мест больше, чем может быть в одном пригласительном.",

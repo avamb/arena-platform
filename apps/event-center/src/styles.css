@@ -1634,6 +1634,10 @@ fieldset legend {
   align-items: center;
   gap: 0.5rem;
 }
+/* One line of an invitation card: the card's inline spans would otherwise run together. */
+.inv-row-line {
+  display: block;
+}
 .inv-row-actions {
   display: flex;
   flex-wrap: wrap;

@@ -107,6 +107,8 @@ type lineResponse struct {
 	TicketStatus *string `json:"ticket_status"`
 	// VIP is the organizer's private VIP mark of the place's ticket; false until the ticket is issued.
 	VIP bool `json:"vip"`
+	// Scanned is true once the place's ticket was used at the door; such a ticket cannot be cancelled.
+	Scanned bool `json:"scanned"`
 }
 
 type issueResponse struct {
@@ -357,7 +359,7 @@ func toLine(l gen.InvitationOrderLineRow) lineResponse {
 	out := lineResponse{
 		SeatKey: l.SeatKey, Sector: l.SectorName, Row: l.RowName, Seat: l.SeatNumber, Kind: l.Kind,
 		TierID: l.TierID.String(), TierName: l.TierName, FaceValue: l.UnitPrice, Origin: l.SeatOrigin,
-		TicketStatus: l.TicketStatus, VIP: l.VIP,
+		TicketStatus: l.TicketStatus, VIP: l.VIP, Scanned: l.Scanned,
 	}
 	if l.TicketID != nil {
 		s := l.TicketID.String()
@@ -446,7 +448,7 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 	for _, row := range rows {
 		items = append(items, newListItem(row, ex.places[row.ID], ex.letters[row.ID]))
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"items": items})
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "timezone": target.Timezone})
 }
 
 // newListItem builds one list item from its order row and its places.

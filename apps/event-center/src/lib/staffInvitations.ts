@@ -473,9 +473,10 @@ export function activePlaces<T extends Pick<StaffInvitationPlace, "ticket_status
   return places.filter((p) => p.ticket_status == null || p.ticket_status === "active");
 }
 
-/** True when a per-ticket cancel makes sense for this place: it has a ticket, the ticket is active, and it is not the last one. */
-export function canCancelPlace(place: Pick<StaffInvitationPlace, "ticket_id" | "ticket_status">, activeCount: number): boolean {
-  return place.ticket_id != null && place.ticket_status === "active" && activeCount > 1;
+/** True when a per-ticket cancel makes sense for this place: it has a ticket, the ticket is active and unused, and it is not the last one. */
+export function canCancelPlace(place: Pick<StaffInvitationPlace, "ticket_id" | "ticket_status"> & { scanned?: boolean }, activeCount: number): boolean {
+  // A ticket used at the door is never cancelled: the server refuses it with invitation.ticket_scanned.
+  return place.ticket_id != null && place.ticket_status === "active" && place.scanned !== true && activeCount > 1;
 }
 
 /** The guest's name for the list, or nothing when the invitation has none. */

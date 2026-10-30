@@ -25,14 +25,6 @@ import { STAFF_INVITATIONS_KEY, activePlaces, canAct, canCancelPlace, guestOf, i
 
 const TONE: Record<InvitationState, Tone> = { issuing: "wait", active: "ok", partial: "wait", cancelled: "neutral" };
 
-function localZone(): string | undefined {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    return undefined;
-  }
-}
-
 interface Props {
   orgId: string;
   sessionId: string;
@@ -57,6 +49,8 @@ export function StaffInvitationList({ orgId, sessionId, canIssue, canRevoke }: P
     refetchInterval: (q) => pollDelay(q.state.data?.items ?? []),
   });
   const items = list.data?.items ?? [];
+  // The venue's zone, sent with the list: never the device's.
+  const tz = list.data?.timezone;
 
   const reload = () =>
     Promise.all([
@@ -125,7 +119,7 @@ export function StaffInvitationList({ orgId, sessionId, canIssue, canRevoke }: P
             const state = invitationState(item);
             const guest = guestOf(item);
             const issuer = issuerName(item);
-            const when = formatDateTime(item.created_at, localZone(), locale);
+            const when = formatDateTime(item.created_at, tz, locale);
             // A cancelled ticket is no longer part of the invitation. A fully cancelled one still lists its places, as history.
             const live = state === "cancelled" ? item.places : activePlaces(item.places);
             return (
@@ -141,6 +135,12 @@ export function StaffInvitationList({ orgId, sessionId, canIssue, canRevoke }: P
                         {placeText(p)}
                         {p.origin === "unavailable" && ` · ${t("seatInv.picked.reserve")}`}
                       </span>
+                      {p.scanned === true && (
+                        <span data-testid="inv-row-place-scanned">
+                          {" "}
+                          <Badge tone="neutral">{t("seatInv.place.scanned")}</Badge>
+                        </span>
+                      )}
                       {canRevoke && canCancelPlace(p, live.length) && (
                         <button
                           type="button"
@@ -156,11 +156,11 @@ export function StaffInvitationList({ orgId, sessionId, canIssue, canRevoke }: P
                   ))}
                 </ul>
                 {item.places.length > live.length && (
-                  <span className="muted" data-testid="inv-row-canceled">
+                  <span className="muted inv-row-line" data-testid="inv-row-canceled">
                     {t("seatInv.list.canceledPlaces", { count: item.places.length - live.length })}
                   </span>
                 )}
-                <span className="muted">
+                <span className="muted inv-row-line">
                   {issuer !== "" ? t("seatInv.list.issued", { issuer, when }) : t("seatInv.list.issuedApi", { when })}
                   {" · "}
                   {t("seatInv.list.delivery", {
@@ -172,7 +172,7 @@ export function StaffInvitationList({ orgId, sessionId, canIssue, canRevoke }: P
                 <span className="card-meta" data-testid="inv-row-state">
                   <Badge tone={TONE[state]}>{t(`seatInv.state.${state}` as MessageKey)}</Badge>
                 </span>
-                <InvitationLetter item={item} testId="inv-row-letter" />
+                <InvitationLetter item={item} tz={tz} testId="inv-row-letter" />
                 {item.invitation_batch_id != null && <BatchMark orgId={orgId} batchId={item.invitation_batch_id} systemId={item.system_id} />}
                 {canAct(item) && (
                   <p className="inv-row-actions">
@@ -199,7 +199,7 @@ export function StaffInvitationList({ orgId, sessionId, canIssue, canRevoke }: P
           }
           subject={guestOf(cancelling.item) || undefined}
           explain={explain}
-          confirmLabel={t("seatInv.cancel.confirm")}
+          confirmLabel={cancelling.place !== null ? t("seatInv.cancel.placeConfirm") : t("seatInv.cancel.confirm")}
           onConfirm={onConfirm}
           onCancel={() => setCancelling(null)}
         >

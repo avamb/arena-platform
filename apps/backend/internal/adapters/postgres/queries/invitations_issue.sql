@@ -6,9 +6,11 @@
 -- The session an invitation is issued for, with its organization (through
 -- the event) and the two facts the issue transaction gates on: the status
 -- (cancelled refuses) and the soft delete (deleted reads as missing).
-SELECT s.id, s.event_id, e.org_id, s.status, (s.deleted_at IS NOT NULL OR e.deleted_at IS NOT NULL) AS deleted
+SELECT s.id, s.event_id, e.org_id, s.status, (s.deleted_at IS NOT NULL OR e.deleted_at IS NOT NULL) AS deleted,
+       COALESCE(v.timezone, 'UTC') AS timezone
 FROM   sessions s
 JOIN   events e ON e.id = s.event_id
+LEFT JOIN venues v ON v.id = s.venue_id
 WHERE  s.id = $1;
 
 -- name: LockInvitationGAUnits :many
@@ -125,7 +127,15 @@ LIMIT  $3;
 SELECT oi.order_id, oi.ordinal, oi.ticket_id, oi.unit_price, oi.seat_origin,
        ss.seat_key, ss.sector_name, ss.row_name, ss.seat_number, ss.kind,
        tt.id AS tier_id, tt.name AS tier_name, t.status AS ticket_status,
-       coalesce(t.vip, false) AS vip
+       coalesce(t.vip, false) AS vip,
+       -- Used at the door: the same test as refunds.ticketScannedSQL, which
+       -- refuses to cancel such a ticket.
+       (t.used_at IS NOT NULL
+        OR EXISTS (SELECT 1 FROM barcodes sb WHERE sb.ticket_id = t.id AND (sb.status = 'scanned' OR sb.scanned_at IS NOT NULL))
+        OR EXISTS (SELECT 1 FROM scan_events se
+                   JOIN sessions sx ON sx.id = t.session_id
+                   JOIN events ev ON ev.id = sx.event_id
+                   WHERE se.ticket_id = t.id AND se.result = 'admitted' AND se.org_id = ev.org_id)) AS scanned
 FROM   order_items oi
 JOIN   ticket_tiers tt ON tt.id = oi.tier_id
 LEFT JOIN session_seats ss ON ss.id = oi.session_seat_id

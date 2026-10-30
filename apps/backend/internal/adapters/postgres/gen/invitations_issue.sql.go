@@ -22,12 +22,16 @@ type InvitationSessionTarget struct {
 	Status  string
 	// Deleted is true when the session or its event is soft-deleted.
 	Deleted bool
+	// Timezone is the venue's IANA zone, UTC for a session without a venue.
+	Timezone string
 }
 
 const getInvitationSessionTarget = `-- name: GetInvitationSessionTarget :one
-SELECT s.id, s.event_id, e.org_id, s.status, (s.deleted_at IS NOT NULL OR e.deleted_at IS NOT NULL) AS deleted
+SELECT s.id, s.event_id, e.org_id, s.status, (s.deleted_at IS NOT NULL OR e.deleted_at IS NOT NULL) AS deleted,
+       COALESCE(v.timezone, 'UTC') AS timezone
 FROM   sessions s
 JOIN   events e ON e.id = s.event_id
+LEFT JOIN venues v ON v.id = s.venue_id
 WHERE  s.id = $1`
 
 // GetInvitationSessionTarget answers the session with its organization and
@@ -35,7 +39,7 @@ WHERE  s.id = $1`
 func (q *Queries) GetInvitationSessionTarget(ctx context.Context, sessionID uuid.UUID) (InvitationSessionTarget, error) {
 	var t InvitationSessionTarget
 	err := q.db.QueryRow(ctx, getInvitationSessionTarget, sessionID).Scan(
-		&t.ID, &t.EventID, &t.OrgID, &t.Status, &t.Deleted,
+		&t.ID, &t.EventID, &t.OrgID, &t.Status, &t.Deleted, &t.Timezone,
 	)
 	return t, err
 }
@@ -301,13 +305,24 @@ type InvitationOrderLineRow struct {
 	TicketStatus *string
 	// VIP is the organizer's private VIP mark of the place's ticket, false until it is issued.
 	VIP bool
+	// Scanned is true once the place's ticket was used at the door (the test
+	// refunds.ticketScannedSQL applies); false while it has no ticket.
+	Scanned bool
 }
 
 const listInvitationOrderLines = `-- name: ListInvitationOrderLines :many
 SELECT oi.order_id, oi.ordinal, oi.ticket_id, oi.unit_price, oi.seat_origin,
        ss.seat_key, ss.sector_name, ss.row_name, ss.seat_number, ss.kind,
        tt.id AS tier_id, tt.name AS tier_name, t.status AS ticket_status,
-       coalesce(t.vip, false) AS vip
+       coalesce(t.vip, false) AS vip,
+       -- Used at the door: the same test as refunds.ticketScannedSQL, which
+       -- refuses to cancel such a ticket.
+       (t.used_at IS NOT NULL
+        OR EXISTS (SELECT 1 FROM barcodes sb WHERE sb.ticket_id = t.id AND (sb.status = 'scanned' OR sb.scanned_at IS NOT NULL))
+        OR EXISTS (SELECT 1 FROM scan_events se
+                   JOIN sessions sx ON sx.id = t.session_id
+                   JOIN events ev ON ev.id = sx.event_id
+                   WHERE se.ticket_id = t.id AND se.result = 'admitted' AND se.org_id = ev.org_id)) AS scanned
 FROM   order_items oi
 JOIN   ticket_tiers tt ON tt.id = oi.tier_id
 LEFT JOIN session_seats ss ON ss.id = oi.session_seat_id
@@ -328,7 +343,7 @@ func (q *Queries) ListInvitationOrderLines(ctx context.Context, orderIDs []uuid.
 		if err := rows.Scan(
 			&r.OrderID, &r.Ordinal, &r.TicketID, &r.UnitPrice, &r.SeatOrigin,
 			&r.SeatKey, &r.SectorName, &r.RowName, &r.SeatNumber, &r.Kind,
-			&r.TierID, &r.TierName, &r.TicketStatus, &r.VIP,
+			&r.TierID, &r.TierName, &r.TicketStatus, &r.VIP, &r.Scanned,
 		); err != nil {
 			return nil, err
 		}

@@ -767,7 +767,7 @@ export const en = {
   // 4-4
   "nav.invitations": "Invitations",
   "invitations.title": "Invitations",
-  "invitations.intro": "Free tickets for guests you name. Each guest gets an e-mail with their ticket. Invitations are not sales.",
+  "invitations.intro": "Free tickets for guests you name. A ticket goes to the guest by e-mail, to you, or only as a PDF to download. Invitations are not sales.",
   "invitations.noAccess": "You do not have access to invitations in this organization. Ask the owner to give you the manager role.",
   "invitations.issue.title": "Invite guests",
   "invitations.issue.event": "Event",
@@ -2576,6 +2576,8 @@ export const en = {
   "seatInv.cancel.place": "Cancel the ticket for {place}",
   "seatInv.cancel.placeTitle": "Cancel the ticket for {place}?",
   "seatInv.cancel.placeDone": "The ticket for {place} is canceled.",
+  "seatInv.cancel.placeConfirm": "Cancel the ticket",
+  "seatInv.place.scanned": "Used at the door",
   "apiError.invitationUnknownSeat.title": "One of the picked seats is not in this hall.",
   "apiError.invitationUnknownSeat.next": "The map was read again and the seat left your pick. Pick the seats again.",
   "apiError.invitationTooManyPlaces.title": "That is more places than one invitation takes.",
