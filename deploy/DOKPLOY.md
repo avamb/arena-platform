@@ -346,6 +346,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `PLATFORM_TERMS_URL` (buyer checkout consent; empty = `<ONBOARDING_SITE_URL>/legal/terms`) | ● | — | — | — |
 | `ONBOARDING_SITE_URL` | ● | ● | — | — |
 | `ONBOARDING_TURNSTILE_SECRET`, `CONTACT_FORM_TURNSTILE_SECRET`, `CONTACT_FORM_TURNSTILE_SITE_KEY` | ● | ● | — | — |
+| `SHOP_TURNSTILE_SECRET`, `SHOP_TURNSTILE_SITE_KEY` (Cloudflare Turnstile of the merchandise shop checkout: with the secret set a checkout needs `captcha_token` and the catalog publishes the site key as `captcha_site_key`; the widget must list every storefront host; empty secret = no captcha) | ● | — | — | — |
 | `MEDIA_BACKEND`, `MEDIA_LOCAL_ROOT`, `MEDIA_S3_ENDPOINT`, `MEDIA_S3_REGION`, `MEDIA_S3_BUCKET`, `MEDIA_S3_ACCESS_KEY_ID`, `MEDIA_S3_SECRET_ACCESS_KEY`, `MEDIA_S3_USE_PATH_STYLE` | ● | ● | — | — |
 | `MEDIA_SIGNING_SECRET` (same value on api and worker) | ✅ with a media backend | ✅ with a media backend | — | — |
 | `BOT_SERVICE_TOKEN` | ● | — | ● | — |

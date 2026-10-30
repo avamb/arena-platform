@@ -28,6 +28,9 @@ type publicSettingsJSON struct {
 	AnnouncementText string  `json:"announcement_text"`
 	ContactEmail     *string `json:"contact_email"`
 	MaxLineQty       int32   `json:"max_line_qty"`
+	// CaptchaSiteKey is the Turnstile site key the checkout form renders its
+	// widget with; absent while the shop's checkout has no captcha.
+	CaptchaSiteKey string `json:"captcha_site_key,omitempty"`
 }
 
 // publicOrgJSON names the shop's organization.
@@ -66,7 +69,7 @@ func (h *Handler) HandlePublicCatalog(w http.ResponseWriter, r *http.Request) {
 	}
 	products := make([]publicProductJSON, 0, len(ps))
 	for _, p := range ps {
-		products = append(products, h.toPublicProduct(r.Context(), p))
+		products = append(products, h.toPublicProduct(r.Context(), p, sf.Settings.MaxLineQty))
 	}
 	links := make([]pageLinkJSON, 0, len(pages))
 	for _, p := range pages {
@@ -79,7 +82,7 @@ func (h *Handler) HandlePublicCatalog(w http.ResponseWriter, r *http.Request) {
 		"settings": publicSettingsJSON{
 			Currency: st.Currency, ShippingFeeMinor: st.ShippingFeeMinor, ShippingLabel: st.ShippingLabel,
 			CountryISO2: st.CountryISO2, AgeGateMinAge: st.AgeGateMinAge, AnnouncementText: st.AnnouncementText,
-			ContactEmail: st.ContactEmail, MaxLineQty: st.MaxLineQty,
+			ContactEmail: st.ContactEmail, MaxLineQty: st.MaxLineQty, CaptchaSiteKey: h.captchaSiteKey(),
 		},
 		"products": products,
 		"pages":    links,
@@ -104,7 +107,7 @@ func (h *Handler) HandlePublicProduct(w http.ResponseWriter, r *http.Request) {
 	cacheable(w)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"currency": sf.Settings.Currency,
-		"product":  h.toPublicProduct(r.Context(), p),
+		"product":  h.toPublicProduct(r.Context(), p, sf.Settings.MaxLineQty),
 	})
 }
 
@@ -195,6 +198,9 @@ type checkoutBody struct {
 	Locale       string `json:"locale"`
 	ReturnURL    string `json:"return_url"`
 	AgeConfirmed bool   `json:"age_confirmed"`
+	// CaptchaToken is the Turnstile response the widget produced; required
+	// while the shop publishes a captcha_site_key.
+	CaptchaToken string `json:"captcha_token"`
 }
 
 // HandlePublicCheckout serves POST /v1/public/shop/{org_slug}/checkout.
@@ -217,6 +223,11 @@ func (h *Handler) HandlePublicCheckout(w http.ResponseWriter, r *http.Request) {
 	}
 	// Counted only once the body is a valid request, per shop and address.
 	if h.checkoutLimited(w, r, strings.ToLower(strings.TrimSpace(chi.URLParam(r, "org_slug")))) {
+		return
+	}
+	// The anti-robot test comes before anything that holds stock or reads the
+	// database: a bot that cannot pass it costs the shop nothing.
+	if !h.captchaPassed(w, r, b.CaptchaToken) {
 		return
 	}
 	sf, err := h.o.Service.StorefrontBySlug(ctx, chi.URLParam(r, "org_slug"))
@@ -242,6 +253,8 @@ func (h *Handler) HandlePublicCheckout(w http.ResponseWriter, r *http.Request) {
 		HoldFor:      h.o.Window + h.o.Grace,
 		PaymentReady: ready,
 		ChannelID:    channelID,
+		// The live-unpaid cap per address is counted in the database on this.
+		ClientKeyHash: h.clientKeyHash(r),
 	}
 	for _, it := range b.Items {
 		in.Items = append(in.Items, shop.CheckoutItem{VariantID: it.VariantID, Qty: it.Qty})
@@ -301,6 +314,45 @@ func (h *Handler) HandlePublicCheckout(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusCreated, checkoutAnswer(o, res.RedirectURL))
 }
 
+// captchaSiteKey is what the catalog publishes: the site key while the
+// checkout is protected, nothing otherwise.
+func (h *Handler) captchaSiteKey() string {
+	if h.o.Captcha == nil {
+		return ""
+	}
+	return strings.TrimSpace(h.o.CaptchaSiteKey)
+}
+
+// captchaPassed runs the Turnstile test of a checkout and answers the refusal
+// itself: 422 shop.captcha_required without a token, 422 shop.captcha_failed
+// for a token Cloudflare rejects, 503 shop.captcha_unavailable when the check
+// itself cannot run (the shop fails closed rather than open). No captcha
+// configured means no test.
+func (h *Handler) captchaPassed(w http.ResponseWriter, r *http.Request, token string) bool {
+	if h.o.Captcha == nil {
+		return true
+	}
+	token = strings.TrimSpace(token)
+	if token == "" {
+		writeErr(w, r, http.StatusUnprocessableEntity, "shop.captcha_required",
+			"Complete the anti-robot test before placing the order.")
+		return false
+	}
+	ok, err := h.o.Captcha.Verify(r.Context(), token, h.clientIP(r))
+	if err != nil {
+		h.o.Logger.Warn("shop checkout: captcha check could not run", slog.String("error", err.Error()))
+		writeErr(w, r, http.StatusServiceUnavailable, "shop.captcha_unavailable",
+			"We could not check the anti-robot test. Try again in a minute.")
+		return false
+	}
+	if !ok {
+		writeErr(w, r, http.StatusUnprocessableEntity, "shop.captcha_failed",
+			"The anti-robot test did not pass. Try it again, then place the order.")
+		return false
+	}
+	return true
+}
+
 // paymentChannel picks the sales channel whose provider takes the payment:
 // the first candidate the payment pre-flight accepts (a provider that can
 // host a page, with a configured provider account). When none does, the
@@ -352,7 +404,14 @@ func (h *Handler) HandlePublicCheckoutDownloads(w http.ResponseWriter, r *http.R
 		URL          string    `json:"url"`
 		ExpiresAt    time.Time `json:"expires_at"`
 	}
-	out := make([]downloadJSON, 0, len(downloads))
+	// Sign every link first: a file that cannot be signed refuses the whole
+	// answer before any line is counted against its download limit.
+	type signed struct {
+		d     shop.Download
+		url   string
+		until time.Time
+	}
+	links := make([]signed, 0, len(downloads))
 	for _, d := range downloads {
 		if h.o.DownloadURL == nil {
 			writeErr(w, r, http.StatusServiceUnavailable, "shop.download_unavailable", "The files cannot be served right now. Try again in a minute.")
@@ -363,7 +422,23 @@ func (h *Handler) HandlePublicCheckoutDownloads(w http.ResponseWriter, r *http.R
 			writeErr(w, r, http.StatusServiceUnavailable, "shop.download_unavailable", "The files cannot be served right now. Try again in a minute.")
 			return
 		}
-		out = append(out, downloadJSON{ProductTitle: d.ProductTitle, VariantTitle: d.VariantTitle, URL: url, ExpiresAt: until})
+		links = append(links, signed{d: d, url: url, until: until})
+	}
+	out := make([]downloadJSON, 0, len(links))
+	for _, l := range links {
+		ok, err := h.o.Service.ConsumeDownload(r.Context(), l.d)
+		if err != nil {
+			h.fail(w, r, "downloads", err)
+			return
+		}
+		if !ok {
+			continue // the line used its last link in a parallel request
+		}
+		out = append(out, downloadJSON{ProductTitle: l.d.ProductTitle, VariantTitle: l.d.VariantTitle, URL: l.url, ExpiresAt: l.until})
+	}
+	if len(out) == 0 && len(links) > 0 {
+		h.fail(w, r, "downloads", shop.ErrDownloadExpired)
+		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"downloads": out})

@@ -626,13 +626,18 @@ type ShopCheckoutVariantRow struct {
 	ProductStatus string
 	OrgID         uuid.UUID
 	ProductKind   string
+	// DigitalMediaID is the file a digital product sells now; the checkout
+	// stamps it on the order line.
+	DigitalMediaID *uuid.UUID
 }
 
 const lockShopVariantRows = `-- name: LockShopVariantRows :exec
-SELECT id FROM shop_variants WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`
+SELECT id FROM shop_variants
+WHERE  id = ANY($1::uuid[]) AND product_id IN (SELECT id FROM shop_products WHERE org_id = $2)
+ORDER  BY id FOR UPDATE`
 
 const readShopVariantsForCheckout = `-- name: ReadShopVariantsForCheckout :many
-SELECT ` + shopVariantColumns + `, p.title, p.status, p.org_id, p.kind
+SELECT ` + shopVariantColumns + `, p.title, p.status, p.org_id, p.kind, p.digital_media_id
 FROM   shop_variants v
 JOIN   shop_products p ON p.id = v.product_id
 WHERE  v.id = ANY($1::uuid[]) AND v.deleted_at IS NULL AND p.deleted_at IS NULL AND p.org_id = $2
@@ -648,7 +653,7 @@ ORDER  BY v.id`
 // absent and both carts would sell the last unit. A variant that is not there
 // (deleted, another organization's) is simply absent from the result.
 func (q *Queries) LockShopVariantsForCheckout(ctx context.Context, orgID uuid.UUID, ids []uuid.UUID) ([]ShopCheckoutVariantRow, error) {
-	if _, err := q.db.Exec(ctx, lockShopVariantRows, ids); err != nil {
+	if _, err := q.db.Exec(ctx, lockShopVariantRows, ids, orgID); err != nil {
 		return nil, err
 	}
 	rows, err := q.db.Query(ctx, readShopVariantsForCheckout, ids, orgID)
@@ -662,7 +667,7 @@ func (q *Queries) LockShopVariantsForCheckout(ctx context.Context, orgID uuid.UU
 		v := &c.ShopVariantRow
 		if err := rows.Scan(&v.ID, &v.ProductID, &v.Title, &v.SKU, &v.PriceMinor, &v.CompareAtMinor, &v.Stock,
 			&v.TrackStock, &v.Position, &v.Option1, &v.Option2, &v.Option3, &v.CreatedAt, &v.UpdatedAt, &v.Held,
-			&c.ProductTitle, &c.ProductStatus, &c.OrgID, &c.ProductKind); err != nil {
+			&c.ProductTitle, &c.ProductStatus, &c.OrgID, &c.ProductKind, &c.DigitalMediaID); err != nil {
 			return nil, err
 		}
 		out = append(out, c)

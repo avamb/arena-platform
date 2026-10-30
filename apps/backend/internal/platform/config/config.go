@@ -583,6 +583,14 @@ type Config struct {
 	// both are set, and the send route answers 503 without a secret.
 	ContactFormTurnstileSecret  string `env:"CONTACT_FORM_TURNSTILE_SECRET" required:"false" default:""`
 	ContactFormTurnstileSiteKey string `env:"CONTACT_FORM_TURNSTILE_SITE_KEY" required:"false" default:""`
+	// ShopTurnstileSecret / ShopTurnstileSiteKey protect the merchandise
+	// shop's checkout (audit SA-05): with a secret set, POST
+	// /v1/public/shop/{org_slug}/checkout needs a valid captcha_token (422
+	// shop.captcha_required / shop.captcha_failed) and the catalog settings
+	// publish the site key as captcha_site_key. Empty secret = no captcha, as
+	// before. The Turnstile widget must list every storefront host.
+	ShopTurnstileSecret  string `env:"SHOP_TURNSTILE_SECRET" required:"false" default:""`
+	ShopTurnstileSiteKey string `env:"SHOP_TURNSTILE_SITE_KEY" required:"false" default:""`
 	// BotArenaAPIURL is where the bot process reaches arena-api
 	// (http://api:8080 inside compose).
 	BotArenaAPIURL string `env:"BOT_ARENA_API_URL" required:"false" default:"http://localhost:8080"`
@@ -867,6 +875,8 @@ func LoadFor(role Role) (*Config, error) {
 		OnboardingTurnstileSecret:   getenv("ONBOARDING_TURNSTILE_SECRET", ""),
 		ContactFormTurnstileSecret:  getenv("CONTACT_FORM_TURNSTILE_SECRET", ""),
 		ContactFormTurnstileSiteKey: strings.TrimSpace(getenv("CONTACT_FORM_TURNSTILE_SITE_KEY", "")),
+		ShopTurnstileSecret:         strings.TrimSpace(getenv("SHOP_TURNSTILE_SECRET", "")),
+		ShopTurnstileSiteKey:        strings.TrimSpace(getenv("SHOP_TURNSTILE_SITE_KEY", "")),
 		BotMetricsAddr:              getenv("BOT_METRICS_ADDR", ":9092"),
 		PosterLLMAPIKey:             getenv("POSTER_LLM_API_KEY", ""),
 		PosterLLMModel:              getenv("POSTER_LLM_MODEL", "claude-sonnet-5"),
