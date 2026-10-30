@@ -16805,6 +16805,9 @@ type ShopCheckoutRequest struct {
 	// Buyer Who pays.
 	Buyer ShopBuyer `json:"buyer"`
 
+	// CaptchaToken The Cloudflare Turnstile response the widget produced; required while the catalog settings publish a `captcha_site_key` (422 `shop.captcha_required` without it, 422 `shop.captcha_failed` when the test did not pass).
+	CaptchaToken *string `json:"captcha_token,omitempty"`
+
 	// DeliveryNote Comment for the delivery, up to 2000 characters.
 	DeliveryNote *string `json:"delivery_note,omitempty"`
 
@@ -17366,6 +17369,9 @@ type ShopPublicSettings struct {
 	// AnnouncementText Announcement bar text.
 	AnnouncementText string `json:"announcement_text"`
 
+	// CaptchaSiteKey Cloudflare Turnstile site key the checkout form renders its widget with; the widget's token goes to checkout as `captcha_token`. Absent while the shop's checkout has no captcha.
+	CaptchaSiteKey *string `json:"captcha_site_key,omitempty"`
+
 	// ContactEmail Contact address, or null.
 	ContactEmail *string `json:"contact_email"`
 
@@ -17387,7 +17393,7 @@ type ShopPublicSettings struct {
 
 // ShopPublicVariant A variant on the storefront.
 type ShopPublicVariant struct {
-	// Available Units still for sale; null when unlimited.
+	// Available How many units a buyer can put in a cart, the real stock capped at the shop's `max_line_qty` (the exact shelf is never shown; an untracked variant reports the cap). Null only when the shop has no line limit and the variant does not track stock. The article number is not published.
 	Available *int `json:"available"`
 
 	// CompareAtMinor Former price, or null.
@@ -17410,9 +17416,6 @@ type ShopPublicVariant struct {
 
 	// PriceMinor Price, minor units.
 	PriceMinor int64 `json:"price_minor"`
-
-	// Sku Stock keeping unit.
-	Sku *string `json:"sku"`
 
 	// Title Variant title.
 	Title string `json:"title"`

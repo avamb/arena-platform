@@ -63,6 +63,10 @@ type CheckoutInput struct {
 	// ChannelID is the sales channel taking the payment, when known; it is
 	// only passed on to the customer resolution.
 	ChannelID uuid.UUID
+	// ClientKeyHash is the salted hash of the buyer's client key (an IPv4
+	// address or an IPv6 /64 prefix), "" when unknown. It is stored on the
+	// order and caps the live unpaid orders per address (MaxPendingPerClient).
+	ClientKeyHash string
 	// Now is the clock (tests); zero means time.Now().
 	Now time.Time
 }
@@ -73,6 +77,27 @@ type CheckoutInput struct {
 // checkout answers 409 shop.too_many_pending (a generic message that does
 // not say how many orders that e-mail has) until one is paid or expires.
 const MaxPendingPerBuyer = 3
+
+// MaxPendingPerClient is how many orders one client address (IPv4, or IPv6
+// /64) may have waiting for payment in one shop at a time, counted in the
+// database over orders whose hold is still live. Random e-mail addresses
+// defeat MaxPendingPerBuyer; this cap bounds how much stock one client can
+// park without paying (audit SA-05). Same answer as the e-mail cap.
+const MaxPendingPerClient = 3
+
+// DownloadWindow is how long after payment the files of a digital order can
+// be fetched; DownloadsPerLine is how many download links one line may be
+// issued. Past either, the route answers 410 shop.download_expired (audit
+// SA-34, owner decision 2026-10-30: 30 days and 20 downloads per line).
+const (
+	DownloadWindow   = 30 * 24 * time.Hour
+	DownloadsPerLine = 20
+)
+
+// ErrDownloadExpired means the order's download period is over: thirty days
+// passed since payment, or every digital line used its downloads. The
+// storefront words the explanation; the code is the contract.
+var ErrDownloadExpired = newErr(http.StatusGone, "shop.download_expired", "the download period of this order has ended")
 
 // PlacedOrder is the committed order with its lines. Paid is true when the
 // order cost nothing and was completed inline.
@@ -280,6 +305,20 @@ func (s *Service) placeOrderTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, i
 				"too many orders for this e-mail are waiting for payment here; finish one or try again in half an hour")
 		}
 
+		if in.ClientKeyHash != "" {
+			if err := q.LockShopBuyer(ctx, in.OrgID, "ip:"+in.ClientKeyHash); err != nil {
+				return err
+			}
+			byClient, err := q.CountLivePendingShopOrdersByIP(ctx, in.OrgID, in.ClientKeyHash)
+			if err != nil {
+				return err
+			}
+			if byClient >= MaxPendingPerClient {
+				return newErr(http.StatusConflict, "shop.too_many_pending",
+					"too many orders from this address are waiting for payment here; finish one or try again in half an hour")
+			}
+		}
+
 		ids := make([]uuid.UUID, len(in.Items))
 		for i, it := range in.Items {
 			ids[i] = it.VariantID
@@ -324,6 +363,11 @@ func (s *Service) placeOrderTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, i
 				Qty: int32(it.Qty), UnitPriceMinor: v.PriceMinor, TotalMinor: total, //nolint:gosec // qty <= 99
 				Ordinal: int32(i + 1), //nolint:gosec // lines <= 50
 			})
+			if kind == KindDigital {
+				// The file the buyer pays for, fixed now: a later swap of the
+				// product's file never changes what this order downloads.
+				lines[len(lines)-1].MediaID = v.DigitalMediaID
+			}
 		}
 		if len(short) > 0 {
 			sort.Slice(short, func(a, b int) bool { return short[a].VariantID.String() < short[b].VariantID.String() })
@@ -353,6 +397,10 @@ func (s *Service) placeOrderTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, i
 		}
 		customerID := s.resolveCustomerTx(ctx, tx, in, now)
 		expires := now.Add(in.HoldFor)
+		var ipHash *string
+		if in.ClientKeyHash != "" {
+			ipHash = &in.ClientKeyHash
+		}
 		o, err := q.InsertShopOrder(ctx, gen.InsertShopOrderParams{
 			OrgID: in.OrgID, OrderToken: token,
 			BuyerName: in.Buyer.Name, BuyerEmail: in.Buyer.Email, BuyerPhone: in.Buyer.Phone,
@@ -360,7 +408,7 @@ func (s *Service) placeOrderTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, i
 			ShipCity: in.Ship.City, ShipPostal: in.Ship.Postal, ShipCountry: in.Ship.Country,
 			DeliveryKind: deliveryKind, DeliveryNote: in.DeliveryNote, Currency: settings.Currency,
 			Subtotal: subtotal, ShippingFee: shippingFee, Total: total,
-			BuyerLocale: locale, ExpiresAt: &expires, CustomerID: customerID,
+			BuyerLocale: locale, ExpiresAt: &expires, CustomerID: customerID, BuyerIPHash: ipHash,
 		})
 		if err != nil {
 			return err
@@ -471,8 +519,10 @@ func (s *Service) AbandonOrder(ctx context.Context, orderID, orgID uuid.UUID) er
 	})
 }
 
-// Download is one digital line of a paid order and the file it sells.
+// Download is one digital line of a paid order and the file it sold.
 type Download struct {
+	OrderID      uuid.UUID
+	ItemID       uuid.UUID
 	ProductTitle string
 	VariantTitle string
 	MediaID      uuid.UUID
@@ -480,9 +530,17 @@ type Download struct {
 
 // Downloads lists the files a buyer bought, by order token: only for an
 // order whose payment went through (paid, shipped or partially refunded),
-// only its digital lines, and only those whose product still has a file.
-// Any other order answers ErrOrderNotFound, so an unpaid order cannot be
-// told from a missing one.
+// only its digital lines, and each line's own file as it was when bought
+// (shop_order_items.media_id). Any other order answers ErrOrderNotFound, so
+// an unpaid order cannot be told from a missing one.
+//
+// The period is bounded (audit SA-34): thirty days after payment
+// (DownloadWindow) and DownloadsPerLine links per line. Past the window, or
+// when every digital line used its links, the answer is ErrDownloadExpired.
+// A line that used its links is left out while others still have some. The
+// list does not count anything: the caller signs the links first and then
+// calls ConsumeDownload for each, so a signing failure costs the buyer no
+// download.
 func (s *Service) Downloads(ctx context.Context, token string) ([]Download, error) {
 	v, err := s.OrderByToken(ctx, token)
 	if err != nil {
@@ -493,18 +551,43 @@ func (s *Service) Downloads(ctx context.Context, token string) ([]Download, erro
 	default:
 		return nil, ErrOrderNotFound
 	}
+	paidAt := v.CreatedAt
+	if v.PaidAt != nil {
+		paidAt = *v.PaidAt
+	}
 	rows, err := s.q.ListShopOrderDownloads(ctx, v.ID)
 	if err != nil {
 		return nil, err
 	}
+	if len(rows) > 0 && time.Now().After(paidAt.Add(DownloadWindow)) {
+		return nil, ErrDownloadExpired
+	}
 	out := make([]Download, 0, len(rows))
+	exhausted := 0
 	for _, r := range rows {
 		if r.MediaID == nil {
 			continue
 		}
-		out = append(out, Download{ProductTitle: r.ProductTitle, VariantTitle: r.VariantTitle, MediaID: *r.MediaID})
+		if r.DownloadCount >= DownloadsPerLine {
+			exhausted++
+			continue
+		}
+		out = append(out, Download{OrderID: v.ID, ItemID: r.ItemID, ProductTitle: r.ProductTitle,
+			VariantTitle: r.VariantTitle, MediaID: *r.MediaID})
+	}
+	if len(out) == 0 && exhausted > 0 {
+		return nil, ErrDownloadExpired
 	}
 	return out, nil
+}
+
+// ConsumeDownload counts one issued link on a line, atomically; false when
+// the line used its DownloadsPerLine links in the meantime.
+func (s *Service) ConsumeDownload(ctx context.Context, d Download) (bool, error) {
+	if err := s.ready(); err != nil {
+		return false, err
+	}
+	return s.q.ConsumeShopOrderDownload(ctx, d.ItemID, d.OrderID, DownloadsPerLine)
 }
 
 // OrderByToken reads the order a buyer holds the token of, with its lines and
