@@ -70,6 +70,7 @@ beforeEach(() => {
 afterEach(() => {
   while (roots.length > 0) act(() => (roots.pop() as Root).unmount());
   document.body.innerHTML = "";
+  sessionStorage.clear();
 });
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -151,6 +152,22 @@ describe("the refund of a shop order: one operation, one Idempotency-Key (SA-01)
     const keys = vi.mocked(refundShopOrder).mock.calls.map((c) => c[4]);
     expect(keys).toHaveLength(2);
     expect(keys[1]).toBe(keys[0]);
+  });
+
+  it("keeps the key across a page reload: it sits in the tab's storage, not in memory (SB-12)", async () => {
+    vi.mocked(refundShopOrder).mockRejectedValueOnce(new ApiError(0, "network", "lost")).mockResolvedValueOnce(refundAnswer as never);
+    const first = await mount(order());
+    await refund(first, "10");
+    expect(Object.keys(sessionStorage).some((k) => k.startsWith("arena.events.shoprefund."))).toBe(true);
+    // A reload: the old card is gone, a new one is mounted from scratch.
+    while (roots.length > 0) act(() => (roots.pop() as Root).unmount());
+    document.body.innerHTML = "";
+    const second = await mount(order());
+    await refund(second, "10");
+    const keys = vi.mocked(refundShopOrder).mock.calls.map((c) => c[4]);
+    expect(keys[1]).toBe(keys[0]);
+    // The answer came: nothing is left in the storage.
+    expect(Object.keys(sessionStorage).some((k) => k.startsWith("arena.events.shoprefund."))).toBe(false);
   });
 
   it("changes the key when the amount changes", async () => {

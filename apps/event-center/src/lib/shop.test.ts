@@ -9,6 +9,9 @@ import { CATALOGS, LOCALES, type MessageKey } from "@/lib/i18n";
 import type { ShopImage, ShopProduct, ShopSettings, ShopVariant } from "@/lib/api/types";
 import {
   EMPTY_FILTERS,
+  canResolveShopOrder,
+  reviewReasonOf,
+  uniqueById,
   canCancelShopOrder,
   canEditTracking,
   isShipped,
@@ -594,5 +597,27 @@ describe("the settings form (SA-12, SA-23)", () => {
         for (const part of ["title", "next"]) expect(CATALOGS[locale][`apiError.${stem}.${part}` as MessageKey], `${locale} ${stem}.${part}`).toBeTruthy();
       }
     }
+  });
+});
+
+describe("pages read by offset (SB-14)", () => {
+  it("keeps each order once and in the order of the first appearance", () => {
+    const pages = [{ orders: [{ id: "c" }, { id: "b" }] }, { orders: [{ id: "b" }, { id: "a" }] }];
+    expect(uniqueById(pages).map((o) => o.id)).toEqual(["c", "b", "a"]);
+    expect(uniqueById([])).toEqual([]);
+  });
+});
+
+describe("the decision on an order in manual_review", () => {
+  it("is offered only for that status and only to someone who may refund", () => {
+    expect(canResolveShopOrder("manual_review", true)).toBe(true);
+    expect(canResolveShopOrder("manual_review", false)).toBe(false);
+    expect(canResolveShopOrder("paid", true)).toBe(false);
+  });
+  it("knows the two reasons and ignores anything else", () => {
+    expect(reviewReasonOf("late_payment_no_stock")).toBe("late_payment_no_stock");
+    expect(reviewReasonOf("payment_unconfirmed")).toBe("payment_unconfirmed");
+    expect(reviewReasonOf("something_new")).toBeNull();
+    expect(reviewReasonOf(undefined)).toBeNull();
   });
 });

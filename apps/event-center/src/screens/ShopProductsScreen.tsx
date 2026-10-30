@@ -135,7 +135,8 @@ export function ShopProductsScreen() {
       <ShopNav orgId={orgId} />
       {search.deleted !== undefined && (
         <p className="notice notice-ok" role="status" data-testid="shop-products-notice">
-          {t("shop.product.deleted", { title: search.deleted })}
+          {/* The address only says that a delete just happened. Its value is not printed: anybody can write a link. */}
+          {t("shop.product.deletedGeneric")}
         </p>
       )}
       <div className="actions">

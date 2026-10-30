@@ -21,6 +21,7 @@ vi.mock("@/lib/api/shopApi", () => ({
   listShopProducts: vi.fn(),
 }));
 
+import { listCountries } from "@/lib/api/endpoints";
 import { ApiError } from "@/lib/api/http";
 import { fetchShopSettings, listSalesChannels, listShopProducts, saveShopSettings } from "@/lib/api/shopApi";
 import type { ShopSettings } from "@/lib/api/types";
@@ -200,5 +201,63 @@ describe("the settings screen", () => {
     const el = await mount(settings({ sales_channel_id: null }));
     await settle();
     expect(byId(el, "shop-settings-channel-warning").textContent).toContain("no sales channel yet");
+  });
+});
+
+describe("a helper list that fails to load (SB-13)", () => {
+  it("shows an error with a retry instead of staying on 'checking' for good, and keeps the form usable", async () => {
+    vi.mocked(listShopProducts).mockRejectedValueOnce(new ApiError(500, "internal", "boom")).mockResolvedValue({ products: [{ id: "p" }] } as never);
+    const el = await mount(settings());
+    await settle();
+    const box = byId(el, "shop-settings-products-error");
+    expect(box).not.toBeNull();
+    expect(box.textContent).toContain("It stays as it is");
+    expect(byId(el, "shop-settings-currency-locked")).toBeNull();
+    // The rest of the form is not blocked.
+    expect((byId(el, "shop-settings-save") as unknown as HTMLButtonElement).disabled).toBe(false);
+    expect((byId(el, "shop-settings-fee") as unknown as HTMLInputElement).disabled).toBe(false);
+    await act(async () => {
+      (box.querySelector("button") as HTMLButtonElement).click();
+      await sleep(80);
+    });
+    expect(listShopProducts).toHaveBeenCalledTimes(2);
+    expect(byId(el, "shop-settings-products-error")).toBeNull();
+    expect(byId(el, "shop-settings-currency-locked")).not.toBeNull();
+  });
+
+  it("keeps the stored country selected and offers a retry when the country list fails", async () => {
+    vi.mocked(listCountries).mockRejectedValueOnce(new ApiError(500, "internal", "boom"));
+    const el = await mount(settings({ country_iso2: "IL" }));
+    await settle();
+    expect(byId(el, "shop-settings-countries-error")).not.toBeNull();
+    expect((byId(el, "shop-settings-country") as unknown as HTMLSelectElement).value).toBe("IL");
+  });
+
+  it("says that the channels did not load, not that there are no rights", async () => {
+    vi.mocked(listSalesChannels).mockRejectedValue(new ApiError(500, "internal", "boom"));
+    const el = await mount(settings({ sales_channel_id: null }));
+    await settle();
+    expect(byId(el, "shop-settings-channels-error")).not.toBeNull();
+    expect(byId(el, "shop-settings-channel-locked")).toBeNull();
+    expect(byId(el, "shop-settings-channel-warning")).toBeNull();
+  });
+
+  it("sends one PUT when the save is asked for twice in a row", async () => {
+    let release: (v: ShopSettings) => void = () => undefined;
+    vi.mocked(saveShopSettings).mockImplementation(() => new Promise<ShopSettings>((r) => (release = r)));
+    const el = await mount(settings());
+    await settle();
+    await typeInto(byId(el, "shop-settings-label"), "Express");
+    const form = byId(el, "shop-settings-form") as unknown as HTMLFormElement;
+    await act(async () => {
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      await sleep(10);
+    });
+    expect(saveShopSettings).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      release(settings({ shipping_label: "Express" }));
+      await sleep(10);
+    });
   });
 });

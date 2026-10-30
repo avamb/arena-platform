@@ -11,6 +11,7 @@ import type {
   MediaObject,
   SalesChannelItem,
   ShopOrder,
+  ShopOrderResolveAction,
   ShopOrderCounts,
   ShopOrderList,
   ShopProduct,
@@ -178,6 +179,29 @@ export function refundShopOrder(
   key: string,
 ): Promise<ShopRefundResponse> {
   return call<ShopRefundResponse>({ route: API.shopOrderRefund, params: ord(orgId, orderId), body, headers: { ...headers, "Idempotency-Key": key }, timeoutMs: REFUND_CREATE_TIMEOUT_MS });
+}
+
+/**
+ * The operator's decision on an order that waits for a check: `fulfil` (take it as paid) or `refund_and_cancel`.
+ * Needs shop.manage and refund.create, the password again (`headers`) and an Idempotency-Key of ONE decision, like a
+ * refund. The route belongs to the backend lane that is still in review: the answer is read as the order, or as
+ * `{ order }` when the server wraps it.
+ */
+export async function resolveShopOrder(
+  orgId: string,
+  orderId: string,
+  action: ShopOrderResolveAction,
+  headers: Record<string, string>,
+  key: string,
+): Promise<ShopOrder> {
+  const answer = await call<ShopOrder | { order: ShopOrder }>({
+    route: API.shopOrderResolve,
+    params: ord(orgId, orderId),
+    body: { action },
+    headers: { ...headers, "Idempotency-Key": key },
+    timeoutMs: REFUND_CREATE_TIMEOUT_MS,
+  });
+  return "order" in answer && typeof answer.order === "object" && answer.order !== null ? (answer.order as ShopOrder) : (answer as ShopOrder);
 }
 
 /** The delivery details, one per line, ready to paste into a courier form. */

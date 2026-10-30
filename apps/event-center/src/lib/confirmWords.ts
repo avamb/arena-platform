@@ -12,7 +12,7 @@
  */
 import type { Locale } from "@/lib/i18n";
 
-export const CONFIRM_KINDS = ["cancel_order", "cancel_session", "delete_event", "refund", "annul_invitation", "delete_promo"] as const;
+export const CONFIRM_KINDS = ["cancel_order", "cancel_session", "delete_event", "refund", "annul_invitation", "delete_promo", "shop_fulfil"] as const;
 export type ConfirmKind = (typeof CONFIRM_KINDS)[number];
 
 export const CONFIRM_WORDS: Record<ConfirmKind, Record<Locale, string>> = {
@@ -23,10 +23,12 @@ export const CONFIRM_WORDS: Record<ConfirmKind, Record<Locale, string>> = {
   annul_invitation: { en: "ANNUL", ru: "АННУЛИРОВАТЬ", es: "ANULAR" },
   // 4-3: the bot's promo delete word is the same word as the event's.
   delete_promo: { en: "DELETE", ru: "УДАЛИТЬ", es: "ELIMINAR" },
+  // Web only: the shop operator fulfilling an order that waited for a check. The bot has no such dialog.
+  shop_fulfil: { en: "PROCESS ORDER", ru: "ПРОВЕСТИ ЗАКАЗ", es: "TRAMITAR PEDIDO" },
 };
 
 /** The bot catalog key that holds each word. Used by the drift test. */
-export const BOT_KEYS: Record<ConfirmKind, string> = {
+export const BOT_KEYS: Partial<Record<ConfirmKind, string>> = {
   cancel_order: "bot.ord.cancel_word",
   cancel_session: "bot.ses.cancel_word",
   delete_event: "bot.evs.delete_word",

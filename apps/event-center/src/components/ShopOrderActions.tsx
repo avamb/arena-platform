@@ -12,6 +12,11 @@
  *   same and the answer is lost, so a retry never returns the money twice.
  *   After a failure the order is read again and what is left is shown, taking
  *   the server's `refundable_minor` over the card's own figure (SA-19).
+ * - "Fulfil the order" / "Refund and cancel" for an order in "needs a check" (`manual_review`): the operator's
+ *   decision, each with the typed word, the password again and an Idempotency-Key kept in the tab like a refund's.
+ *   The route belongs to the backend lane (`POST .../shop/orders/{id}/resolve`).
+ * - Focus: a closed dialog gives the focus back to its opener, and when the opener is gone (the panel closed after
+ *   a success) the focus goes to the result line, so a keyboard user is never dropped on the page top.
  * - "Copy for the courier": the text the SERVER builds (the same one the
  *   logistician gets in Telegram, SA-35) to the clipboard. When the browser
  *   refuses, the text is shown to be copied by hand. Only when the server
@@ -23,22 +28,23 @@
  *
  * Every write needs `shop.manage`; the courier text needs only `shop.read`.
  */
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConfirmWordDialog } from "@/components/ConfirmWordDialog";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { TextAreaField, TextField } from "@/components/FormField";
 import { useStepUp } from "@/components/StepUpDialog";
-import { cancelShopOrder, fetchCourierText, fetchShopOrder, refundShopOrder, resendShopOrderEmail, shipShopOrder } from "@/lib/api/shopApi";
+import { cancelShopOrder, fetchCourierText, fetchShopOrder, refundShopOrder, resendShopOrderEmail, resolveShopOrder, shipShopOrder } from "@/lib/api/shopApi";
 import { ApiError } from "@/lib/api/http";
-import type { ShopOrder, ShopRefund } from "@/lib/api/types";
+import type { ShopOrder, ShopOrderResolveAction, ShopRefund } from "@/lib/api/types";
 import { formatMoney } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
-import { newRefundKey } from "@/lib/refunds";
+import { forgetRefundKey, refundKeyFor } from "@/lib/shopRefundKeys";
 import { StepUpCancelled, withStepUp } from "@/lib/stepUp";
 import {
   SHOP_LIMITS,
   canCancelShopOrder,
+  canResolveShopOrder,
   canEditTracking,
   canRefundShopOrder,
   canShip,
@@ -57,13 +63,6 @@ import {
   shortItems,
   type OrderLetter,
 } from "@/lib/shop";
-
-/**
- * The Idempotency-Key of an unfinished refund, by order. It outlives the dialog on purpose: when the answer is lost
- * (a timeout, a gateway) and the person closes the panel and comes back, the same amount and reason must go with
- * the SAME key, or the server would treat the retry as a second refund.
- */
-const heldRefundKeys = new Map<string, { key: string; fingerprint: string }>();
 
 /** A failure after which the request may still have been recorded (no answer, a timeout, a server error). */
 function mayHaveBeenRecorded(err: unknown): boolean {
@@ -101,6 +100,18 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
   const [serverLeft, setServerLeft] = useState<number | null>(null);
   const [refundFailure, setRefundFailure] = useState<{ error: unknown; retrySafe: boolean } | null>(null);
   const refundBusy = useRef(false);
+  // The operator's decision on an order that waits for a check: which one is being confirmed.
+  const [resolveOpen, setResolveOpen] = useState<ShopOrderResolveAction | null>(null);
+  const resolveBusy = useRef(false);
+  // After a success the opener of a dialog is gone: the result line takes the focus (see the header).
+  const noteRef = useRef<HTMLParagraphElement>(null);
+  const focusNote = useRef(false);
+  useEffect(() => {
+    if (focusNote.current && note !== null) {
+      focusNote.current = false;
+      noteRef.current?.focus();
+    }
+  }, [note]);
 
   const money = (v: number) => formatMoney(v, order.currency, locale);
   const left = refundableNow(order, serverLeft);
@@ -182,7 +193,40 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
       throw err; // the dialog shows what went wrong and what to do
     }
     setCancelOpen(false);
+    focusNote.current = true;
     setNote({ key: "shop.act.cancel.done" });
+  };
+
+  const onResolve = async () => {
+    const action = resolveOpen;
+    if (action === null || resolveBusy.current) return;
+    // One decision, one key: kept in the tab while the answer is unknown, dropped once it is final.
+    const held = `${order.id}:resolve:${action}`;
+    const key = refundKeyFor(held, action);
+    resolveBusy.current = true;
+    let done: ShopOrder;
+    try {
+      done = await withStepUp(orgId, (headers) => resolveShopOrder(orgId, order.id, action, headers, key), stepUp.ask);
+    } catch (err) {
+      if (err instanceof StepUpCancelled) return;
+      if (!mayHaveBeenRecorded(err)) forgetRefundKey(held);
+      if (err instanceof ApiError && err.status === 409) {
+        // The order moved on meanwhile (a colleague decided, the payment came): show what it is now.
+        try {
+          store(await fetchShopOrder(orgId, order.id));
+        } catch {
+          /* the failure below is what the person sees */
+        }
+      }
+      throw err; // the dialog shows what went wrong and what to do
+    } finally {
+      resolveBusy.current = false;
+    }
+    forgetRefundKey(held);
+    store(done);
+    setResolveOpen(null);
+    focusNote.current = true;
+    setNote({ key: action === "fulfil" ? "shop.act.resolve.fulfil.done" : "shop.act.resolve.refundCancel.done" });
   };
 
   const onRefundContinue = (e: FormEvent) => {
@@ -205,12 +249,9 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
     const body = refundBody(refundCheck, reason);
     // One operation, one key: the same amount and reason keep the key a lost answer left behind.
     const fingerprint = JSON.stringify(body);
-    let held = heldRefundKeys.get(order.id);
-    if (held === undefined || held.fingerprint !== fingerprint) {
-      held = { key: newRefundKey(), fingerprint };
-      heldRefundKeys.set(order.id, held);
-    }
-    const key = held.key;
+    // The key outlives the dialog AND the page (sessionStorage, SB-12): a lost answer followed by a reload must
+    // retry with the same key, or the server would treat the retry as a second refund.
+    const key = refundKeyFor(order.id, fingerprint);
     let answer;
     refundBusy.current = true;
     try {
@@ -219,7 +260,7 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
       if (err instanceof StepUpCancelled) return;
       const unsure = mayHaveBeenRecorded(err);
       // A refusal means nothing was recorded: the next try is a new operation. An unsure failure keeps the key.
-      if (!unsure) heldRefundKeys.delete(order.id);
+      if (!unsure) forgetRefundKey(order.id);
       const serverSays = refundableFromError(err);
       if (serverSays !== null) setServerLeft(serverSays);
       setRefundFailure({ error: err, retrySafe: unsure });
@@ -234,7 +275,7 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
     } finally {
       refundBusy.current = false;
     }
-    heldRefundKeys.delete(order.id);
+    forgetRefundKey(order.id);
     setServerLeft(null);
     setRefundFailure(null);
     store(answer.order);
@@ -244,6 +285,7 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
     setPanel(null);
     setAmount("");
     setReason("");
+    focusNote.current = true;
     if (outcome === "done") setNote({ key: "shop.act.refund.done", params: { amount: formatMoney(r.amount, r.currency, locale) } });
     else if (outcome === "pending") setNote({ key: "shop.act.refund.pending" });
     else if (outcome === "review") setNote({ key: "shop.act.refund.review", bad: true });
@@ -306,6 +348,16 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
           <button type="button" className="btn" onClick={() => setCancelOpen(true)} data-testid="shop-order-cancel">
             {t("shop.act.cancel")}
           </button>
+        )}
+        {canResolveShopOrder(order.status, canManage && canRefund) && (
+          <>
+            <button type="button" className="btn btn-primary" onClick={() => setResolveOpen("fulfil")} data-testid="shop-order-resolve-fulfil">
+              {t("shop.act.resolve.fulfil")}
+            </button>
+            <button type="button" className="btn" onClick={() => setResolveOpen("refund_and_cancel")} data-testid="shop-order-resolve-refund">
+              {t("shop.act.resolve.refundCancel")}
+            </button>
+          </>
         )}
         {!noDelivery && (
           <button type="button" className="btn" onClick={() => void onCourier()} data-testid="shop-order-courier">
@@ -414,7 +466,7 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
       )}
 
       {note !== null && (
-        <p className={note.bad === true ? "notice notice-bad" : "notice notice-ok"} role={note.bad === true ? "alert" : "status"} data-testid="shop-order-note">
+        <p ref={noteRef} tabIndex={-1} className={note.bad === true ? "notice notice-bad" : "notice notice-ok"} role={note.bad === true ? "alert" : "status"} data-testid="shop-order-note">
           {t(note.key, note.params)}
         </p>
       )}
@@ -448,6 +500,16 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
           subject={t("shop.order.title", { number: shopOrderNumber(order.number) })}
           onConfirm={onCancel}
           onCancel={() => setCancelOpen(false)}
+        />
+      )}
+      {resolveOpen !== null && (
+        <ConfirmWordDialog
+          kind={resolveOpen === "fulfil" ? "shop_fulfil" : "refund"}
+          title={resolveOpen === "fulfil" ? t("shop.act.resolve.fulfil.title") : t("shop.act.resolve.refund.title")}
+          explain={resolveOpen === "fulfil" ? t("shop.act.resolve.fulfil.explain") : t("shop.act.resolve.refund.explain", { amount: money(left) })}
+          subject={t("shop.order.title", { number: shopOrderNumber(order.number) })}
+          onConfirm={onResolve}
+          onCancel={() => setResolveOpen(null)}
         />
       )}
       {wordOpen && (
