@@ -12,6 +12,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesnotify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 )
 
@@ -374,7 +375,9 @@ func refundWorkCtx(w http.ResponseWriter, r *http.Request) (context.Context, con
 }
 
 // HandleCourierText serves GET .../shop/orders/{order_id}/courier-text: the
-// delivery details one per line, as text/plain, ready to paste.
+// courier form as text/plain, ready to paste: the order number, the
+// recipient and address, map links, the goods, the total and the buyer's
+// note, in the organization's language.
 func (h *Handler) HandleCourierText(w http.ResponseWriter, r *http.Request) {
 	org, ok := orgID(w, r)
 	if !ok {
@@ -384,11 +387,15 @@ func (h *Handler) HandleCourierText(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	text, err := h.o.Service.CourierTextFor(r.Context(), org, id)
+	src, err := h.o.Service.CourierSourceFor(r.Context(), org, id)
 	if err != nil {
 		h.fail(w, r, "courier text", err)
 		return
 	}
+	// The same builder as the logistics group's Telegram message.
+	text := salesnotify.FormatShopCourierText(salesnotify.ShopOrder{
+		Locale: src.Locale, ShopCountry: src.ShopCountry, Order: src.Order, Items: src.Items,
+	})
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")

@@ -4824,3 +4824,28 @@ other = "💰 Paid: <b>{{.Amount}}</b>"
 
 ["salesnotify.shop.review_body"]
 other = "Payment for order {{.Number}} arrived after the hold ended, the goods were no longer free. Check the order in the event center."
+
+# --- salesnotify.shop.courier_*: the plain courier text of an order card ---
+["salesnotify.shop.courier_order"]
+other = "Order #{{.Number}}"
+
+["salesnotify.shop.courier_pickup"]
+other = "Pickup"
+
+["salesnotify.shop.courier_none"]
+other = "No delivery (digital / service)"
+
+["salesnotify.shop.courier_item"]
+other = "{{.Name}} × {{.Qty}}"
+
+["salesnotify.shop.courier_total"]
+other = "Total: {{.Amount}}"
+
+["salesnotify.shop.courier_note"]
+other = "Buyer's note: {{.Note}}"
+
+["salesnotify.shop.courier_map_google"]
+other = "Google Maps: {{.Url}}"
+
+["salesnotify.shop.courier_map_waze"]
+other = "Waze: {{.Url}}"
