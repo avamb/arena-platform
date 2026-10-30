@@ -283,6 +283,7 @@ type orderJSON struct {
 	OrgID         string          `json:"org_id"`
 	Number        int64           `json:"number"`
 	Status        string          `json:"status"`
+	ReviewReason  *string         `json:"review_reason"`
 	Source        string          `json:"source"`
 	ExternalRef   *string         `json:"external_ref"`
 	CustomerID    *string         `json:"customer_id"`
@@ -312,7 +313,7 @@ type orderJSON struct {
 func toOrderJSON(v shop.OrderView) orderJSON {
 	o := v.ShopOrderRow
 	out := orderJSON{
-		ID: o.ID.String(), OrgID: o.OrgID.String(), Number: o.Number, Status: o.Status, Source: o.Source,
+		ID: o.ID.String(), OrgID: o.OrgID.String(), Number: o.Number, Status: o.Status, ReviewReason: o.ReviewReason, Source: o.Source,
 		ExternalRef: o.ExternalRef, CustomerID: uuidPtrStr(o.CustomerID),
 		Buyer: buyerJSON{Name: o.BuyerName, Email: o.BuyerEmail, Phone: o.BuyerPhone},
 		Ship: addressJSON{Name: o.ShipName, Address1: o.ShipAddress1, Address2: o.ShipAddress2, City: o.ShipCity,

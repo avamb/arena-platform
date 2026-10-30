@@ -66,3 +66,39 @@ func (h *Handler) applyShopPayment(ctx context.Context, tx pgx.Tx, paymentIntent
 		return false, nil
 	}
 }
+
+// transitionShopPayment is the operator's transition of a payment intent that
+// has no checkout session (it may pay a shop order): the state change and the
+// shop's follow-up (applyShopPayment) commit together or not at all, so an
+// operator settling a payment parked in manual_review (succeeded, failed)
+// moves the parked order in the same step (SB-04).
+func (h *Handler) transitionShopPayment(ctx context.Context, id uuid.UUID, current gen.PaymentIntentRow, req transitionPaymentIntentRequest) (gen.PaymentIntentRow, error) {
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return gen.PaymentIntentRow{}, err
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	updated, err := h.paymentIntentQueries.WithTx(tx).UpdatePaymentIntentState(ctx,
+		id, req.State,
+		req.ScaRedirectURL, req.ClientSecret,
+		req.FailureCode, req.FailureMessage,
+		req.ProviderPaymentID,
+		nil, // provider_charge_ref is learned from provider webhooks only
+	)
+	if err != nil {
+		return gen.PaymentIntentRow{}, err
+	}
+	providerID := ""
+	if current.ProviderPaymentID != nil {
+		providerID = *current.ProviderPaymentID
+	}
+	if _, err := h.applyShopPayment(ctx, tx, id, updated, webhookPaymentIntentRequest{
+		ProviderPaymentID: providerID, EventType: "operator.transition",
+	}); err != nil {
+		return gen.PaymentIntentRow{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return gen.PaymentIntentRow{}, err
+	}
+	return updated, nil
+}

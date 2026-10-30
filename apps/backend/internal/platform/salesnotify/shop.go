@@ -174,16 +174,30 @@ func FormatShopOrderRefund(s ShopOrder, refundedNow int64) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// FormatShopOrderReview renders the notice for a payment that arrived after
-// the order's hold ended and found its goods gone. The money is taken and the
-// order is parked: the organizer decides (ship late, or refund). The operator
-// gets their own ops alert from the watchdog, not this one.
+// FormatShopOrderReview renders the notice for an order parked in
+// manual_review. There are two causes and the text never mixes them up (SB-02):
+//
+//   - late_payment_no_stock: the payment arrived after the hold ended and found
+//     the goods gone. The money IS taken ("Paid"); the organizer decides
+//     (ship late, or refund).
+//   - payment_unconfirmed: the provider's report is not trusted (the amount
+//     differs, the payment was reversed before arena confirmed it). The money
+//     may NOT have arrived, so the message says "not confirmed", has no
+//     "Paid" line and asks the logistician to wait.
+//
+// The operator gets their own ops alert from the watchdog, not this one.
 func FormatShopOrderReview(s ShopOrder) string {
 	o := s.Order
 	loc := s.Locale
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n\n", say(loc, "salesnotify.shop.review_title", map[string]any{"Org": esc(s.OrgName)}))
 	writeShopHeader(&b, loc, o)
+	if o.ReviewReason != nil && *o.ReviewReason == shop.ReviewPaymentUnconfirmed {
+		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.review_unconfirmed_amount", map[string]any{"Amount": shopMoney(o.Total, o.Currency, loc)}))
+		writeShopBuyer(&b, o)
+		fmt.Fprintf(&b, "\n%s", say(loc, "salesnotify.shop.review_unconfirmed_body", map[string]any{"Number": o.Number}))
+		return b.String()
+	}
 	fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.review_paid", map[string]any{"Amount": shopMoney(o.Total, o.Currency, loc)}))
 	writeShopBuyer(&b, o)
 	fmt.Fprintf(&b, "\n%s", say(loc, "salesnotify.shop.review_body", map[string]any{"Number": o.Number}))
@@ -211,7 +225,14 @@ func (d *Dispatcher) composeShop(ctx context.Context, ev outbox.Event) (key stri
 		return "", 0, "", "", err
 	}
 	if ev.EventType == EventShopOrderManualReview {
-		return "shop_review:" + id, TriggerShopOrderReview, FormatShopOrderReview(order), orgID, nil
+		// The cause is part of the key: an order parked as an unconfirmed
+		// payment that is then parked again as a late payment (the payment
+		// succeeded, the goods were gone) is a new announcement.
+		reason := ""
+		if order.Order.ReviewReason != nil {
+			reason = *order.Order.ReviewReason
+		}
+		return "shop_review:" + id + ":" + reason, TriggerShopOrderReview, FormatShopOrderReview(order), orgID, nil
 	}
 	if ev.EventType == EventShopOrderPaid {
 		return "shop_paid:" + id, TriggerShopOrderPaid, FormatShopOrderPaid(order), orgID, nil

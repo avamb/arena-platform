@@ -22,6 +22,28 @@ var unsubscribeNotes = map[string]string{
 	"he": "אם תלחצו על ״ביטול הרשמה״, לא תקבלו יותר את המיילים עם הכרטיסים שלכם ואת המיילים החשובים על ההזמנה שלכם. אנחנו לא שולחים דיוורים שיווקיים ללא הסכמתכם.",
 }
 
+// shopUnsubscribeNotes is the same note for the merchandise shop's letters
+// (SB-10). A shop buyer bought no ticket, so the note speaks of "letters about
+// your orders" in every language, with the same meaning as the ticket note.
+var shopUnsubscribeNotes = map[string]string{
+	"en": "If you click “Unsubscribe”, the letters about your orders will no longer reach you. We do not send marketing mailings without your consent.",
+	"ru": "Если вы нажмёте «Отписаться», письма о ваших заказах к вам больше не придут. Рекламных рассылок без вашего согласия мы не отправляем.",
+	"es": "Si pulsas «Cancelar suscripción», dejarás de recibir los correos sobre tus pedidos. No enviamos correos publicitarios sin tu consentimiento.",
+	"cs": "Pokud kliknete na „Odhlásit odběr“, přestanou vám chodit e-maily o vašich objednávkách. Reklamní e-maily bez vašeho souhlasu neposíláme.",
+	"de": "Wenn Sie auf „Abbestellen“ klicken, erhalten Sie keine E-Mails zu Ihren Bestellungen mehr. Werbe-Mailings senden wir nicht ohne Ihre Einwilligung.",
+	"fr": "Si vous cliquez sur « Se désabonner », vous ne recevrez plus les e-mails concernant vos commandes. Nous n’envoyons pas de communications commerciales sans votre consentement.",
+	"he": "אם תלחצו על ״ביטול הרשמה״, לא תקבלו יותר את המיילים על ההזמנות שלכם. אנחנו לא שולחים דיוורים שיווקיים ללא הסכמתכם.",
+}
+
+// noteFor is the note the letters of a kind end with.
+func noteFor(kind, loc string) string {
+	switch kind {
+	case TemplateKindShopOrderReceived, TemplateKindShopOrderShipped, TemplateKindShopOrderRefunded:
+		return shopUnsubscribeNotes[loc]
+	}
+	return unsubscribeNotes[loc]
+}
+
 // buyerLetterKinds are the kinds a buyer receives. The two organizer letters
 // (refund_blocked, refund_scan_exception) go to an organization's owners and
 // carry no note.
@@ -44,17 +66,17 @@ func TestBuyerLetters_EndWithTheUnsubscribeNote(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(unsubscribeNotes) != len(SupportedLocales) {
-		t.Fatalf("the table has %d locales, the renderer %d", len(unsubscribeNotes), len(SupportedLocales))
+	if len(unsubscribeNotes) != len(SupportedLocales) || len(shopUnsubscribeNotes) != len(SupportedLocales) {
+		t.Fatalf("the tables have %d and %d locales, the renderer %d", len(unsubscribeNotes), len(shopUnsubscribeNotes), len(SupportedLocales))
 	}
 	for _, loc := range SupportedLocales {
-		if unsubscribeNotes[loc] == "" {
-			t.Fatalf("no note in the table for locale %s", loc)
+		if unsubscribeNotes[loc] == "" || shopUnsubscribeNotes[loc] == "" {
+			t.Fatalf("no note in the tables for locale %s", loc)
 		}
 	}
 	for kind, d := range buyerLetterKinds() {
 		for _, loc := range SupportedLocales {
-			note := unsubscribeNotes[loc]
+			note := noteFor(kind, loc)
 			out, err := r.Render(kind, loc, d)
 			if err != nil {
 				t.Fatalf("%s/%s: %v", kind, loc, err)

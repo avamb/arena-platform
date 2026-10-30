@@ -286,3 +286,39 @@ func TestRender_ShopRefunded_EnglishAndRussianWording(t *testing.T) {
 		}
 	}
 }
+
+// SB-10: a shop buyer bought no ticket, so no letter of the shop says so in any
+// language: not in the unsubscribe note, not anywhere else. The words are the
+// forms of "ticket" in the seven languages; Hebrew uses the plural, because
+// the singular is also "card" (the money goes back to the buyer's card).
+func TestRender_ShopLetters_NeverMentionTickets(t *testing.T) {
+	r, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	words := []string{"ticket", "билет", "entrada", "vstupenk", "billet", "כרטיסים"}
+	for kind, d := range map[string]Data{
+		TemplateKindShopOrderReceived: shopTestData(),
+		TemplateKindShopOrderShipped:  shopTestData(),
+		TemplateKindShopOrderRefunded: shopRefundTestData(),
+	} {
+		for _, loc := range SupportedLocales {
+			out, err := r.Render(kind, loc, d)
+			if err != nil {
+				t.Fatalf("%s/%s: %v", kind, loc, err)
+			}
+			raw, err := templateFS.ReadFile(kind + "." + loc + ".tmpl")
+			if err != nil {
+				t.Fatal(err)
+			}
+			for part, body := range map[string]string{"subject": out.Subject, "html": out.HTMLBody, "text": out.TextBody, "template": string(raw)} {
+				low := strings.ToLower(body)
+				for _, w := range words {
+					if strings.Contains(low, w) {
+						t.Errorf("%s/%s %s mentions %q", kind, loc, part, w)
+					}
+				}
+			}
+		}
+	}
+}

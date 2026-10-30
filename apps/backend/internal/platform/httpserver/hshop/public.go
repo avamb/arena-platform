@@ -381,15 +381,17 @@ func (h *Handler) paymentChannel(ctx context.Context, sf shop.Storefront) (uuid.
 
 // HandlePublicCheckoutDownloads serves GET
 // /v1/public/shop/checkout/{order_token}/downloads: the files of the digital
-// lines of a paid order, each behind a short-lived signed URL. An order that
-// is not paid (pending, expired, cancelled, refunded) is the route's 404,
-// like a token that names nothing.
+// lines of a paid order, each as a link to the file route
+// (HandlePublicCheckoutDownload). Listing signs nothing and counts nothing
+// (SB-05): opening the order page or refreshing the links is not a download.
+// An order that is not paid (pending, expired, cancelled, refunded) is the
+// route's 404, like a token that names nothing.
 func (h *Handler) HandlePublicCheckoutDownloads(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimSpace(chi.URLParam(r, "order_token"))
 	if h.limited(w, r, token) {
 		return
 	}
-	downloads, err := h.o.Service.Downloads(r.Context(), token)
+	downloads, until, err := h.o.Service.Downloads(r.Context(), token)
 	if err != nil {
 		if errors.Is(err, shop.ErrOrderNotFound) {
 			writeErr(w, r, http.StatusNotFound, "shop.order_not_found", "order not found")
@@ -404,44 +406,83 @@ func (h *Handler) HandlePublicCheckoutDownloads(w http.ResponseWriter, r *http.R
 		URL          string    `json:"url"`
 		ExpiresAt    time.Time `json:"expires_at"`
 	}
-	// Sign every link first: a file that cannot be signed refuses the whole
-	// answer before any line is counted against its download limit.
-	type signed struct {
-		d     shop.Download
-		url   string
-		until time.Time
-	}
-	links := make([]signed, 0, len(downloads))
+	out := make([]downloadJSON, 0, len(downloads))
 	for _, d := range downloads {
 		if h.o.DownloadURL == nil {
 			writeErr(w, r, http.StatusServiceUnavailable, "shop.download_unavailable", "The files cannot be served right now. Try again in a minute.")
 			return
 		}
-		url, until := h.o.DownloadURL(r.Context(), d.MediaID)
-		if url == "" {
-			writeErr(w, r, http.StatusServiceUnavailable, "shop.download_unavailable", "The files cannot be served right now. Try again in a minute.")
-			return
-		}
-		links = append(links, signed{d: d, url: url, until: until})
-	}
-	out := make([]downloadJSON, 0, len(links))
-	for _, l := range links {
-		ok, err := h.o.Service.ConsumeDownload(r.Context(), l.d)
-		if err != nil {
-			h.fail(w, r, "downloads", err)
-			return
-		}
-		if !ok {
-			continue // the line used its last link in a parallel request
-		}
-		out = append(out, downloadJSON{ProductTitle: l.d.ProductTitle, VariantTitle: l.d.VariantTitle, URL: l.url, ExpiresAt: l.until})
-	}
-	if len(out) == 0 && len(links) > 0 {
-		h.fail(w, r, "downloads", shop.ErrDownloadExpired)
-		return
+		out = append(out, downloadJSON{
+			ProductTitle: d.ProductTitle, VariantTitle: d.VariantTitle,
+			URL: h.downloadFileURL(r, token, d.ItemID), ExpiresAt: until,
+		})
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"downloads": out})
+}
+
+// downloadFileURL is the absolute address of the file route for one line of an
+// order. It prefers the configured public API address and falls back to the
+// address this request arrived on.
+func (h *Handler) downloadFileURL(r *http.Request, token string, itemID uuid.UUID) string {
+	base := strings.TrimRight(h.o.APIBaseURL, "/")
+	if base == "" {
+		scheme := "https"
+		if r.TLS == nil && !strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+			scheme = "http"
+		}
+		base = scheme + "://" + r.Host
+	}
+	return base + "/v1/public/shop/checkout/" + token + "/downloads/" + itemID.String()
+}
+
+// HandlePublicCheckoutDownload serves GET
+// /v1/public/shop/checkout/{order_token}/downloads/{item_id}: the one place a
+// download is counted (SB-05). It signs the file's URL first, so a file that
+// cannot be signed costs the buyer nothing, then counts the download against
+// the line's limit in one atomic statement and answers 302 to the signed URL.
+// The checks are those of the list: a paid order, thirty days, twenty
+// downloads per line.
+func (h *Handler) HandlePublicCheckoutDownload(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimSpace(chi.URLParam(r, "order_token"))
+	if h.limited(w, r, token) {
+		return
+	}
+	itemID, err := uuid.Parse(chi.URLParam(r, "item_id"))
+	if err != nil {
+		writeErr(w, r, http.StatusNotFound, "shop.order_not_found", "order not found")
+		return
+	}
+	d, err := h.o.Service.DownloadOf(r.Context(), token, itemID)
+	if err != nil {
+		if errors.Is(err, shop.ErrOrderNotFound) {
+			writeErr(w, r, http.StatusNotFound, "shop.order_not_found", "order not found")
+			return
+		}
+		h.fail(w, r, "download", err)
+		return
+	}
+	if h.o.DownloadURL == nil {
+		writeErr(w, r, http.StatusServiceUnavailable, "shop.download_unavailable", "The file cannot be served right now. Try again in a minute.")
+		return
+	}
+	url, _ := h.o.DownloadURL(r.Context(), d.MediaID)
+	if url == "" {
+		writeErr(w, r, http.StatusServiceUnavailable, "shop.download_unavailable", "The file cannot be served right now. Try again in a minute.")
+		return
+	}
+	ok, err := h.o.Service.ConsumeDownload(r.Context(), d)
+	if err != nil {
+		h.fail(w, r, "download", err)
+		return
+	}
+	if !ok {
+		h.fail(w, r, "download", shop.ErrDownloadExpired) // the line used its last download in a parallel request
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	http.Redirect(w, r, url, http.StatusFound)
 }
 
 // abandon expires an order whose payment could not be started. Best effort:
@@ -489,22 +530,36 @@ func (h *Handler) HandlePublicCheckoutStatus(w http.ResponseWriter, r *http.Requ
 	}
 	holdPassed := v.ExpiresAt != nil && !v.ExpiresAt.After(time.Now())
 	status := shop.PublicStatus(v.ShopOrderRow, holdPassed)
+	review := shop.PublicReview(v.ShopOrderRow)
 	paymentURL := ""
-	if status == "pending" && v.Payment != nil && v.Payment.HostedCheckoutURL != nil {
+	expiresAt := v.ExpiresAt
+	if status == "pending" && review == "" && v.Payment != nil && v.Payment.HostedCheckoutURL != nil {
 		paymentURL = *v.Payment.HostedCheckoutURL
+	}
+	if review != "" {
+		// A parked order is not waiting for the buyer to pay and no hold runs
+		// any more: no payment page to go back to, no countdown.
+		expiresAt = nil
+	}
+	var reviewReason, reviewMessage any
+	if review != "" {
+		reviewReason = review
+		reviewMessage = reviewMessageFor(h.o.Bundle, v.BuyerLocale, review)
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"status":        status,
-		"number":        v.Number,
-		"currency":      v.Currency,
-		"subtotal":      v.Subtotal,
-		"shipping_fee":  v.ShippingFee,
-		"total":         v.Total,
-		"items":         toItemsJSON(v.Items),
-		"payment_url":   paymentURL,
-		"expires_at":    v.ExpiresAt,
-		"paid_at":       v.PaidAt,
-		"delivery_kind": v.DeliveryKind,
+		"status":         status,
+		"number":         v.Number,
+		"currency":       v.Currency,
+		"subtotal":       v.Subtotal,
+		"shipping_fee":   v.ShippingFee,
+		"total":          v.Total,
+		"items":          toItemsJSON(v.Items),
+		"payment_url":    paymentURL,
+		"expires_at":     expiresAt,
+		"paid_at":        v.PaidAt,
+		"delivery_kind":  v.DeliveryKind,
+		"review_reason":  reviewReason,
+		"review_message": reviewMessage,
 	})
 }

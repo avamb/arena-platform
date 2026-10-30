@@ -357,6 +357,55 @@ func (h *Handler) HandleRefundOrder(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// HandleResolveOrder serves POST .../shop/orders/{order_id}/resolve
+// {action: "fulfil" | "refund_and_cancel"} for an order parked in manual_review
+// because its goods were gone after the payment arrived. fulfil checks the
+// stock once more and pays the order; refund_and_cancel returns the whole
+// payment through the refund engine. The Idempotency-Key is required; a repeat
+// answers the first decision with replayed: true. The answer is
+// {order, action, refund (refund_and_cancel only), replayed}.
+func (h *Handler) HandleResolveOrder(w http.ResponseWriter, r *http.Request) {
+	org, ok := orgID(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(w, r, "order_id", shop.ErrOrderNotFound)
+	if !ok {
+		return
+	}
+	var b struct {
+		Action string `json:"action"`
+	}
+	if !readBody(w, r, &b, false) {
+		return
+	}
+	// Detached from the request like a refund: a refund_and_cancel whose
+	// connection drops must not stop half way; the client repeats the call
+	// with the same Idempotency-Key to read the result.
+	wctx, cancel := refundWorkCtx(w, r)
+	defer cancel()
+	res, err := h.o.Service.Resolve(wctx, shop.ResolveInput{
+		OrgID: org, OrderID: id, Action: b.Action, RequestedBy: actorLabel(r.Context()),
+		IdempotencyKey: r.Header.Get("Idempotency-Key"),
+	})
+	if err != nil {
+		h.fail(w, r, "resolve order", err)
+		return
+	}
+	out := map[string]any{"order": toOrderJSON(res.Order), "action": b.Action, "refund": nil, "replayed": res.Replayed}
+	extra := map[string]any{"number": res.Order.Number, "action": b.Action}
+	if res.Refund != nil {
+		out["refund"] = toRefundJSON(*res.Refund)
+		extra["refund_id"] = res.Refund.ID.String()
+		extra["amount"] = res.Refund.Amount
+		extra["refund_state"] = res.Refund.State
+	}
+	if !res.Replayed {
+		h.writeAudit(r, "v1.shop.order.resolve", "shop_order", id.String(), org, extra)
+	}
+	httputil.WriteJSON(w, http.StatusOK, out)
+}
+
 // refundWorkBudget bounds the work one refund request starts (the same
 // numbers as the ticket refund routes, httpserver/refund_org_routes.go): a
 // slow provider must not be cut by the router's timeout.

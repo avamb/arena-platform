@@ -186,7 +186,7 @@ func (f *shopFixture) cleanup() {
 func (f *shopFixture) do(method, path, token, body string) (int, map[string]any, http.Header) {
 	f.t.Helper()
 	key := ""
-	if method == http.MethodPost && strings.HasSuffix(path, "/refund") {
+	if method == http.MethodPost && (strings.HasSuffix(path, "/refund") || strings.HasSuffix(path, "/resolve")) {
 		key = uuid.NewString()
 	}
 	return f.doKeyed(method, path, token, body, key)

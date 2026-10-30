@@ -249,8 +249,11 @@ func TestShopAudit_PaymentManualReviewParksTheOrder(t *testing.T) {
 		return nil
 	})
 	got, _ := f.q.GetShopOrder(context.Background(), o.ID, f.orgA)
-	if got.Status != shop.StatusManualReview || !strings.Contains(string(got.Metadata), shop.ReviewReasonPayment) {
-		t.Fatalf("order after the payment went to review = %s %s; want manual_review with the payment reason", got.Status, got.Metadata)
+	if got.Status != shop.StatusManualReview || got.ReviewReason == nil || *got.ReviewReason != shop.ReviewPaymentUnconfirmed {
+		t.Fatalf("order after the payment went to review = %s %v; want manual_review with the unconfirmed-payment reason", got.Status, got.ReviewReason)
+	}
+	if got.PaidAt != nil {
+		t.Fatalf("paid_at of an order whose payment is unconfirmed = %v; want empty (SB-02)", got.PaidAt)
 	}
 	if n := f.outboxCount(shop.EventOrderManualReview, o.ID); n != 1 {
 		t.Fatalf("manual_review events = %d; want 1", n)

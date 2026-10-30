@@ -17,7 +17,13 @@ import (
 // handled=false means the payment is not a shop payment (the caller goes on
 // as before). For a shop order it marks the order paid, turns the hold into
 // a sale and writes v1.shop.order.paid, all on tx. It is idempotent: an order
-// already paid (or shipped, refunded, parked for review) is left alone.
+// already paid (or shipped, refunded) is left alone, and so is one parked
+// because its goods were gone (late_payment_no_stock: the money is already
+// recorded and the operator decides, see Resolve). An order parked because its
+// PAYMENT was not confirmed (payment_unconfirmed, SB-04) is the one parked
+// order this call moves: the payment has now succeeded, so it goes through the
+// ordinary checks below and is paid, or parked again as a late payment whose
+// goods are gone.
 //
 // Every payment, on time or late, locks the order's variants in id order and
 // reads their free stock again, leaving the order's own hold out: when every
@@ -37,8 +43,12 @@ func (s *Service) FulfillPaidOrderTx(ctx context.Context, tx pgx.Tx, paymentInte
 		return true, fmt.Errorf("shop: load order of payment %s: %w", paymentIntentID, err)
 	}
 	switch o.Status {
-	case StatusPaid, StatusShipped, StatusRefunded, StatusPartiallyRefunded, StatusManualReview:
+	case StatusPaid, StatusShipped, StatusRefunded, StatusPartiallyRefunded:
 		return true, nil
+	case StatusManualReview:
+		if !reviewReasonIs(o, ReviewPaymentUnconfirmed) {
+			return true, nil
+		}
 	}
 	if meta == nil {
 		meta = map[string]any{}
@@ -52,8 +62,11 @@ func (s *Service) FulfillPaidOrderTx(ctx context.Context, tx pgx.Tx, paymentInte
 	}
 	if !holdLive {
 		after := o.Status
-		if after == StatusPendingPayment {
+		switch after {
+		case StatusPendingPayment:
 			after = "hold_expired"
+		case StatusManualReview:
+			after = "payment_review"
 		}
 		meta["paid_after"] = after
 	}
@@ -90,17 +103,17 @@ func shortLines(lines []gen.ShopOrderLine) []map[string]any {
 	return out
 }
 
-// parkForReviewTx records a late payment whose goods are gone: status
-// manual_review with paid_at, the reason in metadata, the hold's release
-// journaled when the order was still pending, and the outbox event.
+// parkForReviewTx records a payment whose goods are gone: status manual_review
+// with review_reason late_payment_no_stock and paid_at (the money was taken),
+// the short lines in metadata, the hold's release journaled when the order was
+// still pending, and the outbox event.
 func (s *Service) parkForReviewTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, o gen.ShopOrderRow, meta map[string]any, short []map[string]any) error {
-	meta["review_reason"] = "stock_short"
 	meta["short_items"] = short
 	raw, err := json.Marshal(meta)
 	if err != nil {
 		return err
 	}
-	parked, err := q.SetShopOrderStatus(ctx, o.ID, StatusManualReview, nil, raw)
+	parked, err := q.SetShopOrderReview(ctx, o.ID, ReviewLatePaymentNoStock, true, raw)
 	if err != nil {
 		return fmt.Errorf("shop: park order for review: %w", err)
 	}
@@ -110,7 +123,7 @@ func (s *Service) parkForReviewTx(ctx context.Context, tx pgx.Tx, q *gen.Queries
 		}
 	}
 	return s.appendEvent(ctx, tx, EventOrderManualReview, parked, map[string]any{
-		"reason": "stock_short", "short_items": short,
+		"reason": ReviewLatePaymentNoStock, "short_items": short,
 	})
 }
 
@@ -153,9 +166,23 @@ func (s *Service) applySaleTx(ctx context.Context, q *gen.Queries, o gen.ShopOrd
 	return nil
 }
 
-// ReviewReasonPayment is metadata.review_reason of an order whose PAYMENT, not
-// its stock, needs a human (SA-09).
-const ReviewReasonPayment = "payment_manual_review"
+// The two causes of a manual_review order (shop_orders.review_reason, migration
+// 0180). They need different people to do different things: a late payment
+// whose goods are gone has its money (ship late, or refund), an unconfirmed
+// payment may have none (settle the payment first).
+const (
+	// ReviewLatePaymentNoStock: the money was taken, the hold had ended and the
+	// goods are gone. paid_at is set.
+	ReviewLatePaymentNoStock = "late_payment_no_stock"
+	// ReviewPaymentUnconfirmed: the provider's report is not trusted (SA-09),
+	// the money may not have arrived. paid_at stays empty.
+	ReviewPaymentUnconfirmed = "payment_unconfirmed"
+)
+
+// reviewReasonIs: the order is parked in manual_review for that reason.
+func reviewReasonIs(o gen.ShopOrderRow, reason string) bool {
+	return o.Status == StatusManualReview && o.ReviewReason != nil && *o.ReviewReason == reason
+}
 
 // MarkPaymentReviewTx is called by the payment webhook, inside its
 // transaction, when a shop order's payment intent was parked in manual_review
@@ -165,8 +192,11 @@ const ReviewReasonPayment = "payment_manual_review"
 // and expire it under a buyer who may have paid: it is parked in
 // manual_review like a late payment whose goods are gone (the hold is
 // released, v1.shop.order.manual_review is written, the order shows under
-// the manual-review tab) and no letter goes out. The operator then ships it
-// (the goods are taken off the shelf if they are free) or refunds it.
+// the manual-review tab) and no letter goes out. Its paid_at stays empty: nothing is known to be paid
+// (SB-02). When the payment then succeeds (the provider's next webhook, or the
+// operator's transition of the payment intent) FulfillPaidOrderTx pays the
+// order; when it fails, MarkPaymentFailedTx ends it. Until then the operator
+// can ship it only after the payment succeeded (Ship).
 // handled=false: not a shop payment. An order that is not pending any more
 // is left alone.
 func (s *Service) MarkPaymentReviewTx(ctx context.Context, tx pgx.Tx, paymentIntentID uuid.UUID, meta map[string]any) (handled bool, err error) {
@@ -184,7 +214,6 @@ func (s *Service) MarkPaymentReviewTx(ctx context.Context, tx pgx.Tx, paymentInt
 	if meta == nil {
 		meta = map[string]any{}
 	}
-	meta["review_reason"] = ReviewReasonPayment
 	raw, err := json.Marshal(meta)
 	if err != nil {
 		return true, err
@@ -192,7 +221,7 @@ func (s *Service) MarkPaymentReviewTx(ctx context.Context, tx pgx.Tx, paymentInt
 	if err := q.LockShopOrderVariants(ctx, o.ID); err != nil {
 		return true, fmt.Errorf("shop: lock the parked order's goods: %w", err)
 	}
-	parked, err := q.SetShopOrderStatus(ctx, o.ID, StatusManualReview, nil, raw)
+	parked, err := q.SetShopOrderReview(ctx, o.ID, ReviewPaymentUnconfirmed, false, raw)
 	if err != nil {
 		return true, fmt.Errorf("shop: park order for payment review: %w", err)
 	}
@@ -201,7 +230,7 @@ func (s *Service) MarkPaymentReviewTx(ctx context.Context, tx pgx.Tx, paymentInt
 	}
 	s.logger.Warn("shop: payment parked in manual_review; order parked with it", "order_id", o.ID.String())
 	return true, s.appendEvent(ctx, tx, EventOrderManualReview, parked, map[string]any{
-		"reason": ReviewReasonPayment,
+		"reason": ReviewPaymentUnconfirmed,
 	})
 }
 
@@ -218,7 +247,7 @@ func (s *Service) MarkPaymentFailedTx(ctx context.Context, tx pgx.Tx, paymentInt
 	if err != nil {
 		return true, fmt.Errorf("shop: load order of payment %s: %w", paymentIntentID, err)
 	}
-	if o.Status == StatusManualReview && paymentReviewParked(o) {
+	if reviewReasonIs(o, ReviewPaymentUnconfirmed) {
 		// The payment was parked for review and the operator then decided it
 		// failed: nothing was paid and the goods went back on sale when the
 		// order was parked, so the order simply ends.
@@ -240,13 +269,4 @@ func (s *Service) MarkPaymentFailedTx(ctx context.Context, tx pgx.Tx, paymentInt
 		return true, fmt.Errorf("shop: journal release: %w", err)
 	}
 	return true, nil
-}
-
-// paymentReviewParked: the order was parked by MarkPaymentReviewTx (its
-// payment, not its stock, is what waits for a human).
-func paymentReviewParked(o gen.ShopOrderRow) bool {
-	var m struct {
-		Reason string `json:"review_reason"`
-	}
-	return json.Unmarshal(o.Metadata, &m) == nil && m.Reason == ReviewReasonPayment
 }

@@ -193,7 +193,7 @@ func (s *Service) Ship(ctx context.Context, orgID, id uuid.UUID, trackingNote st
 			}
 		case StatusPaid:
 		case StatusManualReview:
-			if paymentReviewParked(o) {
+			if reviewReasonIs(o, ReviewPaymentUnconfirmed) {
 				// Parked because its PAYMENT waits for a human (an amount
 				// mismatch, a refund at the provider before arena confirmed
 				// it): the goods go out only once that payment is settled.

@@ -226,3 +226,15 @@ other = "💰 שולם: <b>{{.Amount}}</b>"
 
 ["salesnotify.shop.review_body"]
 other = "התשלום על הזמנה {{.Number}} הגיע אחרי שהשמירה על המוצרים הסתיימה והמוצרים כבר לא היו פנויים. בדקו את ההזמנה במרכז האירועים."
+
+["salesnotify.shop.review_unconfirmed_amount"]
+other = "⏳ התשלום עדיין לא אושר: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_unconfirmed_body"]
+other = "התשלום על הזמנה {{.Number}} לא אושר על ידי ספק התשלומים, ייתכן שהכסף לא הגיע. אל תשלחו ואל תמסרו את הסחורה עד שהתשלום יאושר: כשזה יקרה, ההזמנה תוכרז כשולמה. הפרטים במרכז האירועים."
+
+["shop.public.review_payment_unconfirmed"]
+other = "אנחנו בודקים את התשלום שלכם ונכתוב לכם."
+
+["shop.public.review_late_payment_no_stock"]
+other = "התשלום שלכם התקבל. אנחנו בודקים את זמינות הסחורה ונכתוב לכם."

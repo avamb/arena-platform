@@ -21,12 +21,15 @@
 //	POST      /v1/organizations/{org_id}/shop/orders/{order_id}/ship
 //	POST      /v1/organizations/{org_id}/shop/orders/{order_id}/cancel
 //	POST      /v1/organizations/{org_id}/shop/orders/{order_id}/refund
+//	POST      /v1/organizations/{org_id}/shop/orders/{order_id}/resolve
 //	GET       /v1/organizations/{org_id}/shop/orders/{order_id}/courier-text
 //
 // Public routes, no login, rate-limited per client IP like the feed:
 //
 //	GET  /v1/public/shop/by-host?host=
 //	GET  /v1/public/shop/checkout/{order_token}
+//	GET  /v1/public/shop/checkout/{order_token}/downloads
+//	GET  /v1/public/shop/checkout/{order_token}/downloads/{item_id}
 //	GET  /v1/public/shop/pages/{org_slug}
 //	GET  /v1/public/shop/{org_slug}
 //	GET  /v1/public/shop/{org_slug}/pages/{slug}
@@ -73,6 +76,10 @@ type Options struct {
 	// file and says until when it works ("" when it cannot); nil answers
 	// the downloads route 503.
 	DownloadURL func(ctx context.Context, id uuid.UUID) (string, time.Time)
+	// APIBaseURL is the public address of this API (no trailing slash), used
+	// to build the absolute link of the download file route; empty uses the
+	// address the request arrived on.
+	APIBaseURL string
 	// Payments creates the provider-hosted page; nil refuses paid carts.
 	Payments hfeed.PaymentStarter
 	// Bundle localizes the payment page's purpose line; nil keeps it English.
