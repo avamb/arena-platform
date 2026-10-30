@@ -265,6 +265,31 @@ func int64PtrEq(a, b *int64) bool {
 	return *a == *b
 }
 
+// findVariant is the stored variant a CSV variant stands for: by SKU, then by
+// option values, then by title, skipping the ones already taken (used). -1
+// when there is none.
+func findVariant(existing []gen.ShopVariantRow, used []bool, w ImportVariant) int {
+	if w.SKU != "" {
+		for i, e := range existing {
+			if !used[i] && deref(e.SKU) == w.SKU {
+				return i
+			}
+		}
+	}
+	for i, e := range existing {
+		if !used[i] && optEq(e.Option1, w.Option1) && optEq(e.Option2, w.Option2) && optEq(e.Option3, w.Option3) &&
+			(w.Option1 != nil || w.Option2 != nil || w.Option3 != nil || e.Title == w.Title) {
+			return i
+		}
+	}
+	for i, e := range existing {
+		if !used[i] && e.Title == w.Title {
+			return i
+		}
+	}
+	return -1
+}
+
 // planVariants matches the CSV variants to the stored ones (by SKU, then by
 // option values, then by title) and builds the list ReplaceVariants takes.
 // A stored variant that no CSV row matches is kept as it is: the importer
@@ -273,27 +298,6 @@ func int64PtrEq(a, b *int64) bool {
 func planVariants(existing []gen.ShopVariantRow, want []ImportVariant, syncStock bool) variantPlan {
 	var plan variantPlan
 	used := make([]bool, len(existing))
-	find := func(w ImportVariant) int {
-		if w.SKU != "" {
-			for i, e := range existing {
-				if !used[i] && deref(e.SKU) == w.SKU {
-					return i
-				}
-			}
-		}
-		for i, e := range existing {
-			if !used[i] && optEq(e.Option1, w.Option1) && optEq(e.Option2, w.Option2) && optEq(e.Option3, w.Option3) &&
-				(w.Option1 != nil || w.Option2 != nil || w.Option3 != nil || e.Title == w.Title) {
-				return i
-			}
-		}
-		for i, e := range existing {
-			if !used[i] && e.Title == w.Title {
-				return i
-			}
-		}
-		return -1
-	}
 	for _, w := range want {
 		pos := w.Position
 		track := w.TrackStock
@@ -302,7 +306,7 @@ func planVariants(existing []gen.ShopVariantRow, want []ImportVariant, syncStock
 			Stock: w.Stock, TrackStock: &track, Position: &pos,
 			Option1: w.Option1, Option2: w.Option2, Option3: w.Option3,
 		}
-		i := find(w)
+		i := findVariant(existing, used, w)
 		if i < 0 {
 			plan.Inputs = append(plan.Inputs, in)
 			plan.Created++
@@ -474,6 +478,9 @@ func (im *Importer) importProduct(ctx context.Context, p ImportProduct) error {
 		if err != nil {
 			return err
 		}
+		if _, err := im.applyExtras(ctx, view.ID, p, nil, view.Variants, false); err != nil {
+			return err
+		}
 		im.countMoney(p)
 		im.rep.Variants.Created += len(p.Variants)
 		im.rep.Products.add(outCreated, "")
@@ -493,6 +500,10 @@ func (im *Importer) importProduct(ctx context.Context, p ImportProduct) error {
 	fieldsSame := sameStrings(optionNamesOf(*cur), p.OptionNames) && cur.Title == p.Title && cur.BodyHTML == body && cur.Status == p.Status &&
 		cur.ProductType == p.Type && cur.Vendor == p.Vendor && cur.SortOrder == p.SortOrder
 	plan := planVariants(view.Variants, p.Variants, im.opt.SyncStock)
+	extrasDiffer, err := im.applyExtras(ctx, cur.ID, p, cur, view.Variants, true)
+	if err != nil {
+		return err
+	}
 	im.rep.Variants.Created += plan.Created
 	im.rep.Variants.Updated += plan.Updated
 	im.rep.Variants.Unchanged += plan.Same
@@ -502,7 +513,7 @@ func (im *Importer) importProduct(ctx context.Context, p ImportProduct) error {
 	im.countMoney(p)
 
 	outcome := outUnchanged
-	if !fieldsSame || plan.Dirty() {
+	if !fieldsSame || plan.Dirty() || extrasDiffer {
 		outcome = outUpdated
 	}
 	if im.opt.DryRun {
@@ -515,13 +526,105 @@ func (im *Importer) importProduct(ctx context.Context, p ImportProduct) error {
 			return err
 		}
 	}
+	stored := view.Variants
 	if plan.Dirty() {
-		if _, err := im.svc.ReplaceVariants(ctx, im.opt.OrgID, cur.ID, plan.Inputs); err != nil {
+		replaced, err := im.svc.ReplaceVariants(ctx, im.opt.OrgID, cur.ID, plan.Inputs)
+		if err != nil {
+			return err
+		}
+		stored = replaced.Variants
+	}
+	if extrasDiffer || plan.Created > 0 {
+		if _, err := im.applyExtras(ctx, cur.ID, p, cur, stored, false); err != nil {
 			return err
 		}
 	}
 	im.rep.Products.add(outcome, "")
 	return im.syncImages(ctx, cur.ID, p, view.Images)
+}
+
+// applyExtras writes what the shop service has no field for: the product's SEO
+// title, SEO description and tags, and each variant's weight and barcode
+// (migration 0178). cur is the stored product (nil for a new one), stored its
+// live variants. With dry it only reports whether anything would change. An
+// empty CSV cell never clears a stored value, so a later edit survives a
+// re-run.
+func (im *Importer) applyExtras(ctx context.Context, productID uuid.UUID, p ImportProduct, cur *gen.ShopProductRow, stored []gen.ShopVariantRow, dry bool) (bool, error) {
+	changed := false
+
+	title, desc, tags := strPtr(p.SEOTitle), strPtr(p.SEODescription), p.Tags
+	if cur != nil {
+		if title == nil {
+			title = cur.SEOTitle
+		}
+		if desc == nil {
+			desc = cur.SEODescription
+		}
+		if len(tags) == 0 {
+			tags = cur.Tags
+		}
+	}
+	var curTitle, curDesc *string
+	var curTags []string
+	if cur != nil {
+		curTitle, curDesc, curTags = cur.SEOTitle, cur.SEODescription, cur.Tags
+	}
+	if !optEq(title, curTitle) || !optEq(desc, curDesc) || !sameStrings(tags, curTags) {
+		changed = true
+		if !dry {
+			if _, err := im.q.SetShopProductSEO(ctx, productID, im.opt.OrgID, title, desc, tags); err != nil {
+				return changed, fmt.Errorf("save SEO fields: %w", err)
+			}
+		}
+	}
+
+	hasMeta := false
+	for _, w := range p.Variants {
+		if w.WeightGrams != nil || w.Barcode != "" {
+			hasMeta = true
+		}
+	}
+	if !hasMeta || len(stored) == 0 {
+		return changed, nil
+	}
+	meta, err := im.q.ListShopVariantMeta(ctx, productID)
+	if err != nil {
+		return changed, fmt.Errorf("read variant weights: %w", err)
+	}
+	used := make([]bool, len(stored))
+	for _, w := range p.Variants {
+		i := findVariant(stored, used, w)
+		if i < 0 {
+			continue
+		}
+		used[i] = true
+		have := meta[stored[i].ID]
+		weight, barcode := have.WeightGrams, have.Barcode
+		if w.WeightGrams != nil {
+			weight = w.WeightGrams
+		}
+		if w.Barcode != "" {
+			barcode = &w.Barcode
+		}
+		if int32PtrEq(weight, have.WeightGrams) && optEq(barcode, have.Barcode) {
+			continue
+		}
+		changed = true
+		if dry {
+			continue
+		}
+		if _, err := im.q.SetShopVariantMeta(ctx, stored[i].ID, productID, weight, barcode); err != nil {
+			return changed, fmt.Errorf("save variant weight and barcode: %w", err)
+		}
+	}
+	return changed, nil
+}
+
+func int32PtrEq(a, b *int32) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 // dryImages estimates the picture work without downloading anything: a new
