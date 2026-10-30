@@ -52,6 +52,10 @@ type ShopOrder struct {
 	Locale string
 	Order  gen.ShopOrderRow
 	Items  []gen.ShopOrderItemRow
+	// ShopCountry is the shop's own country (shop_settings.country_iso2, upper
+	// case ISO 3166-1 alpha-2, "" when unset). Only the order card's courier
+	// text reads it: a parcel inside that country does not print it.
+	ShopCountry string
 }
 
 // shopMoney is an amount in the message's language: "450,00 ₪" in ru.
@@ -79,23 +83,31 @@ func writeShopBuyer(b *strings.Builder, o gen.ShopOrderRow) {
 
 // writeCourierForm prints the courier form field by field in the courier
 // form's order, then the two map links built from the full address. The
-// country is named in the message's language.
-func writeCourierForm(b *strings.Builder, loc string, o gen.ShopOrderRow) {
+// country is named in the message's language. It is the ONE writer of the
+// form: the Telegram announcement (HTML, with a heading, every country) and
+// the order card's courier text (plain, no heading, the shop's own country
+// left out) differ only in the courierStyle they pass.
+func writeCourierForm(b *strings.Builder, loc string, o gen.ShopOrderRow, st courierStyle) {
 	c := shop.CourierFieldsOfIn(o, loc)
+	q := c.MapQuery() // the map always gets the country, whatever is printed
+	if st.hidesCountry(c.CountryCode) {
+		c.Country = ""
+	}
 	lines := c.Lines()
 	if len(lines) == 0 {
 		return
 	}
-	fmt.Fprintf(b, "\n%s\n", say(loc, "salesnotify.shop.courier_form", nil))
+	if st.heading {
+		fmt.Fprintf(b, "\n%s\n", say(loc, "salesnotify.shop.courier_form", nil))
+	}
 	for _, l := range lines {
-		fmt.Fprintf(b, "%s\n", esc(l))
+		fmt.Fprintf(b, "%s\n", st.esc(l))
 	}
 	if o.DeliveryKind == "pickup" || !c.HasAddress() {
 		return
 	}
-	q := c.MapQuery()
-	fmt.Fprintf(b, "\n%s\n", say(loc, "salesnotify.shop.map_google", map[string]any{"Url": esc(shop.GoogleMapsURL(q))}))
-	fmt.Fprintf(b, "%s\n", say(loc, "salesnotify.shop.map_waze", map[string]any{"Url": esc(shop.WazeURL(q))}))
+	fmt.Fprintf(b, "\n%s\n", say(loc, st.mapKey("google"), map[string]any{"Url": st.esc(shop.GoogleMapsURL(q))}))
+	fmt.Fprintf(b, "%s\n", say(loc, st.mapKey("waze"), map[string]any{"Url": st.esc(shop.WazeURL(q))}))
 }
 
 // FormatShopOrderPaid renders a paid shop order for the logistics chat, in
@@ -114,10 +126,10 @@ func FormatShopOrderPaid(s ShopOrder) string {
 		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.delivery_none", nil))
 	case "pickup":
 		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.delivery_pickup", nil))
-		writeCourierForm(&b, loc, o)
+		writeCourierForm(&b, loc, o, telegramCourierStyle)
 	default:
 		fmt.Fprintf(&b, "%s\n", say(loc, "salesnotify.shop.delivery_shipping", nil))
-		writeCourierForm(&b, loc, o)
+		writeCourierForm(&b, loc, o, telegramCourierStyle)
 	}
 
 	if len(s.Items) > 0 {

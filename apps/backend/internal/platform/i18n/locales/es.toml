@@ -4688,3 +4688,28 @@ other = "Estamos comprobando su pago y le escribiremos."
 
 ["shop.public.review_late_payment_no_stock"]
 other = "Su pago ha llegado. Estamos comprobando la disponibilidad de su pedido y le escribiremos."
+
+# --- salesnotify.shop.courier_*: the plain courier text of an order card ---
+["salesnotify.shop.courier_order"]
+other = "Pedido n.º {{.Number}}"
+
+["salesnotify.shop.courier_pickup"]
+other = "Recogida en tienda"
+
+["salesnotify.shop.courier_none"]
+other = "Sin envío (producto digital o servicio)"
+
+["salesnotify.shop.courier_item"]
+other = "{{.Name}} × {{.Qty}}"
+
+["salesnotify.shop.courier_total"]
+other = "Total: {{.Amount}}"
+
+["salesnotify.shop.courier_note"]
+other = "Nota del comprador: {{.Note}}"
+
+["salesnotify.shop.courier_map_google"]
+other = "Google Maps: {{.Url}}"
+
+["salesnotify.shop.courier_map_waze"]
+other = "Waze: {{.Url}}"

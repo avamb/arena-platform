@@ -238,3 +238,28 @@ other = "Kontrolujeme vaši platbu a napíšeme vám."
 
 ["shop.public.review_late_payment_no_stock"]
 other = "Vaše platba dorazila. Ověřujeme dostupnost zboží a napíšeme vám."
+
+# --- salesnotify.shop.courier_*: the plain courier text of an order card ---
+["salesnotify.shop.courier_order"]
+other = "Objednávka č. {{.Number}}"
+
+["salesnotify.shop.courier_pickup"]
+other = "Osobní odběr"
+
+["salesnotify.shop.courier_none"]
+other = "Bez doručení (digitální zboží nebo služba)"
+
+["salesnotify.shop.courier_item"]
+other = "{{.Name}} × {{.Qty}}"
+
+["salesnotify.shop.courier_total"]
+other = "Celkem: {{.Amount}}"
+
+["salesnotify.shop.courier_note"]
+other = "Poznámka kupujícího: {{.Note}}"
+
+["salesnotify.shop.courier_map_google"]
+other = "Mapy Google: {{.Url}}"
+
+["salesnotify.shop.courier_map_waze"]
+other = "Waze: {{.Url}}"

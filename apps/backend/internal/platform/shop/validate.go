@@ -242,6 +242,11 @@ func PublicStatus(o gen.ShopOrderRow, holdPassed bool) string {
 // list arrives): name, phone, city, address, postal code, contents, total,
 // comment. Empty fields are left out; money is printed in major units with the
 // currency code.
+//
+// Deprecated: English-only and without the order number, the buyer's note
+// links and the locale. The order card's courier text is
+// salesnotify.FormatShopCourierText (Service.CourierSourceFor feeds it); this
+// stays only for Service.CourierTextFor and goes with it.
 func CourierText(o gen.ShopOrderRow, items []gen.ShopOrderItemRow) string {
 	var b strings.Builder
 	line := func(s string) {

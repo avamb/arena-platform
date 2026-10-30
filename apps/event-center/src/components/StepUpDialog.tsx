@@ -26,21 +26,21 @@ import { StepUpQuestion, confirmPassword, stepUpErrorKey, trapFocusIndex } from 
 import { useI18n, type MessageKey } from "@/lib/i18n";
 
 interface StepUpValue {
-  ask: (orgId: string) => Promise<boolean>;
+  ask: (orgId: string, intro?: MessageKey) => Promise<boolean>;
 }
 
 const Ctx = createContext<StepUpValue | null>(null);
 
 export function StepUpProvider({ children }: { children: ReactNode }) {
-  const [openOrg, setOpenOrg] = useState<string | null>(null);
-  const question = useMemo(() => new StepUpQuestion(setOpenOrg), []);
-  const ask = useCallback((orgId: string) => question.ask(orgId), [question]);
+  const [open, setOpen] = useState<{ orgId: string; intro?: MessageKey } | null>(null);
+  const question = useMemo(() => new StepUpQuestion((orgId, intro) => setOpen(orgId === null ? null : { orgId, intro })), []);
+  const ask = useCallback((orgId: string, intro?: MessageKey) => question.ask(orgId, intro), [question]);
   const value = useMemo(() => ({ ask }), [ask]);
 
   return (
     <Ctx.Provider value={value}>
       {children}
-      {openOrg !== null && <StepUpDialog orgId={openOrg} onDone={(ok) => question.answer(ok)} />}
+      {open !== null && <StepUpDialog orgId={open.orgId} intro={open.intro} onDone={(ok) => question.answer(ok)} />}
     </Ctx.Provider>
   );
 }
@@ -53,7 +53,7 @@ export function useStepUp(): StepUpValue {
 
 const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
-function StepUpDialog({ orgId, onDone }: { orgId: string; onDone: (ok: boolean) => void }) {
+function StepUpDialog({ orgId, intro, onDone }: { orgId: string; intro?: MessageKey; onDone: (ok: boolean) => void }) {
   const { t } = useI18n();
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -116,7 +116,7 @@ function StepUpDialog({ orgId, onDone }: { orgId: string; onDone: (ok: boolean) 
         onKeyDown={keepFocusInside}
       >
         <h2 id="step-up-title">{t("stepUp.title")}</h2>
-        <p>{t("stepUp.intro")}</p>
+        <p>{t(intro ?? "stepUp.intro")}</p>
         <form onSubmit={onSubmit} noValidate>
           <label htmlFor="step-up-password">{t("stepUp.password")}</label>
           <input

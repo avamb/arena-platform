@@ -4836,3 +4836,28 @@ other = "We are checking your payment and will write to you."
 
 ["shop.public.review_late_payment_no_stock"]
 other = "Your payment arrived. We are checking the availability of your goods and will write to you."
+
+# --- salesnotify.shop.courier_*: the plain courier text of an order card ---
+["salesnotify.shop.courier_order"]
+other = "Order #{{.Number}}"
+
+["salesnotify.shop.courier_pickup"]
+other = "Pickup"
+
+["salesnotify.shop.courier_none"]
+other = "No delivery (digital / service)"
+
+["salesnotify.shop.courier_item"]
+other = "{{.Name}} × {{.Qty}}"
+
+["salesnotify.shop.courier_total"]
+other = "Total: {{.Amount}}"
+
+["salesnotify.shop.courier_note"]
+other = "Buyer's note: {{.Note}}"
+
+["salesnotify.shop.courier_map_google"]
+other = "Google Maps: {{.Url}}"
+
+["salesnotify.shop.courier_map_waze"]
+other = "Waze: {{.Url}}"

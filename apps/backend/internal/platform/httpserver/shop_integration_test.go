@@ -505,6 +505,11 @@ func TestShop_CheckoutHoldsStockAndWebhookPaysTheOrder(t *testing.T) {
 	if code != http.StatusOK || !strings.Contains(body["_raw"].(string), "Herzl 1") {
 		t.Fatalf("courier text = %d %v", code, body)
 	}
+	// The text shares the Telegram builder: the order number leads it and the
+	// buyer's note and the map links are in it (C-05).
+	if first, _, _ := strings.Cut(body["_raw"].(string), "\n"); !strings.Contains(first, fmt.Sprint(o.Number)) || !strings.Contains(body["_raw"].(string), "google.com/maps") {
+		t.Fatalf("courier text lacks the order number or the map link: %v", body["_raw"])
+	}
 	code, body, _ = f.do(http.MethodPost, f.orgPath(f.orgA, "/orders/"+o.ID.String()+"/ship"), f.ownerA, `{"tracking_note":"TRK1"}`)
 	if code != http.StatusOK || body["status"] != "shipped" || f.outboxCount(shop.EventOrderShipped, o.ID) != 1 {
 		t.Fatalf("ship = %d %v", code, body)

@@ -4830,3 +4830,28 @@ other = "Мы проверяем ваш платёж и напишем вам."
 
 ["shop.public.review_late_payment_no_stock"]
 other = "Оплата получена. Мы уточняем наличие товара и напишем вам."
+
+# --- salesnotify.shop.courier_*: the plain courier text of an order card ---
+["salesnotify.shop.courier_order"]
+other = "Заказ № {{.Number}}"
+
+["salesnotify.shop.courier_pickup"]
+other = "Самовывоз"
+
+["salesnotify.shop.courier_none"]
+other = "Без доставки (цифровой товар или услуга)"
+
+["salesnotify.shop.courier_item"]
+other = "{{.Name}} × {{.Qty}}"
+
+["salesnotify.shop.courier_total"]
+other = "Сумма: {{.Amount}}"
+
+["salesnotify.shop.courier_note"]
+other = "Комментарий покупателя: {{.Note}}"
+
+["salesnotify.shop.courier_map_google"]
+other = "Google Карты: {{.Url}}"
+
+["salesnotify.shop.courier_map_waze"]
+other = "Waze: {{.Url}}"

@@ -238,3 +238,28 @@ other = "אנחנו בודקים את התשלום שלכם ונכתוב לכם.
 
 ["shop.public.review_late_payment_no_stock"]
 other = "התשלום שלכם התקבל. אנחנו בודקים את זמינות הסחורה ונכתוב לכם."
+
+# --- salesnotify.shop.courier_*: the plain courier text of an order card ---
+["salesnotify.shop.courier_order"]
+other = "הזמנה מס' {{.Number}}"
+
+["salesnotify.shop.courier_pickup"]
+other = "איסוף עצמי"
+
+["salesnotify.shop.courier_none"]
+other = "ללא משלוח (מוצר דיגיטלי או שירות)"
+
+["salesnotify.shop.courier_item"]
+other = "{{.Name}} × {{.Qty}}"
+
+["salesnotify.shop.courier_total"]
+other = "סה״כ: {{.Amount}}"
+
+["salesnotify.shop.courier_note"]
+other = "הערת הקונה: {{.Note}}"
+
+["salesnotify.shop.courier_map_google"]
+other = "Google Maps: {{.Url}}"
+
+["salesnotify.shop.courier_map_waze"]
+other = "Waze: {{.Url}}"

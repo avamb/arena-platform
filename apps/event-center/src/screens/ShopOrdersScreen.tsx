@@ -19,7 +19,7 @@ import { Empty, ErrorBox, Loading } from "@/components/ui";
 import { fetchShopOrderCounts, fetchShopSettings, searchShopOrders } from "@/lib/api/shopApi";
 import { formatNumber } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
-import { EMPTY_FILTERS, SHOP_ORDER_STATUSES, activeOrderTab, isShopOrderStatus, ordersSearchBody, shopTimeZone, type OrderTab, type ShopOrdersFilters } from "@/lib/shop";
+import { EMPTY_FILTERS, SHOP_ORDER_STATUSES, activeOrderTab, isShopOrderStatus, ordersSearchBody, shopTimeZone, uniqueById, type OrderTab, type ShopOrdersFilters } from "@/lib/shop";
 import { useOrg } from "@/screens/OrgLayout";
 
 export const SHOP_ORDERS_PAGE_SIZE = 50;
@@ -50,7 +50,7 @@ export function ShopOrdersScreen() {
   const counts = useQuery({ queryKey: ["shopOrderCounts", orgId], queryFn: () => fetchShopOrderCounts(orgId), enabled: canRead, refetchOnWindowFocus: true });
 
   if (!canRead) return <NoShopAccess />;
-  const rows = orders.data?.pages.flatMap((p) => p.orders) ?? [];
+  const rows = uniqueById(orders.data?.pages ?? []);
   const filtered = filters.status !== "" || filters.view !== "" || filters.q.trim() !== "" || filters.from !== "" || filters.to !== "";
   const pickTab = (next: OrderTab) => void navigate({ search: next === "all" ? {} : { view: next } });
   const emptyText = filters.view === "to_ship" && !filters.q.trim() && filters.status === "" ? t("shop.orders.emptyToShip") : filtered ? t("shop.orders.emptySearch") : t("shop.orders.empty");
@@ -119,8 +119,11 @@ export function ShopOrdersScreen() {
           )}
         </div>
       </form>
-      {orders.isLoading && <Loading />}
-      {orders.error !== null && <ErrorBox error={orders.error} onRetry={() => void orders.refetch()} />}
+      {/* Pending also covers the moment the list waits for the shop's settings (a period is read in the shop's zone). */}
+      {orders.isPending && !orders.isError && <Loading />}
+      {orders.error !== null && (
+        <ErrorBox error={orders.error} onRetry={() => void (orders.isFetchNextPageError ? orders.fetchNextPage() : orders.refetch())} />
+      )}
       {orders.data !== undefined && rows.length === 0 && <Empty>{emptyText}</Empty>}
       {rows.length > 0 && (
         <>
@@ -132,7 +135,7 @@ export function ShopOrdersScreen() {
       )}
       {orders.hasNextPage && (
         <button type="button" className="btn" disabled={orders.isFetchingNextPage} onClick={() => void orders.fetchNextPage()} data-testid="shop-orders-more">
-          {t("shop.orders.more")}
+          {orders.isFetchingNextPage ? t("shop.orders.loadingMore") : t("shop.orders.more")}
         </button>
       )}
     </section>
