@@ -54,6 +54,8 @@ npm run fixtures -- C:/Projects/arena_new/.local/einatwinery_export
 Against the real API set `VITE_API_BASE_URL` to its origin (for example
 `https://api-staging.arenasoldout.com`). The API must answer CORS for the shop
 origin and `return_url` of the checkout must be on its allow-list.
+Step by step release of a shop on the organizer's domain (DNS, Dokploy, CORS, opening the shop,
+payment channel, 301, robots/sitemap): `docs/ops/shop_release_checklist_ru.md` in the repo root.
 
 ## Scripts
 
