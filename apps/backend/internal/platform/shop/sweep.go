@@ -67,10 +67,13 @@ type PGScheduler struct{ db gen.DBTX }
 // NewPGScheduler builds the scheduler over a pool.
 func NewPGScheduler(db gen.DBTX) *PGScheduler { return &PGScheduler{db: db} }
 
-// ScheduleNext queues one pending run at at.
+// ScheduleNext queues one pending run at at, unless one is already pending:
+// the handler schedules the next run BEFORE it works, so a retry of a failed
+// run must not start a second chain.
 func (p *PGScheduler) ScheduleNext(ctx context.Context, at time.Time) error {
 	if _, err := p.db.Exec(ctx, `INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
-		VALUES ($1, '{}', 3, 'pending', $2)`, JobType, at); err != nil {
+		SELECT $1, '{}', 3, 'pending', $2
+		WHERE NOT EXISTS (SELECT 1 FROM worker_jobs WHERE job_type = $1 AND status = 'pending')`, JobType, at); err != nil {
 		return fmt.Errorf("shop: schedule next sweep: %w", err)
 	}
 	return nil
@@ -102,8 +105,11 @@ type SweepOptions struct {
 	Logger    *slog.Logger
 }
 
-// NewSweepHandler is the worker handler of JobType: it expires due orders in
-// batches, then queues its own next run Interval later.
+// NewSweepHandler is the worker handler of JobType: it queues its own next
+// run Interval later FIRST (like billing.collect), then expires due orders in
+// batches. The worker gives a job three attempts; when the next run were
+// queued only after a successful pass, three failures in a row would end the
+// chain until the worker restarted and the unpaid tab would keep growing.
 func NewSweepHandler(opts SweepOptions) func(ctx context.Context, payload []byte) error {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
@@ -112,6 +118,11 @@ func NewSweepHandler(opts SweepOptions) func(ctx context.Context, payload []byte
 		opts.Interval = SweepInterval
 	}
 	return func(ctx context.Context, _ []byte) error {
+		if opts.Scheduler != nil {
+			if err := opts.Scheduler.ScheduleNext(ctx, time.Now().Add(opts.Interval)); err != nil {
+				return err
+			}
+		}
 		total := 0
 		for i := 0; i < sweepMaxBatches; i++ {
 			n, err := opts.Service.ExpireDue(ctx)
@@ -121,11 +132,6 @@ func NewSweepHandler(opts SweepOptions) func(ctx context.Context, payload []byte
 			total += n
 			if n < sweepBatch || ctx.Err() != nil {
 				break
-			}
-		}
-		if opts.Scheduler != nil {
-			if err := opts.Scheduler.ScheduleNext(ctx, time.Now().Add(opts.Interval)); err != nil {
-				return err
 			}
 		}
 		if total > 0 {

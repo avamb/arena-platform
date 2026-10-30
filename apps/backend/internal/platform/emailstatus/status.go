@@ -45,6 +45,11 @@ const (
 	KindChange     = "change"
 	KindCancel     = "cancel"
 	KindRefund     = "refund"
+	// The letters of a merchandise shop order (migration 0179): they name
+	// email_letters.shop_order_id, never order_id.
+	KindShopReceived = "shop_received"
+	KindShopShipped  = "shop_shipped"
+	KindShopRefunded = "shop_refunded"
 )
 
 // Letter statuses as the API reports them. StatusQueued exists only in the

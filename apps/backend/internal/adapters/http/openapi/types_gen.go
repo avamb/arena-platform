@@ -17112,9 +17112,9 @@ type ShopOrderPayment struct {
 	State string `json:"state"`
 }
 
-// ShopOrderSearchRequest The filters of a shop order search. Every field is optional.
+// ShopOrderSearchRequest The filters of the shop order list, in a body.
 type ShopOrderSearchRequest struct {
-	// From Created at or after this instant (RFC 3339, or YYYY-MM-DD for UTC midnight).
+	// From Created at or after this instant (RFC 3339 with a zone, or YYYY-MM-DD for UTC midnight).
 	From *string `json:"from,omitempty"`
 
 	// Limit Page size, 1-200 (default 50).
@@ -17126,13 +17126,13 @@ type ShopOrderSearchRequest struct {
 	// Q Order number, or part of the buyer's e-mail or name.
 	Q *string `json:"q,omitempty"`
 
-	// Status Only orders of this status: `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review`.
+	// Status Only orders of this status.
 	Status *string `json:"status,omitempty"`
 
-	// To Created before this instant (RFC 3339, or YYYY-MM-DD for UTC midnight).
+	// To Created before this instant (RFC 3339 with a zone, or YYYY-MM-DD for UTC midnight).
 	To *string `json:"to,omitempty"`
 
-	// View A tab of the order list, combined with `status` when both are given: `to_ship`, `unpaid`, `shipped` or `refunds`.
+	// View A tab of the list: `to_ship`, `unpaid`, `shipped` or `refunds`.
 	View *string `json:"view,omitempty"`
 }
 
@@ -17485,6 +17485,9 @@ type ShopRefundResponse struct {
 
 	// Refund The refund.
 	Refund ShopRefund `json:"refund"`
+
+	// Replayed True when the `Idempotency-Key` had been used before and this is the first call's refund. Nothing new was written.
+	Replayed *bool `json:"replayed,omitempty"`
 }
 
 // ShopResendEmailRequest Which buyer letter to send once more.
@@ -21209,6 +21212,12 @@ type ListShopOrdersParams struct {
 
 	// Offset How many orders to skip (the previous page's `next_offset`).
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// RefundShopOrderParams defines parameters for RefundShopOrder.
+type RefundShopOrderParams struct {
+	// IdempotencyKey Client-chosen key of 1 to 255 characters (a UUID) that identifies this refund; one per open refund dialog.
+	IdempotencyKey string `json:"Idempotency-Key"`
 }
 
 // ListShopProductsParams defines parameters for ListShopProducts.

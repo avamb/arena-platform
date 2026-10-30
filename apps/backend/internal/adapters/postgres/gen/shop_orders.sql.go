@@ -607,6 +607,36 @@ func (q *Queries) SumShopPaymentRefunds(ctx context.Context, paymentIntentID uui
 	return accepted, live, err
 }
 
+const getShopRefundByKey = `-- name: GetShopRefundByKey :one
+SELECT id, shop_order_id, amount
+FROM   refunds
+WHERE  org_id = $1 AND idempotency_key = $2`
+
+// ShopRefundKeyRow is the refund an Idempotency-Key created.
+type ShopRefundKeyRow struct {
+	ID          uuid.UUID
+	ShopOrderID *uuid.UUID
+	Amount      int64
+}
+
+// GetShopRefundByKey finds the refund a shop refund call with this
+// Idempotency-Key created in the organization (pgx.ErrNoRows: none yet).
+func (q *Queries) GetShopRefundByKey(ctx context.Context, orgID uuid.UUID, key string) (ShopRefundKeyRow, error) {
+	var r ShopRefundKeyRow
+	err := q.db.QueryRow(ctx, getShopRefundByKey, orgID, key).Scan(&r.ID, &r.ShopOrderID, &r.Amount)
+	return r, err
+}
+
+const setShopRefundKey = `-- name: SetShopRefundKey :exec
+UPDATE refunds SET shop_order_id = $2, idempotency_key = $3 WHERE id = $1`
+
+// SetShopRefundKey ties a freshly inserted refund to its shop order and to
+// the Idempotency-Key of the call, so a repeat of the call finds it.
+func (q *Queries) SetShopRefundKey(ctx context.Context, refundID, shopOrderID uuid.UUID, key string) error {
+	_, err := q.db.Exec(ctx, setShopRefundKey, refundID, shopOrderID, key)
+	return err
+}
+
 // ShopOrderCounts is how many orders each tab of the order list holds.
 type ShopOrderCounts struct {
 	All     int64 `json:"all"`

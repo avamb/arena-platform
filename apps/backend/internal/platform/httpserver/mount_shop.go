@@ -173,6 +173,8 @@ func (s *Server) mountShopRoutes(r chi.Router) {
 		pr.Get(base+"/pages", s.orgGated(h.HandleListPages))
 		pr.Get(base+"/orders", s.orgGated(h.HandleListOrders))
 		pr.Get(base+"/orders/counts", s.orgGated(h.HandleOrderCounts))
+		// A search is a read whose filters (a buyer's name or e-mail) travel in
+		// the body, out of the proxy and Cloudflare access logs (SA-17).
 		pr.Post(base+"/orders/search", s.orgGated(h.HandleSearchOrders))
 		pr.Get(base+"/orders/{order_id}", s.orgGated(h.HandleGetOrder))
 		pr.Get(base+"/orders/{order_id}/courier-text", s.orgGated(h.HandleCourierText))
