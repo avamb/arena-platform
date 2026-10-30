@@ -885,7 +885,7 @@ export const PARITY: readonly ParityRow[] = [
     fn: "Отправка, отмена и возврат заказа магазина",
     bot: "— (только веб)",
     web: "R3",
-    routes: [`POST ${O}/shop/orders/{order_id}/ship`, `POST ${O}/shop/orders/{order_id}/cancel`, `POST ${O}/shop/orders/{order_id}/refund`],
+    routes: [`POST ${O}/shop/orders/{order_id}/ship`, `POST ${O}/shop/orders/{order_id}/cancel`, `POST ${O}/shop/orders/{order_id}/refund`, `POST ${O}/shop/orders/{order_id}/resolve`],
     note: "Отмена (только неоплаченный заказ) и возврат спрашивают пароль ещё раз (`X-Step-Up-Token`) и слово подтверждения, как возвраты билетов. Возврат по умолчанию на всю оставшуюся сумму и требует права `refund.create` и `refund.approve` рядом с `shop.manage`. Одна операция возврата идёт с одним `Idempotency-Key`, повтор после потерянного ответа не вернёт деньги дважды; после ошибки заказ читается заново и показывается остаток от сервера. Заказ в статусе `manual_review` (оплата пришла после конца брони) можно отправить, и тогда товар спишется в этот момент, или вернуть полностью, и тогда заказ закроется.",
   },
   {

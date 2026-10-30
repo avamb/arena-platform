@@ -247,6 +247,8 @@ export const API = {
   shopOrderResendEmail: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/resend-email" },
   shopOrderShip: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/ship" },
   shopOrderCancel: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/cancel" },
+  // Waits for the backend lane: the operator decision on an order in manual_review (shop.manage + refund.create, step-up, Idempotency-Key).
+  shopOrderResolve: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/resolve" },
   shopOrderRefund: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/refund" },
   shopCourierText: { method: "GET", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/courier-text" },
 } as const satisfies Record<string, ApiRoute>;

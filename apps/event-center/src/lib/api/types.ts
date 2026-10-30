@@ -179,7 +179,11 @@ export type ShopVariantInput = S["ShopVariantInput"];
 export type ShopProductCreateRequest = S["ShopProductCreateRequest"];
 export type ShopProductPatchRequest = S["ShopProductPatchRequest"];
 export type ShopOrderItem = S["ShopOrderItem"];
-export type ShopOrder = S["ShopOrder"];
+/** Why an order waits in "needs a check" (the backend sends it with the order; the generated client may not carry it yet). */
+export type ShopOrderReviewReason = "late_payment_no_stock" | "payment_unconfirmed";
+export type ShopOrder = S["ShopOrder"] & { review_reason?: ShopOrderReviewReason | string | null };
+/** The operator's decision on an order in "needs a check". */
+export type ShopOrderResolveAction = "fulfil" | "refund_and_cancel";
 export type ShopOrderList = S["ShopOrderList"];
 export type ShopOrderCounts = S["ShopOrderCounts"];
 export type ShopResendEmailResponse = S["ShopResendEmailResponse"];

@@ -555,6 +555,36 @@ export function canCancelShopOrder(status: string, canManage: boolean): boolean 
   return canManage && status === "pending_payment";
 }
 
+/**
+ * The rows of every loaded page of a list read by offset, each id once (SB-14). A new order that arrives between two
+ * presses of "Show more" pushes the last row of the page before onto the next page; the first copy stays.
+ */
+export function uniqueById<T extends { id: string }>(pages: readonly { readonly orders: readonly T[] }[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const page of pages) {
+    for (const o of page.orders) {
+      if (seen.has(o.id)) continue;
+      seen.add(o.id);
+      out.push(o);
+    }
+  }
+  return out;
+}
+
+/**
+ * The operator's decision on an order in "needs a check" (fulfil, or refund and cancel). `allowed` is shop.manage
+ * together with refund.create and refund.approve, like the refund itself. Other statuses have no such decision.
+ */
+export function canResolveShopOrder(status: string, allowed: boolean): boolean {
+  return allowed && status === "manual_review";
+}
+
+/** The review reasons the card knows how to explain; anything else falls back to the general text. */
+export function reviewReasonOf(reason: string | null | undefined): "late_payment_no_stock" | "payment_unconfirmed" | null {
+  return reason === "late_payment_no_stock" || reason === "payment_unconfirmed" ? reason : null;
+}
+
 /** What can still go back to the buyer, minor units. */
 export function refundable(order: Pick<ShopOrder, "total" | "refunded_minor">): number {
   return Math.max(0, order.total - order.refunded_minor);

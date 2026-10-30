@@ -15,7 +15,7 @@ import { fetchShopOrder, fetchShopSettings } from "@/lib/api/shopApi";
 import type { ShopOrder } from "@/lib/api/types";
 import { formatMoney, regionName } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
-import { formatShopTime, orderTimeline, paymentRefundKind, refundable, shopOrderNumber } from "@/lib/shop";
+import { formatShopTime, orderTimeline, paymentRefundKind, refundable, reviewReasonOf, shopOrderNumber } from "@/lib/shop";
 import { useOrg } from "@/screens/OrgLayout";
 
 const PAY_STATES = ["created", "processing", "succeeded", "failed"] as const;
@@ -36,6 +36,7 @@ export function ShopOrderCard({ order, orgId, actions, note, country }: { order:
   const payState = order.payment !== null && order.payment !== undefined ? order.payment.state : null;
   // M-12: the payment itself stays "succeeded" after a refund; the block says what came back.
   const refundKind = paymentRefundKind(order, payState);
+  const reviewReason = reviewReasonOf(order.review_reason);
 
   return (
     <article className="shop-page" aria-labelledby="shop-order-title" data-testid="shop-order-card">
@@ -62,7 +63,12 @@ export function ShopOrderCard({ order, orgId, actions, note, country }: { order:
           <p>
             <strong>{t("shop.order.review.title")}</strong>
           </p>
-          <p>{t("shop.order.review.text")}</p>
+          {reviewReason !== null && (
+            <p data-testid="shop-order-review-reason">
+              <strong>{t("shop.order.review.reason", { reason: t(`shop.order.review.reason.${reviewReason}` as MessageKey) })}</strong>
+            </p>
+          )}
+          <p>{reviewReason !== null ? t(`shop.order.review.text.${reviewReason}` as MessageKey) : t("shop.order.review.text")}</p>
         </div>
       )}
 

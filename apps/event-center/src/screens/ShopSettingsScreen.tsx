@@ -79,6 +79,16 @@ export interface ShopSettingsFormProps {
    * is stored in it). null while it is not known; undefined means none.
    */
   productCount?: number | null;
+  /**
+   * SB-13: a helper list that did not load says so, with a way to try again, instead of leaving the form on
+   * "checking" / "no country" / "no rights" for good. The rest of the form stays usable.
+   */
+  productsError?: unknown;
+  onRetryProducts?: () => void;
+  countriesError?: unknown;
+  onRetryCountries?: () => void;
+  channelsError?: unknown;
+  onRetryChannels?: () => void;
   /** `shop.manage`: without it the form is read only. */
   canManage: boolean;
   busy: boolean;
@@ -100,6 +110,10 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
   const countries = p.countries
     .map((c) => ({ iso2: c.iso2, name: regionName(c.iso2, locale) || c.name }))
     .sort((a, b) => a.name.localeCompare(b.name, locale));
+  // The stored country stays selectable even when the list did not load, so the field never claims "no country".
+  if (draft.country !== "" && !countries.some((c) => c.iso2 === draft.country)) {
+    countries.unshift({ iso2: draft.country, name: regionName(draft.country, locale) || draft.country });
+  }
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -127,9 +141,16 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
             <p data-testid="shop-settings-currency-value">
               {settings.currency} · {currencyLabel(settings.currency, locale)}
             </p>
-            <p className="field-hint" data-testid="shop-settings-currency-locked">
-              {currencyMode === "locked" ? t("shop.settings.f.currencyLocked") : t("shop.settings.f.currencyChecking")}
-            </p>
+            {currencyMode === "checking" && p.productsError !== undefined && p.productsError !== null ? (
+              <div data-testid="shop-settings-products-error">
+                <ErrorBox error={p.productsError} onRetry={p.onRetryProducts} />
+                <p className="field-hint">{t("shop.settings.f.currencyCheckFailed")}</p>
+              </div>
+            ) : (
+              <p className="field-hint" data-testid="shop-settings-currency-locked">
+                {currencyMode === "locked" ? t("shop.settings.f.currencyLocked") : t("shop.settings.f.currencyChecking")}
+              </p>
+            )}
           </>
         )}
         <TextField
@@ -149,6 +170,11 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
           onChange={(v) => set({ shippingLabel: v })}
           testId="shop-settings-label"
         />
+        {p.countriesError !== undefined && p.countriesError !== null && (
+          <div data-testid="shop-settings-countries-error">
+            <ErrorBox error={p.countriesError} onRetry={p.onRetryCountries} />
+          </div>
+        )}
         <SelectField label={t("shop.settings.f.country")} error={err("country")} value={draft.country} onChange={(v) => set({ country: v })} testId="shop-settings-country">
           <option value="">{t("shop.settings.f.countryNone")}</option>
           {countries.map((c) => (
@@ -216,6 +242,15 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
               </option>
             ))}
           </SelectField>
+        ) : p.channelsError !== undefined && p.channelsError !== null ? (
+          <>
+            <p>
+              <strong>{t("shop.settings.f.channel")}</strong>
+            </p>
+            <div data-testid="shop-settings-channels-error">
+              <ErrorBox error={p.channelsError} onRetry={p.onRetryChannels} />
+            </div>
+          </>
         ) : (
           <>
             <p>
@@ -226,7 +261,7 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
             </p>
           </>
         )}
-        {p.channelsLoading !== true && channelWarning(draft, p.channels === null ? null : p.channels.length) !== "none" && (
+        {p.channelsLoading !== true && (p.channelsError === undefined || p.channelsError === null) && channelWarning(draft, p.channels === null ? null : p.channels.length) !== "none" && (
           <p className="notice notice-warn" role="status" data-testid="shop-settings-channel-warning">
             {channelWarning(draft, p.channels === null ? null : p.channels.length) === "noChannels"
               ? t("shop.settings.channelNone")
@@ -290,6 +325,7 @@ export function SettingsPage({ settings }: { settings: ShopSettingsView }) {
   // keeps its own baseline, so the version it sends back is the one the person actually saw.
   const [baseline, setBaseline] = useState<ShopSettingsView>(settings);
   const allowLeave = useRef(false);
+  const saving = useRef(false);
 
   const countries = useQuery({ queryKey: ["geo", "countries", locale], queryFn: () => listCountries(locale), staleTime: Number.POSITIVE_INFINITY, retry: false });
   const canChannels = access.can("channel.read");
@@ -305,6 +341,8 @@ export function SettingsPage({ settings }: { settings: ShopSettingsView }) {
 
   /** Saves the form; true when the settings were stored (the question on leaving the page uses it). */
   const submit = async (): Promise<boolean> => {
+    // The leave question and the button may both call this: a second PUT with the same version would answer 409.
+    if (saving.current) return false;
     setTried(true);
     setSaved(false);
     setReloaded(false);
@@ -314,6 +352,7 @@ export function SettingsPage({ settings }: { settings: ShopSettingsView }) {
       if (domain !== (baseline.shop_domain ?? "")) body.shop_domain = domain.trim();
       if (enabled !== baseline.enabled) body.enabled = enabled;
     }
+    saving.current = true;
     setBusy(true);
     setFailure(null);
     try {
@@ -329,6 +368,7 @@ export function SettingsPage({ settings }: { settings: ShopSettingsView }) {
       setFailure(error);
       return false;
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   };
@@ -370,6 +410,12 @@ export function SettingsPage({ settings }: { settings: ShopSettingsView }) {
         channelsLoading={canChannels && channels.isPending}
         settings={baseline}
         productCount={productCount}
+        productsError={products.isError ? products.error : undefined}
+        onRetryProducts={() => void products.refetch()}
+        countriesError={countries.isError ? countries.error : undefined}
+        onRetryCountries={() => void countries.refetch()}
+        channelsError={canChannels && channels.isError ? channels.error : undefined}
+        onRetryChannels={() => void channels.refetch()}
         operator={operator}
         operatorDomain={domain}
         onOperatorDomain={setDomain}
