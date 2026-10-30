@@ -161,8 +161,19 @@ describe('layout', () => {
     expect(doc.querySelector('#MainContent #m')).not.toBeNull();
   });
   it('shows the cart count in the bubble', () => {
-    const doc = dom(layout(ctx([{ variant_id: 'v', qty: 3 }]), ''));
+    const doc = dom(layout(ctx([{ variant_id: shop.products[0].variants[0].id, qty: 3 }]), ''));
     expect(doc.querySelector('.cart-count-bubble span[aria-hidden]')?.textContent).toBe('3');
+  });
+  it('does not count a line the catalog no longer has (SA-03)', () => {
+    const doc = dom(layout(ctx([{ variant_id: shop.products[0].variants[0].id, qty: 2 }, { variant_id: 'gone', qty: 5 }]), ''));
+    expect(doc.querySelector('.cart-count-bubble span[aria-hidden]')?.textContent).toBe('2');
+  });
+  it('SA-20: the Hebrew age gate is marked lang=he dir=rtl, its +18 mark stays left-to-right', () => {
+    const doc = dom(layout(ctx(), ''));
+    const popup = doc.querySelector('#popup');
+    expect(popup?.getAttribute('lang')).toBe('he');
+    expect(popup?.getAttribute('dir')).toBe('rtl');
+    expect(popup?.querySelector('.section-text')?.getAttribute('dir')).toBe('ltr');
   });
   it('omits the age gate when the shop has none', () => {
     const noGate = { ...shop, settings: { ...shop.settings, age_gate_min_age: 0 } };

@@ -7,7 +7,7 @@
 import { sized } from '../lib/cdn';
 import { esc } from '../lib/html';
 import { cartCountLabel, T } from '../lib/i18n';
-import { itemCount } from '../lib/cart';
+import { visibleCount } from '../lib/cart';
 import type { MenuItem } from '../lib/api';
 import { contactLine, icon, url, type Ctx } from './common';
 
@@ -120,7 +120,7 @@ function header(ctx: Ctx, home: boolean): string {
           </a></li>`,
     )
     .join('');
-  const count = itemCount(ctx.cart);
+  const count = visibleCount(ctx.cart, ctx.shop.products);
   return `<div id="shopify-section-header" class="shopify-section shopify-section-group-header-group section-header">${sprite()}<sticky-header data-sticky-type="reduce-logo-size" class="header-wrapper color-background-1 gradient header-wrapper--border-bottom"><header class="header header--middle-left header--mobile-center page-width header--has-menu header--has-social header--has-account">
 
 <header-drawer data-breakpoint="tablet">
@@ -383,11 +383,14 @@ function ageGate(ctx: Ctx): string {
   // A modal <dialog>: it opens in the browser's top layer, so nothing of Dawn (every
   // product block and quantity field has its own stacking context) can paint over it,
   // and the page behind it is inert until the visitor answers.
-  return `<dialog id="popup" data-exit-url="${esc(g.exitUrl)}" aria-label="${esc(g.heading)}">
+  // The popup is Hebrew (the buyers are in Israel) on a Russian page: mark it, or a screen reader
+  // reads it with the wrong voice. The "+18" mark stays left-to-right.
+  const dir = ['he', 'ar', 'fa', 'ur'].includes(g.lang.toLowerCase().split('-')[0]) ? 'rtl' : 'ltr';
+  return `<dialog id="popup" data-exit-url="${esc(g.exitUrl)}" aria-label="${esc(g.heading)}" lang="${esc(g.lang)}" dir="${dir}">
         <div class="popup-content">
             <div class="popup-contents">
             <div class="section-heading">${esc(g.heading)}</div>
-            <div class="section-text">+${minAge}</div>
+            <div class="section-text" dir="ltr">+${minAge}</div>
             <div class="buttons">
                 <button id="allowButton">${esc(g.allow)}</button>
                 <button id="denyButton">${esc(g.deny)}</button>

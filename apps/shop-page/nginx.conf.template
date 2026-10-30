@@ -10,10 +10,68 @@
 #   - index.html is never cached.
 #   - The old Shopify URL shapes (/products/<handle>, /collections/all, /pages/..)
 #     are real routes of this app, so no redirect is needed for them on the
-#     organizer's own domain. Shapes that have no equivalent are listed in
-#     docs/redirects_301.md.
+#     organizer's own domain. The shapes that moved are 301'd below (table:
+#     docs/redirects_301.md, keep the two in step).
 #   - /{org_slug}/... and /... both fall back to index.html; the app reads the
 #     organization from the path (platform host) or from the host (custom domain).
+#   - An address that is not a route of the app answers 404 (the body is still
+#     index.html, so the app draws its own "not found" page), never a soft 200.
+#   - /cart, /checkout[/...] and /search carry X-Robots-Tag: noindex; a staging
+#     host (any name containing "staging") is noindex everywhere.
+#
+# A "custom domain" here is every host that is not the platform's own
+# (localhost, arenasoldout.com and its subdomains): there the organization is
+# not in the path, so the first path segment must be one of the app's routes.
+
+# 1 = the organizer's own domain (root paths), 0 = platform host or localhost
+# (first path segment is the organization slug).
+map $host $shop_custom {
+    default 1;
+    ~*^(localhost|127\.0\.0\.1|\[::1\]|.+\.localhost|(.+\.)?arenasoldout\.com)$ 0;
+}
+
+map $host $shop_staging {
+    default 0;
+    ~*staging 1;
+}
+
+# Is $uri a route of the app? (src/lib/route.ts parseShopPath.) On the platform
+# host any path is the organization's, the app decides.
+map "$shop_custom:$uri" $shop_known_route {
+    default 0;
+    ~^0: 1;
+    # Shopify's machine endpoints (/cart.js, /products/x.js, /products.json)
+    # are gone, never the app.
+    ~^1:/.*\.(js|json|atom)$ 0;
+    ~^1:/$ 1;
+    ~^1:/collections/all/?$ 1;
+    ~^1:/(cart|checkout|search)/?$ 1;
+    ~^1:/(products|pages|policies|checkout)/[^/]+/?$ 1;
+}
+
+# Old Shopify addresses that moved (301). Only on the organizer's own domain.
+# The value is the target path; empty = no redirect. Order matters: the first
+# matching regular expression wins.
+map "$shop_custom:$request_uri" $shop_redirect {
+    default "";
+    ~^1:/collections/tickets/?(\?.*)?$                /pages/%D0%BD%D0%B0%D1%88%D0%B8-%D0%BC%D0%B5%D1%80%D0%BE%D0%BF%D1%80%D0%B8%D1%8F%D1%82%D0%B8%D1%8F;
+    ~^1:/collections/[^/?]+/products/(?<rd_product>[^/?]+)/?(\?.*)?$  /products/$rd_product;
+    ~^1:/collections/all/?(\?.*)?$                    "";
+    ~^1:/collections/[^/?]+(\.atom)?/?(\?.*)?$        /collections/all;
+    ~^1:/cart/[0-9]+:[0-9]+                           /cart;
+    ~^1:/checkouts/                                   /cart;
+    ~^1:/(account|customer_authentication)(/|\?|$)    /pages/contact;
+    ~^1:/blogs/                                       /pages/%D0%BD%D0%B0%D1%88%D0%B8-%D0%BC%D0%B5%D1%80%D0%BE%D0%BF%D1%80%D0%B8%D1%8F%D1%82%D0%B8%D1%8F;
+}
+
+# X-Robots-Tag value by the ORIGINAL request address (stays the same after the
+# internal redirect that draws the 404 page). Empty = header not sent.
+map "$shop_staging:$shop_custom:$request_uri" $shop_robots {
+    default "";
+    ~^1:                                              "noindex, nofollow";
+    ~^0:1:/(cart|checkout|order|search)(/|\?|$)       "noindex, nofollow";
+    ~^0:0:/[^/?]+/(cart|checkout|order|search)(/|\?|$) "noindex, nofollow";
+}
 
 server {
     listen 8080;
@@ -21,6 +79,10 @@ server {
     server_name _;
     root /usr/share/nginx/html;
     index index.html;
+
+    # Redirects carry a relative Location: behind Traefik/Cloudflare this
+    # container only knows http and port 8080.
+    absolute_redirect off;
 
     gzip on;
     gzip_types
@@ -35,6 +97,9 @@ server {
     gzip_vary on;
 
     include /etc/nginx/snippets/security-headers.conf;
+
+    # Not a route of the app: 404 status, index.html body (the app draws its own page).
+    error_page 404 /index.html;
 
     location = /health {
         access_log off;
@@ -54,14 +119,45 @@ server {
         try_files $uri =404;
     }
 
+    location = /robots.txt {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "public, max-age=3600" always;
+        add_header X-Robots-Tag $shop_robots always;
+        try_files /robots.txt =404;
+    }
+
+    location = /sitemap.xml {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "public, max-age=3600" always;
+        try_files /sitemap.xml =404;
+    }
+
     location = /index.html {
         include /etc/nginx/snippets/security-headers.conf;
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header X-Robots-Tag $shop_robots always;
     }
 
     location / {
         include /etc/nginx/snippets/security-headers.conf;
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
-        try_files $uri /index.html;
+        add_header X-Robots-Tag $shop_robots always;
+
+        if ($shop_redirect != "") {
+            return 301 $shop_redirect;
+        }
+        # A real file (favicon, an image under /theme-less roots) is served as is.
+        try_files $uri @spa;
+    }
+
+    location @spa {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header X-Robots-Tag $shop_robots always;
+
+        if ($shop_known_route = 0) {
+            return 404;
+        }
+        rewrite ^ /index.html break;
     }
 }

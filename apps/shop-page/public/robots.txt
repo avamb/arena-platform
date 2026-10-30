@@ -1,0 +1,9 @@
+# Arena Sold Out organizer storefront (shop.einatwinery.com).
+# Carts, checkout and order status pages are private and never indexed.
+User-agent: *
+Disallow: /cart
+Disallow: /checkout
+Disallow: /order/
+Disallow: /search
+
+Sitemap: https://shop.einatwinery.com/sitemap.xml

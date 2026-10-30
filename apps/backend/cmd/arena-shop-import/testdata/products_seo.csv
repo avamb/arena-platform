@@ -1,0 +1,4 @@
+Handle,Title,Body (HTML),Vendor,Type,Tags,Option1 Name,Option1 Value,Variant SKU,Variant Grams,Variant Inventory Tracker,Variant Inventory Qty,Variant Inventory Policy,Variant Price,Variant Barcodes,SEO Title,SEO Description,Status
+seo-wine,Seo Wine,<p>Dry</p>,Winery,Wine,"Red, wine ,RED,, Gift ",Size,0.75,S-1,1250.4,shopify,5,deny,100.00,7290001234567,Buy Seo Wine,A dry red from the Galilee,active
+seo-wine,,,,,,,1.5,S-2,2600,shopify,2,deny,190.00,,,,
+plain,Plain,<p>x</p>,Winery,,,Title,Default Title,P-1,0,shopify,1,deny,10.00,,,,active

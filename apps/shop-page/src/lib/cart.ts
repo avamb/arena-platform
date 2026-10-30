@@ -37,6 +37,32 @@ const clamp = (qty: number, max = MAX_QTY): number => {
 /** What the buyer is told when an order would hold more than the shop's per-line limit. */
 export const qtyLimitMessage = (max: number): string => `В одном заказе не больше ${max} шт. этого товара`;
 
+/** What the buyer is told when a line is cut to the stock the API reports. */
+export const stockLimitMessage = (n: number): string => `В наличии только ${n} шт.`;
+
+/**
+ * The most one line of `variant` may hold: the shop's per-line limit (`lineMax`), cut to the
+ * stock the API reports (`max`, which the server already caps at the line limit). At least 1.
+ */
+export function variantLimit(variant: Pick<ShopVariant, 'max'>, lineMax: number): number {
+  const cap = Math.max(1, lineMax);
+  const stock = variant.max;
+  if (stock == null) return cap;
+  return Math.max(1, Math.min(cap, stock));
+}
+
+/** The note under a quantity field that was cut to `limit`: the stock when that is what binds, the per-line limit otherwise. */
+export const limitMessage = (limit: number, lineMax: number): string => (limit < Math.max(1, lineMax) ? stockLimitMessage(limit) : qtyLimitMessage(lineMax));
+
+/** `variantLimit` by variant id; the shop's line limit when the catalog does not know the variant. */
+export function variantLimitById(products: ShopProduct[], variantId: string, lineMax: number): number {
+  for (const p of products) {
+    const v = p.variants.find((x) => x.id === variantId);
+    if (v) return variantLimit(v, lineMax);
+  }
+  return Math.max(1, lineMax);
+}
+
 /** A typed quantity as a whole number of at least 1 (empty or junk reads as 1). */
 export function wantedQty(raw: string | number | null | undefined): number {
   const n = Math.floor(Number(raw));
@@ -71,6 +97,91 @@ export function setQty(items: CartItem[], variantId: string, qty: number, max = 
 /** Brings a stored basket under the shop's current cap (the cap may have been lowered since). */
 export function capCart(items: CartItem[], max: number): CartItem[] {
   return items.map((i) => (i.qty > max ? { ...i, qty: clamp(i.qty, max) } : i));
+}
+
+/** The basket items the catalog knows: the ones the buyer can see in the cart and the only ones a checkout may carry. */
+export function visibleItems(items: CartItem[], products: ShopProduct[]): CartItem[] {
+  return resolveLines(items, products).map((l) => l.item);
+}
+
+/** Units the buyer sees in the basket (the header counter): lines of a product the shop no longer sells are not counted. */
+export function visibleCount(items: CartItem[], products: ShopProduct[]): number {
+  return itemCount(visibleItems(items, products));
+}
+
+/**
+ * Brings a stored basket in line with the catalog just loaded: a variant the catalog no longer
+ * has (hidden or deleted product) is dropped, and a quantity past what is in stock is cut to it.
+ * `changed` tells the caller to save the basket again.
+ */
+export function reconcileCart(items: CartItem[], products: ShopProduct[], lineMax: number): { items: CartItem[]; changed: boolean } {
+  const byVariant = new Map<string, ShopVariant>();
+  for (const p of products) for (const v of p.variants) byVariant.set(v.id, v);
+  const out: CartItem[] = [];
+  let changed = false;
+  for (const it of items) {
+    const v = byVariant.get(it.variant_id);
+    if (!v) {
+      changed = true;
+      continue;
+    }
+    const limit = variantLimit(v, lineMax);
+    if (v.available && it.qty > limit) {
+      out.push({ ...it, qty: limit });
+      changed = true;
+    } else {
+      out.push(it);
+    }
+  }
+  return { items: out, changed };
+}
+
+/** One short line of a 409 `shop.out_of_stock` answer (`details.items`). */
+export interface Shortage {
+  variant_id: string;
+  requested: number;
+  available: number;
+}
+
+export function parseShortage(details: unknown): Shortage[] {
+  const raw = (details as { items?: unknown } | null | undefined)?.items;
+  if (!Array.isArray(raw)) return [];
+  const out: Shortage[] = [];
+  for (const r of raw) {
+    const o = r as { variant_id?: unknown; requested?: unknown; available?: unknown };
+    if (typeof o?.variant_id !== 'string') continue;
+    const available = Number(o.available);
+    out.push({ variant_id: o.variant_id, requested: Number(o.requested) || 0, available: Number.isFinite(available) ? Math.max(0, Math.floor(available)) : 0 });
+  }
+  return out;
+}
+
+const lineName = (l: CartLine): string => {
+  const v = (l.variant.title ?? '').trim();
+  return v !== '' && v !== 'Default Title' ? `${l.product.title} — ${v}` : l.product.title;
+};
+
+/**
+ * Cuts the basket to the short lines the server listed: a line with nothing left is removed, the
+ * rest is cut to what is in stock. `notes` says what changed, for the buyer.
+ */
+export function applyShortage(items: CartItem[], products: ShopProduct[], shortage: Shortage[]): { items: CartItem[]; notes: string[] } {
+  const lines = resolveLines(items, products);
+  let next = items;
+  const notes: string[] = [];
+  for (const sh of shortage) {
+    const line = lines.find((l) => l.item.variant_id === sh.variant_id);
+    if (!line) continue;
+    const name = lineName(line);
+    if (sh.available <= 0) {
+      next = removeItem(next, sh.variant_id);
+      notes.push(`«${name}» закончился, мы убрали его из корзины.`);
+    } else if (line.qty > sh.available) {
+      next = setQty(next, sh.variant_id, sh.available, sh.available);
+      notes.push(`«${name}»: в наличии только ${sh.available} шт., в корзине теперь ${sh.available}.`);
+    }
+  }
+  return { items: next, notes };
 }
 
 export function removeItem(items: CartItem[], variantId: string): CartItem[] {
@@ -239,6 +350,7 @@ export function buildCheckoutRequest(
   locale = 'ru',
   country = 'IL',
   shipping = true,
+  captchaToken?: string,
 ): CheckoutRequest {
   const req: CheckoutRequest = {
     items: items.map((i) => ({ variant_id: i.variant_id, qty: i.qty })),
@@ -247,6 +359,7 @@ export function buildCheckoutRequest(
     return_url: returnUrl,
     age_confirmed: f.consent18,
   };
+  if (captchaToken) req.captcha_token = captchaToken;
   const note = (f.note ?? '').trim();
   if (note) req.delivery_note = note.slice(0, MAX_NOTE_LEN);
   if (shipping) {
