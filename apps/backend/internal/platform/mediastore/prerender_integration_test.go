@@ -8,6 +8,8 @@ package mediastore
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"os"
 	"testing"
 
@@ -56,9 +58,10 @@ func TestInsert_QueuesPrerenderJobAndHandlerRendersIt(t *testing.T) {
 	if _, err := st.Put(ctx, storage.PutInput{Key: key, ContentType: "image/jpeg", Body: bytes.NewReader(raw)}); err != nil {
 		t.Fatal(err)
 	}
+	sum := sha256.Sum256(raw)
 	obj, err := repo.Insert(ctx, InsertInput{
 		OrgID: &org.ID, OwnerType: "shop_product", StorageBackend: repo.Backend(), StorageKey: key,
-		ContentType: "image/jpeg", ByteSize: int64(len(raw)), ChecksumSHA256: "x",
+		ContentType: "image/jpeg", ByteSize: int64(len(raw)), ChecksumSHA256: hex.EncodeToString(sum[:]),
 	})
 	if err != nil {
 		t.Fatal(err)
