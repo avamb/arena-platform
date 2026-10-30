@@ -119,8 +119,22 @@ export const MSG = {
   returnToPayment: 'Вернуться к оплате',
   // resume panel before a new checkout
   resumeTitle: 'У вас уже есть неоплаченный заказ',
-  resumeText: 'Вы можете вернуться к его оплате, не создавая новый заказ.',
+  resumeText: 'Вернитесь к его оплате, не создавая новый заказ.',
   resumeNew: 'Оформить новый заказ',
+} as const;
+
+/** "1 товар", "2 товара", "5 товаров". */
+export function itemsLabel(n: number): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  const word = m10 === 1 && m100 !== 11 ? 'товар' : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? 'товара' : 'товаров';
+  return `${n} ${word}`;
+}
+
+/** Notes shown when the basket changed without the buyer doing anything (the catalog moved). */
+export const CART_NOTE = {
+  removed: (name?: string): string => (name ? `Товар «${name}» снят с продажи, мы убрали его из корзины.` : 'Товар снят с продажи, мы убрали его из корзины.'),
+  cut: (name: string | undefined, n: number): string => `${name ? `«${name}»: в` : 'В'} наличии только ${n} шт., количество уменьшено.`,
 } as const;
 
 export function resumeOrderText(number: string | number | null | undefined, total: string | null | undefined): string {

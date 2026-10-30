@@ -292,3 +292,90 @@
     padding-right: 1.5rem;
   }
 }
+
+/* The unpaid-order hint: a calm block, not a form error. */
+.shop-checkout__resume {
+  margin: 1.5rem 0;
+  padding: 1.8rem 2rem;
+  border: 1px solid rgba(var(--color-foreground), 0.15);
+  background: rgba(var(--color-foreground), 0.04);
+  color: rgb(var(--color-foreground));
+}
+
+.shop-checkout__resume-title {
+  margin: 0 0 0.6rem;
+}
+
+.shop-checkout__resume-text {
+  margin: 0 0 1.5rem;
+}
+
+.shop-checkout__resume-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.shop-checkout__resume-actions .button {
+  flex: 1 1 18rem;
+}
+
+/* Phone: the order sits folded above the form, the full block below it is hidden. */
+.shop-checkout__mobile-summary {
+  display: none;
+}
+
+@media screen and (max-width: 767px) {
+  .shop-checkout__mobile-summary {
+    display: block;
+    margin-top: 2rem;
+    padding: 1.2rem 1.6rem;
+    border: 1px solid rgba(var(--color-foreground), 0.15);
+    background: rgba(var(--color-foreground), 0.04);
+  }
+
+  .shop-checkout__mobile-summary summary {
+    cursor: pointer;
+    font-size: 1.5rem;
+    font-weight: 600;
+    list-style: none;
+  }
+
+  .shop-checkout__mobile-summary summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .shop-checkout__mobile-summary summary::after {
+    content: '▾';
+    float: right;
+  }
+
+  .shop-checkout__mobile-summary[open] summary::after {
+    content: '▴';
+  }
+
+  .shop-checkout__mobile-summary .shop-checkout__lines {
+    margin-top: 1rem;
+  }
+
+  .shop-checkout__summary {
+    display: none;
+  }
+}
+
+/* What changed in the basket without the buyer doing anything. */
+.shop-notices {
+  margin: 1.5rem auto;
+  padding: 1.2rem 1.6rem;
+  border: 1px solid rgba(var(--color-foreground), 0.15);
+  background: rgba(var(--color-foreground), 0.04);
+}
+
+.shop-notices ul {
+  margin: 0;
+  padding: 0;
+}
+
+.shop-notices li + li {
+  margin-top: 0.4rem;
+}

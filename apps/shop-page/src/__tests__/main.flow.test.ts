@@ -57,7 +57,9 @@ const go = async (path: string): Promise<void> => {
   window.dispatchEvent(new PopStateEvent('popstate'));
   await tick(30);
 };
-const savedCart = (): unknown => JSON.parse(localStorage.getItem('arena_shop_cart:einatwinery') ?? 'null');
+const rawCart = (): { variant_id: string; qty: number; title?: string }[] => JSON.parse(localStorage.getItem('arena_shop_cart:einatwinery') ?? 'null');
+/** The saved basket without the product names kept next to it. */
+const savedCart = (): unknown => rawCart()?.map(({ variant_id, qty }) => ({ variant_id, qty }));
 const main = (): string => document.getElementById('MainContent')?.textContent ?? '';
 
 function fillCheckout(): HTMLFormElement {
@@ -84,7 +86,7 @@ beforeAll(async () => {
   window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
   vi.stubGlobal('fetch', fakeFetch);
   // The hidden product 'gone' is still in the stored basket from an earlier visit.
-  localStorage.setItem('arena_shop_cart:einatwinery', JSON.stringify([{ variant_id: 'a1', qty: 5 }, { variant_id: 'gone', qty: 2 }]));
+  localStorage.setItem('arena_shop_cart:einatwinery', JSON.stringify([{ variant_id: 'a1', qty: 5 }, { variant_id: 'gone', qty: 2, title: 'Старое вино' }]));
   history.pushState({}, '', '/einatwinery/cart');
   await import('../main');
   await until(() => document.querySelector('.cart-item') !== null, 'the cart page');
@@ -98,6 +100,24 @@ describe('storefront wiring', () => {
     expect(input?.max).toBe('3');
     expect(input?.value).toBe('3');
     expect(document.querySelector('.cart-count-bubble span[aria-hidden]')?.textContent).toBe('3');
+  });
+
+  it('C-04: what changed in the basket without the buyer is said above the page, with the product names', () => {
+    const notes = Array.from(document.querySelectorAll('.shop-notices li')).map((l) => l.textContent);
+    expect(notes).toContain('Товар «Старое вино» снят с продажи, мы убрали его из корзины.');
+    expect(notes).toContain('«A»: в наличии только 3 шт., количество уменьшено.');
+    expect(rawCart()[0].title).toBe('A');
+  });
+
+  it('C-03: the cart and checkout carry noindex, other pages do not', async () => {
+    const robots = (): string | null => document.querySelector('meta[name="robots"]')?.getAttribute('content') ?? null;
+    expect(robots()).toBe('noindex');
+    await go('/einatwinery/collections/all');
+    await until(() => document.querySelector('.cart-item') === null && document.getElementById('MainContent') !== null, 'the catalog');
+    expect(robots()).toBeNull();
+    await go('/einatwinery/cart');
+    await until(() => document.querySelector('.cart-item') !== null, 'the cart');
+    expect(robots()).toBe('noindex');
   });
 
   it('SA-22: opening the checkout reloads the catalog without the browser cache', async () => {
@@ -114,6 +134,10 @@ describe('storefront wiring', () => {
     await until(() => document.getElementById('checkout-resume') !== null, 'the resume offer');
     expect(posts()).toBe(0);
     expect(document.querySelector<HTMLAnchorElement>('#checkout-resume #return-to-payment')?.href).toBe('https://pay.test/p');
+    // C-02: a hint, not a form error - no pay button next to it, nothing red.
+    expect(document.getElementById('checkout-pay')).toBeNull();
+    expect(document.querySelector('#checkout-resume.form__message')).toBeNull();
+    expect(document.querySelector('#checkout-resume')?.getAttribute('role')).toBe('status');
     localStorage.removeItem('arena_shop_order:einatwinery');
   });
 
@@ -164,6 +188,13 @@ describe('storefront wiring', () => {
     await until(() => /Спасибо за заказ/.test(main()), 'the paid page of the other order');
     expect(savedCart()).toEqual([{ variant_id: 'b1', qty: 1 }]);
     expect(localStorage.getItem('arena_shop_order:einatwinery')).toBe('mine');
+  });
+
+  it('C-03: an order page carries noindex', async () => {
+    statusBody = { status: 'pending', payment_url: 'https://pay.test/p', number: 9, total: 8000, currency: 'ILS' };
+    await go('/einatwinery/checkout/pending-one');
+    await until(() => /Проверяем платёж/.test(main()), 'the checking text');
+    expect(document.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex');
   });
 
   it('SA-14: a pending order says "checking", offers no way back at first, and survives a network error', async () => {
