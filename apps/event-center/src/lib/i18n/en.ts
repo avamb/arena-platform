@@ -98,6 +98,7 @@ export const en = {
   "linkLogin.error.superadmin": "You are a platform superadmin. Please work in the admin console.",
   "stepUp.title": "Confirm your password",
   "stepUp.intro": "This action changes a refund or a payment. To protect the money, type the password of your account again.",
+  "stepUp.introNoMoney": "The order closes and its goods go back on sale. Confirm your password.",
   "stepUp.password": "Password",
   "stepUp.hint": "The confirmation lasts 5 minutes in this organization. You do not need to type it again for each action.",
   "stepUp.submit": "Confirm",

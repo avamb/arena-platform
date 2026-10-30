@@ -163,19 +163,20 @@ export class StepUpQuestion {
   private waiters: Array<(ok: boolean) => void> = [];
   private openOrg: string | null = null;
 
-  constructor(private readonly onChange: (orgId: string | null) => void) {}
+  constructor(private readonly onChange: (orgId: string | null, intro?: MessageKey) => void) {}
 
   /** The organization the open question is for, null when none is open. */
   get org(): string | null {
     return this.openOrg;
   }
 
-  ask(orgId: string): Promise<boolean> {
+  /** `intro` replaces the dialog's text when the action moves no money (the first asker of an open question wins). */
+  ask(orgId: string, intro?: MessageKey): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
       this.waiters.push(resolve);
       if (this.openOrg === null) {
         this.openOrg = orgId;
-        this.onChange(orgId);
+        this.onChange(orgId, intro);
       }
     });
   }

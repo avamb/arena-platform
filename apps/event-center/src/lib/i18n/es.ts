@@ -98,6 +98,7 @@ export const es: Record<MessageKey, string> = {
   "linkLogin.error.superadmin": "Eres superadmin de la plataforma. Trabaja en la consola de administración.",
   "stepUp.title": "Confirma tu contraseña",
   "stepUp.intro": "Esta acción cambia una devolución o un pago. Para proteger el dinero, escribe otra vez la contraseña de tu cuenta.",
+  "stepUp.introNoMoney": "El pedido se cierra y sus productos vuelven a la venta. Confirma tu contraseña.",
   "stepUp.password": "Contraseña",
   "stepUp.hint": "La confirmación dura 5 minutos en esta organización. No hace falta escribirla para cada acción.",
   "stepUp.submit": "Confirmar",

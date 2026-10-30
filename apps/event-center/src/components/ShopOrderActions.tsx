@@ -176,7 +176,12 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
 
   const onCancel = async () => {
     try {
-      const done = await withStepUp(orgId, (headers) => cancelShopOrder(orgId, order.id, headers), stepUp.ask);
+      const done = await withStepUp(
+        orgId,
+        (headers) => cancelShopOrder(orgId, order.id, headers),
+        // An unpaid order moves no money: the password question says what really happens (C-06).
+        (org) => stepUp.ask(org, "stepUp.introNoMoney"),
+      );
       store(done);
     } catch (err) {
       // The person closed the password question: nothing was sent, the dialog stays.
