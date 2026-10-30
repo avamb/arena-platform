@@ -154,6 +154,19 @@ func (q *Queries) GetOrganizationByShopDomain(ctx context.Context, host string) 
 	return id, slug, err
 }
 
+const shopHasProductsOrOrders = `-- name: ShopHasProductsOrOrders :one
+SELECT EXISTS (SELECT 1 FROM shop_products WHERE org_id = $1 AND deleted_at IS NULL)
+    OR EXISTS (SELECT 1 FROM shop_orders   WHERE org_id = $1)`
+
+// ShopHasProductsOrOrders is true when the organization has a live product or
+// any order: its prices are stored as minor units of the shop currency, so
+// the currency can no longer change.
+func (q *Queries) ShopHasProductsOrOrders(ctx context.Context, orgID uuid.UUID) (bool, error) {
+	var used bool
+	err := q.db.QueryRow(ctx, shopHasProductsOrOrders, orgID).Scan(&used)
+	return used, err
+}
+
 const getFirstSalesChannelID = `-- name: GetFirstSalesChannelID :one
 SELECT id FROM sales_channels
 WHERE  org_id = $1 AND deleted_at IS NULL

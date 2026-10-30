@@ -6,7 +6,7 @@ import {
   STAFF_NOTE_MAX,
   activeOrderTab,
   isOrderView,
-  ordersQuery,
+  ordersSearchBody,
   parseShopOrdersSearch,
   parseStockInput,
   resendLetters,
@@ -54,9 +54,11 @@ describe("the quick lists of the orders (A-08)", () => {
   });
 
   it("sends the view with the list request and keeps the status filter working beside it", () => {
-    expect(ordersQuery({ ...EMPTY_FILTERS, view: "to_ship" }, 50, 0)).toMatchObject({ view: "to_ship", status: undefined });
-    expect(ordersQuery({ ...EMPTY_FILTERS, status: "paid" }, 50, 0)).toMatchObject({ status: "paid", view: undefined });
-    expect(ordersQuery({ ...EMPTY_FILTERS, status: "paid", view: "unpaid" }, 50, 0)).toMatchObject({ status: "paid", view: "unpaid" });
+    expect(ordersSearchBody({ ...EMPTY_FILTERS, view: "to_ship" }, 50, 0)).toMatchObject({ view: "to_ship" });
+    expect(ordersSearchBody({ ...EMPTY_FILTERS, view: "to_ship" }, 50, 0)).not.toHaveProperty("status");
+    expect(ordersSearchBody({ ...EMPTY_FILTERS, status: "paid" }, 50, 0)).toMatchObject({ status: "paid" });
+    expect(ordersSearchBody({ ...EMPTY_FILTERS, status: "paid" }, 50, 0)).not.toHaveProperty("view");
+    expect(ordersSearchBody({ ...EMPTY_FILTERS, status: "paid", view: "unpaid" }, 50, 0)).toMatchObject({ status: "paid", view: "unpaid" });
   });
 
   it("keeps the view in the address, and nothing a buyer typed", () => {
@@ -126,7 +128,10 @@ describe("stock edited in the products list (A-07, A-15)", () => {
     expect(body).not.toBeNull();
     expect(body).toHaveLength(2);
     expect(body?.[0]).toMatchObject({ id: "v1", stock: 20, expected_stock: 12, track_stock: true, price_minor: 2000 });
-    expect(body?.[1]).toMatchObject({ id: "v2", stock: 3, expected_stock: 3, price_minor: 2000 });
+    // The variant nobody touched sends no stock: a sale made meanwhile can neither refuse nor be overwritten (SA-04).
+    expect(body?.[1]).toMatchObject({ id: "v2", price_minor: 2000 });
+    expect(body?.[1].stock).toBeUndefined();
+    expect(body?.[1].expected_stock).toBeUndefined();
   });
 
   it("refuses a variant that is not there or does not count stock", () => {

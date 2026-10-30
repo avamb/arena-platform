@@ -113,8 +113,8 @@ test.describe("shop (mock)", () => {
     state.stockConflict = true;
     await page.getByTestId("shop-product-save").click();
     await expect(page.getByTestId("shop-stock-changed")).toContainText("The stock changed while you were editing");
-    // The rows now show the server's number, and nothing was written over it.
-    await expect(page.getByTestId("shop-variant-stock-0")).toHaveValue("9");
+    // The number the person typed stays, the server's number is beside it, and nothing was written over it.
+    await expect(page.getByTestId("shop-variant-stock-0")).toHaveValue("8");
     await expect(page.getByTestId("shop-stock-moved")).toContainText("you saw 12, now 9");
     expect(state.writes[0]).toContain('"expected_stock":12');
 
@@ -189,10 +189,11 @@ test.describe("shop (mock)", () => {
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText("Boris Mock");
     expect(page.url()).not.toContain("boris");
-    const last = state.orderQueries[state.orderQueries.length - 1];
-    expect(last).toContain("q=boris");
-    expect(last).toContain("from=2026-10-01");
-    expect(last).toContain("to=2026-11-01");
+    // The search text is in the body, and the days are the SHOP's days (Madrid): 1 October 00:00 CEST to 1 November 00:00 CET.
+    const last = JSON.parse(state.orderQueries[state.orderQueries.length - 1]) as Record<string, unknown>;
+    expect(last.q).toBe("boris");
+    expect(last.from).toBe("2026-09-30T22:00:00.000Z");
+    expect(last.to).toBe("2026-10-31T23:00:00.000Z");
   });
 
   test("order card: a parked payment says why, the courier text is copied, the order is shipped", async ({ page, context }) => {
@@ -444,7 +445,7 @@ test.describe("shop (mock)", () => {
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText("№1042");
     expect(page.url()).toContain("view=to_ship");
-    expect(state.orderQueries[state.orderQueries.length - 1]).toContain("view=to_ship");
+    expect(JSON.parse(state.orderQueries[state.orderQueries.length - 1])).toMatchObject({ view: "to_ship" });
     await noA11yViolations(page);
 
     // The status filter still works: picking a status leaves the tab.
@@ -464,7 +465,7 @@ test.describe("shop (mock)", () => {
     await expect(page.getByText("Nothing to ship. Every paid order has gone out.")).toBeVisible();
   });
 
-  test("order card: the internal note saves when the person leaves the field and names its author", async ({ page }) => {
+  test("order card: the internal note saves by the button or Ctrl+Enter and names its author", async ({ page }) => {
     await mockApi(page);
     const state = await mockShop(page);
     await signIn(page);
@@ -474,7 +475,10 @@ test.describe("shop (mock)", () => {
     await noHorizontalScroll(page);
     await noA11yViolations(page);
     await note.fill("Called, deliver after 18:00");
+    // Leaving the field saves nothing: the button (or Ctrl+Enter) does.
     await note.blur();
+    expect(state.writes).toHaveLength(0);
+    await page.getByTestId("shop-order-note-save").click();
     await expect(page.getByTestId("shop-order-note-state")).toContainText("Note saved.");
     await expect(page.getByTestId("shop-order-note-by")).toContainText("Dana Levi");
     expect(state.writes).toHaveLength(1);

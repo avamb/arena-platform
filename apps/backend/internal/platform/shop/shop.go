@@ -155,6 +155,9 @@ type Service struct {
 	refunds RefundDriver
 	pages   PageExpirer
 	logger  *slog.Logger
+	// currencies tells which currencies a payment provider can charge in
+	// (settings are refused with 422 shop.currency_unsupported otherwise).
+	currencies CurrencySource
 }
 
 // PageExpirer closes a provider's hosted payment page before its own expiry
@@ -189,6 +192,13 @@ func (s *Service) WithRefunds(d RefundDriver) *Service {
 // WithPageExpirer sets what closes a cancelled order's hosted payment page.
 func (s *Service) WithPageExpirer(e PageExpirer) *Service {
 	s.pages = e
+	return s
+}
+
+// WithCurrencies sets where the settings check a currency against the shop's
+// payment provider.
+func (s *Service) WithCurrencies(c CurrencySource) *Service {
+	s.currencies = c
 	return s
 }
 

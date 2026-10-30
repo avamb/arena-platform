@@ -4,7 +4,10 @@
  *
  * Only the status goes into the address. The text a person searches for (a
  * buyer's e-mail or name) never does: the address is written by every proxy
- * log (review finding L5 of the ticket orders).
+ * log (review finding L5 of the ticket orders). The list itself is read with
+ * POST .../shop/orders/search, the filters in the JSON body (SA-17), and the
+ * days of the period are the days of the SHOP's time zone, sent as RFC 3339
+ * instants (SA-25).
  */
 import { useState, type FormEvent } from "react";
 import { useNavigate, useSearch } from "@tanstack/react-router";
@@ -13,10 +16,10 @@ import { NoShopAccess, ShopNav } from "@/components/ShopNav";
 import { ShopOrderTabs } from "@/components/ShopOrderTabs";
 import { ShopOrdersTable } from "@/components/ShopOrdersTable";
 import { Empty, ErrorBox, Loading } from "@/components/ui";
-import { fetchShopOrderCounts, fetchShopSettings, listShopOrders } from "@/lib/api/shopApi";
+import { fetchShopOrderCounts, fetchShopSettings, searchShopOrders } from "@/lib/api/shopApi";
 import { formatNumber } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
-import { EMPTY_FILTERS, SHOP_ORDER_STATUSES, activeOrderTab, isShopOrderStatus, ordersQuery, type OrderTab, type ShopOrdersFilters } from "@/lib/shop";
+import { EMPTY_FILTERS, SHOP_ORDER_STATUSES, activeOrderTab, isShopOrderStatus, ordersSearchBody, shopTimeZone, type OrderTab, type ShopOrdersFilters } from "@/lib/shop";
 import { useOrg } from "@/screens/OrgLayout";
 
 export const SHOP_ORDERS_PAGE_SIZE = 50;
@@ -32,17 +35,19 @@ export function ShopOrdersScreen() {
   const filters: ShopOrdersFilters = { ...EMPTY_FILTERS, ...applied, status: search.status ?? "", view: search.view ?? "" };
   const tab = activeOrderTab(filters.view);
 
+  // The shop's country sets the zone of every time on the screen, and the days of the period.
+  const settings = useQuery({ queryKey: ["shopSettings", orgId], queryFn: () => fetchShopSettings(orgId), enabled: canRead });
+  const zone = shopTimeZone(settings.data?.country_iso2);
   const orders = useInfiniteQuery({
-    queryKey: ["shopOrders", orgId, filters],
+    queryKey: ["shopOrders", orgId, filters, zone],
     initialPageParam: 0,
-    queryFn: ({ pageParam }) => listShopOrders(orgId, ordersQuery(filters, SHOP_ORDERS_PAGE_SIZE, pageParam)),
+    queryFn: ({ pageParam }) => searchShopOrders(orgId, ordersSearchBody(filters, SHOP_ORDERS_PAGE_SIZE, pageParam, zone)),
     getNextPageParam: (last) => last.next_offset ?? undefined,
-    enabled: canRead,
+    // A period is read in the shop's zone: wait for the settings (or their failure) before asking for one.
+    enabled: canRead && (!settings.isLoading || (filters.from === "" && filters.to === "")),
   });
   // The numbers on the tabs. The card's actions refresh them (a shipped order leaves "To ship").
   const counts = useQuery({ queryKey: ["shopOrderCounts", orgId], queryFn: () => fetchShopOrderCounts(orgId), enabled: canRead, refetchOnWindowFocus: true });
-  // The shop's country sets the zone of every time on the screen.
-  const settings = useQuery({ queryKey: ["shopSettings", orgId], queryFn: () => fetchShopSettings(orgId), enabled: canRead });
 
   if (!canRead) return <NoShopAccess />;
   const rows = orders.data?.pages.flatMap((p) => p.orders) ?? [];

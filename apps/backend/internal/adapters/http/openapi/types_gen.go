@@ -17573,6 +17573,12 @@ type ShopSettingsUpdateRequest struct {
 	// Enabled Opens (true) or closes (false) the storefront and its checkout, platform superadmin only; absent, null or the current value keeps it.
 	Enabled *bool `json:"enabled"`
 
+	// ExpectedUpdatedAt The `updated_at` the editor loaded the settings with, sent back unchanged.
+	// When the stored settings were saved since (a colleague, the operator) the
+	// request is refused with 409 `shop.settings_changed` and nothing is applied.
+	// Absent or null skips the check.
+	ExpectedUpdatedAt *time.Time `json:"expected_updated_at"`
+
 	// LogisticsNote Internal note for the logistician, up to 2000 characters.
 	LogisticsNote *string `json:"logistics_note,omitempty"`
 
@@ -17661,7 +17667,9 @@ type ShopVariantInput struct {
 	// The event center sends the loaded value. When the stock changed since
 	// (a sale, an import, another editor) the whole request is refused with
 	// 409 `shop.stock_changed`, whose details list each variant's current
-	// stock, and nothing is applied. Absent skips the check.
+	// stock, and nothing is applied. Absent leaves the stock of an existing
+	// variant untouched (the event center sends it only for a row whose stock
+	// the person edited).
 	ExpectedStock *int32 `json:"expected_stock"`
 
 	// Id An existing variant of the product to update; absent creates one.
@@ -17685,7 +17693,9 @@ type ShopVariantInput struct {
 	// Sku Stock keeping unit, up to 100 characters.
 	Sku *string `json:"sku"`
 
-	// Stock Units on the shelf, zero or more.
+	// Stock Units on the shelf, zero or more. For an existing variant (with `id`) it is
+	// written only together with `expected_stock`; a row without `expected_stock`
+	// keeps the stored stock whatever is sent here.
 	Stock *int32 `json:"stock,omitempty"`
 
 	// Title Variant title; empty means `Default Title`.
@@ -17697,6 +17707,12 @@ type ShopVariantInput struct {
 
 // ShopVariantsReplaceRequest The complete variant list of a product.
 type ShopVariantsReplaceRequest struct {
+	// ExpectedVariantIds The ids of the variants the editor loaded. When the product's live variants
+	// are not exactly this set (a colleague added or removed one) the request is
+	// refused with 409 `shop.variants_changed` and nothing is applied, because the
+	// replace deletes every variant it leaves out. Absent or null skips the check.
+	ExpectedVariantIds *[]openapi_types.UUID `json:"expected_variant_ids"`
+
 	// Variants 1-100 variants; variants left out are deleted.
 	Variants []ShopVariantInput `json:"variants"`
 }

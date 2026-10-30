@@ -192,7 +192,17 @@ export type ApiErrorStem =
   | "shopNotRefundable"
   | "shopRefundAmount"
   | "shopCurrency"
-  | "shopOperatorOnly";
+  | "shopOperatorOnly"
+  | "shopNothingToRefund"
+  | "shopOutOfStock"
+  | "shopOrderChanged"
+  | "shopOrderEmailUnavailable"
+  | "shopOrderNoBuyerEmail"
+  | "shopDuplicateDomain"
+  | "shopVariantsChanged"
+  | "shopSettingsChanged"
+  | "shopCurrencyLocked"
+  | "shopCurrencyUnsupported";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -233,6 +243,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "batchTooBig", "batchCsvBroken", "batchEncoding", "batchEmptyFile", "batchHeader", "batchInvalid", "batchTimeout",
   // The shop (spec 47)
   "shopStockChanged", "shopDuplicateSlug", "shopVariantsInvalid", "shopMediaInvalid", "shopNotShippable", "shopNotCancellable", "shopNotRefundable", "shopRefundAmount", "shopCurrency", "shopOperatorOnly",
+  "shopNothingToRefund", "shopOutOfStock", "shopOrderChanged", "shopOrderEmailUnavailable", "shopOrderNoBuyerEmail", "shopDuplicateDomain",
+  "shopVariantsChanged", "shopSettingsChanged", "shopCurrencyLocked", "shopCurrencyUnsupported",
 ];
 
 /**
@@ -415,7 +427,16 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "shop.order_not_shippable": "shopNotShippable",
   "shop.order_not_cancellable": "shopNotCancellable",
   "shop.order_not_refundable": "shopNotRefundable",
-  "shop.nothing_to_refund": "refundNothing",
+  "shop.nothing_to_refund": "shopNothingToRefund",
+  "shop.out_of_stock": "shopOutOfStock",
+  "shop.order_changed": "shopOrderChanged",
+  "shop.order_email_unavailable": "shopOrderEmailUnavailable",
+  "shop.order_no_buyer_email": "shopOrderNoBuyerEmail",
+  "shop.duplicate_domain": "shopDuplicateDomain",
+  "shop.variants_changed": "shopVariantsChanged",
+  "shop.settings_changed": "shopSettingsChanged",
+  "shop.currency_locked": "shopCurrencyLocked",
+  "shop.currency_unsupported": "shopCurrencyUnsupported",
   "shop.invalid_refund_amount": "shopRefundAmount",
   "shop.invalid_currency": "shopCurrency",
   "shop.enabled_superadmin_only": "shopOperatorOnly",

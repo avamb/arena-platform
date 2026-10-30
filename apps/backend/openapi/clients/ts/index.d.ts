@@ -30915,6 +30915,14 @@ export interface components {
             max_line_qty?: number | null;
             /** @description Opens (true) or closes (false) the storefront and its checkout, platform superadmin only; absent, null or the current value keeps it. */
             enabled?: boolean | null;
+            /**
+             * Format: date-time
+             * @description The `updated_at` the editor loaded the settings with, sent back unchanged.
+             *     When the stored settings were saved since (a colleague, the operator) the
+             *     request is refused with 409 `shop.settings_changed` and nothing is applied.
+             *     Absent or null skips the check.
+             */
+            expected_updated_at?: string | null;
         };
         /** @description A picture of a product. */
         ShopImage: {
@@ -31071,7 +31079,9 @@ export interface components {
             compare_at_minor?: number | null;
             /**
              * Format: int32
-             * @description Units on the shelf, zero or more.
+             * @description Units on the shelf, zero or more. For an existing variant (with `id`) it is
+             *     written only together with `expected_stock`; a row without `expected_stock`
+             *     keeps the stored stock whatever is sent here.
              */
             stock?: number;
             /** @description Whether stock limits sales; absent means true. */
@@ -31093,7 +31103,9 @@ export interface components {
              *     The event center sends the loaded value. When the stock changed since
              *     (a sale, an import, another editor) the whole request is refused with
              *     409 `shop.stock_changed`, whose details list each variant's current
-             *     stock, and nothing is applied. Absent skips the check.
+             *     stock, and nothing is applied. Absent leaves the stock of an existing
+             *     variant untouched (the event center sends it only for a row whose stock
+             *     the person edited).
              */
             expected_stock?: number | null;
         };
@@ -31161,6 +31173,13 @@ export interface components {
         ShopVariantsReplaceRequest: {
             /** @description 1-100 variants; variants left out are deleted. */
             variants: components["schemas"]["ShopVariantInput"][];
+            /**
+             * @description The ids of the variants the editor loaded. When the product's live variants
+             *     are not exactly this set (a colleague added or removed one) the request is
+             *     refused with 409 `shop.variants_changed` and nothing is applied, because the
+             *     replace deletes every variant it leaves out. Absent or null skips the check.
+             */
+            expected_variant_ids?: string[] | null;
         };
         /** @description A picture to attach. */
         ShopImageAddRequest: {
@@ -67072,7 +67091,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Another organization already uses this domain (`shop.duplicate_domain`). */
+            /** @description Another organization already uses this domain (`shop.duplicate_domain`), the settings were saved since `expected_updated_at` (`shop.settings_changed`), or the currency cannot change because the organization already has shop products or orders, whose prices are not converted (`shop.currency_locked`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -67081,7 +67100,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`, `shop.invalid_max_line_qty`). */
+            /** @description A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`, `shop.invalid_max_line_qty`) or the payment provider of the sales channel cannot charge in the currency (`shop.currency_unsupported`; AllPay charges ILS, USD and EUR only). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -67737,7 +67756,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The stock of a variant changed since the editor loaded it (`shop.stock_changed`, details list each variant's current stock); nothing was applied. */
+            /** @description The stock of a variant changed since the editor loaded it (`shop.stock_changed`, details list each variant's current stock), or the set of variants is not the one in `expected_variant_ids` (`shop.variants_changed`, details list the live variant ids); nothing was applied. */
             409: {
                 headers: {
                     [name: string]: unknown;

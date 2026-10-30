@@ -366,7 +366,7 @@ func TestShop_ProductCRUD(t *testing.T) {
 	// add a gift box.
 	first := body["variants"].([]any)[0].(map[string]any)["id"].(string)
 	code, body, _ = f.do(http.MethodPut, f.orgPath(f.orgA, "/products/"+id+"/variants"), f.ownerA, fmt.Sprintf(
-		`{"variants":[{"id":%q,"title":"750 ml","price_minor":11000,"stock":8},{"title":"Gift box","price_minor":30000,"stock":2}]}`, first))
+		`{"variants":[{"id":%q,"title":"750 ml","price_minor":11000,"stock":8,"expected_stock":5},{"title":"Gift box","price_minor":30000,"stock":2}]}`, first))
 	if code != http.StatusOK {
 		t.Fatalf("PUT variants = %d %v", code, body)
 	}
