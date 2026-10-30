@@ -117,6 +117,11 @@ export const MSG = {
   timeoutTitle: 'Проверка затянулась',
   timeoutText: 'Проверка затянулась, обновите страницу или проверьте письмо.',
   returnToPayment: 'Вернуться к оплате',
+  // an order a person is looking at (review_reason)
+  reviewUnconfirmedTitle: 'Платёж на проверке',
+  reviewUnconfirmedText: 'Мы проверяем ваш платёж. Как только он подтвердится, мы пришлём письмо.',
+  reviewStockTitle: 'Заказ на проверке',
+  reviewStockText: 'Платёж получен, мы проверяем наличие товара и напишем вам.',
   // resume panel before a new checkout
   resumeTitle: 'У вас уже есть неоплаченный заказ',
   resumeText: 'Вернитесь к его оплате, не создавая новый заказ.',

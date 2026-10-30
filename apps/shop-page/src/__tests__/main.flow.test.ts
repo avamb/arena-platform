@@ -197,6 +197,18 @@ describe('storefront wiring', () => {
     expect(document.querySelector('meta[name="robots"]')?.getAttribute('content')).toBe('noindex');
   });
 
+  it('review: a payment under review shows the server sentence, keeps polling, and turns paid later', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    statusBody = { status: 'pending', payment_url: null, number: 11, total: 8000, currency: 'ILS', review_reason: 'payment_unconfirmed', review_message: 'Проверяем платёж у банка.' };
+    await go('/einatwinery/checkout/review-one');
+    await until(() => /Проверяем платёж у банка/.test(main()), 'the review message');
+    expect(document.getElementById('return-to-payment')).toBeNull();
+    statusBody = { status: 'paid', number: 11, total: 8000, currency: 'ILS', items: [], review_reason: null, review_message: null };
+    vi.advanceTimersByTime(5000);
+    await until(() => /Спасибо за заказ/.test(main()), 'the paid page after the review');
+    vi.useRealTimers();
+  });
+
   it('SA-14: a pending order says "checking", offers no way back at first, and survives a network error', async () => {
     statusBody = { status: 'pending', payment_url: 'https://pay.test/p', number: 9, total: 8000, currency: 'ILS' };
     await go('/einatwinery/checkout/pending-one');

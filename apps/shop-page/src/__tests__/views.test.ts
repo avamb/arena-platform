@@ -6,7 +6,7 @@ import { resolveLines } from '../lib/cart';
 import { EINAT_THEME } from '../lib/theme';
 import { cartView, notificationProduct } from '../views/cart';
 import { collectionView, homeView } from '../views/catalog';
-import { checkoutView, EMPTY_FORM, lineLabel, refreshFeedback, statusView } from '../views/checkout';
+import { checkoutView, downloadsCaption, EMPTY_FORM, lineLabel, refreshFeedback, statusView } from '../views/checkout';
 import type { Ctx } from '../views/common';
 import { layout } from '../views/layout';
 import { productView } from '../views/product';
@@ -397,11 +397,11 @@ describe('order line label (M-02)', () => {
 
 describe('download refresh feedback (M-08)', () => {
   const links = [
-    { product_title: 'A', variant_title: '', url: 'https://files.test/a', expires_at: '2026-10-28T12:15:00Z' },
-    { product_title: 'B', variant_title: '', url: 'https://files.test/b', expires_at: '2026-10-28T12:10:00Z' },
+    { product_title: 'A', variant_title: '', url: 'https://files.test/a', expires_at: '2026-11-28T12:15:00Z' },
+    { product_title: 'B', variant_title: '', url: 'https://files.test/b', expires_at: '2026-11-27T12:10:00Z' },
   ];
   it('names the earliest expiry after a successful refresh', () => {
-    expect(refreshFeedback({ state: 'ready', links, refreshed: true }, 'UTC')).toBe('Ссылки обновлены, действуют до 12:10');
+    expect(refreshFeedback({ state: 'ready', links, refreshed: true }, 'UTC')).toBe('Ссылки обновлены, действуют до 27 ноября 2026 г.');
   });
   it('says nothing for links that were not just refreshed', () => {
     expect(refreshFeedback({ state: 'ready', links }, 'UTC')).toBe('');
@@ -417,9 +417,45 @@ describe('download refresh feedback (M-08)', () => {
   it('renders the note next to the button', () => {
     const paid = { status: 'paid' as const, number: 7, items: [{ product_kind: 'digital' as const, product_title: 'A', variant_title: '', qty: 1, unit_price_minor: 1, total_minor: 1 }] };
     const ok = dom(statusView(ctx(), paid, { state: 'ready', links, refreshed: true }));
-    expect(ok.querySelector('[data-downloads-note]')?.textContent).toMatch(/^Ссылки обновлены, действуют до \d\d:\d\d$/);
+    expect(ok.querySelector('[data-downloads-note]')?.textContent).toMatch(/^Ссылки обновлены, действуют до \d+ \S+ 20\d\d г\.$/);
     const bad = dom(statusView(ctx(), paid, { state: 'error', refreshed: true }));
     expect(bad.querySelector('[data-downloads-note]')?.textContent).toBe('Не удалось обновить ссылки. Попробуйте ещё раз.');
     expect(bad.querySelector('[data-refresh-downloads]')).not.toBeNull();
+  });
+});
+
+describe('review orders and the 30-day download window', () => {
+  const paidDigital = { status: 'paid' as const, number: 7, items: [{ product_kind: 'digital' as const, product_title: 'A', variant_title: '', qty: 1, unit_price_minor: 1, total_minor: 1 }] };
+  const links = [{ product_title: 'A', variant_title: '', url: 'https://api.test/v1/public/shop/checkout/t/downloads/i1', expires_at: '2026-11-28T12:15:00Z' }];
+
+  it('the caption names the end of the window and the 20 downloads per file, not 15 minutes', () => {
+    expect(downloadsCaption(links, 'UTC')).toBe('Ссылки действуют до 28 ноября 2026 г. и не больше 20 скачиваний на файл.');
+    expect(downloadsCaption([])).toBe('Не больше 20 скачиваний на файл.');
+    const html = statusView(ctx(), paidDigital, { state: 'ready', links });
+    expect(html).not.toContain('15 минут');
+    expect(dom(html).querySelector('[data-downloads-window]')?.textContent).toMatch(/^Ссылки действуют до .+ и не больше 20 скачиваний на файл\.$/);
+  });
+
+  it('payment_unconfirmed: the server sentence replaces "checking"/"waiting", no way back to payment, in every phase', () => {
+    const st = { status: 'pending' as const, number: 9, payment_url: null, review_reason: 'payment_unconfirmed', review_message: 'Мы проверяем ваш платёж у банка.' };
+    for (const phase of ['checking', 'late', 'timeout'] as const) {
+      const html = statusView(ctx(), st, undefined, phase);
+      expect(dom(html).querySelector('[data-review-message]')?.textContent).toBe('Мы проверяем ваш платёж у банка.');
+      expect(html).not.toContain('Проверяем платёж…');
+      expect(html).not.toContain('Ожидаем оплату');
+      expect(html).not.toContain('Проверка затянулась');
+      expect(html).not.toContain('return-to-payment');
+    }
+  });
+
+  it('late_payment_no_stock: a paid order under review does not say "Спасибо за заказ"', () => {
+    const html = statusView(ctx(), { status: 'paid', number: 9, review_reason: 'late_payment_no_stock', review_message: 'Payment received, we are checking availability.' });
+    expect(dom(html).querySelector('[data-review-message]')?.textContent).toBe('Payment received, we are checking availability.');
+    expect(html).not.toContain('Спасибо за заказ');
+  });
+
+  it('falls back to a Russian text when the server sent a reason without a message', () => {
+    expect(statusView(ctx(), { status: 'pending', review_reason: 'payment_unconfirmed' })).toContain('Мы проверяем ваш платёж');
+    expect(statusView(ctx(), { status: 'paid', review_reason: 'late_payment_no_stock' })).toContain('проверяем наличие');
   });
 });

@@ -150,6 +150,16 @@ describe('calls', () => {
     await expect(getDownloads('tok')).rejects.toMatchObject({ status: 404 });
   });
 
+  it('carries the review reason and message of an order a person is checking', async () => {
+    mockFetch(200, { status: 'pending', number: 3, currency: 'ILS', total: 100, items: [], payment_url: null, review_reason: 'payment_unconfirmed', review_message: 'Checking.' });
+    const st = await getOrderStatus('t');
+    expect(st.review_reason).toBe('payment_unconfirmed');
+    expect(st.review_message).toBe('Checking.');
+    expect(st.payment_url).toBeNull();
+    mockFetch(200, { status: 'paid', number: 3, currency: 'ILS', total: 100, items: [], payment_url: null, review_reason: null, review_message: null });
+    expect((await getOrderStatus('t')).review_reason).toBeNull();
+  });
+
   it('keeps product_kind on the status lines', async () => {
     mockFetch(200, { status: 'paid', number: 1, currency: 'ILS', total: 3000, items: [{ product_kind: 'digital', product_title: 'G', variant_title: '', qty: 1, unit_price_minor: 3000, total_minor: 3000 }], payment_url: '' });
     expect((await getOrderStatus('t')).items?.[0].product_kind).toBe('digital');

@@ -157,12 +157,16 @@ export interface OrderStatus {
   shipping_fee_minor?: number | null;
   currency?: string | null;
   items?: OrderLine[];
+  /** `payment_unconfirmed` (pending, the payment is being checked) or `late_payment_no_stock` (paid, availability is being checked) while a person looks at the order. */
+  review_reason?: string | null;
+  /** A ready sentence for the buyer that goes with `review_reason`, in the language the order was placed in. */
+  review_message?: string | null;
 }
 
 export interface DownloadLink {
   product_title: string;
   variant_title: string;
-  /** Absolute signed URL, good for 15 minutes. Never stored. */
+  /** Absolute address of the file route (answers 302 to the file). It does not expire by itself; opening it counts as a download. */
   url: string;
   expires_at: string;
 }
@@ -270,6 +274,8 @@ interface WireStatus {
   total?: number;
   items?: WireOrderLine[];
   payment_url?: string | null;
+  review_reason?: string | null;
+  review_message?: string | null;
 }
 
 // ---- transport -----------------------------------------------------------------
@@ -407,6 +413,8 @@ export function normalizeStatus(s: WireStatus): OrderStatus {
     shipping_fee_minor: s.shipping_fee ?? null,
     currency: s.currency ?? null,
     items: s.items?.map((i) => ({ ...i, product_kind: i.product_kind ? productKind(i.product_kind) : undefined })),
+    review_reason: s.review_reason || null,
+    review_message: s.review_message || null,
   };
 }
 
@@ -470,8 +478,9 @@ export async function getOrderStatus(orderToken: string): Promise<OrderStatus> {
 
 /**
  * The files of a paid order's digital lines. 404 means the order is not paid (yet):
- * the caller keeps polling the status. The URLs are signed for 15 minutes and are
- * never stored; call again for fresh ones.
+ * the caller keeps polling the status. Each entry is the address of the file route and
+ * `expires_at` is the end of the order's 30-day download window; 410 `shop.download_expired`
+ * once it (or the 20 downloads per file) is used up. Listing counts nothing.
  */
 export async function getDownloads(orderToken: string): Promise<DownloadLink[]> {
   const r = await request<{ downloads?: DownloadLink[] }>(`/v1/public/shop/checkout/${seg(orderToken)}/downloads`, {

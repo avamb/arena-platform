@@ -449,14 +449,16 @@ async function pollStatus(token: string, failures = 0): Promise<void> {
         commitCart([]);
         forgetOrderToken(s.org);
       }
-      downloads = await loadDownloads(token, st);
+      // A paid order a person is still checking has no files to list yet.
+      downloads = st.review_reason ? undefined : await loadDownloads(token, st);
       if (currentRoute().kind !== 'status') return;
     } else if (own && (st.status === 'expired' || st.status === 'cancelled')) {
       forgetOrderToken(s.org);
     }
   }
   const elapsed = Date.now() - startedAt;
-  const waiting = st === 'error' || st.status === 'pending' || (st.status === 'paid' && downloads?.state === 'waiting');
+  // A review is not final: a payment being checked may turn paid, a late one may be settled.
+  const waiting = st === 'error' || st.status === 'pending' || !!st.review_reason || (st.status === 'paid' && downloads?.state === 'waiting');
   const delay = waiting ? nextDelayMs(elapsed, failures) : null;
   // Out of time with the files still not ready: stop saying "preparing" and offer the refresh button.
   if (waiting && delay === null && downloads?.state === 'waiting') downloads = { state: 'error' };
@@ -912,8 +914,8 @@ async function findResumeOffer(s: State): Promise<ResumeOffer | undefined> {
         totalLabel: st.total_minor != null ? formatMoney(st.total_minor, currency) : undefined,
       };
     }
-    // Paid, expired or cancelled: nothing to come back to.
-    forgetOrderToken(s.org);
+    // Paid, expired or cancelled: nothing to come back to. A pending order a person is checking stays ours.
+    if (st.status !== 'pending' || !st.review_reason) forgetOrderToken(s.org);
   } catch (e) {
     if (isNotFound(e)) forgetOrderToken(s.org);
   }
