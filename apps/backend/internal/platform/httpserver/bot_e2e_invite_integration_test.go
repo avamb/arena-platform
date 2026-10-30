@@ -557,12 +557,12 @@ func TestBotE2E_Invitations_OwnerIssuesListsAndAnnuls(t *testing.T) {
 	if card := d.press("iv:no:0", "Места:"); !strings.Contains(card, "✉ Отправляем письмо") {
 		t.Errorf("the card of a guest_email invitation shows its queued letter: %q", card)
 	}
-	d.press("iv:nrv", "Аннулировать это приглашение?")
+	d.press("iv:nrv", "Отменить это приглашение?")
 	d.say("нет", "Текст не совпал")
 	if e.count(`SELECT count(*) FROM tickets WHERE status = 'cancelled' AND checkout_session_id IN (SELECT checkout_session_id FROM orders WHERE org_id = $1)`, e.seed.orgID) != 0 {
 		t.Fatal("a wrong word annulled something")
 	}
-	d.say("аннулировать", "аннулировано: билетов 1")
+	d.say("отменить приглашение", "отменено: билетов 1")
 	inv = e.staffInvs()
 	if inv[carl].ticketStatus != "cancelled" || inv[anna].ticketStatus != "active" || inv[boris].ticketStatus != "active" {
 		t.Errorf("annulled the wrong ticket: carl %q anna %q boris %q", inv[carl].ticketStatus, inv[anna].ticketStatus, inv[boris].ticketStatus)
@@ -594,8 +594,8 @@ func TestBotE2E_Invitations_OwnerIssuesListsAndAnnuls(t *testing.T) {
 		t.Fatalf("Boris's order is not on the list: %v", st.NOrderIDs)
 	}
 	d.press(fmt.Sprintf("iv:no:%d", row), "Места:")
-	d.press("iv:nrv", "Аннулировать это приглашение?")
-	d.say("аннулировать", "уже использовано")
+	d.press("iv:nrv", "Отменить это приглашение?")
+	d.say("отменить приглашение", "уже использовано")
 	if inv = e.staffInvs(); inv[boris].ticketStatus != "active" {
 		t.Errorf("a scanned ticket was annulled: %q", inv[boris].ticketStatus)
 	}
@@ -645,8 +645,8 @@ func TestBotE2E_Invitations_ListPagesAndEarlierInvitationsStayManageable(t *test
 		t.Fatalf("earlier invitations dialog = %+v, want the one old issuance", st)
 	}
 	d.press("iv:lo:0", "действует")
-	d.press("iv:rv", "Аннулировать это приглашение?")
-	d.say("аннулировать", "аннулировано. Место вернулось в продажу")
+	d.press("iv:rv", "Отменить это приглашение?")
+	d.say("отменить приглашение", "отменено. Место вернулось в продажу")
 	if n := e.count(`SELECT count(*) FROM complimentary_issuances WHERE org_id = $1 AND status = 'revoked'`, e.seed.orgID); n != 1 {
 		t.Errorf("revoked old issuances = %d, want 1", n)
 	}
@@ -673,8 +673,8 @@ func TestBotE2E_Invitations_ManagerIssuesAndAnnuls(t *testing.T) {
 	}
 	d.press("iv:l", "Все сеансы, сначала новые")
 	d.press("iv:no:0", "Места:")
-	d.press("iv:nrv", "Аннулировать это приглашение?")
-	d.say("ANNUL", "аннулировано")
+	d.press("iv:nrv", "Отменить это приглашение?")
+	d.say("ANNUL", "отменено")
 	if e.places(e.seed.std, "sold") != 0 || e.staffInvs()[guest].ticketStatus != "cancelled" {
 		t.Error("the annul must return the place and cancel the ticket")
 	}

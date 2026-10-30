@@ -245,8 +245,8 @@ test.describe("invitations (live)", () => {
     await expect(oldRow(page, "inv-ru@example.test")).toHaveCount(1);
     await page.getByLabel("Language").selectOption("ru");
     await oldRow(page, "inv-ru@example.test").getByTestId("invitation-annul").click();
-    await expect(page.getByTestId("confirm-word")).toContainText("АННУЛИРОВАТЬ");
-    await typeWord2(page, "аннулировать");
+    await expect(page.getByTestId("confirm-word")).toContainText("ОТМЕНИТЬ ПРИГЛАШЕНИЕ");
+    await typeWord2(page, "отменить приглашение");
     await expect(page.getByTestId("invitation-annulled")).toBeVisible();
     expect(rows()).toMatchObject({ issuances: 1, revoked: 1, tickets: 0, free_places: PLACES });
   });

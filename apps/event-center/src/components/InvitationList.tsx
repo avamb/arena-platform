@@ -5,7 +5,7 @@
  * letter (`letters[]` of GET .../complimentary, read through the ticket's
  * delivery job because an invitation has no order) and the annul button.
  *
- * Annulling asks for the bot's word (ANNUL / АННУЛИРОВАТЬ / ANULAR) and says
+ * Annulling asks for the bot's word (ANNUL / ОТМЕНИТЬ ПРИГЛАШЕНИЕ / ANULAR) and says
  * Arena does not tell the guest. Only a valid invitation offers it, and only
  * to a person who may issue (the revoke route reuses `complimentary.issue`).
  * A ticket already scanned at the door cannot be annulled: its card says

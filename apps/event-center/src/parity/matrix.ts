@@ -555,12 +555,12 @@ export const PARITY: readonly ParityRow[] = [
   },
   {
     area: "Пригласительные",
-    fn: "Прежние пригласительные: список и аннулирование",
+    fn: "Прежние пригласительные: список и отмена",
     bot: "— (бот читает только заказы)",
     web: "R3",
     ready: { twin: "live/invitations.spec.ts", smoke: "invitations-org.mock.spec.ts" },
     routes: [`GET ${O}/complimentary`, `POST ${O}/complimentary`, "POST /v1/complimentary/{id}/revoke"],
-    note: "Пригласительные, выданные старым маршрутом (`complimentary_issuances`), остаются в разделе «Прежние пригласительные» со словом-подтверждением АННУЛИРОВАТЬ. Статус письма гостя (`letters[]`) идёт через билет. Новые выдачи веб старым маршрутом не делает: на сеансе со схемой он отвечает 422 `complimentary.use_invitations_route`.",
+    note: "Пригласительные, выданные старым маршрутом (`complimentary_issuances`), остаются в разделе «Прежние пригласительные» со словом-подтверждением ОТМЕНИТЬ ПРИГЛАШЕНИЕ. Статус письма гостя (`letters[]`) идёт через билет. Новые выдачи веб старым маршрутом не делает: на сеансе со схемой он отвечает 422 `complimentary.use_invitations_route`.",
   },
   {
     area: "Пригласительные",

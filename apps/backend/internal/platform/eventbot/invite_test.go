@@ -225,7 +225,7 @@ func TestInviteTexts_RenderInEveryLanguage(t *testing.T) {
 func TestInviteAnnulWord(t *testing.T) {
 	t.Parallel()
 	b := ecTestBot(t)
-	for loc, word := range map[string]string{"en": "ANNUL", "ru": "АННУЛИРОВАТЬ", "es": "ANULAR"} {
+	for loc, word := range map[string]string{"en": "ANNUL", "ru": "ОТМЕНИТЬ ПРИГЛАШЕНИЕ", "es": "ANULAR"} {
 		if !b.invIsAnnulWord(loc, word) || !b.invIsAnnulWord(loc, strings.ToLower(word)) || !b.invIsAnnulWord(loc, " «"+word+"». ") {
 			t.Errorf("%s: %q must be accepted", loc, word)
 		}
