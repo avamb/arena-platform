@@ -255,20 +255,30 @@ export function lineLabel(productTitle: string, variantTitle: string | null | un
   return v !== '' && v !== 'Default Title' ? `${productTitle} — ${v}` : productTitle;
 }
 
+/** "28 ноября 2026 г." - the end of the 30-day download window, in `timeZone` (default the buyer's own). */
+function windowEnd(links: DownloadLink[], timeZone?: string): string {
+  const times = links.map((l) => Date.parse(l.expires_at)).filter((t) => !Number.isNaN(t));
+  if (times.length === 0) return '';
+  return new Date(Math.min(...times)).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric', timeZone });
+}
+
+/** The line under the file list: how long the links work and how many downloads a file has. */
+export function downloadsCaption(links: DownloadLink[], timeZone?: string): string {
+  const until = windowEnd(links, timeZone);
+  return until ? `Ссылки действуют до ${until} и не больше 20 скачиваний на файл.` : 'Не больше 20 скачиваний на файл.';
+}
+
 /**
  * What the buyer is told right after pressing "Обновить ссылки". Only a state
- * reached through a refresh carries a message: «Ссылки обновлены, действуют до HH:MM»
- * (the earliest `expires_at` of the new links, in `timeZone`, default the buyer's own)
- * or a short error line.
+ * reached through a refresh carries a message: «Ссылки обновлены, действуют до 28 ноября 2026 г.»
+ * (the earliest `expires_at` of the new links) or a short error line.
  */
 export function refreshFeedback(dl: DownloadsState | undefined, timeZone?: string): string {
   if (!dl) return '';
   if (dl.state === 'error') return dl.refreshed ? 'Не удалось обновить ссылки. Попробуйте ещё раз.' : '';
   if (dl.state !== 'ready' || !dl.refreshed) return '';
-  const times = dl.links.map((l) => Date.parse(l.expires_at)).filter((t) => !Number.isNaN(t));
-  if (times.length === 0) return 'Ссылки обновлены';
-  const hhmm = new Date(Math.min(...times)).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone });
-  return `Ссылки обновлены, действуют до ${hhmm}`;
+  const until = windowEnd(dl.links, timeZone);
+  return until ? `Ссылки обновлены, действуют до ${until}` : 'Ссылки обновлены';
 }
 
 /** The order holds a digital line (or the API did not say what kind the lines are). */
@@ -284,7 +294,7 @@ function hasPhysicalLines(st: OrderStatus): boolean {
 
 const safeHref = (u: string): boolean => /^https?:\/\//i.test(u);
 
-/** The links are signed for 15 minutes, so the block always offers a refresh. */
+/** The file links work for the order's 30-day window; the refresh button asks the list again. */
 function downloadsBlock(dl: DownloadsState): string {
   const note = refreshFeedback(dl);
   const refresh = `<button type="button" class="button button--secondary" data-refresh-downloads>Обновить ссылки</button>`;
@@ -309,7 +319,7 @@ function downloadsBlock(dl: DownloadsState): string {
         })
         .join('');
       body = items
-        ? `<ul class="shop-downloads__list list-unstyled" role="list">${items}</ul><p class="caption">Ссылки действуют 15 минут. Если время вышло, обновите их.</p>${refresh}${note ? `<p class="caption" role="status" data-downloads-note>${esc(note)}</p>` : ''}`
+        ? `<ul class="shop-downloads__list list-unstyled" role="list">${items}</ul><p class="caption" data-downloads-window>${esc(downloadsCaption(dl.links))}</p>${refresh}${note ? `<p class="caption" role="status" data-downloads-note>${esc(note)}</p>` : ''}`
         : '';
     }
   }
@@ -329,6 +339,14 @@ export function statusView(ctx: Ctx, st: OrderStatus | 'loading' | 'error', dl?:
     return wrap(MSG.timeoutTitle, `<p>${MSG.timeoutText}</p><a href="${all}" class="button">${T.continueShopping}</a>`);
   }
   const number = st.number != null && st.number !== '' ? ` № ${esc(st.number)}` : '';
+  // A person is looking at the order: say what the server says, in its own words, and offer no way back to payment
+  // (these orders have no payment_url). The wait is not over: a payment that is being checked may still turn paid.
+  if (st.review_reason) {
+    const stock = st.review_reason === 'late_payment_no_stock';
+    const title = stock ? MSG.reviewStockTitle : MSG.reviewUnconfirmedTitle;
+    const text = st.review_message || (stock ? MSG.reviewStockText : MSG.reviewUnconfirmedText);
+    return wrap(title, `<p role="status" data-review-message>${esc(text)}</p><a href="${all}" class="button">${T.continueShopping}</a>`);
+  }
   switch (st.status) {
     case 'paid':
       return wrap(
