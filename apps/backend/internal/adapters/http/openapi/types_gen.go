@@ -17928,6 +17928,9 @@ type StaffInvitationListItem struct {
 type StaffInvitationListResponse struct {
 	// Items Newest first, at most 500.
 	Items []StaffInvitationListItem `json:"items"`
+
+	// Timezone The venue's IANA time zone (UTC for a session without a venue). A client shows the issue and letter times in it, never in the device's zone.
+	Timezone string `json:"timezone"`
 }
 
 // StaffInvitationOrgListItem defines model for StaffInvitationOrgListItem.
@@ -17997,6 +18000,9 @@ type StaffInvitationPlace struct {
 
 	// Row Row of the seat.
 	Row *string `json:"row"`
+
+	// Scanned True once the place's ticket was used at the door (a scanned barcode, a used_at stamp or an admitted scan). Such a ticket cannot be cancelled. False until the ticket is issued.
+	Scanned bool `json:"scanned"`
 
 	// Seat Seat number.
 	Seat *string `json:"seat"`

@@ -17313,7 +17313,7 @@ components:
           description: Language of the guest's letter (cs, de, en, es, fr, he, ru); anything else falls back to the default.
     StaffInvitationPlace:
       type: object
-      required: [tier_id, tier_name, face_value, vip]
+      required: [tier_id, tier_name, face_value, vip, scanned]
       description: One place of a staff invitation.
       properties:
         seat_key:
@@ -17354,6 +17354,9 @@ components:
         vip:
           type: boolean
           description: The organizer's private VIP mark of the place's ticket (never shown to the guest). False until the ticket is issued.
+        scanned:
+          type: boolean
+          description: True once the place's ticket was used at the door (a scanned barcode, a used_at stamp or an admitted scan). Such a ticket cannot be cancelled. False until the ticket is issued.
     StaffInvitationIssueResponse:
       type: object
       required: [order_id, system_id, status, delivery, places, from_reserve, tickets_status, replayed]
@@ -17547,7 +17550,7 @@ components:
           description: "Why the letter did not go out, a short category and never the raw error text: address_rejected, address_expired, no_recipient, sender_disabled or send_failed. Null when there is nothing to report."
     StaffInvitationListResponse:
       type: object
-      required: [items]
+      required: [items, timezone]
       description: The staff invitations of a session.
       properties:
         items:
@@ -17555,6 +17558,9 @@ components:
           description: Newest first, at most 500.
           items:
             $ref: "#/components/schemas/StaffInvitationListItem"
+        timezone:
+          type: string
+          description: The venue's IANA time zone (UTC for a session without a venue). A client shows the issue and letter times in it, never in the device's zone.
     StaffInvitationSession:
       type: object
       required: [id, start_at, event_id, event_name, timezone]

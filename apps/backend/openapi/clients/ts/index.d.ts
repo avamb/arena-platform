@@ -25980,6 +25980,8 @@ export interface components {
             ticket_status?: string | null;
             /** @description The organizer's private VIP mark of the place's ticket (never shown to the guest). False until the ticket is issued. */
             vip: boolean;
+            /** @description True once the place's ticket was used at the door (a scanned barcode, a used_at stamp or an admitted scan). Such a ticket cannot be cancelled. False until the ticket is issued. */
+            scanned: boolean;
         };
         /** @description The invitation as written. */
         StaffInvitationIssueResponse: {
@@ -26139,6 +26141,8 @@ export interface components {
         StaffInvitationListResponse: {
             /** @description Newest first, at most 500. */
             items: components["schemas"]["StaffInvitationListItem"][];
+            /** @description The venue's IANA time zone (UTC for a session without a venue). A client shows the issue and letter times in it, never in the device's zone. */
+            timezone: string;
         };
         /** @description The session a staff invitation is for. */
         StaffInvitationSession: {

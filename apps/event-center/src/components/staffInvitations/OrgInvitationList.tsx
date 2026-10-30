@@ -54,14 +54,6 @@ import { useEventsList } from "@/screens/EventsScreen";
 
 const TONE: Record<InvitationState, Tone> = { issuing: "wait", active: "ok", partial: "wait", cancelled: "neutral" };
 
-function localZone(): string | undefined {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    return undefined;
-  }
-}
-
 interface Props {
   orgId: string;
   /** `complimentary.issue`: send the letter again. */
@@ -215,7 +207,7 @@ export function OrgInvitationList({ orgId, canIssue, canRevoke, canFilter }: Pro
             const state = invitationState(item);
             const guest = guestOf(item);
             const issuer = issuerName(item);
-            const when = formatDateTime(item.created_at, localZone(), locale);
+            const when = formatDateTime(item.created_at, item.session.timezone, locale);
             const venue = venueOf(item);
             // A cancelled ticket is no longer part of the invitation. A fully cancelled one still lists its places, as history.
             const live = state === "cancelled" ? item.places : activePlaces(item.places);
@@ -251,6 +243,12 @@ export function OrgInvitationList({ orgId, canIssue, canRevoke, canFilter }: Pro
                         {placeText(p)}
                         {p.origin === "unavailable" && ` · ${t("seatInv.picked.reserve")}`}
                       </span>
+                      {p.scanned === true && (
+                        <span data-testid="org-inv-place-scanned">
+                          {" "}
+                          <Badge tone="neutral">{t("seatInv.place.scanned")}</Badge>
+                        </span>
+                      )}
                       {placeVip(p) && (
                         <span data-testid="org-inv-vip">
                           {" "}
@@ -272,11 +270,11 @@ export function OrgInvitationList({ orgId, canIssue, canRevoke, canFilter }: Pro
                   ))}
                 </ul>
                 {item.places.length > live.length && (
-                  <span className="muted" data-testid="org-inv-canceled-places">
+                  <span className="muted inv-row-line" data-testid="org-inv-canceled-places">
                     {t("seatInv.list.canceledPlaces", { count: item.places.length - live.length })}
                   </span>
                 )}
-                <span className="muted">
+                <span className="muted inv-row-line">
                   {issuer !== "" ? t("seatInv.list.issued", { issuer, when }) : t("seatInv.list.issuedApi", { when })}
                   {" · "}
                   {t("seatInv.list.delivery", {
@@ -288,7 +286,7 @@ export function OrgInvitationList({ orgId, canIssue, canRevoke, canFilter }: Pro
                 <span className="card-meta" data-testid="org-inv-state">
                   <Badge tone={TONE[state]}>{t(`seatInv.state.${state}` as MessageKey)}</Badge>
                 </span>
-                <InvitationLetter item={item} testId="org-inv-letter" />
+                <InvitationLetter item={item} tz={item.session.timezone} testId="org-inv-letter" />
                 {canAct(item) && (
                   <p className="inv-row-actions">
                     <InvitationActions orgId={orgId} orderId={item.order_id} systemId={item.system_id} canResend={canIssue && item.delivery !== "pdf_only"} />
@@ -327,7 +325,7 @@ export function OrgInvitationList({ orgId, canIssue, canRevoke, canFilter }: Pro
           }
           subject={guestOf(cancelling.item) || undefined}
           explain={explain}
-          confirmLabel={t("seatInv.cancel.confirm")}
+          confirmLabel={cancelling.place !== null ? t("seatInv.cancel.placeConfirm") : t("seatInv.cancel.confirm")}
           onConfirm={onConfirm}
           onCancel={() => setCancelling(null)}
         >

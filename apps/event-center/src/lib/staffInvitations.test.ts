@@ -306,6 +306,9 @@ describe("the list", () => {
     expect(canCancelPlace({ ticket_id: "t", ticket_status: "active" }, 1)).toBe(false);
     expect(canCancelPlace({ ticket_id: "t", ticket_status: "cancelled" }, 3)).toBe(false);
     expect(canCancelPlace({ ticket_id: null, ticket_status: null }, 3)).toBe(false);
+    // A ticket used at the door is never cancelled: the server refuses it.
+    expect(canCancelPlace({ ticket_id: "t", ticket_status: "active", scanned: true }, 3)).toBe(false);
+    expect(canCancelPlace({ ticket_id: "t", ticket_status: "active", scanned: false }, 3)).toBe(true);
   });
   it("tells when tickets are missing long after the issue", () => {
     const stuck = item(0, 0);

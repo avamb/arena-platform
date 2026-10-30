@@ -8,17 +8,10 @@ import { useI18n, type MessageKey } from "@/lib/i18n";
 import { letterView } from "@/lib/staffInvitations";
 import type { StaffInvitationListItem } from "@/lib/api/types";
 
-function localZone(): string | undefined {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    return undefined;
-  }
-}
-
-export function InvitationLetter({ item, testId }: { item: StaffInvitationListItem; testId: string }) {
+/** `tz` is the venue's zone: every time on the invitation screens is the venue's, never the device's. */
+export function InvitationLetter({ item, tz, testId }: { item: StaffInvitationListItem; tz: string | undefined; testId: string }) {
   const { t, locale } = useI18n();
-  const view = letterView(item, localZone(), locale);
+  const view = letterView(item, tz, locale);
   if (view.kind === "none") return null;
   return (
     <span className="card-meta" data-testid={testId} data-letter={view.kind}>

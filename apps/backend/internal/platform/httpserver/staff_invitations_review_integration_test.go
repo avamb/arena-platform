@@ -307,7 +307,33 @@ func TestINV02Review_CancelRefusesAScannedTicket_NothingCancelled(t *testing.T) 
 		t.Fatalf("scan: %v", err)
 	}
 
-	code, out := f.do(f.manager, http.MethodPost, f.cancelPath(orderID), `{}`)
+	// The list marks the used ticket, so the screens show it and offer no cancel,
+	// and carries the venue's zone the screens show every time in.
+	code, out := f.do(f.manager, http.MethodGet, f.issuePath(), "")
+	if code != http.StatusOK {
+		t.Fatalf("list: %d %s", code, out["_raw"])
+	}
+	var zone string
+	if err := f.pool.QueryRow(ctx, `SELECT v.timezone FROM sessions s JOIN venues v ON v.id = s.venue_id WHERE s.id = $1`, f.session).Scan(&zone); err != nil {
+		t.Fatalf("venue zone: %v", err)
+	}
+	if out["timezone"] != zone {
+		t.Fatalf("list timezone = %v, want %s", out["timezone"], zone)
+	}
+	marks := map[string]any{}
+	for _, it := range out["items"].([]any) {
+		for _, p := range it.(map[string]any)["places"].([]any) {
+			pl := p.(map[string]any)
+			if id, ok := pl["ticket_id"].(string); ok {
+				marks[id] = pl["scanned"]
+			}
+		}
+	}
+	if marks[scanned.ID.String()] != true || marks[other.ID.String()] != false {
+		t.Fatalf("scanned marks = %v, want %s true and %s false", marks, scanned.ID, other.ID)
+	}
+
+	code, out = f.do(f.manager, http.MethodPost, f.cancelPath(orderID), `{}`)
 	if code != http.StatusConflict || !strings.Contains(out["_raw"].(string), "invitation.ticket_scanned") ||
 		!strings.Contains(out["_raw"].(string), scanned.ID.String()) {
 		t.Fatalf("cancel with a scanned ticket: %d %s", code, out["_raw"])
