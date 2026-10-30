@@ -5,8 +5,9 @@
  * the API sends later. TODO: this becomes per-organization settings (logo, banner,
  * social links, age-gate texts) served by the API; accepted as static for this version.
  *
- * Images still point at the old shop's CDN. Before the domain moves they have
- * to be re-uploaded as arena media (README, "Before the domain moves").
+ * The artwork (logo, banner, footer logo) is served from this app's own
+ * /theme/brand/ folder, so nothing depends on the old shop's CDN once the
+ * domain moves.
  */
 
 export interface ThemeImage {
@@ -17,6 +18,8 @@ export interface ThemeImage {
 
 export interface ThemeConfig {
   shopName: string;
+  /** Domains of the organizer's former/own site: links to them in CMS content stay inside the storefront. */
+  domains: string[];
   logo: ThemeImage & { displayWidth: number };
   banner: ThemeImage;
   footerLogo: ThemeImage & { maxWidth: number };
@@ -30,24 +33,25 @@ export interface ThemeConfig {
   homeTitle: string;
   homeDescription: string;
   /** The age gate popup of the live site is in Hebrew (the buyers are in Israel). */
-  ageGate: { heading: string; mark: string; allow: string; deny: string; exitUrl: string };
+  ageGate: { heading: string; mark: string; allow: string; deny: string; exitUrl: string; lang: string };
 }
 
 export const EINAT_THEME: ThemeConfig = {
   shopName: 'Einat Winery',
+  domains: ['einatwinery.com'],
   logo: {
-    url: 'https://www.einatwinery.com/cdn/shop/files/vinoandco_1.webp?v=1699887012',
+    url: '/theme/brand/logo.jpg',
     width: 110,
     height: 110.20257826887661,
     displayWidth: 110,
   },
   banner: {
-    url: 'https://www.einatwinery.com/cdn/shop/files/c2a345_37bd7d92a3734c319ce31fc30c75adfc_mv2_1.webp?v=1699885588',
+    url: '/theme/brand/banner.jpg',
     width: 1835,
     height: 288,
   },
   footerLogo: {
-    url: 'https://www.einatwinery.com/cdn/shop/files/Logo_Vino_CoWhite_240fe8fb-8bf7-4dfa-a631-3504d1983243.png?v=1701091456',
+    url: '/theme/brand/footer-logo.png',
     width: 248,
     height: 349,
     maxWidth: 150,
@@ -70,5 +74,6 @@ export const EINAT_THEME: ThemeConfig = {
     allow: 'מאשר',
     deny: 'לא מאשר',
     exitUrl: 'https://www.google.com/',
+    lang: 'he',
   },
 };

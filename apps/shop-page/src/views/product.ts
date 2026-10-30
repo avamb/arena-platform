@@ -8,10 +8,10 @@
 import type { ShopProduct, ShopVariant } from '../lib/api';
 import { GALLERY_WIDTHS, sized, srcset } from '../lib/cdn';
 import { esc } from '../lib/html';
-import { qtyLimitMessage } from '../lib/cart';
+import { limitMessage, variantLimit } from '../lib/cart';
 import { sanitizeHtml } from '../lib/sanitize';
 import { T } from '../lib/i18n';
-import { icon, priceBlock, productCard, ratioOf, spinner, url, firstAvailableVariant, type Ctx } from './common';
+import { icon, idToken, priceBlock, productCard, ratioOf, spinner, url, firstAvailableVariant, type Ctx } from './common';
 
 const SID = 'product__main';
 const MEDIA_SIZES =
@@ -31,7 +31,7 @@ function sectionPadding(cls: string, top: number, bottom: number): string {
 }
 
 /** A stable numeric-looking id for a gallery image, as Shopify's media ids are. */
-const mediaId = (p: ShopProduct, i: number): string => `${p.id}${String(i).padStart(2, '0')}`;
+const mediaId = (p: ShopProduct, i: number): string => `${idToken(p.id)}${String(i).padStart(2, '0')}`;
 
 function gallery(p: ShopProduct): string {
   const n = p.images.length;
@@ -275,6 +275,8 @@ export function productView(ctx: Ctx, p: ShopProduct, selectedId?: string): stri
   const shareUrl = typeof location !== 'undefined' ? location.origin + url(ctx, '/products/' + p.slug) : '';
   const description = sanitizeHtml(p.body_html);
   const inCart = ctx.cart.find((i) => i.variant_id === selected.id)?.qty ?? 0;
+  const lineMax = ctx.shop.settings.max_line_qty;
+  const limit = variantLimit(selected, lineMax);
   return `<section id="shopify-section-${SID}" class="shopify-section section"><section
   id="MainProduct-${SID}"
   class="page-width section-${SID}-padding"
@@ -333,12 +335,12 @@ ${priceBlock(ctx, p, { variant: selected, showBadges: true, large: true })}</div
                       data-cart-quantity="${inCart}"
                       data-min="1"
                       min="1"
-                      max="${ctx.shop.settings.max_line_qty}"
+                      max="${limit}"
                       step="1"
                       value="1"
                       form="product-form-${SID}"
                     />
-                    <button class="quantity__button no-js-hidden" name="plus" type="button"${ctx.shop.settings.max_line_qty <= 1 ? ` aria-disabled="true" title="${esc(qtyLimitMessage(ctx.shop.settings.max_line_qty))}"` : ''}>
+                    <button class="quantity__button no-js-hidden" name="plus" type="button"${limit <= 1 ? ` aria-disabled="true" title="${esc(limitMessage(limit, lineMax))}"` : ''}>
                       <span class="visually-hidden">Увеличить количество ${title}</span>
                       ${icon('plus')}
                     </button>
