@@ -54,26 +54,30 @@ Product handles (slugs must be imported unchanged):
 `/collections/all/products.json`, `/search/suggest.json`, Shopify app endpoints
 (`/apps/...`), `/.well-known/ucp`, `/admin`. Nothing links to them.
 
-## Not under this app
+## robots.txt, sitemap.xml and 404
 
-`/sitemap.xml` and `/robots.txt` are served by the platform later (an event for
-the SEO work); until then the old files disappear with the old shop.
+`public/robots.txt` and `public/sitemap.xml` are static files of this app (main
+routes only, host `shop.einatwinery.com`; products come later from the API,
+spec 47 backlog SHOP-B9). `/cart`, `/checkout[/...]` and `/search` carry
+`X-Robots-Tag: noindex`, and any host whose name contains `staging` is noindex
+everywhere. On the organizer's own domain a path whose first segment is not a
+route of the app (`/admin`, `/cart.js`, `/products.json`, `/products/x.js`)
+answers **404** with the `index.html` body, so the app draws its "not found"
+page without a soft 200.
 
-## nginx form (when the domain is served by this container)
+## nginx
 
-```nginx
-# inside the server block of nginx.conf.template, before "location /"
-rewrite ^/collections/tickets/?$            /pages/%D0%BD%D0%B0%D1%88%D0%B8-%D0%BC%D0%B5%D1%80%D0%BE%D0%BF%D1%80%D0%B8%D1%8F%D1%82%D0%B8%D1%8F permanent;
-rewrite ^/collections/[^/]+/products/(.+)$   /products/$1 permanent;
-rewrite ^/collections/(?!all/?$)[^/]+/?$     /collections/all permanent;
-rewrite ^/collections/[^/]+\.atom$           /collections/all permanent;
-rewrite ^/cart/[0-9]+:[0-9]+.*$              /cart permanent;
-rewrite ^/checkouts/.*$                      /cart permanent;
-rewrite ^/(account|customer_authentication)(/.*)?$  /pages/contact permanent;
-rewrite ^/blogs/.*$                          /pages/%D0%BD%D0%B0%D1%88%D0%B8-%D0%BC%D0%B5%D1%80%D0%BE%D0%BF%D1%80%D0%B8%D1%8F%D1%82%D0%B8%D1%8F permanent;
-```
+The rules are in `nginx.conf.template` (maps `$shop_redirect`, `$shop_known_route`,
+`$shop_robots`), active **only on the organizer's own domain** (a host that is
+not `arenasoldout.com`, its subdomains or localhost; on the platform host the
+first segment is the organization slug). Verified with a container on
+2026-10-30: every row of the "To redirect" table answers 301 with a relative
+`Location`. Differences from the table:
 
-The ticket products' handles are not in the export; add one rewrite per handle
-once the list of ticket products is known (the "Билеты" collection has 22).
-Cloudflare Bulk Redirects is the alternative if the zone already carries
-redirects.
+- `/checkout` is a live route of the app (the payment page), so it is NOT
+  redirected to `/cart`; Shopify's `/checkouts/...` (plural) is.
+- The ticket products' handles are not in the export, so no per-handle rule
+  exists; add one `map` line to `$shop_redirect` per handle once the list is known
+  (the "Билеты" collection has 22). Cloudflare Bulk Redirects is the alternative
+  if the zone already carries redirects.
+- Keep this file and the map in step: a new row here is a new line there.
