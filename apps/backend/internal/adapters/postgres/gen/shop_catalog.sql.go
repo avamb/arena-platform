@@ -217,16 +217,24 @@ type ShopProductRow struct {
 	Option1Name    *string    `json:"option1_name"`
 	Option2Name    *string    `json:"option2_name"`
 	Option3Name    *string    `json:"option3_name"`
+	// SEOTitle, SEODescription and Tags come from the Shopify import (migration
+	// 0178). They are written only by SetShopProductSEO, never by
+	// InsertShopProduct/UpdateShopProduct, so an edit through the API keeps them.
+	SEOTitle       *string  `json:"seo_title"`
+	SEODescription *string  `json:"seo_description"`
+	Tags           []string `json:"tags"`
 }
 
 const shopProductColumns = `id, org_id, slug, title, body_html, status, product_type, vendor, sort_order,
-       created_at, updated_at, deleted_at, kind, digital_media_id, option1_name, option2_name, option3_name`
+       created_at, updated_at, deleted_at, kind, digital_media_id, option1_name, option2_name, option3_name,
+       seo_title, seo_description, tags`
 
 func scanShopProductRow(row interface{ Scan(dest ...any) error }) (ShopProductRow, error) {
 	var p ShopProductRow
 	err := row.Scan(&p.ID, &p.OrgID, &p.Slug, &p.Title, &p.BodyHTML, &p.Status, &p.ProductType,
 		&p.Vendor, &p.SortOrder, &p.CreatedAt, &p.UpdatedAt, &p.DeletedAt,
-		&p.Kind, &p.DigitalMediaID, &p.Option1Name, &p.Option2Name, &p.Option3Name)
+		&p.Kind, &p.DigitalMediaID, &p.Option1Name, &p.Option2Name, &p.Option3Name,
+		&p.SEOTitle, &p.SEODescription, &p.Tags)
 	return p, err
 }
 

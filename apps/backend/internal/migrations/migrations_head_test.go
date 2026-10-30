@@ -40,7 +40,7 @@ func TestHead_NumericPrefixPositive(t *testing.T) {
 }
 
 func TestHead_KnownCurrentHead(t *testing.T) {
-	const expectedHead = "0177_shop_order_ip_and_download.sql"
+	const expectedHead = "0178_shop_product_seo.sql"
 	head, err := migrations.Head()
 	if err != nil {
 		t.Fatalf("Head() returned unexpected error: %v", err)

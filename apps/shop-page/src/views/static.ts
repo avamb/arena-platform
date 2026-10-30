@@ -6,7 +6,7 @@
  */
 import type { ShopPage, ShopProduct } from '../lib/api';
 import { esc } from '../lib/html';
-import { resultsLabel, T } from '../lib/i18n';
+import { MSG, resultsLabel, T } from '../lib/i18n';
 import { sanitizeHtml } from '../lib/sanitize';
 import { contactLine, productCard, url, type Ctx } from './common';
 
@@ -54,6 +54,15 @@ export function policyView(page: ShopPage): string {
 }
 
 /** `ctx` null: no shop is known (unknown organization), so there is nowhere to send the visitor. */
+/** The shop could not be reached (network, 5xx, 429): not a 404, and a button to try again. */
+export function unreachableView(): string {
+  return `<div class="template-404 page-width page-margin center shop-unreachable">
+  <h1 class="title">${MSG.unreachableTitle}</h1>
+  <p role="status">${MSG.unreachableText}</p>
+  <button type="button" class="button" data-retry>${MSG.retry}</button>
+</div>`;
+}
+
 export function notFoundView(ctx: Ctx | null): string {
   return `<style type="text/css">
   .template-404 .title + * {

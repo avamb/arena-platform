@@ -25,26 +25,36 @@ import {
 import {
   addItem,
   allAvailable,
+  applyShortage,
   buildCheckoutRequest,
-  capCart,
-  itemCount,
   needsShipping,
   loadCart,
+  limitMessage,
   overLineLimit,
-  paymentUnavailableMessage,
-  qtyLimitMessage,
+  parseShortage,
   clampField,
+  reconcileCart,
   removeItem,
   resolveLines,
   saveCart,
   setQty,
+  totalMinor,
+  variantLimit,
+  variantLimitById,
+  visibleCount,
+  visibleItems,
   wantedQty,
   validateCheckoutForm,
   validatePostal,
   type CartItem,
   type CheckoutForm,
 } from './lib/cart';
-import { T } from './lib/i18n';
+import { captchaToken, mountCaptcha, resetCaptcha, unmountCaptcha } from './lib/captcha';
+import { checkoutErrorMessage, isNotFound, isTransient } from './lib/errors';
+import { MSG, T } from './lib/i18n';
+import { isShopHost } from './lib/links';
+import { formatMoney } from './lib/money';
+import { isOwnOrder, nextDelayMs, phaseFor } from './lib/poll';
 import { fitLoadedImages, watchImageRatios } from './lib/ratio';
 import { applyTheme } from './theme';
 import { esc } from './lib/html';
@@ -52,11 +62,11 @@ import { canonicalPagePath, href as buildHref, isPlatformHost, locate, type Rout
 import { EINAT_THEME } from './lib/theme';
 import { cartView, notificationProduct } from './views/cart';
 import { collectionView, homeView } from './views/catalog';
-import { checkoutView, EMPTY_FORM, hasDigitalLines, statusView, type CheckoutViewState, type DownloadsState } from './views/checkout';
+import { checkoutView, EMPTY_FORM, hasDigitalLines, statusView, type CheckoutViewState, type DownloadsState, type ResumeOffer } from './views/checkout';
 import { priceBlock, type Ctx } from './views/common';
 import { cartBubble, layout } from './views/layout';
 import { buyButtonHtml, productView } from './views/product';
-import { notFoundView, pageView, platformHomeView, policyView, searchView } from './views/static';
+import { notFoundView, pageView, platformHomeView, policyView, searchView, unreachableView } from './views/static';
 
 interface State {
   org: string;
@@ -135,7 +145,7 @@ function fixContentLinks(base: string): void {
     } else {
       try {
         const u = new URL(raw);
-        if (/(^|\.)einatwinery\.com$/i.test(u.hostname)) path = u.pathname + u.search + u.hash;
+        if (isShopHost(u.hostname, [...EINAT_THEME.domains, state?.shop.settings.shop_domain])) path = u.pathname + u.search + u.hash;
       } catch {
         return;
       }
@@ -144,8 +154,10 @@ function fixContentLinks(base: string): void {
   });
 }
 
-async function renderRoute(route: Route): Promise<void> {
+async function renderRoute(route: Route, fresh = false): Promise<void> {
   const s = state as State;
+  // Opening the basket or the checkout: prices and stock may have moved since the catalog was loaded.
+  if (fresh && (route.kind === 'cart' || route.kind === 'checkout')) await refreshCatalog();
   const ctx = ctxOf(s);
   resetTransient();
   const shopName = s.shop.settings.shop_name || EINAT_THEME.shopName;
@@ -167,14 +179,22 @@ async function renderRoute(route: Route): Promise<void> {
       break;
     case 'product': {
       let p = s.shop.products.find((x) => x.slug === route.slug);
+      let unreachable = false;
       if (!p) {
         try {
           p = await getProduct(s.org, route.slug);
-        } catch {
+        } catch (e) {
           p = undefined;
+          // Only a real 404 is "not found"; the network, a 5xx and a 429 are "try again".
+          unreachable = isTransient(e);
+          if (!isNotFound(e)) console.error(e);
         }
       }
-      if (!p) {
+      if (!p && unreachable) {
+        main = unreachableView();
+        kind = 'not_found';
+        title = `${MSG.unreachableTitle} – ${shopName}`;
+      } else if (!p) {
         main = notFoundView(ctx);
         kind = 'not_found';
         title = `${T.notFoundTitle} – ${shopName}`;
@@ -198,7 +218,7 @@ async function renderRoute(route: Route): Promise<void> {
       let token = q.get('checkout_token') || q.get('order_token') || q.get('token') || '';
       if (!token) {
         try {
-          token = localStorage.getItem('arena_shop_order:' + s.org) ?? '';
+          token = storedOrderToken(s.org) ?? '';
         } catch {
           token = '';
         }
@@ -222,17 +242,21 @@ async function renderRoute(route: Route): Promise<void> {
     case 'page':
     case 'policy': {
       let page = pageCache.get(route.slug);
+      let pageUnreachable = false;
       if (!page) {
         try {
           page = await getPage(s.org, route.slug);
           pageCache.set(route.slug, page);
         } catch (e) {
-          if (!(e instanceof ApiError) || e.status !== 404) {
-            console.error(e);
-          }
+          if (!isNotFound(e)) console.error(e);
+          pageUnreachable = isTransient(e);
         }
       }
-      if (!page) {
+      if (!page && pageUnreachable) {
+        main = unreachableView();
+        kind = 'not_found';
+        title = `${MSG.unreachableTitle} – ${shopName}`;
+      } else if (!page) {
         main = notFoundView(ctx);
         kind = 'not_found';
         title = `${T.notFoundTitle} – ${shopName}`;
@@ -263,21 +287,76 @@ function draw(kind: Route['kind'], ctx: Ctx, main: string, title: string, descri
   fixContentLinks(ctx.base);
   applyAgeGate();
   fitLoadedImages();
+  mountCheckoutCaptcha();
+}
+
+/** The checkout form carries a Turnstile widget while the shop publishes a site key. */
+function mountCheckoutCaptcha(): void {
+  const host = document.getElementById('checkout-captcha');
+  const key = host?.dataset.sitekey;
+  if (!host || !key) {
+    unmountCaptcha();
+    return;
+  }
+  void mountCaptcha(host, key).then((ok) => {
+    if (!ok && host.isConnected) host.textContent = MSG.captchaLoad;
+  });
 }
 
 function currentRoute(): Route {
   return locate(location.hostname, location.pathname, location.search).route;
 }
 
-async function rerender(): Promise<void> {
-  await renderRoute(currentRoute());
+async function rerender(fresh = false): Promise<void> {
+  await renderRoute(currentRoute(), fresh);
 }
 
 async function navigate(to: string, replace = false): Promise<void> {
   if (replace) history.replaceState({}, '', to);
   else history.pushState({}, '', to);
   window.scrollTo(0, 0);
-  await rerender();
+  await rerender(true);
+}
+
+// ---- catalog freshness ----------------------------------------------------------
+
+/**
+ * Loads the catalog again (bypassing the 30 s browser cache) and brings the basket in line with it:
+ * a hidden or deleted product leaves the basket, a quantity past the stock is cut. A failed request keeps the old catalog.
+ */
+async function refreshCatalog(): Promise<void> {
+  const s = state;
+  if (!s) return;
+  try {
+    s.shop = await getShop(s.org, true);
+  } catch {
+    return;
+  }
+  syncCart();
+}
+
+function syncCart(): void {
+  const s = state as State;
+  const r = reconcileCart(s.cart, s.shop.products, s.shop.settings.max_line_qty);
+  if (r.changed) commitCart(r.items);
+}
+
+const orderKey = (org: string): string => 'arena_shop_order:' + org;
+
+function storedOrderToken(org: string): string | null {
+  try {
+    return localStorage.getItem(orderKey(org));
+  } catch {
+    return null;
+  }
+}
+
+function forgetOrderToken(org: string): void {
+  try {
+    localStorage.removeItem(orderKey(org));
+  } catch {
+    /* ignore */
+  }
 }
 
 // ---- status polling -------------------------------------------------------------
@@ -301,8 +380,13 @@ function paintStatus(view: string): void {
   applyAgeGate();
 }
 
-async function pollStatus(token: string, attempt = 0): Promise<void> {
+/** When each order's status page first started waiting: a page redrawn mid-wait keeps its clock. */
+const pollStarts = new Map<string, number>();
+
+async function pollStatus(token: string, failures = 0): Promise<void> {
   const s = state as State;
+  if (!pollStarts.has(token)) pollStarts.set(token, Date.now());
+  const startedAt = pollStarts.get(token) as number;
   let st: OrderStatus | 'error';
   try {
     st = await getOrderStatus(token);
@@ -312,24 +396,30 @@ async function pollStatus(token: string, attempt = 0): Promise<void> {
   // The buyer may have navigated away while the request was in flight.
   const r = currentRoute();
   if (r.kind !== 'status' || r.token !== token) return;
+  failures = st === 'error' ? failures + 1 : 0;
   lastStatus = st === 'error' ? undefined : st;
   downloads = undefined;
-  if (st !== 'error' && st.status === 'paid') {
-    s.cart = [];
-    saveCart(s.org, []);
-    try {
-      localStorage.removeItem('arena_shop_order:' + s.org);
-    } catch {
-      /* ignore */
+  if (st !== 'error') {
+    // Only the order this browser started may empty its basket: an old link to another order must not.
+    const own = isOwnOrder(token, storedOrderToken(s.org));
+    if (st.status === 'paid') {
+      if (own) {
+        commitCart([]);
+        forgetOrderToken(s.org);
+      }
+      downloads = await loadDownloads(token, st);
+      if (currentRoute().kind !== 'status') return;
+    } else if (own && (st.status === 'expired' || st.status === 'cancelled')) {
+      forgetOrderToken(s.org);
     }
-    downloads = await loadDownloads(token, st);
-    if (currentRoute().kind !== 'status') return;
   }
-  paintStatus(statusView(ctxOf(s), st, downloads));
-  const waiting = st !== 'error' && (st.status === 'pending' || (st.status === 'paid' && downloads?.state === 'waiting'));
-  if (waiting && attempt < 90) {
-    pollTimer = window.setTimeout(() => void pollStatus(token, attempt + 1), 4000);
-  }
+  const elapsed = Date.now() - startedAt;
+  const waiting = st === 'error' || st.status === 'pending' || (st.status === 'paid' && downloads?.state === 'waiting');
+  const delay = waiting ? nextDelayMs(elapsed, failures) : null;
+  // Out of time with the files still not ready: stop saying "preparing" and offer the refresh button.
+  if (waiting && delay === null && downloads?.state === 'waiting') downloads = { state: 'error' };
+  paintStatus(statusView(ctxOf(s), st, downloads, phaseFor(elapsed)));
+  if (delay !== null) pollTimer = window.setTimeout(() => void pollStatus(token, failures), delay);
 }
 
 /** "Обновить ссылки": the signed URLs live 15 minutes, so ask for new ones. */
@@ -350,7 +440,11 @@ async function refreshDownloads(): Promise<void> {
 
 const ageKey = (): string => 'arena_shop_age_ok:' + (state?.org ?? '');
 
+/** The answer for this page's life, for a browser whose storage is closed (private window): asked once, not on every page. */
+let ageAnswered = false;
+
 function ageAccepted(): boolean {
+  if (ageAnswered) return true;
   try {
     return localStorage.getItem(ageKey()) === '1';
   } catch {
@@ -381,7 +475,7 @@ function commitCart(items: CartItem[]): void {
   s.cart = items;
   saveCart(s.org, items);
   const bubble = document.getElementById('cart-icon-bubble');
-  if (bubble) bubble.innerHTML = cartBubble(itemCount(items));
+  if (bubble) bubble.innerHTML = cartBubble(visibleCount(items, s.shop.products));
 }
 
 function openNotification(variantId: string, limitNote?: string): void {
@@ -392,7 +486,7 @@ function openNotification(variantId: string, limitNote?: string): void {
   if (!line || !host || !box) return;
   host.innerHTML = notificationProduct(line, limitNote);
   const viewCart = document.getElementById('cart-notification-button');
-  if (viewCart) viewCart.textContent = `${T.viewCart} (${itemCount(s.cart)})`;
+  if (viewCart) viewCart.textContent = `${T.viewCart} (${visibleCount(s.cart, s.shop.products)})`;
   box.classList.add('animate', 'active');
   const btn = box.querySelector<HTMLElement>('.cart-notification__close');
   btn?.focus();
@@ -407,7 +501,7 @@ function addToCart(variantId: string, qty: number, limitNote?: string): boolean 
   const s = state as State;
   const hit = resolveLines([{ variant_id: variantId, qty: 1 }], s.shop.products)[0];
   if (!hit || !hit.variant.available) return false;
-  commitCart(addItem(s.cart, variantId, qty, s.shop.settings.max_line_qty));
+  commitCart(addItem(s.cart, variantId, qty, variantLimit(hit.variant, s.shop.settings.max_line_qty)));
   syncInCart(variantId);
   openNotification(variantId, limitNote);
   return true;
@@ -418,8 +512,10 @@ function addToCart(variantId: string, qty: number, limitNote?: string): boolean 
  * field while the buyer's number was cut, and a hint on "+" once the field sits at the limit.
  */
 function showQtyLimit(input: HTMLInputElement, limited: boolean): void {
-  const max = (state as State).shop.settings.max_line_qty;
-  const note = qtyLimitMessage(max);
+  const lineMax = (state as State).shop.settings.max_line_qty;
+  // The field's own max is the variant's limit: the shop's line limit cut to the stock.
+  const max = Number(input.max) > 0 ? Number(input.max) : lineMax;
+  const note = limitMessage(max, lineMax);
   input.dataset.limited = limited ? '1' : '';
   const rules = input.closest('.product-form__quantity')?.querySelector<HTMLElement>('.quantity__rules');
   if (rules) {
@@ -459,6 +555,7 @@ function onClick(e: MouseEvent): void {
 
   // Age gate
   if (target.closest('#allowButton')) {
+    ageAnswered = true;
     try {
       localStorage.setItem(ageKey(), '1');
     } catch {
@@ -495,9 +592,25 @@ function onClick(e: MouseEvent): void {
     if (form && id && state) {
       const qtyInput = form.elements.namedItem('quantity') as HTMLInputElement | null;
       const qty = Math.max(1, parseInt(qtyInput?.value ?? '1', 10) || 1);
-      commitCart(addItem(state.cart, id, qty, state.shop.settings.max_line_qty));
+      commitCart(addItem(state.cart, id, qty, variantLimitById(state.shop.products, id, state.shop.settings.max_line_qty)));
       void navigate(buildHref(state.base, '/checkout'));
     }
+    return;
+  }
+
+  // "Попробовать ещё раз" after a failed read
+  if (target.closest('[data-retry]')) {
+    e.preventDefault();
+    void rerender(true);
+    return;
+  }
+
+  // "Оформить новый заказ" next to the offer to finish the unpaid one
+  if (target.closest('[data-resume-ignore]')) {
+    e.preventDefault();
+    const f = document.getElementById('checkout-form') as HTMLFormElement | null;
+    skipResume = true;
+    if (f) void submitCheckout(f);
     return;
   }
 
@@ -561,11 +674,12 @@ function onSubmit(e: Event): void {
     const qtyInput = form.elements.namedItem('quantity') as HTMLInputElement | null;
     const qty = wantedQty(qtyInput?.value);
     const variantId = form.dataset.variantId as string;
-    const max = s.shop.settings.max_line_qty;
+    const lineMax = s.shop.settings.max_line_qty;
+    const max = variantLimitById(s.shop.products, variantId, lineMax);
     const inCart = s.cart.find((i) => i.variant_id === variantId)?.qty ?? 0;
     // The field may already have been cut to the limit on change: it remembers that.
     const limited = overLineLimit(inCart, qty, max) || qtyInput?.dataset.limited === '1';
-    if (addToCart(variantId, qty, limited ? qtyLimitMessage(max) : undefined) && qtyInput) {
+    if (addToCart(variantId, qty, limited ? limitMessage(max, lineMax) : undefined) && qtyInput) {
       qtyInput.value = String(clampField(qty, max).value);
       showQtyLimit(qtyInput, limited);
     }
@@ -642,6 +756,15 @@ function applyVariant(product: ShopProduct, variant: ShopVariant): void {
     btn.disabled = !variant.available;
     btn.innerHTML = buyButtonHtml(variant);
   }
+  // The field follows the variant: its limit is this variant's stock (cut to the shop's line limit).
+  const qtyField = document.getElementById('Quantity-product__main') as HTMLInputElement | null;
+  if (qtyField) {
+    const limit = variantLimit(variant, s.shop.settings.max_line_qty);
+    qtyField.max = String(limit);
+    const cut = clampField(qtyField.value, limit);
+    if (qtyField.value !== '' && cut.limited) qtyField.value = String(cut.value);
+    showQtyLimit(qtyField, cut.limited);
+  }
   syncInCart(variant.id);
   const buyNow = document.querySelector<HTMLElement>('.shopify-payment-button');
   if (buyNow) buyNow.hidden = !variant.available;
@@ -656,15 +779,16 @@ function onChange(e: Event): void {
   if (el.matches('.cart-item .quantity__input')) {
     const id = el.dataset.quantityVariantId as string;
     const qty = parseInt(el.value, 10);
-    commitCart(setQty(s.cart, id, Number.isFinite(qty) ? qty : 1, s.shop.settings.max_line_qty));
-    cartLimited = Number.isFinite(qty) && clampField(qty, s.shop.settings.max_line_qty).limited ? id : null;
+    const max = variantLimitById(s.shop.products, id, s.shop.settings.max_line_qty);
+    commitCart(setQty(s.cart, id, Number.isFinite(qty) ? qty : 1, max));
+    cartLimited = Number.isFinite(qty) && clampField(qty, max).limited ? id : null;
     void rerender();
     return;
   }
 
   // Product page quantity: a number past the shop's per-line limit is cut to it, with the reason
   if (el.matches('.product-form__quantity .quantity__input')) {
-    const { value, limited } = clampField(el.value, s.shop.settings.max_line_qty);
+    const { value, limited } = clampField(el.value, Number(el.max) > 0 ? Number(el.max) : s.shop.settings.max_line_qty);
     if (el.value !== '' && limited) el.value = String(value);
     showQtyLimit(el, limited);
     return;
@@ -719,6 +843,40 @@ function readCheckoutForm(form: HTMLFormElement): CheckoutForm {
   };
 }
 
+/** The buyer's language for the order's e-mails and the payment page: the one the page is in. */
+function pageLocale(): string {
+  const lang = (document.documentElement.lang || 'ru').toLowerCase().split('-')[0];
+  return lang || 'ru';
+}
+
+/** Set by "Оформить новый заказ": the next submit does not look for an unpaid order first. */
+let skipResume = false;
+
+/**
+ * An unpaid order this browser started and whose payment page can still be opened. The buyer who
+ * came back with "Назад" is offered it instead of a second order and a second reservation.
+ */
+async function findResumeOffer(s: State): Promise<ResumeOffer | undefined> {
+  const token = storedOrderToken(s.org);
+  if (!token) return undefined;
+  try {
+    const st = await getOrderStatus(token);
+    if (st.status === 'pending' && st.payment_url) {
+      const currency = st.currency || s.shop.settings.currency;
+      return {
+        paymentUrl: st.payment_url,
+        number: st.number,
+        totalLabel: st.total_minor != null ? formatMoney(st.total_minor, currency) : undefined,
+      };
+    }
+    // Paid, expired or cancelled: nothing to come back to.
+    forgetOrderToken(s.org);
+  } catch (e) {
+    if (isNotFound(e)) forgetOrderToken(s.org);
+  }
+  return undefined;
+}
+
 async function submitCheckout(form: HTMLFormElement): Promise<void> {
   const s = state as State;
   const values = readCheckoutForm(form);
@@ -738,23 +896,57 @@ async function submitCheckout(form: HTMLFormElement): Promise<void> {
     await rerender();
     return;
   }
-  checkoutState = { values, errors: {}, submitting: true };
+  const captchaKey = s.shop.settings.captcha_site_key || '';
+  const captcha = captchaKey ? captchaToken(form) : '';
+  if (captchaKey && !captcha) {
+    checkoutState = { values, errors: {}, message: MSG.captchaWait };
+    await rerender();
+    return;
+  }
   const btn = form.querySelector<HTMLButtonElement>('#checkout-pay');
   if (btn) btn.disabled = true;
+  if (!skipResume) {
+    const offer = await findResumeOffer(s);
+    if (offer) {
+      checkoutState = { values, errors: {}, resume: offer };
+      await rerender();
+      document.getElementById('checkout-resume')?.scrollIntoView?.({ block: 'center' });
+      return;
+    }
+  }
+  skipResume = false;
+  checkoutState = { values, errors: {}, submitting: true };
   try {
     const req = buildCheckoutRequest(
-      s.cart,
+      visibleItems(s.cart, s.shop.products),
       values,
       location.origin + buildHref(s.base, '/checkout/result'),
-      'ru',
+      pageLocale(),
       s.shop.settings.country_iso2 || 'IL',
       ships,
+      captcha || undefined,
     );
     const created = await createCheckout(s.org, req);
+    // A Turnstile token is good for one request.
+    resetCaptcha();
     try {
-      localStorage.setItem('arena_shop_order:' + s.org, created.order_token);
+      localStorage.setItem(orderKey(s.org), created.order_token);
     } catch {
       /* the return page then finds the token in the query */
+    }
+    const expected = totalMinor(s.shop.settings, lines);
+    if (created.payment_url && created.total_minor !== expected) {
+      // The prices moved between the catalog and the order: never send the buyer to pay a sum they were not shown.
+      const currency = created.currency || s.shop.settings.currency;
+      await refreshCatalog();
+      checkoutState = {
+        values,
+        errors: {},
+        message: `Сумма заказа изменилась: ${formatMoney(created.total_minor, currency)} вместо ${formatMoney(expected, currency)}. Мы обновили цены, проверьте корзину.`,
+        resume: { paymentUrl: created.payment_url, number: created.number, totalLabel: formatMoney(created.total_minor, currency) },
+      };
+      await rerender();
+      return;
     }
     checkoutState = { values, errors: {} };
     if (created.payment_url) {
@@ -764,15 +956,18 @@ async function submitCheckout(form: HTMLFormElement): Promise<void> {
       await navigate(buildHref(s.base, '/checkout/' + created.order_token));
     }
   } catch (e) {
-    let message = 'Не удалось оформить заказ. Проверьте соединение и попробуйте ещё раз.';
+    resetCaptcha();
+    let message = checkoutErrorMessage(e, s.shop.settings.contact_email);
+    let notes: string[] | undefined;
+    let resume: ResumeOffer | undefined;
     if (e instanceof ApiError) {
       if (e.code === 'shop.out_of_stock') {
-        message = 'Часть товаров закончилась, пока вы оформляли заказ. Мы обновили наличие, проверьте корзину.';
-        try {
-          s.shop = await getShop(s.org);
-        } catch {
-          /* keep the old catalog */
-        }
+        // Cut the basket to what the server says is left, say what changed, then bring the catalog up to date.
+        const cut = applyShortage(s.cart, s.shop.products, parseShortage(e.details));
+        commitCart(cut.items);
+        await refreshCatalog();
+        notes = cut.notes;
+        message = 'Часть товаров закончилась, пока вы оформляли заказ. Мы обновили корзину, проверьте её и оформите заказ ещё раз.';
       } else if (e.code === 'shop.postal_required' || e.code === 'shop.invalid_postal') {
         // The server's own verdict on the postal code: show it under the field, in Russian.
         const country = s.shop.settings.country_iso2 || 'IL';
@@ -780,13 +975,15 @@ async function submitCheckout(form: HTMLFormElement): Promise<void> {
         await rerender();
         (document.querySelector('#Checkout-postal') as HTMLElement | null)?.focus();
         return;
-      } else if (e.status === 422 || e.status === 400) {
-        message = 'Проверьте введённые данные: ' + e.message;
-      } else if (e.status === 503) {
-        message = paymentUnavailableMessage(s.shop.settings.contact_email);
+      } else if (e.code === 'shop.invalid_item' || e.code === 'shop.stock_changed') {
+        const bad = (e.details as { variant_id?: unknown } | null | undefined)?.variant_id;
+        if (typeof bad === 'string') commitCart(removeItem(s.cart, bad));
+        await refreshCatalog();
+      } else if (e.code === 'shop.too_many_pending') {
+        resume = await findResumeOffer(s);
       }
     }
-    checkoutState = { values, errors: {}, message };
+    checkoutState = { values, errors: {}, message, notes, resume };
     await rerender();
   }
 }
@@ -823,6 +1020,12 @@ function fatal(message: string): void {
   standalone(`<div class="template-404 page-width page-margin center"><h1 class="title">${esc(message)}</h1></div>`, message);
 }
 
+/** The shop could not be reached (not a 404): say so and offer another try. */
+function fatalRetry(): void {
+  standalone(unreachableView(), MSG.unreachableTitle);
+  document.querySelector('[data-retry]')?.addEventListener('click', () => location.reload());
+}
+
 async function boot(): Promise<void> {
   document.documentElement.className = document.documentElement.className.replace('no-js', 'js');
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
@@ -840,10 +1043,15 @@ async function boot(): Promise<void> {
       return;
     }
     const shop = await getShop(org);
-    state = { org, base: loc.base, shop, cart: capCart(loadCart(org), shop.settings.max_line_qty) };
+    // A product that was hidden or deleted since the basket was saved must not stay in it.
+    const stored = loadCart(org);
+    const cart = reconcileCart(stored, shop.products, shop.settings.max_line_qty);
+    state = { org, base: loc.base, shop, cart: cart.items };
+    if (cart.changed) saveCart(org, cart.items);
   } catch (e) {
     console.error(e);
-    fatal(e instanceof ApiError && e.status === 404 ? T.notFoundTitle : 'Магазин временно недоступен');
+    if (isNotFound(e)) fatal(T.notFoundTitle);
+    else fatalRetry();
     return;
   }
 
@@ -854,7 +1062,14 @@ async function boot(): Promise<void> {
   document.addEventListener('input', onInput);
   document.addEventListener('focusin', onFocusIn);
   document.addEventListener('keyup', onKeyUp);
-  window.addEventListener('popstate', () => void rerender());
+  window.addEventListener('popstate', () => void rerender(true));
+  // Back from the payment page: the browser may restore this page from its cache with the pay button still disabled.
+  window.addEventListener('pageshow', (ev) => {
+    if (!(ev as PageTransitionEvent).persisted) return;
+    checkoutState = { ...checkoutState, submitting: false };
+    skipResume = false;
+    void rerender(true);
+  });
 
   await rerender();
 }

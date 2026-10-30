@@ -24,6 +24,7 @@
 13. [Release Branch & Image Tag Strategy](#13-release-branch--image-tag-strategy)
 14. [Initial Production Server Requirements](#14-initial-production-server-requirements)
 15. [Admin Web Service (PR-07)](#15-admin-web-service-pr-07)
+16. [Shop (organizer storefront)](#16-shop-organizer-storefront)
 
 ---
 
@@ -1201,3 +1202,45 @@ npm --prefix apps/admin-web run build 2>&1 | grep gzip
 
 If any chunk exceeds its budget, investigate with `vite-bundle-analyzer` and
 split the offending dependency or introduce lazy route loading.
+
+---
+
+## 16. Shop (organizer storefront)
+
+The merchandise shop (spec `08_architecture/47_merch_shop_module_ru.md`) is a
+static app served by nginx, built from `apps/shop-page/Dockerfile` with the
+**repository root** as build context. It lives either on the platform host
+(`shop.arenasoldout.com/{org_slug}`, stand `shop-staging.arenasoldout.com`) or on
+the organizer's own domain (`shop.einatwinery.com`). The step-by-step release of one
+organizer (DNS, opening the shop, payment channel, Telegram, 301) is in
+`docs/ops/shop_release_checklist_ru.md`.
+
+| Property | Value |
+|---|---|
+| Source Dockerfile | `apps/shop-page/Dockerfile` |
+| Build arg | `VITE_API_BASE_URL` (origin of `arena-api`, no trailing slash; baked into the bundle and the CSP) |
+| Runtime | `nginx:1.27-alpine`, non-root, port `8080` |
+| Health endpoint | `GET /health` returns `200 ok` |
+| Static files | `public/robots.txt`, `public/sitemap.xml` (host `shop.einatwinery.com`: change both for another organizer) |
+| Unknown paths | 404 with the `index.html` body on an organizer's own domain; 301 for old Shopify addresses |
+
+### 16.1 Variables
+
+| Variable | Service | Purpose |
+|---|---|---|
+| `VITE_API_BASE_URL` | `shop-page` (build arg) | API origin, for example `https://api.arenasoldout.com` |
+| `CORS_ALLOWED_ORIGINS` | `arena-api` | Must list `https://<shop domain>`. Without it the browser cannot read the catalog and the checkout answers 400 `checkout.invalid_return_url` (the return URL policy accepts only these origins and `PUBLIC_TICKETS_BASE_URL`). Redeploy `arena-api` after changing it |
+| `SHOP_PUBLIC_BASE_URL` | `arena-worker` | Platform storefront origin for the link in the "order received" e-mail of an organization without its own `shop_domain` |
+| `SHOP_TURNSTILE_SITE_KEY`, `SHOP_TURNSTILE_SECRET` | see the checklist, section 4 | Cloudflare Turnstile on the shop checkout. On the stand use Cloudflare's test pair (`1x00000000000000000000AA` / `1x0000000000000000000000000000000AA`), on production a pair created for the shop domain |
+| `SALES_TELEGRAM_BOT_TOKEN` | `arena-worker` | Telegram announcements to the logistician's chat (`sales_notification_subscriptions`, kinds `{shop}`) |
+
+### 16.2 Domain and TLS
+
+1. Dokploy: domain `<shop domain>`, HTTPS Let's Encrypt, container port `8080`.
+2. DNS: CNAME of the organizer's zone to the Dokploy host. With Cloudflare keep SSL/TLS on
+   Full (strict). A host answers 526 until Traefik has a certificate, and Traefik orders it only
+   after the DNS points at the server: if the domain was added first, `docker restart` the
+   `shop-page` container.
+3. The platform opens the shop and records the domain itself:
+   `PUT /v1/organizations/{org_id}/shop/settings` by a platform superadmin (`X-Admin-Reason`,
+   whole body; fields `shop_domain`, `enabled`, `sales_channel_id`). There is no screen for it.

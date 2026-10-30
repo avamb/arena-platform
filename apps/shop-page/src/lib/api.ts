@@ -38,6 +38,10 @@ export interface ShopSettings {
   shop_name?: string;
   /** How many units of one variant an order may hold (the API refuses more). */
   max_line_qty: number;
+  /** Cloudflare Turnstile site key: present when the checkout must carry a captcha token. */
+  captcha_site_key?: string | null;
+  /** The shop's own domain (custom domain), when it has one. */
+  shop_domain?: string | null;
 }
 
 export interface ShopImage {
@@ -117,6 +121,8 @@ export interface CheckoutRequest {
   return_url: string;
   /** Required by the API whenever the shop has an age gate. */
   age_confirmed: boolean;
+  /** Turnstile token, sent whenever the shop publishes a captcha site key. */
+  captcha_token?: string;
 }
 
 export interface CheckoutCreated {
@@ -187,7 +193,6 @@ interface WireImage {
 interface WireVariant {
   id: string;
   title: string;
-  sku?: string | null;
   price_minor: number;
   compare_at_minor?: number | null;
   available: number | null;
@@ -220,9 +225,11 @@ interface WireSettings {
   contact_email?: string | null;
   shop_name?: string;
   max_line_qty?: number;
+  captcha_site_key?: string | null;
 }
 interface WireCatalog {
-  org?: { slug: string; name: string; shop_domain?: string | null };
+  org?: { slug: string; name: string; shop_domain?: string | null; captcha_site_key?: string | null };
+  captcha_site_key?: string | null;
   settings: WireSettings;
   products: WireProduct[];
   pages: { slug: string; title: string }[];
@@ -381,6 +388,8 @@ export function normalizeCatalog(c: WireCatalog): ShopData {
       country_iso2: s.country_iso2 ?? null,
       shop_name: s.shop_name || c.org?.name || undefined,
       max_line_qty: s.max_line_qty && s.max_line_qty > 0 ? s.max_line_qty : DEFAULT_MAX_LINE_QTY,
+      captcha_site_key: s.captcha_site_key || c.captcha_site_key || c.org?.captcha_site_key || null,
+      shop_domain: c.org?.shop_domain || null,
     },
     products: (c.products ?? []).map(normalizeProduct),
     pages: links.filter((p) => !isPolicySlug(p.slug)),
@@ -403,8 +412,9 @@ export function normalizeStatus(s: WireStatus): OrderStatus {
 
 // ---- calls ---------------------------------------------------------------------
 
-export async function getShop(orgSlug: string): Promise<ShopData> {
-  return normalizeCatalog(await request<WireCatalog>(`/v1/public/shop/${seg(orgSlug)}`));
+/** `fresh` skips the browser's 30 s cache: used when the basket or the checkout opens and prices must be current. */
+export async function getShop(orgSlug: string, fresh = false): Promise<ShopData> {
+  return normalizeCatalog(await request<WireCatalog>(`/v1/public/shop/${seg(orgSlug)}`, fresh ? { cache: 'no-store' } : undefined));
 }
 
 export async function getProduct(orgSlug: string, slug: string): Promise<ShopProduct> {

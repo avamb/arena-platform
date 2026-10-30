@@ -4,7 +4,7 @@
  * Markup is Dawn 11's main-cart-items / main-cart-footer /
  * cart-notification-product sections.
  */
-import { qtyLimitMessage, subtotalMinor, type CartLine } from '../lib/cart';
+import { limitMessage, subtotalMinor, variantLimit, type CartLine } from '../lib/cart';
 import { sized } from '../lib/cdn';
 import { esc } from '../lib/html';
 import { T } from '../lib/i18n';
@@ -40,9 +40,10 @@ function optionLines(line: CartLine): string {
 
 function lineRow(ctx: Ctx, line: CartLine, index: number, limitedVariant: string | null): string {
   const n = index + 1;
-  const max = ctx.shop.settings.max_line_qty;
+  const lineMax = ctx.shop.settings.max_line_qty;
+  const max = variantLimit(line.variant, lineMax);
   const atMax = line.qty >= max;
-  const limitNote = qtyLimitMessage(max);
+  const limitNote = limitMessage(max, lineMax);
   const img = line.product.images[0];
   const link = esc(url(ctx, '/products/' + line.product.slug));
   const title = esc(line.product.title);
@@ -105,7 +106,7 @@ function lineRow(ctx: Ctx, line: CartLine, index: number, limitedVariant: string
                               value="${line.qty}"
                               data-cart-quantity="${line.qty}"
                               min="1"
-                              max="${ctx.shop.settings.max_line_qty}"
+                              max="${max}"
                               step="1"
                               aria-label="Количество: ${title}"
                               id="Quantity-${n}"

@@ -233,3 +233,76 @@ func TestParseProducts_SingleDefaultTitleVariantCarriesNoOptionValue(t *testing.
 		}
 	}
 }
+
+func TestParseProducts_SEOTagsWeightAndBarcode(t *testing.T) {
+	pf, err := ParseProductsFile("testdata/products_seo.csv", "ILS")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pf.Problems) != 0 || len(pf.Products) != 2 {
+		t.Fatalf("problems=%v products=%d", pf.Problems, len(pf.Products))
+	}
+	p := byHandle(pf, "seo-wine")
+	if p.SEOTitle != "Buy Seo Wine" || p.SEODescription != "A dry red from the Galilee" {
+		t.Errorf("seo: %q / %q", p.SEOTitle, p.SEODescription)
+	}
+	// Trimmed, empty cells dropped, "RED" is the same tag as "Red".
+	if want := []string{"Red", "wine", "Gift"}; !sameStrings(p.Tags, want) {
+		t.Errorf("tags: %q, want %q", p.Tags, want)
+	}
+	v0, v1 := p.Variants[0], p.Variants[1]
+	if v0.WeightGrams == nil || *v0.WeightGrams != 1250 || v0.Barcode != "7290001234567" {
+		t.Errorf("variant 0: %+v", v0)
+	}
+	if v1.WeightGrams == nil || *v1.WeightGrams != 2600 || v1.Barcode != "" {
+		t.Errorf("variant 1: %+v", v1)
+	}
+	// A zero weight is "not set", and a product without SEO cells has none.
+	plain := byHandle(pf, "plain")
+	if plain.Variants[0].WeightGrams != nil || plain.SEOTitle != "" || len(plain.Tags) != 0 {
+		t.Errorf("plain: %+v", plain)
+	}
+}
+
+func TestParseProducts_RealExportColumns(t *testing.T) {
+	// The real export has "Variant Barcodes", "Variant Grams", "SEO *".
+	pf := parseSample(t)
+	if len(pf.Products) == 0 {
+		t.Fatal("no products")
+	}
+	for _, p := range pf.Products {
+		for _, v := range p.Variants {
+			if v.WeightGrams != nil && *v.WeightGrams <= 0 {
+				t.Errorf("%s: weight %d", p.Handle, *v.WeightGrams)
+			}
+		}
+	}
+}
+
+func TestParseProducts_RefusesANegativeWeight(t *testing.T) {
+	csv := "Handle,Title,Variant Price,Variant Grams\nbad,Bad,1.00,-5\nok,Ok,1.00,10\n"
+	pf, err := ParseProducts(strings.NewReader(csv), "ILS")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pf.Products) != 1 || pf.Products[0].Handle != "ok" || len(pf.Problems) != 1 {
+		t.Errorf("products=%d problems=%v", len(pf.Products), pf.Problems)
+	}
+}
+
+func TestClampSEO(t *testing.T) {
+	p := ImportProduct{SEOTitle: strings.Repeat("я", 300), SEODescription: strings.Repeat("d", 1001)}
+	for i := 0; i < 60; i++ {
+		p.Tags = append(p.Tags, "t"+strings.Repeat("x", i))
+	}
+	clampSEO(&p)
+	if n := len([]rune(p.SEOTitle)); n != maxSEOTitleRunes {
+		t.Errorf("title runes: %d", n)
+	}
+	if n := len(p.SEODescription); n != maxSEODescriptionRunes {
+		t.Errorf("description: %d", n)
+	}
+	if len(p.Tags) != maxTags || len(p.Warnings) != 3 {
+		t.Errorf("tags=%d warnings=%v", len(p.Tags), p.Warnings)
+	}
+}
