@@ -368,6 +368,7 @@ async function loadDownloads(token: string, st: OrderStatus): Promise<DownloadsS
     const links = await getDownloads(token);
     return links.length > 0 ? { state: 'ready', links } : undefined;
   } catch (e) {
+    if (e instanceof ApiError && e.status === 410) return { state: 'expired' };
     return e instanceof ApiError && e.status === 404 ? { state: 'waiting' } : { state: 'error' };
   }
 }
@@ -432,7 +433,7 @@ async function refreshDownloads(): Promise<void> {
   const fresh = await loadDownloads(r.token, st);
   if (currentRoute().kind !== 'status') return;
   // Say what happened next to the button: new links carry their expiry, a failure a short line.
-  downloads = fresh?.state === 'ready' ? { ...fresh, refreshed: true } : fresh?.state === 'waiting' ? fresh : { state: 'error', refreshed: true };
+  downloads = fresh?.state === 'ready' ? { ...fresh, refreshed: true } : fresh?.state === 'waiting' || fresh?.state === 'expired' ? fresh : { state: 'error', refreshed: true };
   paintStatus(statusView(ctxOf(state), st, downloads));
 }
 

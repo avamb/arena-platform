@@ -200,6 +200,8 @@ describe('SA-15 / SA-16: errors are told in Russian by code', () => {
   it('captcha codes, the line limit and an unreachable shop', () => {
     expect(checkoutErrorMessage(err(422, 'shop.captcha_required'))).toContain('не робот');
     expect(checkoutErrorMessage(err(422, 'shop.captcha_failed'))).toContain('Проверка не пройдена');
+    // A captcha check that could not run is not a payment problem.
+    expect(checkoutErrorMessage(err(503, 'shop.captcha_unavailable'), 'shop@x.test')).toContain('не робот');
     expect(checkoutErrorMessage(err(422, 'shop.invalid_items', { max_line_qty: 6 }))).toContain('6');
     expect(checkoutErrorMessage(err(0, 'network'))).toBe('Не удалось связаться с магазином, попробуйте ещё раз.');
     expect(checkoutErrorMessage(err(503, 'checkout.payment_not_configured'), 'shop@x.test')).toContain('shop@x.test');

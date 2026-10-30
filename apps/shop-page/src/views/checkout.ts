@@ -215,6 +215,8 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
 /** Where the paid order's files stand: asked for, not ready yet, failed, or listed. */
 export type DownloadsState =
   | { state: 'loading' | 'waiting' }
+  /** 410 shop.download_expired: the period or the link count is used up; a refresh cannot help. */
+  | { state: 'expired' }
   | { state: 'error'; refreshed?: boolean }
   | { state: 'ready'; links: DownloadLink[]; refreshed?: boolean };
 
@@ -268,6 +270,9 @@ function downloadsBlock(dl: DownloadsState): string {
       break;
     case 'error':
       body = `<p role="status" data-downloads-note>${esc(note || 'Не удалось получить ссылки. Попробуйте ещё раз.')}</p>${refresh}`;
+      break;
+    case 'expired':
+      body = `<p role="status" data-downloads-note>Срок скачивания файлов этого заказа закончился. Если файлы нужны снова, напишите продавцу.</p>`;
       break;
     default: {
       const items = dl.links
