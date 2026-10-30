@@ -78,7 +78,7 @@ func notInReview(o gen.ShopOrderRow) *Error {
 		"only an order parked in manual_review can be resolved; this one is "+o.Status)
 }
 
-func notResolvable(o gen.ShopOrderRow) *Error {
+func notResolvable() *Error {
 	return newErr(http.StatusConflict, "shop.order_not_resolvable",
 		"this order waits for its payment to be confirmed, not for a decision about its goods; "+
 			"settle the payment (succeeded or failed) and the order follows")
@@ -111,7 +111,7 @@ func (s *Service) resolveFulfil(ctx context.Context, in ResolveInput, key string
 			return notInReview(o)
 		}
 		if !reviewReasonIs(o, ReviewLatePaymentNoStock) {
-			return notResolvable(o)
+			return notResolvable()
 		}
 		if err := requireSucceededPayment(ctx, q, o); err != nil {
 			return err
@@ -157,7 +157,7 @@ func (s *Service) resolveRefund(ctx context.Context, in ResolveInput, key string
 	// the call finds its refund by the key, and anything else gets Refund's
 	// own refusal.
 	if o.Status == StatusManualReview && !reviewReasonIs(o, ReviewLatePaymentNoStock) {
-		return ResolveResult{}, notResolvable(o)
+		return ResolveResult{}, notResolvable()
 	}
 	res, err := s.Refund(ctx, RefundInput{
 		OrgID: in.OrgID, OrderID: in.OrderID, Reason: "Goods not available after the payment arrived",
