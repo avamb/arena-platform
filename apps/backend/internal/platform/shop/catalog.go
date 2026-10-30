@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -79,6 +81,71 @@ type SettingsInput struct {
 	// checkout; nil keeps it. Like ShopDomain, only a caller with
 	// MayChangeDomain (a platform superadmin) may change it.
 	Enabled *bool
+	// ExpectedUpdatedAt is the updated_at the editor loaded the settings
+	// with. When it is set and the stored row has moved on (a colleague
+	// saved meanwhile), the write is refused with 409 shop.settings_changed
+	// and nothing is applied. nil skips the check.
+	ExpectedUpdatedAt *time.Time
+}
+
+// CurrencySource tells which currencies a payment provider can charge in.
+// An empty answer means the provider does not restrict the currency (or is
+// not known), so nothing is refused on its account.
+type CurrencySource func(provider string) []string
+
+// sameInstant compares two instants at the precision PostgreSQL stores
+// (microseconds), so a value that went through JSON still matches.
+func sameInstant(a, b time.Time) bool {
+	return a.UTC().Truncate(time.Microsecond).Equal(b.UTC().Truncate(time.Microsecond))
+}
+
+// checkCurrencySupported refuses a currency the shop's payment channel cannot
+// charge in. channel nil means "the organization's own pick at checkout":
+// the currency is then refused only when every live channel's provider
+// refuses it. No channels, or a provider that states no list, refuse nothing.
+func (s *Service) checkCurrencySupported(ctx context.Context, q *gen.Queries, orgID uuid.UUID, channel *uuid.UUID, currency string) error {
+	if s.currencies == nil {
+		return nil
+	}
+	var ids []uuid.UUID
+	if channel != nil {
+		ids = []uuid.UUID{*channel}
+	} else {
+		live, err := q.ListLiveSalesChannelIDs(ctx, orgID, MaxPaymentChannelCandidates)
+		if err != nil {
+			return err
+		}
+		ids = live
+	}
+	var providers, allowed []string
+	for _, id := range ids {
+		ch, err := q.GetSalesChannelByIDAnyKind(ctx, id, orgID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		list := s.currencies(ch.Provider)
+		if len(list) == 0 {
+			return nil
+		}
+		for _, c := range list {
+			if c == currency {
+				return nil
+			}
+		}
+		providers = append(providers, ch.Provider)
+		if allowed == nil {
+			allowed = list
+		}
+	}
+	if len(providers) == 0 {
+		return nil
+	}
+	e := invalid("shop.currency_unsupported", "the payment provider of the shop's sales channel cannot charge in "+currency)
+	e.Details = map[string]any{"currency": currency, "providers": providers, "allowed": allowed}
+	return e
 }
 
 func invalid(code, msg string) *Error { return newErr(http.StatusUnprocessableEntity, code, msg) }
@@ -133,10 +200,37 @@ func (s *Service) PutSettings(ctx context.Context, orgID uuid.UUID, in SettingsI
 		// Locked: an owner's save must not write a stale enabled (or
 		// max_line_qty) back over the operator's change made meanwhile.
 		cur, err := q.GetShopSettingsForUpdate(ctx, orgID)
+		existing := true
 		if errors.Is(err, pgx.ErrNoRows) {
+			existing = false
 			cur = gen.ShopSettingsRow{MaxLineQty: DefaultMaxLineQty}
 		} else if err != nil {
 			return err
+		}
+		if in.ExpectedUpdatedAt != nil && (!existing || !sameInstant(cur.UpdatedAt, *in.ExpectedUpdatedAt)) {
+			e := newErr(http.StatusConflict, "shop.settings_changed",
+				"the shop settings were saved by someone else since they were loaded; reload them and apply the change again")
+			if existing {
+				e.Details = map[string]any{"updated_at": cur.UpdatedAt.UTC().Format(time.RFC3339Nano)}
+			}
+			return e
+		}
+		sameChannel := existing && ((cur.SalesChannelID == nil && in.SalesChannelID == nil) ||
+			(cur.SalesChannelID != nil && in.SalesChannelID != nil && *cur.SalesChannelID == *in.SalesChannelID))
+		if !existing || in.Currency != cur.Currency || !sameChannel {
+			if existing && in.Currency != cur.Currency {
+				// Variant prices are minor units: a new currency would turn 160 ILS into 160 EUR.
+				used, err := q.ShopHasProductsOrOrders(ctx, orgID)
+				if err != nil {
+					return err
+				}
+				if used {
+					e := newErr(http.StatusConflict, "shop.currency_locked",
+						"the shop already has products or orders in "+cur.Currency+"; prices are not converted, so the currency cannot change")
+					e.Details = map[string]any{"currency": cur.Currency}
+					return e
+				}
+			}
 		}
 		maxLine := cur.MaxLineQty
 		if in.MaxLineQty != nil {
@@ -154,6 +248,11 @@ func (s *Service) PutSettings(ctx context.Context, orgID uuid.UUID, in SettingsI
 				if errors.Is(err, pgx.ErrNoRows) {
 					return invalid("shop.invalid_channel", "sales_channel_id is not a sales channel of this organization")
 				}
+				return err
+			}
+		}
+		if !existing || in.Currency != cur.Currency || !sameChannel {
+			if err := s.checkCurrencySupported(ctx, q, orgID, in.SalesChannelID, in.Currency); err != nil {
 				return err
 			}
 		}
@@ -474,7 +573,7 @@ func (s *Service) CreateProduct(ctx context.Context, orgID uuid.UUID, in Product
 			return err
 		}
 		id = row.ID
-		return writeVariants(ctx, q, orgID, row.ID, row.Kind, variants)
+		return writeVariants(ctx, q, orgID, row.ID, row.Kind, variants, nil)
 	})
 	if err != nil {
 		return ProductView{}, err
@@ -631,6 +730,11 @@ type VariantInput struct {
 	// editor), the whole write is refused with 409 shop.stock_changed and
 	// nothing is applied, so a stale screen cannot overwrite a sale.
 	ExpectedStock *int32
+	// KeepStock leaves the stock of an existing variant (ID set) exactly as
+	// it is stored: Stock is ignored and no stock move is journaled. The
+	// HTTP layer sets it for a row that names no expected_stock, so a screen
+	// that did not touch the shelf cannot overwrite a sale.
+	KeepStock bool
 }
 
 func validateVariants(vs []VariantInput) error {
@@ -687,7 +791,7 @@ func validateVariants(vs []VariantInput) error {
 // and every expected_stock is checked against the locked stock before
 // anything is written. A digital product's variants never track stock: they
 // are written untracked with stock 0 and journal nothing.
-func writeVariants(ctx context.Context, q *gen.Queries, orgID, productID uuid.UUID, kind string, vs []VariantInput) error {
+func writeVariants(ctx context.Context, q *gen.Queries, orgID, productID uuid.UUID, kind string, vs []VariantInput, expectedIDs *[]uuid.UUID) error {
 	if kind == KindDigital {
 		untracked := false
 		for i := range vs {
@@ -699,6 +803,11 @@ func writeVariants(ctx context.Context, q *gen.Queries, orgID, productID uuid.UU
 	current, err := q.LockShopProductVariants(ctx, productID)
 	if err != nil {
 		return err
+	}
+	if expectedIDs != nil {
+		if err := checkVariantSet(current, *expectedIDs); err != nil {
+			return err
+		}
 	}
 	var changed []map[string]any
 	for _, v := range vs {
@@ -738,6 +847,12 @@ func writeVariants(ctx context.Context, q *gen.Queries, orgID, productID uuid.UU
 		}
 		if v.ID != nil {
 			p.ID = *v.ID
+			if v.KeepStock {
+				// Stock untouched: write back what the locked row holds.
+				if stock, ok := current[*v.ID]; ok {
+					p.Stock = stock
+				}
+			}
 			prev, err := q.UpdateShopVariant(ctx, p)
 			if errors.Is(err, pgx.ErrNoRows) {
 				return invalid("shop.invalid_variant", "variant "+v.ID.String()+" is not a variant of this product")
@@ -768,8 +883,47 @@ func writeVariants(ctx context.Context, q *gen.Queries, orgID, productID uuid.UU
 	return err
 }
 
+// checkVariantSet refuses a replace written against another set of variants
+// than the product has now (a colleague added or removed one meanwhile): the
+// replace deletes whatever it leaves out, so a stale list would silently
+// remove the colleague's variant.
+func checkVariantSet(current map[uuid.UUID]int32, expected []uuid.UUID) error {
+	want := make(map[uuid.UUID]bool, len(expected))
+	for _, id := range expected {
+		want[id] = true
+	}
+	same := len(want) == len(current)
+	if same {
+		for id := range current {
+			if !want[id] {
+				same = false
+				break
+			}
+		}
+	}
+	if same {
+		return nil
+	}
+	ids := make([]string, 0, len(current))
+	for id := range current {
+		ids = append(ids, id.String())
+	}
+	sort.Strings(ids)
+	e := newErr(http.StatusConflict, "shop.variants_changed",
+		"the variants of this product changed since they were loaded; reload the product and apply the change again")
+	e.Details = map[string]any{"variant_ids": ids}
+	return e
+}
+
 // ReplaceVariants replaces the product's variant list.
 func (s *Service) ReplaceVariants(ctx context.Context, orgID, productID uuid.UUID, vs []VariantInput) (ProductView, error) {
+	return s.ReplaceVariantsChecked(ctx, orgID, productID, vs, nil)
+}
+
+// ReplaceVariantsChecked is ReplaceVariants that also refuses the write with
+// 409 shop.variants_changed when the live variants of the product are not
+// exactly expectedIDs (the set the editor loaded). nil skips the check.
+func (s *Service) ReplaceVariantsChecked(ctx context.Context, orgID, productID uuid.UUID, vs []VariantInput, expectedIDs *[]uuid.UUID) (ProductView, error) {
 	if err := validateVariants(vs); err != nil {
 		return ProductView{}, err
 	}
@@ -781,7 +935,7 @@ func (s *Service) ReplaceVariants(ctx context.Context, orgID, productID uuid.UUI
 			}
 			return err
 		}
-		return writeVariants(ctx, q, orgID, productID, cur.Kind, vs)
+		return writeVariants(ctx, q, orgID, productID, cur.Kind, vs, expectedIDs)
 	})
 	if err != nil {
 		return ProductView{}, err

@@ -40,7 +40,14 @@ func (s *Server) shopService() *shop.Service {
 		svc = svc.WithRefunds(eng)
 	}
 	if s.pgxPool != nil {
-		svc = svc.WithPageExpirer(shopPageExpirer{modules: hcheckout.NewRefundModuleSource(gen.New(s.pgxPool), s.paymentModuleOptions())})
+		modules := hcheckout.NewRefundModuleSource(gen.New(s.pgxPool), s.paymentModuleOptions())
+		svc = svc.WithPageExpirer(shopPageExpirer{modules: modules}).WithCurrencies(func(provider string) []string {
+			d, ok := modules.Descriptor(provider)
+			if !ok {
+				return nil
+			}
+			return d.Capabilities.Currencies
+		})
 	}
 	return svc
 }
@@ -155,6 +162,7 @@ func (s *Server) mountShopRoutes(r chi.Router) {
 		pr.Get(base+"/pages", s.orgGated(h.HandleListPages))
 		pr.Get(base+"/orders", s.orgGated(h.HandleListOrders))
 		pr.Get(base+"/orders/counts", s.orgGated(h.HandleOrderCounts))
+		pr.Post(base+"/orders/search", s.orgGated(h.HandleSearchOrders))
 		pr.Get(base+"/orders/{order_id}", s.orgGated(h.HandleGetOrder))
 		pr.Get(base+"/orders/{order_id}/courier-text", s.orgGated(h.HandleCourierText))
 	})

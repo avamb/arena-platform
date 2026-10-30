@@ -113,6 +113,10 @@ func ProviderDescriptor() payments.Descriptor {
 			// PAY-14b: the refund is answered synchronously (refund.go).
 			Refund:        true,
 			PartialRefund: true,
+			// ILS, USD or EUR only: an account without USD/EUR permission
+			// would silently charge ILS, so the adapter refuses anything
+			// else (adapter.go) and the shop settings refuse it up front.
+			Currencies: []string{"EUR", "ILS", "USD"},
 		},
 	}
 }

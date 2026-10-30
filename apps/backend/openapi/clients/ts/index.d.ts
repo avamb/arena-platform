@@ -10625,6 +10625,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/shop/orders/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search the shop orders
+         * @description The same list as `GET .../shop/orders`, with the filters in the JSON body, so
+         *     a buyer's e-mail or name never reaches an address that a proxy logs. Newest
+         *     first, with their lines. `q` matches the order number exactly or the buyer's
+         *     e-mail or name as a substring; `from` and `to` bound the creation time and take
+         *     RFC 3339 instants (the event center sends the start of the shop's day in the shop's
+         *     time zone). A full page carries `next_offset`.
+         *
+         *     Requires JWT or API key + the `shop.read` permission and membership of the organization.
+         */
+        post: operations["searchShopOrders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/shop/orders/counts": {
         parameters: {
             query?: never;
@@ -30867,6 +30894,14 @@ export interface components {
             max_line_qty?: number | null;
             /** @description Opens (true) or closes (false) the storefront and its checkout, platform superadmin only; absent, null or the current value keeps it. */
             enabled?: boolean | null;
+            /**
+             * Format: date-time
+             * @description The `updated_at` the editor loaded the settings with, sent back unchanged.
+             *     When the stored settings were saved since (a colleague, the operator) the
+             *     request is refused with 409 `shop.settings_changed` and nothing is applied.
+             *     Absent or null skips the check.
+             */
+            expected_updated_at?: string | null;
         };
         /** @description A picture of a product. */
         ShopImage: {
@@ -31023,7 +31058,9 @@ export interface components {
             compare_at_minor?: number | null;
             /**
              * Format: int32
-             * @description Units on the shelf, zero or more.
+             * @description Units on the shelf, zero or more. For an existing variant (with `id`) it is
+             *     written only together with `expected_stock`; a row without `expected_stock`
+             *     keeps the stored stock whatever is sent here.
              */
             stock?: number;
             /** @description Whether stock limits sales; absent means true. */
@@ -31045,7 +31082,9 @@ export interface components {
              *     The event center sends the loaded value. When the stock changed since
              *     (a sale, an import, another editor) the whole request is refused with
              *     409 `shop.stock_changed`, whose details list each variant's current
-             *     stock, and nothing is applied. Absent skips the check.
+             *     stock, and nothing is applied. Absent leaves the stock of an existing
+             *     variant untouched (the event center sends it only for a row whose stock
+             *     the person edited).
              */
             expected_stock?: number | null;
         };
@@ -31113,6 +31152,13 @@ export interface components {
         ShopVariantsReplaceRequest: {
             /** @description 1-100 variants; variants left out are deleted. */
             variants: components["schemas"]["ShopVariantInput"][];
+            /**
+             * @description The ids of the variants the editor loaded. When the product's live variants
+             *     are not exactly this set (a colleague added or removed one) the request is
+             *     refused with 409 `shop.variants_changed` and nothing is applied, because the
+             *     replace deletes every variant it leaves out. Absent or null skips the check.
+             */
+            expected_variant_ids?: string[] | null;
         };
         /** @description A picture to attach. */
         ShopImageAddRequest: {
@@ -31361,6 +31407,23 @@ export interface components {
              * @description When the note was saved; null when there is no note.
              */
             at: string | null;
+        };
+        /** @description The filters of a shop order search. Every field is optional. */
+        ShopOrderSearchRequest: {
+            /** @description Order number, or part of the buyer's e-mail or name. */
+            q?: string;
+            /** @description A tab of the order list, combined with `status` when both are given: `to_ship`, `unpaid`, `shipped` or `refunds`. */
+            view?: string;
+            /** @description Only orders of this status: `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review`. */
+            status?: string;
+            /** @description Created at or after this instant (RFC 3339, or YYYY-MM-DD for UTC midnight). */
+            from?: string;
+            /** @description Created before this instant (RFC 3339, or YYYY-MM-DD for UTC midnight). */
+            to?: string;
+            /** @description Page size, 1-200 (default 50). */
+            limit?: number;
+            /** @description How many orders to skip (the previous page's `next_offset`). */
+            offset?: number;
         };
         /** @description The internal note of an order. */
         ShopOrderNoteRequest: {
@@ -67003,7 +67066,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Another organization already uses this domain (`shop.duplicate_domain`). */
+            /** @description Another organization already uses this domain (`shop.duplicate_domain`), the settings were saved since `expected_updated_at` (`shop.settings_changed`), or the currency cannot change because the organization already has shop products or orders, whose prices are not converted (`shop.currency_locked`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -67012,7 +67075,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`, `shop.invalid_max_line_qty`). */
+            /** @description A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`, `shop.invalid_max_line_qty`) or the payment provider of the sales channel cannot charge in the currency (`shop.currency_unsupported`; AllPay charges ILS, USD and EUR only). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -67668,7 +67731,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The stock of a variant changed since the editor loaded it (`shop.stock_changed`, details list each variant's current stock); nothing was applied. */
+            /** @description The stock of a variant changed since the editor loaded it (`shop.stock_changed`, details list each variant's current stock), or the set of variants is not the one in `expected_variant_ids` (`shop.variants_changed`, details list the live variant ids); nothing was applied. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -67953,6 +68016,78 @@ export interface operations {
                 };
             };
             /** @description A filter is malformed (`shop.invalid_filter`, also for an unknown `view`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    searchShopOrders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopOrderSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description One page of orders. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopOrderList"];
+                };
+            };
+            /** @description The body is not valid JSON for this route (`shop.invalid_body`), or a filter is malformed (`shop.invalid_filter`, also for an unknown `view`). */
             400: {
                 headers: {
                     [name: string]: unknown;

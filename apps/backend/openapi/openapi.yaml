@@ -23455,6 +23455,14 @@ components:
         enabled:
           type: [boolean, "null"]
           description: Opens (true) or closes (false) the storefront and its checkout, platform superadmin only; absent, null or the current value keeps it.
+        expected_updated_at:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            The `updated_at` the editor loaded the settings with, sent back unchanged.
+            When the stored settings were saved since (a colleague, the operator) the
+            request is refused with 409 `shop.settings_changed` and nothing is applied.
+            Absent or null skips the check.
 
     ShopImage:
       type: object
@@ -23637,7 +23645,10 @@ components:
         stock:
           type: integer
           format: int32
-          description: Units on the shelf, zero or more.
+          description: |
+            Units on the shelf, zero or more. For an existing variant (with `id`) it is
+            written only together with `expected_stock`; a row without `expected_stock`
+            keeps the stored stock whatever is sent here.
         track_stock:
           type: boolean
           description: Whether stock limits sales; absent means true.
@@ -23662,7 +23673,9 @@ components:
             The event center sends the loaded value. When the stock changed since
             (a sale, an import, another editor) the whole request is refused with
             409 `shop.stock_changed`, whose details list each variant's current
-            stock, and nothing is applied. Absent skips the check.
+            stock, and nothing is applied. Absent leaves the stock of an existing
+            variant untouched (the event center sends it only for a row whose stock
+            the person edited).
 
     ShopProductCreateRequest:
       type: object
@@ -23760,6 +23773,17 @@ components:
           description: 1-100 variants; variants left out are deleted.
           items:
             $ref: "#/components/schemas/ShopVariantInput"
+        expected_variant_ids:
+          type: [array, "null"]
+          description: |
+            The ids of the variants the editor loaded. When the product's live variants
+            are not exactly this set (a colleague added or removed one) the request is
+            refused with 409 `shop.variants_changed` and nothing is applied, because the
+            replace deletes every variant it leaves out. Absent or null skips the check.
+          items:
+            type: string
+            format: uuid
+            description: A variant id.
 
     ShopImageAddRequest:
       type: object
@@ -24064,6 +24088,32 @@ components:
           type: [string, "null"]
           format: date-time
           description: When the note was saved; null when there is no note.
+
+    ShopOrderSearchRequest:
+      type: object
+      description: The filters of a shop order search. Every field is optional.
+      properties:
+        q:
+          type: string
+          description: Order number, or part of the buyer's e-mail or name.
+        view:
+          type: string
+          description: "A tab of the order list, combined with `status` when both are given: `to_ship`, `unpaid`, `shipped` or `refunds`."
+        status:
+          type: string
+          description: "Only orders of this status: `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review`."
+        from:
+          type: string
+          description: Created at or after this instant (RFC 3339, or YYYY-MM-DD for UTC midnight).
+        to:
+          type: string
+          description: Created before this instant (RFC 3339, or YYYY-MM-DD for UTC midnight).
+        limit:
+          type: integer
+          description: Page size, 1-200 (default 50).
+        offset:
+          type: integer
+          description: How many orders to skip (the previous page's `next_offset`).
 
     ShopOrderNoteRequest:
       type: object
@@ -58419,13 +58469,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
-          description: Another organization already uses this domain (`shop.duplicate_domain`).
+          description: Another organization already uses this domain (`shop.duplicate_domain`), the settings were saved since `expected_updated_at` (`shop.settings_changed`), or the currency cannot change because the organization already has shop products or orders, whose prices are not converted (`shop.currency_locked`).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "422":
-          description: A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`, `shop.invalid_max_line_qty`).
+          description: A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`, `shop.invalid_max_line_qty`) or the payment provider of the sales channel cannot charge in the currency (`shop.currency_unsupported`; AllPay charges ILS, USD and EUR only).
           content:
             application/json:
               schema:
@@ -59019,7 +59069,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
-          description: The stock of a variant changed since the editor loaded it (`shop.stock_changed`, details list each variant's current stock); nothing was applied.
+          description: The stock of a variant changed since the editor loaded it (`shop.stock_changed`, details list each variant's current stock), or the set of variants is not the one in `expected_variant_ids` (`shop.variants_changed`, details list the live variant ids); nothing was applied.
           content:
             application/json:
               schema:
@@ -59303,6 +59353,73 @@ paths:
                 $ref: "#/components/schemas/ShopOrderList"
         "400":
           description: A filter is malformed (`shop.invalid_filter`, also for an unknown `view`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT or API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks the `shop.read` permission or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/orders/search:
+    post:
+      operationId: searchShopOrders
+      summary: Search the shop orders
+      description: |
+        The same list as `GET .../shop/orders`, with the filters in the JSON body, so
+        a buyer's e-mail or name never reaches an address that a proxy logs. Newest
+        first, with their lines. `q` matches the order number exactly or the buyer's
+        e-mail or name as a substring; `from` and `to` bound the creation time and take
+        RFC 3339 instants (the event center sends the start of the shop's day in the shop's
+        time zone). A full page carries `next_offset`.
+
+        Requires JWT or API key + the `shop.read` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShopOrderSearchRequest"
+      responses:
+        "200":
+          description: One page of orders.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopOrderList"
+        "400":
+          description: The body is not valid JSON for this route (`shop.invalid_body`), or a filter is malformed (`shop.invalid_filter`, also for an unknown `view`).
           content:
             application/json:
               schema:

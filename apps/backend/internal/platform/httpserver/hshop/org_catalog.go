@@ -3,6 +3,7 @@ package hshop
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -41,6 +42,9 @@ type settingsBody struct {
 	ShopDomain       *string    `json:"shop_domain"`
 	MaxLineQty       *int32     `json:"max_line_qty"`
 	Enabled          *bool      `json:"enabled"`
+	// ExpectedUpdatedAt is the updated_at the editor loaded the settings
+	// with; a different stored value answers 409 shop.settings_changed.
+	ExpectedUpdatedAt *string `json:"expected_updated_at"`
 }
 
 // HandlePutSettings serves PUT .../shop/settings. shop_domain may be changed
@@ -54,12 +58,21 @@ func (h *Handler) HandlePutSettings(w http.ResponseWriter, r *http.Request) {
 	if !readBody(w, r, &b, false) {
 		return
 	}
+	var expected *time.Time
+	if b.ExpectedUpdatedAt != nil && *b.ExpectedUpdatedAt != "" {
+		t, perr := time.Parse(time.RFC3339Nano, *b.ExpectedUpdatedAt)
+		if perr != nil {
+			writeErr(w, r, http.StatusBadRequest, "shop.invalid_body", "expected_updated_at must be an RFC 3339 timestamp")
+			return
+		}
+		expected = &t
+	}
 	st, err := h.o.Service.PutSettings(r.Context(), org, shop.SettingsInput{
 		Currency: b.Currency, ShippingFeeMinor: b.ShippingFeeMinor, ShippingLabel: b.ShippingLabel,
 		CountryISO2: b.CountryISO2, AgeGateMinAge: b.AgeGateMinAge, AnnouncementText: b.AnnouncementText,
 		ContactEmail: b.ContactEmail, LogisticsNote: b.LogisticsNote, SalesChannelID: b.SalesChannelID,
 		ShopDomain: b.ShopDomain, MayChangeDomain: auth.HasSuperadminOrgAccess(r.Context()),
-		MaxLineQty: b.MaxLineQty, Enabled: b.Enabled,
+		MaxLineQty: b.MaxLineQty, Enabled: b.Enabled, ExpectedUpdatedAt: expected,
 	})
 	if err != nil {
 		h.fail(w, r, "write settings", err)
@@ -97,13 +110,15 @@ type variantBody struct {
 	SKU            *string    `json:"sku"`
 	PriceMinor     int64      `json:"price_minor"`
 	CompareAtMinor *int64     `json:"compare_at_minor"`
-	Stock          int32      `json:"stock"`
-	TrackStock     *bool      `json:"track_stock"`
-	Position       *int32     `json:"position"`
-	Option1        *string    `json:"option1"`
-	Option2        *string    `json:"option2"`
-	Option3        *string    `json:"option3"`
-	ExpectedStock  *int32     `json:"expected_stock"`
+	// Stock is optional for an existing variant: a row that names no
+	// expected_stock keeps the stored stock whatever is sent here.
+	Stock         int32   `json:"stock"`
+	TrackStock    *bool   `json:"track_stock"`
+	Position      *int32  `json:"position"`
+	Option1       *string `json:"option1"`
+	Option2       *string `json:"option2"`
+	Option3       *string `json:"option3"`
+	ExpectedStock *int32  `json:"expected_stock"`
 }
 
 func toVariantInputs(bs []variantBody) []shop.VariantInput {
@@ -113,6 +128,8 @@ func toVariantInputs(bs []variantBody) []shop.VariantInput {
 			ID: b.ID, Title: b.Title, SKU: b.SKU, PriceMinor: b.PriceMinor, CompareAtMinor: b.CompareAtMinor,
 			Stock: b.Stock, TrackStock: b.TrackStock, Position: b.Position,
 			Option1: b.Option1, Option2: b.Option2, Option3: b.Option3, ExpectedStock: b.ExpectedStock,
+			// An existing variant that names no expected_stock keeps its stock.
+			KeepStock: b.ID != nil && b.ExpectedStock == nil,
 		})
 	}
 	return out
@@ -311,11 +328,14 @@ func (h *Handler) HandlePutVariants(w http.ResponseWriter, r *http.Request) {
 	}
 	var b struct {
 		Variants []variantBody `json:"variants"`
+		// ExpectedVariantIDs is the set of variant ids the editor loaded;
+		// another live set answers 409 shop.variants_changed. Absent skips it.
+		ExpectedVariantIDs *[]uuid.UUID `json:"expected_variant_ids"`
 	}
 	if !readBody(w, r, &b, false) {
 		return
 	}
-	p, err := h.o.Service.ReplaceVariants(r.Context(), org, id, toVariantInputs(b.Variants))
+	p, err := h.o.Service.ReplaceVariantsChecked(r.Context(), org, id, toVariantInputs(b.Variants), b.ExpectedVariantIDs)
 	if err != nil {
 		h.fail(w, r, "replace variants", err)
 		return
