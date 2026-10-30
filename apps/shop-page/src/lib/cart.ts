@@ -10,6 +10,7 @@
  * checkout" too).
  */
 import type { CheckoutRequest, ShopProduct, ShopSettings, ShopVariant } from './api';
+import { CART_NOTE } from './i18n';
 
 /** The cap when the shop settings do not name one (the API's own default). */
 export const MAX_QTY = 99;
@@ -17,6 +18,11 @@ export const MAX_QTY = 99;
 export interface CartItem {
   variant_id: string;
   qty: number;
+  /**
+   * The product's name as the buyer saw it, kept with the saved basket so that a line the shop
+   * later withdraws can still be named in the "we removed it" note. Never sent to the API.
+   */
+  title?: string;
 }
 
 export interface CartLine {
@@ -114,26 +120,44 @@ export function visibleCount(items: CartItem[], products: ShopProduct[]): number
  * has (hidden or deleted product) is dropped, and a quantity past what is in stock is cut to it.
  * `changed` tells the caller to save the basket again.
  */
-export function reconcileCart(items: CartItem[], products: ShopProduct[], lineMax: number): { items: CartItem[]; changed: boolean } {
-  const byVariant = new Map<string, ShopVariant>();
-  for (const p of products) for (const v of p.variants) byVariant.set(v.id, v);
+export function reconcileCart(items: CartItem[], products: ShopProduct[], lineMax: number): { items: CartItem[]; changed: boolean; notes: string[] } {
+  const byVariant = new Map<string, { product: ShopProduct; variant: ShopVariant }>();
+  for (const p of products) for (const v of p.variants) byVariant.set(v.id, { product: p, variant: v });
   const out: CartItem[] = [];
+  const notes: string[] = [];
   let changed = false;
   for (const it of items) {
-    const v = byVariant.get(it.variant_id);
-    if (!v) {
+    const hit = byVariant.get(it.variant_id);
+    if (!hit) {
       changed = true;
+      notes.push(CART_NOTE.removed(it.title));
       continue;
     }
-    const limit = variantLimit(v, lineMax);
-    if (v.available && it.qty > limit) {
+    const limit = variantLimit(hit.variant, lineMax);
+    if (hit.variant.available && it.qty > limit) {
       out.push({ ...it, qty: limit });
+      notes.push(CART_NOTE.cut(it.title || variantName(hit.product, hit.variant), limit));
       changed = true;
     } else {
       out.push(it);
     }
   }
-  return { items: out, changed };
+  return { items: out, changed, notes };
+}
+
+const variantName = (product: ShopProduct, variant: ShopVariant): string => {
+  const v = (variant.title ?? '').trim();
+  return v !== '' && v !== 'Default Title' ? `${product.title} — ${v}` : product.title;
+};
+
+/** The basket with every line named from the catalog (a line the catalog lacks keeps the name it had). */
+export function withTitles(items: CartItem[], products: ShopProduct[]): CartItem[] {
+  const byVariant = new Map<string, string>();
+  for (const p of products) for (const v of p.variants) byVariant.set(v.id, variantName(p, v));
+  return items.map((i) => {
+    const title = byVariant.get(i.variant_id) ?? i.title;
+    return title ? { ...i, title } : i;
+  });
 }
 
 /** One short line of a 409 `shop.out_of_stock` answer (`details.items`). */
@@ -248,7 +272,8 @@ export function parseStored(raw: string | null): CartItem[] {
     for (const row of data) {
       const r = row as { variant_id?: unknown; qty?: unknown };
       if (typeof r?.variant_id !== 'string' || r.variant_id === '') continue;
-      out.push({ variant_id: r.variant_id, qty: clamp(Number(r.qty)) });
+      const title = typeof (r as { title?: unknown }).title === 'string' ? ((r as { title: string }).title).slice(0, 200) : '';
+      out.push(title ? { variant_id: r.variant_id, qty: clamp(Number(r.qty)), title } : { variant_id: r.variant_id, qty: clamp(Number(r.qty)) });
     }
     return out;
   } catch {
