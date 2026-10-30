@@ -107,8 +107,15 @@ type inviteDialog struct {
 	Done  []int64           `json:"done,omitempty"` // ticket number per guest, 0 = not issued yet
 	// VIP marks every ticket of the operation with the organizer's private
 	// VIP flag (task V1). Changed on the confirmation screen only, and only
-	// while no guest has been issued yet.
+	// while nothing has been sent to the server yet (see Tried).
 	VIP bool `json:"vip,omitempty"`
+	// Tried is set before the first request of the operation leaves the bot.
+	// A request that got no answer (timeout, dropped connection, 5xx) may
+	// have been processed, and the guest then holds an invitation the dialog
+	// does not know about. Changing the VIP mark would start a new batch with
+	// new request ids and issue that guest a second time, so from the first
+	// attempt on the operation is fixed. Cleared together with Batch.
+	Tried bool `json:"tried,omitempty"`
 
 	// the staff invitations list (new orders): NCursors[i] is the cursor that
 	// fetches page i+1 ("" for the first), NOrderIDs the rows of the shown page
@@ -287,7 +294,7 @@ func (b *Bot) inviteCallback(ctx context.Context, chatID int64, msgID int, from 
 		if step != invStepConfirm {
 			return
 		}
-		if issued, _ := inviteOutcome(st); len(issued) == 0 {
+		if vipChangeable(st) {
 			st.VIP = arg == "1"
 			st.Batch = strings.ReplaceAll(uuid.NewString(), "-", "")
 		}
@@ -324,7 +331,7 @@ func (b *Bot) inviteBack(ctx context.Context, chatID int64, editMsgID *int, from
 		st.Rcpt, st.Done = nil, nil
 		b.showInviteQty(ctx, chatID, editMsgID, id.Link.TelegramUserID, loc, st, "")
 	case invStepConfirm:
-		st.Rcpt, st.Done, st.Batch = nil, nil, ""
+		st.Rcpt, st.Done, st.Batch, st.Tried = nil, nil, "", false
 		b.showInviteRecipients(ctx, chatID, editMsgID, id.Link.TelegramUserID, loc, st, "")
 	case invStepList, invStepNList:
 		b.leaveInvite(ctx, id.Link.TelegramUserID)
@@ -538,7 +545,7 @@ func (b *Bot) chooseInviteTier(ctx context.Context, chatID int64, editMsgID *int
 			return
 		}
 		st.TierID, st.TierName, st.Free = t.Id, t.Name, t.Places.Available
-		st.Qty, st.Rcpt, st.Done, st.Batch = 0, nil, nil, ""
+		st.Qty, st.Rcpt, st.Done, st.Batch, st.Tried = 0, nil, nil, "", false
 		b.showInviteQty(ctx, chatID, editMsgID, id.Link.TelegramUserID, loc, st, "")
 		return
 	}
@@ -582,7 +589,7 @@ func (b *Bot) takeInviteQty(ctx context.Context, chatID int64, editMsgID *int, t
 		return
 	}
 	if st.Qty != n {
-		st.Rcpt, st.Done, st.Batch = nil, nil, ""
+		st.Rcpt, st.Done, st.Batch, st.Tried = nil, nil, "", false
 	}
 	st.Qty = n
 	b.showInviteRecipients(ctx, chatID, editMsgID, tg, loc, st, "")
@@ -647,7 +654,7 @@ func (b *Bot) takeInviteRecipients(ctx context.Context, chatID int64, editMsgID 
 		b.showInviteRecipients(ctx, chatID, editMsgID, tg, loc, st, "")
 		return
 	}
-	st.Batch = strings.ReplaceAll(uuid.NewString(), "-", "")
+	st.Batch, st.Tried = strings.ReplaceAll(uuid.NewString(), "-", ""), false
 	st.Done = make([]int64, len(st.Rcpt))
 	b.showInviteConfirm(ctx, chatID, editMsgID, tg, loc, st, "")
 }
@@ -678,7 +685,7 @@ func (b *Bot) showInviteConfirm(ctx context.Context, chatID int64, editMsgID *in
 		text += "\n\n" + b.texts.T(loc, "bot.inv.vip_line", nil)
 	}
 	rows := [][]models.InlineKeyboardButton{{b.invButton(loc, "bot.inv.send_btn", "iv:go")}}
-	if issued, _ := inviteOutcome(st); len(issued) == 0 {
+	if vipChangeable(st) {
 		// The button says what pressing it WILL do, not the current state only.
 		if st.VIP {
 			rows = append(rows, []models.InlineKeyboardButton{b.invButton(loc, "bot.inv.vip_off_btn", "iv:vip:0")})
@@ -709,6 +716,7 @@ func (b *Bot) sendInvitations(ctx context.Context, chatID int64, editMsgID *int,
 		// One order per guest. The request id is derived from the operation
 		// and the guest's index, so a retry after a timeout, a double press
 		// or a bot restart replays the order already issued.
+		st.Tried = true
 		res, err := b.arena.IssueStaffInvitation(ctx, jwt, st.OrgID, StaffInvitationInput{
 			SessionID: st.SessionID, TierID: st.TierID, Qty: 1, Email: r.Email,
 			Name: staffGuestName(r), VIP: st.VIP,
@@ -759,6 +767,16 @@ func (b *Bot) sendInvitations(ctx context.Context, chatID int64, editMsgID *int,
 		[]models.InlineKeyboardButton{b.invButton(loc, "bot.inv.retry_btn", "iv:go")},
 		b.invNav(loc, "iv:bk"),
 	))
+}
+
+// vipChangeable reports whether the VIP mark of the operation may still be
+// changed: only while no request of it has left the bot. After the first
+// attempt a guest may hold an invitation the dialog never heard about (the
+// answer was lost), and a changed mark means a new batch with new request
+// ids, which would issue that guest twice.
+func vipChangeable(st inviteDialog) bool {
+	issued, _ := inviteOutcome(st)
+	return len(issued) == 0 && !st.Tried
 }
 
 // inviteOutcome splits the guests into issued ones (with their numbers) and

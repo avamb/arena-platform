@@ -33,11 +33,15 @@ var _ internalChannelQueries = (*gen.Queries)(nil)
 // channel and creates it the first time (spec 46, section 3.3): no provider
 // account, no gateway credential, no hosted page, no feed token, fee 0.
 //
-// It is race-safe: the insert is ON CONFLICT DO NOTHING on the partial
-// unique index "one internal channel per organization", so two first
-// invitations at once end with ONE channel, and the loser reads the
-// winner's id. Inside a transaction the loser's insert waits for the
-// winner's commit, so call it on the issuing transaction itself.
+// It reads first and inserts only when there is no channel yet: the insert
+// evaluates the display-number sequence's nextval() even when ON CONFLICT
+// then drops the row, so inserting on every invitation burnt one channel
+// number (the site-visible fid) per issue. The insert itself stays race-safe:
+// it is ON CONFLICT DO NOTHING on the partial unique index "one internal
+// channel per organization", so two first invitations at once end with ONE
+// channel, and the loser reads the winner's id. Inside a transaction the
+// loser's insert waits for the winner's commit, so call it on the issuing
+// transaction itself.
 func EnsureInternalChannel(ctx context.Context, q *gen.Queries, orgID uuid.UUID) (uuid.UUID, error) {
 	return ensureInternalChannel(ctx, q, orgID)
 }
@@ -49,13 +53,21 @@ func ensureInternalChannel(ctx context.Context, q internalChannelQueries, orgID 
 	if orgID == uuid.Nil {
 		return uuid.Nil, errors.New("invitations: organization id is required")
 	}
-	id, err := q.InsertInternalChannel(ctx, orgID, InternalChannelName)
+	id, err := q.GetInternalChannelID(ctx, orgID)
+	if err == nil {
+		return id, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, fmt.Errorf("invitations: read internal channel: %w", err)
+	}
+	id, err = q.InsertInternalChannel(ctx, orgID, InternalChannelName)
 	if err == nil {
 		return id, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return uuid.Nil, fmt.Errorf("invitations: create internal channel: %w", err)
 	}
+	// Lost the race: the winner's row is visible now.
 	id, err = q.GetInternalChannelID(ctx, orgID)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("invitations: read internal channel: %w", err)

@@ -101,7 +101,7 @@ SELECT o.name, o.website_url, o.legal_name, o.legal_address_line1, o.legal_addre
        o.legal_address_postal_code, o.legal_address_city, o.legal_address_country,
        CASE WHEN NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') IS NOT NULL
                  THEN btrim(sc.settings #>> '{hosted_page,public_contact,email}')
-            WHEN CASE WHEN sc.id IS NOT NULL THEN COALESCE(sc.settings #>> '{hosted_page,enabled}', '') = 'true'
+            WHEN CASE WHEN sc.id IS NOT NULL AND sc.kind <> 'internal' THEN COALESCE(sc.settings #>> '{hosted_page,enabled}', '') = 'true'
                  ELSE EXISTS (SELECT 1 FROM sales_channels h WHERE h.org_id = o.id AND h.deleted_at IS NULL
                               AND h.settings #>> '{hosted_page,enabled}' = 'true') END THEN NULL
             ELSE o.contact_email END AS contact_email,
@@ -132,7 +132,7 @@ WHERE  t.id = $1;
 -- event belongs to a promoter (gen.EventPromotedSQL), so the form's messages
 -- go to the organization's owner only.
 SELECT NULLIF(btrim(sc.settings #>> '{hosted_page,public_contact,email}'), '') AS public_email,
-       CASE WHEN sc.id IS NOT NULL THEN COALESCE(sc.settings #>> '{hosted_page,enabled}', '') = 'true'
+       CASE WHEN sc.id IS NOT NULL AND sc.kind <> 'internal' THEN COALESCE(sc.settings #>> '{hosted_page,enabled}', '') = 'true'
             ELSE EXISTS (SELECT 1 FROM sales_channels h WHERE h.org_id = o.id AND h.deleted_at IS NULL
                          AND h.settings #>> '{hosted_page,enabled}' = 'true') END AS hosted_page,
        NULLIF(btrim(o.contact_email), '') AS org_email,

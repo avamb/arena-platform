@@ -311,7 +311,7 @@ func TestBotE2E_ResendTickets_OwnerAndManager(t *testing.T) {
 	markSent(t, pool, tickets)
 	d.press("or:v:"+seed.anna.String(), "Заказ №")
 	one := d.press("or:r:s:"+seed.anna.String(), "Билетов к отправке: 1")
-	if !strings.Contains(one, "возвращённые и аннулированные не отправляются") {
+	if !strings.Contains(one, "возвращённые и отменённые не отправляются") {
 		t.Errorf("the choice must say refunded tickets are not sent:\n%s", one)
 	}
 	d.press("or:r:a", "Отправить билеты?")

@@ -197,6 +197,34 @@ func (h *Handler) CancelTicketInTx(ctx context.Context, tx pgx.Tx, p CancelTicke
 	}
 	txq := h.ticketQueries.WithTx(tx)
 
+	// Lock order (AGENTS.md): the sessions row comes BEFORE the ticket row
+	// and everything after it. CancelTicket below updates the ticket first,
+	// and the release then bumps the session: a staff invitation cancelling
+	// several tickets of the same session holds the session lock and takes
+	// ticket after ticket, so a single cancel of one of them that went
+	// ticket-then-session deadlocked against it (40P01). The ticket's
+	// session never changes, so reading it unlocked is safe; a ticket that
+	// does not exist falls through to CancelTicket's own "not active".
+	if pre, perr := txq.GetTicketByID(ctx, p.TicketID); perr == nil {
+		if _, lerr := txq.IncrementSessionSeatStatusVersion(ctx, pre.SessionID); lerr != nil {
+			h.logger.Error("ticket.cancel: session lock failed",
+				slog.String("id", p.TicketID.String()), slog.String("error", lerr.Error()))
+			return out, &CancelTicketError{
+				Status:  http.StatusInternalServerError,
+				Code:    "ticket.cancel_failed",
+				Message: "failed to cancel ticket",
+				Err:     lerr,
+			}
+		}
+	} else if !errors.Is(perr, pgx.ErrNoRows) {
+		return out, &CancelTicketError{
+			Status:  http.StatusInternalServerError,
+			Code:    "ticket.cancel_failed",
+			Message: "failed to cancel ticket",
+			Err:     perr,
+		}
+	}
+
 	if p.ScanGuard && (p.RefundMode == "manual" || p.RefundMode == "automatic") {
 		var blocked bool
 		var gerr error

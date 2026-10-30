@@ -580,8 +580,15 @@ func writeInvitation(
 			fromReserve++
 		}
 	}
-	if err := txq.SetOrderItemsSeatOrigin(ctx, order.ID, seatIDs, origins); err != nil {
+	// Every line must take its origin: a cancelled ticket returns its seat
+	// to the status recorded here, and a line without one would go back as
+	// 'available' even if the seat was a reserve one.
+	originRows, err := txq.SetOrderItemsSeatOrigin(ctx, order.ID, seatIDs, origins)
+	if err != nil {
 		return written{}, fmt.Errorf("hinvitations: seat origin: %w", err)
+	}
+	if originRows != int64(len(seatIDs)) {
+		return written{}, fmt.Errorf("hinvitations: seat origin recorded for %d of %d places", originRows, len(seatIDs))
 	}
 
 	// 9. Sold in THIS transaction: places held -> sold, capacity held ->

@@ -75,7 +75,7 @@ WHERE  id = $1
   AND  status = 'paid'
   AND  issued_via IS NOT NULL;
 
--- name: SetOrderItemsSeatOrigin :exec
+-- name: SetOrderItemsSeatOrigin :execrows
 -- Where each line's seat came from: available (sale) or unavailable
 -- (reserve). A cancelled ticket returns its seat there (INV-01).
 UPDATE order_items oi

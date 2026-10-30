@@ -792,7 +792,7 @@ export const en = {
   "invitations.problem": "Line {line}: {reason}. “{text}”",
   "invitations.block.none": "Add at least one guest.",
   "invitations.block.tooMany": "That is more than {max} guests. Send the first {max} now and the rest in another round.",
-  "invitations.block.overFree": "That is more guests than free places ({free}). Remove some guests or pick another category.",
+  "invitations.hint.overFree": "That is more guests than free places ({free}). Places you closed for sale are used too. If even they run out, issuing stops with a message and the guests already done keep their invitations.",
   "invitations.confirm.title": "Check before you send",
   "invitations.confirm.what": "{event}, {when}, category {category}.",
   "invitations.confirm.count": "Invitations to send: {count}",

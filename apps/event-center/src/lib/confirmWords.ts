@@ -20,7 +20,7 @@ export const CONFIRM_WORDS: Record<ConfirmKind, Record<Locale, string>> = {
   cancel_session: { en: "CANCEL SESSION", ru: "ОТМЕНИТЬ СЕАНС", es: "CANCELAR SESIÓN" },
   delete_event: { en: "DELETE", ru: "УДАЛИТЬ", es: "ELIMINAR" },
   refund: { en: "REFUND", ru: "ВЕРНУТЬ", es: "DEVOLVER" },
-  annul_invitation: { en: "ANNUL", ru: "АННУЛИРОВАТЬ", es: "ANULAR" },
+  annul_invitation: { en: "ANNUL", ru: "ОТМЕНИТЬ ПРИГЛАШЕНИЕ", es: "ANULAR" },
   // 4-3: the bot's promo delete word is the same word as the event's.
   delete_promo: { en: "DELETE", ru: "УДАЛИТЬ", es: "ELIMINAR" },
   // Web only: the shop operator fulfilling an order that waited for a check. The bot has no such dialog.

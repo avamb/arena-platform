@@ -8,6 +8,7 @@ import {
   letterNeedsAttention,
   letterSummary,
   letterTone,
+  overFreePlaces,
   parseGuests,
   sendBlock,
   validEmail,
@@ -59,13 +60,20 @@ describe("parseGuests (the bot's ParseInviteRecipients)", () => {
 
 describe("sendBlock", () => {
   const guests = (n: number) => parseGuests(Array.from({ length: n }, (_, i) => `g${i}@example.com`).join("\n"));
-  it("blocks an empty list, problems, more than one round and more than the free places", () => {
-    expect(sendBlock(parseGuests(""), 10)).toBe("none");
-    expect(sendBlock(parseGuests("nonsense"), 10)).toBe("problems");
-    expect(sendBlock(guests(MAX_GUESTS + 1), 500)).toBe("tooMany");
-    expect(sendBlock(guests(3), 2)).toBe("overFree");
-    expect(sendBlock(guests(3), 3)).toBeNull();
-    expect(sendBlock(guests(MAX_GUESTS), null)).toBeNull();
+  it("blocks an empty list, problems and more than one round", () => {
+    expect(sendBlock(parseGuests(""))).toBe("none");
+    expect(sendBlock(parseGuests("nonsense"))).toBe("problems");
+    expect(sendBlock(guests(MAX_GUESTS + 1))).toBe("tooMany");
+    expect(sendBlock(guests(3))).toBeNull();
+    expect(sendBlock(guests(MAX_GUESTS))).toBeNull();
+  });
+
+  it("never blocks on the free-places count: the places the organizer closed are issued too (R-5)", () => {
+    expect(sendBlock(guests(5))).toBeNull();
+    expect(overFreePlaces(guests(3), 2)).toBe(true);
+    expect(overFreePlaces(guests(3), 3)).toBe(false);
+    expect(overFreePlaces(guests(3), null)).toBe(false);
+    expect(overFreePlaces(parseGuests(""), 0)).toBe(false);
   });
 });
 
