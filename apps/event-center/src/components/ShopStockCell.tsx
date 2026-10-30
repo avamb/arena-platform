@@ -20,11 +20,13 @@ import { formatNumber } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import {
   isStockChanged,
+  isVariantsChanged,
   parseStockInput,
   stockChangedDetails,
   stockEditMode,
   stockSum,
   stockUpdateRequest,
+  variantIdsOf,
   trackedVariants,
   variantLabel,
   type ShopProductView,
@@ -153,10 +155,15 @@ function StockField({
       const body = stockUpdateRequest(current, variantId, n, currency);
       if (body === null) throw new Error("variant is gone");
       try {
-        storeProduct(client, orgId, await replaceShopVariants(orgId, product.id, body));
+        storeProduct(client, orgId, await replaceShopVariants(orgId, product.id, body, variantIdsOf(current)));
         setDraft(String(n));
         setStatus({ kind: "saved" });
       } catch (error) {
+        if (isVariantsChanged(error)) {
+          // A colleague added or removed a version: bring the list up to date, then say so.
+          storeProduct(client, orgId, await fetchShopProduct(orgId, product.id));
+          throw error;
+        }
         if (!isStockChanged(error)) throw error;
         // Somebody else moved the shelf: show their number, keep what was typed in the line below, change nothing.
         const d = stockChangedDetails(error).find((x) => x.id === variantId);

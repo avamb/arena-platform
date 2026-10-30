@@ -239,6 +239,8 @@ export const API = {
   shopImageRemove: { method: "DELETE", path: "/v1/organizations/{org_id}/shop/products/{product_id}/images/{media_id}" },
   shopVariantsReplace: { method: "PUT", path: "/v1/organizations/{org_id}/shop/products/{product_id}/variants" },
   shopOrders: { method: "GET", path: "/v1/organizations/{org_id}/shop/orders" },
+  // The same list with the filters in the JSON body (SA-17): a buyer's e-mail or name never goes into an address.
+  shopOrdersSearch: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/search" },
   shopOrderCounts: { method: "GET", path: "/v1/organizations/{org_id}/shop/orders/counts" },
   shopOrder: { method: "GET", path: "/v1/organizations/{org_id}/shop/orders/{order_id}" },
   shopOrderNote: { method: "PATCH", path: "/v1/organizations/{org_id}/shop/orders/{order_id}" },

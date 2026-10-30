@@ -4,6 +4,7 @@
  * writes `shop.manage`. Cancel and refund move money, so the caller passes
  * the step-up headers (`withStepUp`).
  */
+import { REFUND_CREATE_TIMEOUT_MS } from "@/lib/api/endpoints";
 import { UPLOAD_TIMEOUT_MS, call, download } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
 import type {
@@ -74,9 +75,14 @@ export function deleteShopProduct(orgId: string, productId: string): Promise<voi
   return call<void>({ route: API.shopProductDelete, params: prod(orgId, productId) });
 }
 
-/** The complete variant list. A variant left out is deleted. */
-export function replaceShopVariants(orgId: string, productId: string, variants: ShopVariantSend[]): Promise<ShopProduct> {
-  return call<ShopProduct>({ route: API.shopVariantsReplace, params: prod(orgId, productId), body: { variants } });
+/**
+ * The complete variant list. A variant left out is deleted, so `expectedVariantIds` (the ids the editor loaded)
+ * lets the server refuse the save with 409 `shop.variants_changed` when a colleague added or removed one meanwhile.
+ */
+export function replaceShopVariants(orgId: string, productId: string, variants: ShopVariantSend[], expectedVariantIds?: readonly string[]): Promise<ShopProduct> {
+  const body: { variants: ShopVariantSend[]; expected_variant_ids?: string[] } = { variants };
+  if (expectedVariantIds !== undefined) body.expected_variant_ids = [...expectedVariantIds];
+  return call<ShopProduct>({ route: API.shopVariantsReplace, params: prod(orgId, productId), body });
 }
 
 /**
@@ -123,8 +129,12 @@ export function detachShopImage(orgId: string, productId: string, mediaId: strin
 
 // ─── Orders ──────────────────────────────────────────────────────────────────
 
-export function listShopOrders(orgId: string, query: Record<string, string | number | undefined>): Promise<ShopOrderList> {
-  return call<ShopOrderList>({ route: API.shopOrders, params: org(orgId), query });
+/**
+ * The orders, filtered by the JSON body (`q`, `view`, `status`, `from`, `to` as RFC 3339, `limit`, `offset`).
+ * POST with a body, like the ticket orders: a buyer's e-mail or name stays out of the address.
+ */
+export function searchShopOrders(orgId: string, body: Record<string, string | number>): Promise<ShopOrderList> {
+  return call<ShopOrderList>({ route: API.shopOrdersSearch, params: org(orgId), body });
 }
 
 /** How many orders each quick list holds (`to_ship`, `unpaid`, ...), in one request. */
@@ -156,14 +166,18 @@ export function cancelShopOrder(orgId: string, orderId: string, headers: Record<
   return call<ShopOrder>({ route: API.shopOrderCancel, params: ord(orgId, orderId), body: {}, headers });
 }
 
-/** Returns money. `headers` carries the step-up token. */
+/**
+ * Returns money. `headers` carries the step-up token. `key` is the Idempotency-Key of ONE refund operation: the
+ * same key on a retry makes the server answer the first operation instead of returning the money twice.
+ */
 export function refundShopOrder(
   orgId: string,
   orderId: string,
   body: { amount_minor?: number; reason?: string },
   headers: Record<string, string>,
+  key: string,
 ): Promise<ShopRefundResponse> {
-  return call<ShopRefundResponse>({ route: API.shopOrderRefund, params: ord(orgId, orderId), body, headers });
+  return call<ShopRefundResponse>({ route: API.shopOrderRefund, params: ord(orgId, orderId), body, headers: { ...headers, "Idempotency-Key": key }, timeoutMs: REFUND_CREATE_TIMEOUT_MS });
 }
 
 /** The delivery details, one per line, ready to paste into a courier form. */

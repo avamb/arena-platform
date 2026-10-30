@@ -6,7 +6,7 @@
  * request down to the earlier one, so everything this file does not answer
  * (login, events, the organization list) still comes from mockApi.
  */
-import type { Page, Route } from "@playwright/test";
+import { expect, type Page, type Route } from "@playwright/test";
 import { API, CORS, ORG_A } from "./mockApi";
 
 export const PRODUCT_WINE = "0193f01a-0000-7000-8000-0000000000b1";
@@ -301,7 +301,9 @@ export async function mockShop(page: Page, permissions: string[] = MANAGER): Pro
         p.variants[0] = { ...p.variants[0], stock: 9, available: 7 };
         return json(route, 409, { error: { code: "shop.stock_changed", message: "moved", details: { variants: [{ id: "v1", expected_stock: 12, stock: 9 }] } } });
       }
-      p.variants = body.variants.map((v, i) => variant(v.id ?? `nv${i}`, v.title || "Default Title", v.price_minor, v.stock, { position: i, option1: v.option1, option2: v.option2, option3: v.option3, track_stock: v.track_stock }));
+      // A row without stock keeps the stored one (SA-04): only an edited row names a stock and the one it saw.
+      const before = p.variants;
+      p.variants = body.variants.map((v, i) => variant(v.id ?? `nv${i}`, v.title || "Default Title", v.price_minor, v.stock ?? before.find((x) => x.id === v.id)?.stock ?? 0, { position: i, option1: v.option1, option2: v.option2, option3: v.option3, track_stock: v.track_stock }));
       return json(route, 200, p);
     }
 
@@ -314,13 +316,17 @@ export async function mockShop(page: Page, permissions: string[] = MANAGER): Pro
         refunds: state.orders.filter((o) => inView(o, "refunds")).length,
       });
     }
-    if (path === "/shop/orders" && m === "GET") {
-      state.orderQueries.push(url.search);
-      const status = url.searchParams.get("status");
-      const view = url.searchParams.get("view");
-      const q = (url.searchParams.get("q") ?? "").toLowerCase();
+    if (path === "/shop/orders/search" && m === "POST") {
+      // The filters are in the JSON body (SA-17), never in the address.
+      expect(url.search).toBe("");
+      const body = (req.postDataJSON() ?? {}) as { status?: string; view?: string; q?: string };
+      state.orderQueries.push(JSON.stringify(body));
+      const q = (body.q ?? "").toLowerCase();
       const rows = state.orders.filter(
-        (o) => (status === null || o.status === status) && (view === null || inView(o, view)) && (q === "" || o.buyer.name.toLowerCase().includes(q) || o.buyer.email.includes(q) || String(o.number) === q),
+        (o) =>
+          (body.status === undefined || o.status === body.status) &&
+          (body.view === undefined || inView(o, body.view)) &&
+          (q === "" || o.buyer.name.toLowerCase().includes(q) || o.buyer.email.includes(q) || String(o.number) === q),
       );
       return json(route, 200, { orders: rows, next_offset: null });
     }

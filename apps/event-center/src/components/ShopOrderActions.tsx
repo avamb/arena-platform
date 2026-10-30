@@ -7,9 +7,15 @@
  *   typed word of an order (CANCEL ORDER) and the password again (`withStepUp`).
  * - "Refund": an amount (empty = everything that is left) and a reason, then
  *   the typed word REFUND and the password again. The answer says whether the
- *   money went back, is on its way, or was refused.
- * - "Copy for the courier": the delivery details to the clipboard. When the
- *   browser refuses, the text is shown to be copied by hand.
+ *   money went back, is on its way, or was refused. One refund operation has
+ *   one Idempotency-Key (SA-01), kept while the amount and the reason stay the
+ *   same and the answer is lost, so a retry never returns the money twice.
+ *   After a failure the order is read again and what is left is shown, taking
+ *   the server's `refundable_minor` over the card's own figure (SA-19).
+ * - "Copy for the courier": the text the SERVER builds (the same one the
+ *   logistician gets in Telegram, SA-35) to the clipboard. When the browser
+ *   refuses, the text is shown to be copied by hand. Only when the server
+ *   cannot be reached the card builds the text itself.
  * - "Send the e-mail again" (A-11): queues the buyer's confirmation or, for a
  *   shipped order, the shipping letter once more, for a refunded one, the
  *   refund letter. Asks which one only when several exist. One request per order per minute: the API answers 429 and the
@@ -17,17 +23,18 @@
  *
  * Every write needs `shop.manage`; the courier text needs only `shop.read`.
  */
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConfirmWordDialog } from "@/components/ConfirmWordDialog";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { TextAreaField, TextField } from "@/components/FormField";
 import { useStepUp } from "@/components/StepUpDialog";
-import { cancelShopOrder, fetchShopOrder, refundShopOrder, resendShopOrderEmail, shipShopOrder } from "@/lib/api/shopApi";
+import { cancelShopOrder, fetchCourierText, fetchShopOrder, refundShopOrder, resendShopOrderEmail, shipShopOrder } from "@/lib/api/shopApi";
 import { ApiError } from "@/lib/api/http";
 import type { ShopOrder, ShopRefund } from "@/lib/api/types";
 import { formatMoney } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
+import { newRefundKey } from "@/lib/refunds";
 import { StepUpCancelled, withStepUp } from "@/lib/stepUp";
 import {
   SHOP_LIMITS,
@@ -40,13 +47,28 @@ import {
   courierText,
   isShipped,
   isShopOrderStatus,
+  itemLabel,
   refundBody,
   refundOutcome,
-  refundable,
+  refundableFromError,
+  refundableNow,
   resendLetters,
   shopOrderNumber,
+  shortItems,
   type OrderLetter,
 } from "@/lib/shop";
+
+/**
+ * The Idempotency-Key of an unfinished refund, by order. It outlives the dialog on purpose: when the answer is lost
+ * (a timeout, a gateway) and the person closes the panel and comes back, the same amount and reason must go with
+ * the SAME key, or the server would treat the retry as a second refund.
+ */
+const heldRefundKeys = new Map<string, { key: string; fingerprint: string }>();
+
+/** A failure after which the request may still have been recorded (no answer, a timeout, a server error). */
+function mayHaveBeenRecorded(err: unknown): boolean {
+  return !(err instanceof ApiError) || err.status === 0 || err.status === 408 || err.status >= 500;
+}
 
 export interface ShopOrderActionsProps {
   orgId: string;
@@ -75,9 +97,13 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
   const [failure, setFailure] = useState<unknown>(null);
   const [note, setNote] = useState<{ key: MessageKey; params?: Record<string, string>; bad?: boolean } | null>(null);
   const [courier, setCourier] = useState<{ copied: boolean; text: string } | null>(null);
+  // What the server said is left to refund (it counts refunds still on their way; the card cannot see them).
+  const [serverLeft, setServerLeft] = useState<number | null>(null);
+  const [refundFailure, setRefundFailure] = useState<{ error: unknown; retrySafe: boolean } | null>(null);
+  const refundBusy = useRef(false);
 
   const money = (v: number) => formatMoney(v, order.currency, locale);
-  const left = refundable(order);
+  const left = refundableNow(order, serverLeft);
 
   const store = (o: ShopOrder) => {
     queryClient.setQueryData(["shopOrder", orgId, o.id], o);
@@ -124,6 +150,14 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
       setNote({ key: "shop.act.ship.done" });
     } catch (error) {
       setFailure(error);
+      // The order may have moved on (a late payment, a refund): read it again so the card shows its real state.
+      if (error instanceof ApiError && error.status === 409) {
+        try {
+          store(await fetchShopOrder(orgId, order.id));
+        } catch {
+          /* the failure above is what the person sees */
+        }
+      }
     } finally {
       setBusy(false);
     }
@@ -153,27 +187,56 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
 
   const onRefundContinue = (e: FormEvent) => {
     e.preventDefault();
-    const c = checkRefund(order, amount, reason);
+    const c = checkRefund(order, amount, reason, serverLeft);
     if (!c.ok) {
       setRefundProblem(c.problem === "amount" ? "shop.act.refund.err.amount" : c.problem === "tooMuch" ? "shop.act.refund.err.tooMuch" : "shop.act.refund.err.reason");
       return;
     }
     setRefundProblem(null);
+    setRefundFailure(null);
     setWordOpen(true);
   };
 
-  const refundCheck = checkRefund(order, amount, reason);
+  const refundCheck = checkRefund(order, amount, reason, serverLeft);
   const refundAmount = refundCheck.ok ? (refundCheck.amountMinor ?? left) : left;
 
   const onRefund = async () => {
-    if (!refundCheck.ok) return;
+    if (!refundCheck.ok || refundBusy.current) return;
+    const body = refundBody(refundCheck, reason);
+    // One operation, one key: the same amount and reason keep the key a lost answer left behind.
+    const fingerprint = JSON.stringify(body);
+    let held = heldRefundKeys.get(order.id);
+    if (held === undefined || held.fingerprint !== fingerprint) {
+      held = { key: newRefundKey(), fingerprint };
+      heldRefundKeys.set(order.id, held);
+    }
+    const key = held.key;
     let answer;
+    refundBusy.current = true;
     try {
-      answer = await withStepUp(orgId, (headers) => refundShopOrder(orgId, order.id, refundBody(refundCheck, reason), headers), stepUp.ask);
+      answer = await withStepUp(orgId, (headers) => refundShopOrder(orgId, order.id, body, headers, key), stepUp.ask);
     } catch (err) {
       if (err instanceof StepUpCancelled) return;
-      throw err;
+      const unsure = mayHaveBeenRecorded(err);
+      // A refusal means nothing was recorded: the next try is a new operation. An unsure failure keeps the key.
+      if (!unsure) heldRefundKeys.delete(order.id);
+      const serverSays = refundableFromError(err);
+      if (serverSays !== null) setServerLeft(serverSays);
+      setRefundFailure({ error: err, retrySafe: unsure });
+      setWordOpen(false);
+      // Read the order again: the card must show what is really left, not the figure it had before.
+      try {
+        store(await fetchShopOrder(orgId, order.id));
+      } catch {
+        /* the refund failure above is what the person sees */
+      }
+      return;
+    } finally {
+      refundBusy.current = false;
     }
+    heldRefundKeys.delete(order.id);
+    setServerLeft(null);
+    setRefundFailure(null);
     store(answer.order);
     const r: ShopRefund = answer.refund;
     const outcome = refundOutcome(r.state);
@@ -191,12 +254,19 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
     setFailure(null);
     setNote(null);
     try {
-      // Built here from the order on the screen: it starts with the order number and ends with the buyer's comment.
-      const text = courierText(order, {
-        locale,
-        shopCountry: country,
-        labels: { order: t("shop.courier.order", { number: shopOrderNumber(order.number) }), comment: (note) => t("shop.courier.comment", { note }) },
-      });
+      // The server builds the text (SA-35): it is the one the logistician gets in Telegram. The card builds its own
+      // only when the server cannot be reached at all.
+      let text: string;
+      try {
+        text = await fetchCourierText(orgId, order.id);
+      } catch (error) {
+        if (!(error instanceof ApiError) || (error.status !== 0 && error.status < 500)) throw error;
+        text = courierText(order, {
+          locale,
+          shopCountry: country,
+          labels: { order: t("shop.courier.order", { number: shopOrderNumber(order.number) }), comment: (note) => t("shop.courier.comment", { note }) },
+        });
+      }
       const copied = await copyText(text);
       setCourier({ copied, text });
       setNote(copied ? { key: "shop.act.courier.done" } : { key: "shop.act.courier.manual", bad: true });
@@ -222,7 +292,13 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
           </button>
         )}
         {canRefundShopOrder(order, canManage && canRefund) && (
-          <button type="button" className="btn" onClick={() => setPanel(panel === "refund" ? null : "refund")} data-testid="shop-order-refund">
+          <button type="button" className="btn" onClick={() => {
+              setServerLeft(null);
+              setRefundFailure(null);
+              setPanel(panel === "refund" ? null : "refund");
+            }}
+            data-testid="shop-order-refund"
+          >
             {t("shop.act.refund")}
           </button>
         )}
@@ -321,6 +397,19 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
               {t("shop.act.refund.next")}
             </button>
           </p>
+          {refundFailure !== null && (
+            <div data-testid="shop-refund-failure">
+              <ErrorNotice error={refundFailure.error} testId="shop-refund-error" />
+              <p className="notice notice-warn" role="status" data-testid="shop-refund-left-now">
+                {t("shop.act.refund.leftNow", { left: money(left) })}
+              </p>
+              {refundFailure.retrySafe && (
+                <p className="muted" data-testid="shop-refund-retry-safe">
+                  {t("shop.act.refund.retrySafe")}
+                </p>
+              )}
+            </div>
+          )}
         </form>
       )}
 
@@ -330,6 +419,21 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
         </p>
       )}
       {failure !== null && <ErrorNotice error={failure} testId="shop-order-error" />}
+      {failure !== null && shortItems(failure).length > 0 && (
+        <div data-testid="shop-order-short" role="status">
+          <p>{t("shop.act.ship.shortIntro")}</p>
+          <ul className="facts">
+            {shortItems(failure).map((it) => {
+              const line = order.items.find((x) => x.variant_id === it.variant_id);
+              return (
+                <li key={it.variant_id}>
+                  {t("shop.act.ship.shortLine", { name: line === undefined ? it.variant_id : itemLabel(line), ordered: it.ordered, available: it.available })}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
       {courier !== null && !courier.copied && (
         <pre className="mono" tabIndex={0} data-testid="shop-courier-text">
           {courier.text}

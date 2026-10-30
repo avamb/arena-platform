@@ -10,9 +10,13 @@
  *   the same HTML subset the server's sanitizer keeps), kind, status, the
  *   digital file, the names of up to three options. The address (slug) is
  *   read only: the server makes it from the name.
- * - Variants: one row per variant; a loaded row sends back the stock the
- *   person saw (`expected_stock`). A 409 `shop.stock_changed` reloads the
- *   rows from the server and says so; nothing is overwritten.
+ * - Variants: one row per variant. A row whose stock the person did NOT touch
+ *   sends no stock at all (SA-04); one they edited sends the new number and
+ *   the one they saw (`expected_stock`). A 409 `shop.stock_changed` brings up
+ *   to date ONLY the stock of the rows it names and says so: typed prices,
+ *   SKUs and new rows stay. A 409 `shop.variants_changed` (a colleague added
+ *   or removed a variant) merges the fresh set into the rows the same way.
+ * - Details: the PATCH carries only the fields that changed (SA-13).
  * - Pictures: only for a saved product (they attach to its id).
  *
  * Creating sends the details AND the variants in one request. Editing saves
@@ -50,6 +54,11 @@ import {
   SHOP_LIMITS,
   checkVariants,
   emptyRow,
+  isVariantsChanged,
+  mergeVariantSet,
+  productPatch,
+  rowsAfterStockMoved,
+  variantIdsOf,
   kindTracksStock,
   shelfEmpty,
   invalidFields,
@@ -119,6 +128,10 @@ export function ProductForm({ orgId, currency, product, canManage, canViewMedia 
   const [fileProblem, setFileProblem] = useState<MessageKey | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [stockMoved, setStockMoved] = useState<{ title: string; expected: number | null; stock: number; typed: string }[]>([]);
+  // The variant ids the rows were built from: the set the server is asked to still find (`expected_variant_ids`).
+  const loadedIds = useRef<string[]>(product !== undefined ? variantIdsOf(product) : []);
+  // What a merge after `shop.variants_changed` did, for the line under the variants.
+  const [setMerged, setSetMerged] = useState<{ removed: number; added: number } | null>(null);
 
   const digital = kind === "digital";
   const used = leadingNames(names);
@@ -126,14 +139,8 @@ export function ProductForm({ orgId, currency, product, canManage, canViewMedia 
   const disabled = !canManage || busy !== null;
 
   // What differs from the saved product (editing) or from an empty form (creating).
-  const detailsDirty =
-    product !== undefined &&
-    (title.trim() !== product.title ||
-      status !== product.status ||
-      kind !== productKind(product) ||
-      JSON.stringify(used) !== JSON.stringify(optionNamesOf(product)) ||
-      (kind === "digital" ? digitalId !== (product.digital_media_id ?? null) : (product.digital_media_id ?? null) !== null) ||
-      (bodyTouched.current && body !== (product.body_html ?? "")));
+  const patch = product !== undefined ? productPatch({ title, status, kind, optionNames: used, digitalId, body, bodyTouched: bodyTouched.current }, product) : {};
+  const detailsDirty = product !== undefined && Object.keys(patch).length > 0;
   const variantsDirty = product !== undefined && variantsChanged(rows, product.variants, currency, optionCount, { digital });
   const altsDirty = product !== undefined && product.images.some((im) => alts[im.media_id] !== undefined && alts[im.media_id].trim() !== im.alt);
   const createDirty =
@@ -170,6 +177,7 @@ export function ProductForm({ orgId, currency, product, canManage, canViewMedia 
   const stats: Record<string, VariantStat> = {};
   for (const v of product?.variants ?? []) stats[v.id] = { held: v.held, available: v.available ?? null };
 
+  /** The whole form, for a NEW product. An existing one is patched with `productPatch` instead. */
   const fields = (): ShopProductFields => {
     const f: ShopProductFields = {
       title: title.trim(),
@@ -192,6 +200,7 @@ export function ProductForm({ orgId, currency, product, canManage, canViewMedia 
   const run = async (scope: "create" | "file", fn: () => Promise<void>) => {
     setBusy(scope);
     setStockMoved([]);
+    setSetMerged(null);
     setFailure(null);
     setNotice(null);
     setSavedParts([]);
@@ -204,28 +213,41 @@ export function ProductForm({ orgId, currency, product, canManage, canViewMedia 
     }
   };
 
-  /** The variants step of the save. A 409 reloads the rows with the server's numbers, says so and stops the save. */
+  /**
+   * The variants step of the save. A 409 `shop.stock_changed` brings up to date only the stock of the rows it names
+   * and stops the save; a 409 `shop.variants_changed` merges the colleague's set into the rows and stops it too.
+   * Nothing the person typed is thrown away.
+   */
   const saveVariantsStep = async (p: ShopProductView) => {
     try {
-      const saved = await replaceShopVariants(orgId, p.id, variantsRequest(rows, currency, optionCount, { digital }));
+      const saved = await replaceShopVariants(orgId, p.id, variantsRequest(rows, currency, optionCount, { digital }), loadedIds.current);
       setProduct(saved);
       setRows(rowsFromProduct(saved, currency));
+      loadedIds.current = variantIdsOf(saved);
       setCheck(null);
     } catch (error) {
-      if (!isStockChanged(error)) throw error;
-      // The shelf moved while the screen was open: show the server's numbers, say so, change nothing else.
-      setStockMoved(
-        stockChangedDetails(error).map((d) => {
-          const row = rows.find((r) => r.id === d.id);
-          const name = row === undefined ? "" : row.title || row.options.filter((o) => o !== "").join(" / ");
-          // The number typed is shown beside the fresh one, so nobody has to remember it.
-          return { title: name !== "" ? name : isSingleVersion(rows, used) ? t("shop.variants.single") : "", expected: d.expected, stock: d.stock, typed: row?.stock ?? "" };
-        }),
-      );
-      const fresh = await fetchShopProduct(orgId, p.id);
-      setProduct(fresh);
-      setRows(rowsFromProduct(fresh, currency));
-      setCheck(null);
+      if (isStockChanged(error)) {
+        const moved = stockChangedDetails(error);
+        // The shelf moved while the screen was open: show the server's numbers beside the typed ones, change nothing else.
+        setStockMoved(
+          moved.map((d) => {
+            const row = rows.find((r) => r.id === d.id);
+            const name = row === undefined ? "" : row.title || row.options.filter((o) => o !== "").join(" / ");
+            return { title: name !== "" ? name : isSingleVersion(rows, used) ? t("shop.variants.single") : "", expected: d.expected, stock: d.stock, typed: row?.stock ?? "" };
+          }),
+        );
+        setProduct(await fetchShopProduct(orgId, p.id));
+        setRows((list) => rowsAfterStockMoved(list, moved));
+        setCheck(null);
+      } else if (isVariantsChanged(error)) {
+        const fresh = await fetchShopProduct(orgId, p.id);
+        setProduct(fresh);
+        const merged = mergeVariantSet(rows, fresh, loadedIds.current, currency);
+        setRows(merged.rows);
+        setSetMerged({ removed: merged.removed, added: merged.added });
+        loadedIds.current = variantIdsOf(fresh);
+        setCheck(null);
+      }
       throw error;
     }
   };
@@ -243,6 +265,7 @@ export function ProductForm({ orgId, currency, product, canManage, canViewMedia 
     if (!dirty) return true;
     setBusy("save");
     setStockMoved([]);
+    setSetMerged(null);
     setFailure(null);
     setNotice(null);
     setSavedParts([]);
@@ -251,7 +274,7 @@ export function ProductForm({ orgId, currency, product, canManage, canViewMedia 
     try {
       if (detailsDirty) {
         step = "details";
-        const patched = await patchShopProduct(orgId, product.id, fields());
+        const patched = await patchShopProduct(orgId, product.id, patch);
         setProduct(patched);
         // The text as the server stored it (it may have tidied the markup): the editor shows that, and nothing is "changed" any more.
         bodyTouched.current = false;
@@ -458,7 +481,12 @@ export function ProductForm({ orgId, currency, product, canManage, canViewMedia 
         <p className="field-hint">{t("shop.variants.hint")}</p>
         <ShopVariantsEditor rows={rows} onChange={setRows} currency={currency} optionNames={used} optionCount={optionCount} check={check} disabled={disabled} digital={digital} newRowTracks={kindTracksStock(kind)} stats={stats} />
         {variantsError !== null && (
-          <ErrorNotice error={variantsError} testId={isStockChanged(variantsError) ? "shop-stock-changed" : "shop-variants-error"} />
+          <ErrorNotice error={variantsError} testId={isStockChanged(variantsError) ? "shop-stock-changed" : isVariantsChanged(variantsError) ? "shop-variants-changed" : "shop-variants-error"} />
+        )}
+        {variantsError !== null && isVariantsChanged(variantsError) && setMerged !== null && (
+          <p className="notice notice-warn" role="status" data-testid="shop-variants-merged">
+            {t("shop.variants.merged", { removed: setMerged.removed, added: setMerged.added })}
+          </p>
         )}
         {variantsError !== null && isStockChanged(variantsError) && stockMoved.length > 0 && (
           <ul className="facts" data-testid="shop-stock-moved">
