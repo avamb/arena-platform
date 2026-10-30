@@ -31,6 +31,12 @@ export const url = (ctx: Pick<Ctx, 'base'>, path: string): string => href(ctx.ba
 
 export const money = (ctx: Ctx, minor: number): string => formatMoney(minor, ctx.shop.settings.currency);
 
+/**
+ * A product slug as a fragment of an element id or an aria-* id list: anything but letters, digits,
+ * "_" and "-" (a space would split an aria-labelledby list, a quote would end the attribute) becomes "_<hex>".
+ */
+export const idToken = (raw: string): string => raw.replace(/[^\p{L}\p{N}_-]/gu, (c) => '_' + (c.codePointAt(0) ?? 0).toString(16));
+
 export const productPath = (p: ShopProduct): string => '/products/' + p.slug;
 
 export function spinner(): string {
@@ -187,7 +193,7 @@ export function productCard(ctx: Ctx, p: ShopProduct, o: CardOpts): string {
   const ratio = o.square ? 1 : ratioOf(first);
   const pct = (1 / ratio) * 100;
   const sid = o.sectionId;
-  const pid = p.id;
+  const pid = idToken(p.id);
   const available = productAvailable(p);
   const onSale = available && compareAtOf(p) > priceMin(p);
   const badge = (idPrefix: string): string =>
@@ -267,8 +273,9 @@ ${priceBlock(ctx, p)}
 }
 
 function quickAdd(ctx: Ctx, p: ShopProduct, sid: string): string {
-  const formId = `quick-add-${sid}${p.id}`;
-  const labelled = `${formId}-submit title-${sid}-${p.id}`;
+  const pid = idToken(p.id);
+  const formId = `quick-add-${sid}${pid}`;
+  const labelled = `${formId}-submit title-${sid}-${pid}`;
   if (p.variants.length > 1) {
     return `<div class="quick-add no-js-hidden"><span class="quick-add__opener">
                 <button
