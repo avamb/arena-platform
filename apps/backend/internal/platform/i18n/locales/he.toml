@@ -226,3 +226,28 @@ other = "💰 שולם: <b>{{.Amount}}</b>"
 
 ["salesnotify.shop.review_body"]
 other = "התשלום על הזמנה {{.Number}} הגיע אחרי שהשמירה על המוצרים הסתיימה והמוצרים כבר לא היו פנויים. בדקו את ההזמנה במרכז האירועים."
+
+# --- salesnotify.shop.courier_*: the plain courier text of an order card ---
+["salesnotify.shop.courier_order"]
+other = "הזמנה מס' {{.Number}}"
+
+["salesnotify.shop.courier_pickup"]
+other = "איסוף עצמי"
+
+["salesnotify.shop.courier_none"]
+other = "ללא משלוח (מוצר דיגיטלי או שירות)"
+
+["salesnotify.shop.courier_item"]
+other = "{{.Name}} × {{.Qty}}"
+
+["salesnotify.shop.courier_total"]
+other = "סה״כ: {{.Amount}}"
+
+["salesnotify.shop.courier_note"]
+other = "הערת הקונה: {{.Note}}"
+
+["salesnotify.shop.courier_map_google"]
+other = "Google Maps: {{.Url}}"
+
+["salesnotify.shop.courier_map_waze"]
+other = "Waze: {{.Url}}"
