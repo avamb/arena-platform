@@ -16805,6 +16805,9 @@ type ShopCheckoutRequest struct {
 	// Buyer Who pays.
 	Buyer ShopBuyer `json:"buyer"`
 
+	// CaptchaToken The Cloudflare Turnstile response the widget produced; required while the catalog settings publish a `captcha_site_key` (422 `shop.captcha_required` without it, 422 `shop.captcha_failed` when the test did not pass).
+	CaptchaToken *string `json:"captcha_token,omitempty"`
+
 	// DeliveryNote Comment for the delivery, up to 2000 characters.
 	DeliveryNote *string `json:"delivery_note,omitempty"`
 
@@ -17109,6 +17112,30 @@ type ShopOrderPayment struct {
 	State string `json:"state"`
 }
 
+// ShopOrderSearchRequest The filters of the shop order list, in a body.
+type ShopOrderSearchRequest struct {
+	// From Created at or after this instant (RFC 3339 with a zone, or YYYY-MM-DD for UTC midnight).
+	From *string `json:"from,omitempty"`
+
+	// Limit Page size, 1-200 (default 50).
+	Limit *int `json:"limit,omitempty"`
+
+	// Offset How many orders to skip (the previous page's `next_offset`).
+	Offset *int `json:"offset,omitempty"`
+
+	// Q Order number, or part of the buyer's e-mail or name.
+	Q *string `json:"q,omitempty"`
+
+	// Status Only orders of this status.
+	Status *string `json:"status,omitempty"`
+
+	// To Created before this instant (RFC 3339 with a zone, or YYYY-MM-DD for UTC midnight).
+	To *string `json:"to,omitempty"`
+
+	// View A tab of the list: `to_ship`, `unpaid`, `shipped` or `refunds`.
+	View *string `json:"view,omitempty"`
+}
+
 // ShopPage A static storefront page.
 type ShopPage struct {
 	// BodyHtml Page text, sanitized HTML (the rich-text tags plus pictures and tables). A link to another page of the same storefront may be a root path such as `/pages/contact`; the storefront puts its own base in front of it.
@@ -17366,6 +17393,9 @@ type ShopPublicSettings struct {
 	// AnnouncementText Announcement bar text.
 	AnnouncementText string `json:"announcement_text"`
 
+	// CaptchaSiteKey Cloudflare Turnstile site key the checkout form renders its widget with; the widget's token goes to checkout as `captcha_token`. Absent while the shop's checkout has no captcha.
+	CaptchaSiteKey *string `json:"captcha_site_key,omitempty"`
+
 	// ContactEmail Contact address, or null.
 	ContactEmail *string `json:"contact_email"`
 
@@ -17387,7 +17417,7 @@ type ShopPublicSettings struct {
 
 // ShopPublicVariant A variant on the storefront.
 type ShopPublicVariant struct {
-	// Available Units still for sale; null when unlimited.
+	// Available How many units a buyer can put in a cart, the real stock capped at the shop's `max_line_qty` (the exact shelf is never shown; an untracked variant reports the cap). Null only when the shop has no line limit and the variant does not track stock. The article number is not published.
 	Available *int `json:"available"`
 
 	// CompareAtMinor Former price, or null.
@@ -17410,9 +17440,6 @@ type ShopPublicVariant struct {
 
 	// PriceMinor Price, minor units.
 	PriceMinor int64 `json:"price_minor"`
-
-	// Sku Stock keeping unit.
-	Sku *string `json:"sku"`
 
 	// Title Variant title.
 	Title string `json:"title"`
@@ -17458,6 +17485,9 @@ type ShopRefundResponse struct {
 
 	// Refund The refund.
 	Refund ShopRefund `json:"refund"`
+
+	// Replayed True when the `Idempotency-Key` had been used before and this is the first call's refund. Nothing new was written.
+	Replayed *bool `json:"replayed,omitempty"`
 }
 
 // ShopResendEmailRequest Which buyer letter to send once more.
@@ -21168,6 +21198,12 @@ type ListShopOrdersParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// RefundShopOrderParams defines parameters for RefundShopOrder.
+type RefundShopOrderParams struct {
+	// IdempotencyKey Client-chosen key of 1 to 255 characters (a UUID) that identifies this refund; one per open refund dialog.
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
 // ListShopProductsParams defines parameters for ListShopProducts.
 type ListShopProductsParams struct {
 	// Status Only products of this status: `draft`, `active` or `archived`.
@@ -21875,6 +21911,9 @@ type PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody = SeatB
 
 // PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest for application/json ContentType.
 type PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody = SeatLayoutSuggestRequest
+
+// SearchShopOrdersJSONRequestBody defines body for SearchShopOrders for application/json ContentType.
+type SearchShopOrdersJSONRequestBody = ShopOrderSearchRequest
 
 // UpdateShopOrderNoteJSONRequestBody defines body for UpdateShopOrderNote for application/json ContentType.
 type UpdateShopOrderNoteJSONRequestBody = ShopOrderNoteRequest

@@ -311,6 +311,7 @@ func TestShop_CheckoutLimits(t *testing.T) {
 // that is not JSON is not counted, and another shop has its own budget.
 func TestShop_CheckoutHasItsOwnAddressBudget(t *testing.T) {
 	f := newShopFixture(t)
+	f.remote = "192.0.2.1:4000" // one address for every request
 	path := "/v1/public/shop/" + f.orgASlug + "/checkout"
 	for i := 0; i < 5; i++ {
 		if code, _, _ := f.do(http.MethodPost, path, "", `not json`); code != http.StatusBadRequest {
@@ -600,6 +601,43 @@ func TestShop_DigitalProductCheckoutAndDownloads(t *testing.T) {
 	}
 	if v := f.variant(variantID); v.Stock != 0 || v.TrackStock {
 		t.Fatalf("digital variant after the sale: stock %d track %v; want 0 and false", v.Stock, v.TrackStock)
+	}
+
+	// SA-34: the line remembers the file it was sold with. Swapping the
+	// product's file afterwards changes nothing for this order.
+	var sold *uuid.UUID
+	if err := f.pool.QueryRow(context.Background(),
+		`SELECT oi.media_id FROM shop_order_items oi JOIN shop_orders o ON o.id = oi.order_id WHERE o.order_token = $1`, token).Scan(&sold); err != nil ||
+		sold == nil || *sold != file {
+		t.Fatalf("media_id of the digital line = %v (%v); want %s", sold, err, file)
+	}
+	replacement := f.shopMedia(shop.DigitalOwnerType)
+	f.exec(`UPDATE shop_products SET digital_media_id = $1 WHERE id = $2`, replacement, productID)
+	code, body, _ = f.do(http.MethodGet, downloads, "", "")
+	if code != http.StatusOK || !strings.Contains(body["downloads"].([]any)[0].(map[string]any)["url"].(string), "/v1/media-files/"+file.String()) {
+		t.Fatalf("downloads after the product's file was replaced = %d %v; want the file bought", code, body)
+	}
+
+	// Twenty links per line: two were issued, so 18 more answer, then 410.
+	for i := 3; i <= shop.DownloadsPerLine; i++ {
+		if code, body, _ := f.do(http.MethodGet, downloads, "", ""); code != http.StatusOK {
+			t.Fatalf("download %d = %d %v; want 200", i, code, body)
+		}
+	}
+	code, body, _ = f.do(http.MethodGet, downloads, "", "")
+	if code != http.StatusGone || shopErrCode(body) != "shop.download_expired" {
+		t.Fatalf("download over the limit = %d %v; want 410 shop.download_expired", code, body)
+	}
+
+	// Thirty days after payment the order is closed even with links left.
+	f.exec(`UPDATE shop_order_items SET download_count = 0 WHERE order_id = (SELECT id FROM shop_orders WHERE order_token = $1)`, token)
+	if code, body, _ := f.do(http.MethodGet, downloads, "", ""); code != http.StatusOK {
+		t.Fatalf("download after the counter reset = %d %v; want 200", code, body)
+	}
+	f.exec(`UPDATE shop_orders SET paid_at = now() - interval '31 days' WHERE order_token = $1`, token)
+	code, body, _ = f.do(http.MethodGet, downloads, "", "")
+	if code != http.StatusGone || shopErrCode(body) != "shop.download_expired" {
+		t.Fatalf("download 31 days after payment = %d %v; want 410 shop.download_expired", code, body)
 	}
 }
 

@@ -1,6 +1,7 @@
 package hshop
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -30,35 +31,91 @@ func parseTimeParam(raw string) (*time.Time, bool) {
 	return nil, false
 }
 
+// listFilter is the filter of the order list as the caller spelled it: the
+// query string of GET .../shop/orders, or the body of POST .../shop/orders/search.
+type listFilter struct {
+	Status, View, Q, From, To string
+	Limit, Offset             *int
+}
+
+// toFilter validates it into a shop.OrderFilter.
+func (l listFilter) toFilter() (shop.OrderFilter, bool) {
+	f := shop.OrderFilter{Status: l.Status, View: l.View, Query: l.Q}
+	var okFrom, okTo bool
+	f.From, okFrom = parseTimeParam(l.From)
+	f.To, okTo = parseTimeParam(l.To)
+	if !okFrom || !okTo {
+		return f, false
+	}
+	if l.Limit != nil {
+		f.Limit = *l.Limit
+	}
+	if l.Offset != nil {
+		f.Offset = *l.Offset
+	}
+	if f.Limit == 0 {
+		f.Limit = 50
+	}
+	return f, true
+}
+
 // HandleListOrders serves GET .../shop/orders?status=&view=&q=&from=&to=&limit=&offset=.
+// The buyer's name or e-mail in `q` would land in the access logs of the
+// proxy and of Cloudflare, so the web event center searches through
+// POST .../shop/orders/search (HandleSearchOrders) with the same filters in
+// the body; GET stays for API keys and scripts without a search text.
 func (h *Handler) HandleListOrders(w http.ResponseWriter, r *http.Request) {
 	org, ok := orgID(w, r)
 	if !ok {
 		return
 	}
 	qs := r.URL.Query()
-	f := shop.OrderFilter{Status: qs.Get("status"), View: qs.Get("view"), Query: qs.Get("q")}
-	var okFrom, okTo bool
-	f.From, okFrom = parseTimeParam(qs.Get("from"))
-	f.To, okTo = parseTimeParam(qs.Get("to"))
-	if !okFrom || !okTo {
-		writeErr(w, r, http.StatusBadRequest, "shop.invalid_filter", "from and to must be RFC 3339 timestamps or YYYY-MM-DD dates")
-		return
-	}
-	for name, dst := range map[string]*int{"limit": &f.Limit, "offset": &f.Offset} {
+	l := listFilter{Status: qs.Get("status"), View: qs.Get("view"), Q: qs.Get("q"), From: qs.Get("from"), To: qs.Get("to")}
+	for name, dst := range map[string]**int{"limit": &l.Limit, "offset": &l.Offset} {
 		if v := strings.TrimSpace(qs.Get(name)); v != "" {
 			n, err := strconv.Atoi(v)
 			if err != nil {
 				writeErr(w, r, http.StatusBadRequest, "shop.invalid_filter", name+" must be a whole number")
 				return
 			}
-			*dst = n
+			*dst = &n
 		}
 	}
-	if f.Limit == 0 {
-		f.Limit = 50
+	h.writeOrderPage(w, r, org, l)
+}
+
+// HandleSearchOrders serves POST .../shop/orders/search with the filters of
+// the list in a JSON body: {q, view, status, from, to, limit, offset}. from
+// is the first moment and to the first moment NOT included, each an RFC 3339
+// time with a zone (the web sends the shop's day boundaries) or a
+// YYYY-MM-DD date (UTC midnight). The answer is the list's.
+func (h *Handler) HandleSearchOrders(w http.ResponseWriter, r *http.Request) {
+	org, ok := orgID(w, r)
+	if !ok {
+		return
 	}
-	orders, err := h.o.Service.ListOrders(r.Context(), org, f)
+	var b struct {
+		Q      string `json:"q"`
+		View   string `json:"view"`
+		Status string `json:"status"`
+		From   string `json:"from"`
+		To     string `json:"to"`
+		Limit  *int   `json:"limit"`
+		Offset *int   `json:"offset"`
+	}
+	if !readBody(w, r, &b, true) {
+		return
+	}
+	h.writeOrderPage(w, r, org, listFilter{Status: b.Status, View: b.View, Q: b.Q, From: b.From, To: b.To, Limit: b.Limit, Offset: b.Offset})
+}
+
+func (h *Handler) writeOrderPage(w http.ResponseWriter, r *http.Request, org uuid.UUID, l listFilter) {
+	f, ok := l.toFilter()
+	if !ok {
+		writeErr(w, r, http.StatusBadRequest, "shop.invalid_filter", "from and to must be RFC 3339 timestamps or YYYY-MM-DD dates")
+		return
+	}
+	orders, more, err := h.o.Service.ListOrdersPage(r.Context(), org, f)
 	if err != nil {
 		h.fail(w, r, "list orders", err)
 		return
@@ -68,10 +125,11 @@ func (h *Handler) HandleListOrders(w http.ResponseWriter, r *http.Request) {
 		out = append(out, toOrderJSON(o))
 	}
 	var next *int
-	if len(orders) == f.Limit {
+	if more {
 		n := f.Offset + f.Limit
 		next = &n
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"orders": out, "next_offset": next})
 }
 
@@ -274,18 +332,45 @@ func (h *Handler) HandleRefundOrder(w http.ResponseWriter, r *http.Request) {
 	if !readBody(w, r, &b, true) {
 		return
 	}
-	res, err := h.o.Service.Refund(r.Context(), shop.RefundInput{
+	// The work is detached from the request: a manager whose connection
+	// drops (or the router's timeout) must not leave a refund half driven,
+	// and the client repeats the call with the same Idempotency-Key to read
+	// the result.
+	wctx, cancel := refundWorkCtx(w, r)
+	defer cancel()
+	res, err := h.o.Service.Refund(wctx, shop.RefundInput{
 		OrgID: org, OrderID: id, Amount: b.AmountMinor, Reason: b.Reason, RequestedBy: actorLabel(r.Context()),
+		IdempotencyKey: r.Header.Get("Idempotency-Key"),
 	})
 	if err != nil {
 		h.fail(w, r, "refund order", err)
 		return
 	}
-	h.writeAudit(r, "v1.shop.order.refund", "shop_order", id.String(), org, map[string]any{
-		"number": res.Order.Number, "refund_id": res.Refund.ID.String(), "amount": res.Refund.Amount,
-		"refund_state": res.Refund.State,
+	if !res.Replayed {
+		h.writeAudit(r, "v1.shop.order.refund", "shop_order", id.String(), org, map[string]any{
+			"number": res.Order.Number, "refund_id": res.Refund.ID.String(), "amount": res.Refund.Amount,
+			"refund_state": res.Refund.State,
+		})
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+		"order": toOrderJSON(res.Order), "refund": toRefundJSON(res.Refund), "replayed": res.Replayed,
 	})
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"order": toOrderJSON(res.Order), "refund": toRefundJSON(res.Refund)})
+}
+
+// refundWorkBudget bounds the work one refund request starts (the same
+// numbers as the ticket refund routes, httpserver/refund_org_routes.go): a
+// slow provider must not be cut by the router's timeout.
+const refundWorkBudget = 2 * time.Minute
+
+// refundWriteSlack is the time after the work budget left to write the answer.
+const refundWriteSlack = 15 * time.Second
+
+// refundWorkCtx is the detached context of the refund work. It also moves the
+// connection's write deadline past the budget, because the server's own
+// WriteTimeout is shorter than a slow provider.
+func refundWorkCtx(w http.ResponseWriter, r *http.Request) (context.Context, context.CancelFunc) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(refundWorkBudget + refundWriteSlack))
+	return context.WithTimeout(context.WithoutCancel(r.Context()), refundWorkBudget)
 }
 
 // HandleCourierText serves GET .../shop/orders/{order_id}/courier-text: the

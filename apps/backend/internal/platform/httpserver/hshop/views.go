@@ -143,12 +143,27 @@ func (h *Handler) toProductJSON(ctx context.Context, p shop.ProductView) product
 	return out
 }
 
+// publicAvailable is the quantity the storefront may show and offer: the shelf
+// stock capped at the most one order can hold (settings.max_line_qty), so the
+// catalog never discloses the shelf beyond what a buyer can put in a cart. A
+// variant that does not track stock offers max_line_qty; a shop with no line
+// limit (0) reports the shelf figure, nil for untracked stock.
+func publicAvailable(shelf *int, maxLineQty int32) *int {
+	limit := int(maxLineQty)
+	if limit <= 0 {
+		return shelf
+	}
+	if shelf == nil || *shelf > limit {
+		return &limit
+	}
+	return shelf
+}
+
 // publicVariantJSON is a variant as the storefront sees it: no stock counts
-// beyond what is still for sale.
+// beyond what a buyer can order, and no article number.
 type publicVariantJSON struct {
 	ID             string  `json:"id"`
 	Title          string  `json:"title"`
-	SKU            *string `json:"sku"`
 	PriceMinor     int64   `json:"price_minor"`
 	CompareAtMinor *int64  `json:"compare_at_minor"`
 	Available      *int    `json:"available"`
@@ -172,7 +187,7 @@ type publicProductJSON struct {
 	Variants      []publicVariantJSON `json:"variants"`
 }
 
-func (h *Handler) toPublicProduct(ctx context.Context, p shop.ProductView) publicProductJSON {
+func (h *Handler) toPublicProduct(ctx context.Context, p shop.ProductView, maxLineQty int32) publicProductJSON {
 	out := publicProductJSON{
 		Slug: p.Slug, Title: p.Title, BodyHTML: p.BodyHTML, ProductType: p.ProductType, Vendor: p.Vendor,
 		Kind: p.Kind, OptionNames: shop.OptionNames(p.ShopProductRow),
@@ -182,10 +197,10 @@ func (h *Handler) toPublicProduct(ctx context.Context, p shop.ProductView) publi
 		if i == 0 || v.PriceMinor < out.PriceMinMinor {
 			out.PriceMinMinor = v.PriceMinor
 		}
-		a := available(v)
+		shelf := available(v)
 		out.Variants = append(out.Variants, publicVariantJSON{
-			ID: v.ID.String(), Title: v.Title, SKU: v.SKU, PriceMinor: v.PriceMinor, CompareAtMinor: v.CompareAtMinor,
-			Available: a, InStock: a == nil || *a > 0, Option1: v.Option1, Option2: v.Option2, Option3: v.Option3,
+			ID: v.ID.String(), Title: v.Title, PriceMinor: v.PriceMinor, CompareAtMinor: v.CompareAtMinor,
+			Available: publicAvailable(shelf, maxLineQty), InStock: shelf == nil || *shelf > 0, Option1: v.Option1, Option2: v.Option2, Option3: v.Option3,
 		})
 	}
 	return out

@@ -455,3 +455,23 @@ func TestNormalizeCheckout_EmptyPostalIsNotRefusedHere(t *testing.T) {
 		t.Fatalf("normalizeCheckout refused an empty postal: %v (only a shipped order needs one)", err)
 	}
 }
+
+// SA-37: the decimals follow the currency (a yen has none, a dinar three).
+func TestFormatMinor_FollowsTheCurrencyExponent(t *testing.T) {
+	for _, c := range []struct {
+		amount   int64
+		currency string
+		want     string
+	}{
+		{2500, "JPY", "2500 JPY"},
+		{-2500, "JPY", "-2500 JPY"},
+		{1500, "KWD", "1.500 KWD"},
+		{5, "KWD", "0.005 KWD"},
+		{5, "ILS", "0.05 ILS"},
+		{0, "EUR", "0.00 EUR"},
+	} {
+		if got := FormatMinor(c.amount, c.currency); got != c.want {
+			t.Errorf("FormatMinor(%d, %s) = %q; want %q", c.amount, c.currency, got, c.want)
+		}
+	}
+}

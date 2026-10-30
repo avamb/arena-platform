@@ -10612,13 +10612,44 @@ export interface paths {
          * List the shop orders
          * @description Newest first, with their lines. `q` matches the order number exactly or
          *     the buyer's e-mail or name as a substring; `from` and `to` bound the creation
-         *     time. A full page carries `next_offset`.
+         *     time. `next_offset` is present only when another page follows. A search text
+         *     (a buyer's name or e-mail) belongs in `POST .../shop/orders/search`, whose
+         *     body keeps it out of access logs.
          *
          *     Requires JWT or API key + the `shop.read` permission and membership of the organization.
          */
         get: operations["listShopOrders"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/orders/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search the shop orders
+         * @description The same filters and the same answer as `GET .../shop/orders`, with the
+         *     filters in the JSON body. A buyer's e-mail or name typed into `q` therefore
+         *     stays out of the access logs of the proxy and of Cloudflare. `from` is the
+         *     first instant included and `to` the first instant NOT included, each an
+         *     RFC 3339 time with a zone (the web event center sends the shop's day
+         *     boundaries, so an order placed at 00:30 in the shop's zone falls on the
+         *     right day) or a `YYYY-MM-DD` date (UTC midnight). Every member of the body
+         *     is optional.
+         *
+         *     Requires JWT or API key + the `shop.read` permission and membership of the organization.
+         */
+        post: operations["searchShopOrders"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10787,6 +10818,15 @@ export interface paths {
          *     the provider confirms it. Stock is not put back. From the web event center the request needs
          *     a fresh password confirmation (`X-Step-Up-Token`).
          *
+         *     The call needs an `Idempotency-Key`. Repeating it with the same key (after a
+         *     dropped connection or a timeout) answers the first refund with `replayed: true`
+         *     and writes no second one, and gives a refund that was recorded but never
+         *     reached the provider another push; the same key with a different order or
+         *     amount is 409 `shop.idempotency_key_reused`. The work is not cut by the request: a
+         *     client that hangs up repeats the call to read the result. AllPay has no key of
+         *     its own, so this key is what keeps one click from returning the money twice.
+         *     Keep one key per open refund dialog.
+         *
          *     Requires JWT or API key + the `shop.manage`, `refund.create` and `refund.approve` permissions and membership of the organization.
          */
         post: operations["refundShopOrder"];
@@ -10879,8 +10919,12 @@ export interface paths {
          *     of the order (spec 47 section 1b). Only while the order's payment stands
          *     (`paid`, `shipped` or `partially_refunded`); an order that is pending,
          *     expired, cancelled, refunded or parked for review answers 404 like a
-         *     token that names nothing. The token in the path is the credential. No
-         *     login; rate-limited per address and per token; never cached.
+         *     token that names nothing. Each line serves the file it was sold with,
+         *     fixed at purchase. The period is bounded: 30 days after payment and 20
+         *     links per line, counted each time this route issues one; after that the
+         *     answer is 410 `shop.download_expired`. The token in the path is the
+         *     credential. No login; rate-limited per address and per token; never
+         *     cached.
          */
         get: operations["listPublicShopCheckoutDownloads"];
         put?: never;
@@ -10923,8 +10967,9 @@ export interface paths {
          * Storefront catalog
          * @description The shop's public settings, its active products with their variants
          *     and pictures, and the list of its static pages. A variant's `available` is
-         *     null when it does not track stock. No login; rate-limited per client
-         *     address.
+         *     capped at the shop's `max_line_qty` (the exact shelf and the article number
+         *     are not published); `in_stock` says whether anything is left. No login;
+         *     rate-limited per client address.
          */
         get: operations["getPublicShopCatalog"];
         put?: never;
@@ -11005,8 +11050,11 @@ export interface paths {
          *     services takes no address, pays no shipping and gets delivery_kind `none`.
          *     A line may hold
          *     at most the shop's `max_line_qty` units (422 `shop.invalid_items` with
-         *     `details.max_line_qty`), and one buyer e-mail may have at most 3 orders
-         *     waiting for payment in the shop (409 `shop.too_many_pending`). No login;
+         *     `details.max_line_qty`), and one buyer e-mail, and one client address
+         *     (an IPv6 address counts by its /64 prefix), may each have at most 3 orders
+         *     waiting for payment in the shop (409 `shop.too_many_pending`). When the
+         *     shop publishes a `captcha_site_key` the request must carry the widget's
+         *     `captcha_token`; the test runs before any stock is held. No login;
          *     rate-limited per client address: 30 valid checkout requests a minute per
          *     shop, on top of the public routes' shared budget.
          */
@@ -31429,6 +31477,23 @@ export interface components {
             /** @description Why, up to 2000 characters. */
             reason?: string;
         };
+        /** @description The filters of the shop order list, in a body. */
+        ShopOrderSearchRequest: {
+            /** @description Order number, or part of the buyer's e-mail or name. */
+            q?: string;
+            /** @description A tab of the list: `to_ship`, `unpaid`, `shipped` or `refunds`. */
+            view?: string;
+            /** @description Only orders of this status. */
+            status?: string;
+            /** @description Created at or after this instant (RFC 3339 with a zone, or YYYY-MM-DD for UTC midnight). */
+            from?: string;
+            /** @description Created before this instant (RFC 3339 with a zone, or YYYY-MM-DD for UTC midnight). */
+            to?: string;
+            /** @description Page size, 1-200 (default 50). */
+            limit?: number;
+            /** @description How many orders to skip (the previous page's `next_offset`). */
+            offset?: number;
+        };
         /** @description A refund of a shop order's payment. */
         ShopRefund: {
             /**
@@ -31454,6 +31519,8 @@ export interface components {
         };
         /** @description The order after a refund, and the refund. */
         ShopRefundResponse: {
+            /** @description True when the `Idempotency-Key` had been used before and this is the first call's refund. Nothing new was written. */
+            replayed?: boolean;
             /** @description The order. */
             order: components["schemas"]["ShopOrder"];
             /** @description The refund. */
@@ -31486,6 +31553,8 @@ export interface components {
              * @description How many units of one variant an order may hold; the quantity picker stops there.
              */
             max_line_qty?: number;
+            /** @description Cloudflare Turnstile site key the checkout form renders its widget with; the widget's token goes to checkout as `captcha_token`. Absent while the shop's checkout has no captcha. */
+            captcha_site_key?: string;
         };
         /** @description The organization behind a storefront. */
         ShopPublicOrg: {
@@ -31505,8 +31574,6 @@ export interface components {
             id: string;
             /** @description Variant title. */
             title: string;
-            /** @description Stock keeping unit. */
-            sku?: string | null;
             /**
              * Format: int64
              * @description Price, minor units.
@@ -31517,7 +31584,7 @@ export interface components {
              * @description Former price, or null.
              */
             compare_at_minor?: number | null;
-            /** @description Units still for sale; null when unlimited. */
+            /** @description How many units a buyer can put in a cart, the real stock capped at the shop's `max_line_qty` (the exact shelf is never shown; an untracked variant reports the cap). Null only when the shop has no line limit and the variant does not track stock. The article number is not published. */
             available?: number | null;
             /** @description Whether at least one unit can be bought. */
             in_stock: boolean;
@@ -31610,6 +31677,8 @@ export interface components {
             return_url?: string;
             /** @description The buyer confirmed the shop's minimum age; required when the shop has an age gate. */
             age_confirmed?: boolean;
+            /** @description The Cloudflare Turnstile response the widget produced; required while the catalog settings publish a `captcha_site_key` (422 `shop.captcha_required` without it, 422 `shop.captcha_failed` when the test did not pass). */
+            captcha_token?: string;
         };
         /** @description A placed order and where to pay it. */
         ShopCheckoutResponse: {
@@ -67999,6 +68068,78 @@ export interface operations {
             };
         };
     };
+    searchShopOrders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ShopOrderSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description One page of orders. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopOrderList"];
+                };
+            };
+            /** @description A filter is malformed (`shop.invalid_filter`) or the body is not valid JSON for this route (`shop.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getShopOrderCounts: {
         parameters: {
             query?: never;
@@ -68384,7 +68525,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The order is not paid (`shop.order_not_shippable`), or it is parked in `manual_review` and its goods are not free on the shelf (`shop.out_of_stock`, `details.items` lists the short lines). */
+            /** @description The order is not paid, or it holds only digital or service goods and has nothing to ship (`shop.order_not_shippable`), or it is parked in `manual_review` and its goods are not free on the shelf (`shop.out_of_stock`, `details.items` lists the short lines). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -68504,7 +68645,10 @@ export interface operations {
     refundShopOrder: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-chosen key of 1 to 255 characters (a UUID) that identifies this refund; one per open refund dialog. */
+                "Idempotency-Key": string;
+            };
             path: {
                 /** @description UUID of the organization. */
                 org_id: string;
@@ -68528,7 +68672,7 @@ export interface operations {
                     "application/json": components["schemas"]["ShopRefundResponse"];
                 };
             };
-            /** @description The body is not valid JSON for this route (`shop.invalid_body`). */
+            /** @description The body is not valid JSON for this route (`shop.invalid_body`) or the `Idempotency-Key` header is missing or longer than 255 characters (`shop.idempotency_key_required`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -68564,7 +68708,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The order is not paid or not paid through arena (`shop.order_not_refundable`), or nothing is left to refund (`shop.nothing_to_refund`). */
+            /** @description The order is not paid or not paid through arena (`shop.order_not_refundable`), nothing is left to refund (`shop.nothing_to_refund`), or the `Idempotency-Key` was used for a different order or amount (`shop.idempotency_key_reused`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -68817,6 +68961,15 @@ export interface operations {
             };
             /** @description No paid order with this token (`shop.order_not_found`). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The download period of the order is over (`shop.download_expired`), 30 days after payment or when every digital line used its 20 links. */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -69152,7 +69305,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Some items are not available in the quantity requested (`shop.out_of_stock`), or the buyer already has 3 orders waiting for payment here (`shop.too_many_pending`). */
+            /** @description Some items are not available in the quantity requested (`shop.out_of_stock`), or the buyer's e-mail or address already has 3 orders waiting for payment here (`shop.too_many_pending`). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -69161,7 +69314,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The cart, buyer or address is invalid (`shop.invalid_items`, `shop.invalid_item`, `shop.invalid_buyer`, `shop.invalid_address`, `shop.postal_required`, `shop.invalid_postal`, `shop.text_too_long`, `shop.age_confirmation_required`), or online payment is not set up (`checkout.payment_not_configured`, `checkout.payment_provider_unsupported`). */
+            /** @description The cart, buyer or address is invalid (`shop.invalid_items`, `shop.invalid_item`, `shop.invalid_buyer`, `shop.invalid_address`, `shop.postal_required`, `shop.invalid_postal`, `shop.text_too_long`, `shop.age_confirmation_required`), the anti-robot test is missing or failed (`shop.captcha_required`, `shop.captcha_failed`), or online payment is not set up (`checkout.payment_not_configured`, `checkout.payment_provider_unsupported`). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -69188,7 +69341,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The database is unavailable (`dependency.database_unavailable`), or the payment provider could not start the payment (`checkout.payment_start_failed`, `checkout.payment_not_configured`). */
+            /** @description The database is unavailable (`dependency.database_unavailable`), the anti-robot test could not be checked (`shop.captcha_unavailable`), or the payment provider could not start the payment (`checkout.payment_start_failed`, `checkout.payment_not_configured`). */
             503: {
                 headers: {
                     [name: string]: unknown;

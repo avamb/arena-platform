@@ -53,6 +53,11 @@ type shopFixture struct {
 	webhookSecretA    string
 	users             []uuid.UUID
 	mediaA            uuid.UUID
+	// remote, when set, is the client address of every request. Left empty,
+	// each checkout comes from a fresh address: the shop caps the live unpaid
+	// orders of one address (shop.MaxPendingPerClient), and a test that places
+	// many orders is not that client.
+	remote string
 }
 
 func newShopFixture(t *testing.T) *shopFixture {
@@ -176,8 +181,19 @@ func (f *shopFixture) cleanup() {
 	}
 }
 
-// do sends one request through the real router.
+// do sends one request through the real router. A refund call gets a fresh
+// Idempotency-Key (the route requires one); doKeyed names it.
 func (f *shopFixture) do(method, path, token, body string) (int, map[string]any, http.Header) {
+	f.t.Helper()
+	key := ""
+	if method == http.MethodPost && strings.HasSuffix(path, "/refund") {
+		key = uuid.NewString()
+	}
+	return f.doKeyed(method, path, token, body, key)
+}
+
+// doKeyed is do with an explicit Idempotency-Key ("" sends none).
+func (f *shopFixture) doKeyed(method, path, token, body, key string) (int, map[string]any, http.Header) {
 	f.t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	if body != "" {
@@ -185,6 +201,15 @@ func (f *shopFixture) do(method, path, token, body string) (int, map[string]any,
 	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if key != "" {
+		req.Header.Set("Idempotency-Key", key)
+	}
+	switch {
+	case f.remote != "":
+		req.RemoteAddr = f.remote
+	case method == http.MethodPost && strings.HasSuffix(path, "/checkout"):
+		req.RemoteAddr = fmt.Sprintf("10.%d.%d.%d:4000", rand.IntN(256), rand.IntN(256), 1+rand.IntN(254))
 	}
 	rec := httptest.NewRecorder()
 	f.srv.router.ServeHTTP(rec, req)

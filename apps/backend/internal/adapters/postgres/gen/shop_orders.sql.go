@@ -7,9 +7,11 @@ package gen
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // ShopOrderRow is one shop_orders row.
@@ -119,6 +121,9 @@ type InsertShopOrderParams struct {
 	ExternalRef  *string
 	ExpiresAt    *time.Time
 	CustomerID   *uuid.UUID
+	// BuyerIPHash is the salted hash of the client key at checkout (the
+	// live-unpaid cap per address counts it); nil = unknown.
+	BuyerIPHash *string
 }
 
 const lockShopBuyer = `-- name: LockShopBuyer :exec
@@ -143,24 +148,36 @@ func (q *Queries) CountLivePendingShopOrders(ctx context.Context, orgID uuid.UUI
 	return n, err
 }
 
+const countLivePendingShopOrdersByIP = `-- name: CountLivePendingShopOrdersByIP :one
+SELECT count(*)::int FROM shop_orders
+WHERE  org_id = $1 AND buyer_ip_hash = $2 AND status = 'pending_payment' AND expires_at > now()`
+
+// CountLivePendingShopOrdersByIP counts the orders of one client key (the
+// salted hash stored as buyer_ip_hash) in one shop that still hold goods.
+func (q *Queries) CountLivePendingShopOrdersByIP(ctx context.Context, orgID uuid.UUID, ipHash string) (int, error) {
+	var n int
+	err := q.db.QueryRow(ctx, countLivePendingShopOrdersByIP, orgID, ipHash).Scan(&n)
+	return n, err
+}
+
 const listShopOrderDownloads = `-- name: ListShopOrderDownloads :many
-SELECT oi.product_title, oi.variant_title, p.digital_media_id
+SELECT oi.id, oi.product_title, oi.variant_title, oi.media_id, oi.download_count
 FROM   shop_order_items oi
-JOIN   shop_variants v ON v.id = oi.variant_id
-JOIN   shop_products p ON p.id = v.product_id
 WHERE  oi.order_id = $1 AND oi.product_kind = 'digital'
 ORDER  BY oi.ordinal`
 
-// ShopOrderDownload is one digital line of an order and the file its product
-// sells now (nil when the product has no file).
+// ShopOrderDownload is one digital line of an order and the file it sold when
+// it was bought (nil when the line has no file).
 type ShopOrderDownload struct {
-	ProductTitle string
-	VariantTitle string
-	MediaID      *uuid.UUID
+	ItemID        uuid.UUID
+	ProductTitle  string
+	VariantTitle  string
+	MediaID       *uuid.UUID
+	DownloadCount int32
 }
 
-// ListShopOrderDownloads lists the digital lines of an order with their
-// product's file.
+// ListShopOrderDownloads lists the digital lines of an order with the file
+// each one was sold with.
 func (q *Queries) ListShopOrderDownloads(ctx context.Context, orderID uuid.UUID) ([]ShopOrderDownload, error) {
 	rows, err := q.db.Query(ctx, listShopOrderDownloads, orderID)
 	if err != nil {
@@ -170,7 +187,7 @@ func (q *Queries) ListShopOrderDownloads(ctx context.Context, orderID uuid.UUID)
 	var out []ShopOrderDownload
 	for rows.Next() {
 		var d ShopOrderDownload
-		if err := rows.Scan(&d.ProductTitle, &d.VariantTitle, &d.MediaID); err != nil {
+		if err := rows.Scan(&d.ItemID, &d.ProductTitle, &d.VariantTitle, &d.MediaID, &d.DownloadCount); err != nil {
 			return nil, err
 		}
 		out = append(out, d)
@@ -178,12 +195,29 @@ func (q *Queries) ListShopOrderDownloads(ctx context.Context, orderID uuid.UUID)
 	return out, rows.Err()
 }
 
+const consumeShopOrderDownload = `-- name: ConsumeShopOrderDownload :one
+UPDATE shop_order_items SET download_count = download_count + 1
+WHERE  id = $1 AND order_id = $2 AND download_count < $3
+RETURNING download_count`
+
+// ConsumeShopOrderDownload counts one issued download link on a line of the
+// order, in one atomic statement; false when the line has already used its
+// limit (or is not a line of the order).
+func (q *Queries) ConsumeShopOrderDownload(ctx context.Context, itemID, orderID uuid.UUID, limit int32) (bool, error) {
+	var n int32
+	err := q.db.QueryRow(ctx, consumeShopOrderDownload, itemID, orderID, limit).Scan(&n)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 const insertShopOrder = `-- name: InsertShopOrder :one
 INSERT INTO shop_orders (org_id, order_token, status, buyer_name, buyer_email, buyer_phone, ship_name,
                          ship_address1, ship_address2, ship_city, ship_postal, ship_country,
                          delivery_kind, delivery_note, currency, subtotal, discount, shipping_fee, total,
-                         buyer_locale, source, external_ref, expires_at, customer_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+                         buyer_locale, source, external_ref, expires_at, customer_id, buyer_ip_hash)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
 RETURNING ` + shopOrderColumns
 
 // InsertShopOrder creates an order; its number comes from
@@ -201,7 +235,7 @@ func (q *Queries) InsertShopOrder(ctx context.Context, p InsertShopOrderParams) 
 	return scanShopOrderRow(q.db.QueryRow(ctx, insertShopOrder, p.OrgID, p.OrderToken, p.Status, p.BuyerName,
 		p.BuyerEmail, p.BuyerPhone, p.ShipName, p.ShipAddress1, p.ShipAddress2, p.ShipCity, p.ShipPostal,
 		p.ShipCountry, p.DeliveryKind, p.DeliveryNote, p.Currency, p.Subtotal, p.Discount, p.ShippingFee,
-		p.Total, p.BuyerLocale, p.Source, p.ExternalRef, p.ExpiresAt, p.CustomerID))
+		p.Total, p.BuyerLocale, p.Source, p.ExternalRef, p.ExpiresAt, p.CustomerID, p.BuyerIPHash))
 }
 
 // ShopOrderItemRow is one line of an order.
@@ -219,12 +253,15 @@ type ShopOrderItemRow struct {
 	// ProductKind is the product's kind when the line was bought; "" on
 	// insert means physical.
 	ProductKind string `json:"product_kind"`
+	// MediaID is the file a digital line sold when it was bought; nil for
+	// other kinds.
+	MediaID *uuid.UUID `json:"media_id"`
 }
 
 const insertShopOrderItem = `-- name: InsertShopOrderItem :exec
 INSERT INTO shop_order_items (order_id, variant_id, product_title, variant_title, sku, qty,
-                              unit_price_minor, total_minor, ordinal, product_kind)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
+                              unit_price_minor, total_minor, ordinal, product_kind, media_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
 
 // InsertShopOrderItem adds a line to an order (ID is ignored).
 func (q *Queries) InsertShopOrderItem(ctx context.Context, it ShopOrderItemRow) error {
@@ -233,13 +270,13 @@ func (q *Queries) InsertShopOrderItem(ctx context.Context, it ShopOrderItemRow) 
 		kind = "physical"
 	}
 	_, err := q.db.Exec(ctx, insertShopOrderItem, it.OrderID, it.VariantID, it.ProductTitle, it.VariantTitle,
-		it.SKU, it.Qty, it.UnitPriceMinor, it.TotalMinor, it.Ordinal, kind)
+		it.SKU, it.Qty, it.UnitPriceMinor, it.TotalMinor, it.Ordinal, kind, it.MediaID)
 	return err
 }
 
 const listShopOrderItems = `-- name: ListShopOrderItems :many
 SELECT id, order_id, variant_id, product_title, variant_title, sku, qty, unit_price_minor, total_minor, ordinal,
-       product_kind
+       product_kind, media_id
 FROM   shop_order_items
 WHERE  order_id = ANY($1::uuid[])
 ORDER  BY order_id, ordinal`
@@ -255,7 +292,7 @@ func (q *Queries) ListShopOrderItems(ctx context.Context, orderIDs []uuid.UUID) 
 	for rows.Next() {
 		var it ShopOrderItemRow
 		if err := rows.Scan(&it.ID, &it.OrderID, &it.VariantID, &it.ProductTitle, &it.VariantTitle, &it.SKU,
-			&it.Qty, &it.UnitPriceMinor, &it.TotalMinor, &it.Ordinal, &it.ProductKind); err != nil {
+			&it.Qty, &it.UnitPriceMinor, &it.TotalMinor, &it.Ordinal, &it.ProductKind, &it.MediaID); err != nil {
 			return nil, err
 		}
 		out = append(out, it)
@@ -568,6 +605,36 @@ WHERE  payment_intent_id = $1`
 func (q *Queries) SumShopPaymentRefunds(ctx context.Context, paymentIntentID uuid.UUID) (accepted, live int64, err error) {
 	err = q.db.QueryRow(ctx, sumShopPaymentRefunds, paymentIntentID).Scan(&accepted, &live)
 	return accepted, live, err
+}
+
+const getShopRefundByKey = `-- name: GetShopRefundByKey :one
+SELECT id, shop_order_id, amount
+FROM   refunds
+WHERE  org_id = $1 AND idempotency_key = $2`
+
+// ShopRefundKeyRow is the refund an Idempotency-Key created.
+type ShopRefundKeyRow struct {
+	ID          uuid.UUID
+	ShopOrderID *uuid.UUID
+	Amount      int64
+}
+
+// GetShopRefundByKey finds the refund a shop refund call with this
+// Idempotency-Key created in the organization (pgx.ErrNoRows: none yet).
+func (q *Queries) GetShopRefundByKey(ctx context.Context, orgID uuid.UUID, key string) (ShopRefundKeyRow, error) {
+	var r ShopRefundKeyRow
+	err := q.db.QueryRow(ctx, getShopRefundByKey, orgID, key).Scan(&r.ID, &r.ShopOrderID, &r.Amount)
+	return r, err
+}
+
+const setShopRefundKey = `-- name: SetShopRefundKey :exec
+UPDATE refunds SET shop_order_id = $2, idempotency_key = $3 WHERE id = $1`
+
+// SetShopRefundKey ties a freshly inserted refund to its shop order and to
+// the Idempotency-Key of the call, so a repeat of the call finds it.
+func (q *Queries) SetShopRefundKey(ctx context.Context, refundID, shopOrderID uuid.UUID, key string) error {
+	_, err := q.db.Exec(ctx, setShopRefundKey, refundID, shopOrderID, key)
+	return err
 }
 
 // ShopOrderCounts is how many orders each tab of the order list holds.

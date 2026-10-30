@@ -23,6 +23,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/permissions"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/honboarding"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hshop"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 )
@@ -101,6 +102,16 @@ func (s *Server) shopHandler() *hshop.Handler {
 	}
 	if s.cfg != nil {
 		opts.TrustedProxies = s.cfg.TrustedProxyCount
+		opts.IPSalt = s.cfg.JWTSecretStub
+		if secret := strings.TrimSpace(s.cfg.ShopTurnstileSecret); secret != "" {
+			// Hostnames and Action stay open: the storefronts live on the
+			// organizers' own domains, and the widget is the shop page's.
+			opts.Captcha = &honboarding.TurnstileVerifier{Secret: secret}
+			opts.CaptchaSiteKey = strings.TrimSpace(s.cfg.ShopTurnstileSiteKey)
+			if opts.CaptchaSiteKey == "" && s.logger != nil {
+				s.logger.Warn("shop: SHOP_TURNSTILE_SECRET is set without SHOP_TURNSTILE_SITE_KEY, storefronts cannot render the widget and every checkout is refused")
+			}
+		}
 	}
 	return hshop.New(opts)
 }
@@ -155,6 +166,9 @@ func (s *Server) mountShopRoutes(r chi.Router) {
 		pr.Get(base+"/pages", s.orgGated(h.HandleListPages))
 		pr.Get(base+"/orders", s.orgGated(h.HandleListOrders))
 		pr.Get(base+"/orders/counts", s.orgGated(h.HandleOrderCounts))
+		// A search is a read whose filters (a buyer's name or e-mail) travel in
+		// the body, out of the proxy and Cloudflare access logs (SA-17).
+		pr.Post(base+"/orders/search", s.orgGated(h.HandleSearchOrders))
 		pr.Get(base+"/orders/{order_id}", s.orgGated(h.HandleGetOrder))
 		pr.Get(base+"/orders/{order_id}/courier-text", s.orgGated(h.HandleCourierText))
 	})
