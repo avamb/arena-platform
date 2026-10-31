@@ -4607,6 +4607,48 @@ other = "Categoría «{{.Name}}» ({{.N}} de {{.Total}}), plazas: {{.Places}}. �
 ["bot.wz.plan_done_note"]
 other = "Plano «{{.Plan}}»: {{.Seats}} plazas, {{.Count}} categorías con precio. Más adelante puedes cambiar qué plazas van a cada categoría: pulsa “Distribución de plazas” en la ficha de la fecha."
 
+["bot.wz.venue_no_plan_note"]
+other = "El recinto «{{.Venue}}» no tiene un plano de sala subido, así que esta sesión se vende sin asientos (aforo libre). Para vender asientos, elige otro recinto que tenga plano."
+
+["bot.wz.venue_other_btn"]
+other = "← Otro recinto"
+
+["bot.wz.ask_plan_extra"]
+other = "Precios de las categorías del plano: {{.List}}.\n\n¿Necesitas más categorías de precio, como VIP o reducida? Una categoría nueva empieza sin asientos: después de guardar, pinta asientos en ella en el plano, con el pincel o automáticamente."
+
+["bot.wz.plan_one_category_hint"]
+other = "El plano tiene una sola categoría: todos los asientos tienen el mismo color y precio. Para vender asientos a precios distintos, añade categorías."
+
+["bot.wz.plan_extra_add_btn"]
+other = "➕ Añadir categoría"
+
+["bot.wz.plan_extra_done_btn"]
+other = "✔ Listo"
+
+["bot.wz.ask_plan_extra_name"]
+other = "¿Nombre de la nueva categoría de precio? Por ejemplo: VIP."
+
+["bot.wz.ask_plan_extra_price"]
+other = "¿Cuánto cuesta la entrada de «{{.Name}}», en {{.Currency}}?"
+
+["bot.wz.ask_plan_extra_color"]
+other = "¿De qué color se muestra «{{.Name}}» en el plano?"
+
+["bot.wz.err_plan_extra_name"]
+other = "Escribe el nombre de la categoría, por ejemplo VIP."
+
+["bot.wz.err_plan_extra_dup"]
+other = "Ya existe la categoría «{{.Name}}». Escribe otro nombre."
+
+["bot.wz.plan_done_extra_note"]
+other = "Plano «{{.Plan}}»: {{.Seats}} plazas, {{.Count}} categorías con precio, {{.Extra}} de ellas nuevas y aún sin asientos. Después de guardar, pinta los asientos en las categorías."
+
+["bot.wz.saved_paint_hint"]
+other = "Esta sesión se vende por plano de sala. Sus asientos llevan ahora las categorías del plano. Para pintarlos en las categorías de precio, abre el «Plano» (pincel) o la sesión → «Distribución de plazas» (automática, con vista previa y deshacer)."
+
+["bot.wz.saved_dates_btn"]
+other = "📅 Sesiones: distribución de plazas"
+
 ["bot.wz.t_date_seated_note"]
 other = "Una fecha vendida por plano mantiene sus plazas y categorías. Solo cambian los precios."
 

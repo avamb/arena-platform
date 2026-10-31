@@ -203,6 +203,12 @@ func seatedCategories(tk DraftTickets) []bil24compat.ImportSessionCategory {
 			idx := c.PlanIndex
 			cat.PlanCategoryIndex = &idx
 		}
+		if c.TierID == "" && c.Extra {
+			// A price category added over the plan's own: no places until
+			// the organizer paints seats into it.
+			cat.PlanExtra, cat.Placement = true, true
+		}
+		cat.Color = c.Color
 		out = append(out, cat)
 	}
 	return out

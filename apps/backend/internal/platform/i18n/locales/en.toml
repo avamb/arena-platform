@@ -4755,6 +4755,48 @@ other = "Category «{{.Name}}» ({{.N}} of {{.Total}}), {{.Places}} places. What
 ["bot.wz.plan_done_note"]
 other = "Plan «{{.Plan}}»: {{.Seats}} places, {{.Count}} categories with prices. You can change later which seats go to which category: press “Seat layout” on the date’s card."
 
+["bot.wz.venue_no_plan_note"]
+other = "The venue «{{.Venue}}» has no hall plan uploaded, so this date is sold without seats (free seating). To sell seats, pick another venue that has a plan."
+
+["bot.wz.venue_other_btn"]
+other = "← Another venue"
+
+["bot.wz.ask_plan_extra"]
+other = "Prices of the plan’s categories: {{.List}}.\n\nDo you need more price categories, such as VIP or a reduced price? A new category starts with no seats: after saving, paint seats into it on the seat map, by brush or automatically."
+
+["bot.wz.plan_one_category_hint"]
+other = "The plan has one category: every seat has the same colour and price. To sell seats at different prices, add categories."
+
+["bot.wz.plan_extra_add_btn"]
+other = "➕ Add a category"
+
+["bot.wz.plan_extra_done_btn"]
+other = "✔ Done"
+
+["bot.wz.ask_plan_extra_name"]
+other = "Name of the new price category? For example: VIP."
+
+["bot.wz.ask_plan_extra_price"]
+other = "How much is a ticket of «{{.Name}}», {{.Currency}}?"
+
+["bot.wz.ask_plan_extra_color"]
+other = "Which colour should «{{.Name}}» have on the seat map?"
+
+["bot.wz.err_plan_extra_name"]
+other = "Type the category’s name, for example VIP."
+
+["bot.wz.err_plan_extra_dup"]
+other = "There is already a category «{{.Name}}». Type another name."
+
+["bot.wz.plan_done_extra_note"]
+other = "Plan «{{.Plan}}»: {{.Seats}} places, {{.Count}} categories with prices, {{.Extra}} of them new and still without seats. After saving, paint the seats into the categories."
+
+["bot.wz.saved_paint_hint"]
+other = "This date is sold by a hall plan. Its seats now carry the plan’s categories. To paint them into the price categories, open the “Seat map” (brush) or the date → “Seat layout” (automatic, with a preview and undo)."
+
+["bot.wz.saved_dates_btn"]
+other = "📅 Dates: seat layout"
+
 ["bot.wz.t_date_seated_note"]
 other = "A date sold by a seating plan keeps its places and categories. Only the prices change."
 
