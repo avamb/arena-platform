@@ -8885,6 +8885,12 @@ type ImportBil24SessionCategory struct {
 	// CategoryPriceName Tier display name.
 	CategoryPriceName *string `json:"categoryPriceName,omitempty"`
 
+	// Color Arena extension, source=arena only: the category's colour on the
+	// seat map, `#rrggbb` (stored lower-case). Absent or empty keeps
+	// the stored colour. Anything else answers 422
+	// import.invalid_color.
+	Color *string `json:"color,omitempty"`
+
 	// NextCategoryIndex source=arena only. 0-based index into `categoryList` of the category
 	// that receives this category's free places when its sale window
 	// closes and then opens (migration 0112, tier.chain_sweep). -1 removes
@@ -8915,6 +8921,18 @@ type ImportBil24SessionCategory struct {
 	// exists; written by GET .../event-bundle for the plan category a
 	// tier sells. Omitted when absent.
 	PlanCategoryIndex *int `json:"planCategoryIndex,omitempty"`
+
+	// PlanExtra Arena extension, source=arena only: on a bundle that creates a
+	// session from `actionEvent.arenaSeatingPlanVersionId`, this entry
+	// is NOT a plan category but an extra price category of the new
+	// session (a plan drawn with one category, priced several ways).
+	// It is created with no places of its own (`availability` is
+	// ignored); the organizer paints plan seats into it afterwards
+	// (PATCH .../seats/category, seat layouts). Its name may not repeat
+	// a plan category's or another entry's name (422
+	// import.seating_category_duplicate). Ignored on a session that
+	// already exists. Omitted when false.
+	PlanExtra *bool `json:"planExtra,omitempty"`
 
 	// Price Ticket price in MAJOR currency units, as Bil24 sends it. Converted to
 	// the integer minor units arena stores, rounded half away from zero.

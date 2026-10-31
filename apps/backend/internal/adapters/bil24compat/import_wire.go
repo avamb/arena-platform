@@ -221,6 +221,15 @@ type ImportSessionCategory struct {
 	// too). Ignored on a session that already exists. Omitted from JSON when
 	// nil.
 	PlanCategoryIndex *int `json:"planCategoryIndex,omitempty"`
+	// PlanExtra (arena extension, source=arena only) marks an entry of a
+	// bundle that creates a session from a seating plan as an extra price
+	// category, not a plan category: it is created with no places of its own
+	// (Availability is ignored) and the organizer paints plan seats into it
+	// afterwards. Ignored on a session that already exists.
+	PlanExtra bool `json:"planExtra,omitempty"`
+	// Color (arena extension, source=arena only) is the category's #rrggbb
+	// colour on the seat map; empty keeps the stored one.
+	Color string `json:"color,omitempty"`
 }
 
 // ImportPriceWindow is one scheduled price: Price (MAJOR units, like the

@@ -27046,6 +27046,26 @@ export interface components {
              */
             planCategoryIndex?: number;
             /**
+             * @description Arena extension, source=arena only: on a bundle that creates a
+             *     session from `actionEvent.arenaSeatingPlanVersionId`, this entry
+             *     is NOT a plan category but an extra price category of the new
+             *     session (a plan drawn with one category, priced several ways).
+             *     It is created with no places of its own (`availability` is
+             *     ignored); the organizer paints plan seats into it afterwards
+             *     (PATCH .../seats/category, seat layouts). Its name may not repeat
+             *     a plan category's or another entry's name (422
+             *     import.seating_category_duplicate). Ignored on a session that
+             *     already exists. Omitted when false.
+             */
+            planExtra?: boolean;
+            /**
+             * @description Arena extension, source=arena only: the category's colour on the
+             *     seat map, `#rrggbb` (stored lower-case). Absent or empty keeps
+             *     the stored colour. Anything else answers 422
+             *     import.invalid_color.
+             */
+            color?: string;
+            /**
              * Format: int64
              * @description Bil24 category-price identifier. Must be positive and below 1e9
              *     for source=bil24. For source=arena this field is OPTIONAL:
@@ -65339,7 +65359,8 @@ export interface operations {
              *     `import.seating_category_duplicate`,
              *     `import.seating_category_missing` and
              *     `import.seated_category_chain` (a `nextCategoryIndex` link to or
-             *     from a seated category).
+             *     from a seated category); `import.invalid_color` (source=arena,
+             *     a `categoryList[].color` that is not `#rrggbb`).
              */
             422: {
                 headers: {

@@ -150,9 +150,13 @@ func (sp *arenaSeatedPlan) matchPlan(list []bil24compat.ImportSessionCategory) [
 	return errs
 }
 
+// noPlanCategory is the pair of a planExtra entry: it prices no plan
+// category.
+const noPlanCategory = -1
+
 // planCategoryPairs is the matching rule itself — a pure function, unit
 // tested without a database. pairs[i] is the plan category index entry i
-// prices.
+// prices, noPlanCategory for an extra price category (planExtra).
 func planCategoryPairs(list []bil24compat.ImportSessionCategory, g seating.Geometry, names map[int]string) ([]int, []error) {
 	placed := seatmint.PlacedCategories(g)
 	byName := map[string][]int{}
@@ -184,8 +188,33 @@ func planCategoryPairs(list []bil24compat.ImportSessionCategory, g seating.Geome
 	var errs []error
 	pairs := make([]int, len(list))
 	usedBy := map[int]int{}
+	// extraNames are the names of the planExtra entries seen so far: an extra
+	// category is matched later by name like any tier (upsertArenaTiers), so
+	// it may repeat neither a plan category nor another entry.
+	extraNames := map[string]int{}
 	for i, c := range list {
 		field := fmt.Sprintf("/categoryList/%d/categoryPriceName", i)
+		if c.PlanExtra {
+			pairs[i] = noPlanCategory
+			key := normalizeTierName(c.CategoryPriceName)
+			if key == "" {
+				errs = append(errs, failImportAt(http.StatusUnprocessableEntity, "import.seating_category_unmatched", field,
+					fmt.Sprintf("categoryList[%d] is an extra category (planExtra) without a name", i)))
+				continue
+			}
+			if _, clash := byName[key]; clash {
+				errs = append(errs, failImportAt(http.StatusUnprocessableEntity, "import.seating_category_duplicate", field,
+					fmt.Sprintf("categoryList[%d] %q is an extra category (planExtra) named like a seating plan category; give it another name", i, trimSpace(c.CategoryPriceName))))
+				continue
+			}
+			if j, clash := extraNames[key]; clash {
+				errs = append(errs, failImportAt(http.StatusUnprocessableEntity, "import.seating_category_duplicate", field,
+					fmt.Sprintf("categoryList[%d] %q repeats the name of categoryList[%d]", i, trimSpace(c.CategoryPriceName), j)))
+				continue
+			}
+			extraNames[key] = i
+			continue
+		}
 		idx := 0
 		if c.PlanCategoryIndex != nil {
 			field = fmt.Sprintf("/categoryList/%d/planCategoryIndex", i)
@@ -254,7 +283,24 @@ func (sp *arenaSeatedPlan) seatedEntries() map[int]bool {
 	}
 	out := make(map[int]bool, len(sp.pairs))
 	for i, idx := range sp.pairs {
-		out[i] = !ga[idx]
+		// An extra category (planExtra) owns no place either: it is given plan
+		// seats by painting, never a quantity of its own.
+		out[i] = idx == noPlanCategory || !ga[idx]
+	}
+	return out
+}
+
+// extraEntries reports which categoryList entries are extra price categories
+// (planExtra) of a session created from a seating plan.
+func (sp *arenaSeatedPlan) extraEntries() map[int]bool {
+	if sp == nil {
+		return nil
+	}
+	out := map[int]bool{}
+	for i, idx := range sp.pairs {
+		if idx == noPlanCategory {
+			out[i] = true
+		}
 	}
 	return out
 }
@@ -328,6 +374,9 @@ func materializeArenaSeating(
 	}
 	tiers := make(map[int]uuid.UUID, len(sp.pairs))
 	for i, idx := range sp.pairs {
+		if idx == noPlanCategory {
+			continue
+		}
 		tiers[idx] = ordered[i]
 	}
 	// Lenient: a GA zone drawn with no capacity gets no places here; its
@@ -395,4 +444,40 @@ func arenaSeatingOutcome(ctx context.Context, q *gen.Queries, eventID, sessionID
 		return seatingOutcome{}, fmt.Errorf("count session places: %w", err)
 	}
 	return seatingOutcome{PlanVersionID: binding.SeatingPlanVersionID, SeatsMaterialized: int(places)}, nil
+}
+
+// markPricingOnly marks the categories of a session bound to a seating plan
+// that must not be given General Admission places: an extra category
+// (planExtra) of a new session, and on any plan-bound session a category the
+// bundle gave no quantity. Their places are plan seats painted into them.
+func markPricingOnly(
+	ctx context.Context,
+	q *gen.Queries,
+	plan importPlan,
+	eventID, sessionID uuid.UUID,
+	sp *arenaSeatedPlan,
+	cats []importedCategory,
+) error {
+	bound := sp != nil
+	if !bound {
+		binding, err := q.GetSessionSeatingBinding(ctx, sessionID, eventID)
+		if err != nil {
+			return fmt.Errorf("read session seating binding: %w", err)
+		}
+		bound = binding.SeatingPlanVersionID != nil
+	}
+	if !bound {
+		return nil
+	}
+	extras := sp.extraEntries()
+	list := plan.Request.CategoryList
+	for i := range cats {
+		if i >= len(list) {
+			break
+		}
+		if extras[i] || list[i].Availability <= 0 {
+			cats[i].PricingOnly = true
+		}
+	}
+	return nil
 }
