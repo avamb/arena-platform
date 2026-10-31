@@ -164,7 +164,21 @@ func (h *Handler) serveSessionSchema(w http.ResponseWriter, r *http.Request, adm
 		))
 		return
 	}
-	res := resolveSeatCategories(geom, seats, tiers, seatKeyIndex(geom))
+	// A category without places on the plan (an extra price category of the
+	// event wizard, or one made in the seat manager) shows the colour the
+	// organizer chose for it, not a palette swatch.
+	tierColors, err := h.queries.ListSessionTierColors(ctx, sessionID)
+	if err != nil {
+		h.logger.Error("seating_public: list tier colours failed",
+			slog.String("session_id", sessionID.String()),
+			slog.String("error", err.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"event_session.schema_failed", "failed to load ticket tiers", r,
+		))
+		return
+	}
+	res := resolveSeatCategories(geom, seats, tiers, seatKeyIndex(geom)).withTierColors(tierColors)
 
 	// AB-48: resolve scheduled prices once for all tiers (ONE resolver).
 	effPrices, err := priceresolve.ForTiers(ctx, h.queries, tiers, time.Now().UTC())
