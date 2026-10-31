@@ -19,7 +19,6 @@ import type {
   FeedEventDetailResponse,
   FeedEventsListResponse,
   SchemaResponse,
-  SchemaCacheEntry,
   SeatStatusResponse,
 } from './types.js';
 import type {
@@ -60,16 +59,6 @@ export class ApiError extends Error {
     this.code = opts.code ?? `http_${opts.status}`;
     this.details = opts.details ?? {};
   }
-}
-
-// ─── Schema ETag cache ───────────────────────────────────────────────────────
-
-/** Module-level cache: session_id → { etag, schema }. */
-const schemaCache = new Map<string, SchemaCacheEntry>();
-
-/** Clear the cache (used in tests and on unmount). */
-export function clearSchemaCache(): void {
-  schemaCache.clear();
 }
 
 // ─── Feed event detail ───────────────────────────────────────────────────────
@@ -123,42 +112,28 @@ export async function fetchFeedEvents(
 // ─── Session schema ──────────────────────────────────────────────────────────
 
 /**
- * Fetch the session geometry schema, honoring ETag-based caching.
+ * Fetch the session geometry schema from the current state, every time.
  *
- * When the server returns 304 Not Modified, the cached SchemaResponse is
- * returned immediately without JSON parsing.  The schema is treated as
- * immutable once cached because the ETag equals the geometry_checksum.
+ * Nothing is cached, neither here nor in the browser (the server answers
+ * `Cache-Control: no-store`): the schema carries the tiers' prices and
+ * colours and the per-seat categories, which change without a new plan
+ * geometry, so a stored copy showed a repainted category's old colour.
  *
  * @param sessionId  Event session UUID.
  * @param apiBase    Optional API base URL (default: relative).
- * @throws Error when the response is non-2xx (and not 304).
+ * @throws Error when the response is non-2xx.
  */
 export async function fetchSessionSchema(sessionId: string, apiBase = ''): Promise<SchemaResponse> {
   const url = `${apiBase}/v1/event-sessions/${encodeURIComponent(sessionId)}/schema`;
 
-  const cached = schemaCache.get(sessionId);
-  const headers: Record<string, string> = {};
-  if (cached) {
-    headers['If-None-Match'] = cached.etag;
-  }
-
-  const res = await fetch(url, { headers });
-
-  if (res.status === 304 && cached) {
-    return cached.schema;
-  }
+  const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) {
     throw new Error(`fetchSessionSchema HTTP ${res.status}: ${res.statusText}`);
   }
 
   // S1a: fold the per-seat category truth into geometry + category_prices once,
-  // so every consumer (and the cached copy) sees one price per seat.
-  const schema = applySeatCategoryOverlay((await res.json()) as SchemaResponse);
-  const etag = res.headers.get('ETag') ?? '';
-  if (etag) {
-    schemaCache.set(sessionId, { etag, schema });
-  }
-  return schema;
+  // so every consumer sees one price per seat.
+  return applySeatCategoryOverlay((await res.json()) as SchemaResponse);
 }
 
 // ─── Seat status (snapshot + delta) ─────────────────────────────────────────

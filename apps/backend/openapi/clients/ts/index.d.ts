@@ -2622,12 +2622,10 @@ export interface paths {
          *     the endpoint returns 404 (indistinguishable to unauthenticated
          *     callers by design).
          *
-         *     The response carries a **strong ETag** equal to the plan version's
-         *     `geometry_checksum` and `Cache-Control: public, max-age=86400,
-         *     immutable`. A new plan version always produces a new checksum, so
-         *     caches can safely treat cached copies as immutable for the max-age
-         *     window. Matching `If-None-Match` short-circuits with a 304 before
-         *     any per-seat / per-tier query runs.
+         *     The schema is never cached: `Cache-Control: no-store`, no ETag,
+         *     never a 304. Tier prices, names, colours and per-seat categories
+         *     change without a new plan geometry, so every request reads the
+         *     current state.
          */
         get: operations["getPublicSessionSchema"];
         put?: never;
@@ -4192,7 +4190,8 @@ export interface paths {
          *     event's seats are painted into its price categories before the
          *     event goes on sale. Requires JWT + `session.seats.manage`; the
          *     tenant is resolved from the session's owning organization.
-         *     `Cache-Control: private, no-cache`; the ETag is the public one.
+         *     Never cached, like the public schema: `Cache-Control: no-store`,
+         *     no ETag, never a 304.
          */
         get: operations["getSessionSchemaAdmin"];
         put?: never;
@@ -25409,10 +25408,10 @@ export interface components {
          * @description Response body for `GET /v1/event-sessions/{id}/schema`. Contains the
          *     raw canonical geometry (byte-for-byte identical to the stored
          *     `seating_plan_versions.geometry`) plus a `category_prices` overlay
-         *     with per-category tier / price resolution. The strong `ETag`
-         *     response header is set to `"<geometry_checksum>"` and the response
-         *     is served with `Cache-Control: public, max-age=86400, immutable`
-         *     because a new plan version always yields a new checksum.
+         *     with per-category tier / price resolution. Served with
+         *     `Cache-Control: no-store` and no ETag: tier prices, colours and
+         *     per-seat categories change without a new geometry, so the schema
+         *     is read from the current state on every request.
          */
         SeatingSchemaResponse: {
             /**
@@ -40409,10 +40408,7 @@ export interface operations {
     getPublicSessionSchema: {
         parameters: {
             query?: never;
-            header?: {
-                /** @description Standard conditional-request header. When it matches the current `geometry_checksum` ETag the server responds 304 with no body. */
-                "If-None-Match"?: string;
-            };
+            header?: never;
             path: {
                 /** @description UUIDv7 primary key of the event session. */
                 id: string;
@@ -40424,26 +40420,13 @@ export interface operations {
             /** @description Canonical geometry + category price resolution. */
             200: {
                 headers: {
-                    /** @description Strong entity tag = `"<geometry_checksum>"`. */
-                    ETag?: string;
-                    /** @description Always `public, max-age=86400, immutable`. */
+                    /** @description Always `no-store`. */
                     "Cache-Control"?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["SeatingSchemaResponse"];
                 };
-            };
-            /** @description Client's `If-None-Match` matches the current `geometry_checksum` ETag; body omitted. */
-            304: {
-                headers: {
-                    /** @description Strong entity tag = `"<geometry_checksum>"`. */
-                    ETag?: string;
-                    /** @description Always `public, max-age=86400, immutable`. */
-                    "Cache-Control"?: string;
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /**
              * @description Session is not published, is `general_admission`, has no
@@ -47012,10 +46995,7 @@ export interface operations {
     getSessionSchemaAdmin: {
         parameters: {
             query?: never;
-            header?: {
-                /** @description Standard conditional-request header; a match answers 304 with no body. */
-                "If-None-Match"?: string;
-            };
+            header?: never;
             path: {
                 /** @description Event session id. */
                 id: string;
@@ -47027,22 +47007,13 @@ export interface operations {
             /** @description Canonical geometry + category price resolution. */
             200: {
                 headers: {
-                    /** @description Strong entity tag = `"<geometry_checksum>-v<seat_status_version>"`. */
-                    ETag?: string;
-                    /** @description Always `private, no-cache`. */
+                    /** @description Always `no-store`. */
                     "Cache-Control"?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["SeatingSchemaResponse"];
                 };
-            };
-            /** @description Client's `If-None-Match` matches the current ETag; body omitted. */
-            304: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /** @description Missing or invalid JWT. */
             401: {
