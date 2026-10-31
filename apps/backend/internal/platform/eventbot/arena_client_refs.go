@@ -181,10 +181,19 @@ func (c *ArenaClient) UploadPoster(ctx context.Context, jwt string, orgID uuid.U
 // UploadMedia stores bytes as a media object of the organization under the
 // given owner type (event_poster, event_gallery, event_report) and returns it.
 func (c *ArenaClient) UploadMedia(ctx context.Context, jwt string, orgID uuid.UUID, ownerType, filename, contentType string, data []byte) (UploadedMedia, error) {
+	return c.UploadOwnedMedia(ctx, jwt, orgID, ownerType, "", filename, contentType, data)
+}
+
+// UploadOwnedMedia is UploadMedia for an object that belongs to one row (a
+// seating plan's SVG names its plan); ownerID may be empty.
+func (c *ArenaClient) UploadOwnedMedia(ctx context.Context, jwt string, orgID uuid.UUID, ownerType, ownerID, filename, contentType string, data []byte) (UploadedMedia, error) {
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
 	_ = mw.WriteField("owner_type", ownerType)
 	_ = mw.WriteField("org_id", orgID.String())
+	if ownerID != "" {
+		_ = mw.WriteField("owner_id", ownerID)
+	}
 	// The type must travel: CreateFormFile labels the part
 	// application/octet-stream, and a poster stored under that type was
 	// skipped by the import's side-load ("not an image") until 2026-09-30.
@@ -307,4 +316,30 @@ func (c *ArenaClient) TierPriceSchedule(ctx context.Context, jwt string, orgID, 
 		return nil, err
 	}
 	return out.PriceSchedule.Windows, nil
+}
+
+// SharedVenues lists the venues of other organizations that the platform
+// verified (GET /v1/organizations/{org_id}/shared-venues), narrowed to a city
+// and/or a country.
+func (c *ArenaClient) SharedVenues(ctx context.Context, jwt string, orgID uuid.UUID, cityID, countryISO2 string) ([]VenueRef, error) {
+	var out struct {
+		Venues []openapi.VenueItem `json:"venues"`
+	}
+	q := url.Values{"limit": {"200"}}
+	if cityID != "" {
+		q.Set("city_id", cityID)
+	}
+	if countryISO2 != "" {
+		q.Set("country", countryISO2)
+	}
+	if err := c.do(ctx, http.MethodGet, "/v1/organizations/"+orgID.String()+"/shared-venues?"+q.Encode(), jwt, nil, &out); err != nil {
+		return nil, err
+	}
+	items := make([]VenueRef, 0, len(out.Venues))
+	for _, v := range out.Venues {
+		ref := venueRefFrom(v)
+		ref.Shared = true
+		items = append(items, ref)
+	}
+	return items, nil
 }

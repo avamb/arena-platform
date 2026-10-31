@@ -310,7 +310,7 @@ func (h *Handler) buildSeatListCategories(
 	ledgers := h.seatListLedgers(ctx, sessionID, tiers, stats)
 
 	// The session's own sales end closes every category with it (0128), and
-	// so does the organizer's "coming soon" / "sold out" (0182): the hold
+	// so does the organizer's "coming soon" / "sold out" (0183): the hold
 	// gate refuses every new hold then. Best effort: a failed lookup leaves
 	// the categories' own windows.
 	var (

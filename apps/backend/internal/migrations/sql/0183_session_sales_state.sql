@@ -1,4 +1,4 @@
--- 0182_session_sales_state.sql — one sales state per session for EVERY sales
+-- 0183_session_sales_state.sql — one sales state per session for EVERY sales
 -- channel (owner decision 2026-10-31): "coming soon" or "sold out" set by the
 -- organizer, or nothing (sales follow the categories as before).
 --

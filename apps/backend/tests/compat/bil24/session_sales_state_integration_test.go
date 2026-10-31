@@ -1,7 +1,7 @@
 //go:build integration
 
 // session_sales_state_integration_test.go — the organizer's sales state of a
-// session (migration 0182) on the gateway wire. One state for every channel
+// session (migration 0183) on the gateway wire. One state for every channel
 // (owner decision 2026-10-31):
 //
 //   - GET_ALL_ACTIONS reports salesState (open / soon / soldout) and

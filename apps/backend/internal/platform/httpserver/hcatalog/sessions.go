@@ -177,7 +177,7 @@ type SessionResponse struct {
 	EndAt       string  `json:"end_at"`
 	SalesEndAt  string  `json:"sales_end_at"`
 	DoorsOpenAt *string `json:"doors_open_at"`
-	// SalesState / ManualSalesState (migration 0182) are filled by the list
+	// SalesState / ManualSalesState (migration 0183) are filled by the list
 	// and the single read: the effective state every channel follows, and
 	// the organizer's own state ("soon" / "sold_out", "" when none).
 	SalesState             string  `json:"sales_state,omitempty"`
@@ -305,7 +305,9 @@ func (h *Handler) resolveVenueContext(
 		))
 		return gen.VenueSessionContextRow{}, false
 	}
-	if venueCtx.OrgID != orgID && !auth.HasSuperadminOrgAccess(r.Context()) {
+	// A verified venue is open to every organization (migration 0182): a date
+	// may be held there, the owner stays the only one who edits the venue.
+	if venueCtx.OrgID != orgID && !venueCtx.Verified && !auth.HasSuperadminOrgAccess(r.Context()) {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 			"session.venue_org_mismatch",
 			"venue does not belong to the event's organization", r,

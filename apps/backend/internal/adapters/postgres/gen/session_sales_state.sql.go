@@ -1,5 +1,5 @@
 // Hand-maintained typed query wrapper; follows sqlc output conventions.
-// source: session sales state (migration 0182, package salesstate)
+// source: session sales state (migration 0183, package salesstate)
 
 package gen
 

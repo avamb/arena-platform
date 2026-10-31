@@ -152,7 +152,7 @@ func (h *Handler) loadActionEvents(
 		}
 	}
 
-	// The organizer's sales state of each session (migration 0182). Fatal
+	// The organizer's sales state of each session (migration 0183). Fatal
 	// like the session read: a catalog that silently lost a "sold out"
 	// would let a site reopen a sale the organizer closed.
 	manual, err := h.eventQueries.ListManualSalesStatesByOrg(ctx, orgID)
@@ -278,7 +278,7 @@ func (h *Handler) projectActionEvents(
 		}
 		sessionAvail := sessionAvailability(s, bySession[s.SessionID], now)
 
-		// salesState (arena extension, migration 0182) — open / soon /
+		// salesState (arena extension, migration 0183) — open / soon /
 		// soldout / ended by the rule the event center shows; arenaSessionId
 		// lets a site switch the state back through the REST API. While the
 		// organizer's state is set the hold gate refuses every new hold, so

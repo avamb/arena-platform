@@ -400,7 +400,7 @@ func (h *Handler) writeHoldError(ctx context.Context, w http.ResponseWriter, com
 	case errors.Is(err, hcheckout.ErrSessionSalesSoon),
 		errors.Is(err, hcheckout.ErrSessionSoldOut):
 		// The organizer set the session to "coming soon" or "sold out"
-		// (migration 0182): one state for every channel, so the hold is
+		// (migration 0183): one state for every channel, so the hold is
 		// refused whatever places are left. salesState names it in the
 		// catalog's own vocabulary.
 		writeBil24JSON(w, http.StatusOK, salesStateRefusal(command,

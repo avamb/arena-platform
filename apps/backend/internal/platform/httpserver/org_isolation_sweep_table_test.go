@@ -192,7 +192,7 @@ func sweepRows() []sweepRow {
 		{hole: "H7", name: "session get (own event, foreign session)", route: "GET /v1/organizations/{org_id}/events/{event_id}/sessions/{id}", perm: "session.read", attackOnly: true,
 			path: func(id sweepIDs) string { return sessionBase(id, id.EventOther, id.Session4) }},
 
-		// -- Session sales state (migration 0182): {session_id} is checked
+		// -- Session sales state (migration 0183): {session_id} is checked
 		// against the path organization (GetSalesStateSessionScope, and the
 		// row lock in salesstate.Change). The control PUT asks for "open",
 		// which the session already has, so it writes nothing and leaves the

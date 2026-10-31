@@ -1,6 +1,8 @@
 package httpserver
 
 import (
+	"net/http"
+
 	"github.com/go-chi/chi/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
@@ -193,6 +195,10 @@ func (s *Server) mountVenueRoutes(r chi.Router) {
 			pr.Get("/venues", s.handleListVenues)
 			pr.Get("/venues/{id}", s.handleGetVenue)
 			pr.Get("/organizations/{org_id}/venues", s.handleListVenuesByOrg)
+			// Migration 0172: venues the operator verified, open to every organization.
+			pr.Get("/organizations/{org_id}/shared-venues", func(w http.ResponseWriter, r *http.Request) {
+				s.catalogHandler().HandleListSharedVenues(w, r)
+			})
 		})
 	}
 	if s.authEnabled() && s.venueQueries != nil && s.pool != nil {
@@ -207,6 +213,13 @@ func (s *Server) mountVenueRoutes(r chi.Router) {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "venue.delete", "venues")
 			pr.Delete("/organizations/{org_id}/venues/{id}", s.handleDeleteVenue)
+		})
+		// Migration 0172: the operator verifies a venue (superadmin only, checked in the handler).
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "venue.curate", "venues")
+			pr.Patch("/admin/venues/{id}/review", func(w http.ResponseWriter, r *http.Request) {
+				s.catalogHandler().HandleReviewVenue(w, r)
+			})
 		})
 		// Migration 0113: an organizer adds the city a new venue is in.
 		r.Group(func(pr chi.Router) {

@@ -86,7 +86,7 @@ WHERE  s.id = $1
   AND  s.deleted_at IS NULL`
 
 // GetSessionSalesState returns when ticket sales for the session close, the
-// session's own status AND the organizer's sales state (migration 0182:
+// session's own status AND the organizer's sales state (migration 0183:
 // "soon" / "sold_out", "" when none is set). The hold gate
 // (hcheckout.CheckSessionSalesOpen) refuses every NEW hold once the sales end
 // has passed, for a 'cancelled' session (a cancelled date keeps its row and

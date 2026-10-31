@@ -129,6 +129,8 @@ describe("requiresAdminReason()", () => {
     ["/v1/operator-networks/abc", "GET", false],
     ["/v1/admin/networks/abc/users", "GET", false],
     ["/v1/admin/networks/abc/organizers", "GET", false],
+    // Venue verification is a write with a reason.
+    ["/v1/admin/venues/abc/review", "PATCH", true],
     // Seating-plan mutations (owner org in the body) need a reason; reads do not.
     ["/v1/venues/abc/seating-plans", "POST", true],
     ["/v1/seating-plans/abc", "PATCH", true],

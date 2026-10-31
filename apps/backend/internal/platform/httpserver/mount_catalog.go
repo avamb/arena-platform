@@ -105,7 +105,7 @@ func (s *Server) mountSessionRoutes(r chi.Router) {
 			pr.Get("/organizations/{org_id}/sessions/{session_id}/change-impact", s.handleSessionChangeImpact)
 			// The organizer's preview of a buyer's e-ticket (migration 0119).
 			pr.Get("/organizations/{org_id}/sessions/{session_id}/sample-ticket", s.handleSessionSampleTicket)
-			// One sales state for every channel (migration 0182).
+			// One sales state for every channel (migration 0183).
 			pr.Get("/organizations/{org_id}/sessions/{session_id}/sales-state", s.handleGetSessionSalesState)
 			pr.Get("/organizations/{org_id}/sessions/{session_id}/sales-state/history", s.handleListSessionSalesStateHistory)
 		})

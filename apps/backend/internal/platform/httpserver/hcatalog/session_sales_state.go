@@ -1,5 +1,5 @@
 // session_sales_state.go — the organizer's sales state of a session
-// (migration 0182, package salesstate): one state for EVERY sales channel
+// (migration 0183, package salesstate): one state for EVERY sales channel
 // (owner decision 2026-10-31).
 //
 //	GET /v1/organizations/{org_id}/sessions/{session_id}/sales-state          (session.read)

@@ -1,7 +1,7 @@
 //go:build integration
 
 // session_sales_state_integration_test.go — the session's sales state
-// (migration 0182) through the real router against a live database: a
+// (migration 0183) through the real router against a live database: a
 // manager (membership role organizer, no roles claim) reads and switches it,
 // the switch is journalled with its client and a v1.session.updated outbox
 // row, a repeat writes nothing, and while the state is set the public feed

@@ -17,7 +17,7 @@
 --                    inside its sale window — the hold gate's own rule
 --                    (hcheckout.CategorySellable + CheckSessionSalesOpen),
 --                    and the organizer set no sales state on it (migration
---                    0182: "soon" and "sold_out" both stop every new hold)
+--                    0183: "soon" and "sold_out" both stop every new hold)
 --   places_left      a future session still has a free place in ANY live
 --                    category, open or not (a closed category or a sale that
 --                    has not started is "upcoming", an empty hall "sold out");

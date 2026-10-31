@@ -580,7 +580,7 @@ func (h *Handler) writeCartHoldError(
 		))
 	case errors.Is(err, hcheckout.ErrSessionSalesSoon),
 		errors.Is(err, hcheckout.ErrSessionSoldOut):
-		// The organizer's sales state of the session (migration 0182).
+		// The organizer's sales state of the session (migration 0183).
 		writeBil24JSON(w, http.StatusOK, salesStateRefusal(req.Command,
 			h.localizeDesc(req.Locale, cc.locale, salesStateDescKey(err), salesStateDescFallback(err), nil), err))
 	case errors.Is(err, hcheckout.ErrSessionCancelled):

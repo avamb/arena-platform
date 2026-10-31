@@ -121,7 +121,7 @@ var Bil24DescriptionKeys = []string{
 	"bil24.category_sold_out",
 	"bil24.session_expired",
 	"bil24.sales_closed",
-	// The organizer's sales state of the session (migration 0182).
+	// The organizer's sales state of the session (migration 0183).
 	"bil24.sales_soon",
 	"bil24.session_sold_out",
 	"bil24.promo_invalid",

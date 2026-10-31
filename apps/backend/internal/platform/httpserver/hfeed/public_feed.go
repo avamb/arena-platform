@@ -304,7 +304,7 @@ type publicFeedSessionResponse struct {
 	// 14:30) must still read the venue's local time, the one on the door.
 	Timezone string `json:"timezone"`
 	// SalesState is the session's sales state by the rule every surface
-	// shares (package salesstate, migration 0182): open, soon, sold_out,
+	// shares (package salesstate, migration 0183): open, soon, sold_out,
 	// ended or cancelled. "soon" and "sold_out" set by the organizer close
 	// the sale in every channel; the widget then shows the state instead of
 	// the picker. "" only when the state could not be loaded.
@@ -809,7 +809,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 			}
 			venueTimezones := map[uuid.UUID]string{}
 			// One batched read of every session's sales facts (migration
-			// 0182). Non-fatal: without them sales_state is "" and the
+			// 0183). Non-fatal: without them sales_state is "" and the
 			// categories still report their own availability.
 			salesNow := time.Now().UTC()
 			sessionIDs := make([]uuid.UUID, 0, len(sessions))

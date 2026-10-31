@@ -55,11 +55,11 @@ var (
 	// gate has to refuse the hold on the session's status.
 	ErrSessionCancelled = errors.New("hcheckout: session is cancelled")
 	// ErrSessionSalesSoon — the organizer set the session to "coming soon"
-	// (session_sales_states, migration 0182). Every channel refuses a new
+	// (session_sales_states, migration 0183). Every channel refuses a new
 	// hold until the state is lifted.
 	ErrSessionSalesSoon = errors.New("hcheckout: session sales have not started")
 	// ErrSessionSoldOut — the organizer declared the session sold out
-	// (session_sales_states, migration 0182), whatever places are left.
+	// (session_sales_states, migration 0183), whatever places are left.
 	ErrSessionSoldOut = errors.New("hcheckout: session is sold out")
 )
 
@@ -181,7 +181,7 @@ func SessionStatusRefusal(status string, tierID uuid.UUID, now time.Time) error 
 }
 
 // ManualSalesStateRefusal reports the refusal for a session the organizer
-// set to "coming soon" or "sold out" (session_sales_states, migration 0182),
+// set to "coming soon" or "sold out" (session_sales_states, migration 0183),
 // or nil. The state is one for every sales channel (owner decision
 // 2026-10-31), so this is the only place it is enforced: every hold path
 // runs CheckSessionSalesOpen. Holds taken before the state was set are not

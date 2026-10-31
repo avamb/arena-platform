@@ -5,7 +5,7 @@
 // for EVERY sales channel, no per-channel setting).
 //
 // The organizer may set a session to "coming soon" or "sold out" by hand
-// (session_sales_states, migration 0182). Everything else is worked out from
+// (session_sales_states, migration 0183). Everything else is worked out from
 // the session's own facts: its status, its sales end and its places. The
 // manual state never rewrites those facts, so lifting it ("open") brings
 // back the real places and sale windows exactly as they were.

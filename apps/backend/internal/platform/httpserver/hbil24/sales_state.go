@@ -1,7 +1,7 @@
 package hbil24
 
 // sales_state.go — the organizer's sales state of a session on the gateway
-// wire (migration 0182, package salesstate). One state for every channel:
+// wire (migration 0183, package salesstate). One state for every channel:
 // the hold gate refuses a new hold on a "soon" or "sold out" session, and
 // GET_ALL_ACTIONS reports the state as salesState so a site draws "coming
 // soon" or the SOLD OUT ribbon without guessing from the places.

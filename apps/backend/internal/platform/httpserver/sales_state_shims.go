@@ -2,7 +2,7 @@ package httpserver
 
 import "net/http"
 
-// sales_state_shims.go — the session's sales state (migration 0182, package
+// sales_state_shims.go — the session's sales state (migration 0183, package
 // salesstate): one state for every sales channel, set by the owner or a
 // manager from the event center or the Telegram bot.
 
