@@ -34,6 +34,7 @@
   import { getPromoStrings } from './lib/promoI18n.js';
   import { MAX_CART_SEATS, cartLimitMessage, seatCapMessage } from './lib/cartLimits.js';
   import { buyerErrorText } from './lib/errorI18n.js';
+  import { buildTierColorMap } from './lib/seatmap-render.js';
   import { consentErrorMessage, consentPayload, forceConsent } from './lib/consent.js';
   import { captureAttribution, type AttributionPayload } from './lib/attribution.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
@@ -202,6 +203,8 @@
 
   let seatCategoryIndex = $state<ReadonlyMap<string, number>>(new Map());
   let categoryByCategoryIndex = $state<ReadonlyMap<number, CategoryPrice>>(new Map());
+  // Legend colours: each tier in the colour its seats carry on the plan.
+  const tierColors = $derived(buildTierColorMap([...categoryByCategoryIndex.values()]));
   let tierById = $state<ReadonlyMap<string, Tier>>(new Map());
   let gaTiers = $state<import('./types.js').Tier[]>([]);
   // AB-40D: GA categories that carry a hit-test polygon and render as
@@ -954,6 +957,7 @@
           sessions={event.sessions}
           locale={normLocale}
           {selectedSession}
+          {tierColors}
           onSelectSession={(s) => {
             // Reset seat/GA selection when switching sessions so stale keys
             // from a different session don't carry over (WID-S1 fix #6).

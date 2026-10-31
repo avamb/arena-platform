@@ -140,6 +140,22 @@ export function buildCategoryColorMap(
   return map;
 }
 
+/**
+ * Build a tier-id → hex-color lookup from `category_prices`, so the price
+ * legend shows each tier in the colour its seats carry on the plan. A tier
+ * that labels several categories takes the colour of the lowest index.
+ */
+export function buildTierColorMap(categoryPrices: CategoryPrice[]): Map<string, string> {
+  const map = new Map<string, string>();
+  const sorted = [...categoryPrices].sort((a, b) => a.index - b.index);
+  for (const cp of sorted) {
+    if (cp.tier_id && cp.color && !map.has(cp.tier_id)) {
+      map.set(cp.tier_id, normalizeColor(cp.color));
+    }
+  }
+  return map;
+}
+
 /** Normalize a hex color: ensure it has a `#` prefix and lowercase digits. */
 function normalizeColor(hex: string): string {
   const s = hex.trim().replace(/^#/, '').toLowerCase();
