@@ -133,6 +133,33 @@ func TestResolveSeatCategories_TierWithoutHomeGetsSyntheticCategory(t *testing.T
 	}
 }
 
+// A synthetic category shows the colour the organizer chose for its tier (an
+// extra price category of the wizard, red VIP); a tier without one keeps the
+// palette swatch, and the plan categories keep the plan's colours.
+func TestResolveSeatCategories_SyntheticCategoryTakesItsTierColour(t *testing.T) {
+	f := newS1aFixture()
+	seats := f.seats(map[string]*gen.TicketTierRow{"a2": &f.balcony})
+	plain := resolveSeatCategories(f.geom, seats, f.tiers(), seatKeyIndex(f.geom))
+	res := plain.withTierColors(map[uuid.UUID]string{f.balcony.ID: "#dc2626", f.vip.ID: "#123456"})
+	if len(res.Extra) != 1 || res.Extra[0].Color != "#dc2626" {
+		t.Fatalf("extra = %+v, want Balcony in its own #dc2626", res.Extra)
+	}
+	if plain.Extra[0].Color != syntheticCategoryPalette[0] {
+		t.Fatalf("withTierColors changed the resolution it was called on: %+v", plain.Extra)
+	}
+	_, extra := buildCategoryOverlay(f.geom, res, map[uuid.UUID]priceresolve.Effective{})
+	if len(extra) != 1 || extra[0]["color"] != "#dc2626" {
+		t.Fatalf("schema extra_categories = %v", extra)
+	}
+	cats, _ := buildCategoryOverlay(f.geom, res, map[uuid.UUID]priceresolve.Effective{})
+	if cats[0]["color"] != "#ff0000" {
+		t.Fatalf("plan category 1 colour = %v, want the plan's #ff0000", cats[0]["color"])
+	}
+	if got := plain.withTierColors(nil).Extra[0].Color; got != syntheticCategoryPalette[0] {
+		t.Fatalf("no tier colours: extra colour = %q, want the palette", got)
+	}
+}
+
 func TestResolveSeatCategories_TieGoesToFirstSeenAndSeatsWithoutTierStay(t *testing.T) {
 	f := newS1aFixture()
 	// Category 2 has b1=Standard, b2=VIP: a 1-1 tie, first seen (b1) wins.
