@@ -15,6 +15,7 @@ import {
   applySelectionHighlights,
   clearConflictHighlight,
   buildCategoryColorMap,
+  buildTierColorMap,
   seatFillColor,
   buildPriceLabel,
   xmlAttr,
@@ -117,6 +118,33 @@ describe('cssAttrEscape', () => {
 
   it('does not escape spaces', () => {
     expect(cssAttrEscape('Sector A|Row 1|3')).toBe('Sector A|Row 1|3');
+  });
+});
+
+// ─── buildTierColorMap ────────────────────────────────────────────────────────
+
+describe('buildTierColorMap', () => {
+  it('maps each tier to the colour of its category', () => {
+    const cp: CategoryPrice[] = [
+      { index: 1, name: 'Nave', color: '#3949AB', tier_id: 't-nave' },
+      { index: 2, name: 'VIP', color: 'dc2626', tier_id: 't-vip' },
+    ];
+    const map = buildTierColorMap(cp);
+    expect(map.get('t-nave')).toBe('#3949ab');
+    expect(map.get('t-vip')).toBe('#dc2626');
+  });
+
+  it('a tier on several categories takes the lowest index colour', () => {
+    const cp: CategoryPrice[] = [
+      { index: 3, name: 'Side', color: '#00ff00', tier_id: 't1' },
+      { index: 1, name: 'Main', color: '#ff0000', tier_id: 't1' },
+    ];
+    expect(buildTierColorMap(cp).get('t1')).toBe('#ff0000');
+  });
+
+  it('skips categories without a tier', () => {
+    const cp: CategoryPrice[] = [{ index: 1, name: 'Parter', color: '#ff0000' }];
+    expect(buildTierColorMap(cp).size).toBe(0);
   });
 });
 

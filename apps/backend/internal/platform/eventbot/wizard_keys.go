@@ -298,6 +298,10 @@ var wizardKeys = []string{
 	"bot.wz.plan_up_issue_categories", "bot.wz.plan_up_issue_seat_shape", "bot.wz.plan_up_issue_row", "bot.wz.plan_up_issue_seat_number",
 	"bot.wz.plan_up_issue_color", "bot.wz.plan_up_issue_too_many", "bot.wz.plan_up_issue_no_places", "bot.wz.plan_up_issue_ga",
 	"bot.wz.plan_up_issue_other",
+	"bot.wz.venue_no_plan_note", "bot.wz.venue_other_btn", "bot.wz.ask_plan_extra", "bot.wz.plan_one_category_hint",
+	"bot.wz.plan_extra_add_btn", "bot.wz.plan_extra_done_btn", "bot.wz.ask_plan_extra_name", "bot.wz.ask_plan_extra_price",
+	"bot.wz.ask_plan_extra_color", "bot.wz.err_plan_extra_name", "bot.wz.err_plan_extra_dup", "bot.wz.plan_done_extra_note",
+	"bot.wz.saved_paint_hint", "bot.wz.saved_dates_btn",
 }
 
 func init() {

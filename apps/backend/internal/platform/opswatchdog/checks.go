@@ -176,6 +176,12 @@ func (r *runner) checkPaymentNotCompleted(ctx context.Context) error {
 		   AND pi.succeeded_at IS NOT NULL
 		   AND pi.succeeded_at < $1
 		   AND (cs.id IS NULL OR cs.state <> 'completed')
+		   -- A merchandise shop payment has no checkout session (migration
+		   -- 0172): it is complete once its shop order left the pending,
+		   -- expired and cancelled states.
+		   AND NOT EXISTS (SELECT 1 FROM shop_orders so
+		                   WHERE so.payment_intent_id = pi.id
+		                     AND so.status NOT IN ('pending_payment', 'expired', 'cancelled'))
 		 ORDER BY pi.succeeded_at ASC
 		 LIMIT $2
 	`
@@ -220,6 +226,10 @@ func (r *runner) checkManualReview(ctx context.Context) error {
 		SELECT 'order' AS kind, o.id::text, org.name, o.total, o.currency
 		  FROM orders o JOIN organizations org ON org.id = o.org_id
 		 WHERE o.status = 'manual_review'
+		UNION ALL
+		SELECT 'shop_order' AS kind, so.id::text, org.name, so.total, so.currency
+		  FROM shop_orders so JOIN organizations org ON org.id = so.org_id
+		 WHERE so.status = 'manual_review'
 		UNION ALL
 		SELECT 'payment_intent' AS kind, pi.id::text, org.name, pi.amount, pi.currency
 		  FROM payment_intents pi JOIN organizations org ON org.id = pi.org_id

@@ -1,17 +1,17 @@
-{{define "subject"}}Мероприятие отменено — {{.EventName}}{{end}}
+{{define "subject"}}{{if .Change.Invitation}}Приглашение отменено{{else}}Мероприятие отменено{{end}} — {{.EventName}}{{end}}
 
 {{define "html"}}<!DOCTYPE html>
 <html lang="ru" dir="ltr">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Мероприятие отменено</title></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{if .Change.Invitation}}Приглашение отменено{{else}}Мероприятие отменено{{end}}</title></head>
 <body style="margin:0;padding:0;background:#f2f4f5;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
   {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
   <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
   <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
-  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">Мероприятие отменено</h1>
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">{{if .Change.Invitation}}Ваше приглашение отменено{{else}}Мероприятие отменено{{end}}</h1>
   <p style="margin:0 0 12px 0;">Здравствуйте{{with .HolderName}} {{.}}{{end}},</p>
-  <p style="margin:0 0 12px 0;">Организатор отменил сеанс мероприятия <strong>{{.EventName}}</strong>{{with .SessionStart}}, назначенный на {{.}}{{end}}. Ваш билет на этот сеанс больше не действует для входа.</p>
+  <p style="margin:0 0 12px 0;">{{if .Change.Invitation}}Организатор отменил ваше приглашение на <strong>{{.EventName}}</strong>{{with .SessionStart}}, назначенное на {{.}}{{end}}. Ваш билет больше не действует для входа.{{else}}Организатор отменил сеанс мероприятия <strong>{{.EventName}}</strong>{{with .SessionStart}}, назначенный на {{.}}{{end}}. Ваш билет на этот сеанс больше не действует для входа.{{end}}</p>
   <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
     <tr><td><strong>Мероприятие</strong></td><td>{{.EventName}}</td></tr>
     {{with .SessionStart}}<tr><td><strong>Дата и время</strong></td><td>{{.}}</td></tr>{{end}}
@@ -50,11 +50,11 @@
 
 {{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
 
-Мероприятие отменено
+{{if .Change.Invitation}}Ваше приглашение отменено{{else}}Мероприятие отменено{{end}}
 
 Здравствуйте{{with .HolderName}} {{.}}{{end}},
 
-Организатор отменил сеанс мероприятия {{.EventName}}{{with .SessionStart}}, назначенный на {{.}}{{end}}. Ваш билет на этот сеанс больше не действует для входа.
+{{if .Change.Invitation}}Организатор отменил ваше приглашение на {{.EventName}}{{with .SessionStart}}, назначенное на {{.}}{{end}}. Ваш билет больше не действует для входа.{{else}}Организатор отменил сеанс мероприятия {{.EventName}}{{with .SessionStart}}, назначенный на {{.}}{{end}}. Ваш билет на этот сеанс больше не действует для входа.{{end}}
 
 Мероприятие: {{.EventName}}
 {{with .SessionStart}}Дата и время: {{.}}

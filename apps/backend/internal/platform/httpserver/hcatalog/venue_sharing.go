@@ -1,5 +1,5 @@
 // venue_sharing.go: a verified venue is open to every organization
-// (migration 0172, spec 24 reduced to its first step).
+// (migration 0182, spec 24 reduced to its first step).
 //
 // The owner organization stays the venue's only editor. The platform operator
 // verifies a venue (PATCH /v1/admin/venues/{id}/review); from then on other

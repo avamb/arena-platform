@@ -1,7 +1,7 @@
 /**
  * Pure rules of the invitations screen (task 4-4): the guest list a person
- * pastes, the batch ids of an operation, and the one status the list shows for
- * the letters of an invitation. They are ports of the bot's rules
+ * pastes, and the one status the list shows for the letters of an invitation
+ * issued by the OLD route (the "Earlier invitations" section). They are ports of the bot's rules
  * (eventbot/invite_recipients.go, invite.go) so the two channels accept the
  * same lists. Nothing here logs: the lines are guests' contact details.
  *
@@ -108,26 +108,24 @@ export function parseGuests(text: string): ParsedGuests {
 }
 
 /** Why the operation cannot start yet, or null when it can. */
-export type SendBlock = "none" | "problems" | "tooMany" | "overFree";
+export type SendBlock = "none" | "problems" | "tooMany";
 
-export function sendBlock(parsed: ParsedGuests, free: number | null): SendBlock | null {
+/**
+ * Only what the form can know for certain blocks the button. The count of free places is NOT such a thing:
+ * the server also issues from the places the organizer closed for sale (reserve places, owner decision R-5),
+ * which the category's `available` does not count. Whether the places suffice is the server's answer (409
+ * `invitation.not_enough_places`), shown by the error notice.
+ */
+export function sendBlock(parsed: ParsedGuests): SendBlock | null {
   if (parsed.problems.length > 0) return "problems";
   if (parsed.guests.length === 0) return "none";
   if (parsed.guests.length > MAX_GUESTS) return "tooMany";
-  if (free !== null && parsed.guests.length > free) return "overFree";
   return null;
 }
 
-/**
- * The batch id of guest `index` of operation `operationId`. One call per
- * guest keeps every invitation annullable on its own, and the API answers a
- * repeated (organization, batch id) with the first result and sends no
- * second letter, so a retry or a double press never mails twice. Mint the
- * operation id when the confirmation is first shown and keep it until the
- * guest list changes.
- */
-export function batchId(operationId: string, index: number): string {
-  return `web-${operationId}-${index}`;
+/** True when there are more guests than free places: a hint, never a ban (see sendBlock). */
+export function overFreePlaces(parsed: ParsedGuests, free: number | null): boolean {
+  return free !== null && parsed.guests.length > 0 && parsed.guests.length > free;
 }
 
 // ─── the letter status of an invitation ─────────────────────────────────────
@@ -236,12 +234,17 @@ export function inviteTierOk(tier: { kind?: string | null; available?: number | 
   return tier.kind === "ga";
 }
 
-/** A date can be picked when it is not cancelled, not over and has no seating plan. */
-export function inviteSessionOk(
-  session: { status: string; end_at: string; seating_plan_version_id: string | null },
-  now: Date,
-): boolean {
+/** A date can be picked when it is not cancelled and not over. A seated one is issued on its seat map, see `isSeatedSession`. */
+export function inviteSessionOk(session: { status: string; end_at: string }, now: Date): boolean {
   if (session.status === "cancelled" || session.status === "draft") return false;
-  if (session.seating_plan_version_id !== null) return false;
   return new Date(session.end_at).getTime() > now.getTime();
+}
+
+/**
+ * A date with a seating plan takes its invitations on the seat map of that date (spec 46): the old
+ * general-admission form cannot choose a seat, and the server refuses it there with 422
+ * `complimentary.use_invitations_route`.
+ */
+export function isSeatedSession(session: { seating_plan_version_id: string | null }): boolean {
+  return session.seating_plan_version_id !== null;
 }

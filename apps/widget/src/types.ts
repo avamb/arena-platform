@@ -133,12 +133,6 @@ export interface SchemaResponse {
   extra_categories?: CategoryPrice[];
 }
 
-/** Cached schema with ETag for conditional requests. */
-export interface SchemaCacheEntry {
-  etag: string;
-  schema: SchemaResponse;
-}
-
 // ─── Seat status endpoint ─────────────────────────────────────────────────────
 
 /** Valid seat status values from the backend (AB rename: blocked → unavailable). */

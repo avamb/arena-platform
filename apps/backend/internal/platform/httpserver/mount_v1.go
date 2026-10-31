@@ -85,6 +85,7 @@ func (s *Server) mountV1Routes() {
 		s.mountImpersonationRoutes(r)
 		s.mountAllocationRoutes(r)
 		s.mountComplimentaryRoutes(r)
+		s.mountInvitationRoutes(r)
 		s.mountBarcodeBatchRoutes(r)
 		s.mountWebhookSubscriberRoutes(r)
 		s.mountReconciliationRoutes(r)
@@ -94,6 +95,7 @@ func (s *Server) mountV1Routes() {
 		s.mountSeatingRoutes(r)
 		s.mountImportRoutes(r)
 		s.mountCustomerImportRoutes(r)
+		s.mountShopRoutes(r)
 	})
 }
 

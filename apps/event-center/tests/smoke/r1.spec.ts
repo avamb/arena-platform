@@ -176,7 +176,11 @@ test.describe("R1 read-only event center", () => {
     await page.goto(`/o/${ORG_A}/orders/${ORDER}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Order №1000000512");
     await expect(page.getByTestId("delivery-state")).toContainText("Ticket e-mail: sent");
-    await expect(page.getByTestId("ticket-delivery")).toContainText("Sent");
+    // The scale carries a sent letter; a ticket line about its letter appears only when it did not go out.
+    await expect(page.getByTestId("letter-steps")).toHaveAttribute("data-reached", "1");
+    await expect(page.getByTestId("ticket-delivery")).toHaveCount(0);
+    await expect(page.getByTestId("buyer-call")).toHaveAttribute("href", "tel:+420600111222");
+    await expect(page.getByTestId("buyer-whatsapp")).toHaveAttribute("href", "https://wa.me/420600111222");
     await expect(page.getByTestId("buyer")).toContainText("anna@example.test");
     await expect(page.getByTestId("buyer").locator("a[href^=mailto]")).toHaveAttribute("href", "mailto:anna%40example.test");
     await noA11yViolations(page);

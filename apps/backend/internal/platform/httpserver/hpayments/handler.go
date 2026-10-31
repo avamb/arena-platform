@@ -97,6 +97,14 @@ func (h *Handler) WithAllPayBaseURL(base string) *Handler {
 	return h
 }
 
+// WithPayPlusBaseURL points PayPlus credential verification at a different
+// API root (a stub in tests). Empty means the real hosts, picked by the
+// configuration's mode.
+func (h *Handler) WithPayPlusBaseURL(base string) *Handler {
+	h.providerOptions.PayPlusAPIBaseURL = base
+	return h
+}
+
 // WithCallbackBase sets the public API origin used to build the per-config
 // webhook URL for the subscription check. Empty disables that check.
 func (h *Handler) WithCallbackBase(base string) *Handler {

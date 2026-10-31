@@ -411,7 +411,7 @@ describe("mapServerError", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Venue verification (migration 0172): only the platform operator verifies.
+// Venue verification (migration 0182): only the platform operator verifies.
 // ---------------------------------------------------------------------------
 
 function venueWith(id: string, review?: "verified" | "unverified"): Venue {

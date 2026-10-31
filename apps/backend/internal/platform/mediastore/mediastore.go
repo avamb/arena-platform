@@ -25,6 +25,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/storage"
 )
@@ -58,6 +59,8 @@ var AllowedOwnerTypes = map[string]struct{}{
 	"session_poster":   {}, // AB-47: session-level poster artwork (overrides event poster)
 	"event_gallery":    {}, // HP-1 (0153): a photo of an event page gallery, up to 6 per event
 	"event_report":     {}, // HP-1 (0153): a photo of an event photo report
+	"shop_product":     {}, // shop (0172): a photo of a shop product
+	"shop_digital":     {}, // shop (0172): the file a digital product sells, never a picture
 }
 
 // Repo is the persistence + storage facade used by HTTP handlers and the
@@ -72,6 +75,14 @@ type Repo struct {
 	// signed local-backend download paths, e.g. "https://api.example.com"
 	// or "" (relative). The signed path itself is /v1/media-files/{id}.
 	downloadURLBase string
+
+	// variantSF collapses concurrent requests for one resized copy onto a
+	// single render; renderSem lets only a few renders (decoding a 20 MP photo
+	// costs ~230 MB) run at a time. See variants.go.
+	variantSF  singleflight.Group
+	renderSem  chan struct{}
+	prerender  bool
+	renderHook func(key string) // tests: called once per actual render
 }
 
 // Options bundles the constructor inputs.
@@ -80,6 +91,14 @@ type Options struct {
 	Storage         storage.Storage
 	SigningSecret   []byte
 	DownloadURLBase string
+	// VariantWorkers caps how many resized copies are rendered at once in
+	// this process (MEDIA_VARIANT_WORKERS). Zero means DefaultVariantWorkers.
+	VariantWorkers int
+	// PrerenderVariants makes Insert queue a media.render_variants worker job
+	// for every new picture, so the first buyer does not wait for a render.
+	// Only the processes that create media (arena-api, arena-shop-import) set
+	// it; it needs the worker_jobs table.
+	PrerenderVariants bool
 }
 
 // New returns a Repo built from opts. Both Pool and Storage are required.
@@ -95,7 +114,13 @@ func New(opts Options) (*Repo, error) {
 		storage:         opts.Storage,
 		signingSecret:   opts.SigningSecret,
 		downloadURLBase: strings.TrimRight(opts.DownloadURLBase, "/"),
+		prerender:       opts.PrerenderVariants,
 	}
+	n := opts.VariantWorkers
+	if n < 1 {
+		n = DefaultVariantWorkers
+	}
+	r.renderSem = make(chan struct{}, n)
 	return r, nil
 }
 
@@ -144,6 +169,7 @@ func (r *Repo) Insert(ctx context.Context, in InsertInput) (Object, error) {
 	if err != nil {
 		return Object{}, fmt.Errorf("mediastore: insert: %w", err)
 	}
+	r.queuePrerender(ctx, obj)
 	return obj, nil
 }
 
@@ -203,6 +229,7 @@ type GCCandidate struct {
 	ID             uuid.UUID
 	StorageBackend string
 	StorageKey     string
+	ContentType    string
 	DeletedAt      time.Time
 }
 
@@ -214,7 +241,7 @@ func (r *Repo) ListGCCandidates(ctx context.Context, before time.Time, limit int
 		limit = 100
 	}
 	const q = `
-		SELECT id, storage_backend, storage_key, deleted_at
+		SELECT id, storage_backend, storage_key, content_type, deleted_at
 		FROM   media_objects
 		WHERE  deleted_at IS NOT NULL
 		  AND  deleted_at < $1
@@ -230,7 +257,7 @@ func (r *Repo) ListGCCandidates(ctx context.Context, before time.Time, limit int
 	for rows.Next() {
 		var c GCCandidate
 		var deletedAt *time.Time
-		if err := rows.Scan(&c.ID, &c.StorageBackend, &c.StorageKey, &deletedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.StorageBackend, &c.StorageKey, &c.ContentType, &deletedAt); err != nil {
 			return nil, fmt.Errorf("mediastore: scan gc candidate: %w", err)
 		}
 		if deletedAt != nil {

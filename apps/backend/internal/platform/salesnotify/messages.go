@@ -17,6 +17,19 @@ type Buyer struct {
 	Phone string
 }
 
+// Staff is the member of the organization (or the API key) behind a staff
+// invitation: who issued it and who cancelled it (spec 46 section 3.7). Role
+// is Owner, Manager, Platform operator or API key, Email the person's address
+// and Label the name of an API key. The zero value means "not an invitation".
+type Staff struct {
+	Role  string
+	Email string
+	Label string
+}
+
+// IsZero reports whether nothing is known about the person.
+func (s Staff) IsZero() bool { return s.Role == "" && s.Email == "" && s.Label == "" }
+
 // Sale is one paid order, as the notification shows it.
 type Sale struct {
 	OrgID       string
@@ -33,6 +46,8 @@ type Sale struct {
 	PromoCode   string
 	Categories  []CategoryCount
 	Buyer       Buyer
+	// IssuedBy is set only for a staff invitation (orders.issued_via).
+	IssuedBy Staff
 }
 
 // CategoryCount is how many units of one category an order bought.
@@ -63,6 +78,9 @@ type Refund struct {
 	Currency     string
 	Amount       int64 // 0 = cancelled without money back
 	Buyer        Buyer
+	// CancelledBy is set only for a ticket of a staff invitation that a
+	// member of the organization (or an API key) cancelled.
+	CancelledBy Staff
 }
 
 // sourceLabel names where the sale came from.
@@ -129,6 +147,28 @@ func writeBuyer(b *strings.Builder, buyer Buyer) {
 	}
 }
 
+// writeStaff renders the "who did it" line of a staff invitation, preceded by
+// a blank line; nothing when the person is unknown. verb is "Issued by" or
+// "Cancelled by".
+func writeStaff(b *strings.Builder, verb string, st Staff) {
+	if st.IsZero() {
+		return
+	}
+	who := st.Email
+	if who == "" {
+		who = st.Label
+	}
+	fmt.Fprintf(b, "\n\n🙋 %s: ", verb)
+	switch {
+	case st.Role != "" && who != "":
+		fmt.Fprintf(b, "%s · %s", esc(st.Role), esc(who))
+	case st.Role != "":
+		b.WriteString(esc(st.Role))
+	default:
+		b.WriteString(esc(who))
+	}
+}
+
 // EventsBotFooter is the line that points an organizer at the Telegram
 // event-center bot (spec 28 §10 step 7): one tap from a sale to creating or
 // editing an event. username is the bot's @-name without the "@".
@@ -161,6 +201,7 @@ func FormatSale(s Sale) string {
 	}
 	fmt.Fprintf(&b, "💰 Total: <b>%s</b>", esc(money(s.Total, s.Currency)))
 	writeBuyer(&b, s.Buyer)
+	writeStaff(&b, "Issued by", s.IssuedBy)
 	return b.String()
 }
 
@@ -185,6 +226,7 @@ func FormatRefund(r Refund) string {
 		fmt.Fprintf(&b, "💸 Refunded: <b>%s</b>", esc(money(r.Amount, r.Currency)))
 	}
 	writeBuyer(&b, r.Buyer)
+	writeStaff(&b, "Cancelled by", r.CancelledBy)
 	return b.String()
 }
 

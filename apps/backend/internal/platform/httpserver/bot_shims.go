@@ -31,6 +31,10 @@ func (s *Server) handleClaimWebLoginNotices(w http.ResponseWriter, r *http.Reque
 	s.botHandler().HandleClaimWebLoginNotices(w, r)
 }
 
+func (s *Server) handleClaimInvitationPDFNotices(w http.ResponseWriter, r *http.Request) {
+	s.botHandler().HandleClaimInvitationPDFNotices(w, r)
+}
+
 func (s *Server) handleCreateBotInvitation(w http.ResponseWriter, r *http.Request) {
 	s.botHandler().HandleCreateInvitation(w, r)
 }

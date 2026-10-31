@@ -195,3 +195,85 @@ describe("stepUpErrorKey", () => {
     expect(stepUpErrorKey(new Error("x"))).toBe("common.error.generic");
   });
 });
+
+describe("StepUpStore across a page load (M-11)", () => {
+  function memoryStorage() {
+    const m = new Map<string, string>();
+    return {
+      m,
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => void m.set(k, v),
+      removeItem: (k: string) => void m.delete(k),
+    };
+  }
+
+  it("gives the confirmation back to a fresh store of the same tab, inside the five minutes", () => {
+    const c = clock();
+    const tab = memoryStorage();
+    new StepUpStore(c.now, tab).set("tok", ORG, c.now() + 5 * 60_000);
+    c.add(60_000); // the next order, one minute later, opened by its address: memory is empty
+    const reloaded = new StepUpStore(c.now, tab);
+    expect(reloaded.current(ORG)).toBe("tok");
+    expect(reloaded.current(OTHER)).toBeNull();
+  });
+
+  it("forgets it after the five minutes and drops the stored copy", () => {
+    const c = clock();
+    const tab = memoryStorage();
+    new StepUpStore(c.now, tab).set("tok", ORG, c.now() + 5 * 60_000);
+    c.add(4 * 60_000 + 31_000);
+    expect(new StepUpStore(c.now, tab).current(ORG)).toBeNull();
+    expect(tab.m.size).toBe(0);
+  });
+
+  it("forgets it at sign-out, in the stored copy too", () => {
+    const c = clock();
+    const tab = memoryStorage();
+    const store = new StepUpStore(c.now, tab);
+    store.set("tok", ORG, c.now() + 5 * 60_000);
+    store.clear();
+    expect(tab.m.size).toBe(0);
+    expect(new StepUpStore(c.now, tab).current(ORG)).toBeNull();
+  });
+
+  it("asks for the password again when the stored copy is damaged or storage refuses", () => {
+    const c = clock();
+    const tab = memoryStorage();
+    tab.m.set("arena.events.stepup", "{not json");
+    expect(new StepUpStore(c.now, tab).current(ORG)).toBeNull();
+    const broken = {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("blocked");
+      },
+      removeItem: () => {
+        throw new Error("blocked");
+      },
+    };
+    const store = new StepUpStore(c.now, broken);
+    store.set("tok", ORG, c.now() + 5 * 60_000);
+    expect(store.current(ORG)).toBe("tok"); // the memory copy still works
+    expect(new StepUpStore(c.now, broken).current(ORG)).toBeNull();
+  });
+
+  it("does not ask twice across the page load: the second money action sends the stored token", async () => {
+    const c = clock();
+    const tab = memoryStorage();
+    const first = new StepUpStore(c.now, tab);
+    let asked = 0;
+    const ask = async (org: string) => {
+      asked++;
+      first.set("tok", org, c.now() + 5 * 60_000);
+      return true;
+    };
+    await withStepUp(ORG, async () => "refund 1", ask, first);
+    c.add(60_000);
+    const second = new StepUpStore(c.now, tab);
+    let sent = "";
+    await withStepUp(ORG, async (h) => (sent = h[STEP_UP_HEADER]), ask, second);
+    expect(asked).toBe(1);
+    expect(sent).toBe("tok");
+  });
+});

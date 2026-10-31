@@ -289,52 +289,38 @@ test.describe('2 — Real schema: 260 seats from backend', () => {
     expect(realErrors).toHaveLength(0);
   });
 
-  test('ETag sent on second schema request: If-None-Match → 304 (real Cache-Control behavior)', async ({ page }) => {
-    // ── Step 1: First load — capture the ETag returned by the real backend ──────
-    let firstEtag: string | null = null;
-
+  test('schema is never cached: no-store, no ETag, a repeat request gets the full body', async ({ page }) => {
+    // The schema carries tier prices, colours and per-seat categories that
+    // change without a new geometry, so the backend serves it
+    // `Cache-Control: no-store` with no ETag (hseating/public_schema.go) and
+    // the widget fetches it fresh every time.
+    let first: { cc: string | undefined; etag: string | undefined } | null = null;
     await page.route(`**/v1/event-sessions/${SESSION_ID}/schema`, async (route) => {
-      // Forward to the real backend and capture the ETag on the first pass.
       const resp = await route.fetch();
-      if (!firstEtag) {
-        firstEtag = resp.headers()['etag'] ?? null;
-      }
+      if (!first) first = { cc: resp.headers()['cache-control'], etag: resp.headers()['etag'] };
       await route.fulfill({ response: resp });
     });
 
     await page.goto(DEMO_PAGE);
     await waitForSVG(page);
 
-    // The real backend always sets ETag = '"<geometry_checksum>"' (strong ETag)
-    // on GET /v1/event-sessions/{id}/schema — see hseating/public_schema.go.
-    expect(firstEtag, 'Backend schema endpoint must set an ETag header').not.toBeNull();
-    // Strong ETags are double-quoted strings, e.g. '"sha256-palac-akropolis-…"'.
-    expect(
-      firstEtag,
-      `ETag "${firstEtag}" should be a double-quoted strong ETag`,
-    ).toMatch(/^"[^"]+"$/);
-
-    // ── Step 2: Second request with If-None-Match → must return 304 + empty body ─
-    //
-    // page.request is the APIRequestContext tied to the page's browser context.
-    // Unlike browser-initiated fetches it is NOT intercepted by page.route(), so
-    // this request travels directly through the proxy to the real Arena backend.
-    // The proxy (serve-demo-real.cjs) forwards all headers (incl. if-none-match)
-    // and pipes the status code verbatim, so a backend 304 arrives here as 304.
+    // page.request is NOT intercepted by page.route(): it goes through the
+    // proxy (serve-demo-real.cjs) to the real backend. A stale validator
+    // must not short-circuit to 304.
     const secondResp = await page.request.get(
       `/v1/event-sessions/${SESSION_ID}/schema`,
-      { headers: { 'If-None-Match': firstEtag! } },
+      { headers: { 'If-None-Match': '"any-old-etag"' } },
     );
     // The widget keeps polling in the background; drop the schema route
     // before the test ends so an in-flight route.fetch cannot throw
     // "Test ended" and poison the next test's report.
     await page.unrouteAll({ behavior: 'ignoreErrors' });
-    expect(
-      secondResp.status(),
-      'Second request with matching ETag should return 304 Not Modified',
-    ).toBe(304);
-    const body = await secondResp.body();
-    expect(body.length, '304 Not Modified response must have an empty body').toBe(0);
+
+    expect(first, 'the widget fetched the schema').not.toBeNull();
+    expect(first!.cc).toBe('no-store');
+    expect(first!.etag, 'the schema carries no ETag').toBeUndefined();
+    expect(secondResp.status()).toBe(200);
+    expect((await secondResp.body()).length).toBeGreaterThan(0);
   });
 });
 

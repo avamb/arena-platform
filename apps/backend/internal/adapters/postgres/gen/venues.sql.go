@@ -344,7 +344,7 @@ type VenueSessionContextRow struct {
 	// or nil when the venue has no resolvable geography.
 	DerivedCurrency *string `json:"derived_currency"`
 	// Verified is true for a venue the platform operator verified: every
-	// organization may use it (migration 0172), its owner stays its editor.
+	// organization may use it (migration 0182), its owner stays its editor.
 	Verified bool `json:"verified"`
 }
 

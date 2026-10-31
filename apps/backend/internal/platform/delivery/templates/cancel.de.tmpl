@@ -1,17 +1,17 @@
-{{define "subject"}}Veranstaltung abgesagt — {{.EventName}}{{end}}
+{{define "subject"}}{{if .Change.Invitation}}Einladung storniert{{else}}Veranstaltung abgesagt{{end}} — {{.EventName}}{{end}}
 
 {{define "html"}}<!DOCTYPE html>
 <html lang="de" dir="ltr">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Veranstaltung abgesagt</title></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{if .Change.Invitation}}Einladung storniert{{else}}Veranstaltung abgesagt{{end}}</title></head>
 <body style="margin:0;padding:0;background:#f2f4f5;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
   {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
   <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
   <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
-  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">Ihre Veranstaltung wurde abgesagt</h1>
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">{{if .Change.Invitation}}Ihre Einladung wurde storniert{{else}}Ihre Veranstaltung wurde abgesagt{{end}}</h1>
   <p style="margin:0 0 12px 0;">Hallo{{with .HolderName}} {{.}}{{end}},</p>
-  <p style="margin:0 0 12px 0;">Der Veranstalter hat den Termin von <strong>{{.EventName}}</strong>{{with .SessionStart}}, geplant für {{.}},{{end}} abgesagt. Ihr Ticket für diesen Termin berechtigt nicht mehr zum Einlass.</p>
+  <p style="margin:0 0 12px 0;">{{if .Change.Invitation}}Der Veranstalter hat Ihre Einladung zu <strong>{{.EventName}}</strong>{{with .SessionStart}}, geplant für {{.}},{{end}} storniert. Ihr Ticket berechtigt nicht mehr zum Einlass.{{else}}Der Veranstalter hat den Termin von <strong>{{.EventName}}</strong>{{with .SessionStart}}, geplant für {{.}},{{end}} abgesagt. Ihr Ticket für diesen Termin berechtigt nicht mehr zum Einlass.{{end}}</p>
   <table cellpadding="4" style="border-collapse:collapse;font-size:14px">
     <tr><td><strong>Veranstaltung</strong></td><td>{{.EventName}}</td></tr>
     {{with .SessionStart}}<tr><td><strong>Termin</strong></td><td>{{.}}</td></tr>{{end}}
@@ -50,11 +50,11 @@
 
 {{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
 
-Ihre Veranstaltung wurde abgesagt
+{{if .Change.Invitation}}Ihre Einladung wurde storniert{{else}}Ihre Veranstaltung wurde abgesagt{{end}}
 
 Hallo{{with .HolderName}} {{.}}{{end}},
 
-Der Veranstalter hat den Termin von {{.EventName}}{{with .SessionStart}}, geplant für {{.}},{{end}} abgesagt. Ihr Ticket für diesen Termin berechtigt nicht mehr zum Einlass.
+{{if .Change.Invitation}}Der Veranstalter hat Ihre Einladung zu {{.EventName}}{{with .SessionStart}}, geplant für {{.}},{{end}} storniert. Ihr Ticket berechtigt nicht mehr zum Einlass.{{else}}Der Veranstalter hat den Termin von {{.EventName}}{{with .SessionStart}}, geplant für {{.}},{{end}} abgesagt. Ihr Ticket für diesen Termin berechtigt nicht mehr zum Einlass.{{end}}
 
 Veranstaltung: {{.EventName}}
 {{with .SessionStart}}Termin: {{.}}

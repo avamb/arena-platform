@@ -12,6 +12,7 @@ import { TextField } from "@/components/FormField";
 import { WizardDayPick } from "@/components/WizardDayPick";
 import { WizardTicketsEditor } from "@/components/WizardTicketsEditor";
 import { useI18n } from "@/lib/i18n";
+import { isSeatedDraft } from "@/lib/wizard/bundle";
 import { dateFieldKey, type DateErrorView } from "@/lib/wizard/dateErrors";
 import { MAX_DATES, effectiveTickets } from "@/lib/wizard/datesDraft";
 import { venueCapacity, venueTimezone, type DraftAction, type WizardDraft } from "@/lib/wizard/draft";
@@ -30,6 +31,8 @@ export function WizardDatesSection({ draft, dispatch, errors, defaultCategoryNam
   const { t } = useI18n();
   const tz = venueTimezone(draft.venue);
   const seats = venueCapacity(draft.venue);
+  // Sold by a hall plan: the places and the categories are the plan's ("Hall plan" section).
+  const seated = isSeatedDraft(draft);
 
   return (
     <fieldset className="org-form" data-testid="wizard-dates">
@@ -85,7 +88,11 @@ export function WizardDatesSection({ draft, dispatch, errors, defaultCategoryNam
               {...text("salesEnd")}
             />
             <TextField label={t("wizard.date.doors")} hint={t("wizard.date.doorsHint")} value={date.doors} onChange={(v) => set("doors", v)} testId={`wizard-date-${index}-doors`} {...text("doors")} />
-            {parallel ? (
+            {seated ? (
+              <p className="field-hint" data-testid={`wizard-date-${index}-seated`}>
+                {t("wizard.seating.dateNote", { plan: draft.seating.planName, seats: draft.seating.seats })}
+              </p>
+            ) : parallel ? (
               <p className="field-hint">{t("wizard.date.capacityParallel")}</p>
             ) : (
               <TextField
@@ -98,7 +105,7 @@ export function WizardDatesSection({ draft, dispatch, errors, defaultCategoryNam
               />
             )}
 
-            <WizardTicketsEditor draft={draft} index={index} dispatch={dispatch} errors={errors} timezone={tz} />
+            {!seated && <WizardTicketsEditor draft={draft} index={index} dispatch={dispatch} errors={errors} timezone={tz} />}
 
             {errors.generalOf(key).length > 0 && (
               <div className="notice notice-bad" role="alert" data-testid={`wizard-date-${index}-general`}>

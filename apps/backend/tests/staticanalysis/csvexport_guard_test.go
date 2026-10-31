@@ -27,6 +27,9 @@ var csvImportAllowlist = map[string]string{
 	// Parses an UPLOADED barcode batch (a reader, not a writer): no
 	// spreadsheet presentation rule applies to bytes arena receives.
 	filepath.Join("hbarcode", "barcode_batches.go"): "reads an uploaded CSV",
+	// Parses an UPLOADED list of invitation guests (INV-06, a reader). The
+	// result file it answers is written through csvexport.
+	filepath.Join("hinvitations", "batch_csv.go"): "reads an uploaded CSV",
 	// The organization's promo usage report predates csvexport
 	// (2026-09-22) and its comma-separated, snake_case-header shape is the
 	// documented contract of `GET .../promo-code-redemptions?format=csv`

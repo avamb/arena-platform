@@ -301,27 +301,40 @@ func ResolveContact(ctx context.Context, db DB, eventID, orgID uuid.UUID) (Conta
 type AffectedOrder struct {
 	OrderID   uuid.UUID
 	ChannelID uuid.UUID
-	Email     string
-	Tickets   int
-	HasSite   bool
+	// Email is the address the letter goes to: the buyer's, else a ticket
+	// holder's, else (a staff invitation without a guest address) the issuer's.
+	Email   string
+	Tickets int
+	HasSite bool
+	// ToIssuer is true when Email is the issuing staff member's address because
+	// the guest of the invitation left none.
+	ToIssuer bool
 }
 
 const affectedOrdersSQL = `
-SELECT o.id, o.channel_id,
-       COALESCE(NULLIF(btrim(o.buyer_email), ''),
-                (SELECT btrim(t2.holder_email) FROM tickets t2
-                  WHERE t2.order_id = o.id AND t2.holder_email IS NOT NULL
-                    AND btrim(t2.holder_email) <> '' LIMIT 1),
-                '') AS email,
-       COUNT(t.id)::int AS tickets,
-       EXISTS (SELECT 1 FROM webhook_subscribers ws
-                WHERE ws.channel_id = o.channel_id AND ws.kind = 'bil24_wp' AND ws.active) AS has_site
-FROM   orders o
-JOIN   tickets t ON t.order_id = o.id AND t.session_id = o.session_id AND t.status = 'active'
-WHERE  o.session_id = $1
-  AND  o.status IN ('paid', 'partially_refunded')
-GROUP  BY o.id, o.channel_id, o.buyer_email, o.created_at
-ORDER  BY o.created_at, o.id`
+SELECT x.id, x.channel_id,
+       CASE WHEN x.guest <> '' THEN x.guest ELSE x.issuer END AS email,
+       x.tickets,
+       x.has_site,
+       (x.guest = '' AND x.issuer <> '') AS to_issuer
+FROM (
+  SELECT o.id, o.channel_id, o.created_at,
+         COALESCE(NULLIF(btrim(o.buyer_email), ''),
+                  (SELECT btrim(t2.holder_email) FROM tickets t2
+                    WHERE t2.order_id = o.id AND t2.holder_email IS NOT NULL
+                      AND btrim(t2.holder_email) <> '' LIMIT 1),
+                  '') AS guest,
+         COALESCE(` + issuerEmailSQL + `, '') AS issuer,
+         COUNT(t.id)::int AS tickets,
+         EXISTS (SELECT 1 FROM webhook_subscribers ws
+                  WHERE ws.channel_id = o.channel_id AND ws.kind = 'bil24_wp' AND ws.active) AS has_site
+  FROM   orders o
+  JOIN   tickets t ON t.order_id = o.id AND t.session_id = o.session_id AND t.status = 'active'
+  WHERE  o.session_id = $1
+    AND  o.status IN ('paid', 'partially_refunded')
+  GROUP  BY o.id, o.channel_id, o.buyer_email, o.created_at, o.issued_by, o.source
+) x
+ORDER  BY x.created_at, x.id`
 
 // AffectedOrders lists the orders whose buyers a change of the session must
 // reach: paid or partially refunded, with at least one ticket still active.
@@ -335,7 +348,7 @@ func AffectedOrders(ctx context.Context, db DB, sessionID uuid.UUID) ([]Affected
 	var out []AffectedOrder
 	for rows.Next() {
 		var a AffectedOrder
-		if err := rows.Scan(&a.OrderID, &a.ChannelID, &a.Email, &a.Tickets, &a.HasSite); err != nil {
+		if err := rows.Scan(&a.OrderID, &a.ChannelID, &a.Email, &a.Tickets, &a.HasSite, &a.ToIssuer); err != nil {
 			return nil, fmt.Errorf("sessionchange: scan affected order: %w", err)
 		}
 		out = append(out, a)
@@ -353,8 +366,12 @@ type Impact struct {
 	SiteOrders  int      `json:"site_orders"`
 	// NoAddress counts the Arena-route orders with no recipient address;
 	// their buyers cannot be written to.
-	NoAddress int     `json:"no_address"`
-	Contact   Contact `json:"contact"`
+	NoAddress int `json:"no_address"`
+	// InvitationsToIssuer counts the staff invitations among the Arena-route
+	// orders that have no guest e-mail: their letter goes to the staff member
+	// who issued them, not to the guest.
+	InvitationsToIssuer int     `json:"invitations_to_issuer"`
+	Contact             Contact `json:"contact"`
 	// Blocked is "" when the change may be saved, else why not.
 	Blocked string `json:"blocked"`
 }
@@ -386,7 +403,10 @@ func Preview(ctx context.Context, db DB, sess Session, proposed State) (Impact, 
 			continue
 		}
 		imp.ArenaOrders++
-		if o.Email == "" {
+		switch {
+		case o.ToIssuer:
+			imp.InvitationsToIssuer++
+		case o.Email == "":
 			imp.NoAddress++
 		}
 	}

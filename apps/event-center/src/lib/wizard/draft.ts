@@ -19,6 +19,7 @@
  */
 import { artOfLegacy } from "@/lib/richText";
 import { applyDateAction, emptyDate, isBlankDate, isDateAction, parseDates, type DateAction, type DateEntry } from "@/lib/wizard/datesDraft";
+import { applySeatingAction, emptySeating, isSeatingAction, parseSeating, type SeatingAction, type SeatingSection } from "@/lib/wizard/seating";
 
 /** The age ratings the database accepts (`events_age_rating_check`, migration 0051). */
 export const AGE_OPTIONS = ["0+", "6+", "12+", "16+", "18+", "NR"] as const;
@@ -118,6 +119,12 @@ export interface WizardDraft {
   venue: VenueSection;
   /** The dates, in the order the person added them; always at least one. */
   dates: DateEntry[];
+  /**
+   * The hall plan the dates are sold by (seating.ts); free seating without
+   * one. Belongs to the chosen existing venue: another venue clears it. A
+   * stored draft without it reads as free seating, so no version bump.
+   */
+  seating: SeatingSection;
   /** ISO 4217, upper case; "" = not known yet. */
   currency: string;
   /** Where the currency came from: the country (auto), or typed by the person. */
@@ -158,6 +165,7 @@ export function newDraft(id: string, now: Date = new Date(), defaultName = ""): 
     event: emptyEvent(),
     venue: emptyVenue(),
     dates: [emptyDate("d1", defaultName)],
+    seating: emptySeating(),
     currency: "",
     currencySource: "auto",
     poster: emptyPoster(),
@@ -190,6 +198,7 @@ export type DraftAction =
   | { type: "posterCleared" }
   | { type: "posterSkipped" }
   | DateAction
+  | SeatingAction
   | { type: "reset"; id: string; defaultName: string };
 
 /** Folds an answer into the draft. The clock is passed in, so the reducer stays pure. */
@@ -207,16 +216,20 @@ function apply(d: WizardDraft, a: DraftAction): WizardDraft {
     case "promoter":
       return { ...d, event: { ...d.event, promoterId: a.id, promoterName: a.name } };
     case "venueMode":
-      return d.venue.mode === a.mode ? d : { ...d, venue: { ...d.venue, mode: a.mode } };
+      // A plan belongs to an existing venue: a new venue is sold without one.
+      return d.venue.mode === a.mode ? d : { ...d, venue: { ...d.venue, mode: a.mode }, seating: emptySeating() };
     case "venueExisting": {
       if (a.venue === null) {
         return {
           ...d,
           venue: { ...d.venue, existingId: "", existingName: "", existingTimezone: "", existingCapacity: null },
+          seating: emptySeating(),
         };
       }
       return {
         ...d,
+        // The plan of the venue chosen before does not belong to this one.
+        seating: a.venue.id === d.venue.existingId ? d.seating : emptySeating(),
         venue: {
           ...d.venue,
           mode: "existing",
@@ -261,6 +274,10 @@ function apply(d: WizardDraft, a: DraftAction): WizardDraft {
     case "reset":
       return newDraft(a.id, new Date(), a.defaultName);
     default:
+      if (isSeatingAction(a)) {
+        const seating = applySeatingAction(d.seating, a);
+        return seating === d.seating ? d : { ...d, seating };
+      }
       return isDateAction(a) ? applyDateAction(d, a) : d;
   }
 }
@@ -490,6 +507,7 @@ export function parseDraft(raw: unknown): WizardDraft | null {
       capacity,
     },
     dates,
+    seating: parseSeating(o.seating),
     currency,
     currencySource: source,
     poster,

@@ -48,11 +48,12 @@ func (s *Server) checkoutHandler() *hcheckout.Handler {
 		s.issueTicketsForCheckout,
 		s.publishTicketRefundedEvents,
 		s.publishTicketRefundedV1Events,
-	).WithMetrics(s.typedMetrics).WithPromoAttempts(s.promoAttemptRecorder()).WithRowOrgAccess(s.rowOrgAccess).WithRefundEngine(s.refundEngine()).
+	).WithMetrics(s.typedMetrics).WithPromoAttempts(s.promoAttemptRecorder()).WithRowOrgAccess(s.rowOrgAccess).WithRefundEngine(s.refundEngine()).WithShopPayments(s.shopPayments()).
 		WithModuleOptions(payments.Options{
-			StripeAPIBaseURL: s.stripeBaseURL(),
-			FlittAPIBaseURL:  s.flittBaseURL(),
-			AllPayAPIBaseURL: s.allpayBaseURL(),
+			StripeAPIBaseURL:  s.stripeBaseURL(),
+			FlittAPIBaseURL:   s.flittBaseURL(),
+			AllPayAPIBaseURL:  s.allpayBaseURL(),
+			PayPlusAPIBaseURL: s.payplusBaseURL(),
 		})
 }
 

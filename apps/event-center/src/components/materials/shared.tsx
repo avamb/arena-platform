@@ -83,17 +83,22 @@ export function MoveButtons({
   disabled,
   onMove,
   testId,
+  upLabel,
+  downLabel,
 }: {
   index: number;
   count: number;
   disabled: boolean;
   onMove: (delta: -1 | 1) => void;
   testId: string;
+  /** The accessible names that say WHICH item moves (a list of identical "Move up" buttons tells nothing). */
+  upLabel?: string;
+  downLabel?: string;
 }) {
   const { t } = useI18n();
   return (
     <span className="actions">
-      <button type="button" className="btn" disabled={disabled || index === 0} onClick={() => onMove(-1)} data-testid={`${testId}-up`}>
+      <button type="button" className="btn" disabled={disabled || index === 0} onClick={() => onMove(-1)} aria-label={upLabel} data-testid={`${testId}-up`}>
         {t("mat.moveUp")}
       </button>
       <button
@@ -101,6 +106,7 @@ export function MoveButtons({
         className="btn"
         disabled={disabled || index === count - 1}
         onClick={() => onMove(1)}
+        aria-label={downLabel}
         data-testid={`${testId}-down`}
       >
         {t("mat.moveDown")}
@@ -110,12 +116,12 @@ export function MoveButtons({
 }
 
 /** The picture of a stored media id (needs `media.read`; the signed address is used once). */
-export function PhotoThumb({ mediaId, canView, alt }: { mediaId: string; canView: boolean; alt: string }) {
+export function PhotoThumb({ mediaId, canView, alt, width }: { mediaId: string; canView: boolean; alt: string; width?: number }) {
   const { t } = useI18n();
-  const image = usePosterImage(mediaId, canView);
+  const image = usePosterImage(mediaId, canView, width);
   if (!canView) return <p className="field-hint">{t("mat.photo.thumbNoRight")}</p>;
   if (image.state.phase === "ok") {
-    return <img className="mat-thumb" src={image.state.url} alt={alt} loading="lazy" />;
+    return <img className="mat-thumb" src={image.state.url} alt={alt} loading="lazy" decoding="async" />;
   }
   if (image.state.phase === "loading") return <span className="mat-thumb mat-thumb-empty" aria-hidden="true" />;
   return (

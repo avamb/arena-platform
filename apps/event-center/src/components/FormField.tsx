@@ -18,13 +18,15 @@ export interface TextFieldProps extends BaseProps {
   value: string;
   onChange: (value: string) => void;
   type?: "text" | "email" | "tel";
+  /** The keyboard a phone shows: "numeric" for a whole number typed as text (so a typo is judged, not cut). */
+  inputMode?: "numeric" | "decimal";
   autoComplete?: string;
   maxLength?: number;
   /** The person left the field (6-1a: a field shows its error only once it was reached). */
   onBlur?: () => void;
 }
 
-export function TextField({ label, hint, error, testId, value, onChange, type = "text", autoComplete, maxLength, onBlur }: TextFieldProps) {
+export function TextField({ label, hint, error, testId, value, onChange, type = "text", inputMode, autoComplete, maxLength, onBlur }: TextFieldProps) {
   const id = useId();
   const described = [hint !== undefined ? `${id}-hint` : null, error !== undefined ? `${id}-err` : null].filter(Boolean).join(" ");
   return (
@@ -33,6 +35,7 @@ export function TextField({ label, hint, error, testId, value, onChange, type = 
       <input
         id={id}
         type={type}
+        inputMode={inputMode}
         value={value}
         autoComplete={autoComplete ?? "off"}
         maxLength={maxLength}

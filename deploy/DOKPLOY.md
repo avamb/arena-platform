@@ -24,6 +24,7 @@
 13. [Release Branch & Image Tag Strategy](#13-release-branch--image-tag-strategy)
 14. [Initial Production Server Requirements](#14-initial-production-server-requirements)
 15. [Admin Web Service (PR-07)](#15-admin-web-service-pr-07)
+16. [Shop (organizer storefront)](#16-shop-organizer-storefront)
 
 ---
 
@@ -77,6 +78,7 @@ diagram below summarises the topology Dokploy should reproduce:
 | Metrics scrape | `GET /metrics` (Prometheus exposition on `:8080`) |
 | Start policy | `Always` |
 | Replicas | ≥ 1 (horizontally scalable behind Dokploy's Traefik router) |
+| Memory limit | **not below 768 MB** (`mem_limit 768m`). One picture render peaks at ~230 MB on top of the ordinary working set; at 512 MB the kernel OOM-killed `arena-api` twice in 6 minutes (2026-10-30, the shop storefront asked for several new picture widths at once). `MEDIA_VARIANT_WORKERS` (§2.6) keeps it to one render at a time |
 
 Dokploy must expose `8080` as the public HTTP port and route the application
 domain to it. Healthcheck is wired by the image's `HEALTHCHECK` directive (see
@@ -339,14 +341,17 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `EVENT_CENTER_PUBLIC_URL` (`https://` when set) | ● | ● | ● | — |
 | `BOT_SCHEME_BUTTON` (`off` default, `url` or `web_app`: the «Схема» button on the card of a seated date; needs `EVENT_CENTER_PUBLIC_URL` on the bot; turn it on only after the `/tg` screen of the event center is live; `web_app` opens `<EVENT_CENTER_PUBLIC_URL>/tg?next=<seats path>` and also needs `POST /v1/auth/telegram-miniapp` with `TELEGRAM_MINIAPP_SECRET_KEY` on the API) | — | — | ● | — |
 | `PUBLIC_TICKETS_BASE_URL` | ● | ● | ● | — |
+| `SHOP_PUBLIC_BASE_URL` (`https://` when set, the platform storefront origin; the shop order e-mail links `<this>/<org slug>/checkout/<token>` for an organization without its own `shop_domain`; empty = no status link) | — | ● | — | — |
 | `SHORT_LINK_BASE_URL` (`https://`, host only, default `https://go.arenasoldout.com`, the host printed under a QR code; setup: `docs/ops/sales_links_ru.md`) | ● | — | — | — |
 | `SHORT_LINK_FALLBACK_URL` (`https://` when set; where `GET /go/{code}` sends an unknown code; empty = `PUBLIC_TICKETS_BASE_URL`, else `APP_PUBLIC_URL`) | ● | — | — | — |
 | `ONBOARDING_ENABLED`, `ONBOARDING_TERMS_URL`, `ONBOARDING_PRIVACY_URL` | ● | — | — | — |
 | `PLATFORM_TERMS_URL` (buyer checkout consent; empty = `<ONBOARDING_SITE_URL>/legal/terms`) | ● | — | — | — |
 | `ONBOARDING_SITE_URL` | ● | ● | — | — |
 | `ONBOARDING_TURNSTILE_SECRET`, `CONTACT_FORM_TURNSTILE_SECRET`, `CONTACT_FORM_TURNSTILE_SITE_KEY` | ● | ● | — | — |
+| `SHOP_TURNSTILE_SECRET`, `SHOP_TURNSTILE_SITE_KEY` (Cloudflare Turnstile of the merchandise shop checkout: with the secret set a checkout needs `captcha_token` and the catalog publishes the site key as `captcha_site_key`; the widget must list every storefront host; empty secret = no captcha) | ● | — | — | — |
 | `MEDIA_BACKEND`, `MEDIA_LOCAL_ROOT`, `MEDIA_S3_ENDPOINT`, `MEDIA_S3_REGION`, `MEDIA_S3_BUCKET`, `MEDIA_S3_ACCESS_KEY_ID`, `MEDIA_S3_SECRET_ACCESS_KEY`, `MEDIA_S3_USE_PATH_STYLE` | ● | ● | — | — |
 | `MEDIA_SIGNING_SECRET` (same value on api and worker) | ✅ with a media backend | ✅ with a media backend | — | — |
+| `MEDIA_VARIANT_WORKERS` (1..8, default 1: how many resized copies of a picture, `GET /v1/media-files/{id}?w=`, one process renders at once. A render of a 20 MP photo peaks at ~230 MB, so keep 1 unless the container has memory to spare; the `media.render_variants` job in the worker uses the same limit) | ● | ● | — | — |
 | `BOT_SERVICE_TOKEN` | ● | — | ● | — |
 | `TELEGRAM_MINIAPP_SECRET_KEY` | ● | — | — | — |
 | `EVENTS_TELEGRAM_BOT_USERNAME` | ● | ● | — | — |
@@ -364,6 +369,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `BILLING_ORGANIZER_ENABLED` (`true` opens credit packs and platform invoices to organizers; default off = those routes answer 404 `billing.organizer_disabled`, the operator console is unaffected) | ● | — | — | — |
 | `EVENTS_TELEGRAM_BOT_TOKEN` | — | — | ✅ | — |
 | `BOT_ARENA_API_URL`, `BOT_METRICS_ADDR`, `BOT_SELF_ONBOARDING_ENABLED`, `BOT_ONBOARDING_SITE_BUTTON` | — | — | ● | — |
+| `BOT_MINIAPP_INVITES_ENABLED` (`true` makes «Приглашения» of a seated date a web_app button into the Mini App page `/tg/invitations` of the event center, spec 46 INV-05; default off, then the bot sends a text with a link to the web screen. Needs `EVENT_CENTER_PUBLIC_URL` with https on the API and the bot, and the `/tg/invitations` page deployed) | — | — | ● | — |
 | `BOT_MINIAPP_EDITOR_ENABLED` (`true` shows the «Править в редакторе» web_app button in the bot, spec 44 RT-12a; default off. Needs `EVENT_CENTER_PUBLIC_URL` with https on the API and the `/tg/` nginx location of the event center. Until RT-12b the page is a placeholder, so leave it off in production. To roll back, turn it off and redeploy the bot FIRST, then roll back the API image, the migration last: docs/ops/event_center_rollout_ru.md section 4) | — | — | ● | — |
 | `POSTER_LLM_API_KEY` (secret), `POSTER_LLM_MODEL` | ● | — | — | — |
 | `POSTER_LLM_BASE_URL` (production: unset or `https://api.anthropic.com`) | ● | — | — | — |
@@ -374,13 +380,13 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `TEXT_FORMAT_LLM_MODEL` (default `claude-haiku-5-5`; the key and the base URL are the poster ones: `POSTER_LLM_API_KEY`, `POSTER_LLM_BASE_URL`) | ● | — | — | — |
 | `TEXT_FORMATS_PER_USER_PER_DAY` (default 100, `0` = no cap), `TEXT_FORMATS_PER_ORG_PER_DAY` (default 500, `0` = no cap) | ● | — | — | — |
 | `ENABLE_DEV_AUTH`, `DB_LOG_QUERIES`, `DEBUG_ROUTES_ENABLED`, `FAULT_INJECT_OUTBOX_AFTER_AUDIT` (leave unset; `true` is refused in production) | — | — | — | — |
-| `STRIPE_API_BASE_URL`, `FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL` (test seams; refused in production) | — | — | — | — |
+| `STRIPE_API_BASE_URL`, `FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL`, `PAYPLUS_API_BASE_URL` (test seams; refused in production) | — | — | — | — |
 | `REDIS_URL`, `IDEMPOTENCY_TTL`, `IDEMPOTENCY_KEY_MAX_LENGTH`, `WORKER_CONCURRENCY`, `WORKER_JOB_TIMEOUT`, `WORKER_RETRY_BACKOFF_BASE`, `WORKER_RETRY_BACKOFF_MAX`, `OUTBOX_BATCH_SIZE` (parsed, but no binary uses them today) | — | — | — | — |
 
 Never set in production, on any service: `ENABLE_DEV_AUTH=true`,
 `DB_LOG_QUERIES=true`, `DEBUG_ROUTES_ENABLED=true`,
 `FAULT_INJECT_OUTBOX_AFTER_AUDIT=true`, `STRIPE_API_BASE_URL`,
-`FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL`, and `BREVO_API_BASE_URL` /
+`FLITT_API_BASE_URL`, `ALLPAY_API_BASE_URL`, `PAYPLUS_API_BASE_URL`, and `BREVO_API_BASE_URL` /
 `POSTER_LLM_BASE_URL` / `POSTER_GEMINI_BASE_URL` with anything but their default (every role refuses
 to start: a changed host would receive the API key).
 
@@ -1198,3 +1204,45 @@ npm --prefix apps/admin-web run build 2>&1 | grep gzip
 
 If any chunk exceeds its budget, investigate with `vite-bundle-analyzer` and
 split the offending dependency or introduce lazy route loading.
+
+---
+
+## 16. Shop (organizer storefront)
+
+The merchandise shop (spec `08_architecture/47_merch_shop_module_ru.md`) is a
+static app served by nginx, built from `apps/shop-page/Dockerfile` with the
+**repository root** as build context. It lives either on the platform host
+(`shop.arenasoldout.com/{org_slug}`, stand `shop-staging.arenasoldout.com`) or on
+the organizer's own domain (`shop.einatwinery.com`). The step-by-step release of one
+organizer (DNS, opening the shop, payment channel, Telegram, 301) is in
+`docs/ops/shop_release_checklist_ru.md`.
+
+| Property | Value |
+|---|---|
+| Source Dockerfile | `apps/shop-page/Dockerfile` |
+| Build arg | `VITE_API_BASE_URL` (origin of `arena-api`, no trailing slash; baked into the bundle and the CSP) |
+| Runtime | `nginx:1.27-alpine`, non-root, port `8080` |
+| Health endpoint | `GET /health` returns `200 ok` |
+| Static files | `public/robots.txt`, `public/sitemap.xml` (host `shop.einatwinery.com`: change both for another organizer) |
+| Unknown paths | 404 with the `index.html` body on an organizer's own domain; 301 for old Shopify addresses |
+
+### 16.1 Variables
+
+| Variable | Service | Purpose |
+|---|---|---|
+| `VITE_API_BASE_URL` | `shop-page` (build arg) | API origin, for example `https://api.arenasoldout.com` |
+| `CORS_ALLOWED_ORIGINS` | `arena-api` | Must list `https://<shop domain>`. Without it the browser cannot read the catalog and the checkout answers 400 `checkout.invalid_return_url` (the return URL policy accepts only these origins and `PUBLIC_TICKETS_BASE_URL`). Redeploy `arena-api` after changing it |
+| `SHOP_PUBLIC_BASE_URL` | `arena-worker` | Platform storefront origin for the link in the "order received" e-mail of an organization without its own `shop_domain` |
+| `SHOP_TURNSTILE_SITE_KEY`, `SHOP_TURNSTILE_SECRET` | see the checklist, section 4 | Cloudflare Turnstile on the shop checkout. On the stand use Cloudflare's test pair (`1x00000000000000000000AA` / `1x0000000000000000000000000000000AA`), on production a pair created for the shop domain |
+| `SALES_TELEGRAM_BOT_TOKEN` | `arena-worker` | Telegram announcements to the logistician's chat (`sales_notification_subscriptions`, kinds `{shop}`) |
+
+### 16.2 Domain and TLS
+
+1. Dokploy: domain `<shop domain>`, HTTPS Let's Encrypt, container port `8080`.
+2. DNS: CNAME of the organizer's zone to the Dokploy host. With Cloudflare keep SSL/TLS on
+   Full (strict). A host answers 526 until Traefik has a certificate, and Traefik orders it only
+   after the DNS points at the server: if the domain was added first, `docker restart` the
+   `shop-page` container.
+3. The platform opens the shop and records the domain itself:
+   `PUT /v1/organizations/{org_id}/shop/settings` by a platform superadmin (`X-Admin-Reason`,
+   whole body; fields `shop_domain`, `enabled`, `sales_channel_id`). There is no screen for it.

@@ -159,3 +159,107 @@ other = "Arena Sold Out שלחה הודעה זו כי טופס יצירת הקש
 # The sales-link PDF insert (spec 43, QL-13): the one line printed under the QR code.
 ["salelinks.insert.scan_and_buy"]
 other = "סרקו וקנו כרטיסים"
+
+["shop.payment.description"]
+other = "{{.Org}}, הזמנה מס׳ {{.Number}}"
+
+# --- salesnotify.shop.*: Telegram announcements of the merchandise shop ---
+["salesnotify.shop.new_order"]
+other = "🛍 <b>הזמנה חדשה בחנות</b> — {{.Org}}"
+
+["salesnotify.shop.order_number"]
+other = "🧾 הזמנה מס' {{.Number}}"
+
+["salesnotify.shop.total"]
+other = "💰 סה״כ: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.delivery_none"]
+other = "📦 ללא משלוח (מוצר דיגיטלי או שירות)"
+
+["salesnotify.shop.delivery_pickup"]
+other = "🏬 מסירה: איסוף עצמי"
+
+["salesnotify.shop.delivery_shipping"]
+other = "🚚 מסירה: משלוח בשליח"
+
+["salesnotify.shop.courier_form"]
+other = "📦 <b>פרטים לשליח</b>"
+
+["salesnotify.shop.map_google"]
+other = "🗺 Google Maps: {{.Url}}"
+
+["salesnotify.shop.map_waze"]
+other = "🚗 Waze: {{.Url}}"
+
+["salesnotify.shop.items"]
+other = "🛒 <b>פריטים</b>"
+
+["salesnotify.shop.items_more"]
+other = "… ועוד {{.Count}} שורות"
+
+["salesnotify.shop.item_line"]
+other = "{{.Qty}} × {{.Name}} — {{.Price}} ליחידה"
+
+["salesnotify.shop.shipping"]
+other = "🚚 משלוח: {{.Amount}}"
+
+["salesnotify.shop.discount"]
+other = "🏷 הנחה: -{{.Amount}}"
+
+["salesnotify.shop.note"]
+other = "📝 הערת הקונה: {{.Note}}"
+
+["salesnotify.shop.refund_title"]
+other = "↩️ <b>החזר כספי בחנות</b> — {{.Org}}"
+
+["salesnotify.shop.refunded"]
+other = "💸 הוחזר: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.refunded_so_far"]
+other = "💸 הוחזר עד כה: {{.Amount}} מתוך {{.Total}}"
+
+["salesnotify.shop.review_title"]
+other = "⚠️ <b>הזמנה בחנות דורשת את תשומת לבך</b> — {{.Org}}"
+
+["salesnotify.shop.review_paid"]
+other = "💰 שולם: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_body"]
+other = "התשלום על הזמנה {{.Number}} הגיע אחרי שהשמירה על המוצרים הסתיימה והמוצרים כבר לא היו פנויים. בדקו את ההזמנה במרכז האירועים."
+
+["salesnotify.shop.review_unconfirmed_amount"]
+other = "⏳ התשלום עדיין לא אושר: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_unconfirmed_body"]
+other = "התשלום על הזמנה {{.Number}} לא אושר על ידי ספק התשלומים, ייתכן שהכסף לא הגיע. אל תשלחו ואל תמסרו את הסחורה עד שהתשלום יאושר: כשזה יקרה, ההזמנה תוכרז כשולמה. הפרטים במרכז האירועים."
+
+["shop.public.review_payment_unconfirmed"]
+other = "אנחנו בודקים את התשלום שלכם ונכתוב לכם."
+
+["shop.public.review_late_payment_no_stock"]
+other = "התשלום שלכם התקבל. אנחנו בודקים את זמינות הסחורה ונכתוב לכם."
+
+# --- salesnotify.shop.courier_*: the plain courier text of an order card ---
+["salesnotify.shop.courier_order"]
+other = "הזמנה מס' {{.Number}}"
+
+["salesnotify.shop.courier_pickup"]
+other = "איסוף עצמי"
+
+["salesnotify.shop.courier_none"]
+other = "ללא משלוח (מוצר דיגיטלי או שירות)"
+
+["salesnotify.shop.courier_item"]
+other = "{{.Name}} × {{.Qty}}"
+
+["salesnotify.shop.courier_total"]
+other = "סה״כ: {{.Amount}}"
+
+["salesnotify.shop.courier_note"]
+other = "הערת הקונה: {{.Note}}"
+
+["salesnotify.shop.courier_map_google"]
+other = "Google Maps: {{.Url}}"
+
+["salesnotify.shop.courier_map_waze"]
+other = "Waze: {{.Url}}"

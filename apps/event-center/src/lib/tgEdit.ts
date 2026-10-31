@@ -128,6 +128,8 @@ interface TelegramWebApp {
   BackButton?: TelegramBackButton;
   enableClosingConfirmation?: () => void;
   disableClosingConfirmation?: () => void;
+  /** Opens an address in the phone's own browser (Bot API 6.1). */
+  openLink?: (url: string) => void;
 }
 
 /** A window, or a stand-in with a Telegram global (a window has no declared Telegram property). */
@@ -227,6 +229,17 @@ export function closeMiniApp(win: TelegramWindow = window): boolean {
   const app = webApp(win);
   if (app?.close === undefined || app.platform === "unknown") return false;
   app.close();
+  return true;
+}
+
+/**
+ * Opens an address in the phone's browser, outside the mini app window. False when there is no Telegram client to do
+ * it (an ordinary browser follows the link itself).
+ */
+export function openExternalLink(url: string, win: TelegramWindow = window): boolean {
+  const app = webApp(win);
+  if (app?.openLink === undefined || app.platform === "unknown") return false;
+  app.openLink(url);
   return true;
 }
 

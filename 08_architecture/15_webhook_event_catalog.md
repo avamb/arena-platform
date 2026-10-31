@@ -22,6 +22,10 @@ Naming convention: `v1.<aggregate>.<verb-past-tense>`.
 | `v1.ticket.scanned`    | `ticket`       | ticket UUID                  | A door scan is recorded: arena's own scanner callback (`POST /v1/scanner/scan-events`) or MACS (`POST /v1/macs/scan-events`, task M1). One per new `scan_events` row with a known ticket, admitted or denied; a replayed scan emits nothing. |
 | `v1.refund.blocked_scanned` | `ticket`  | ticket UUID                  | A refund of a ticket already scanned at the gate was refused (once per ticket and actor per day). |
 | `v1.refund.scan_exception_granted` | `ticket` | ticket UUID          | A platform superadmin allowed one refund of a scanned ticket.                                       |
+| `v1.shop.order.paid`   | `shop_order`   | shop order UUID              | A merchandise-shop order is marked paid (payment webhook or a free order); stock is taken off the shelf in the same transaction. |
+| `v1.shop.order.shipped` | `shop_order`  | shop order UUID              | An organizer marks a paid order shipped (`POST .../shop/orders/{id}/ship`); a repeat press changes the note and emits nothing. |
+| `v1.shop.order.refunded` | `shop_order` | shop order UUID              | The refunded amount of an order grew (a refund reached `succeeded`); one event per increase, so a partial refund followed by the rest emits two. |
+| `v1.shop.order.manual_review` | `shop_order` | shop order UUID       | A payment arrived after the hold expired and the goods are gone: the order is parked for the organizer, nothing is oversold. |
 
 ## Bil24-shaped scanner events (legacy compatibility)
 
@@ -110,6 +114,41 @@ latter two are stored as `result: "denied"`), `system_ticket_id` and
 without `source` comes from arena's own scanner. `scanned_at` is the moment
 of the scan, which may lie days before the event was written (an offline
 scanner's backlog): order by it, not by arrival.
+
+### `v1.shop.order.*`
+
+The merchandise shop (spec `08_architecture/47_merch_shop_module_ru.md`) writes
+its events through `shop.Service.appendEvent` inside the transaction of the
+order change, with `aggregate_type = "shop_order"`. All four share the same base
+payload; money is in minor units of `currency`, and no buyer data is carried.
+
+```json
+{
+  "order_id":       "<uuid>",
+  "org_id":         "<uuid>",
+  "number":         1042,
+  "status":         "paid",
+  "currency":       "ILS",
+  "total":          15900,
+  "refunded_minor": 0
+}
+```
+
+`status` is the order status after the change (`paid`, `shipped`,
+`partially_refunded`, `refunded`, `manual_review`). Extra fields per type:
+
+| Event type | Extra fields |
+| --- | --- |
+| `v1.shop.order.paid` | `subtotal`, `shipping_fee` (minor units) |
+| `v1.shop.order.shipped` | `tracking_note` (the note typed at dispatch, may be empty) |
+| `v1.shop.order.refunded` | `refunded_now` (the increase caused by this refund, minor units); `refunded_minor` is the running total |
+| `v1.shop.order.manual_review` | `reason` (`stock_short`), `short_items`: `[{variant_id, ordered, available}]` |
+
+Consumers today: the Telegram leg `salesnotify` (`paid`, `refunded`,
+`manual_review` go to subscriptions whose `kinds` contain `shop`; `shipped` is
+not announced). The buyer e-mails are queued as `shop.order_email` worker jobs
+in the same transaction, not through the outbox. The Bil24-site and MACS dispatchers have no mapping for these types, so a shop
+order never reaches a WordPress site.
 
 New event types are added to this catalog in the same PR that starts
 emitting them.

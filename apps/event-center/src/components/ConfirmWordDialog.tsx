@@ -17,11 +17,15 @@ export interface ConfirmWordDialogProps {
   kind: ConfirmKind;
   /** What the action is about: the order number, the session date, the event name. */
   subject?: ReactNode;
+  /** Replaces the action's own title: a screen whose consequences differ (the shop's refund) says so itself. */
+  title?: string;
+  /** Replaces the action's own explanation. */
+  explain?: string;
   onConfirm: () => void | Promise<void>;
   onCancel: () => void;
 }
 
-export function ConfirmWordDialog({ kind, subject, onConfirm, onCancel }: ConfirmWordDialogProps) {
+export function ConfirmWordDialog({ kind, subject, title, explain, onConfirm, onCancel }: ConfirmWordDialogProps) {
   const { t, locale } = useI18n();
   const ids = useId();
   const [typed, setTyped] = useState("");
@@ -72,13 +76,13 @@ export function ConfirmWordDialog({ kind, subject, onConfirm, onCancel }: Confir
         data-testid="confirm-word"
         onKeyDown={onKeyDown}
       >
-        <h2 id={`${ids}-title`}>{t(`confirmWord.${kind}.title` as MessageKey)}</h2>
+        <h2 id={`${ids}-title`}>{title ?? t(`confirmWord.${kind}.title` as MessageKey)}</h2>
         {subject !== undefined && (
           <p>
             <strong data-testid="confirm-word-subject">{subject}</strong>
           </p>
         )}
-        <p id={`${ids}-explain`}>{t(`confirmWord.${kind}.explain` as MessageKey)}</p>
+        <p id={`${ids}-explain`}>{explain ?? t(`confirmWord.${kind}.explain` as MessageKey)}</p>
         <form onSubmit={onSubmit} noValidate>
           <p>{t("confirmWord.prompt", { word, button })}</p>
           <label htmlFor={`${ids}-input`}>{t("confirmWord.type")}</label>

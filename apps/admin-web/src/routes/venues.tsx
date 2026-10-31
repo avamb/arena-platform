@@ -100,7 +100,7 @@ export interface Venue {
   readonly website_url?: string | null;
   readonly status?: VenueStatus;
   /**
-   * Whether the platform operator verified the venue (migration 0172). A
+   * Whether the platform operator verified the venue (migration 0182). A
    * verified venue is open to every organization. Absent on the create and
    * update answers and on an older server.
    */
@@ -564,7 +564,7 @@ function VenuesModule() {
   const canCreate = permissions.has("venue.create");
   const canUpdate = permissions.has("venue.update");
   const canDelete = permissions.has("venue.delete");
-  // Only the platform superadmin holds venue.curate (migration 0172).
+  // Only the platform superadmin holds venue.curate (migration 0182).
   const canCurate = permissions.has("venue.curate");
 
   const defaultOrgID =
@@ -977,7 +977,7 @@ function VenueReviewBadge({ venue }: { venue: Venue }) {
 }
 
 // ---------------------------------------------------------------------------
-// Verification dialog (platform superadmin only, migration 0172)
+// Verification dialog (platform superadmin only, migration 0182)
 //
 // The operator checks the address, the coordinates and the other attributes
 // here, then verifies the venue. The owner organization has already checked

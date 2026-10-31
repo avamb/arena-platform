@@ -297,6 +297,25 @@ describe("RateFormBody and TermsFormBody", () => {
     expect(buyer).toContain("service charge is the platform commission");
   });
 
+  it("shows the invitations control with the current value and the explanation", () => {
+    const base = { account, onChange: noop, priceLists: ["standard-2026"], errors: [] };
+    const free = renderToStaticMarkup(createElement(TermsFormBody, { ...base, form: termsFormFrom(account.terms[0]) }));
+    expect(free).toContain("Invitations issued by staff");
+    expect(free).toContain('value="free" selected');
+    expect(free).toContain("A CSV upload is always charged at the standard rate");
+    expect(free).toContain("A cancelled invitation keeps its charge");
+    expect(free).toContain("applies from the date these terms start");
+    const std = renderToStaticMarkup(createElement(TermsFormBody, { ...base, form: { ...termsFormFrom(account.terms[0]), complimentaryBilling: "standard" } }));
+    expect(std).toContain('value="standard" selected');
+    expect(std).toContain("Standard per-ticket rate");
+  });
+
+  it("marks standard-rate invitations in the accounts table", () => {
+    const withMode = { ...account, terms: [{ ...account.terms[0], complimentary_billing: "standard" }, account.terms[1]] } as BillingAccount;
+    expect(renderToStaticMarkup(createElement(AccountsTable, { accounts: [withMode], onChangeTerms: noop }))).toContain("Invitations: standard rate");
+    expect(renderToStaticMarkup(createElement(AccountsTable, { accounts: [account], onChangeTerms: noop }))).not.toContain("Invitations: standard rate");
+  });
+
   it("marks a buyer-pays account in the accounts table", () => {
     const withMode = { ...account, terms: [{ ...account.terms[0], fee_mode: "buyer_pays" }, account.terms[1]] } as BillingAccount;
     const html = renderToStaticMarkup(createElement(AccountsTable, { accounts: [withMode], onChangeTerms: noop }));

@@ -73,11 +73,13 @@ type letterMember struct {
 	number   string
 }
 
-// claimLetterMembers claims the delivery jobs one e-mail will cover. For a
-// ticket e-mail that is every pending job of the order and recipient (own job
-// first); for an invitation, or a ticket without an order, only the ticket's
-// own. It returns (nil, nil) when the own job is not pending — somebody else
-// has it, or it is already terminal — which the caller treats as an
+// claimLetterMembers claims the delivery jobs one e-mail will cover: every
+// pending job of the order and recipient (own job first). A ticket without an
+// order, or a job without a recipient, claims only its own — which is how a
+// legacy complimentary issuance (no order) is still sent one letter a ticket,
+// while the tickets of a staff invitation order (spec 46, section 3.4) travel
+// together. It returns (nil, nil) when the own job is not pending — somebody
+// else has it, or it is already terminal — which the caller treats as an
 // idempotent skip.
 func claimLetterMembers(
 	ctx context.Context,
@@ -85,16 +87,6 @@ func claimLetterMembers(
 	ticketID, jobID uuid.UUID,
 	p Payload,
 ) ([]*letterMember, error) {
-	if p.Template == TemplateInvitation {
-		if _, err := q.ClaimDeliveryJobForProcessing(ctx, jobID); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return nil, nil
-			}
-			return nil, err
-		}
-		return []*letterMember{{ticketID: ticketID, jobID: jobID, p: p}}, nil
-	}
-
 	claimed, err := q.ClaimPendingDeliveryJobsForOrder(ctx, ticketID)
 	if err != nil {
 		return nil, err
@@ -330,13 +322,16 @@ func buildPaymentData(s gen.DeliveryPaymentSummary, tz string, ticketsInLetter i
 }
 
 // ticketLinesFor is the ticket list of the letter: every ticket for a ticket
-// e-mail, nothing for an invitation, whose letter describes one ticket in its
-// own words.
+// e-mail, and for an invitation letter that carries several (a single one is
+// described in the template's own words). An invitation never prints a price.
 func ticketLinesFor(kind string, members []*letterMember, locale string, withPrice bool) []templates.TicketLine {
-	if kind != templates.TemplateKindTicket {
-		return nil
+	switch kind {
+	case templates.TemplateKindTicket:
+		return ticketLines(members, locale, withPrice)
+	case templates.TemplateKindInvitation:
+		return ticketLines(members, locale, false)
 	}
-	return ticketLines(members, locale, withPrice)
+	return nil
 }
 
 // ticketPDFBytes returns the PDF of one ticket: the stored credential when

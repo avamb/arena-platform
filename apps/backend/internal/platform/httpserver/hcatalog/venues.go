@@ -75,7 +75,7 @@ type venueResponse struct {
 	CapacityDefault *int32   `json:"capacity_default"`
 	CreatedAt       string   `json:"created_at"`
 	UpdatedAt       string   `json:"updated_at"`
-	// ReviewStatus and VerifiedAt (migration 0172) are filled by
+	// ReviewStatus and VerifiedAt (migration 0182) are filled by
 	// hydrateVenueReview on the read routes; a route that does not read them
 	// leaves them out of the answer.
 	ReviewStatus *string `json:"review_status,omitempty"`
@@ -944,7 +944,7 @@ func (h *Handler) HandleDeleteVenue(w http.ResponseWriter, r *http.Request) {
 	qtx := h.venueQueries.WithTx(tx)
 
 	// A verified venue may hold other organizations' dates: it cannot vanish
-	// under them (migration 0172).
+	// under them (migration 0182).
 	if foreign, err := qtx.CountForeignSessionsAtVenue(ctx, venueID, orgID); err != nil {
 		h.logger.Error("venue: foreign session check failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(

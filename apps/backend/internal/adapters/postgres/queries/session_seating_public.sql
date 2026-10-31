@@ -36,6 +36,28 @@ WHERE  s.id             = $1
   AND  e.status        = 'published'
   AND  s.admission_mode <> 'general_admission';
 
+-- name: GetAdminSessionSchema :one
+-- The organizer's twin of GetPublicSessionSchema: the same geometry payload
+-- for any seated session, published or not (a draft event's seats are
+-- painted before it goes on sale). The caller has already checked the
+-- session's organization (session.seats.manage).
+SELECT s.id,
+       s.event_id,
+       s.admission_mode,
+       s.seating_plan_version_id,
+       s.seat_status_version,
+       v.geometry,
+       v.geometry_checksum,
+       v.capacity_seated,
+       v.capacity_standing
+FROM   sessions s
+JOIN   events e             ON e.id = s.event_id
+JOIN   seating_plan_versions v ON v.id = s.seating_plan_version_id
+WHERE  s.id             = $1
+  AND  s.deleted_at    IS NULL
+  AND  e.deleted_at    IS NULL
+  AND  s.admission_mode <> 'general_admission';
+
 -- name: GetPublicSessionSeatStatusMeta :one
 -- Cheaper sibling of GetPublicSessionSchema for the seat-status endpoints:
 -- fetches only the version cursor + visibility gate, avoiding the jsonb

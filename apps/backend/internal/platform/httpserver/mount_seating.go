@@ -101,6 +101,12 @@ func (s *Server) mountSeatingRoutes(r chi.Router) {
 			"/event-sessions/{id}/seats/admin",
 			s.handleListSessionSeatsAdmin,
 		)
+		// The organizer's seat map: the public schema without the published
+		// gate, so a draft event's seats can be painted before the sale.
+		pr.Get(
+			"/event-sessions/{id}/schema/admin",
+			s.handleGetSessionSchemaAdmin,
+		)
 	})
 
 	// S1c: seat batches (apply, list, revert, per-seat history).

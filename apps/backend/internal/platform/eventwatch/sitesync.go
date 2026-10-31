@@ -80,7 +80,7 @@ const storefrontsSQL = `
 	                  AND t.is_active AND t.revoked_at IS NULL) AS published
 	  FROM sales_channels ch
 	  LEFT JOIN channel_catalog_fetches f ON f.channel_id = ch.id
-	 WHERE ch.org_id = $2::uuid AND ch.deleted_at IS NULL
+	 WHERE ch.org_id = $2::uuid AND ch.deleted_at IS NULL AND ch.kind = 'sales'
 	 ORDER BY ch.name, ch.id`
 
 // LoadStorefronts lists the storefronts of an event and what each shows of

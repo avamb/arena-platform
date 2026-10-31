@@ -95,6 +95,10 @@ type Capabilities struct {
 	// per-merchant key the config alone holds. The legacy un-suffixed route
 	// refuses such a body outright.
 	WebhookConfigRouteOnly bool
+	// Currencies lists the ISO 4217 codes (upper case) the provider can
+	// charge in. Empty means the provider states no limit, so arena refuses
+	// nothing on its behalf (the provider's own answer is the verdict).
+	Currencies []string
 }
 
 // Descriptor is the static, network-free description of a module.

@@ -92,8 +92,14 @@ type Event struct {
 	// PricingClassStandard or PricingClassLowPrice. Empty reads as standard.
 	PricingClass string
 	// FreeTicketsOverLimit marks a complimentary ticket beyond the yearly
-	// free limit. Always false until the limit is counted (block B2).
+	// free limit (Terms.FreeTicketsAnnualLimit). The rate job sets it by
+	// counting the account's free complimentary charges of the calendar year
+	// (FreeLimitYearStart); it only matters for a free invitation.
 	FreeTicketsOverLimit bool
+	// Bulk marks a complimentary ticket issued from a CSV file (orders.
+	// issued_via = staff_bulk, spec 46): always charged the standard rate
+	// (owner decision R-7).
+	Bulk bool
 }
 
 // Charge is what Rate computes for one event. AmountMinor is in Currency,
@@ -124,8 +130,15 @@ type Charge struct {
 //     charge stays (41 section 6.3, owner decision B-6).
 //   - session_cancelled: 0, journal_only. The reversal of a cancelled
 //     session is written by the rating job (B2-3), never by Rate.
-//   - ticket_complimentary: 0, free; beyond the yearly limit it is charged
-//     as an unseated ticket at the organization's rate.
+//   - ticket_complimentary (spec 46, section 3.6): a Bulk ticket (a CSV
+//     file), or any ticket of an account whose terms say complimentary
+//     billing standard, pays the STANDARD rate (StandardComplimentaryRate:
+//     the individual rate, else fixed_per_ticket of the standard line, seated
+//     or not; no percentage, no low-price formula, fee_mode ignored).
+//     Otherwise 0, free; beyond the yearly limit it is charged as an
+//     unseated ticket at the organization's rate. A cancelled invitation
+//     keeps its charge (owner decision R-10): its cancellation is a
+//     journal-only ticket_cancelled event.
 //   - ticket_sold whose price after the promo code is 0 or less: 0, free.
 //   - ticket_sold with an individual rate: that rate, seated or not. The
 //     individual rate replaces the price list EVERYWHERE, the low-price
@@ -168,12 +181,7 @@ func Rate(terms Terms, ev Event) (Charge, error) {
 		c.Reason = ReasonJournalOnly
 		return c, nil
 	case KindTicketComplimentary:
-		if !ev.FreeTicketsOverLimit {
-			c.Reason = ReasonFree
-			return c, nil
-		}
-		c.Inputs["over_free_limit"] = 1
-		return rateUnseatedAtOrgRate(terms, c)
+		return rateComplimentary(terms, ev, c)
 	case KindEventPublished:
 		return rateEventPublished(terms, ev, c)
 	case KindTicketSold:
@@ -357,6 +365,40 @@ func rateLowPrice(terms Terms, ev Event, net int64, c Charge) (Charge, error) {
 	}
 	c.AmountMinor = amount
 	return c, nil
+}
+
+// rateComplimentary is the rule of spec 46, section 3.6, in this order:
+// Bulk, then the account's complimentary billing, then the free limit.
+func rateComplimentary(terms Terms, ev Event, c Charge) (Charge, error) {
+	switch {
+	case ev.Bulk:
+		c.Inputs["complimentary_bulk"] = 1
+		return rateStandardComplimentary(terms, ev.Seated, c)
+	case terms.ComplimentaryBilling() == ComplimentaryBillingStandard:
+		c.Inputs["complimentary_standard"] = 1
+		return rateStandardComplimentary(terms, ev.Seated, c)
+	case !ev.FreeTicketsOverLimit:
+		c.Reason = ReasonFree
+		return c, nil
+	}
+	c.Inputs["over_free_limit"] = 1
+	return rateUnseatedAtOrgRate(terms, c)
+}
+
+// rateStandardComplimentary is the STANDARD rate of an invitation: the
+// organization's individual rate (seated_minor for a place on the plan,
+// unseated_minor for general admission), else fixed_per_ticket of the
+// standard line of the price list, seated or not. It applies on a venue plan
+// too: an invitation has no price for the venue percentage to take a share
+// of, and the owner named the flat per-ticket rate (decision R-7).
+func rateStandardComplimentary(terms Terms, seated bool, c Charge) (Charge, error) {
+	if o := terms.Override; o != nil {
+		return applyOverride(o, seated, c), nil
+	}
+	if r, bad := terms.unimplemented(lineStandard, string(KindTicketSold)); bad {
+		return Charge{}, fmt.Errorf("%w: %s rule %s on the standard line", ErrRuleNotImplemented, r.Type, r.ID)
+	}
+	return rateFixed(terms, seated, c)
 }
 
 // rateUnseatedAtOrgRate charges a complimentary ticket beyond the free limit

@@ -1,4 +1,4 @@
--- 0172_venue_sharing.sql — a verified venue is open to every organization
+-- 0182_venue_sharing.sql — a verified venue is open to every organization
 -- (spec 08_architecture/24, owner decision 2026-10-27).
 --
 -- A venue belongs to the organization that made it (venues.org_id stays the

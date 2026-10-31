@@ -17,9 +17,11 @@
     selectedSession: FeedSession | null;
     onSelectSession: (session: FeedSession) => void;
     locale?: string;
+    /** tier id → colour of its seats on the plan (empty without a plan). */
+    tierColors?: ReadonlyMap<string, string>;
   }
 
-  const { sessions, selectedSession, onSelectSession, locale = 'en' }: Props = $props();
+  const { sessions, selectedSession, onSelectSession, locale = 'en', tierColors = new Map() }: Props = $props();
 
   const t = $derived(getCheckoutI18n(locale));
 
@@ -77,7 +79,7 @@
     <div class="legend" aria-label="Price categories">
       {#each legendTiers as tier (tier.id)}
         <div class="legend-item">
-          <span class="legend-dot" style="background:{tier.currency ? '#4f46e5' : '#d1d5db'}"></span>
+          <span class="legend-dot" style="background:{tierColors.get(tier.id) ?? (tier.currency ? '#4f46e5' : '#d1d5db')}"></span>
           <span class="legend-name">{tier.name}</span>
           {#if priceLabelBesideName(tier.name, formatPrice(tier))}
             <span class="legend-price">{formatPrice(tier)}</span>

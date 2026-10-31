@@ -43,7 +43,13 @@ const CATEGORY_POINTER = /^\/categoryList\/(\d+)\/([A-Za-z]+)$/;
  * counts positions in that list. A date that sells what the date before sells
  * (`sameAsBefore`) shows category problems as one problem of its tickets.
  */
-export function mapDateErrors(date: DateEntry, tickets: TicketsPart, errors: readonly CheckError[], sameAsBefore = false): DateErrors {
+export function mapDateErrors(
+  date: DateEntry,
+  tickets: TicketsPart,
+  errors: readonly CheckError[],
+  sameAsBefore = false,
+  seated = false,
+): DateErrors {
   const out: DateErrors = { byKey: new Map(), general: [] };
   const put = (suffix: string, err: CheckError) => {
     const key = dateFieldKey(date.key, suffix);
@@ -73,6 +79,12 @@ export function mapDateErrors(date: DateEntry, tickets: TicketsPart, errors: rea
       case "/actionEvent/sellStartTime":
         put("tickets", err);
         continue;
+    }
+    if (seated && (p.startsWith("/categoryList") || p === "/actionEvent/arenaSeatingPlanVersionId")) {
+      // A date sold by a hall plan has no ticket fields: its categories are
+      // the "Hall plan" section's, and the platform's words say which one.
+      out.general.push(err);
+      continue;
     }
     const m = CATEGORY_POINTER.exec(p);
     if (m !== null) {
@@ -156,6 +168,9 @@ export function dateClientErrors(draft: WizardDraft): ClientDateErrors {
       const typed = parseTime(date.doors);
       if (typed === null || (time !== null && doorsOffset(time, typed) === null)) set("doors", "wizard.err.doorsShape");
     }
+    // A date sold by a hall plan has the plan's places and categories: the
+    // "Hall plan" section checks those (seatingClientErrors).
+    if (draft.venue.mode === "existing" && draft.seating.versionId !== "") return;
     const tk = effectiveTickets(draft.dates, index);
     // Places: typed ones must be a count; empty ones need the venue's seats to fall back on.
     if (tk.mode !== "parallel") {

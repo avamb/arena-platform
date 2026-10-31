@@ -265,8 +265,9 @@ test.describe("refund an order (live)", () => {
     await expect(page.getByTestId("refund-pick")).toHaveCount(0);
 
     await page.getByTestId("refund-check").click();
-    // The step-up token lived in memory only: after a reload the password is asked again.
-    await confirmPassword(page, "org_admin");
+    // M-11: the confirmation of the first refund (a minute ago) survives the reload in the tab's
+    // sessionStorage, so the dialog promise "5 minutes" holds and the password is NOT asked again.
+    await expect(page.getByTestId("step-up")).toHaveCount(0);
     await expect(page.getByTestId("refund-result")).toBeVisible();
     await expect(page.getByTestId("refund-result")).toContainText("Nothing was refunded twice");
     await expect(page.getByTestId("refund-result-line")).toHaveAttribute("data-state", "succeeded");

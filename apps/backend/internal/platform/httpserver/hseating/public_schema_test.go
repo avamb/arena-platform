@@ -2,7 +2,7 @@
 // small/medium-venue public seating endpoints implemented in
 // public_schema.go.
 //
-// The tests exercise the ETag negotiation, the seat_key → category_index
+// The tests exercise the ETag validator (layout.svg, Bil24 image), the seat_key → category_index
 // projection, and the empty-queries 503 gate. Database-backed integration
 // coverage lives under the migrations / testcontainers harness; these
 // unit tests are stdlib-only so they run without a live PostgreSQL.
@@ -22,7 +22,7 @@ import (
 )
 
 // TestSeatB3_MatchesETag pins every branch of the strong-ETag validator
-// used by /schema:
+// used by layout.svg and the Bil24 image (the schema itself has none):
 //   - empty header ⇒ no match
 //   - wildcard "*" ⇒ match
 //   - exact strong match anywhere in a comma-separated list ⇒ match
@@ -139,14 +139,14 @@ func TestSeatB3_HandlersReturn503WhenQueriesUnwired(t *testing.T) {
 }
 
 // TestSeatB3_SchemaCacheHeaders pins the header contract expected by
-// downstream caches. The values are exported as consts so tests that
-// exercise the on-wire responses (in the migration harness) can share
-// them with clients; this guardrail catches accidental changes.
+// downstream caches: the schema is never stored (prices, colours and
+// per-seat categories change without a new geometry), seat-status deltas
+// always revalidate. This guardrail catches accidental changes.
 func TestSeatB3_SchemaCacheHeaders(t *testing.T) {
 	t.Parallel()
 
-	if schemaCacheControl != "public, max-age=86400, immutable" {
-		t.Errorf("schemaCacheControl = %q; SEAT-B3 requires 'public, max-age=86400, immutable'", schemaCacheControl)
+	if schemaCacheControl != "no-store" {
+		t.Errorf("schemaCacheControl = %q; the schema must be read from the current state every time ('no-store')", schemaCacheControl)
 	}
 	if seatStatusCacheControl != "no-cache" {
 		t.Errorf("seatStatusCacheControl = %q; SEAT-B3 requires 'no-cache' for delta correctness", seatStatusCacheControl)

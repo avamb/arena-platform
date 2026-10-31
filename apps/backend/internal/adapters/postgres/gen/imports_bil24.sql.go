@@ -47,7 +47,7 @@ type VenueImportContextRow struct {
 	OrgID           uuid.UUID `json:"org_id"`
 	Timezone        *string   `json:"timezone"`
 	ExternalBil24ID *string   `json:"external_bil24_id"`
-	// Verified: the venue is open to every organization (migration 0172).
+	// Verified: the venue is open to every organization (migration 0182).
 	Verified bool `json:"verified"`
 }
 

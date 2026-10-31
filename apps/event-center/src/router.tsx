@@ -9,6 +9,7 @@ import { LoginScreen } from "@/screens/LoginScreen";
 import { LinkLoginScreen } from "@/screens/LinkLoginScreen";
 import { TgEditScreen } from "@/screens/TgEditScreen";
 import { TgEnterScreen } from "@/screens/TgEnterScreen";
+import { TgInvitationsScreen } from "@/screens/TgInvitationsScreen";
 import { parseTgEnterSearch } from "@/lib/tgEnter";
 import { ForgotPasswordScreen } from "@/screens/ForgotPasswordScreen";
 import { SetPasswordScreen } from "@/screens/SetPasswordScreen";
@@ -17,6 +18,7 @@ import { OrgLayout } from "@/screens/OrgLayout";
 import { EventsScreen } from "@/screens/EventsScreen";
 import { EventScreen } from "@/screens/EventScreen";
 import { SessionScreen } from "@/screens/SessionScreen";
+import { SessionInvitationsScreen } from "@/screens/SessionInvitationsScreen";
 import { SessionSeatsScreen } from "@/screens/SessionSeatsScreen";
 import { parseSeatsSearch } from "@/lib/seatManager/embed";
 import { OrdersScreen } from "@/screens/OrdersScreen";
@@ -43,6 +45,12 @@ import { LinksScreen } from "@/screens/LinksScreen";
 import { LinkCreateScreen } from "@/screens/LinkCreateScreen";
 import { LinkScreen } from "@/screens/LinkScreen";
 import { parseLinkCardSearch, parseLinkNewSearch, parseLinksSearch } from "@/lib/salesLinks";
+import { ShopProductsScreen } from "@/screens/ShopProductsScreen";
+import { ShopProductEditScreen, ShopProductNewScreen } from "@/screens/ShopProductScreen";
+import { ShopOrdersScreen } from "@/screens/ShopOrdersScreen";
+import { ShopOrderScreen } from "@/screens/ShopOrderScreen";
+import { ShopSettingsScreen } from "@/screens/ShopSettingsScreen";
+import { parseProductCardSearch, parseProductsSearch, parseShopOrdersSearch } from "@/lib/shop";
 
 const rootRoute = createRootRoute({ component: RootLayout, notFoundComponent: NotFoundScreen });
 
@@ -75,6 +83,14 @@ const tgEditRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/tg/edit",
   component: TgEditScreen,
+});
+
+// The Telegram mini app page of the staff invitations (spec 46, 4.2): opened by the bot's web_app
+// button on the session card. Public: the one-time code is the proof.
+const tgInvitationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/tg/invitations",
+  component: TgInvitationsScreen,
 });
 
 // The entry of the Telegram mini app for every other screen (the bot's web_app
@@ -145,6 +161,13 @@ const sessionSeatsRoute = createRoute({
   path: "/events/$eventId/sessions/$sessionId/seats",
   validateSearch: parseSeatsSearch,
   component: SessionSeatsScreen,
+});
+
+// Spec 46: invitations of a session on its seat map. Reached from the date's page, not from the menu.
+const sessionInvitationsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/events/$eventId/sessions/$sessionId/invitations",
+  component: SessionInvitationsScreen,
 });
 
 const ordersRoute = createRoute({
@@ -277,12 +300,62 @@ const linkRoute = createRoute({
   component: LinkScreen,
 });
 
+// The shop (spec 47). Every screen explains itself to a person without shop.read. "new" is listed before
+// "$productId" so it is never read as an id.
+const shopRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/shop",
+  beforeLoad: ({ params }) => {
+    throw redirect({ to: "/o/$orgId/shop/products", params: { orgId: params.orgId }, search: {} });
+  },
+});
+
+const shopProductsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/shop/products",
+  validateSearch: parseProductsSearch,
+  component: ShopProductsScreen,
+});
+
+const shopProductNewRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/shop/products/new",
+  component: ShopProductNewScreen,
+});
+
+const shopProductRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/shop/products/$productId",
+  validateSearch: parseProductCardSearch,
+  component: ShopProductEditScreen,
+});
+
+const shopOrdersRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/shop/orders",
+  validateSearch: parseShopOrdersSearch,
+  component: ShopOrdersScreen,
+});
+
+const shopOrderRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/shop/orders/$orderId",
+  component: ShopOrderScreen,
+});
+
+const shopSettingsRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/shop/settings",
+  component: ShopSettingsScreen,
+});
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   linkLoginRoute,
   tgEditRoute,
   tgEnterRoute,
+  tgInvitationsRoute,
   forgotRoute,
   resetPasswordRoute,
   acceptInviteRoute,
@@ -293,6 +366,7 @@ export const routeTree = rootRoute.addChildren([
     eventRoute,
     sessionRoute,
     sessionSeatsRoute,
+    sessionInvitationsRoute,
     ordersRoute,
     orderRoute,
     notificationsRoute,
@@ -311,6 +385,13 @@ export const routeTree = rootRoute.addChildren([
     linksRoute,
     linkNewRoute,
     linkRoute,
+    shopRoute,
+    shopProductsRoute,
+    shopProductNewRoute,
+    shopProductRoute,
+    shopOrdersRoute,
+    shopOrderRoute,
+    shopSettingsRoute,
   ]),
 ]);
 

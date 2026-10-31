@@ -7,7 +7,7 @@ import (
 )
 
 // sharedVenueMark leads the button of a venue another organization owns and
-// the platform verified (migration 0172).
+// the platform verified (migration 0182).
 const sharedVenueMark = "✓ "
 
 // SharedVenueIO is the optional extension of RefIO that lists the venues the

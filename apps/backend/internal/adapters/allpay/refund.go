@@ -125,6 +125,14 @@ func (a *Adapter) Refund(ctx context.Context, req payments.RefundRequest) (payme
 		return payments.RefundResult{}, review(RefundCodeCurrency,
 			fmt.Sprintf("the refund is in %s, AllPay holds the order in %s", strings.ToUpper(req.Currency), st.Currency))
 	}
+	if chargeCurrencyDiffers(st.Currency, st.ChargeCurrency) {
+		// The refund request has no currency parameter: `amount` is "in the
+		// currency the payment was charged in" (API reference, refund). When
+		// that is not the display currency arena's amounts are in, a refund
+		// of arena's sum would return the wrong money.
+		return payments.RefundResult{}, review(RefundCodeCurrency,
+			fmt.Sprintf("AllPay charged the order in %s, arena holds it in %s", st.ChargeCurrency, st.Currency))
+	}
 	charged := st.ChargedMinor()
 	if (st.Status == StatusPaid || st.Status == StatusPartiallyRefunded || st.Status == StatusRefunded) &&
 		(charged <= 0 || st.Currency == "") {

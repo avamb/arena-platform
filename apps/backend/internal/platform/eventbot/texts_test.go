@@ -37,11 +37,11 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		"Unavailable": 1, "Scope": "sc", "Charge": "1 EUR", "RefundCount": 1, "Refunded": "1 EUR", "External": "1 EUR",
 		"PendingOrders": 1, "Rows": 3, "What": "w", "Bot": "@Bot",
 		// categories per date (wizard_date_tickets.go)
-		"Prev": "15.12.2026 20:00", "Plan": "P",
+		"Prev": "15.12.2026 20:00", "Plan": "P", "Extra": 1,
 		// the orders screens (ord_keys.go)
 		"Tab": "t", "Num": 1000000500, "Chip": "c", "Contacts": "", "Tier": "t", "Seat": "", "Entered": "", "Channel": "ch", "Provider": "stripe", "Msg": "m",
 		// the invitations screens (invite_keys.go)
-		"Order": "№1", "Gate": "2", "Ticket": "№1", "Next": "", "Chars": 1000, "Left": 2, "Sent": 3, "Got": 1, "Guests": "g", "Guest": "g", "Event": "e", "Line": 2, "Done": 1, "Why": "w",
+		"Order": "№1", "Gate": "2", "Ticket": "№1", "Next": "", "Chars": 1000, "Left": 2, "Sent": 3, "Got": 1, "Guests": "g", "Guest": "g", "Event": "e", "By": "b", "Mail": "ml", "Line": 2, "Done": 1, "Why": "w",
 		// the Materials screens (materials_keys.go)
 		"Caption": "c", "Seller": "s", "Lat": "50.075500", "Lon": "14.437800",
 		// the seat layout screens (seat_layout_keys.go)

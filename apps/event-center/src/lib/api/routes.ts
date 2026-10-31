@@ -103,6 +103,18 @@ export const API = {
   complimentaryIssue: { method: "POST", path: "/v1/organizations/{org_id}/complimentary" },
   // A flat route: the row's own organization is checked on the server.
   complimentaryRevoke: { method: "POST", path: "/v1/complimentary/{id}/revoke" },
+  // Spec 46: staff invitations on chosen seats (the seat map in invite mode).
+  // The whole organization at once: the invitations screen and the bot list through it (INV-05).
+  staffInvitationsOrgList: { method: "GET", path: "/v1/organizations/{org_id}/invitations" },
+  staffInvitationsList: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/invitations" },
+  staffInvitationIssue: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/invitations" },
+  staffInvitationCancel: { method: "POST", path: "/v1/organizations/{org_id}/invitations/{order_id}/cancel" },
+  staffInvitationPdf: { method: "GET", path: "/v1/organizations/{org_id}/invitations/{order_id}/tickets.pdf" },
+  staffInvitationResend: { method: "POST", path: "/v1/organizations/{org_id}/invitations/{order_id}/resend" },
+  // INV-06b: bulk invitations from a CSV file (multipart upload, dry run, result file).
+  invitationBatchCreate: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/invitation-batches" },
+  invitationBatchGet: { method: "GET", path: "/v1/organizations/{org_id}/invitation-batches/{id}" },
+  invitationBatchResult: { method: "GET", path: "/v1/organizations/{org_id}/invitation-batches/{id}/result.csv" },
   // 4-5: the team. The invitation has two channels (web, telegram); removing a
   // member names the ONE role to revoke in the body (AGENTS.md).
   botTeam: { method: "GET", path: "/v1/organizations/{org_id}/bot-team" },
@@ -148,6 +160,11 @@ export const API = {
   // geo reads are public and feed the venue form.
   eventBundleCheck: { method: "POST", path: "/v1/organizations/{org_id}/imports/event-bundle" },
   venues: { method: "GET", path: "/v1/organizations/{org_id}/venues" },
+  // The wizard's "Hall plan": the plans of the chosen venue and their versions
+  // (seating_plan.read). Plans are not organization-scoped routes: the server
+  // answers the organization's own and the shared ones.
+  venueSeatingPlans: { method: "GET", path: "/v1/venues/{venue_id}/seating-plans" },
+  seatingPlanVersions: { method: "GET", path: "/v1/seating-plans/{id}/versions" },
   // Sales page materials of an event: gallery, videos, other sellers, the map
   // point and the photo report (reads event.read, writes event.update), and the
   // venue's own postal address (venue.update).
@@ -201,6 +218,8 @@ export const API = {
   // are flat routes (the session id names the organization); the batches and the
   // automatic layout are organization routes. All need session.seats.manage.
   sessionSchema: { method: "GET", path: "/v1/event-sessions/{id}/schema" },
+  // The same map for the organizer, published or not: a draft event's seats are painted before the sale.
+  sessionSchemaAdmin: { method: "GET", path: "/v1/event-sessions/{id}/schema/admin" },
   sessionSeatsAdmin: { method: "GET", path: "/v1/event-sessions/{id}/seats/admin" },
   seatBatches: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/seat-batches" },
   seatBatchCreate: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/seat-batches" },
@@ -213,6 +232,32 @@ export const API = {
     path: "/v1/organizations/{org_id}/sessions/{session_id}/seat-layout/algorithms",
   },
   seatLayoutSuggest: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/seat-layout/suggest" },
+  // The shop (spec 47): settings, products with pictures and variants, orders and their actions.
+  // Reads need shop.read, writes shop.manage. Cancel and refund also ask for the password again.
+  channels: { method: "GET", path: "/v1/organizations/{org_id}/channels" },
+  shopSettings: { method: "GET", path: "/v1/organizations/{org_id}/shop/settings" },
+  shopSettingsPut: { method: "PUT", path: "/v1/organizations/{org_id}/shop/settings" },
+  shopProducts: { method: "GET", path: "/v1/organizations/{org_id}/shop/products" },
+  shopProductCreate: { method: "POST", path: "/v1/organizations/{org_id}/shop/products" },
+  shopProduct: { method: "GET", path: "/v1/organizations/{org_id}/shop/products/{product_id}" },
+  shopProductPatch: { method: "PATCH", path: "/v1/organizations/{org_id}/shop/products/{product_id}" },
+  shopProductDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/shop/products/{product_id}" },
+  shopImageAdd: { method: "POST", path: "/v1/organizations/{org_id}/shop/products/{product_id}/images" },
+  shopImageRemove: { method: "DELETE", path: "/v1/organizations/{org_id}/shop/products/{product_id}/images/{media_id}" },
+  shopVariantsReplace: { method: "PUT", path: "/v1/organizations/{org_id}/shop/products/{product_id}/variants" },
+  shopOrders: { method: "GET", path: "/v1/organizations/{org_id}/shop/orders" },
+  // The same list with the filters in the JSON body (SA-17): a buyer's e-mail or name never goes into an address.
+  shopOrdersSearch: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/search" },
+  shopOrderCounts: { method: "GET", path: "/v1/organizations/{org_id}/shop/orders/counts" },
+  shopOrder: { method: "GET", path: "/v1/organizations/{org_id}/shop/orders/{order_id}" },
+  shopOrderNote: { method: "PATCH", path: "/v1/organizations/{org_id}/shop/orders/{order_id}" },
+  shopOrderResendEmail: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/resend-email" },
+  shopOrderShip: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/ship" },
+  shopOrderCancel: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/cancel" },
+  // Waits for the backend lane: the operator decision on an order in manual_review (shop.manage + refund.create, step-up, Idempotency-Key).
+  shopOrderResolve: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/resolve" },
+  shopOrderRefund: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/refund" },
+  shopCourierText: { method: "GET", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/courier-text" },
 } as const satisfies Record<string, ApiRoute>;
 
 export type ApiRouteName = keyof typeof API;

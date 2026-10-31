@@ -201,7 +201,17 @@ type Options struct {
 	// SweepMaxCalls caps the provider calls of one pass; DefaultSweepMaxCalls
 	// when zero.
 	SweepMaxCalls int
+	// ProjectPayment folds a payment's refunds into whatever that payment
+	// paid for when it is neither a ticket order nor a checkout (the
+	// merchandise shop's orders), on the projection transaction. It runs
+	// with every settle of an accepted refund (so the sweep's repair retries
+	// it until it succeeds) and when a succeeded refund is reversed. nil
+	// skips it.
+	ProjectPayment ProjectPaymentFunc
 }
+
+// ProjectPaymentFunc is Options.ProjectPayment.
+type ProjectPaymentFunc func(ctx context.Context, tx pgx.Tx, paymentIntentID uuid.UUID) error
 
 // Engine drives refunds through payment modules.
 type Engine struct {
@@ -217,6 +227,7 @@ type Engine struct {
 	// sweep bounds (sweep.go)
 	sweepPassTimeout time.Duration
 	sweepMaxCalls    int
+	projectPayment   ProjectPaymentFunc
 }
 
 // New builds an Engine. DB and Modules are required for anything to work;
@@ -242,7 +253,7 @@ func New(o Options) *Engine {
 	return &Engine{
 		db: o.DB, modules: o.Modules, cancelTicket: o.CancelTicket, publishRefunded: o.PublishRefunded,
 		audit: o.Audit, metrics: o.Metrics, logger: o.Logger, callTimeout: o.CallTimeout, sweepOrgs: o.SweepOrgs,
-		sweepPassTimeout: o.SweepPassTimeout, sweepMaxCalls: o.SweepMaxCalls,
+		sweepPassTimeout: o.SweepPassTimeout, sweepMaxCalls: o.SweepMaxCalls, projectPayment: o.ProjectPayment,
 	}
 }
 

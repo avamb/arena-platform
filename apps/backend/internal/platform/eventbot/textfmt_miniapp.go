@@ -202,6 +202,12 @@ func miniappLinkErrorKey(err error) string {
 // minutes goes under the text. When the pressed message cannot be rebuilt (its
 // keyboard is not in the update), the link comes as a message of its own.
 func (b *Bot) miniappOpen(ctx context.Context, chatID int64, msgID int, loc, data, url string) {
+	b.miniappOpenLabeled(ctx, chatID, msgID, loc, data, url, "bot.tf.edit_btn")
+}
+
+// miniappOpenLabeled is miniappOpen for a button with its own label key (used
+// when the pressed message cannot be rebuilt and the button comes alone).
+func (b *Bot) miniappOpenLabeled(ctx context.Context, chatID int64, msgID int, loc, data, url, btnKey string) {
 	note := b.texts.T(loc, "bot.tf.edit_note", nil)
 	var orig *models.Message
 	if a := actionIn(ctx, chatID); a != nil && a.pressed == msgID {
@@ -210,7 +216,7 @@ func (b *Bot) miniappOpen(ctx context.Context, chatID int64, msgID int, loc, dat
 	kb, ok := withWebAppButton(orig, data, url)
 	if !ok {
 		own := &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{
-			{Text: b.texts.T(loc, "bot.tf.edit_btn", nil), WebApp: &models.WebAppInfo{URL: url}},
+			{Text: b.texts.T(loc, btnKey, nil), WebApp: &models.WebAppInfo{URL: url}},
 		}}}
 		b.send(ctx, chatID, note, own)
 		return

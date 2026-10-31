@@ -18,6 +18,9 @@ func withoutNotes(s string) string {
 	for _, n := range unsubscribeNotes {
 		s = strings.ReplaceAll(s, n, "")
 	}
+	for _, n := range shopUnsubscribeNotes {
+		s = strings.ReplaceAll(s, n, "")
+	}
 	return s
 }
 

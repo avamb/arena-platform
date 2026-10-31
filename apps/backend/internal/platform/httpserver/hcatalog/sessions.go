@@ -300,7 +300,7 @@ func (h *Handler) resolveVenueContext(
 		))
 		return gen.VenueSessionContextRow{}, false
 	}
-	// A verified venue is open to every organization (migration 0172): a date
+	// A verified venue is open to every organization (migration 0182): a date
 	// may be held there, the owner stays the only one who edits the venue.
 	if venueCtx.OrgID != orgID && !venueCtx.Verified && !auth.HasSuperadminOrgAccess(r.Context()) {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(

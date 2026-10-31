@@ -407,16 +407,24 @@ func drawFlow(doc *gofpdf.Fpdf, t Ticket, spec layoutSpec, s ticketStrings, acce
 
 // renderWithSpec draws the page and returns the finished PDF bytes.
 func renderWithSpec(t Ticket, spec layoutSpec) ([]byte, error) {
-	spec = distributeFlowSlack(t, spec)
+	return renderPagesWithSpec([]Ticket{t}, spec)
+}
 
-	doc := newDoc(t, spec)
-	doc.AddPage()
+// renderPagesWithSpec draws one page per ticket into ONE document. The
+// document title and metadata follow the first ticket; every page is laid
+// out exactly as a single-ticket render would lay it out.
+func renderPagesWithSpec(ts []Ticket, spec layoutSpec) ([]byte, error) {
+	doc := newDoc(ts[0], spec)
+	for _, t := range ts {
+		pageSpec := distributeFlowSlack(t, spec)
+		doc.AddPage()
 
-	str := stringsFor(t.Locale)
-	drawFlow(doc, t, spec, str, accentColor(t))
-	drawWatermark(doc, t, spec, accentColor(t))
-	if err := drawBottom(doc, t, spec, str); err != nil {
-		return nil, err
+		str := stringsFor(t.Locale)
+		drawFlow(doc, t, pageSpec, str, accentColor(t))
+		drawWatermark(doc, t, pageSpec, accentColor(t))
+		if err := drawBottom(doc, t, pageSpec, str); err != nil {
+			return nil, err
+		}
 	}
 
 	var buf bytes.Buffer

@@ -1,4 +1,4 @@
--- Venue sharing (migration 0172): a verified venue is open to every organization.
+-- Venue sharing (migration 0182): a verified venue is open to every organization.
 
 -- name: ListSharedVenuesForOrg :many
 -- Verified venues of OTHER organizations, optionally narrowed to one city or

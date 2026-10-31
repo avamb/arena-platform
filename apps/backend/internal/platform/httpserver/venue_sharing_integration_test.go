@@ -3,7 +3,7 @@
 package httpserver
 
 // A venue the platform operator verified is open to every organization
-// (migration 0172): it is listed in the other organization's shared list, dates
+// (migration 0182): it is listed in the other organization's shared list, dates
 // can be held there, and it cannot be deleted under them. The owner stays its
 // only editor, and only a platform superadmin verifies.
 

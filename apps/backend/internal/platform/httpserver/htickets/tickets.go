@@ -376,6 +376,17 @@ func (h *Handler) IssueTicketsForCheckoutWithOptions(ctx context.Context, cs gen
 		if err := h.linkTicketsToOrder(ctx, txQ, *order, newTickets); err != nil {
 			return nil, err
 		}
+		// A staff invitation asked for as VIP (spec 46, orders.metadata.
+		// invitation.vip) marks every ticket it mints, in this transaction.
+		if len(newTickets) > 0 && invitationAskedForVIP(order.Metadata) {
+			ids := make([]uuid.UUID, len(newTickets))
+			for i, t := range newTickets {
+				ids[i] = t.ID
+			}
+			if err := txQ.SetTicketsVIPForOrder(ctx, order.ID, ids); err != nil {
+				return nil, fmt.Errorf("IssueTicketsForCheckout: mark invitation tickets VIP: %w", err)
+			}
+		}
 		// "After the last ordinal": only the caller that completes the cart
 		// publishes. A gap-fill run that still leaves ordinals missing stays
 		// silent, and a replay never reaches here at all (it returned above).

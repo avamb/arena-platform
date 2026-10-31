@@ -41,7 +41,11 @@ function statusOf(err: unknown): number | null {
     : null;
 }
 
-export async function loadPosterBlob(deps: LoadDeps, mediaId: string, signal?: AbortSignal): Promise<PosterLoad> {
+/**
+ * `width` asks the media service for a picture resized to that many pixels (the query parameter `w`);
+ * an older server ignores it and sends the original, which the page then scales down in the browser.
+ */
+export async function loadPosterBlob(deps: LoadDeps, mediaId: string, signal?: AbortSignal, width?: number): Promise<PosterLoad> {
   let media: MediaObject;
   try {
     media = (await deps.getMedia(mediaId, signal)).media_object;
@@ -55,6 +59,7 @@ export async function loadPosterBlob(deps: LoadDeps, mediaId: string, signal?: A
   if (!(DISPLAY_TYPES as readonly string[]).includes(type)) return { kind: "failed", why: "type" };
   const url = typeof media.signed_url === "string" ? trustedMediaUrl(media.signed_url, deps.apiBaseUrl) : null;
   if (url === null) return { kind: "failed", why: "address" };
+  if (width !== undefined && Number.isInteger(width) && width > 0) url.searchParams.set("w", String(width));
   try {
     const res = await deps.fetchBytes(url.toString(), signal);
     if (!res.ok) return { kind: "failed", why: "network" };

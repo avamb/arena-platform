@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Venue review statuses (migration 0172).
+// Venue review statuses (migration 0182).
 const (
 	VenueReviewUnverified = "unverified"
 	VenueReviewVerified   = "verified"
@@ -80,7 +80,7 @@ func (q *Queries) SetVenueReviewStatus(ctx context.Context, id uuid.UUID, status
 	return r, err
 }
 
-// VenueReviewState is the verification state of one venue (migration 0172).
+// VenueReviewState is the verification state of one venue (migration 0182).
 type VenueReviewState struct {
 	ReviewStatus string     `json:"review_status"`
 	VerifiedAt   *time.Time `json:"verified_at"`

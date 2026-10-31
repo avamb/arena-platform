@@ -24,3 +24,13 @@ WHERE  complimentary_issuance_id = $1;
 -- name: ListTicketVIPByIDs :many
 -- The subset of the given tickets that carries the mark.
 SELECT id FROM tickets WHERE id = ANY($1) AND vip;
+
+-- name: SetTicketsVIPForOrder :exec
+-- Marks the given tickets of a staff invitation order as VIP, in the issuing
+-- transaction (spec 46: the invitation was asked for as VIP). The mark is
+-- attributed to the person who issued the order.
+UPDATE tickets
+SET    vip        = true,
+       vip_set_by = (SELECT o.issued_by FROM orders o WHERE o.id = $1),
+       vip_set_at = now()
+WHERE  id = ANY($2::uuid[]);

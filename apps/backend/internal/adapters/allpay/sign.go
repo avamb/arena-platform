@@ -184,9 +184,12 @@ type Callback struct {
 	Status int
 	// AmountMinor is `amount` in minor units of Currency.
 	AmountMinor int64
-	// Currency is the billing currency (`currency`).
+	// Currency is the currency of `amount`: `currency_display` (API reference,
+	// webhook: "amount: in the display currency in every webhook"), falling
+	// back to the v14 `currency`, then to `currency_payment`.
 	Currency string
-	// CurrencyPayment is the currency the card was charged in, when sent.
+	// CurrencyPayment is `currency_payment`, the currency the card was
+	// charged in, when sent.
 	CurrencyPayment string
 	// NotCharged is true for a webhook that reports a saved card or an
 	// authorised reservation rather than money taken (subscription_create,
@@ -252,15 +255,14 @@ func callbackFromMap(m map[string]any) *Callback {
 	str := func(k string) string { s, _ := scalarValue(m[k]); return s }
 	status, _ := strconv.Atoi(str("status"))
 	cb := &Callback{
-		OrderID:         str("order_id"),
-		Type:            strings.ToLower(str("type")),
-		Status:          status,
-		Currency:        strings.ToUpper(str("currency")),
-		CurrencyPayment: strings.ToUpper(str("currency_payment")),
-		DeclineCode:     str("decline_code"),
-		Error:           str("error"),
-		Raw:             m,
+		OrderID:     str("order_id"),
+		Type:        strings.ToLower(str("type")),
+		Status:      status,
+		DeclineCode: str("decline_code"),
+		Error:       str("error"),
+		Raw:         m,
 	}
+	cb.Currency, cb.CurrencyPayment = displayAndChargeCurrency(str)
 	if cb.Error == "" {
 		cb.Error = str("decline_reason")
 	}

@@ -112,12 +112,19 @@ type OrderRecipient struct {
 	Status     string
 }
 
+// issuerEmailSQL is the e-mail of the staff member who issued a staff
+// invitation (orders.issued_by), the address a letter falls back to when the
+// guest left none (spec 46, section 3.4). NULL for every other order.
+const issuerEmailSQL = `(SELECT NULLIF(btrim(iu.email), '') FROM users iu
+                          WHERE iu.id = o.issued_by AND o.source = 'complimentary')`
+
 const orderRecipientSQL = `
 SELECT o.id, o.system_id, o.session_id, o.status,
        COALESCE(NULLIF(btrim(o.buyer_email), ''),
                 (SELECT btrim(t2.holder_email) FROM tickets t2
                   WHERE t2.order_id = o.id AND t2.holder_email IS NOT NULL
                     AND btrim(t2.holder_email) <> '' LIMIT 1),
+                ` + issuerEmailSQL + `,
                 ''),
        COALESCE(btrim(o.buyer_name), ''),
        COALESCE(cs.buyer_locale, '')

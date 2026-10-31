@@ -289,6 +289,10 @@ type Handler struct {
 	// answers 503 and writes nothing.
 	refundEngine *refunds.Engine
 
+	// shopPayments takes the payments of merchandise shop orders (a payment
+	// intent without a checkout session, shop_payments.go). Nil: no shop.
+	shopPayments ShopPayments
+
 	// moduleOptions are the provider API roots a webhook module is built
 	// with (WithModuleOptions). A module that confirms an event with its
 	// provider (AllPay reads a paid order back) calls that root.

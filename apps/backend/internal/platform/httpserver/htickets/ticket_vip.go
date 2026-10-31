@@ -6,6 +6,7 @@ package htickets
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -17,6 +18,17 @@ import (
 // vipActorID is the principal that makes the change: a user id or an
 // organization API key id (both bare UUIDs), nil when the request carries
 // none.
+// invitationAskedForVIP reads orders.metadata.invitation.vip, which a staff
+// invitation issued as VIP carries (hinvitations writeOrder).
+func invitationAskedForVIP(raw json.RawMessage) bool {
+	var m struct {
+		Invitation struct {
+			VIP bool `json:"vip"`
+		} `json:"invitation"`
+	}
+	return json.Unmarshal(raw, &m) == nil && m.Invitation.VIP
+}
+
 func vipActorID(r *http.Request) *uuid.UUID {
 	actor, ok := auth.ActorFromContext(r.Context())
 	if !ok {

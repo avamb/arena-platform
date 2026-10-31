@@ -20,6 +20,7 @@
 import { venueCapacity, venueTimezone, type WizardDraft } from "@/lib/wizard/draft";
 import { effectiveTickets, type DateEntry, type TicketsPart } from "@/lib/wizard/datesDraft";
 import { doorsOffset, majorOf, parseCount, parsePriceMinor, parseTime, salesEndOffset } from "@/lib/wizard/parse";
+import { isSeated, seatedCategoryList } from "@/lib/wizard/seating";
 import { endOfInclusiveDayRfc3339, formatRfc3339, startOfDayRfc3339, wallToEpoch } from "@/lib/wizard/zones";
 
 export interface BundleAction {
@@ -45,6 +46,8 @@ export interface BundleActionEvent {
   sellEndTime?: string;
   /** RFC 3339, in the venue's zone: when the doors open. */
   doorsOpenTime?: string;
+  /** The seating plan version a new date is sold by (seating.ts); absent = free seating. */
+  arenaSeatingPlanVersionId?: string;
 }
 
 export interface BundleVenue {
@@ -76,6 +79,14 @@ export interface BundleCategory {
   sellEndTime?: string;
   /** Always a list: an empty one clears the stored schedule, like the bot's. */
   priceSchedule: BundlePriceWindow[];
+  /** A seated date only: whether the category sells seats (false for a standing zone). */
+  placement?: boolean;
+  /** A seated date only: the 1-based plan category this entry prices. */
+  planCategoryIndex?: number;
+  /** A seated date only: an extra price category over the plan's own, without places. */
+  planExtra?: boolean;
+  /** #rrggbb on the seat map. */
+  color?: string;
 }
 
 export interface EventBundle {
@@ -100,9 +111,15 @@ export function wireDay(iso: string): string {
   return m === null ? iso : `${m[3]}.${m[2]}.${Number(m[1])}`;
 }
 
-/** The places of a date: what was typed, else the venue's seats, else 0. */
+/** The places of a date: the plan's for a seated one, else what was typed, else the venue's seats, else 0. */
 export function datePlaces(draft: WizardDraft, date: DateEntry): number {
+  if (isSeatedDraft(draft)) return draft.seating.seats;
   return parseCount(date.capacity) ?? venueCapacity(draft.venue) ?? 0;
+}
+
+/** True when the dates are sold by a hall plan: one is chosen, at an existing venue. */
+export function isSeatedDraft(draft: WizardDraft): boolean {
+  return draft.venue.mode === "existing" && isSeated(draft.seating);
 }
 
 /** The sales end of a date as minutes after the start; 0 when none is typed or it cannot be read. */
@@ -218,6 +235,8 @@ export function buildBundle(draft: WizardDraft, opts: BuildOptions, index = 0): 
     const before = date.doors.trim() === "" ? null : doorsOffset(time, parseTime(date.doors) ?? "");
     if (before !== null) actionEvent.doorsOpenTime = formatRfc3339(start - before * 60_000, tz);
   }
+  const seated = isSeatedDraft(draft);
+  if (seated) actionEvent.arenaSeatingPlanVersionId = draft.seating.versionId;
 
   return {
     source: "arena",
@@ -231,7 +250,8 @@ export function buildBundle(draft: WizardDraft, opts: BuildOptions, index = 0): 
     },
     actionEvent,
     venue: venueBlock(draft),
-    categoryList: categoryList(tickets, datePlaces(draft, date), tz),
+    // A date sold by a plan prices the plan's categories (and the extra ones), never the ticket editor's.
+    categoryList: seated ? seatedCategoryList(draft.seating) : categoryList(tickets, datePlaces(draft, date), tz),
     publish: false,
   };
 }

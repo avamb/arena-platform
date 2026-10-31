@@ -159,3 +159,107 @@ other = "Arena Sold Out poslala tuto zprávu, protože kontaktní formulář va�
 # The sales-link PDF insert (spec 43, QL-13): the one line printed under the QR code.
 ["salelinks.insert.scan_and_buy"]
 other = "Naskenujte a kupte si vstupenky"
+
+["shop.payment.description"]
+other = "{{.Org}}, objednávka č. {{.Number}}"
+
+# --- salesnotify.shop.*: Telegram announcements of the merchandise shop ---
+["salesnotify.shop.new_order"]
+other = "🛍 <b>Nová objednávka v obchodě</b> — {{.Org}}"
+
+["salesnotify.shop.order_number"]
+other = "🧾 Objednávka č. {{.Number}}"
+
+["salesnotify.shop.total"]
+other = "💰 Celkem: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.delivery_none"]
+other = "📦 Bez doručení (digitální zboží nebo služba)"
+
+["salesnotify.shop.delivery_pickup"]
+other = "🏬 Doručení: osobní odběr"
+
+["salesnotify.shop.delivery_shipping"]
+other = "🚚 Doručení: kurýrem"
+
+["salesnotify.shop.courier_form"]
+other = "📦 <b>Údaje pro kurýra</b>"
+
+["salesnotify.shop.map_google"]
+other = "🗺 Mapy Google: {{.Url}}"
+
+["salesnotify.shop.map_waze"]
+other = "🚗 Waze: {{.Url}}"
+
+["salesnotify.shop.items"]
+other = "🛒 <b>Zboží</b>"
+
+["salesnotify.shop.items_more"]
+other = "… a ještě {{.Count}} řádků"
+
+["salesnotify.shop.item_line"]
+other = "{{.Qty}} × {{.Name}} — {{.Price}} za kus"
+
+["salesnotify.shop.shipping"]
+other = "🚚 Doprava: {{.Amount}}"
+
+["salesnotify.shop.discount"]
+other = "🏷 Sleva: -{{.Amount}}"
+
+["salesnotify.shop.note"]
+other = "📝 Poznámka kupujícího: {{.Note}}"
+
+["salesnotify.shop.refund_title"]
+other = "↩️ <b>Vrácení peněz v obchodě</b> — {{.Org}}"
+
+["salesnotify.shop.refunded"]
+other = "💸 Vráceno: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.refunded_so_far"]
+other = "💸 Vráceno celkem: {{.Amount}} z {{.Total}}"
+
+["salesnotify.shop.review_title"]
+other = "⚠️ <b>Objednávka v obchodě vyžaduje pozornost</b> — {{.Org}}"
+
+["salesnotify.shop.review_paid"]
+other = "💰 Zaplaceno: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_body"]
+other = "Platba za objednávku {{.Number}} dorazila po skončení rezervace a zboží už nebylo volné. Zkontrolujte objednávku v event centru."
+
+["salesnotify.shop.review_unconfirmed_amount"]
+other = "⏳ Platba zatím není potvrzena: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_unconfirmed_body"]
+other = "Platba za objednávku {{.Number}} není potvrzena platební bránou, peníze nemusely dorazit. Zboží neodesílejte ani nevydávejte, dokud platba nebude potvrzena: jakmile se tak stane, objednávka se ohlásí jako zaplacená. Podrobnosti jsou v event centru."
+
+["shop.public.review_payment_unconfirmed"]
+other = "Kontrolujeme vaši platbu a napíšeme vám."
+
+["shop.public.review_late_payment_no_stock"]
+other = "Vaše platba dorazila. Ověřujeme dostupnost zboží a napíšeme vám."
+
+# --- salesnotify.shop.courier_*: the plain courier text of an order card ---
+["salesnotify.shop.courier_order"]
+other = "Objednávka č. {{.Number}}"
+
+["salesnotify.shop.courier_pickup"]
+other = "Osobní odběr"
+
+["salesnotify.shop.courier_none"]
+other = "Bez doručení (digitální zboží nebo služba)"
+
+["salesnotify.shop.courier_item"]
+other = "{{.Name}} × {{.Qty}}"
+
+["salesnotify.shop.courier_total"]
+other = "Celkem: {{.Amount}}"
+
+["salesnotify.shop.courier_note"]
+other = "Poznámka kupujícího: {{.Note}}"
+
+["salesnotify.shop.courier_map_google"]
+other = "Mapy Google: {{.Url}}"
+
+["salesnotify.shop.courier_map_waze"]
+other = "Waze: {{.Url}}"

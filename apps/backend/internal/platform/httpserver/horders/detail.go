@@ -317,7 +317,7 @@ func (h *Handler) loadDetailExtras(ctx context.Context, order gen.OrderRow) (det
 
 	ex.letters = h.orderLetters(ctx, order.ID)
 
-	ch, err := h.queries.GetSalesChannelByID(ctx, order.ChannelID, order.OrgID)
+	ch, err := h.queries.GetSalesChannelByIDAnyKind(ctx, order.ChannelID, order.OrgID)
 	switch {
 	case err == nil:
 		ex.channel = channelEntry(order, &ch)

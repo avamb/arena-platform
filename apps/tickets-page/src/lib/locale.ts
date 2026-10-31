@@ -49,6 +49,37 @@ function languageSubtag(tag: string): string {
 }
 
 /**
+ * True when the buyer chose the language themselves: a supported `?lang=` or a
+ * remembered earlier choice. A language that only came from the browser is not
+ * a choice, and the organizer's language may take its place (withOrgDefault).
+ */
+export function hasExplicitLocale(search: string | URLSearchParams, remembered: string | null = null): boolean {
+  const params = typeof search === 'string' ? new URLSearchParams(search) : search;
+  const queryLang = params.get('lang');
+  if (queryLang && isSupportedLocale(languageSubtag(queryLang))) return true;
+  return Boolean(remembered && isSupportedLocale(languageSubtag(remembered)));
+}
+
+/**
+ * The page's language once the organization is known. An explicit choice of the
+ * buyer always wins. Otherwise an organization that works in another language
+ * than the platform default (`en` is what every organization starts with, so it
+ * says nothing) gets its own: an audience that reads Russian was served English
+ * just because their browser is set to English or Spanish. `en` and anything
+ * unsupported leave the browser's language in charge, as before.
+ */
+export function withOrgDefault(
+  current: PageLocale,
+  explicit: boolean,
+  orgDefault: string | null | undefined,
+): PageLocale {
+  if (explicit || !orgDefault) return current;
+  const subtag = languageSubtag(orgDefault);
+  if (subtag === DEFAULT_LOCALE || !isSupportedLocale(subtag)) return current;
+  return subtag;
+}
+
+/**
  * resolveLocale picks the active locale from (in order): the `lang` query
  * parameter, the browser's language preference list, then the default.
  * Never throws — an unrecognized/malformed value at any step is skipped.

@@ -236,7 +236,10 @@ func TestBotE2E_WizardPlanUpload(t *testing.T) {
 
 	// ── the date is sold by the new plan ────────────────────────────────────
 	owner.press("wz:plan:0", "Категория «")
-	owner.say("40", "Схема «")
+	// the wizard goes on as for any plan (#338): after the prices it asks for
+	// extra price categories
+	owner.say("40", "Нужны ещё ценовые категории")
+	owner.press("wz:extra:done", "Схема «")
 	owner.press("wz:next", "Описание мероприятия")
 	owner.press("wz:skip", "Валюта цен")
 	owner.press("wz:cur:EUR", "Открыть продажи сразу")

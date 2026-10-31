@@ -1,0 +1,397 @@
+/**
+ * cart.ts - the buyer's basket. Pure functions over a list of
+ * { variant_id, qty } plus the catalog the page already loaded; the only
+ * side effects are loadCart / saveCart, which talk to localStorage and
+ * swallow every storage failure (private windows, blocked storage) so the
+ * basket then simply lives for the page's lifetime.
+ *
+ * Everything is in minor units; the shipping fee is added at checkout, never
+ * in the basket (the live Shopify cart says "shipping is calculated at
+ * checkout" too).
+ */
+import type { CheckoutRequest, ShopProduct, ShopSettings, ShopVariant } from './api';
+import { CART_NOTE } from './i18n';
+
+/** The cap when the shop settings do not name one (the API's own default). */
+export const MAX_QTY = 99;
+
+export interface CartItem {
+  variant_id: string;
+  qty: number;
+  /**
+   * The product's name as the buyer saw it, kept with the saved basket so that a line the shop
+   * later withdraws can still be named in the "we removed it" note. Never sent to the API.
+   */
+  title?: string;
+}
+
+export interface CartLine {
+  item: CartItem;
+  product: ShopProduct;
+  variant: ShopVariant;
+  qty: number;
+  /** qty * variant price, minor units. */
+  lineMinor: number;
+}
+
+const clamp = (qty: number, max = MAX_QTY): number => {
+  const n = Math.floor(Number(qty));
+  if (!Number.isFinite(n)) return 1;
+  return Math.max(1, Math.min(Math.max(1, max), n));
+};
+
+/** What the buyer is told when an order would hold more than the shop's per-line limit. */
+export const qtyLimitMessage = (max: number): string => `В одном заказе не больше ${max} шт. этого товара`;
+
+/** What the buyer is told when a line is cut to the stock the API reports. */
+export const stockLimitMessage = (n: number): string => `В наличии только ${n} шт.`;
+
+/**
+ * The most one line of `variant` may hold: the shop's per-line limit (`lineMax`), cut to the
+ * stock the API reports (`max`, which the server already caps at the line limit). At least 1.
+ */
+export function variantLimit(variant: Pick<ShopVariant, 'max'>, lineMax: number): number {
+  const cap = Math.max(1, lineMax);
+  const stock = variant.max;
+  if (stock == null) return cap;
+  return Math.max(1, Math.min(cap, stock));
+}
+
+/** The note under a quantity field that was cut to `limit`: the stock when that is what binds, the per-line limit otherwise. */
+export const limitMessage = (limit: number, lineMax: number): string => (limit < Math.max(1, lineMax) ? stockLimitMessage(limit) : qtyLimitMessage(lineMax));
+
+/** `variantLimit` by variant id; the shop's line limit when the catalog does not know the variant. */
+export function variantLimitById(products: ShopProduct[], variantId: string, lineMax: number): number {
+  for (const p of products) {
+    const v = p.variants.find((x) => x.id === variantId);
+    if (v) return variantLimit(v, lineMax);
+  }
+  return Math.max(1, lineMax);
+}
+
+/** A typed quantity as a whole number of at least 1 (empty or junk reads as 1). */
+export function wantedQty(raw: string | number | null | undefined): number {
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
+/** Quantity field value: `value` is what the field should show, `limited` that the buyer asked for more than a line may hold. */
+export function clampField(raw: string | number | null | undefined, max: number): { value: number; limited: boolean } {
+  const wanted = wantedQty(raw);
+  const cap = Math.max(1, max);
+  return { value: Math.min(wanted, cap), limited: wanted > cap };
+}
+
+/** Adding `requested` to a line that already holds `inCart` would pass the line limit. */
+export const overLineLimit = (inCart: number, requested: number, max: number): boolean => inCart + requested > Math.max(1, max);
+
+/** `max` is the shop's max_line_qty: one line never holds more. */
+export function addItem(items: CartItem[], variantId: string, qty = 1, max = MAX_QTY): CartItem[] {
+  const existing = items.find((i) => i.variant_id === variantId);
+  if (existing) {
+    return items.map((i) => (i.variant_id === variantId ? { ...i, qty: clamp(i.qty + qty, max) } : i));
+  }
+  return [...items, { variant_id: variantId, qty: clamp(qty, max) }];
+}
+
+/** qty <= 0 removes the line. */
+export function setQty(items: CartItem[], variantId: string, qty: number, max = MAX_QTY): CartItem[] {
+  if (!(qty > 0)) return removeItem(items, variantId);
+  return items.map((i) => (i.variant_id === variantId ? { ...i, qty: clamp(qty, max) } : i));
+}
+
+/** Brings a stored basket under the shop's current cap (the cap may have been lowered since). */
+export function capCart(items: CartItem[], max: number): CartItem[] {
+  return items.map((i) => (i.qty > max ? { ...i, qty: clamp(i.qty, max) } : i));
+}
+
+/** The basket items the catalog knows: the ones the buyer can see in the cart and the only ones a checkout may carry. */
+export function visibleItems(items: CartItem[], products: ShopProduct[]): CartItem[] {
+  return resolveLines(items, products).map((l) => l.item);
+}
+
+/** Units the buyer sees in the basket (the header counter): lines of a product the shop no longer sells are not counted. */
+export function visibleCount(items: CartItem[], products: ShopProduct[]): number {
+  return itemCount(visibleItems(items, products));
+}
+
+/**
+ * Brings a stored basket in line with the catalog just loaded: a variant the catalog no longer
+ * has (hidden or deleted product) is dropped, and a quantity past what is in stock is cut to it.
+ * `changed` tells the caller to save the basket again.
+ */
+export function reconcileCart(items: CartItem[], products: ShopProduct[], lineMax: number): { items: CartItem[]; changed: boolean; notes: string[] } {
+  const byVariant = new Map<string, { product: ShopProduct; variant: ShopVariant }>();
+  for (const p of products) for (const v of p.variants) byVariant.set(v.id, { product: p, variant: v });
+  const out: CartItem[] = [];
+  const notes: string[] = [];
+  let changed = false;
+  for (const it of items) {
+    const hit = byVariant.get(it.variant_id);
+    if (!hit) {
+      changed = true;
+      notes.push(CART_NOTE.removed(it.title));
+      continue;
+    }
+    const limit = variantLimit(hit.variant, lineMax);
+    if (hit.variant.available && it.qty > limit) {
+      out.push({ ...it, qty: limit });
+      notes.push(CART_NOTE.cut(it.title || variantName(hit.product, hit.variant), limit));
+      changed = true;
+    } else {
+      out.push(it);
+    }
+  }
+  return { items: out, changed, notes };
+}
+
+const variantName = (product: ShopProduct, variant: ShopVariant): string => {
+  const v = (variant.title ?? '').trim();
+  return v !== '' && v !== 'Default Title' ? `${product.title} — ${v}` : product.title;
+};
+
+/** The basket with every line named from the catalog (a line the catalog lacks keeps the name it had). */
+export function withTitles(items: CartItem[], products: ShopProduct[]): CartItem[] {
+  const byVariant = new Map<string, string>();
+  for (const p of products) for (const v of p.variants) byVariant.set(v.id, variantName(p, v));
+  return items.map((i) => {
+    const title = byVariant.get(i.variant_id) ?? i.title;
+    return title ? { ...i, title } : i;
+  });
+}
+
+/** One short line of a 409 `shop.out_of_stock` answer (`details.items`). */
+export interface Shortage {
+  variant_id: string;
+  requested: number;
+  available: number;
+}
+
+export function parseShortage(details: unknown): Shortage[] {
+  const raw = (details as { items?: unknown } | null | undefined)?.items;
+  if (!Array.isArray(raw)) return [];
+  const out: Shortage[] = [];
+  for (const r of raw) {
+    const o = r as { variant_id?: unknown; requested?: unknown; available?: unknown };
+    if (typeof o?.variant_id !== 'string') continue;
+    const available = Number(o.available);
+    out.push({ variant_id: o.variant_id, requested: Number(o.requested) || 0, available: Number.isFinite(available) ? Math.max(0, Math.floor(available)) : 0 });
+  }
+  return out;
+}
+
+const lineName = (l: CartLine): string => {
+  const v = (l.variant.title ?? '').trim();
+  return v !== '' && v !== 'Default Title' ? `${l.product.title} — ${v}` : l.product.title;
+};
+
+/**
+ * Cuts the basket to the short lines the server listed: a line with nothing left is removed, the
+ * rest is cut to what is in stock. `notes` says what changed, for the buyer.
+ */
+export function applyShortage(items: CartItem[], products: ShopProduct[], shortage: Shortage[]): { items: CartItem[]; notes: string[] } {
+  const lines = resolveLines(items, products);
+  let next = items;
+  const notes: string[] = [];
+  for (const sh of shortage) {
+    const line = lines.find((l) => l.item.variant_id === sh.variant_id);
+    if (!line) continue;
+    const name = lineName(line);
+    if (sh.available <= 0) {
+      next = removeItem(next, sh.variant_id);
+      notes.push(`«${name}» закончился, мы убрали его из корзины.`);
+    } else if (line.qty > sh.available) {
+      next = setQty(next, sh.variant_id, sh.available, sh.available);
+      notes.push(`«${name}»: в наличии только ${sh.available} шт., в корзине теперь ${sh.available}.`);
+    }
+  }
+  return { items: next, notes };
+}
+
+export function removeItem(items: CartItem[], variantId: string): CartItem[] {
+  return items.filter((i) => i.variant_id !== variantId);
+}
+
+export function itemCount(items: CartItem[]): number {
+  return items.reduce((n, i) => n + i.qty, 0);
+}
+
+/** Joins basket items with the catalog. A variant the catalog no longer has is dropped. */
+export function resolveLines(items: CartItem[], products: ShopProduct[]): CartLine[] {
+  const byVariant = new Map<string, { product: ShopProduct; variant: ShopVariant }>();
+  for (const product of products) {
+    for (const variant of product.variants) byVariant.set(variant.id, { product, variant });
+  }
+  const lines: CartLine[] = [];
+  for (const item of items) {
+    const hit = byVariant.get(item.variant_id);
+    if (!hit) continue;
+    lines.push({
+      item,
+      product: hit.product,
+      variant: hit.variant,
+      qty: item.qty,
+      lineMinor: hit.variant.price_minor * item.qty,
+    });
+  }
+  return lines;
+}
+
+export function subtotalMinor(lines: CartLine[]): number {
+  return lines.reduce((sum, l) => sum + l.lineMinor, 0);
+}
+
+/** True when every line can still be bought. */
+export function allAvailable(lines: CartLine[]): boolean {
+  return lines.every((l) => l.variant.available);
+}
+
+/** Only a physical product ships: a cart of digital products and services takes no address and no delivery fee. */
+export function needsShipping(lines: CartLine[]): boolean {
+  return lines.some((l) => l.product.kind === 'physical');
+}
+
+export function shippingMinor(settings: Pick<ShopSettings, 'shipping_fee_minor'>, lines: CartLine[]): number {
+  return needsShipping(lines) ? Math.max(0, settings.shipping_fee_minor || 0) : 0;
+}
+
+export function totalMinor(settings: Pick<ShopSettings, 'shipping_fee_minor'>, lines: CartLine[]): number {
+  return subtotalMinor(lines) + shippingMinor(settings, lines);
+}
+
+// ---- storage ---------------------------------------------------------------
+
+const key = (org: string): string => 'arena_shop_cart:' + org;
+
+export function parseStored(raw: string | null): CartItem[] {
+  if (!raw) return [];
+  try {
+    const data: unknown = JSON.parse(raw);
+    if (!Array.isArray(data)) return [];
+    const out: CartItem[] = [];
+    for (const row of data) {
+      const r = row as { variant_id?: unknown; qty?: unknown };
+      if (typeof r?.variant_id !== 'string' || r.variant_id === '') continue;
+      const title = typeof (r as { title?: unknown }).title === 'string' ? ((r as { title: string }).title).slice(0, 200) : '';
+      out.push(title ? { variant_id: r.variant_id, qty: clamp(Number(r.qty)), title } : { variant_id: r.variant_id, qty: clamp(Number(r.qty)) });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+export function loadCart(org: string): CartItem[] {
+  try {
+    return parseStored(localStorage.getItem(key(org)));
+  } catch {
+    return [];
+  }
+}
+
+export function saveCart(org: string, items: CartItem[]): void {
+  try {
+    localStorage.setItem(key(org), JSON.stringify(items));
+  } catch {
+    /* basket lives in memory only */
+  }
+}
+
+// ---- checkout form ---------------------------------------------------------
+
+export interface CheckoutForm {
+  name: string;
+  email: string;
+  phone: string;
+  address1: string;
+  address2: string;
+  city: string;
+  postal: string;
+  /** Free-form comment for the seller (sent as delivery_note). */
+  note: string;
+  consent18: boolean;
+}
+
+export type FormErrors = Partial<Record<keyof CheckoutForm, string>>;
+
+/** The API takes up to 2000 characters of delivery_note. */
+export const MAX_NOTE_LEN = 2000;
+
+const MIN_PHONE_DIGITS = 9;
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/** The payment page could not be opened: say the cart is kept and, when the shop names one, where to write. */
+export function paymentUnavailableMessage(contactEmail: string | null | undefined): string {
+  const email = (contactEmail ?? '').trim();
+  const base = 'Не удалось открыть страницу оплаты. Корзина сохранена, попробуйте через минуту';
+  return email ? `${base} или напишите нам: ${email}` : `${base}.`;
+}
+
+/** Israel has used 7-digit postal codes since 2013. */
+const IL_POSTAL = /^[0-9]{7}$/;
+
+/** The hint under the postal field: what the shop's country expects. */
+export function postalHint(country: string | null | undefined): string {
+  return (country ?? 'IL').toUpperCase() === 'IL' ? '7 цифр, как на письмах Почты Израиля' : '';
+}
+
+/**
+ * The postal code of a shipped order, mirroring the server (`shop.postal_required`, `shop.invalid_postal`):
+ * required; exactly 7 digits for Israel, 3-12 characters elsewhere. Undefined means it is fine.
+ */
+export function validatePostal(postal: string, country: string | null | undefined = 'IL'): string | undefined {
+  const p = postal.trim();
+  if (p === '') return 'Укажите почтовый индекс';
+  if ((country ?? 'IL').toUpperCase() === 'IL') return IL_POSTAL.test(p) ? undefined : 'Проверьте индекс: 7 цифр';
+  const n = Array.from(p).length;
+  return n >= 3 && n <= 12 ? undefined : 'Проверьте индекс: от 3 до 12 символов';
+}
+
+/** `shipping` false: a cart without a physical product takes no address. `country` is the shop's (the ship country). */
+export function validateCheckoutForm(f: CheckoutForm, minAge: number | null | undefined, shipping = true, country: string | null | undefined = 'IL'): FormErrors {
+  const e: FormErrors = {};
+  if (f.name.trim().length < 2) e.name = 'Укажите имя и фамилию';
+  const email = f.email.trim();
+  if (email === '') e.email = 'Укажите адрес электронной почты';
+  else if (!EMAIL.test(email)) e.email = 'Проверьте адрес: в нём должна быть часть после @';
+  const phone = f.phone.trim();
+  if (phone === '') e.phone = 'Укажите номер телефона';
+  else if (phone.replace(/\D/g, '').length < MIN_PHONE_DIGITS) e.phone = `Проверьте номер: нужно не меньше ${MIN_PHONE_DIGITS} цифр`;
+  if (shipping && f.address1.trim().length < 3) e.address1 = 'Укажите адрес доставки';
+  if (shipping && f.city.trim().length < 2) e.city = 'Укажите город';
+  if (shipping) {
+    const postal = validatePostal(f.postal, country);
+    if (postal) e.postal = postal;
+  }
+  if ((minAge ?? 0) > 0 && !f.consent18) e.consent18 = 'Необходимо подтвердить возраст';
+  return e;
+}
+
+export function buildCheckoutRequest(
+  items: CartItem[],
+  f: CheckoutForm,
+  returnUrl: string,
+  locale = 'ru',
+  country = 'IL',
+  shipping = true,
+  captchaToken?: string,
+): CheckoutRequest {
+  const req: CheckoutRequest = {
+    items: items.map((i) => ({ variant_id: i.variant_id, qty: i.qty })),
+    buyer: { name: f.name.trim(), email: f.email.trim(), phone: f.phone.trim() },
+    locale,
+    return_url: returnUrl,
+    age_confirmed: f.consent18,
+  };
+  if (captchaToken) req.captcha_token = captchaToken;
+  const note = (f.note ?? '').trim();
+  if (note) req.delivery_note = note.slice(0, MAX_NOTE_LEN);
+  if (shipping) {
+    const ship: NonNullable<CheckoutRequest['ship']> = { address1: f.address1.trim(), city: f.city.trim(), country };
+    if (f.address2.trim()) ship.address2 = f.address2.trim();
+    if (f.postal.trim()) ship.postal = f.postal.trim();
+    req.ship = ship;
+  }
+  return req;
+}

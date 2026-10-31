@@ -25,7 +25,8 @@ import { posterCapabilities, posterStepSettled } from "@/lib/posters";
 import { wizardGate } from "@/lib/features";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
-import { buildBundle, buildBundles } from "@/lib/wizard/bundle";
+import { buildBundle, buildBundles, isSeatedDraft } from "@/lib/wizard/bundle";
+import { seatingClientErrors, type SeatingErrorKey } from "@/lib/wizard/seating";
 import { createCheckRunner, type MultiAnswer } from "@/lib/wizard/checkRunner";
 import { clientErrors } from "@/lib/wizard/clientErrors";
 import { dateClientErrors, dateFieldKey, mapDateErrors, type DateErrors } from "@/lib/wizard/dateErrors";
@@ -61,6 +62,7 @@ import {
 import { WizardDatesSection } from "@/components/WizardDatesSection";
 import { WizardEventSection } from "@/components/WizardEventSection";
 import { WizardVenueSection } from "@/components/WizardVenueSection";
+import { WizardSeatingSection } from "@/components/WizardSeatingSection";
 import { useOrg } from "@/screens/OrgLayout";
 
 /** What the Create button shows after a press. */
@@ -176,6 +178,7 @@ function Wizard() {
 
   const { state, request, retry } = useBundleCheck(orgId);
   const blank = isBlank(draft);
+  const seated = isSeatedDraft(draft);
   const bundlesJson = useMemo(() => JSON.stringify(buildBundles(draft, { orgId })), [draft, orgId]);
   useEffect(() => {
     if (!blank) request(bundlesJson);
@@ -191,16 +194,17 @@ function Wizard() {
 
   const mine = clientErrors(draft);
   const mineDates = useMemo(() => dateClientErrors(draft), [draft]);
+  const mineSeating = useMemo(() => (seated ? seatingClientErrors(draft.seating) : new Map<string, SeatingErrorKey>()), [seated, draft.seating]);
   const shownServer = visibleErrors(eventSplit, touched as ReadonlySet<FormField>, false);
 
   const dateServer = useMemo(() => {
     const out = new Map<string, DateErrors>();
     if (usable === undefined) return out;
     draft.dates.forEach((date, i) => {
-      out.set(date.key, mapDateErrors(date, effectiveTickets(draft.dates, i), splits[i].dated, i > 0 && date.sameTickets));
+      out.set(date.key, mapDateErrors(date, effectiveTickets(draft.dates, i), splits[i].dated, i > 0 && date.sameTickets, seated));
     });
     return out;
-  }, [usable, splits, draft.dates]);
+  }, [usable, splits, draft.dates, seated]);
 
   const textOf = (e: CheckError) => textOfError(e, t);
   const errorOf = (field: FormField): string | undefined => {
@@ -223,6 +227,10 @@ function Wizard() {
     return first === undefined ? undefined : textOf(first);
   };
   const generalOf = (dateKey: string): string[] => (dateServer.get(dateKey)?.general ?? []).map(textOf);
+  const seatingErrorOf = (key: string): string | undefined => {
+    const own = mineSeating.get(key);
+    return own !== undefined && touched.has(key) ? t(own) : undefined;
+  };
 
   // Every field that has an error, shown or not.
   const failingDateFields = new Set<string>(mineDates.keys());
@@ -234,8 +242,10 @@ function Wizard() {
     [...failingDateFields].filter((fk) => {
       const dot = fk.indexOf(".");
       return dateErrorOf(fk.slice(0, dot), fk.slice(dot + 1)) !== undefined;
-    }).length;
-  const nothingWrong = failing.size === 0 && failingDateFields.size === 0 && !dateGeneral && eventSplit.general.length === 0;
+    }).length +
+    [...mineSeating.keys()].filter((k) => seatingErrorOf(k) !== undefined).length;
+  const nothingWrong =
+    failing.size === 0 && failingDateFields.size === 0 && !dateGeneral && eventSplit.general.length === 0 && mineSeating.size === 0;
 
   let status: { text: string; tone: "ok" | "bad" | "plain" };
   if (state.error !== null) status = { text: t("wizard.check.failed"), tone: "bad" };
@@ -296,6 +306,8 @@ function Wizard() {
     const sent = draft;
     const chosen = picker.state.phase === "ready" ? picker.state : null;
     setSaveView({ phase: "saving" });
+    // The session the save made: a date sold by a hall plan opens its seat map next.
+    let savedSession = "";
     const progress = (patch: { mediaId?: string; eventId?: string }) => {
       // Stored at once and under the draft own id: a screen that is gone must not lose an id.
       recordPosterProgress(orgId, sent.id, patch);
@@ -308,7 +320,11 @@ function Wizard() {
       type: posterCan.canChange && chosen !== null ? chosen.info.type : null,
       mediaId: sent.poster.mediaId,
       eventId: sent.poster.eventId,
-      save: () => saver.save(sent, orgId),
+      save: async () => {
+        const out = await saver.save(sent, orgId);
+        if (out.kind === "saved") savedSession = out.sessionId;
+        return out;
+      },
       onProgress: progress,
     });
     posterBusyRef.current = false;
@@ -323,6 +339,14 @@ function Wizard() {
       setSaveView({ phase: "saved" });
       clearDraftIfSaved(orgId, sent.id);
       await queryClient.invalidateQueries({ queryKey: ["events", orgId] });
+      if (isSeatedDraft(sent) && savedSession !== "") {
+        // The seats still carry the plan's categories: the next step is painting them.
+        void navigate({
+          to: "/o/$orgId/events/$eventId/sessions/$sessionId/seats",
+          params: { orgId, eventId: result.eventId, sessionId: savedSession },
+        });
+        return;
+      }
       void navigate({ to: "/o/$orgId/events/$eventId", params: { orgId, eventId: result.eventId } });
       return;
     }
@@ -408,6 +432,7 @@ function Wizard() {
         />
         <WizardEventSection draft={draft} dispatch={dispatch} touch={touch} errorOf={errorOf} />
         <WizardVenueSection draft={draft} dispatch={dispatch} touch={touch} errorOf={errorOf} />
+        <WizardSeatingSection draft={draft} dispatch={dispatch} touch={touch} errorOf={seatingErrorOf} />
         <WizardDatesSection draft={draft} dispatch={dispatch} errors={dateErrors} defaultCategoryName={defaultName} />
       </fieldset>
 
