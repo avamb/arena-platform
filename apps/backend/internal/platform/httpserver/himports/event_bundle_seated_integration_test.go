@@ -656,6 +656,28 @@ func TestEventBundleSeated_ExtraPriceCategories(t *testing.T) {
 		t.Errorf("VIP after the repeat: price %d open %v", tiers["VIP"].PriceAmount, tiers["VIP"].IsOpen)
 	}
 
+	// A seat painted into VIP (the second Parter seat: on the 1-1 tie Parter,
+	// seen first, stays home) shows VIP in the colour the organizer chose for
+	// it in the wizard, not a palette colour.
+	if _, err := pool.Exec(ctx, `UPDATE session_seats SET tier_id = $1 WHERE session_id = $2 AND seat_key = 's|a|2'`,
+		tiers["VIP"].ID, out.SessionID); err != nil {
+		t.Fatal(err)
+	}
+	painted := callSeatingHandler(t, out.SessionID, sh.HandleGetSessionSchemaAdmin)
+	var schema struct {
+		Extra []struct {
+			Name  string `json:"name"`
+			Color string `json:"color"`
+		} `json:"extra_categories"`
+		SeatIndex map[string]int `json:"seat_category_index"`
+	}
+	if err := json.Unmarshal(painted.Body.Bytes(), &schema); err != nil || painted.Code != http.StatusOK {
+		t.Fatalf("schema after painting: %d %v %s", painted.Code, err, painted.Body.String())
+	}
+	if len(schema.Extra) != 1 || schema.Extra[0].Name != "VIP" || schema.Extra[0].Color != "#00aa00" || schema.SeatIndex["s|a|2"] == 0 {
+		t.Fatalf("painted VIP seat: extra %+v index %v, want VIP in #00aa00", schema.Extra, schema.SeatIndex)
+	}
+
 	// A name clash with a plan category is refused and writes nothing.
 	clash := sf.seatedPayload()
 	clash.ExternalRef = sf.externalRef + ":clash"
