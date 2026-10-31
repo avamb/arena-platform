@@ -9814,6 +9814,20 @@ components:
             When the venue opens its doors (RFC 3339, UTC), or null when the
             organizer did not say. Display only; never after start_at.
           example: "2026-08-15T17:30:00Z"
+        sales_state:
+          type: string
+          description: |
+            The session's sales state, the one every sales channel follows
+            (migration 0182): `open`, `soon`, `sold_out`, `ended` or
+            `cancelled`. Present on the session list and the single read;
+            absent on the create and update answers.
+          example: open
+        manual_sales_state:
+          type: string
+          description: |
+            The state the organizer set by hand (`soon` or `sold_out`);
+            absent when none is set and sales follow the categories.
+          example: sold_out
         capacity_total:
           type: integer
           format: int32
@@ -10250,6 +10264,170 @@ components:
           type: string
           description: Session status.
 
+    SessionSalesStateActor:
+      type: object
+      required: [type, name, role, source]
+      description: Who made a sales state change, as the journal recorded it.
+      properties:
+        type:
+          type: string
+          description: "`user`, `api_key` or `system`."
+        name:
+          type: string
+          description: |
+            The person's name (else their e-mail) for a user; for an
+            organization API key, the name its caller sent in `changed_by`
+            (a site names the person who switched on its own screen).
+        role:
+          type: string
+          description: |
+            The membership role at the moment of the change (`org_admin` for
+            the owner, `organizer` for a manager), `platform_staff`, or empty.
+        source:
+          type: string
+          description: |
+            The client used: `event_center_web`, `telegram_bot`,
+            `site_plugin`, `admin_web`, or `api` when the request named none
+            (the `X-Client-Channel` header).
+    SessionSalesStateSiteSync:
+      type: object
+      required: [status, sites, attempts, last_error]
+      description: |
+        Whether the WordPress sites that sell the event were told about the
+        latest change (they then re-read the session through the gateway).
+      properties:
+        status:
+          type: string
+          description: |
+            `none` (no site sells this event), `pending`, `retrying`,
+            `delivered` or `failed` (retries exhausted).
+        sites:
+          type: integer
+          description: How many WordPress sites sell the event.
+        attempts:
+          type: integer
+          description: Delivery attempts made so far.
+        last_error:
+          type: [string, "null"]
+          description: The last delivery error while not delivered, else null.
+    SessionSalesState:
+      type: object
+      required: [session_id, event_id, manual, effective, total_places, free_places, held_places, sales_end_at, changed_at, changed_by, site_sync, external_allocations]
+      description: |
+        One sales state per session for EVERY sales channel (migration 0182).
+        The organizer may set `soon` or `sold_out`; while either is set no
+        channel takes a new hold, whatever places are left. Holds taken
+        before keep going to payment; tickets, refunds and scanning are not
+        touched. `open` lifts the state and the real places and sale windows
+        come back unchanged.
+      properties:
+        session_id:
+          type: string
+          format: uuid
+          description: The session.
+        event_id:
+          type: string
+          format: uuid
+          description: Its event.
+        manual:
+          type: [string, "null"]
+          description: The organizer's state, `soon` or `sold_out`; null when none is set.
+        effective:
+          type: string
+          description: |
+            The state buyers see: the organizer's state when set; otherwise
+            `cancelled`, `ended` (the sales end passed), `sold_out` (no free
+            place left), `open` (a category sells now) or `soon` (none sells
+            yet, or the session has no category). A session without
+            categories is never `sold_out`.
+        total_places:
+          type: integer
+          description: Places the session owns in live categories.
+        free_places:
+          type: integer
+          description: Places nobody holds or bought.
+        held_places:
+          type: integer
+          description: Places held by carts that are not paid yet.
+        sales_end_at:
+          type: string
+          format: date-time
+          description: The session's own sales end (RFC 3339, UTC).
+        changed_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the latest change was made; null before the first one.
+        changed_by:
+          description: Who made the latest change; null before the first one.
+          oneOf:
+            - $ref: "#/components/schemas/SessionSalesStateActor"
+            - type: "null"
+        site_sync:
+          description: Delivery of the latest change to the WordPress sites.
+          allOf:
+            - $ref: "#/components/schemas/SessionSalesStateSiteSync"
+        external_allocations:
+          type: integer
+          description: |
+            Partner quotas of the session that may still sell outside arena.
+            A sales state cannot close them: tell those partners by hand.
+        changed:
+          type: boolean
+          description: |
+            Only on a PUT: true when the state changed, false when the
+            session already had it (nothing was written).
+    SetSessionSalesStateRequest:
+      type: object
+      required: [state]
+      description: The state to set.
+      properties:
+        state:
+          type: string
+          enum: [open, soon, sold_out]
+          description: "`soon` or `sold_out` close the sale in every channel; `open` lifts the state."
+        changed_by:
+          type: string
+          maxLength: 100
+          description: |
+            For an organization API key only: the name of the person who
+            switched (a site's own screen). Ignored for a signed-in user,
+            whose own name is recorded.
+    SessionSalesStateChange:
+      type: object
+      required: [id, old_state, new_state, changed_by, created_at, site_sync]
+      description: One journal row of a session's sales state.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The journal row.
+        old_state:
+          type: string
+          description: "`open`, `soon` or `sold_out` before the change."
+        new_state:
+          type: string
+          description: "`open`, `soon` or `sold_out` after it."
+        changed_by:
+          description: Who made the change.
+          allOf:
+            - $ref: "#/components/schemas/SessionSalesStateActor"
+        created_at:
+          type: string
+          format: date-time
+          description: When.
+        site_sync:
+          type: string
+          description: Delivery of this change to the sites (see SessionSalesStateSiteSync.status).
+    SessionSalesStateHistory:
+      type: object
+      required: [items]
+      description: The newest journal rows first.
+      properties:
+        items:
+          type: array
+          description: Journal rows.
+          items:
+            $ref: "#/components/schemas/SessionSalesStateChange"
     SessionChangeImpact:
       type: object
       required: [session_id, kinds, orders, tickets, arena_orders, site_orders, no_address, invitations_to_issuer, blocked, contact, default_message, current, proposed]
@@ -46923,6 +47101,13 @@ paths:
             After it every tier reports `available: 0`.
           * `doors_open_at` — when the venue opens its doors (RFC 3339),
             or null when not given. Display only.
+          * `sales_state` — the session's sales state, the one every sales
+            channel follows (migration 0182): `open`, `soon`, `sold_out`,
+            `ended` or `cancelled`. While the organizer has set `soon` or
+            `sold_out`, every tier reports `available: 0`, the session has
+            no seat map links and every hold is refused; the widget shows
+            the state instead of the picker. `""` only when it could not be
+            loaded.
           * `service_fee_percent` — the channel's service charge as a
             decimal string (`"5.00"` = 5 %, `"0.00"` = none), applied on
             top of the ticket prices at checkout; the widget shows it as
@@ -47426,7 +47611,9 @@ paths:
             capacity exceeded (reservation.over_capacity), or a category that
             is closed (`tier.closed`) or outside its sale window or past the
             session's sales end (`tier.not_on_sale`), or a session that was
-            cancelled (`session.cancelled`).
+            cancelled (`session.cancelled`) or that the organizer set to
+            "coming soon" (`session.sales_not_started`) or "sold out"
+            (`session.sold_out`, both with `details.sales_state`).
           content:
             application/json:
               schema:
@@ -47499,7 +47686,9 @@ paths:
         read-only sale gates as a hold: a category that is closed, outside its
         sale window or past the session's sales end is refused with 409
         `tier.closed` or `tier.not_on_sale`, a session that was cancelled with
-        409 `session.cancelled`, and a seat that is gone or taken
+        409 `session.cancelled`, a session the organizer set to "coming soon"
+        or "sold out" with 409 `session.sales_not_started` or
+        `session.sold_out`, and a seat that is gone or taken
         with 409 `reservation.seats_conflict`, exactly as `checkout/start`
         refuses them. The answer is never cached (`Cache-Control: no-store`).
 
@@ -47578,7 +47767,9 @@ paths:
             A requested seat is gone or taken (`reservation.seats_conflict`),
             or a category is closed (`tier.closed`) or outside its sale window
             or past the session's sales end (`tier.not_on_sale`), or the
-            session was cancelled (`session.cancelled`).
+            session was cancelled (`session.cancelled`) or set to "coming
+            soon" (`session.sales_not_started`) or "sold out"
+            (`session.sold_out`) by the organizer.
           content:
             application/json:
               schema:
@@ -54762,6 +54953,226 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/sessions/{session_id}/sales-state:
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdSalesState
+      summary: Read the session's sales state
+      description: |
+        The session's sales state (one for every sales channel, migration
+        0182): the organizer's own state, the effective one buyers see, the
+        places, who made the latest change and whether the WordPress sites
+        got it. Requires the `session.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The sales state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionSalesState"
+        "400":
+          description: A path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`session.read`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, deleted, or not part of this organization (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`session.sales_state_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      operationId: putV1OrganizationsOrgIdSessionsSessionIdSalesState
+      summary: Set or lift the session's sales state
+      description: |
+        Sets `soon` or `sold_out`, or lifts the state with `open`. The state
+        is one for every sales channel: while it is set the hold gate refuses
+        every NEW hold (REST and widget 409 `session.sales_not_started` /
+        `session.sold_out`, gateway 101), holds taken before keep going to
+        payment. A change is written to the journal together with a
+        `v1.session.updated` notification, on which the WordPress sites
+        re-read the session (`salesState` in GET_ALL_ACTIONS). Asking for the
+        state the session already has answers 200 with `changed: false` and
+        writes nothing. The owner and the managers may do it: requires the
+        `session.update` permission. The client is taken from the
+        `X-Client-Channel` header.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetSessionSalesStateRequest"
+      responses:
+        "200":
+          description: The sales state after the request, with `changed`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionSalesState"
+        "400":
+          description: Invalid body (`session.invalid_json`, `session.invalid_sales_state`, `session.invalid_changed_by`) or path parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`session.update`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, deleted, or not part of this organization (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The session is cancelled (`session.cancelled`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`session.sales_state_failed`, `session.audit_failed`, `session.commit_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/sessions/{session_id}/sales-state/history:
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdSalesStateHistory
+      summary: The journal of the session's sales state
+      description: |
+        Every change of the session's sales state, newest first: from and
+        to, who (name, role), from which client, and whether the sites got
+        it. Requires the `session.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          description: How many rows, 1 to 100 (default 20).
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        "200":
+          description: The journal rows.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionSalesStateHistory"
+        "400":
+          description: A path parameter is not a valid UUID, or `limit` is out of range (`session.invalid_limit`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`session.read`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, deleted, or not part of this organization (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`session.sales_state_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/organizations/{org_id}/sessions/{session_id}/change-impact:
     get:
       operationId: getV1OrganizationsOrgIdSessionsSessionIdChangeImpact

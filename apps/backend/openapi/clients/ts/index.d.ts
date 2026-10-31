@@ -6456,6 +6456,13 @@ export interface paths {
          *         After it every tier reports `available: 0`.
          *       * `doors_open_at` — when the venue opens its doors (RFC 3339),
          *         or null when not given. Display only.
+         *       * `sales_state` — the session's sales state, the one every sales
+         *         channel follows (migration 0182): `open`, `soon`, `sold_out`,
+         *         `ended` or `cancelled`. While the organizer has set `soon` or
+         *         `sold_out`, every tier reports `available: 0`, the session has
+         *         no seat map links and every hold is refused; the widget shows
+         *         the state instead of the picker. `""` only when it could not be
+         *         loaded.
          *       * `service_fee_percent` — the channel's service charge as a
          *         decimal string (`"5.00"` = 5 %, `"0.00"` = none), applied on
          *         top of the ticket prices at checkout; the widget shows it as
@@ -6744,7 +6751,9 @@ export interface paths {
          *     read-only sale gates as a hold: a category that is closed, outside its
          *     sale window or past the session's sales end is refused with 409
          *     `tier.closed` or `tier.not_on_sale`, a session that was cancelled with
-         *     409 `session.cancelled`, and a seat that is gone or taken
+         *     409 `session.cancelled`, a session the organizer set to "coming soon"
+         *     or "sold out" with 409 `session.sales_not_started` or
+         *     `session.sold_out`, and a seat that is gone or taken
          *     with 409 `reservation.seats_conflict`, exactly as `checkout/start`
          *     refuses them. The answer is never cached (`Cache-Control: no-store`).
          *
@@ -9036,6 +9045,65 @@ export interface paths {
          *     Requires `promo.read`; a code of another organization is a 404.
          */
         get: operations["getV1OrganizationsOrgIdPromoCodesPromoCodeIdRedemptionsCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/sales-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the session's sales state
+         * @description The session's sales state (one for every sales channel, migration
+         *     0182): the organizer's own state, the effective one buyers see, the
+         *     places, who made the latest change and whether the WordPress sites
+         *     got it. Requires the `session.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdSalesState"];
+        /**
+         * Set or lift the session's sales state
+         * @description Sets `soon` or `sold_out`, or lifts the state with `open`. The state
+         *     is one for every sales channel: while it is set the hold gate refuses
+         *     every NEW hold (REST and widget 409 `session.sales_not_started` /
+         *     `session.sold_out`, gateway 101), holds taken before keep going to
+         *     payment. A change is written to the journal together with a
+         *     `v1.session.updated` notification, on which the WordPress sites
+         *     re-read the session (`salesState` in GET_ALL_ACTIONS). Asking for the
+         *     state the session already has answers 200 with `changed: false` and
+         *     writes nothing. The owner and the managers may do it: requires the
+         *     `session.update` permission. The client is taken from the
+         *     `X-Client-Channel` header.
+         */
+        put: operations["putV1OrganizationsOrgIdSessionsSessionIdSalesState"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/sales-state/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The journal of the session's sales state
+         * @description Every change of the session's sales state, newest first: from and
+         *     to, who (name, role), from which client, and whether the sites got
+         *     it. Requires the `session.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdSalesStateHistory"];
         put?: never;
         post?: never;
         delete?: never;
@@ -19534,6 +19602,20 @@ export interface components {
              */
             doors_open_at: string | null;
             /**
+             * @description The session's sales state, the one every sales channel follows
+             *     (migration 0182): `open`, `soon`, `sold_out`, `ended` or
+             *     `cancelled`. Present on the session list and the single read;
+             *     absent on the create and update answers.
+             * @example open
+             */
+            sales_state?: string;
+            /**
+             * @description The state the organizer set by hand (`soon` or `sold_out`);
+             *     absent when none is set and sales follow the categories.
+             * @example sold_out
+             */
+            manual_sales_state?: string;
+            /**
              * Format: int32
              * @description Total places available for this slot — a DERIVED value
              *     (AB-36): a bound seating plan version wins; otherwise
@@ -19941,6 +20023,145 @@ export interface components {
             timezone: string;
             /** @description Session status. */
             status: string;
+        };
+        /** @description Who made a sales state change, as the journal recorded it. */
+        SessionSalesStateActor: {
+            /** @description `user`, `api_key` or `system`. */
+            type: string;
+            /**
+             * @description The person's name (else their e-mail) for a user; for an
+             *     organization API key, the name its caller sent in `changed_by`
+             *     (a site names the person who switched on its own screen).
+             */
+            name: string;
+            /**
+             * @description The membership role at the moment of the change (`org_admin` for
+             *     the owner, `organizer` for a manager), `platform_staff`, or empty.
+             */
+            role: string;
+            /**
+             * @description The client used: `event_center_web`, `telegram_bot`,
+             *     `site_plugin`, `admin_web`, or `api` when the request named none
+             *     (the `X-Client-Channel` header).
+             */
+            source: string;
+        };
+        /**
+         * @description Whether the WordPress sites that sell the event were told about the
+         *     latest change (they then re-read the session through the gateway).
+         */
+        SessionSalesStateSiteSync: {
+            /**
+             * @description `none` (no site sells this event), `pending`, `retrying`,
+             *     `delivered` or `failed` (retries exhausted).
+             */
+            status: string;
+            /** @description How many WordPress sites sell the event. */
+            sites: number;
+            /** @description Delivery attempts made so far. */
+            attempts: number;
+            /** @description The last delivery error while not delivered, else null. */
+            last_error: string | null;
+        };
+        /**
+         * @description One sales state per session for EVERY sales channel (migration 0182).
+         *     The organizer may set `soon` or `sold_out`; while either is set no
+         *     channel takes a new hold, whatever places are left. Holds taken
+         *     before keep going to payment; tickets, refunds and scanning are not
+         *     touched. `open` lifts the state and the real places and sale windows
+         *     come back unchanged.
+         */
+        SessionSalesState: {
+            /**
+             * Format: uuid
+             * @description The session.
+             */
+            session_id: string;
+            /**
+             * Format: uuid
+             * @description Its event.
+             */
+            event_id: string;
+            /** @description The organizer's state, `soon` or `sold_out`; null when none is set. */
+            manual: string | null;
+            /**
+             * @description The state buyers see: the organizer's state when set; otherwise
+             *     `cancelled`, `ended` (the sales end passed), `sold_out` (no free
+             *     place left), `open` (a category sells now) or `soon` (none sells
+             *     yet, or the session has no category). A session without
+             *     categories is never `sold_out`.
+             */
+            effective: string;
+            /** @description Places the session owns in live categories. */
+            total_places: number;
+            /** @description Places nobody holds or bought. */
+            free_places: number;
+            /** @description Places held by carts that are not paid yet. */
+            held_places: number;
+            /**
+             * Format: date-time
+             * @description The session's own sales end (RFC 3339, UTC).
+             */
+            sales_end_at: string;
+            /**
+             * Format: date-time
+             * @description When the latest change was made; null before the first one.
+             */
+            changed_at: string | null;
+            /** @description Who made the latest change; null before the first one. */
+            changed_by: components["schemas"]["SessionSalesStateActor"] | null;
+            /** @description Delivery of the latest change to the WordPress sites. */
+            site_sync: components["schemas"]["SessionSalesStateSiteSync"];
+            /**
+             * @description Partner quotas of the session that may still sell outside arena.
+             *     A sales state cannot close them: tell those partners by hand.
+             */
+            external_allocations: number;
+            /**
+             * @description Only on a PUT: true when the state changed, false when the
+             *     session already had it (nothing was written).
+             */
+            changed?: boolean;
+        };
+        /** @description The state to set. */
+        SetSessionSalesStateRequest: {
+            /**
+             * @description `soon` or `sold_out` close the sale in every channel; `open` lifts the state.
+             * @enum {string}
+             */
+            state: "open" | "soon" | "sold_out";
+            /**
+             * @description For an organization API key only: the name of the person who
+             *     switched (a site's own screen). Ignored for a signed-in user,
+             *     whose own name is recorded.
+             */
+            changed_by?: string;
+        };
+        /** @description One journal row of a session's sales state. */
+        SessionSalesStateChange: {
+            /**
+             * Format: uuid
+             * @description The journal row.
+             */
+            id: string;
+            /** @description `open`, `soon` or `sold_out` before the change. */
+            old_state: string;
+            /** @description `open`, `soon` or `sold_out` after it. */
+            new_state: string;
+            /** @description Who made the change. */
+            changed_by: components["schemas"]["SessionSalesStateActor"];
+            /**
+             * Format: date-time
+             * @description When.
+             */
+            created_at: string;
+            /** @description Delivery of this change to the sites (see SessionSalesStateSiteSync.status). */
+            site_sync: string;
+        };
+        /** @description The newest journal rows first. */
+        SessionSalesStateHistory: {
+            /** @description Journal rows. */
+            items: components["schemas"]["SessionSalesStateChange"][];
         };
         /**
          * @description Dry run of a session move or cancellation: what saving it would do,
@@ -55049,7 +55270,9 @@ export interface operations {
              *     capacity exceeded (reservation.over_capacity), or a category that
              *     is closed (`tier.closed`) or outside its sale window or past the
              *     session's sales end (`tier.not_on_sale`), or a session that was
-             *     cancelled (`session.cancelled`).
+             *     cancelled (`session.cancelled`) or that the organizer set to
+             *     "coming soon" (`session.sales_not_started`) or "sold out"
+             *     (`session.sold_out`, both with `details.sales_state`).
              */
             409: {
                 headers: {
@@ -55184,7 +55407,9 @@ export interface operations {
              * @description A requested seat is gone or taken (`reservation.seats_conflict`),
              *     or a category is closed (`tier.closed`) or outside its sale window
              *     or past the session's sales end (`tier.not_on_sale`), or the
-             *     session was cancelled (`session.cancelled`).
+             *     session was cancelled (`session.cancelled`) or set to "coming
+             *     soon" (`session.sales_not_started`) or "sold out"
+             *     (`session.sold_out`) by the organizer.
              */
             409: {
                 headers: {
@@ -63114,6 +63339,259 @@ export interface operations {
                 };
             };
             /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdSalesState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The sales state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionSalesState"];
+                };
+            };
+            /** @description A path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`session.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, deleted, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`session.sales_state_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putV1OrganizationsOrgIdSessionsSessionIdSalesState: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetSessionSalesStateRequest"];
+            };
+        };
+        responses: {
+            /** @description The sales state after the request, with `changed`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionSalesState"];
+                };
+            };
+            /** @description Invalid body (`session.invalid_json`, `session.invalid_sales_state`, `session.invalid_changed_by`) or path parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`session.update`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, deleted, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The session is cancelled (`session.cancelled`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`session.sales_state_failed`, `session.audit_failed`, `session.commit_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdSalesStateHistory: {
+        parameters: {
+            query?: {
+                /** @description How many rows, 1 to 100 (default 20). */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The journal rows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionSalesStateHistory"];
+                };
+            };
+            /** @description A path parameter is not a valid UUID, or `limit` is out of range (`session.invalid_limit`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`session.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, deleted, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`session.sales_state_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

@@ -63,6 +63,12 @@ other = "Your time ran out. Start the purchase again."
 ["bil24.sales_closed"]
 other = "Ticket sales for this session have ended."
 
+["bil24.sales_soon"]
+other = "Ticket sales for this session have not started yet."
+
+["bil24.session_sold_out"]
+other = "This session is sold out."
+
 ["bil24.promo_invalid"]
 other = "This promo code does not work. Check the code or buy without it."
 

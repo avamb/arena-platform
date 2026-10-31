@@ -24,6 +24,8 @@
           "time": "{{time}}",
           "currency": "CZK",
           "sellEndTime": "{{sellEndTime}}",
+          "salesState": "open",
+          "arenaSessionId": "{{arenaSessionId}}",
           "seatingPlanId": "{{hybridActionEventId}}",
           "seatingPlanName": "Palác Akropolis (harness)",
           "eTicket": true,

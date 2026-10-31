@@ -795,6 +795,13 @@ const (
 	SessionMediaReplaceRequestItemsKindVideo  SessionMediaReplaceRequestItemsKind = "video"
 )
 
+// Defines values for SetSessionSalesStateRequestState.
+const (
+	Open    SetSessionSalesStateRequestState = "open"
+	SoldOut SetSessionSalesStateRequestState = "sold_out"
+	Soon    SetSessionSalesStateRequestState = "soon"
+)
+
 // Defines values for TextFormatKind.
 const (
 	Description    TextFormatKind = "description"
@@ -16254,6 +16261,10 @@ type SessionItem struct {
 	// Id UUIDv7 primary key of the session row.
 	Id openapi_types.UUID `json:"id"`
 
+	// ManualSalesState The state the organizer set by hand (`soon` or `sold_out`);
+	// absent when none is set and sales follow the categories.
+	ManualSalesState *string `json:"manual_sales_state,omitempty"`
+
 	// PosterMediaId Optional session-level poster artwork (AB-47). When set, this
 	// overrides the event-level `poster_media_id` for this specific
 	// session. Resolution order: sessions.poster_media_id ??
@@ -16265,6 +16276,12 @@ type SessionItem struct {
 	// moment. No new hold is taken after it on any surface; a category's
 	// own sale_window_end can only close that category sooner.
 	SalesEndAt time.Time `json:"sales_end_at"`
+
+	// SalesState The session's sales state, the one every sales channel follows
+	// (migration 0182): `open`, `soon`, `sold_out`, `ended` or
+	// `cancelled`. Present on the session list and the single read;
+	// absent on the create and update answers.
+	SalesState *string `json:"sales_state,omitempty"`
 
 	// SeatingPlanVersionId The bound seating plan version. Null for pure
 	// general-admission sessions; always set for assigned_seats /
@@ -16401,6 +16418,123 @@ type SessionPlaceCounts struct {
 
 	// Unavailable Places withheld from sale by an operator.
 	Unavailable int64 `json:"unavailable"`
+}
+
+// SessionSalesState One sales state per session for EVERY sales channel (migration 0182).
+// The organizer may set `soon` or `sold_out`; while either is set no
+// channel takes a new hold, whatever places are left. Holds taken
+// before keep going to payment; tickets, refunds and scanning are not
+// touched. `open` lifts the state and the real places and sale windows
+// come back unchanged.
+type SessionSalesState struct {
+	// Changed Only on a PUT: true when the state changed, false when the
+	// session already had it (nothing was written).
+	Changed *bool `json:"changed,omitempty"`
+
+	// ChangedAt When the latest change was made; null before the first one.
+	ChangedAt *time.Time `json:"changed_at"`
+
+	// ChangedBy Who made the latest change; null before the first one.
+	ChangedBy *SessionSalesStateActor `json:"changed_by"`
+
+	// Effective The state buyers see: the organizer's state when set; otherwise
+	// `cancelled`, `ended` (the sales end passed), `sold_out` (no free
+	// place left), `open` (a category sells now) or `soon` (none sells
+	// yet, or the session has no category). A session without
+	// categories is never `sold_out`.
+	Effective string `json:"effective"`
+
+	// EventId Its event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// ExternalAllocations Partner quotas of the session that may still sell outside arena.
+	// A sales state cannot close them: tell those partners by hand.
+	ExternalAllocations int `json:"external_allocations"`
+
+	// FreePlaces Places nobody holds or bought.
+	FreePlaces int `json:"free_places"`
+
+	// HeldPlaces Places held by carts that are not paid yet.
+	HeldPlaces int `json:"held_places"`
+
+	// Manual The organizer's state, `soon` or `sold_out`; null when none is set.
+	Manual *string `json:"manual"`
+
+	// SalesEndAt The session's own sales end (RFC 3339, UTC).
+	SalesEndAt time.Time `json:"sales_end_at"`
+
+	// SessionId The session.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// SiteSync Delivery of the latest change to the WordPress sites.
+	SiteSync SessionSalesStateSiteSync `json:"site_sync"`
+
+	// TotalPlaces Places the session owns in live categories.
+	TotalPlaces int `json:"total_places"`
+}
+
+// SessionSalesStateActor Who made a sales state change, as the journal recorded it.
+type SessionSalesStateActor struct {
+	// Name The person's name (else their e-mail) for a user; for an
+	// organization API key, the name its caller sent in `changed_by`
+	// (a site names the person who switched on its own screen).
+	Name string `json:"name"`
+
+	// Role The membership role at the moment of the change (`org_admin` for
+	// the owner, `organizer` for a manager), `platform_staff`, or empty.
+	Role string `json:"role"`
+
+	// Source The client used: `event_center_web`, `telegram_bot`,
+	// `site_plugin`, `admin_web`, or `api` when the request named none
+	// (the `X-Client-Channel` header).
+	Source string `json:"source"`
+
+	// Type `user`, `api_key` or `system`.
+	Type string `json:"type"`
+}
+
+// SessionSalesStateChange One journal row of a session's sales state.
+type SessionSalesStateChange struct {
+	// ChangedBy Who made the change.
+	ChangedBy SessionSalesStateActor `json:"changed_by"`
+
+	// CreatedAt When.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id The journal row.
+	Id openapi_types.UUID `json:"id"`
+
+	// NewState `open`, `soon` or `sold_out` after it.
+	NewState string `json:"new_state"`
+
+	// OldState `open`, `soon` or `sold_out` before the change.
+	OldState string `json:"old_state"`
+
+	// SiteSync Delivery of this change to the sites (see SessionSalesStateSiteSync.status).
+	SiteSync string `json:"site_sync"`
+}
+
+// SessionSalesStateHistory The newest journal rows first.
+type SessionSalesStateHistory struct {
+	// Items Journal rows.
+	Items []SessionSalesStateChange `json:"items"`
+}
+
+// SessionSalesStateSiteSync Whether the WordPress sites that sell the event were told about the
+// latest change (they then re-read the session through the gateway).
+type SessionSalesStateSiteSync struct {
+	// Attempts Delivery attempts made so far.
+	Attempts int `json:"attempts"`
+
+	// LastError The last delivery error while not delivered, else null.
+	LastError *string `json:"last_error"`
+
+	// Sites How many WordPress sites sell the event.
+	Sites int `json:"sites"`
+
+	// Status `none` (no site sells this event), `pending`, `retrying`,
+	// `delivered` or `failed` (retries exhausted).
+	Status string `json:"status"`
 }
 
 // SessionStateSnapshot The buyer-visible slice of a session.
@@ -16766,6 +16900,20 @@ type SetEventPromoterRequest struct {
 	// make the organization itself the promoter again.
 	PromoterId *openapi_types.UUID `json:"promoter_id"`
 }
+
+// SetSessionSalesStateRequest The state to set.
+type SetSessionSalesStateRequest struct {
+	// ChangedBy For an organization API key only: the name of the person who
+	// switched (a site's own screen). Ignored for a signed-in user,
+	// whose own name is recorded.
+	ChangedBy *string `json:"changed_by,omitempty"`
+
+	// State `soon` or `sold_out` close the sale in every channel; `open` lifts the state.
+	State SetSessionSalesStateRequestState `json:"state"`
+}
+
+// SetSessionSalesStateRequestState `soon` or `sold_out` close the sale in every channel; `open` lifts the state.
+type SetSessionSalesStateRequestState string
 
 // ShopAddress Where the goods go.
 type ShopAddress struct {
@@ -21190,6 +21338,12 @@ type CreateInvitationBatchParams struct {
 	DryRun *bool `form:"dry_run,omitempty" json:"dry_run,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdSessionsSessionIdSalesStateHistoryParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdSalesStateHistory.
+type GetV1OrganizationsOrgIdSessionsSessionIdSalesStateHistoryParams struct {
+	// Limit How many rows, 1 to 100 (default 20).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdSessionsSessionIdSalesCsvParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdSalesCsv.
 type GetV1OrganizationsOrgIdSessionsSessionIdSalesCsvParams struct {
 	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
@@ -21975,6 +22129,9 @@ type IssueStaffInvitationJSONRequestBody = StaffInvitationIssueRequest
 
 // PostV1OrganizationsOrgIdSessionsSessionIdLayoutsApplyJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdLayoutsApply for application/json ContentType.
 type PostV1OrganizationsOrgIdSessionsSessionIdLayoutsApplyJSONRequestBody = SeatLayoutApplyRequest
+
+// PutV1OrganizationsOrgIdSessionsSessionIdSalesStateJSONRequestBody defines body for PutV1OrganizationsOrgIdSessionsSessionIdSalesState for application/json ContentType.
+type PutV1OrganizationsOrgIdSessionsSessionIdSalesStateJSONRequestBody = SetSessionSalesStateRequest
 
 // PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSeatBatches for application/json ContentType.
 type PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody = SeatBatchRequest

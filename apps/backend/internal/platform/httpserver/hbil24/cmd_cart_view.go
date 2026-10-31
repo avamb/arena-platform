@@ -578,6 +578,11 @@ func (h *Handler) writeCartHoldError(
 			h.localizeDesc(req.Locale, cc.locale, "bil24.category_sold_out",
 				"Category is sold out", cartSoldOutParams(pricing, capErr.TierID)),
 		))
+	case errors.Is(err, hcheckout.ErrSessionSalesSoon),
+		errors.Is(err, hcheckout.ErrSessionSoldOut):
+		// The organizer's sales state of the session (migration 0182).
+		writeBil24JSON(w, http.StatusOK, salesStateRefusal(req.Command,
+			h.localizeDesc(req.Locale, cc.locale, salesStateDescKey(err), salesStateDescFallback(err), nil), err))
 	case errors.Is(err, hcheckout.ErrSessionCancelled):
 		// The session itself is cancelled: its categories still exist, so
 		// the gate refuses on the session's status. Same answer

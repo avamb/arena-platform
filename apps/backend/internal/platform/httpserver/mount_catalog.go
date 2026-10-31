@@ -105,6 +105,9 @@ func (s *Server) mountSessionRoutes(r chi.Router) {
 			pr.Get("/organizations/{org_id}/sessions/{session_id}/change-impact", s.handleSessionChangeImpact)
 			// The organizer's preview of a buyer's e-ticket (migration 0119).
 			pr.Get("/organizations/{org_id}/sessions/{session_id}/sample-ticket", s.handleSessionSampleTicket)
+			// One sales state for every channel (migration 0182).
+			pr.Get("/organizations/{org_id}/sessions/{session_id}/sales-state", s.handleGetSessionSalesState)
+			pr.Get("/organizations/{org_id}/sessions/{session_id}/sales-state/history", s.handleListSessionSalesStateHistory)
 		})
 	}
 	if s.authEnabled() && s.sessionQueries != nil && s.pool != nil {
@@ -115,6 +118,7 @@ func (s *Server) mountSessionRoutes(r chi.Router) {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "session.update", "sessions")
 			pr.Patch("/organizations/{org_id}/events/{event_id}/sessions/{id}", s.handleUpdateSession)
+			pr.Put("/organizations/{org_id}/sessions/{session_id}/sales-state", s.handleSetSessionSalesState)
 		})
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "session.delete", "sessions")

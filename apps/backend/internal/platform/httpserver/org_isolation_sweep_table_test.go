@@ -192,6 +192,21 @@ func sweepRows() []sweepRow {
 		{hole: "H7", name: "session get (own event, foreign session)", route: "GET /v1/organizations/{org_id}/events/{event_id}/sessions/{id}", perm: "session.read", attackOnly: true,
 			path: func(id sweepIDs) string { return sessionBase(id, id.EventOther, id.Session4) }},
 
+		// -- Session sales state (migration 0182): {session_id} is checked
+		// against the path organization (GetSalesStateSessionScope, and the
+		// row lock in salesstate.Change). The control PUT asks for "open",
+		// which the session already has, so it writes nothing and leaves the
+		// session sellable for the rows after it.
+		{hole: "SST", name: "session sales state get", route: "GET /v1/organizations/{org_id}/sessions/{session_id}/sales-state", perm: "session.read",
+			path: func(id sweepIDs) string { return orgPath(id) + "/sessions/" + id.Session1.String() + "/sales-state" }},
+		{hole: "SST", name: "session sales state history", route: "GET /v1/organizations/{org_id}/sessions/{session_id}/sales-state/history", perm: "session.read",
+			path: func(id sweepIDs) string {
+				return orgPath(id) + "/sessions/" + id.Session1.String() + "/sales-state/history"
+			}},
+		{hole: "SST", name: "session sales state set", route: "PUT /v1/organizations/{org_id}/sessions/{session_id}/sales-state", perm: "session.update",
+			path: func(id sweepIDs) string { return orgPath(id) + "/sessions/" + id.Session1.String() + "/sales-state" },
+			body: func(_ sweepIDs) string { return `{"state":"open"}` }},
+
 		// ── H8 seating bind and seat block/unblock: only the path organization was checked.
 		{hole: "H8", name: "seating bind", route: "POST /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/seating", perm: "event_session.assign_seating_plan",
 			path: func(id sweepIDs) string { return sessionBase(id, id.Event, id.Session2) + "/seating" },

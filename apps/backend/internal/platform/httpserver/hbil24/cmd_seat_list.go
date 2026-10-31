@@ -25,6 +25,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesstate"
 )
 
 // admissionGA is the sessions.admission_mode value for a session with no
@@ -308,18 +309,26 @@ func (h *Handler) buildSeatListCategories(
 ) []bil24compat.GetSeatListCategory {
 	ledgers := h.seatListLedgers(ctx, sessionID, tiers, stats)
 
-	// The session's own sales end closes every category with it (0128).
-	// Best effort: a failed lookup leaves the categories' own windows.
-	var salesEnd time.Time
+	// The session's own sales end closes every category with it (0128), and
+	// so does the organizer's "coming soon" / "sold out" (0182): the hold
+	// gate refuses every new hold then. Best effort: a failed lookup leaves
+	// the categories' own windows.
+	var (
+		salesEnd time.Time
+		manual   string
+	)
 	if h.tierQueries != nil {
-		if end, err := h.tierQueries.GetSessionSalesEnd(ctx, sessionID); err == nil {
-			salesEnd = end
+		if end, _, m, err := h.tierQueries.GetSessionSalesState(ctx, sessionID); err == nil {
+			salesEnd, manual = end, m
 		}
 	}
 
 	out := make([]bil24compat.GetSeatListCategory, 0, len(tiers))
 	for _, t := range tiers {
 		t = hcheckout.CapSaleWindow(t, salesEnd)
+		if salesstate.ValidManual(manual) {
+			t.IsOpen = false
+		}
 		out = append(out, bil24compat.GetSeatListCategory{
 			CategoryPriceID:   h.compatCategoryPriceIDInt(ctx, t.ID),
 			CategoryPriceName: t.Name,

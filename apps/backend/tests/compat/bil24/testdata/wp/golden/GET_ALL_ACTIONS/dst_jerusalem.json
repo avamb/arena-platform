@@ -24,6 +24,8 @@
           "time": "{{time}}",
           "currency": "ILS",
           "sellEndTime": "{{sellEndTime}}",
+          "salesState": "open",
+          "arenaSessionId": "{{arenaSessionId}}",
           "seatingPlanId": 0,
           "eTicket": true,
           "availability": 5,

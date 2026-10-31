@@ -29,6 +29,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesstate"
 )
 
 // catalogAction is the per-event slice of the actionEventList subtree: the
@@ -151,7 +152,15 @@ func (h *Handler) loadActionEvents(
 		}
 	}
 
-	return h.projectActionEvents(ctx, orgID, sessions, tiers, prices, feePercent, chain), nil
+	// The organizer's sales state of each session (migration 0182). Fatal
+	// like the session read: a catalog that silently lost a "sold out"
+	// would let a site reopen a sale the organizer closed.
+	manual, err := h.eventQueries.ListManualSalesStatesByOrg(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	return h.projectActionEvents(ctx, orgID, sessions, tiers, prices, feePercent, chain, manual), nil
 }
 
 // catalogChain is the part of a chain of categories (migration 0112) the
@@ -174,6 +183,7 @@ func (h *Handler) projectActionEvents(
 	prices map[uuid.UUID]int64,
 	feePercent float64,
 	chain catalogChain,
+	manual map[uuid.UUID]string,
 ) map[uuid.UUID]catalogAction {
 	// One instant for the whole projection so a category's sale window
 	// cannot be judged "open" for its availability and "closed" for the
@@ -267,6 +277,24 @@ func (h *Handler) projectActionEvents(
 			bySession[s.SessionID] = capped
 		}
 		sessionAvail := sessionAvailability(s, bySession[s.SessionID], now)
+
+		// salesState (arena extension, migration 0182) — open / soon /
+		// soldout / ended by the rule the event center shows; arenaSessionId
+		// lets a site switch the state back through the REST API. While the
+		// organizer's state is set the hold gate refuses every new hold, so
+		// the session and its categories advertise no place, like a closed
+		// category does on this wire.
+		entry["salesState"] = salesstate.Wire(actionEventSalesState(s, bySession[s.SessionID], manual[s.SessionID], now))
+		entry["arenaSessionId"] = s.SessionID.String()
+		if salesstate.ValidManual(manual[s.SessionID]) {
+			sessionAvail = 0
+			closed := make([]gen.ActionEventTierRow, len(bySession[s.SessionID]))
+			for i, t := range bySession[s.SessionID] {
+				t.Tier.IsOpen = false
+				closed[i] = t
+			}
+			bySession[s.SessionID] = closed
+		}
 		entry["availability"] = sessionAvail
 
 		catList, minPrice, maxPrice, hasPrice := h.projectCategories(
