@@ -15813,10 +15813,10 @@ type SeatingPlanVersion struct {
 // SeatingSchemaResponse Response body for `GET /v1/event-sessions/{id}/schema`. Contains the
 // raw canonical geometry (byte-for-byte identical to the stored
 // `seating_plan_versions.geometry`) plus a `category_prices` overlay
-// with per-category tier / price resolution. The strong `ETag`
-// response header is set to `"<geometry_checksum>"` and the response
-// is served with `Cache-Control: public, max-age=86400, immutable`
-// because a new plan version always yields a new checksum.
+// with per-category tier / price resolution. Served with
+// `Cache-Control: no-store` and no ETag: tier prices, colours and
+// per-seat categories change without a new geometry, so the schema
+// is read from the current state on every request.
 type SeatingSchemaResponse struct {
 	// AdmissionMode Admission mode of the session. GA sessions do not expose a schema and receive 404.
 	AdmissionMode SeatingSchemaResponseAdmissionMode `json:"admission_mode"`
@@ -20469,18 +20469,6 @@ type PostV1EchoParams struct {
 type GetPublicSessionLayoutSVGParams struct {
 	// IfNoneMatch Standard conditional-request header. When it matches the
 	// current composite ETag the server responds 304 with no body.
-	IfNoneMatch *string `json:"If-None-Match,omitempty"`
-}
-
-// GetPublicSessionSchemaParams defines parameters for GetPublicSessionSchema.
-type GetPublicSessionSchemaParams struct {
-	// IfNoneMatch Standard conditional-request header. When it matches the current `geometry_checksum` ETag the server responds 304 with no body.
-	IfNoneMatch *string `json:"If-None-Match,omitempty"`
-}
-
-// GetSessionSchemaAdminParams defines parameters for GetSessionSchemaAdmin.
-type GetSessionSchemaAdminParams struct {
-	// IfNoneMatch Standard conditional-request header; a match answers 304 with no body.
 	IfNoneMatch *string `json:"If-None-Match,omitempty"`
 }
 

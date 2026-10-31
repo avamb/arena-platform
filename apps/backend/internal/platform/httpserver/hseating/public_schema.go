@@ -12,10 +12,9 @@
 //   - /schema returns the canonical geometry payload with category → tier /
 //     price resolution overlayed as a separate `category_prices` map so the
 //     raw geometry stays byte-for-byte identical to the stored version.
-//     Response headers:
-//     ETag:          "<geometry_checksum>"   (strong)
-//     Cache-Control: public, max-age=86400, immutable
-//     When If-None-Match matches, the handler responds 304 with no body.
+//     Response header Cache-Control: no-store, no ETag, never a 304: the
+//     schema is read from the current state on every request (see
+//     schemaCacheControl).
 //   - /seat-status without query returns the full snapshot
 //     { status_version: N, seats: { "<seat_key>": "<status>" } }
 //   - /seat-status?since_version=N returns only rows whose status_version
@@ -41,21 +40,18 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 )
 
-// schemaCacheControl is the Cache-Control header for the /schema endpoint.
-// The response body is content-addressed by geometry_checksum (ETag) — a
-// new version of the seating plan produces a new checksum, so caches can
-// safely treat the response as immutable for the max-age window.
-const schemaCacheControl = "public, max-age=86400, immutable"
+// schemaCacheControl is the Cache-Control header of both schema routes.
+// The schema is NOT cached anywhere: the body carries the tiers' prices,
+// names and colours and the per-seat categories, none of which the old
+// validator (geometry_checksum + seat_status_version) covered, so a buyer
+// who had opened the page kept a repainted category's old colour for a day
+// (staging, 31.10.2026). Every request reads the current state.
+const schemaCacheControl = "no-store"
 
 // seatStatusCacheControl is the Cache-Control header for both /seat-status
 // variants. Deltas invalidate on every reservation touching the session,
 // so we serve them uncacheable at the edge.
 const seatStatusCacheControl = "no-cache"
-
-// adminSchemaCacheControl is the Cache-Control header of the organizer's
-// schema: a draft event's map is nobody else's, and a repaint must show at
-// once (the ETag still saves the body on a revalidation).
-const adminSchemaCacheControl = "private, no-cache"
 
 // HandleGetPublicSessionSchema serves the geometry + category price
 // resolution payload for a published seated session.
@@ -86,9 +82,9 @@ func (h *Handler) serveSessionSchema(w http.ResponseWriter, r *http.Request, adm
 	}
 	ctx := r.Context()
 
-	lookup, cacheControl := h.queries.GetPublicSessionSchema, schemaCacheControl
+	lookup := h.queries.GetPublicSessionSchema
 	if admin {
-		lookup, cacheControl = h.queries.GetAdminSessionSchema, adminSchemaCacheControl
+		lookup = h.queries.GetAdminSessionSchema
 	}
 	schemaRow, err := lookup(ctx, sessionID)
 	if err != nil {
@@ -107,20 +103,7 @@ func (h *Handler) serveSessionSchema(w http.ResponseWriter, r *http.Request, adm
 		return
 	}
 
-	// Strong ETag = geometry_checksum + seat_status_version. The version
-	// component makes tier/category reassignment (AB-39) — which changes
-	// the category_prices overlay without touching the geometry —
-	// cache-visible: the bump invalidates If-None-Match revalidation.
-	// Published early so a match short-circuits before any per-seat /
-	// tier queries.
-	etag := `"` + schemaRow.GeometryChecksum + "-v" +
-		strconv.FormatInt(schemaRow.SeatStatusVersion, 10) + `"`
-	w.Header().Set("ETag", etag)
-	w.Header().Set("Cache-Control", cacheControl)
-	if matchesETag(r.Header.Get("If-None-Match"), etag) {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
+	w.Header().Set("Cache-Control", schemaCacheControl)
 
 	// Parse geometry to extract category metadata + build the
 	// seat_key -> category_index index used to resolve tiers below.

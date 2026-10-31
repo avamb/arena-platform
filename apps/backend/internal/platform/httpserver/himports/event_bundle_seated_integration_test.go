@@ -240,6 +240,11 @@ func TestEventBundleSeated_CreatesEveryPlaceOfThePlan(t *testing.T) {
 	if schemaRec.Code != http.StatusOK || !strings.Contains(schemaRec.Body.String(), `"s|b|1"`) {
 		t.Fatalf("public schema: %d %s", schemaRec.Code, schemaRec.Body.String())
 	}
+	// Never cached: a tier's price or colour changes without a new geometry,
+	// so the buyer must get the current state on every load.
+	if cc, etag := schemaRec.Header().Get("Cache-Control"), schemaRec.Header().Get("ETag"); cc != "no-store" || etag != "" {
+		t.Fatalf("public schema cache headers: Cache-Control=%q ETag=%q, want no-store and no ETag", cc, etag)
+	}
 }
 
 func TestEventBundleSeated_DryRunChecksAndWritesNothing(t *testing.T) {
@@ -628,7 +633,7 @@ func TestEventBundleSeated_ExtraPriceCategories(t *testing.T) {
 	}
 	adminRec := callSeatingHandler(t, out.SessionID, sh.HandleGetSessionSchemaAdmin)
 	if adminRec.Code != http.StatusOK || !strings.Contains(adminRec.Body.String(), `"s|b|1"`) ||
-		adminRec.Header().Get("Cache-Control") != "private, no-cache" {
+		adminRec.Header().Get("Cache-Control") != "no-store" || adminRec.Header().Get("ETag") != "" {
 		t.Fatalf("admin schema of a draft: %d %q %s", adminRec.Code, adminRec.Header().Get("Cache-Control"), adminRec.Body.String())
 	}
 
