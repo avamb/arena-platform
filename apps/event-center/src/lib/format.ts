@@ -76,6 +76,21 @@ export function formatDateTime(iso: string | null | undefined, tz: string | null
   return `${text} (${label})`;
 }
 
+/** Day, month and time without the year or the zone ("26.10, 19:31"), for compact lines whose zone is named once nearby. */
+export function formatShortDateTime(iso: string | null | undefined, tz: string | null | undefined, locale: string): string {
+  if (iso === null || iso === undefined) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat(intlLocale(locale), {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: safeZone(tz) ?? "UTC",
+  }).format(d);
+}
+
 export function formatDate(iso: string | null | undefined, tz: string | null | undefined, locale: string): string {
   if (iso === null || iso === undefined) return "";
   const d = new Date(iso);
