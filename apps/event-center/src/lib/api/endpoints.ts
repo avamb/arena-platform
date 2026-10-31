@@ -43,7 +43,6 @@ import type {
   ImportEventBundleDryRunResponse,
   MeResponse,
   OrderDetail,
-  OrderLetter,
   SessionTicketList,
   OrderListResponse,
   OrderRefundOptions,
@@ -73,6 +72,8 @@ import type {
   TierPriceWindowInput,
   UpdateTicketTierRequest,
   VenueItem,
+  SeatingPlan,
+  SeatingPlanVersion,
   TextFormatRequest,
   TextFormatResponse,
   AdminSeatsResponse,
@@ -82,6 +83,16 @@ import type {
   SeatLayoutAlgorithmsResponse,
   SeatLayoutSuggestRequest,
   SeatLayoutSuggestResponse,
+} from "@/lib/api/types";
+import type {
+  StaffInvitationCancelRequest,
+  StaffInvitationCancelResponse,
+  InvitationBatch,
+  InvitationBatchReport,
+  StaffInvitationIssueRequest,
+  StaffInvitationIssueResponse,
+  StaffInvitationListResponse,
+  StaffInvitationOrgListResponse,
 } from "@/lib/api/types";
 import type { SchemaResponse } from "@seatmap/types";
 import type { SessionPatchBody } from "@/lib/sessionChange";
@@ -445,42 +456,6 @@ export function listInvitations(orgId: string, query: InvitationQuery): Promise<
   });
 }
 
-export interface InvitationInput {
-  sessionId: string;
-  tierId: string;
-  email: string;
-  name: string;
-  /** `web-<operation>-<index>` (lib/invitations.ts batchId): a repeat replays, it never mails twice. */
-  batchId: string;
-  /** V1: mark the invitation with the organizer's private VIP flag. */
-  vip?: boolean;
-}
-
-export interface InvitationIssued {
-  issuance: { id: string };
-  tickets: { id: string; system_ticket_id: number }[];
-  letters: OrderLetter[];
-  idempotent_replay: boolean;
-}
-
-/** Issues ONE free ticket to ONE guest, so each invitation can be annulled on its own. */
-export function issueInvitation(orgId: string, input: InvitationInput): Promise<InvitationIssued> {
-  return call<InvitationIssued>({
-    route: API.complimentaryIssue,
-    params: { org_id: orgId },
-    body: {
-      session_id: input.sessionId,
-      tier_id: input.tierId,
-      qty: 1,
-      recipients: [input.email],
-      recipient_names: input.name === "" ? undefined : [input.name],
-      batch_id: input.batchId,
-      vip: input.vip === true ? true : undefined,
-      issued_by: "event_center_web",
-    },
-  });
-}
-
 /**
  * Annuls every ticket of an invitation: its barcode stops working and the
  * place goes back on sale. Arena does not tell the guest. 409
@@ -492,6 +467,123 @@ export function annulInvitation(issuanceId: string): Promise<void> {
     params: { id: issuanceId },
     body: { reason: "revoked from the web event center" },
   });
+}
+
+// ─── Spec 46: staff invitations on chosen seats ──────────────────────────────
+
+/** Every staff invitation of the session, whoever issued it (needs `complimentary.read`). */
+export function listStaffInvitations(orgId: string, sessionId: string): Promise<StaffInvitationListResponse> {
+  return call<StaffInvitationListResponse>({
+    route: API.staffInvitationsList,
+    params: { org_id: orgId, session_id: sessionId },
+  });
+}
+
+export type OrgInvitationState = "active" | "cancelled" | "all";
+
+export interface OrgInvitationQuery {
+  sessionId?: string;
+  eventId?: string;
+  /** Default on the server: active (an invitation whose tickets are not issued yet counts as active). */
+  state?: OrgInvitationState;
+  limit?: number;
+  /** The `next_cursor` of the previous page. */
+  cursor?: string;
+}
+
+/** A page of the staff invitations of the whole organization, newest first (needs `complimentary.read`). */
+export function listOrgStaffInvitations(orgId: string, q: OrgInvitationQuery): Promise<StaffInvitationOrgListResponse> {
+  return call<StaffInvitationOrgListResponse>({
+    route: API.staffInvitationsOrgList,
+    params: { org_id: orgId },
+    query: { session_id: q.sessionId, event_id: q.eventId, state: q.state, limit: q.limit, cursor: q.cursor },
+  });
+}
+
+/**
+ * Issues an invitation on chosen seats. 201 for a new one, 200 with `replayed`
+ * for a repeat of the same `request_id`. 409 `invitation.seats_taken` carries
+ * `details.seat_keys`.
+ */
+export function issueStaffInvitation(
+  orgId: string,
+  sessionId: string,
+  body: StaffInvitationIssueRequest,
+): Promise<StaffInvitationIssueResponse> {
+  return call<StaffInvitationIssueResponse>({
+    route: API.staffInvitationIssue,
+    params: { org_id: orgId, session_id: sessionId },
+    body,
+  });
+}
+
+/** Cancels the whole invitation (no `ticket_ids`). 409 `invitation.tickets_not_issued` while the tickets are minted. */
+export function cancelStaffInvitation(
+  orgId: string,
+  orderId: string,
+  body: StaffInvitationCancelRequest,
+): Promise<StaffInvitationCancelResponse> {
+  return call<StaffInvitationCancelResponse>({
+    route: API.staffInvitationCancel,
+    params: { org_id: orgId, order_id: orderId },
+    body,
+  });
+}
+
+/** One PDF with every ticket of the invitation (INV-03). */
+export function downloadStaffInvitationPdf(orgId: string, orderId: string, systemId: number): Promise<DownloadedFile> {
+  return download({
+    route: API.staffInvitationPdf,
+    params: { org_id: orgId, order_id: orderId },
+    accept: "application/pdf",
+    fallbackName: `invitation-${systemId}.pdf`,
+  });
+}
+
+/**
+ * Uploads a CSV file of invitations (INV-06b). `dryRun` only checks the file and answers the report
+ * (nothing is written, no request id). The real run needs a `requestId`: a repeat of the SAME id, file
+ * and delivery answers the first batch (200, `replayed`), so a lost answer is retried with it unchanged.
+ */
+export function createInvitationBatch(
+  orgId: string,
+  sessionId: string,
+  input: { file: Blob; fileName: string; delivery: string; dryRun: boolean; requestId?: string },
+  signal?: AbortSignal,
+): Promise<InvitationBatchReport | InvitationBatch> {
+  const form = new FormData();
+  form.append("delivery", input.delivery);
+  if (!input.dryRun && input.requestId !== undefined) form.append("request_id", input.requestId);
+  form.append("file", input.file, input.fileName);
+  return call<InvitationBatchReport | InvitationBatch>({
+    route: API.invitationBatchCreate,
+    params: { org_id: orgId, session_id: sessionId },
+    query: input.dryRun ? { dry_run: "true" } : undefined,
+    form,
+    signal,
+    // The server works up to 60 s on a file: the default 30 s would give up on a request that is still running.
+    timeoutMs: UPLOAD_TIMEOUT_MS,
+  });
+}
+
+/** One issued batch with the order of each guest (`complimentary.read`). */
+export function getInvitationBatch(orgId: string, batchId: string): Promise<InvitationBatch> {
+  return call<InvitationBatch>({ route: API.invitationBatchGet, params: { org_id: orgId, id: batchId } });
+}
+
+/** The result file of a batch: one line per guest with the order number. */
+export function downloadInvitationBatchResult(orgId: string, batchId: string): Promise<DownloadedFile> {
+  return download({
+    route: API.invitationBatchResult,
+    params: { org_id: orgId, id: batchId },
+    accept: "text/csv",
+    fallbackName: `invitation-batch-${batchId.slice(0, 8)}.csv`,
+  });
+}
+
+/** Sends the letter of the invitation again (INV-03). */
+export function resendStaffInvitation(orgId: string, orderId: string): Promise<void> {
+  return call<void>({ route: API.staffInvitationResend, params: { org_id: orgId, order_id: orderId }, body: {} });
 }
 
 // ─── 4-5: the team ───────────────────────────────────────────────────────────
@@ -628,6 +720,16 @@ export function putTierSchedule(ref: TierRef, windows: TierPriceWindowInput[]): 
 /** The organization's active venues (`venue.read`). */
 export function listVenues(orgId: string): Promise<{ venues: VenueItem[] }> {
   return call<{ venues: VenueItem[] }>({ route: API.venues, params: { org_id: orgId } });
+}
+
+/** The seating plans of a venue (`seating_plan.read`). */
+export function listVenueSeatingPlans(venueId: string): Promise<{ seating_plans: SeatingPlan[] }> {
+  return call<{ seating_plans: SeatingPlan[] }>({ route: API.venueSeatingPlans, params: { venue_id: venueId } });
+}
+
+/** The versions of a seating plan, each with its geometry (`seating_plan.read`). */
+export function listSeatingPlanVersions(planId: string): Promise<{ seating_plan_versions: SeatingPlanVersion[] }> {
+  return call<{ seating_plan_versions: SeatingPlanVersion[] }>({ route: API.seatingPlanVersions, params: { id: planId } });
 }
 
 export function listCountries(lang?: string): Promise<GeoCountriesResponse> {
@@ -1040,6 +1142,11 @@ export function downloadSalesLinkQr(orgId: string, linkId: string, format: "png"
 /** The hall of a session: geometry and the category of every plan category. */
 export function fetchSessionSchema(sessionId: string): Promise<SchemaResponse> {
   return call<SchemaResponse>({ route: API.sessionSchema, params: { id: sessionId } });
+}
+
+/** The same hall for the organizer (`session.seats.manage`), also of an event that is not published yet. */
+export function fetchSessionSchemaAdmin(sessionId: string): Promise<SchemaResponse> {
+  return call<SchemaResponse>({ route: API.sessionSchemaAdmin, params: { id: sessionId } });
 }
 
 /** Every seat of the session with its category and status (the organizer's view). */

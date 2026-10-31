@@ -260,9 +260,10 @@ const (
 
 // Defines values for CreateChannelRequestProvider.
 const (
-	CreateChannelRequestProviderAllpay CreateChannelRequestProvider = "allpay"
-	CreateChannelRequestProviderFlitt  CreateChannelRequestProvider = "flitt"
-	CreateChannelRequestProviderStripe CreateChannelRequestProvider = "stripe"
+	CreateChannelRequestProviderAllpay  CreateChannelRequestProvider = "allpay"
+	CreateChannelRequestProviderFlitt   CreateChannelRequestProvider = "flitt"
+	CreateChannelRequestProviderPayplus CreateChannelRequestProvider = "payplus"
+	CreateChannelRequestProviderStripe  CreateChannelRequestProvider = "stripe"
 )
 
 // Defines values for CreateCustomerImportRequestLegalBasis.
@@ -477,6 +478,8 @@ const (
 	MediaObjectOwnerTypeOrgLogo        MediaObjectOwnerType = "org_logo"
 	MediaObjectOwnerTypeSeatingPlanSvg MediaObjectOwnerType = "seating_plan_svg"
 	MediaObjectOwnerTypeSessionPoster  MediaObjectOwnerType = "session_poster"
+	MediaObjectOwnerTypeShopDigital    MediaObjectOwnerType = "shop_digital"
+	MediaObjectOwnerTypeShopProduct    MediaObjectOwnerType = "shop_product"
 )
 
 // Defines values for MediaObjectStorageBackend.
@@ -839,9 +842,10 @@ const (
 
 // Defines values for UpdateChannelRequestProvider.
 const (
-	UpdateChannelRequestProviderAllpay UpdateChannelRequestProvider = "allpay"
-	UpdateChannelRequestProviderFlitt  UpdateChannelRequestProvider = "flitt"
-	UpdateChannelRequestProviderStripe UpdateChannelRequestProvider = "stripe"
+	UpdateChannelRequestProviderAllpay  UpdateChannelRequestProvider = "allpay"
+	UpdateChannelRequestProviderFlitt   UpdateChannelRequestProvider = "flitt"
+	UpdateChannelRequestProviderPayplus UpdateChannelRequestProvider = "payplus"
+	UpdateChannelRequestProviderStripe  UpdateChannelRequestProvider = "stripe"
 )
 
 // Defines values for UpdateEventRequestVisibility.
@@ -976,6 +980,8 @@ const (
 	PostV1MediaMultipartBodyOwnerTypeOrgLogo        PostV1MediaMultipartBodyOwnerType = "org_logo"
 	PostV1MediaMultipartBodyOwnerTypeSeatingPlanSvg PostV1MediaMultipartBodyOwnerType = "seating_plan_svg"
 	PostV1MediaMultipartBodyOwnerTypeSessionPoster  PostV1MediaMultipartBodyOwnerType = "session_poster"
+	PostV1MediaMultipartBodyOwnerTypeShopDigital    PostV1MediaMultipartBodyOwnerType = "shop_digital"
+	PostV1MediaMultipartBodyOwnerTypeShopProduct    PostV1MediaMultipartBodyOwnerType = "shop_product"
 )
 
 // Defines values for GetSessionMACSExportParamsDownload.
@@ -3368,6 +3374,9 @@ type BillingAccountTerms struct {
 	// BillingCycle prepaid, per_event or monthly.
 	BillingCycle string `json:"billing_cycle"`
 
+	// ComplimentaryBilling How staff invitations of the account are billed, free (free up to the yearly free limit of the price list) or standard (the fixed per-ticket rate, or the organization's individual rate). An invitation issued from a CSV file always pays the standard rate.
+	ComplimentaryBilling string `json:"complimentary_billing"`
+
 	// CreatedAt When the row was created.
 	CreatedAt time.Time `json:"created_at"`
 
@@ -3739,6 +3748,9 @@ type BillingCloseRateOverrideRequest struct {
 type BillingCreateAccountTermsRequest struct {
 	// BillingCycle prepaid, per_event or monthly. A tools account is prepaid only.
 	BillingCycle string `json:"billing_cycle"`
+
+	// ComplimentaryBilling How staff invitations are billed from effective_from on, free (free up to the yearly free limit) or standard (the fixed per-ticket rate or the organization's individual rate). Absent keeps the value of the terms in force at effective_from. Like every terms row it starts in the future, so invitations already issued keep the charge of their own date. Any other value is 422 billing.invalid_terms.
+	ComplimentaryBilling *string `json:"complimentary_billing,omitempty"`
 
 	// DueDays Days to pay an invoice.
 	DueDays *int32 `json:"due_days"`
@@ -4604,6 +4616,42 @@ type BotInvitationCreateResponse struct {
 	Invitation BotInvitation `json:"invitation"`
 }
 
+// BotInvitationPdfNotice A staff invitation issued from Telegram whose PDF the bot must send into the issuer's chat. It carries no e-mail or phone of the guest.
+type BotInvitationPdfNotice struct {
+	// EventName The event the invitation is for.
+	EventName string `json:"event_name"`
+
+	// GuestName The name printed on the invitation; empty when none was given.
+	GuestName string `json:"guest_name"`
+
+	// Locale The issuer's bot language.
+	Locale string `json:"locale"`
+
+	// OrderId The invitation order; the bot fetches `GET /v1/organizations/{org_id}/invitations/{order_id}/tickets.pdf` as the issuer.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// OrgId The organization that issued the invitation.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// SessionStartAt When the date starts (UTC).
+	SessionStartAt time.Time `json:"session_start_at"`
+
+	// SessionTimezone The IANA zone of the venue, to show the start in local time.
+	SessionTimezone string `json:"session_timezone"`
+
+	// SystemId The invitation number the PDF file is named after (`invitation-<system_id>.pdf`).
+	SystemId int64 `json:"system_id"`
+
+	// TelegramUserId The Telegram account of the issuer, whose private chat gets the document.
+	TelegramUserId int64 `json:"telegram_user_id"`
+}
+
+// BotInvitationPdfNoticesResponse Answer of POST /v1/bot/invitations/pdf-notices/claim.
+type BotInvitationPdfNoticesResponse struct {
+	// Notices Invitations whose PDF is not sent yet; each is handed out once.
+	Notices []BotInvitationPdfNotice `json:"notices"`
+}
+
 // BotInvitationResendRequest Optional body of the resend route.
 type BotInvitationResendRequest struct {
 	// Locale Language of the new letter (`en`, `ru`, `es`); absent means the invitee's own language.
@@ -4706,10 +4754,10 @@ type BotTeamResponse struct {
 
 // BotWebLoginCodeRequest Body of POST /v1/bot/web-login-codes.
 type BotWebLoginCodeRequest struct {
-	// EventId The event whose text the mini app opens. Required, and only used, for `purpose: miniapp`.
+	// EventId The event whose text (or whose session) the mini app opens. Required, and only used, for `purpose: miniapp`.
 	EventId *openapi_types.UUID `json:"event_id,omitempty"`
 
-	// Kind Which text the mini app opens: `description` or `email_note` (a plain string, not an enum). Required, and only used, for `purpose: miniapp`.
+	// Kind What the mini app opens: `description` or `email_note` (the event's texts) or `invitations` (the staff invitations screen of one session, spec 46) - a plain string, not an enum. Required, and only used, for `purpose: miniapp`.
 	Kind *string `json:"kind,omitempty"`
 
 	// Purpose What the code is for: `web` or `miniapp` (a plain string, not an enum, so no generated constant is
@@ -4718,6 +4766,9 @@ type BotWebLoginCodeRequest struct {
 	// Telegram mini app editor (spec 44, RT-12a): a 30-minute session of channel `event_center_tg`, no notice,
 	// and it takes back and is taken back by no code of another purpose.
 	Purpose *string `json:"purpose,omitempty"`
+
+	// SessionId The session whose invitations the mini app opens. Required for `kind: invitations`, ignored otherwise.
+	SessionId *openapi_types.UUID `json:"session_id,omitempty"`
 
 	// TelegramUserId The Telegram account that pressed "Open in browser" or "Edit in the editor".
 	TelegramUserId int64 `json:"telegram_user_id"`
@@ -4728,7 +4779,7 @@ type BotWebLoginCodeResponse struct {
 	// ExpiresAt When the link stops working (5 minutes after it was issued).
 	ExpiresAt time.Time `json:"expires_at"`
 
-	// Url `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`, or for `purpose: miniapp` `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=<kind>&event=<event_id>`. The code is after `#`, so it never reaches a server log.
+	// Url `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`, or for `purpose: miniapp` `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=<kind>&event=<event_id>`, or for `kind: invitations` `<EVENT_CENTER_PUBLIC_URL>/tg/invitations?session=<session_id>&event=<event_id>#code=<code>`. The code is after `#`, so it never reaches a server log.
 	Url string `json:"url"`
 }
 
@@ -6065,7 +6116,7 @@ type CreatePaymentProviderConfigRequest struct {
 	// Mode Operating mode for the credential set.
 	Mode *CreatePaymentProviderConfigRequestMode `json:"mode,omitempty"`
 
-	// Provider Provider slug (one of stripe, allpay, flitt, cloudpayments, yookassa, manual).
+	// Provider Provider slug (one of stripe, allpay, flitt, payplus, cloudpayments, yookassa, manual).
 	Provider string `json:"provider"`
 
 	// ProviderAccountId Optional public account identifier.
@@ -6077,7 +6128,8 @@ type CreatePaymentProviderConfigRequest struct {
 	// Secrets Map of secret credential fields to values. Stripe expects
 	// api_key + webhook_secret; AllPay expects merchant_id (the API
 	// login) + secret_key (the API key), optionally vat,
-	// max_installments and installments_min_amount; etc. Values are
+	// max_installments and installments_min_amount; PayPlus expects
+	// api_key + secret_key + payment_page_uid; etc. Values are
 	// never returned.
 	Secrets *map[string]string `json:"secrets,omitempty"`
 }
@@ -8833,6 +8885,12 @@ type ImportBil24SessionCategory struct {
 	// CategoryPriceName Tier display name.
 	CategoryPriceName *string `json:"categoryPriceName,omitempty"`
 
+	// Color Arena extension, source=arena only: the category's colour on the
+	// seat map, `#rrggbb` (stored lower-case). Absent or empty keeps
+	// the stored colour. Anything else answers 422
+	// import.invalid_color.
+	Color *string `json:"color,omitempty"`
+
 	// NextCategoryIndex source=arena only. 0-based index into `categoryList` of the category
 	// that receives this category's free places when its sale window
 	// closes and then opens (migration 0112, tier.chain_sweep). -1 removes
@@ -8863,6 +8921,18 @@ type ImportBil24SessionCategory struct {
 	// exists; written by GET .../event-bundle for the plan category a
 	// tier sells. Omitted when absent.
 	PlanCategoryIndex *int `json:"planCategoryIndex,omitempty"`
+
+	// PlanExtra Arena extension, source=arena only: on a bundle that creates a
+	// session from `actionEvent.arenaSeatingPlanVersionId`, this entry
+	// is NOT a plan category but an extra price category of the new
+	// session (a plan drawn with one category, priced several ways).
+	// It is created with no places of its own (`availability` is
+	// ignored); the organizer paints plan seats into it afterwards
+	// (PATCH .../seats/category, seat layouts). Its name may not repeat
+	// a plan category's or another entry's name (422
+	// import.seating_category_duplicate). Ignored on a session that
+	// already exists. Omitted when false.
+	PlanExtra *bool `json:"planExtra,omitempty"`
 
 	// Price Ticket price in MAJOR currency units, as Bil24 sends it. Converted to
 	// the integer minor units arena stores, rounded half away from zero.
@@ -9440,6 +9510,230 @@ type InventoryRowItem struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// InvitationBatch An issued CSV batch of staff invitations with the order of each guest.
+type InvitationBatch struct {
+	// Charge Billing of the batch (spec 46, section 3.6) - the standard rate for every place of the file, priced at the time of the upload. Null when it cannot be computed.
+	Charge *InvitationChargePreview `json:"charge"`
+
+	// CreatedAt When the batch was issued.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy User who uploaded the file; null for an organization API key.
+	CreatedBy *string `json:"created_by"`
+
+	// FromReserve Places taken from the organizer's reserve.
+	FromReserve int `json:"from_reserve"`
+
+	// Guests Orders the batch made.
+	Guests int `json:"guests"`
+
+	// Id Batch id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Orders One order per guest, in file order.
+	Orders []InvitationBatchOrder `json:"orders"`
+
+	// Places Tickets the batch handed out.
+	Places int `json:"places"`
+
+	// Replayed True when the request_id was already used and this is the first batch.
+	Replayed bool `json:"replayed"`
+
+	// Rows Data rows of the file.
+	Rows int `json:"rows"`
+
+	// SessionId Session the batch was issued for.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// Status issued.
+	Status string `json:"status"`
+}
+
+// InvitationBatchOrder The order one guest of a batch got.
+type InvitationBatchOrder struct {
+	// Delivery guest_email, my_email or pdf_only.
+	Delivery string `json:"delivery"`
+
+	// FromReserve Of them, taken from the organizer's reserve.
+	FromReserve int `json:"from_reserve"`
+
+	// Guest Position of the guest in the file, from 1.
+	Guest int `json:"guest"`
+
+	// GuestEmail Guest e-mail; only set when the letter goes to the guest.
+	GuestEmail *string `json:"guest_email"`
+
+	// GuestName Guest name.
+	GuestName *string `json:"guest_name"`
+
+	// OrderId Order id.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// Places Tickets of the order.
+	Places int `json:"places"`
+
+	// SeatKeys Keys of the places of the order.
+	SeatKeys []string `json:"seat_keys"`
+
+	// Status Order status - paid.
+	Status string `json:"status"`
+
+	// SystemId Order number shown to people.
+	SystemId int64 `json:"system_id"`
+}
+
+// InvitationBatchPreviewGuest One guest of an upload as the validation sees it.
+type InvitationBatchPreviewGuest struct {
+	// Delivery guest_email, my_email or pdf_only.
+	Delivery string `json:"delivery"`
+
+	// Email Guest e-mail, empty when the file has none.
+	Email string `json:"email"`
+
+	// Guest Position of the guest in the file, from 1.
+	Guest int `json:"guest"`
+
+	// Name Guest name from the guest's first row.
+	Name string `json:"name"`
+
+	// Places Tickets this guest gets.
+	Places int `json:"places"`
+}
+
+// InvitationBatchReport The validation report of an upload: the answer of a dry run, and the
+// `details.report` of a refused real upload (422 invitation_batch.invalid
+// or the refusal of the transaction). Nothing was written either way.
+type InvitationBatchReport struct {
+	// Charge Billing preview (spec 46, section 3.6) - a CSV file is always charged at the standard rate, computed by the same rule as the billing rate job. Null when it cannot be computed or the file hands out no places; the file is issued either way.
+	Charge *InvitationChargePreview `json:"charge"`
+
+	// Delivery The batch-wide delivery used for guests without an e-mail.
+	Delivery string `json:"delivery"`
+
+	// DryRun True for a dry run.
+	DryRun bool `json:"dry_run"`
+
+	// Errors The problems found, by row. Empty when valid.
+	Errors []InvitationBatchRowIssue `json:"errors"`
+
+	// FromReserve Places taken from the organizer's reserve (closed seats, reserve GA places).
+	FromReserve int `json:"from_reserve"`
+
+	// GaPlaces Of them, General Admission places.
+	GaPlaces int `json:"ga_places"`
+
+	// Guests Guests, that is orders and letters, the file makes.
+	Guests int `json:"guests"`
+
+	// Places Tickets the file hands out.
+	Places int `json:"places"`
+
+	// Preview The guests of the file in order, for the check table.
+	Preview []InvitationBatchPreviewGuest `json:"preview"`
+
+	// Rows Data rows of the file.
+	Rows int `json:"rows"`
+
+	// Seats Of them, seats on the plan.
+	Seats int `json:"seats"`
+
+	// Valid True when the file can be issued as it is.
+	Valid bool `json:"valid"`
+}
+
+// InvitationBatchRowIssue One problem of one row of an upload.
+type InvitationBatchRowIssue struct {
+	// Code Machine-readable code - name_required, invalid_email, email_required, place_missing, place_ambiguous, unknown_seat, ambiguous_seat, seat_taken, duplicate_seat, unknown_category, ambiguous_category, category_not_ga, invalid_qty, not_enough_places, too_many_places, too_many_guests, seat_without_category, capacity_exceeded, or the code of a refusal of the transaction (for example invitation.seats_taken).
+	Code string `json:"code"`
+
+	// Field The column the problem is about; empty when it is about the row or the file.
+	Field string `json:"field"`
+
+	// Message Human-readable explanation in English.
+	Message string `json:"message"`
+
+	// Row Line of the file (the header is line 1); 0 for a problem of the file as a whole.
+	Row int `json:"row"`
+}
+
+// InvitationBatchUploadRequest A CSV upload of staff invitations (spec 46, section 3.5), sent as a
+// multipart form.
+type InvitationBatchUploadRequest struct {
+	// Delivery Delivery of a guest WITHOUT an e-mail in the file - pdf_only (default, no letter) or my_email (a letter to the uploading user). A guest with an e-mail always gets the letter. guest_email makes a missing e-mail a row error.
+	Delivery *string `json:"delivery,omitempty"`
+
+	// File The CSV file, UTF-8 with or without a BOM, at most 512 KB, 100
+	// guests and 250 places (split a longer list into several files; a
+	// body over the router's 1 MiB limit answers http.payload_too_large).
+	// Excel's `sep=;` first line is accepted. Quotes are strict: an
+	// unclosed quote is invitation_batch.invalid_csv with the line. The
+	// separator is `,` or `;` (detected from the header), the
+	// header row is mandatory and the columns may come in any order:
+	// `guest` (a guest number - rows with the same number are ONE order
+	// and ONE letter; the name, e-mail, phone and language come from the
+	// guest's first row), `name` (required), `email`, `phone`, `locale`,
+	// `note`, and for the place either `seat_key`, or `sector`, `row`,
+	// `seat` (the sector may be left out when the row and seat are
+	// unique), or `category` (a name or an id) with `qty` for General
+	// Admission places.
+	File openapi_types.File `json:"file"`
+
+	// RequestId Client-chosen id of the upload; required unless dry_run is true. A repeat with the same id and the same file answers the first batch (200, replayed true).
+	RequestId *openapi_types.UUID `json:"request_id,omitempty"`
+}
+
+// InvitationChargeLine One group of charged invitation tickets with the same unit rate.
+type InvitationChargeLine struct {
+	// AmountMinor tickets times unit_minor.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// Currency Currency of the amounts, the billing account's.
+	Currency string `json:"currency"`
+
+	// Tickets Tickets in the group.
+	Tickets int `json:"tickets"`
+
+	// UnitMinor Charge per ticket in minor units.
+	UnitMinor int64 `json:"unit_minor"`
+}
+
+// InvitationChargePreview What invitations cost the organization (spec 46, section 3.6). A CSV file is always charged the
+// standard rate; otherwise an account whose terms say complimentary_billing standard pays the standard
+// rate, and every other invitation is free up to the yearly free limit of the price list, then charged
+// as a general-admission ticket. The standard rate is the organization's individual rate, else the
+// fixed per-ticket rate of the price list, seated or not. A cancelled invitation keeps its charge.
+type InvitationChargePreview struct {
+	// AmountMinor Total charge in minor units of currency.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// ChargedTickets Tickets that are charged.
+	ChargedTickets int `json:"charged_tickets"`
+
+	// Currency Currency of the organization's billing account; every amount is in it.
+	Currency string `json:"currency"`
+
+	// FreeLeft What is left of the yearly free limit after these tickets, or null with free_limit.
+	FreeLeft *int64 `json:"free_left"`
+
+	// FreeLimit The yearly free limit, or null when there is none or the tickets are not billed free.
+	FreeLimit *int64 `json:"free_limit"`
+
+	// FreeTickets Tickets that cost nothing.
+	FreeTickets int `json:"free_tickets"`
+
+	// Lines The charged tickets grouped by unit rate; empty when every ticket is free.
+	Lines []InvitationChargeLine `json:"lines"`
+
+	// Mode Why the tickets cost what they cost - free (free up to the yearly limit), standard (the account's terms) or bulk (a CSV file).
+	Mode string `json:"mode"`
+
+	// Text A short English summary such as "12 × 0.50 EUR = 6.00 EUR" or "free, 488 of the yearly limit left". Clients in another language build their own from the numbers.
+	Text string `json:"text"`
+
+	// Tickets Tickets quoted.
+	Tickets int `json:"tickets"`
+}
+
 // LegalDocument One version of a terms template (P3a). Immutable once published.
 type LegalDocument struct {
 	// BodyTemplate The template text with its placeholders.
@@ -9845,7 +10139,9 @@ type MediaObject struct {
 	// referenced by a seating_plan_versions row. `session_poster`
 	// is a session-level poster. `event_gallery` and `event_report`
 	// (migration 0153) are photos of an event page gallery and of its
-	// photo report.
+	// photo report. `shop_product` (migration 0172) is a picture of a
+	// merchandise shop product; `shop_digital` is the file a digital
+	// shop product sells (offered to the buyer only after payment).
 	OwnerType MediaObjectOwnerType `json:"owner_type"`
 
 	// SignedUrl Short-lived download URL. Present on `GET /v1/media/{id}`
@@ -9877,7 +10173,9 @@ type MediaObject struct {
 // referenced by a seating_plan_versions row. `session_poster`
 // is a session-level poster. `event_gallery` and `event_report`
 // (migration 0153) are photos of an event page gallery and of its
-// photo report.
+// photo report. `shop_product` (migration 0172) is a picture of a
+// merchandise shop product; `shop_digital` is the file a digital
+// shop product sells (offered to the buyer only after payment).
 type MediaObjectOwnerType string
 
 // MediaObjectStorageBackend Which storage adapter holds the bytes. `s3` covers any
@@ -12647,7 +12945,7 @@ type PaymentProviderConfigItem struct {
 	// OrgId Owning organization. Immutable after creation.
 	OrgId openapi_types.UUID `json:"org_id"`
 
-	// Provider Provider slug. Must be one of: stripe, allpay, flitt,
+	// Provider Provider slug. Must be one of: stripe, allpay, flitt, payplus,
 	// cloudpayments, yookassa, manual. `flitt` needs the secrets
 	// `merchant_id` and `payment_key` (the portal's payment key signs
 	// requests and callbacks; there is no separate webhook secret).
@@ -12655,7 +12953,11 @@ type PaymentProviderConfigItem struct {
 	// `secret_key` (its API key, which also signs webhooks); `vat`
 	// (0, 1 or 3), `max_installments` (2 to 12) and
 	// `installments_min_amount` (the smallest order total in shekels
-	// that offers installments) are optional.
+	// that offers installments) are optional. `payplus` needs
+	// `api_key` and `secret_key` (the dashboard's key pair; the secret
+	// key also signs callbacks) and `payment_page_uid` (the payment page
+	// links are generated from); a `test` config talks to
+	// restapidev.payplus.co.il, a `live` one to restapi.payplus.co.il.
 	Provider string `json:"provider"`
 
 	// ProviderAccountId Optional public account identifier (e.g. Stripe acct_..., AllPay
@@ -15511,10 +15813,10 @@ type SeatingPlanVersion struct {
 // SeatingSchemaResponse Response body for `GET /v1/event-sessions/{id}/schema`. Contains the
 // raw canonical geometry (byte-for-byte identical to the stored
 // `seating_plan_versions.geometry`) plus a `category_prices` overlay
-// with per-category tier / price resolution. The strong `ETag`
-// response header is set to `"<geometry_checksum>"` and the response
-// is served with `Cache-Control: public, max-age=86400, immutable`
-// because a new plan version always yields a new checksum.
+// with per-category tier / price resolution. Served with
+// `Cache-Control: no-store` and no ETag: tier prices, colours and
+// per-seat categories change without a new geometry, so the schema
+// is read from the current state on every request.
 type SeatingSchemaResponse struct {
 	// AdmissionMode Admission mode of the session. GA sessions do not expose a schema and receive 404.
 	AdmissionMode SeatingSchemaResponseAdmissionMode `json:"admission_mode"`
@@ -15767,11 +16069,14 @@ type SessionChangeImpact struct {
 	// unknown). A suggestion only; the organizer may edit or clear it.
 	DefaultMessage string `json:"default_message"`
 
+	// InvitationsToIssuer Staff invitations among the Arena-route orders that have no guest e-mail. Their letter goes to the staff member who issued them, so the organizer is told "N invitations without a guest e-mail - the letter goes to the issuer".
+	InvitationsToIssuer int `json:"invitations_to_issuer"`
+
 	// Kinds What buyers would see change: `date`, `time`, `venue`, or just
 	// `cancelled`. Empty means no buyer-visible change (nobody is told).
 	Kinds []string `json:"kinds"`
 
-	// NoAddress Arena-route orders with no buyer e-mail address; their buyers cannot be written to.
+	// NoAddress Arena-route orders with no buyer e-mail address (and no issuer to fall back to); their buyers cannot be written to.
 	NoAddress int `json:"no_address"`
 
 	// Orders Paid orders with a live ticket whose buyers would be told.
@@ -16460,6 +16765,1337 @@ type SetEventPromoterRequest struct {
 	// PromoterId An active promoter of the organization, or null (or absent) to
 	// make the organization itself the promoter again.
 	PromoterId *openapi_types.UUID `json:"promoter_id"`
+}
+
+// ShopAddress Where the goods go.
+type ShopAddress struct {
+	// Address1 Street and number.
+	Address1 string `json:"address1"`
+
+	// Address2 Apartment, floor, building.
+	Address2 *string `json:"address2,omitempty"`
+
+	// City City.
+	City string `json:"city"`
+
+	// Country Two-letter country code.
+	Country string `json:"country"`
+
+	// Name Recipient; empty means the buyer.
+	Name *string `json:"name,omitempty"`
+
+	// Postal Postal code. Required when the order is shipped (422 `shop.postal_required` when empty). For `country` IL it must be exactly 7 digits, any other country takes 3-12 characters (422 `shop.invalid_postal`).
+	Postal *string `json:"postal,omitempty"`
+}
+
+// ShopBuyer Who pays.
+type ShopBuyer struct {
+	// Email Buyer's e-mail.
+	Email string `json:"email"`
+
+	// Name Buyer's name.
+	Name string `json:"name"`
+
+	// Phone Buyer's phone.
+	Phone *string `json:"phone,omitempty"`
+}
+
+// ShopByHostResponse The organization a storefront host belongs to.
+type ShopByHostResponse struct {
+	// OrgSlug Organization slug for the other public shop routes.
+	OrgSlug string `json:"org_slug"`
+}
+
+// ShopCheckoutLine One cart line.
+type ShopCheckoutLine struct {
+	// Qty Units, 1-99 (repeated variants are added up).
+	Qty int `json:"qty"`
+
+	// VariantId The variant.
+	VariantId openapi_types.UUID `json:"variant_id"`
+}
+
+// ShopCheckoutRequest A storefront purchase.
+type ShopCheckoutRequest struct {
+	// AgeConfirmed The buyer confirmed the shop's minimum age; required when the shop has an age gate.
+	AgeConfirmed *bool `json:"age_confirmed,omitempty"`
+
+	// Buyer Who pays.
+	Buyer ShopBuyer `json:"buyer"`
+
+	// CaptchaToken The Cloudflare Turnstile response the widget produced; required while the catalog settings publish a `captcha_site_key` (422 `shop.captcha_required` without it, 422 `shop.captcha_failed` when the test did not pass).
+	CaptchaToken *string `json:"captcha_token,omitempty"`
+
+	// DeliveryNote Comment for the delivery, up to 2000 characters.
+	DeliveryNote *string `json:"delivery_note,omitempty"`
+
+	// Items The cart, 1-50 lines.
+	Items []ShopCheckoutLine `json:"items"`
+
+	// Locale Language of the storefront (two letters); the payment page uses it.
+	Locale *string `json:"locale,omitempty"`
+
+	// ReturnUrl Storefront page the provider sends the buyer back to (an allowed origin), with `checkout_token`.
+	ReturnUrl *string `json:"return_url,omitempty"`
+
+	// Ship Where the goods go. Required when the cart holds a physical product (422 `shop.invalid_address` without a street, city and country, `shop.postal_required` or `shop.invalid_postal` for the postal code); left out for a cart of digital products and services only.
+	Ship *ShopAddress `json:"ship,omitempty"`
+}
+
+// ShopCheckoutResponse A placed order and where to pay it.
+type ShopCheckoutResponse struct {
+	// Currency ISO 4217 code.
+	Currency string `json:"currency"`
+
+	// DeliveryKind `shipping` when the order holds a physical product, `none` for digital products and services only.
+	DeliveryKind string `json:"delivery_kind"`
+
+	// ExpiresAt Until when the order holds its goods.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// Number Order number.
+	Number int64 `json:"number"`
+
+	// OrderToken The buyer's handle on the order (for GET /v1/public/shop/checkout/{order_token}).
+	OrderToken string `json:"order_token"`
+
+	// PaymentUrl Provider-hosted payment page; empty for an order that cost nothing.
+	PaymentUrl string `json:"payment_url"`
+
+	// ShippingFee Delivery fee, minor units.
+	ShippingFee int64 `json:"shipping_fee"`
+
+	// Status `pending`, or `paid` for an order that cost nothing.
+	Status string `json:"status"`
+
+	// Subtotal Sum of the lines, minor units.
+	Subtotal int64 `json:"subtotal"`
+
+	// Total Amount to pay, minor units.
+	Total int64 `json:"total"`
+}
+
+// ShopCheckoutStatus Where a storefront order stands.
+type ShopCheckoutStatus struct {
+	// Currency ISO 4217 code.
+	Currency string `json:"currency"`
+
+	// DeliveryKind `shipping` when the order holds a physical product, `none` for digital products and services only.
+	DeliveryKind string `json:"delivery_kind"`
+
+	// ExpiresAt Until when the order holds its goods.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// Items The lines.
+	Items []ShopOrderItem `json:"items"`
+
+	// Number Order number.
+	Number int64 `json:"number"`
+
+	// PaidAt When the payment arrived.
+	PaidAt *time.Time `json:"paid_at"`
+
+	// PaymentUrl Payment page to go back to while pending; empty otherwise.
+	PaymentUrl string `json:"payment_url"`
+
+	// ReviewMessage A ready sentence for the buyer that goes with `review_reason`, in the language the order was placed in (English when that has no catalog); null when there is no review.
+	ReviewMessage *string `json:"review_message"`
+
+	// ReviewReason `payment_unconfirmed` (the payment is being checked) or `late_payment_no_stock` (paid, the availability is being checked) while the order waits for a person; null otherwise. Clients word it from this code.
+	ReviewReason *string `json:"review_reason"`
+
+	// ShippingFee Delivery fee, minor units.
+	ShippingFee int64 `json:"shipping_fee"`
+
+	// Status `pending`, `paid`, `expired` or `cancelled`. An order parked for review reads by its cause: with `review_reason` `payment_unconfirmed` it is `pending` (nothing is known to be paid; there is no `payment_url` and no `expires_at`), with `late_payment_no_stock` it is `paid`.
+	Status string `json:"status"`
+
+	// Subtotal Sum of the lines, minor units.
+	Subtotal int64 `json:"subtotal"`
+
+	// Total Total, minor units.
+	Total int64 `json:"total"`
+}
+
+// ShopDownload One file a buyer bought.
+type ShopDownload struct {
+	// ExpiresAt When the order's download period ends (30 days after payment); after that `url` answers 410 `shop.download_expired`.
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// ProductTitle The product, as sold.
+	ProductTitle string `json:"product_title"`
+
+	// Url Absolute address of the file route (`GET /v1/public/shop/checkout/{order_token}/downloads/{item_id}`). It does not expire by itself and costs nothing to read; opening it is the download: it is counted against the line's limit and answers 302 to a short-lived signed URL of the file.
+	Url string `json:"url"`
+
+	// VariantTitle The variant, as sold.
+	VariantTitle string `json:"variant_title"`
+}
+
+// ShopDownloadList The files of a paid order's digital lines.
+type ShopDownloadList struct {
+	// Downloads One entry per digital line whose product has a file, in the order's line order.
+	Downloads []ShopDownload `json:"downloads"`
+}
+
+// ShopImage A picture of a product.
+type ShopImage struct {
+	// Alt Alternative text.
+	Alt string `json:"alt"`
+
+	// Height Height of the picture in pixels, read from its header at upload; absent when the size was never recorded.
+	Height *int32 `json:"height"`
+
+	// MediaId The media object.
+	MediaId openapi_types.UUID `json:"media_id"`
+
+	// Position Display order, lowest first.
+	Position int32 `json:"position"`
+
+	// Url Signed download address of the picture; empty when it cannot be signed.
+	Url string `json:"url"`
+
+	// Width Width of the picture in pixels, read from its header at upload; absent when the size was never recorded (a picture uploaded before sizes were read and not yet re-imported).
+	Width *int32 `json:"width"`
+}
+
+// ShopImageAddRequest A picture to attach.
+type ShopImageAddRequest struct {
+	// Alt Alternative text, up to 500 characters.
+	Alt *string `json:"alt,omitempty"`
+
+	// MediaId A live media object of this organization.
+	MediaId openapi_types.UUID `json:"media_id"`
+
+	// Position Display order; absent appends.
+	Position *int32 `json:"position,omitempty"`
+}
+
+// ShopOrder A shop order. total = subtotal - discount + shipping_fee.
+type ShopOrder struct {
+	// Buyer Who paid.
+	Buyer ShopBuyer `json:"buyer"`
+
+	// BuyerLocale Language the buyer shopped in.
+	BuyerLocale *string `json:"buyer_locale"`
+
+	// CancelledAt When the order was cancelled.
+	CancelledAt *time.Time `json:"cancelled_at"`
+
+	// CreatedAt Creation time.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 code of every amount.
+	Currency string `json:"currency"`
+
+	// CustomerId The buyer's customer, resolved from the e-mail and phone at checkout; null when the resolution failed or for an imported order.
+	CustomerId *openapi_types.UUID `json:"customer_id"`
+
+	// DeliveryKind `shipping`, `pickup`, or `none` for an order of digital products and services only (no address, no shipping fee).
+	DeliveryKind string `json:"delivery_kind"`
+
+	// DeliveryNote The buyer's comment.
+	DeliveryNote string `json:"delivery_note"`
+
+	// Discount Discount, minor units.
+	Discount int64 `json:"discount"`
+
+	// ExpiresAt Until when an unpaid order holds its goods.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// ExternalRef Order number in the system the order was imported from.
+	ExternalRef *string `json:"external_ref"`
+
+	// Id The order.
+	Id openapi_types.UUID `json:"id"`
+
+	// Items The lines in order.
+	Items []ShopOrderItem `json:"items"`
+
+	// Number Order number shown to people.
+	Number int64 `json:"number"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PaidAt When the payment arrived.
+	PaidAt *time.Time `json:"paid_at"`
+
+	// Payment The payment, or null when the order has none.
+	Payment *ShopOrderPayment `json:"payment"`
+
+	// RefundedMinor What succeeded refunds have returned so far, minor units.
+	RefundedMinor int64 `json:"refunded_minor"`
+
+	// ReviewReason Why a `manual_review` order waits, null otherwise. `late_payment_no_stock`: the money was taken but the hold had ended and the goods were gone (`paid_at` is set; settle it with `POST .../resolve`: `fulfil` or `refund_and_cancel`). `payment_unconfirmed`: the provider's report is not trusted (the amount differs, the payment was reversed before arena confirmed it), the money may not have arrived and `paid_at` is empty; nothing is decided about the goods yet, the order follows the payment: when the payment intent is settled as `succeeded` (the provider's next webhook, or `POST /v1/payment-intents/{id}/transition`) the order is paid like any other, when `failed` it ends `expired`. The order cannot be shipped before that (`shop.payment_unconfirmed`).
+	ReviewReason *string `json:"review_reason"`
+
+	// Ship Where the goods go.
+	Ship ShopAddress `json:"ship"`
+
+	// ShippedAt When the order was shipped.
+	ShippedAt *time.Time `json:"shipped_at"`
+
+	// ShippingFee Delivery fee, minor units.
+	ShippingFee int64 `json:"shipping_fee"`
+
+	// Source `web` (the storefront) or `shopify` (imported).
+	Source string `json:"source"`
+
+	// StaffNote The internal note of the shop staff. Never shown to the buyer or on the storefront.
+	StaffNote ShopStaffNote `json:"staff_note"`
+
+	// Status `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review` (parked for a person; `review_reason` says why).
+	Status string `json:"status"`
+
+	// Subtotal Sum of the lines, minor units.
+	Subtotal int64 `json:"subtotal"`
+
+	// Total What the buyer paid, minor units.
+	Total int64 `json:"total"`
+
+	// TrackingNote Tracking number or note given when shipped.
+	TrackingNote string `json:"tracking_note"`
+
+	// UpdatedAt Last change.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ShopOrderCounts How many orders each tab of the order list holds.
+type ShopOrderCounts struct {
+	// All Every order of the shop.
+	All int64 `json:"all"`
+
+	// Refunds Refunded and partly refunded orders.
+	Refunds int64 `json:"refunds"`
+
+	// Shipped Shipped orders.
+	Shipped int64 `json:"shipped"`
+
+	// ToShip Paid or partly refunded orders with something to hand over (shipping or pickup) that are not shipped yet. An order of digital products or services only is never counted.
+	ToShip int64 `json:"to_ship"`
+
+	// Unpaid Orders still waiting for their payment (`pending_payment`).
+	Unpaid int64 `json:"unpaid"`
+}
+
+// ShopOrderItem One line of an order, as sold.
+type ShopOrderItem struct {
+	// ProductKind The product's kind when the line was bought: `physical`, `digital` or `service`.
+	ProductKind string `json:"product_kind"`
+
+	// ProductTitle Product title at the time of sale.
+	ProductTitle string `json:"product_title"`
+
+	// Qty Units.
+	Qty int32 `json:"qty"`
+
+	// Sku Stock keeping unit at the time of sale.
+	Sku *string `json:"sku"`
+
+	// TotalMinor unit_price_minor x qty.
+	TotalMinor int64 `json:"total_minor"`
+
+	// UnitPriceMinor Price of one unit, minor units.
+	UnitPriceMinor int64 `json:"unit_price_minor"`
+
+	// VariantId The variant sold, or null for an imported line.
+	VariantId *openapi_types.UUID `json:"variant_id"`
+
+	// VariantTitle Variant title at the time of sale.
+	VariantTitle string `json:"variant_title"`
+}
+
+// ShopOrderList One page of orders.
+type ShopOrderList struct {
+	// NextOffset Offset of the next page; null on the last page.
+	NextOffset *int `json:"next_offset"`
+
+	// Orders Orders, newest first.
+	Orders []ShopOrder `json:"orders"`
+}
+
+// ShopOrderNoteRequest The internal note of an order.
+type ShopOrderNoteRequest struct {
+	// StaffNote The whole note, up to 2000 characters. An empty text erases it.
+	StaffNote string `json:"staff_note"`
+}
+
+// ShopOrderPayment The payment of an order.
+type ShopOrderPayment struct {
+	// Amount Amount charged, minor units.
+	Amount int64 `json:"amount"`
+
+	// Currency ISO 4217 code.
+	Currency string `json:"currency"`
+
+	// Id The payment intent.
+	Id openapi_types.UUID `json:"id"`
+
+	// Provider Payment provider.
+	Provider string `json:"provider"`
+
+	// State Payment intent state, e.g. `created`, `succeeded`, `failed`.
+	State string `json:"state"`
+}
+
+// ShopOrderSearchRequest The filters of the shop order list, in a body.
+type ShopOrderSearchRequest struct {
+	// From Created at or after this instant (RFC 3339 with a zone, or YYYY-MM-DD for UTC midnight).
+	From *string `json:"from,omitempty"`
+
+	// Limit Page size, 1-200 (default 50).
+	Limit *int `json:"limit,omitempty"`
+
+	// Offset How many orders to skip (the previous page's `next_offset`).
+	Offset *int `json:"offset,omitempty"`
+
+	// Q Order number, or part of the buyer's e-mail or name.
+	Q *string `json:"q,omitempty"`
+
+	// Status Only orders of this status.
+	Status *string `json:"status,omitempty"`
+
+	// To Created before this instant (RFC 3339 with a zone, or YYYY-MM-DD for UTC midnight).
+	To *string `json:"to,omitempty"`
+
+	// View A tab of the list: `to_ship`, `unpaid`, `shipped` or `refunds`.
+	View *string `json:"view,omitempty"`
+}
+
+// ShopPage A static storefront page.
+type ShopPage struct {
+	// BodyHtml Page text, sanitized HTML (the rich-text tags plus pictures and tables). A link to another page of the same storefront may be a root path such as `/pages/contact`; the storefront puts its own base in front of it.
+	BodyHtml string `json:"body_html"`
+
+	// LegacySlug The handle the page had on the shop it was imported from, when that differs from `slug` (for example a Cyrillic `наши-мероприятия` for `events`); null when the page has no other address. `GET /v1/public/shop/{org_slug}/pages/{slug}` resolves it as an alias. Set by the import, not by `PUT`.
+	LegacySlug *string `json:"legacy_slug"`
+
+	// Position Display order.
+	Position int32 `json:"position"`
+
+	// Slug Address of the page. Always the canonical one, even when the page was asked for by its old address.
+	Slug string `json:"slug"`
+
+	// Title Page title.
+	Title string `json:"title"`
+
+	// UpdatedAt Last change.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ShopPageLink A page in the catalog's page list.
+type ShopPageLink struct {
+	// Slug Page address.
+	Slug string `json:"slug"`
+
+	// Title Page title.
+	Title string `json:"title"`
+}
+
+// ShopPageList Storefront pages.
+type ShopPageList struct {
+	// Pages Pages in display order.
+	Pages []ShopPage `json:"pages"`
+}
+
+// ShopPagePutRequest A page's content.
+type ShopPagePutRequest struct {
+	// BodyHtml Page text, HTML, up to 200000 characters. Sanitized on write to the product description's tags plus pictures (img with an https src, alt, width, height, loading) and tables (table, thead, tbody, tfoot, tr, th, td with colspan and rowspan); every other tag, attribute and URL scheme is dropped. A text the sanitizer refuses answers 422 `shop.invalid_body_html`.
+	BodyHtml *string `json:"body_html,omitempty"`
+
+	// Position Display order.
+	Position *int32 `json:"position,omitempty"`
+
+	// Title Page title, up to 300 characters.
+	Title string `json:"title"`
+}
+
+// ShopProduct A shop product with its pictures and variants.
+type ShopProduct struct {
+	// BodyHtml Description, sanitized rich-text HTML (p, br, strong, em, u, a, ul, ol, li, h3, h4, blockquote).
+	BodyHtml string `json:"body_html"`
+
+	// CreatedAt Creation time.
+	CreatedAt time.Time `json:"created_at"`
+
+	// DigitalMediaId The file a digital product sells (owner_type `shop_digital`); null for other kinds or when none is attached. Never shown on the storefront.
+	DigitalMediaId *openapi_types.UUID `json:"digital_media_id"`
+
+	// Id The product.
+	Id openapi_types.UUID `json:"id"`
+
+	// Images Pictures in display order.
+	Images []ShopImage `json:"images"`
+
+	// Kind `physical`, `digital` or `service` (spec 47 section 1b).
+	Kind string `json:"kind"`
+
+	// OptionNames Names of the product's options, in the order of the variants' option1..option3.
+	OptionNames []string `json:"option_names"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// ProductType Free product type label.
+	ProductType string `json:"product_type"`
+
+	// Slug Address of the product on the storefront (`/products/{slug}`).
+	Slug string `json:"slug"`
+
+	// SortOrder Display order, lowest first.
+	SortOrder int32 `json:"sort_order"`
+
+	// Status `draft`, `active` (on sale) or `archived`.
+	Status string `json:"status"`
+
+	// Title Product title.
+	Title string `json:"title"`
+
+	// UpdatedAt Last change.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Variants Live variants in display order.
+	Variants []ShopVariant `json:"variants"`
+
+	// Vendor Free vendor label.
+	Vendor string `json:"vendor"`
+}
+
+// ShopProductCreateRequest A new product.
+type ShopProductCreateRequest struct {
+	// BodyHtml Description, HTML, up to 100000 characters. Sanitized on write to the rich-text subset (p, br, strong, em, u, a with https or mailto, ul, ol, li, h3, h4, blockquote); images, tables, section, style, classes and inline styles are dropped. A text the sanitizer refuses answers 422 `shop.invalid_body_html`.
+	BodyHtml *string `json:"body_html,omitempty"`
+
+	// DigitalMediaId The file a digital product sells, a media object of the organization uploaded with owner_type `shop_digital` (a `shop_product` picture is refused, 422 `shop.invalid_digital_media`). Only for kind digital; absent keeps it, null removes it. Turning the product away from digital removes it.
+	DigitalMediaId *openapi_types.UUID `json:"digital_media_id"`
+
+	// Kind `physical` (tracks stock, ships to an address), `digital` (sells the file `digital_media_id`, never tracks stock, needs no address or shipping) or `service` (needs no address or shipping; its variants may track stock or not). Absent keeps it; a new product is physical.
+	Kind *string `json:"kind,omitempty"`
+
+	// OptionNames Names of the product's options (up to 3, e.g. Size, Colour), matched by position with the variants' option1..option3 values. Absent keeps them; an empty list removes them.
+	OptionNames *[]string `json:"option_names,omitempty"`
+
+	// ProductType Free product type label.
+	ProductType *string `json:"product_type,omitempty"`
+
+	// Slug Storefront address; absent derives it from the title.
+	Slug *string `json:"slug,omitempty"`
+
+	// SortOrder Display order.
+	SortOrder *int32 `json:"sort_order,omitempty"`
+
+	// Status `draft` (default), `active` or `archived`.
+	Status *string `json:"status,omitempty"`
+
+	// Title Product title, up to 300 characters.
+	Title string `json:"title"`
+
+	// Variants The variants, 1-100; absent creates one `Default Title` variant at price 0.
+	Variants *[]ShopVariantInput `json:"variants,omitempty"`
+
+	// Vendor Free vendor label.
+	Vendor *string `json:"vendor,omitempty"`
+}
+
+// ShopProductList The products of a shop.
+type ShopProductList struct {
+	// Products Products in display order.
+	Products []ShopProduct `json:"products"`
+}
+
+// ShopProductPatchRequest The product fields to change; absent fields keep their value.
+type ShopProductPatchRequest struct {
+	// BodyHtml Description, sanitized rich-text HTML (p, br, strong, em, u, a, ul, ol, li, h3, h4, blockquote).
+	BodyHtml *string `json:"body_html,omitempty"`
+
+	// DigitalMediaId The file a digital product sells, a media object of the organization uploaded with owner_type `shop_digital` (a `shop_product` picture is refused, 422 `shop.invalid_digital_media`). Only for kind digital; absent keeps it, null removes it. Turning the product away from digital removes it.
+	DigitalMediaId *openapi_types.UUID `json:"digital_media_id"`
+
+	// Kind `physical` (tracks stock, ships to an address), `digital` (sells the file `digital_media_id`, never tracks stock, needs no address or shipping) or `service` (needs no address or shipping; its variants may track stock or not). Absent keeps it; a new product is physical.
+	Kind *string `json:"kind,omitempty"`
+
+	// OptionNames Names of the product's options (up to 3, e.g. Size, Colour), matched by position with the variants' option1..option3 values. Absent keeps them; an empty list removes them.
+	OptionNames *[]string `json:"option_names,omitempty"`
+
+	// ProductType Free product type label.
+	ProductType *string `json:"product_type,omitempty"`
+
+	// Slug Storefront address.
+	Slug *string `json:"slug,omitempty"`
+
+	// SortOrder Display order.
+	SortOrder *int32 `json:"sort_order,omitempty"`
+
+	// Status `draft`, `active` or `archived`.
+	Status *string `json:"status,omitempty"`
+
+	// Title Product title.
+	Title *string `json:"title,omitempty"`
+
+	// Vendor Free vendor label.
+	Vendor *string `json:"vendor,omitempty"`
+}
+
+// ShopPublicCatalog A storefront's catalog.
+type ShopPublicCatalog struct {
+	// Org The organization.
+	Org ShopPublicOrg `json:"org"`
+
+	// Pages Static pages.
+	Pages []ShopPageLink `json:"pages"`
+
+	// Products Active products in display order.
+	Products []ShopPublicProduct `json:"products"`
+
+	// Settings Public settings.
+	Settings ShopPublicSettings `json:"settings"`
+}
+
+// ShopPublicOrg The organization behind a storefront.
+type ShopPublicOrg struct {
+	// Name Organization name.
+	Name string `json:"name"`
+
+	// ShopDomain Storefront host, or null.
+	ShopDomain *string `json:"shop_domain"`
+
+	// Slug Organization slug.
+	Slug string `json:"slug"`
+}
+
+// ShopPublicPageResponse One storefront page.
+type ShopPublicPageResponse struct {
+	// Page The page; its `slug` is the canonical one.
+	Page ShopPage `json:"page"`
+}
+
+// ShopPublicProduct A product on the storefront.
+type ShopPublicProduct struct {
+	// BodyHtml Description, sanitized rich-text HTML (p, br, strong, em, u, a, ul, ol, li, h3, h4, blockquote).
+	BodyHtml string `json:"body_html"`
+
+	// Images Pictures in display order.
+	Images []ShopImage `json:"images"`
+
+	// Kind `physical` (ships, the checkout asks for an address), `digital` (a file offered after payment) or `service`.
+	Kind string `json:"kind"`
+
+	// OptionNames Names of the product's options, in the order of the variants' option1..option3.
+	OptionNames []string `json:"option_names"`
+
+	// PriceMinMinor Lowest variant price, minor units.
+	PriceMinMinor int64 `json:"price_min_minor"`
+
+	// ProductType Product type label.
+	ProductType string `json:"product_type"`
+
+	// Slug Product address.
+	Slug string `json:"slug"`
+
+	// Title Product title.
+	Title string `json:"title"`
+
+	// Variants Variants in display order.
+	Variants []ShopPublicVariant `json:"variants"`
+
+	// Vendor Vendor label.
+	Vendor string `json:"vendor"`
+}
+
+// ShopPublicProductResponse One storefront product.
+type ShopPublicProductResponse struct {
+	// Currency ISO 4217 code of the prices.
+	Currency string `json:"currency"`
+
+	// Product The product.
+	Product ShopPublicProduct `json:"product"`
+}
+
+// ShopPublicSettings What the storefront needs of the shop settings.
+type ShopPublicSettings struct {
+	// AgeGateMinAge Minimum age to confirm, or null.
+	AgeGateMinAge *int32 `json:"age_gate_min_age"`
+
+	// AnnouncementText Announcement bar text.
+	AnnouncementText string `json:"announcement_text"`
+
+	// CaptchaSiteKey Cloudflare Turnstile site key the checkout form renders its widget with; the widget's token goes to checkout as `captcha_token`. Absent while the shop's checkout has no captcha.
+	CaptchaSiteKey *string `json:"captcha_site_key,omitempty"`
+
+	// ContactEmail Contact address, or null.
+	ContactEmail *string `json:"contact_email"`
+
+	// CountryIso2 The shop's country.
+	CountryIso2 *string `json:"country_iso2"`
+
+	// Currency ISO 4217 code of every price.
+	Currency string `json:"currency"`
+
+	// MaxLineQty How many units of one variant an order may hold; the quantity picker stops there.
+	MaxLineQty *int32 `json:"max_line_qty,omitempty"`
+
+	// ShippingFeeMinor Flat delivery fee, minor units.
+	ShippingFeeMinor int64 `json:"shipping_fee_minor"`
+
+	// ShippingLabel How the delivery is called.
+	ShippingLabel string `json:"shipping_label"`
+}
+
+// ShopPublicVariant A variant on the storefront.
+type ShopPublicVariant struct {
+	// Available How many units a buyer can put in a cart, the real stock capped at the shop's `max_line_qty` (the exact shelf is never shown; an untracked variant reports the cap). Null only when the shop has no line limit and the variant does not track stock. The article number is not published.
+	Available *int `json:"available"`
+
+	// CompareAtMinor Former price, or null.
+	CompareAtMinor *int64 `json:"compare_at_minor"`
+
+	// Id The variant (what checkout takes as `variant_id`).
+	Id openapi_types.UUID `json:"id"`
+
+	// InStock Whether at least one unit can be bought.
+	InStock bool `json:"in_stock"`
+
+	// Option1 First option value.
+	Option1 *string `json:"option1"`
+
+	// Option2 Second option value.
+	Option2 *string `json:"option2"`
+
+	// Option3 Third option value.
+	Option3 *string `json:"option3"`
+
+	// PriceMinor Price, minor units.
+	PriceMinor int64 `json:"price_minor"`
+
+	// Title Variant title.
+	Title string `json:"title"`
+}
+
+// ShopRefund A refund of a shop order's payment.
+type ShopRefund struct {
+	// Amount Amount, minor units.
+	Amount int64 `json:"amount"`
+
+	// Currency ISO 4217 code.
+	Currency string `json:"currency"`
+
+	// FailureCode Why the refund failed.
+	FailureCode *string `json:"failure_code"`
+
+	// FailureReason The failure in words.
+	FailureReason *string `json:"failure_reason"`
+
+	// Id The refund.
+	Id openapi_types.UUID `json:"id"`
+
+	// ProviderRefundId The provider's refund id, once it accepted.
+	ProviderRefundId *string `json:"provider_refund_id"`
+
+	// State `provider_pending`, `succeeded`, `failed` or `manual_review`.
+	State string `json:"state"`
+}
+
+// ShopRefundRequest A refund of a shop order (the body may be empty to refund everything left).
+type ShopRefundRequest struct {
+	// AmountMinor Amount to return, minor units; absent refunds what is left.
+	AmountMinor *int64 `json:"amount_minor"`
+
+	// Reason Why, up to 2000 characters.
+	Reason *string `json:"reason,omitempty"`
+}
+
+// ShopRefundResponse The order after a refund, and the refund.
+type ShopRefundResponse struct {
+	// Order The order.
+	Order ShopOrder `json:"order"`
+
+	// Refund The refund.
+	Refund ShopRefund `json:"refund"`
+
+	// Replayed True when the `Idempotency-Key` had been used before and this is the first call's refund. Nothing new was written.
+	Replayed *bool `json:"replayed,omitempty"`
+}
+
+// ShopResendEmailRequest Which buyer letter to send once more.
+type ShopResendEmailRequest struct {
+	// Kind `received` (the order is confirmed), `shipped` (the order is on its way) or `refunded` (money of the order went back to the buyer).
+	Kind string `json:"kind"`
+}
+
+// ShopResendEmailResponse The letter was queued for the worker.
+type ShopResendEmailResponse struct {
+	// Kind The letter that was queued, `received`, `shipped` or `refunded`.
+	Kind string `json:"kind"`
+
+	// Queued Always true; the worker sends the letter within moments.
+	Queued bool `json:"queued"`
+}
+
+// ShopResolveRequest The operator's decision on an order parked as `late_payment_no_stock`.
+type ShopResolveRequest struct {
+	// Action `fulfil`: the goods are there again; the stock is checked once more and the order is paid like any other (taken off the shelf, `v1.shop.order.paid`, the buyer's "received" letter), ready to ship. `refund_and_cancel`: the goods will not come; the whole payment goes back through the refund engine and the order ends `refunded` as soon as the provider confirms it (it stays `manual_review` while the refund is pending, and stays there for another try if the refund fails).
+	Action string `json:"action"`
+}
+
+// ShopResolveResponse The order after the decision.
+type ShopResolveResponse struct {
+	// Action The action that was taken, as asked.
+	Action string `json:"action"`
+
+	// Order The order.
+	Order ShopOrder `json:"order"`
+
+	// Refund The refund, for `refund_and_cancel`; null for `fulfil`.
+	Refund *ShopRefund `json:"refund"`
+
+	// Replayed True when the `Idempotency-Key` had been used before and this is the first call's result. Nothing new was written.
+	Replayed bool `json:"replayed"`
+}
+
+// ShopSettings The shop settings of an organization (migration 0172). Money in minor units of `currency`.
+type ShopSettings struct {
+	// AgeGateMinAge Minimum buyer age the storefront asks to confirm, or null for no age gate.
+	AgeGateMinAge *int32 `json:"age_gate_min_age"`
+
+	// AnnouncementText Text of the storefront's announcement bar.
+	AnnouncementText string `json:"announcement_text"`
+
+	// Configured False while the settings were never saved (defaults are shown and the storefront is closed).
+	Configured bool `json:"configured"`
+
+	// ContactEmail Address buyers may write to, or null.
+	ContactEmail *string `json:"contact_email"`
+
+	// CountryIso2 The shop's country (ISO 3166-1 alpha-2), or null.
+	CountryIso2 *string `json:"country_iso2"`
+
+	// Currency ISO 4217 code of every price in the shop.
+	Currency string `json:"currency"`
+
+	// Enabled Whether the storefront and its checkout are open. Only the platform operator opens or closes a shop; it starts closed.
+	Enabled bool `json:"enabled"`
+
+	// LogisticsNote Internal note for whoever ships the orders.
+	LogisticsNote string `json:"logistics_note"`
+
+	// MaxLineQty How many units of one variant an order may hold (1-99, 24 by default).
+	MaxLineQty int32 `json:"max_line_qty"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// SalesChannelId Sales channel whose payment provider takes the shop's money; null means the organization's oldest channel whose provider can host a payment page with a configured provider account.
+	SalesChannelId *openapi_types.UUID `json:"sales_channel_id"`
+
+	// ShippingFeeMinor Flat delivery fee added to every order, minor units.
+	ShippingFeeMinor int64 `json:"shipping_fee_minor"`
+
+	// ShippingLabel How the delivery is called on the storefront.
+	ShippingLabel string `json:"shipping_label"`
+
+	// ShopDomain Host name of the storefront, set by the platform operator; null when none.
+	ShopDomain *string `json:"shop_domain"`
+
+	// UpdatedAt When the settings were last saved; null when never.
+	UpdatedAt *time.Time `json:"updated_at"`
+}
+
+// ShopSettingsUpdateRequest The whole settings row (PUT replaces it).
+type ShopSettingsUpdateRequest struct {
+	// AgeGateMinAge 1-99, or null for no age gate.
+	AgeGateMinAge *int32 `json:"age_gate_min_age"`
+
+	// AnnouncementText Announcement bar text, up to 500 characters.
+	AnnouncementText *string `json:"announcement_text,omitempty"`
+
+	// ContactEmail Contact address, or null.
+	ContactEmail *string `json:"contact_email"`
+
+	// CountryIso2 Two-letter country code, or null.
+	CountryIso2 *string `json:"country_iso2"`
+
+	// Currency ISO 4217 code, e.g. EUR or ILS.
+	Currency string `json:"currency"`
+
+	// Enabled Opens (true) or closes (false) the storefront and its checkout, platform superadmin only; absent, null or the current value keeps it.
+	Enabled *bool `json:"enabled"`
+
+	// ExpectedUpdatedAt The `updated_at` the editor loaded the settings with, sent back unchanged.
+	// When the stored settings were saved since (a colleague, the operator) the
+	// request is refused with 409 `shop.settings_changed` and nothing is applied.
+	// Absent or null skips the check.
+	ExpectedUpdatedAt *time.Time `json:"expected_updated_at"`
+
+	// LogisticsNote Internal note for the logistician, up to 2000 characters.
+	LogisticsNote *string `json:"logistics_note,omitempty"`
+
+	// MaxLineQty How many units of one variant an order may hold, 1-99; absent or null keeps the stored value (24 for a new shop).
+	MaxLineQty *int32 `json:"max_line_qty"`
+
+	// SalesChannelId A sales channel of this organization, or null for the oldest one whose provider can take the payment.
+	SalesChannelId *openapi_types.UUID `json:"sales_channel_id"`
+
+	// ShippingFeeMinor Flat delivery fee, minor units, zero or more.
+	ShippingFeeMinor *int64 `json:"shipping_fee_minor,omitempty"`
+
+	// ShippingLabel How the delivery is called on the storefront, up to 200 characters.
+	ShippingLabel *string `json:"shipping_label,omitempty"`
+
+	// ShopDomain Storefront host (platform superadmin only); absent or null keeps it, an empty string clears it.
+	ShopDomain *string `json:"shop_domain"`
+}
+
+// ShopShipRequest Shipping details (the body may be empty).
+type ShopShipRequest struct {
+	// TrackingNote Tracking number or note, up to 2000 characters.
+	TrackingNote *string `json:"tracking_note,omitempty"`
+}
+
+// ShopStaffNote The internal note of a shop order. An order without a note has an empty text, an empty author and a null time.
+type ShopStaffNote struct {
+	// At When the note was saved; null when there is no note.
+	At *time.Time `json:"at"`
+
+	// By Who wrote it, by name (the e-mail when the account has no name), as it was when the note was saved.
+	By string `json:"by"`
+
+	// Text The note, up to 2000 characters; empty when there is none.
+	Text string `json:"text"`
+}
+
+// ShopVariant A variant as the organization sees it.
+type ShopVariant struct {
+	// Available Units still for sale (stock minus held, never below zero); null when the variant does not track stock.
+	Available *int `json:"available"`
+
+	// CompareAtMinor Former price shown struck through, or null.
+	CompareAtMinor *int64 `json:"compare_at_minor"`
+
+	// Held Units unpaid orders hold right now.
+	Held int32 `json:"held"`
+
+	// Id The variant.
+	Id openapi_types.UUID `json:"id"`
+
+	// Option1 First option value, or null.
+	Option1 *string `json:"option1"`
+
+	// Option2 Second option value, or null.
+	Option2 *string `json:"option2"`
+
+	// Option3 Third option value, or null.
+	Option3 *string `json:"option3"`
+
+	// Position Display order, lowest first.
+	Position int32 `json:"position"`
+
+	// PriceMinor Price, minor units of the shop currency.
+	PriceMinor int64 `json:"price_minor"`
+
+	// Sku Stock keeping unit, or null.
+	Sku *string `json:"sku"`
+
+	// Stock Units on the shelf; may go below zero after an oversell.
+	Stock int32 `json:"stock"`
+
+	// Title Variant title; `Default Title` for the one variant of a simple product.
+	Title string `json:"title"`
+
+	// TrackStock False when the variant sells without a stock limit.
+	TrackStock bool `json:"track_stock"`
+}
+
+// ShopVariantInput One variant of a create or replace request.
+type ShopVariantInput struct {
+	// CompareAtMinor Former price, or null.
+	CompareAtMinor *int64 `json:"compare_at_minor"`
+
+	// ExpectedStock The stock this variant had when the editor loaded it; only with `id`.
+	// The event center sends the loaded value. When the stock changed since
+	// (a sale, an import, another editor) the whole request is refused with
+	// 409 `shop.stock_changed`, whose details list each variant's current
+	// stock, and nothing is applied. Absent leaves the stock of an existing
+	// variant untouched (the event center sends it only for a row whose stock
+	// the person edited).
+	ExpectedStock *int32 `json:"expected_stock"`
+
+	// Id An existing variant of the product to update; absent creates one.
+	Id *openapi_types.UUID `json:"id,omitempty"`
+
+	// Option1 First option value.
+	Option1 *string `json:"option1"`
+
+	// Option2 Second option value.
+	Option2 *string `json:"option2"`
+
+	// Option3 Third option value.
+	Option3 *string `json:"option3"`
+
+	// Position Display order; absent means the place in the list.
+	Position *int32 `json:"position,omitempty"`
+
+	// PriceMinor Price, minor units, zero or more.
+	PriceMinor *int64 `json:"price_minor,omitempty"`
+
+	// Sku Stock keeping unit, up to 100 characters.
+	Sku *string `json:"sku"`
+
+	// Stock Units on the shelf, zero or more. For an existing variant (with `id`) it is
+	// written only together with `expected_stock`; a row without `expected_stock`
+	// keeps the stored stock whatever is sent here.
+	Stock *int32 `json:"stock,omitempty"`
+
+	// Title Variant title; empty means `Default Title`.
+	Title *string `json:"title,omitempty"`
+
+	// TrackStock Whether stock limits sales; absent means true.
+	TrackStock *bool `json:"track_stock,omitempty"`
+}
+
+// ShopVariantsReplaceRequest The complete variant list of a product.
+type ShopVariantsReplaceRequest struct {
+	// ExpectedVariantIds The ids of the variants the editor loaded. When the product's live variants
+	// are not exactly this set (a colleague added or removed one) the request is
+	// refused with 409 `shop.variants_changed` and nothing is applied, because the
+	// replace deletes every variant it leaves out. Absent or null skips the check.
+	ExpectedVariantIds *[]openapi_types.UUID `json:"expected_variant_ids"`
+
+	// Variants 1-100 variants; variants left out are deleted.
+	Variants []ShopVariantInput `json:"variants"`
+}
+
+// StaffInvitationCancelRequest Which tickets to cancel; an empty body cancels them all.
+type StaffInvitationCancelRequest struct {
+	// NotifyGuest Send the guest the cancellation letter when the invitation has the guest's e-mail (default true).
+	NotifyGuest *bool `json:"notify_guest,omitempty"`
+
+	// TicketIds Tickets of this invitation to cancel; absent or empty means all.
+	TicketIds *[]openapi_types.UUID `json:"ticket_ids,omitempty"`
+}
+
+// StaffInvitationCancelResponse What the cancellation did.
+type StaffInvitationCancelResponse struct {
+	// CancelledTicketIds Tickets cancelled by this request.
+	CancelledTicketIds []openapi_types.UUID `json:"cancelled_ticket_ids"`
+
+	// NotifyGuest Whether the guest is to be told.
+	NotifyGuest bool `json:"notify_guest"`
+
+	// OrderId Order id of the invitation.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// OrderStatus Order status after the cancellation. A cancellation moves no money, so it stays `paid` even when every ticket is cancelled (the invitation is still billed); a client labels a fully cancelled invitation by its active ticket count.
+	OrderStatus string `json:"order_status"`
+
+	// SkippedTicketIds Named tickets that were already not active.
+	SkippedTicketIds []openapi_types.UUID `json:"skipped_ticket_ids"`
+}
+
+// StaffInvitationGALine Places of one General Admission category.
+type StaffInvitationGALine struct {
+	// Qty Number of places.
+	Qty int `json:"qty"`
+
+	// TierId Category of the session.
+	TierId openapi_types.UUID `json:"tier_id"`
+}
+
+// StaffInvitationGuest The guest; the name is printed on the ticket.
+type StaffInvitationGuest struct {
+	// Email Guest e-mail; required only for delivery guest_email.
+	Email *string `json:"email"`
+
+	// Locale Language of the guest's letter (cs, de, en, es, fr, he, ru); anything else falls back to the default.
+	Locale *string `json:"locale"`
+
+	// Name Guest name, 1 to 200 characters.
+	Name string `json:"name"`
+
+	// Phone Guest phone, optional.
+	Phone *string `json:"phone"`
+}
+
+// StaffInvitationIssueRequest A staff invitation on chosen seats and GA places (spec 46, section 3.1). One to 50 places in total.
+type StaffInvitationIssueRequest struct {
+	// Delivery How the tickets travel - guest_email (a letter to guest.email, required then), my_email (a letter to the issuing user, for forwarding) or pdf_only (no letter, download the PDF).
+	Delivery string `json:"delivery"`
+
+	// Ga General Admission places by category; free places are taken first, then the reserve.
+	Ga *[]StaffInvitationGALine `json:"ga,omitempty"`
+
+	// Guest The guest the invitation is for.
+	Guest StaffInvitationGuest `json:"guest"`
+
+	// Note Internal note, at most 1000 characters, never shown to the guest.
+	Note *string `json:"note"`
+
+	// RequestId Client-chosen id; a repeat with the same id answers the first invitation (200, replayed true).
+	RequestId openapi_types.UUID `json:"request_id"`
+
+	// Seats Seats by key, free or held back by the organizer.
+	Seats *[]StaffInvitationSeatRef `json:"seats,omitempty"`
+
+	// Vip Mark every ticket of the invitation with the organizer's private VIP flag (it never reaches the guest). Stored on the order and applied when the tickets are minted. Part of the request fingerprint: a repeat of the same request_id with a different vip answers 409 invitation.request_id_reused.
+	Vip *bool `json:"vip,omitempty"`
+}
+
+// StaffInvitationIssueResponse The invitation as written.
+type StaffInvitationIssueResponse struct {
+	// Charge Billing preview of the invitation (spec 46, section 3.6) - what the platform will charge the organization for these tickets, computed by the same rule as the billing rate job. Null when it cannot be computed (the organization has no usable billing terms); the invitation is issued either way.
+	Charge *InvitationChargePreview `json:"charge"`
+
+	// Delivery Delivery mode - guest_email, my_email or pdf_only.
+	Delivery string `json:"delivery"`
+
+	// FromReserve How many places came from the organizer's reserve.
+	FromReserve int `json:"from_reserve"`
+
+	// GuestName Guest name.
+	GuestName *string `json:"guest_name"`
+
+	// OrderId Order id of the invitation.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// Places The places of the invitation.
+	Places []StaffInvitationPlace `json:"places"`
+
+	// Replayed True when the request_id was already used and this is the first invitation.
+	Replayed bool `json:"replayed"`
+
+	// Status Order status - paid for an issued invitation; it stays paid after a cancellation (tickets_status and the ticket counts tell a cancelled invitation).
+	Status string `json:"status"`
+
+	// SystemId Order number shown to people.
+	SystemId int64 `json:"system_id"`
+
+	// TicketsStatus issuing right after the issue (tickets are minted asynchronously), issued once every place has its ticket.
+	TicketsStatus string `json:"tickets_status"`
+}
+
+// StaffInvitationIssuer Who issued the invitation; all null for an organization API key.
+type StaffInvitationIssuer struct {
+	// Email Issuer e-mail.
+	Email *string `json:"email"`
+
+	// FirstName Issuer first name.
+	FirstName *string `json:"first_name"`
+
+	// LastName Issuer last name.
+	LastName *string `json:"last_name"`
+
+	// UserId User id of the issuer.
+	UserId *string `json:"user_id"`
+}
+
+// StaffInvitationLetter The state of the letter that carries the tickets of a staff invitation to the guest.
+type StaffInvitationLetter struct {
+	// LastErrorCode Why the letter did not go out, a short category and never the raw error text: address_rejected, address_expired, no_recipient, sender_disabled or send_failed. Null when there is nothing to report.
+	LastErrorCode *string `json:"last_error_code"`
+
+	// SentAt When the latest letter went out; set when status is sent.
+	SentAt *time.Time `json:"sent_at"`
+
+	// Status failed (a delivery job failed), pending (queued or being sent), sent (every letter went out), skipped (no letter was sent: no address or the one-time address expired) or disabled (the platform sends no e-mail).
+	Status string `json:"status"`
+}
+
+// StaffInvitationListItem One staff invitation of the session.
+type StaffInvitationListItem struct {
+	// CreatedAt When it was issued.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Delivery Delivery mode - guest_email, my_email or pdf_only.
+	Delivery string `json:"delivery"`
+
+	// GuestName Guest name.
+	GuestName *string `json:"guest_name"`
+
+	// InvitationBatchId The CSV batch (invitation_batches.id) a bulk invitation came from; null for a one-by-one invitation.
+	InvitationBatchId *openapi_types.UUID `json:"invitation_batch_id"`
+
+	// IssuedBy Who issued it.
+	IssuedBy StaffInvitationIssuer `json:"issued_by"`
+
+	// IssuedVia staff (one by one) or staff_bulk (a CSV file).
+	IssuedVia string `json:"issued_via"`
+
+	// Letter The guest's letter folded over the delivery jobs of the order's tickets; null when no letter was queued (pdf_only, or the tickets are not issued yet).
+	Letter *StaffInvitationLetter `json:"letter"`
+
+	// OrderId Order id of the invitation.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// Places The places of the invitation.
+	Places []StaffInvitationPlace `json:"places"`
+
+	// Status Order status - paid, also after every ticket is cancelled (an invitation stays billed); tickets_active = 0 marks a fully cancelled invitation.
+	Status string `json:"status"`
+
+	// SystemId Order number shown to people.
+	SystemId int64 `json:"system_id"`
+
+	// TicketsActive Tickets still active.
+	TicketsActive int64 `json:"tickets_active"`
+
+	// TicketsTotal Tickets issued so far.
+	TicketsTotal int64 `json:"tickets_total"`
+}
+
+// StaffInvitationListResponse The staff invitations of a session.
+type StaffInvitationListResponse struct {
+	// Items Newest first, at most 500.
+	Items []StaffInvitationListItem `json:"items"`
+
+	// Timezone The venue's IANA time zone (UTC for a session without a venue). A client shows the issue and letter times in it, never in the device's zone.
+	Timezone string `json:"timezone"`
+}
+
+// StaffInvitationOrgListItem defines model for StaffInvitationOrgListItem.
+type StaffInvitationOrgListItem struct {
+	// CreatedAt When it was issued.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Delivery Delivery mode - guest_email, my_email or pdf_only.
+	Delivery string `json:"delivery"`
+
+	// GuestName Guest name.
+	GuestName *string `json:"guest_name"`
+
+	// InvitationBatchId The CSV batch (invitation_batches.id) a bulk invitation came from; null for a one-by-one invitation.
+	InvitationBatchId *openapi_types.UUID `json:"invitation_batch_id"`
+
+	// IssuedBy Who issued it.
+	IssuedBy StaffInvitationIssuer `json:"issued_by"`
+
+	// IssuedVia staff (one by one) or staff_bulk (a CSV file).
+	IssuedVia string `json:"issued_via"`
+
+	// Letter The guest's letter folded over the delivery jobs of the order's tickets; null when no letter was queued (pdf_only, or the tickets are not issued yet).
+	Letter *StaffInvitationLetter `json:"letter"`
+
+	// OrderId Order id of the invitation.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// Places The places of the invitation.
+	Places []StaffInvitationPlace `json:"places"`
+
+	// Session The session the invitation is for.
+	Session StaffInvitationSession `json:"session"`
+
+	// Status Order status - paid, also after every ticket is cancelled (an invitation stays billed); tickets_active = 0 marks a fully cancelled invitation.
+	Status string `json:"status"`
+
+	// SystemId Order number shown to people.
+	SystemId int64 `json:"system_id"`
+
+	// TicketsActive Tickets still active.
+	TicketsActive int64 `json:"tickets_active"`
+
+	// TicketsTotal Tickets issued so far.
+	TicketsTotal int64 `json:"tickets_total"`
+}
+
+// StaffInvitationOrgListResponse A page of the staff invitations of the organization.
+type StaffInvitationOrgListResponse struct {
+	// Items Newest first.
+	Items []StaffInvitationOrgListItem `json:"items"`
+
+	// NextCursor Opaque cursor for the next page (pass it as the cursor query parameter), null on the last page.
+	NextCursor *string `json:"next_cursor"`
+}
+
+// StaffInvitationPlace One place of a staff invitation.
+type StaffInvitationPlace struct {
+	// FaceValue Face value of the place in minor units; the invitation itself costs 0.
+	FaceValue int64 `json:"face_value"`
+
+	// Kind seat or ga_unit.
+	Kind *string `json:"kind"`
+
+	// Origin Where the place came from - available (from sale) or unavailable (from the organizer's reserve). A cancelled ticket returns its place there.
+	Origin *string `json:"origin"`
+
+	// Row Row of the seat.
+	Row *string `json:"row"`
+
+	// Scanned True once the place's ticket was used at the door (a scanned barcode, a used_at stamp or an admitted scan). Such a ticket cannot be cancelled. False until the ticket is issued.
+	Scanned bool `json:"scanned"`
+
+	// Seat Seat number.
+	Seat *string `json:"seat"`
+
+	// SeatKey Key of the seat or GA place.
+	SeatKey *string `json:"seat_key"`
+
+	// Sector Sector name of the seat.
+	Sector *string `json:"sector"`
+
+	// TicketId The ticket of this place once issued.
+	TicketId *string `json:"ticket_id"`
+
+	// TicketStatus Status of the place's ticket - active while it can be used, cancelled after a cancellation, null until the ticket is issued. A client offers a per-ticket cancel only for active.
+	TicketStatus *string `json:"ticket_status"`
+
+	// TierId Category of the place.
+	TierId openapi_types.UUID `json:"tier_id"`
+
+	// TierName Category name.
+	TierName string `json:"tier_name"`
+
+	// Vip The organizer's private VIP mark of the place's ticket (never shown to the guest). False until the ticket is issued.
+	Vip bool `json:"vip"`
+}
+
+// StaffInvitationResendRequest Optional one-time address for the resend.
+type StaffInvitationResendRequest struct {
+	// Email Send to this address instead (valid for 24 hours; it never becomes the order's address). Absent or empty means the guest, else the caller, else the issuer.
+	Email *string `json:"email,omitempty"`
+}
+
+// StaffInvitationResendResponse What the resend queued.
+type StaffInvitationResendResponse struct {
+	// DifferentAddress True when the letter goes to a one-time address, not the guest's own.
+	DifferentAddress bool `json:"different_address"`
+
+	// ExpiresAt When a one-time address stops being valid; null for the guest's own address.
+	ExpiresAt *time.Time `json:"expires_at"`
+
+	// OrderId Order id of the invitation.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// QueuedTickets Active tickets queued; they travel in one e-mail.
+	QueuedTickets int `json:"queued_tickets"`
+
+	// RecipientMasked The address the letter goes to, with all but the first characters hidden.
+	RecipientMasked string `json:"recipient_masked"`
+}
+
+// StaffInvitationSeatRef One seat of the session by key.
+type StaffInvitationSeatRef struct {
+	// SeatKey session_seats.seat_key of the seat.
+	SeatKey string `json:"seat_key"`
+}
+
+// StaffInvitationSession The session a staff invitation is for.
+type StaffInvitationSession struct {
+	// EventId Event the session belongs to.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// EventName Event name.
+	EventName string `json:"event_name"`
+
+	// Id Session id.
+	Id openapi_types.UUID `json:"id"`
+
+	// StartAt When the session starts (UTC instant).
+	StartAt time.Time `json:"start_at"`
+
+	// Timezone IANA time zone of the venue, UTC when it has none.
+	Timezone string `json:"timezone"`
+
+	// VenueName Venue name, null when the session has no venue.
+	VenueName *string `json:"venue_name"`
 }
 
 // StartCheckoutRequest Request body for `POST /v1/checkout/start`. Creates a new checkout
@@ -18836,12 +20472,6 @@ type GetPublicSessionLayoutSVGParams struct {
 	IfNoneMatch *string `json:"If-None-Match,omitempty"`
 }
 
-// GetPublicSessionSchemaParams defines parameters for GetPublicSessionSchema.
-type GetPublicSessionSchemaParams struct {
-	// IfNoneMatch Standard conditional-request header. When it matches the current `geometry_checksum` ETag the server responds 304 with no body.
-	IfNoneMatch *string `json:"If-None-Match,omitempty"`
-}
-
 // GetPublicSessionSeatStatusParams defines parameters for GetPublicSessionSeatStatus.
 type GetPublicSessionSeatStatusParams struct {
 	// SinceVersion Optional non-negative integer cursor. Present ⇒ delta mode
@@ -18926,8 +20556,21 @@ type GetV1MediaFileParams struct {
 	// Expires Unix-seconds expiry timestamp embedded in the signed URL.
 	Expires int64 `form:"expires" json:"expires"`
 
-	// Sig HMAC-SHA256 signature over `id:expires`. Required in production; optional in dev when no MEDIA_SIGNING_SECRET is set.
+	// Sig HMAC-SHA256 signature over `id:expires`. Required in production; optional in dev when no MEDIA_SIGNING_SECRET is set. The signature does not cover `w`, so a width can be added to a URL that was signed without it.
 	Sig *string `form:"sig,omitempty" json:"sig,omitempty"`
+
+	// W Ask for a smaller copy of a JPEG or PNG picture, this many pixels wide.
+	// Only the widths 165, 240, 360, 480, 533, 720, 990 and 1200 exist: any
+	// other value is rounded UP to the next one, and a value above 1200 means
+	// the original. A picture is never enlarged, so a width at or above the
+	// original's returns the original bytes. The aspect ratio and the format
+	// are kept (JPEG at quality 82). Any other format (GIF, WebP, SVG, PDF), a
+	// picture over 40 megapixels and a copy that cannot be built are served
+	// as the original. Copies are rendered once and stored beside the original.
+	// Not a whole number: 400 `media.invalid_width`. Works for the local
+	// storage backend and for any request that reaches this route; a presigned
+	// S3 URL goes to the bucket directly and ignores it.
+	W *int `form:"w,omitempty" json:"w,omitempty"`
 }
 
 // GetOnboardingApplicationParams defines parameters for GetOnboardingApplication.
@@ -19286,6 +20929,24 @@ type ImportEventBundleParams struct {
 	DryRun *bool `form:"dry_run,omitempty" json:"dry_run,omitempty"`
 }
 
+// ListOrgStaffInvitationsParams defines parameters for ListOrgStaffInvitations.
+type ListOrgStaffInvitationsParams struct {
+	// SessionId Only invitations of this session.
+	SessionId *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
+
+	// EventId Only invitations of the sessions of this event.
+	EventId *openapi_types.UUID `form:"event_id,omitempty" json:"event_id,omitempty"`
+
+	// State active (default), cancelled or all.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Limit Page size, 1 to 200, default 50.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The next_cursor of the previous page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // GrantOrganizationMembershipParams defines parameters for GrantOrganizationMembership.
 type GrantOrganizationMembershipParams struct {
 	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
@@ -19523,6 +21184,12 @@ type GetV1OrganizationsOrgIdSessionsSessionIdChangeImpactParams struct {
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
+// CreateInvitationBatchParams defines parameters for CreateInvitationBatch.
+type CreateInvitationBatchParams struct {
+	// DryRun true validates the file and writes nothing (answers the report, 200). Default false.
+	DryRun *bool `form:"dry_run,omitempty" json:"dry_run,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdSessionsSessionIdSalesCsvParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdSalesCsv.
 type GetV1OrganizationsOrgIdSessionsSessionIdSalesCsvParams struct {
 	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
@@ -19569,6 +21236,48 @@ type GetV1OrganizationsOrgIdSessionsSessionIdTicketsParams struct {
 
 	// Offset Number of tickets to skip (default 0).
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ListShopOrdersParams defines parameters for ListShopOrders.
+type ListShopOrdersParams struct {
+	// Status Only orders of this status: `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review`.
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// View A tab of the order list, combined with `status` when both are given: `to_ship` (paid or partly refunded, something to hand over, not shipped yet), `unpaid`, `shipped` or `refunds`. `GET .../shop/orders/counts` gives the size of each.
+	View *string `form:"view,omitempty" json:"view,omitempty"`
+
+	// Q Order number, or part of the buyer's e-mail or name.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// From Created at or after this instant (RFC 3339, or YYYY-MM-DD for UTC midnight).
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Created before this instant (RFC 3339, or YYYY-MM-DD for UTC midnight).
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+
+	// Limit Page size, 1-200 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset How many orders to skip (the previous page's `next_offset`).
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// RefundShopOrderParams defines parameters for RefundShopOrder.
+type RefundShopOrderParams struct {
+	// IdempotencyKey Client-chosen key of 1 to 255 characters (a UUID) that identifies this refund; one per open refund dialog.
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
+// ResolveShopOrderParams defines parameters for ResolveShopOrder.
+type ResolveShopOrderParams struct {
+	// IdempotencyKey Client-chosen key of 1 to 255 characters (a UUID) that identifies this decision; one per open dialog.
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
+// ListShopProductsParams defines parameters for ListShopProducts.
+type ListShopProductsParams struct {
+	// Status Only products of this status: `draft`, `active` or `archived`.
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
 }
 
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear.
@@ -19663,6 +21372,12 @@ type PostPublicPaymentReturnParams struct {
 	// `A-Za-z0-9_-`), appended to the destination so the widget resumes
 	// the order.
 	CheckoutToken string `form:"checkout_token" json:"checkout_token"`
+}
+
+// GetPublicShopByHostParams defines parameters for GetPublicShopByHost.
+type GetPublicShopByHostParams struct {
+	// Host The storefront host name, e.g. `einatwinery.com`.
+	Host string `form:"host" json:"host"`
 }
 
 // SubmitReconciliationReportJSONBody defines parameters for SubmitReconciliationReport.
@@ -20186,6 +21901,12 @@ type ImportBil24SessionJSONRequestBody = ImportBil24SessionRequest
 // ImportEventBundleJSONRequestBody defines body for ImportEventBundle for application/json ContentType.
 type ImportEventBundleJSONRequestBody = ImportEventBundleRequest
 
+// CancelStaffInvitationJSONRequestBody defines body for CancelStaffInvitation for application/json ContentType.
+type CancelStaffInvitationJSONRequestBody = StaffInvitationCancelRequest
+
+// ResendStaffInvitationJSONRequestBody defines body for ResendStaffInvitation for application/json ContentType.
+type ResendStaffInvitationJSONRequestBody = StaffInvitationResendRequest
+
 // UpsertMACSWebhookJSONRequestBody defines body for UpsertMACSWebhook for application/json ContentType.
 type UpsertMACSWebhookJSONRequestBody = UpsertMACSWebhookRequest
 
@@ -20246,6 +21967,12 @@ type PatchV1OrganizationsOrgIdSeatingPlansPlanIdLayoutsLayoutIdJSONRequestBody =
 // UpdateSellerProfileJSONRequestBody defines body for UpdateSellerProfile for application/json ContentType.
 type UpdateSellerProfileJSONRequestBody = UpdateSellerProfileRequest
 
+// CreateInvitationBatchMultipartRequestBody defines body for CreateInvitationBatch for multipart/form-data ContentType.
+type CreateInvitationBatchMultipartRequestBody = InvitationBatchUploadRequest
+
+// IssueStaffInvitationJSONRequestBody defines body for IssueStaffInvitation for application/json ContentType.
+type IssueStaffInvitationJSONRequestBody = StaffInvitationIssueRequest
+
 // PostV1OrganizationsOrgIdSessionsSessionIdLayoutsApplyJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdLayoutsApply for application/json ContentType.
 type PostV1OrganizationsOrgIdSessionsSessionIdLayoutsApplyJSONRequestBody = SeatLayoutApplyRequest
 
@@ -20254,6 +21981,42 @@ type PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody = SeatB
 
 // PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest for application/json ContentType.
 type PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody = SeatLayoutSuggestRequest
+
+// SearchShopOrdersJSONRequestBody defines body for SearchShopOrders for application/json ContentType.
+type SearchShopOrdersJSONRequestBody = ShopOrderSearchRequest
+
+// UpdateShopOrderNoteJSONRequestBody defines body for UpdateShopOrderNote for application/json ContentType.
+type UpdateShopOrderNoteJSONRequestBody = ShopOrderNoteRequest
+
+// RefundShopOrderJSONRequestBody defines body for RefundShopOrder for application/json ContentType.
+type RefundShopOrderJSONRequestBody = ShopRefundRequest
+
+// ResendShopOrderEmailJSONRequestBody defines body for ResendShopOrderEmail for application/json ContentType.
+type ResendShopOrderEmailJSONRequestBody = ShopResendEmailRequest
+
+// ResolveShopOrderJSONRequestBody defines body for ResolveShopOrder for application/json ContentType.
+type ResolveShopOrderJSONRequestBody = ShopResolveRequest
+
+// ShipShopOrderJSONRequestBody defines body for ShipShopOrder for application/json ContentType.
+type ShipShopOrderJSONRequestBody = ShopShipRequest
+
+// PutShopPageJSONRequestBody defines body for PutShopPage for application/json ContentType.
+type PutShopPageJSONRequestBody = ShopPagePutRequest
+
+// CreateShopProductJSONRequestBody defines body for CreateShopProduct for application/json ContentType.
+type CreateShopProductJSONRequestBody = ShopProductCreateRequest
+
+// PatchShopProductJSONRequestBody defines body for PatchShopProduct for application/json ContentType.
+type PatchShopProductJSONRequestBody = ShopProductPatchRequest
+
+// AddShopProductImageJSONRequestBody defines body for AddShopProductImage for application/json ContentType.
+type AddShopProductImageJSONRequestBody = ShopImageAddRequest
+
+// ReplaceShopProductVariantsJSONRequestBody defines body for ReplaceShopProductVariants for application/json ContentType.
+type ReplaceShopProductVariantsJSONRequestBody = ShopVariantsReplaceRequest
+
+// PutShopSettingsJSONRequestBody defines body for PutShopSettings for application/json ContentType.
+type PutShopSettingsJSONRequestBody = ShopSettingsUpdateRequest
 
 // PostV1OrganizationsOrgIdTextsFormatJSONRequestBody defines body for PostV1OrganizationsOrgIdTextsFormat for application/json ContentType.
 type PostV1OrganizationsOrgIdTextsFormatJSONRequestBody = TextFormatRequest
@@ -20299,6 +22062,9 @@ type SendOrganizerContactJSONRequestBody = OrganizerContactRequest
 
 // PostPublicPageTrackJSONRequestBody defines body for PostPublicPageTrack for application/json ContentType.
 type PostPublicPageTrackJSONRequestBody = PageTrackRequest
+
+// CreatePublicShopCheckoutJSONRequestBody defines body for CreatePublicShopCheckout for application/json ContentType.
+type CreatePublicShopCheckoutJSONRequestBody = ShopCheckoutRequest
 
 // SubmitReconciliationReportJSONRequestBody defines body for SubmitReconciliationReport for application/json ContentType.
 type SubmitReconciliationReportJSONRequestBody SubmitReconciliationReportJSONBody

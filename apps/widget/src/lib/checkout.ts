@@ -698,6 +698,12 @@ export interface CheckoutI18nStrings {
   seatmap_reset_title: string;
   /** Accessible label for the "reset view" button. */
   seatmap_reset_aria: string;
+  /** Hint above the plan when every seated category is free. */
+  seat_hint_free: string;
+  /** Hint above the plan when seated categories cost money. */
+  seat_hint_paid: string;
+  /** Price label of a free seated category. */
+  seat_hint_free_label: string;
 }
 
 /** Interpolate {key} placeholders in an i18n string. */
@@ -763,6 +769,9 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seatmap_fit_aria: 'Fit seat map to screen',
     seatmap_reset_title: 'Reset view',
     seatmap_reset_aria: 'Reset seat map view',
+    seat_hint_free: 'Free entry ticket: choose a seat on the seating plan.',
+    seat_hint_paid: 'Choose your seats on the seating plan.',
+    seat_hint_free_label: 'Free',
   },
   ru: {
     email_label: 'Email',
@@ -822,6 +831,9 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seatmap_fit_aria: 'Вписать схему зала в экран',
     seatmap_reset_title: 'Сбросить вид',
     seatmap_reset_aria: 'Сбросить вид схемы зала',
+    seat_hint_free: 'Бесплатный входной билет: выберите место на схеме.',
+    seat_hint_paid: 'Выберите места на схеме.',
+    seat_hint_free_label: 'Бесплатно',
   },
   cs: {
     email_label: 'E-mail',
@@ -881,6 +893,9 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seatmap_fit_aria: 'Přizpůsobit mapu sedadel obrazovce',
     seatmap_reset_title: 'Obnovit zobrazení',
     seatmap_reset_aria: 'Obnovit zobrazení mapy sedadel',
+    seat_hint_free: 'Vstupenka zdarma: vyberte místo ve schématu.',
+    seat_hint_paid: 'Vyberte místa ve schématu.',
+    seat_hint_free_label: 'Zdarma',
   },
   he: {
     email_label: 'דוא"ל',
@@ -939,6 +954,9 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seatmap_fit_aria: 'התאם מפת מושבים למסך',
     seatmap_reset_title: 'אפס תצוגה',
     seatmap_reset_aria: 'אפס תצוגת מפת המושבים',
+    seat_hint_free: 'כרטיס כניסה חינם: בחרו מקום בתרשים.',
+    seat_hint_paid: 'בחרו מקומות בתרשים.',
+    seat_hint_free_label: 'חינם',
   },
 };
 

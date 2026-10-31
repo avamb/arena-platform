@@ -2,7 +2,17 @@ import { describe, expect, it } from "vitest";
 import type { OrderDetail, OrderLetter } from "@/lib/api/types";
 import { CATALOGS, LOCALES, translate } from "@/lib/i18n";
 import { hasLetterText, letterLine } from "@/lib/letterText";
-import { letterFailed, letterTone, refundLetterStatus, ticketLetterStatus, type LetterState } from "@/lib/letters";
+import {
+  latestTicketLetters,
+  letterEvents,
+  letterFailed,
+  letterHistory,
+  letterTone,
+  refundLetterStatus,
+  ticketLetterStatus,
+  ticketLetterSteps,
+  type LetterState,
+} from "@/lib/letters";
 
 const T0 = "2026-10-12T10:00:00Z";
 const T1 = "2026-10-12T10:05:00Z";
@@ -181,5 +191,87 @@ describe("letterLine", () => {
         expect(key in CATALOGS[locale], `${locale} ${key}`).toBe(true);
       }
     }
+  });
+});
+
+describe("resends: the newest letter of every ticket", () => {
+  const T2 = "2026-10-13T09:00:00Z";
+  const T3 = "2026-10-13T09:10:00Z";
+  const bounce = letter({ status: "failed", failed_at: T1, failure_event: "hard_bounce", recipient: "anna@exmaple.test" });
+  const resent = letter({ status: "opened", sent_at: T2, delivered_at: T2, opened_at: T3, recipient: "anna.work@example.test" });
+
+  it("a later letter for the same tickets replaces an old bounce", () => {
+    expect(latestTicketLetters([bounce, resent])).toEqual([resent]);
+    const s = ticketLetterStatus(card([bounce, resent]));
+    expect(s.state).toBe("opened");
+    expect(s.done).toBe(2);
+    expect(s.total).toBe(2);
+    expect(s.to).toBe("anna.work@example.test");
+  });
+
+  it("a queued resend is newer than the letter it replaces", () => {
+    const queued = letter({ status: "queued", sent_at: null, queued_at: T2 });
+    expect(ticketLetterStatus(card([letter({ status: "delivered", delivered_at: T1 }), queued])).state).toBe("queued");
+  });
+
+  it("keeps letters that name no ticket", () => {
+    const old = letter({ ticket_ids: [] });
+    expect(latestTicketLetters([old, resent])).toEqual([old, resent]);
+  });
+});
+
+describe("ticketLetterSteps", () => {
+  const steps = (ls: OrderLetter[]) => {
+    const c = card(ls);
+    return ticketLetterSteps(c, ticketLetterStatus(c));
+  };
+
+  it("marks each point the letter reached, with its time", () => {
+    const s = steps([letter({ status: "opened", delivered_at: T1, opened_at: "2026-10-12T10:20:00Z" })]);
+    expect(s?.map((p) => [p.key, p.mark, p.at])).toEqual([
+      ["sent", "done", T0],
+      ["delivered", "done", T1],
+      ["opened", "done", "2026-10-12T10:20:00Z"],
+    ]);
+  });
+
+  it("counts a proxy open as delivery, never as reading", () => {
+    const s = steps([letter({ status: "delivered", proxy_opened_at: T1 })]);
+    expect(s?.map((p) => p.mark)).toEqual(["done", "done", "todo"]);
+    expect(s?.[1]?.at).toBe(T1);
+  });
+
+  it("puts the problem on the point where the letter stopped", () => {
+    expect(steps([letter({ status: "failed", failed_at: T1 })])?.map((p) => [p.key, p.mark])).toEqual([
+      ["sent", "done"],
+      ["bounced", "bad"],
+      ["opened", "todo"],
+    ]);
+    expect(steps([letter({ status: "failed", sent_at: null, failed_at: T1 })])?.[0]).toEqual({ key: "failed", mark: "bad", at: T1 });
+    expect(steps([letter({ status: "delayed", deferred_at: T1 })])?.[1]).toEqual({ key: "delayed", mark: "wait", at: T1 });
+    expect(steps([letter({ status: "sent", stuck: true })])?.[1]?.key).toBe("stuck");
+    expect(steps([letter({ status: "queued", sent_at: null, queued_at: T0 })])?.map((p) => p.mark)).toEqual(["todo", "todo", "todo"]);
+  });
+
+  it("draws nothing when there is no letter", () => {
+    expect(ticketLetterSteps({ letters: [] }, ticketLetterStatus(card([], { delivery: [] })))).toBeNull();
+  });
+});
+
+describe("letterHistory", () => {
+  it("lists every letter oldest first and marks resends and other addresses", () => {
+    const first = letter({ status: "delivered", delivered_at: T1 });
+    const again = letter({ status: "opened", sent_at: "2026-10-13T09:00:00Z", opened_at: "2026-10-13T09:05:00Z", recipient: "Anna.Work@example.test" });
+    const change = letter({ kind: "change", ticket_ids: [], sent_at: "2026-10-14T08:00:00Z", recipient: "ANNA@example.test" });
+    const h = letterHistory(card([change, again, first]));
+    expect(h.map((e) => e.letter)).toEqual([first, again, change]);
+    expect(h.map((e) => e.resend)).toEqual([false, true, false]);
+    expect(h.map((e) => e.otherAddress)).toEqual([false, true, false]);
+  });
+
+  it("names what happened to a letter in order", () => {
+    const l = letter({ status: "opened", delivered_at: T1, proxy_opened_at: T1, opened_at: "2026-10-12T10:20:00Z", clicked_at: "2026-10-12T10:21:00Z" });
+    expect(letterEvents(l).map((e) => e.key)).toEqual(["sent", "delivered", "proxy", "opened", "clicked"]);
+    expect(letterEvents(letter({ status: "queued", sent_at: null, queued_at: T0 })).map((e) => e.key)).toEqual(["queued"]);
   });
 });

@@ -54,7 +54,7 @@ type Tagged = PosterImageState & { id: string };
  * changes or the screen goes away, and an answer that arrives after that is
  * ignored.
  */
-export function usePosterImage(mediaId: string | null, enabled: boolean) {
+export function usePosterImage(mediaId: string | null, enabled: boolean, width?: number) {
   const [tagged, setTagged] = useState<Tagged | null>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -62,7 +62,7 @@ export function usePosterImage(mediaId: string | null, enabled: boolean) {
     const controller = new AbortController();
     let url: string | null = null;
     setTagged({ id: mediaId, phase: "loading" });
-    void loadPosterBlob(browserLoadDeps(config.apiBaseUrl, fetchMediaObject), mediaId, controller.signal).then((res) => {
+    void loadPosterBlob(browserLoadDeps(config.apiBaseUrl, fetchMediaObject), mediaId, controller.signal, width).then((res) => {
       if (controller.signal.aborted) return;
       if (res.kind === "ok") {
         url = URL.createObjectURL(res.blob);
@@ -73,7 +73,7 @@ export function usePosterImage(mediaId: string | null, enabled: boolean) {
       controller.abort();
       if (url !== null) URL.revokeObjectURL(url);
     };
-  }, [mediaId, enabled, attempt]);
+  }, [mediaId, enabled, attempt, width]);
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
   // The state of ANOTHER poster id is never shown (and its address may already be revoked).
   const state: PosterImageState = tagged !== null && tagged.id === mediaId ? tagged : { phase: "loading" };

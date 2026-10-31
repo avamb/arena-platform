@@ -154,19 +154,22 @@ func (b *Bot) saveInviteListIDs(st *inviteDialog, items []openapi.ComplimentaryL
 // inviteListCallback handles the presses that belong to the list and the card:
 // lp (page), lo (open a row), rv (ask for the annul word).
 func (b *Bot) inviteListCallback(ctx context.Context, chatID int64, editMsgID *int, id *Identity, jwt string, st inviteDialog, step, kind, arg string) {
+	if b.staffInvCallback(ctx, chatID, editMsgID, id, jwt, st, step, kind, arg) {
+		return
+	}
 	switch kind {
 	case "lp":
-		b.showInviteList(ctx, chatID, editMsgID, id, jwt, st, ParsePage(arg), "")
+		b.showLegacyInviteList(ctx, chatID, editMsgID, id, jwt, st, ParsePage(arg))
 	case "lo":
 		i, ok := ParseIndex(arg, len(st.ListIDs))
 		if !ok || step != invStepList {
-			b.showInviteList(ctx, chatID, editMsgID, id, jwt, st, st.ListPage, "")
+			b.showLegacyInviteList(ctx, chatID, editMsgID, id, jwt, st, st.ListPage)
 			return
 		}
 		b.showInviteCard(ctx, chatID, editMsgID, id, jwt, st, st.ListIDs[i], "")
 	case "rv":
 		if step != invStepCard {
-			b.showInviteList(ctx, chatID, editMsgID, id, jwt, st, st.ListPage, "")
+			b.showLegacyInviteList(ctx, chatID, editMsgID, id, jwt, st, st.ListPage)
 			return
 		}
 		b.askInviteRevoke(ctx, chatID, editMsgID, id, jwt, st, "")

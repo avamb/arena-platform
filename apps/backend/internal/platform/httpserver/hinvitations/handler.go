@@ -1,0 +1,794 @@
+package hinvitations
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/billing"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/txretry"
+)
+
+// TicketCanceller is the one ticket cancellation of htickets.Handler
+// (inventory release to seat_origin, capacity, barcode revocation, audit),
+// run on the caller's transaction so every ticket of an invitation is
+// cancelled together; the v1.ticket.cancelled events fire after the commit.
+type TicketCanceller interface {
+	CancelTicketInTx(ctx context.Context, tx pgx.Tx, p htickets.CancelTicketParams) (htickets.CancelTicketOutcome, *htickets.CancelTicketError)
+	PublishTicketCancelled(ctx context.Context, out htickets.CancelTicketOutcome, p htickets.CancelTicketParams)
+}
+
+// Handler serves the staff invitation routes of spec 46 (task INV-02).
+type Handler struct {
+	pool      hcheckout.TxStarter
+	queries   *gen.Queries
+	audit     audit.Writer
+	logger    *slog.Logger
+	canceller TicketCanceller
+	delivery  deliveryDeps
+}
+
+// New builds the handler. audit may be nil (no audit rows); canceller nil
+// makes the cancel route answer 503.
+func New(pool hcheckout.TxStarter, queries *gen.Queries, auditWriter audit.Writer, logger *slog.Logger, canceller TicketCanceller) *Handler {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Handler{pool: pool, queries: queries, audit: auditWriter, logger: logger, canceller: canceller}
+}
+
+const (
+	maxBodyBytes  = 64 << 10
+	maxNameRunes  = 200
+	maxNoteRunes  = 1000
+	listLimit     = 500
+	cancelReason  = "invitation_cancelled"
+	ticketsIssued = "issued"
+	ticketsIssue  = "issuing"
+)
+
+type seatRef struct {
+	SeatKey string `json:"seat_key"`
+}
+
+type gaRef struct {
+	TierID string `json:"tier_id"`
+	Qty    int    `json:"qty"`
+}
+
+type guestBody struct {
+	Name   string  `json:"name"`
+	Email  *string `json:"email"`
+	Phone  *string `json:"phone"`
+	Locale *string `json:"locale"`
+}
+
+type issueBody struct {
+	RequestID string    `json:"request_id"`
+	Seats     []seatRef `json:"seats"`
+	GA        []gaRef   `json:"ga"`
+	Guest     guestBody `json:"guest"`
+	Delivery  string    `json:"delivery"`
+	Note      *string   `json:"note"`
+	VIP       bool      `json:"vip"`
+}
+
+// lineResponse is one place of an invitation.
+type lineResponse struct {
+	SeatKey   *string `json:"seat_key"`
+	Sector    *string `json:"sector"`
+	Row       *string `json:"row"`
+	Seat      *string `json:"seat"`
+	Kind      *string `json:"kind"`
+	TierID    string  `json:"tier_id"`
+	TierName  string  `json:"tier_name"`
+	FaceValue int64   `json:"face_value"`
+	Origin    *string `json:"origin"`
+	TicketID  *string `json:"ticket_id"`
+	// TicketStatus is tickets.status of the place's ticket (active, cancelled, ...), null until it is issued.
+	TicketStatus *string `json:"ticket_status"`
+	// VIP is the organizer's private VIP mark of the place's ticket; false until the ticket is issued.
+	VIP bool `json:"vip"`
+	// Scanned is true once the place's ticket was used at the door; such a ticket cannot be cancelled.
+	Scanned bool `json:"scanned"`
+}
+
+type issueResponse struct {
+	OrderID       string         `json:"order_id"`
+	SystemID      int64          `json:"system_id"`
+	Status        string         `json:"status"`
+	GuestName     *string        `json:"guest_name"`
+	Delivery      string         `json:"delivery"`
+	Places        []lineResponse `json:"places"`
+	FromReserve   int            `json:"from_reserve"`
+	TicketsStatus string         `json:"tickets_status"`
+	// Charge is the billing preview (spec 46, section 3.6): what the
+	// platform will charge the organization for these tickets, computed by
+	// billing.Rate. Null when it cannot be computed (no usable billing
+	// terms); the invitation itself is never refused for that.
+	Charge   *billing.ComplimentaryQuote `json:"charge"`
+	Replayed bool                        `json:"replayed"`
+}
+
+// HandleIssue serves POST /v1/organizations/{org_id}/sessions/{session_id}/invitations.
+func (h *Handler) HandleIssue(w http.ResponseWriter, r *http.Request) {
+	if h.pool == nil || h.queries == nil {
+		unavailable(w, r)
+		return
+	}
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
+	if !ok {
+		return
+	}
+	sessionID, ok := httputil.UUIDPathParam(w, r, "session_id")
+	if !ok {
+		return
+	}
+	var body issueBody
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxBodyBytes)).Decode(&body); err != nil {
+		writeErr(w, r, http.StatusBadRequest, "invitation.invalid_body", "the request body is not valid JSON", nil)
+		return
+	}
+	in, ierr := validateIssue(body)
+	if ierr != nil {
+		writeIssueErr(w, r, ierr)
+		return
+	}
+	ctx := r.Context()
+	actor, _ := auth.ActorFromContext(ctx)
+	in.OrgID, in.SessionID = orgID, sessionID
+	in.Actor = "system"
+	auditType := "service"
+	if actor.Type == auth.ActorTypeUser || actor.Type == auth.ActorTypeStubUser {
+		if uid, err := uuid.Parse(actor.ID); err == nil {
+			in.IssuedBy = &uid
+			in.Actor = "user:" + uid.String()
+			auditType = "user"
+		}
+	}
+	if in.IssuedBy != nil {
+		in.Via = telegramVia(ctx, actor)
+	}
+	if actor.Type == auth.ActorTypeService {
+		in.IssuedByAPIKey = h.apiKeyName(ctx, actor, orgID)
+	}
+	if in.Delivery == DeliveryMyEmail && in.IssuedBy == nil {
+		writeErr(w, r, http.StatusUnprocessableEntity, "invitation.my_email_requires_user",
+			"delivery my_email needs a signed-in user; an API key has no e-mail", nil)
+		return
+	}
+	if h.audit != nil {
+		in.Audit = func(ctx context.Context, tx pgx.Tx, order gen.OrderRow, meta map[string]any) error {
+			actorID := ""
+			if in.IssuedBy != nil {
+				actorID = in.IssuedBy.String()
+			}
+			return h.audit.WriteTx(ctx, tx, audit.Event{
+				OccurredAt:   time.Now().UTC(),
+				ActorType:    auditType,
+				ActorID:      actorID,
+				Action:       "v1.invitation.issue",
+				ResourceType: "order",
+				ResourceID:   order.ID.String(),
+				RequestID:    logging.RequestID(ctx),
+				TraceID:      logging.TraceID(ctx),
+				Metadata:     meta,
+			})
+		}
+	}
+
+	res, err := Issue(ctx, h.pool, h.queries, in)
+	if err != nil {
+		var ie *IssueError
+		if errors.As(err, &ie) {
+			writeIssueErr(w, r, ie)
+			return
+		}
+		h.logger.Error("invitation.issue failed", slog.String("session_id", sessionID.String()), slog.String("error", err.Error()))
+		writeErr(w, r, http.StatusInternalServerError, "invitation.issue_failed", "the invitation could not be issued", nil)
+		return
+	}
+	resp, err := h.loadIssued(ctx, res.OrderID, orgID)
+	if err != nil {
+		h.logger.Error("invitation.issue: read back failed", slog.String("order_id", res.OrderID.String()), slog.String("error", err.Error()))
+		writeErr(w, r, http.StatusInternalServerError, "invitation.issue_failed", "the invitation was issued but could not be read back", nil)
+		return
+	}
+	resp.Replayed = res.Replayed
+	status := http.StatusCreated
+	if res.Replayed {
+		status = http.StatusOK
+	}
+	httputil.WriteJSON(w, status, resp)
+}
+
+// validateIssue checks the request's shape (spec 46, section 3.1).
+func validateIssue(b issueBody) (IssueInput, *IssueError) {
+	var in IssueInput
+	rid, err := uuid.Parse(strings.TrimSpace(b.RequestID))
+	if err != nil || rid == uuid.Nil {
+		return in, refuse(http.StatusBadRequest, "invitation.invalid_request_id", "request_id must be a UUID", nil)
+	}
+	in.RequestID = rid
+
+	seen := map[string]bool{}
+	for _, s := range b.Seats {
+		k := strings.TrimSpace(s.SeatKey)
+		if k == "" || seen[k] {
+			return in, refuse(http.StatusBadRequest, "invitation.invalid_seats",
+				"every seat_key must be non-empty and named once", nil)
+		}
+		seen[k] = true
+		in.SeatKeys = append(in.SeatKeys, k)
+	}
+	total := len(in.SeatKeys)
+	for _, g := range b.GA {
+		tid, err := uuid.Parse(strings.TrimSpace(g.TierID))
+		if err != nil || g.Qty < 1 {
+			return in, refuse(http.StatusBadRequest, "invitation.invalid_ga",
+				"every ga line needs a tier_id and a qty of at least 1", nil)
+		}
+		total += g.Qty
+		if total > MaxPlaces {
+			break
+		}
+		in.GA = append(in.GA, GALine{TierID: tid, Quantity: int32(g.Qty)}) //nolint:gosec // bounded by MaxPlaces
+	}
+	if total == 0 {
+		return in, refuse(http.StatusBadRequest, "invitation.empty", "name at least one seat or one ga place", nil)
+	}
+	if total > MaxPlaces {
+		return in, refuse(http.StatusBadRequest, "invitation.too_many",
+			"one invitation takes at most 50 places, upload a CSV for more", map[string]any{"max": MaxPlaces})
+	}
+
+	name := strings.TrimSpace(b.Guest.Name)
+	if name == "" || utf8.RuneCountInString(name) > maxNameRunes {
+		return in, refuse(http.StatusBadRequest, "invitation.invalid_guest_name",
+			"guest.name is required, 1 to 200 characters", nil)
+	}
+	in.Guest.Name = name
+	in.Guest.Email = trimPtr(b.Guest.Email)
+	in.Guest.Phone = trimPtr(b.Guest.Phone)
+	in.Guest.Locale = trimPtr(b.Guest.Locale)
+	if in.Guest.Email != "" && !strings.Contains(in.Guest.Email, "@") {
+		return in, refuse(http.StatusBadRequest, "invitation.invalid_guest_email", "guest.email is not an e-mail address", nil)
+	}
+
+	switch b.Delivery {
+	case DeliveryGuestEmail:
+		if in.Guest.Email == "" {
+			return in, refuse(http.StatusUnprocessableEntity, "invitation.guest_email_required",
+				"delivery guest_email needs guest.email", nil)
+		}
+	case DeliveryMyEmail, DeliveryPDFOnly:
+	default:
+		return in, refuse(http.StatusBadRequest, "invitation.invalid_delivery",
+			"delivery must be guest_email, my_email or pdf_only", nil)
+	}
+	in.Delivery = b.Delivery
+	in.Note = trimPtr(b.Note)
+	in.VIP = b.VIP
+	if utf8.RuneCountInString(in.Note) > maxNoteRunes {
+		return in, refuse(http.StatusBadRequest, "invitation.note_too_long", "note is at most 1000 characters", nil)
+	}
+	return in, nil
+}
+
+// loadIssued builds the issue answer from the committed rows, so a replay
+// and a fresh issue answer the same shape.
+func (h *Handler) loadIssued(ctx context.Context, orderID, orgID uuid.UUID) (issueResponse, error) {
+	o, err := h.queries.GetInvitationOrder(ctx, orderID, orgID)
+	if err != nil {
+		return issueResponse{}, err
+	}
+	lines, err := h.queries.ListInvitationOrderLines(ctx, []uuid.UUID{orderID})
+	if err != nil {
+		return issueResponse{}, err
+	}
+	resp := issueResponse{
+		OrderID:       o.ID.String(),
+		SystemID:      o.SystemID,
+		Status:        o.Status,
+		GuestName:     o.BuyerName,
+		Delivery:      deliveryOf(o.Metadata),
+		Places:        make([]lineResponse, 0, len(lines)),
+		TicketsStatus: ticketsIssue,
+	}
+	issued := len(lines) > 0
+	seated := 0
+	for _, l := range lines {
+		if l.Kind != nil && *l.Kind == seatKindSeat {
+			seated++
+		}
+		resp.Places = append(resp.Places, toLine(l))
+		if l.SeatOrigin != nil && *l.SeatOrigin == originUnavailable {
+			resp.FromReserve++
+		}
+		if l.TicketID == nil {
+			issued = false
+		}
+	}
+	if issued {
+		resp.TicketsStatus = ticketsIssued
+	}
+	resp.Charge = h.chargePreview(ctx, o, orgID, seated, len(lines)-seated)
+	return resp, nil
+}
+
+// seatKindSeat is session_seats.kind of a place on the plan; the collector
+// bills such a ticket as seated, every other place as general admission.
+const seatKindSeat = "seat"
+
+// chargePreview quotes the invitation at the moment it was issued, through
+// the same rule the billing rate job applies. A failure is logged and
+// answered as null: billing never blocks an invitation.
+func (h *Handler) chargePreview(ctx context.Context, o gen.InvitationOrderRow, orgID uuid.UUID, seated, unseated int) *billing.ComplimentaryQuote {
+	if seated+unseated == 0 {
+		return nil
+	}
+	q, err := billing.QuoteComplimentaryForSession(ctx, h.queries, orgID, o.SessionID, o.CreatedAt,
+		seated, unseated, o.IssuedVia == billing.IssuedViaStaffBulk)
+	if err != nil {
+		h.logger.WarnContext(ctx, "invitation charge preview unavailable",
+			"order_id", o.ID.String(), "org_id", orgID.String(), "error", err)
+		return nil
+	}
+	return &q
+}
+
+func toLine(l gen.InvitationOrderLineRow) lineResponse {
+	out := lineResponse{
+		SeatKey: l.SeatKey, Sector: l.SectorName, Row: l.RowName, Seat: l.SeatNumber, Kind: l.Kind,
+		TierID: l.TierID.String(), TierName: l.TierName, FaceValue: l.UnitPrice, Origin: l.SeatOrigin,
+		TicketStatus: l.TicketStatus, VIP: l.VIP, Scanned: l.Scanned,
+	}
+	if l.TicketID != nil {
+		s := l.TicketID.String()
+		out.TicketID = &s
+	}
+	return out
+}
+
+// deliveryOf reads orders.metadata.invitation.delivery.
+func deliveryOf(raw json.RawMessage) string {
+	var m struct {
+		Invitation struct {
+			Delivery string `json:"delivery"`
+		} `json:"invitation"`
+	}
+	_ = json.Unmarshal(raw, &m)
+	return m.Invitation.Delivery
+}
+
+type issuerResponse struct {
+	UserID    *string `json:"user_id"`
+	Email     *string `json:"email"`
+	FirstName *string `json:"first_name"`
+	LastName  *string `json:"last_name"`
+}
+
+type listItem struct {
+	OrderID   string         `json:"order_id"`
+	SystemID  int64          `json:"system_id"`
+	Status    string         `json:"status"`
+	GuestName *string        `json:"guest_name"`
+	Delivery  string         `json:"delivery"`
+	IssuedVia string         `json:"issued_via"`
+	IssuedBy  issuerResponse `json:"issued_by"`
+	CreatedAt time.Time      `json:"created_at"`
+	// InvitationBatchID is the CSV batch of a bulk invitation; null otherwise.
+	InvitationBatchID *string        `json:"invitation_batch_id"`
+	TicketsTotal      int64          `json:"tickets_total"`
+	TicketsActive     int64          `json:"tickets_active"`
+	Places            []lineResponse `json:"places"`
+	// Letter is the state of the guest's letter; null when no letter was queued
+	// (pdf_only, or the tickets are not issued yet).
+	Letter *letterResponse `json:"letter"`
+}
+
+// HandleList serves GET /v1/organizations/{org_id}/sessions/{session_id}/invitations:
+// every staff invitation of the session, whoever issued it (spec 46 R-5).
+func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil {
+		unavailable(w, r)
+		return
+	}
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
+	if !ok {
+		return
+	}
+	sessionID, ok := httputil.UUIDPathParam(w, r, "session_id")
+	if !ok {
+		return
+	}
+	ctx := r.Context()
+	target, err := h.queries.GetInvitationSessionTarget(ctx, sessionID)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && target.OrgID != orgID) {
+		writeErr(w, r, http.StatusNotFound, "session.not_found", "session not found", nil)
+		return
+	}
+	if err != nil {
+		h.internal(w, r, "list: session lookup", err)
+		return
+	}
+	rows, err := h.queries.ListSessionInvitations(ctx, orgID, sessionID, listLimit)
+	if err != nil {
+		h.internal(w, r, "list", err)
+		return
+	}
+	ids := make([]uuid.UUID, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	ex, err := h.loadPageExtras(ctx, ids)
+	if err != nil {
+		h.internal(w, r, "list: places and letters", err)
+		return
+	}
+	items := make([]listItem, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, newListItem(row, ex.places[row.ID], ex.letters[row.ID]))
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "timezone": target.Timezone})
+}
+
+// newListItem builds one list item from its order row and its places.
+func newListItem(row gen.SessionInvitationRow, places []lineResponse, letter *letterResponse) listItem {
+	it := listItem{
+		OrderID: row.ID.String(), SystemID: row.SystemID, Status: row.Status, GuestName: row.BuyerName,
+		Delivery: deliveryOf(row.Metadata), IssuedVia: row.IssuedVia, CreatedAt: row.CreatedAt,
+		TicketsTotal: row.TicketsTotal, TicketsActive: row.TicketsActive,
+		IssuedBy: issuerResponse{Email: row.IssuerEmail, FirstName: row.IssuerFirst, LastName: row.IssuerLast},
+		Places:   places,
+		Letter:   letter,
+	}
+	if it.Places == nil {
+		it.Places = []lineResponse{}
+	}
+	if row.IssuedBy != nil {
+		s := row.IssuedBy.String()
+		it.IssuedBy.UserID = &s
+	}
+	if row.BatchID != nil {
+		s := row.BatchID.String()
+		it.InvitationBatchID = &s
+	}
+	return it
+}
+
+type cancelBody struct {
+	TicketIDs   []string `json:"ticket_ids"`
+	NotifyGuest *bool    `json:"notify_guest"`
+}
+
+type cancelResponse struct {
+	OrderID            string   `json:"order_id"`
+	OrderStatus        string   `json:"order_status"`
+	CancelledTicketIDs []string `json:"cancelled_ticket_ids"`
+	SkippedTicketIDs   []string `json:"skipped_ticket_ids"`
+	NotifyGuest        bool     `json:"notify_guest"`
+}
+
+// HandleCancel serves POST /v1/organizations/{org_id}/invitations/{order_id}/cancel.
+// Every active ticket named (or all of them) is cancelled through the one
+// ticket cancellation transaction with no money (refund_mode none), so each
+// seat goes back where it came from (order_items.seat_origin, INV-01).
+func (h *Handler) HandleCancel(w http.ResponseWriter, r *http.Request) {
+	if h.queries == nil || h.pool == nil || h.canceller == nil {
+		unavailable(w, r)
+		return
+	}
+	orgID, ok := httputil.UUIDPathParam(w, r, "org_id")
+	if !ok {
+		return
+	}
+	orderID, ok := httputil.UUIDPathParam(w, r, "order_id")
+	if !ok {
+		return
+	}
+	var body cancelBody
+	if err := json.NewDecoder(io.LimitReader(r.Body, maxBodyBytes)).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		writeErr(w, r, http.StatusBadRequest, "invitation.invalid_body", "the request body is not valid JSON", nil)
+		return
+	}
+	notify := body.NotifyGuest == nil || *body.NotifyGuest
+	ctx := r.Context()
+
+	o, err := h.queries.GetInvitationOrder(ctx, orderID, orgID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		writeErr(w, r, http.StatusNotFound, "invitation.not_found", "invitation not found", nil)
+		return
+	}
+	if err != nil {
+		h.internal(w, r, "cancel: order lookup", err)
+		return
+	}
+	tickets, err := h.queries.ListTicketsByCheckoutSession(ctx, o.CheckoutSessionID)
+	if err != nil {
+		h.internal(w, r, "cancel: tickets", err)
+		return
+	}
+	if len(tickets) == 0 {
+		writeErr(w, r, http.StatusConflict, "invitation.tickets_not_issued",
+			"the tickets of this invitation are still being issued, try again in a moment", nil)
+		return
+	}
+	byID := make(map[uuid.UUID]gen.TicketRow, len(tickets))
+	for _, t := range tickets {
+		byID[t.ID] = t
+	}
+	targets := tickets
+	if len(body.TicketIDs) > 0 {
+		targets = targets[:0:0]
+		for _, raw := range body.TicketIDs {
+			id, err := uuid.Parse(strings.TrimSpace(raw))
+			t, found := byID[id]
+			if err != nil || !found {
+				writeErr(w, r, http.StatusBadRequest, "invitation.unknown_ticket",
+					"a ticket_id is not a ticket of this invitation", map[string]any{"ticket_id": raw})
+				return
+			}
+			targets = append(targets, t)
+		}
+	}
+
+	actor, _ := auth.ActorFromContext(ctx)
+	actorType, actorID := "service", ""
+	if actor.Type == auth.ActorTypeUser || actor.Type == auth.ActorTypeStubUser {
+		if _, err := uuid.Parse(actor.ID); err == nil {
+			actorType, actorID = "user", actor.ID
+		}
+	}
+
+	// One transaction for every ticket, the order_events row and the audit:
+	// the invitation is cancelled as a whole or not at all. Postgres may
+	// still resolve a lock race with a concurrent cancel of one of the same
+	// tickets by killing this transaction (40P01), so the WHOLE body runs
+	// again from the top, including the guest letter queued inside it.
+	var (
+		resp      cancelResponse
+		cancelled []cancelledTicket
+	)
+	err = txretry.Do(ctx, txretry.DefaultAttempts, func() error {
+		var terr error
+		resp, cancelled, terr = h.cancelOnce(ctx, o, targets, notify, actorType, actorID)
+		return terr
+	})
+	var refusal *cancelRefusal
+	if errors.As(err, &refusal) {
+		writeErr(w, r, refusal.status, refusal.code, refusal.message, refusal.details)
+		return
+	}
+	if err != nil {
+		h.internal(w, r, "cancel", err)
+		return
+	}
+	for _, c := range cancelled {
+		h.canceller.PublishTicketCancelled(ctx, c.out, c.p)
+	}
+	httputil.WriteJSON(w, http.StatusOK, resp)
+}
+
+// cancelRefusal is an answer the cancel route gives instead of cancelling:
+// it is returned out of the transaction body so the transaction rolls back,
+// and never retried.
+type cancelRefusal struct {
+	status  int
+	code    string
+	message string
+	details map[string]any
+}
+
+func (e *cancelRefusal) Error() string { return e.code + ": " + e.message }
+
+// cancelledTicket is a ticket this attempt cancelled, kept for the
+// v1.ticket.cancelled event fired after the commit.
+type cancelledTicket struct {
+	out htickets.CancelTicketOutcome
+	p   htickets.CancelTicketParams
+}
+
+// cancelOnce is one attempt of the cancellation transaction. Lock order
+// (AGENTS.md): the sessions row FIRST (IncrementSessionSeatStatusVersion,
+// the seat_status_version bump), then the ticket rows FOR UPDATE in id
+// order, then the per-ticket work. htickets.CancelTicketInTx takes the
+// session lock before its own ticket update too, so a single-ticket cancel
+// running at the same time queues behind this transaction instead of
+// holding a ticket while waiting for the session (the 40P01 this fixed).
+func (h *Handler) cancelOnce(ctx context.Context, o gen.InvitationOrderRow, targets []gen.TicketRow, notify bool, actorType, actorID string) (cancelResponse, []cancelledTicket, error) {
+	resp := cancelResponse{OrderID: o.ID.String(), OrderStatus: o.Status, CancelledTicketIDs: []string{}, SkippedTicketIDs: []string{}, NotifyGuest: notify}
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return resp, nil, fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	txq := h.queries.WithTx(tx)
+
+	if _, err := txq.IncrementSessionSeatStatusVersion(ctx, o.SessionID); err != nil {
+		return resp, nil, fmt.Errorf("lock session: %w", err)
+	}
+	ids := make([]uuid.UUID, 0, len(targets))
+	for _, t := range targets {
+		ids = append(ids, t.ID)
+	}
+	locked, err := txq.LockTicketsForCancel(ctx, ids)
+	if err != nil {
+		return resp, nil, fmt.Errorf("lock tickets: %w", err)
+	}
+	status := make(map[uuid.UUID]string, len(locked))
+	for _, l := range locked {
+		status[l.ID] = l.Status
+	}
+
+	// A ticket that was already used at the door is never cancelled: the
+	// guest is inside (spec 46, owner decision). The platform's one
+	// definition of "scanned" decides (refunds.TicketScannedTx).
+	for _, t := range targets {
+		if status[t.ID] != "active" {
+			continue
+		}
+		scanned, serr := refunds.TicketScannedTx(ctx, tx, t.ID)
+		if serr != nil {
+			return resp, nil, fmt.Errorf("scan check: %w", serr)
+		}
+		if scanned {
+			return resp, nil, &cancelRefusal{status: http.StatusConflict, code: "invitation.ticket_scanned",
+				message: "a ticket of this invitation was already used at the door; nothing was cancelled",
+				details: map[string]any{"ticket_id": t.ID.String()}}
+		}
+	}
+
+	var cancelled []cancelledTicket
+	for _, t := range targets {
+		if status[t.ID] != "active" {
+			resp.SkippedTicketIDs = append(resp.SkippedTicketIDs, t.ID.String())
+			continue
+		}
+		p := htickets.CancelTicketParams{
+			TicketID:   t.ID,
+			Reason:     cancelReason,
+			RefundMode: htickets.RefundModeNone,
+			ActorType:  actorType,
+			ActorID:    actorID,
+		}
+		out, cerr := h.canceller.CancelTicketInTx(ctx, tx, p)
+		if cerr != nil {
+			if cerr.Code == "ticket.not_active" {
+				// Lost a race with another cancellation: the UPDATE matched
+				// no row, which does not abort the transaction.
+				resp.SkippedTicketIDs = append(resp.SkippedTicketIDs, t.ID.String())
+				continue
+			}
+			if txretry.IsSerializationFailure(cerr) {
+				return resp, nil, fmt.Errorf("cancel ticket %s: %w", t.ID, cerr)
+			}
+			h.logger.Error("invitation.cancel: ticket cancel failed",
+				slog.String("order_id", o.ID.String()), slog.String("ticket_id", t.ID.String()), slog.String("error", cerr.Error()))
+			return resp, nil, &cancelRefusal{status: cerr.Status, code: cerr.Code, message: cerr.Message,
+				details: map[string]any{"ticket_id": t.ID.String()}}
+		}
+		cancelled = append(cancelled, cancelledTicket{out: out, p: p})
+		resp.CancelledTicketIDs = append(resp.CancelledTicketIDs, t.ID.String())
+	}
+
+	if len(cancelled) > 0 {
+		if err := h.recordCancel(ctx, tx, o, resp, actorType, actorID); err != nil {
+			return resp, nil, fmt.Errorf("record: %w", err)
+		}
+	}
+	if notify {
+		if err := h.notifyGuestCancelled(ctx, tx, o, resp.CancelledTicketIDs); err != nil {
+			return resp, nil, fmt.Errorf("guest letter: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return resp, nil, fmt.Errorf("commit: %w", err)
+	}
+	return resp, cancelled, nil
+}
+
+// recordCancel writes the order_events row and the audit of a cancellation
+// on the cancellation's own transaction. The order's status is NOT changed:
+// a cancellation without money leaves an order paid, exactly as the
+// operator's refund_mode none cancel does, so an invitation whose tickets
+// are all cancelled is still billed (the charge for a cancelled invitation
+// always stays, owner rule). A client tells a fully cancelled invitation by
+// its active ticket count, not by the order status.
+func (h *Handler) recordCancel(ctx context.Context, tx pgx.Tx, o gen.InvitationOrderRow, resp cancelResponse, actorType, actorID string) error {
+	payload, err := json.Marshal(map[string]any{
+		"ticket_ids":   resp.CancelledTicketIDs,
+		"notify_guest": resp.NotifyGuest,
+	})
+	if err != nil {
+		return err
+	}
+	actor := "system"
+	if actorType == "user" {
+		actor = "user:" + actorID
+	}
+	if _, err := h.queries.WithTx(tx).InsertOrderEvent(ctx, o.ID, "invitation_cancelled", actor, payload); err != nil {
+		return err
+	}
+	if err := h.recordCancelledBy(ctx, tx, o.ID); err != nil {
+		return err
+	}
+	if h.audit == nil {
+		return nil
+	}
+	return h.audit.WriteTx(ctx, tx, audit.Event{
+		OccurredAt:   time.Now().UTC(),
+		ActorType:    actorType,
+		ActorID:      actorID,
+		Action:       "v1.invitation.cancel",
+		ResourceType: "order",
+		ResourceID:   o.ID.String(),
+		RequestID:    logging.RequestID(ctx),
+		TraceID:      logging.TraceID(ctx),
+		Metadata: map[string]any{
+			"session_id":   o.SessionID.String(),
+			"tickets":      len(resp.CancelledTicketIDs),
+			"notify_guest": resp.NotifyGuest,
+			"order_status": resp.OrderStatus,
+		},
+	})
+}
+
+func trimPtr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return strings.TrimSpace(*p)
+}
+
+func writeErr(w http.ResponseWriter, r *http.Request, status int, code, msg string, details map[string]any) {
+	if details != nil {
+		httputil.WriteJSON(w, status, httputil.ErrorEnvelopeWithDetails(code, msg, r, details))
+		return
+	}
+	httputil.WriteJSON(w, status, httputil.ErrorEnvelope(code, msg, r))
+}
+
+func writeIssueErr(w http.ResponseWriter, r *http.Request, e *IssueError) {
+	writeErr(w, r, e.Status, e.Code, e.Message, e.Details)
+}
+
+func unavailable(w http.ResponseWriter, r *http.Request) {
+	writeErr(w, r, http.StatusServiceUnavailable, "dependency.database_unavailable", "database is not available", nil)
+}
+
+func (h *Handler) internal(w http.ResponseWriter, r *http.Request, what string, err error) {
+	h.logger.Error("invitation."+what+" failed", slog.String("error", err.Error()))
+	writeErr(w, r, http.StatusInternalServerError, "invitation.internal", "the invitations could not be read", nil)
+}
+
+// telegramVia names the Telegram client a request came from, or "". The Mini
+// App is told by its authenticated session (an event_center_tg token), never
+// by a header; the bot declares itself with X-Client-Channel.
+func telegramVia(ctx context.Context, actor auth.Actor) string {
+	if actor.Channel == audit.ChannelEventCenterTG {
+		return audit.ChannelTelegramMiniapp
+	}
+	if ch, ok := audit.ClientChannelFromContext(ctx); ok && ch == audit.ChannelTelegramBot {
+		return audit.ChannelTelegramBot
+	}
+	return ""
+}

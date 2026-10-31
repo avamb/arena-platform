@@ -18,6 +18,8 @@ type stubOrder struct {
 	Discount int64
 	Refunded int64
 	Currency string
+	// ChargeCurrency is currency_payment; empty means the same as Currency.
+	ChargeCurrency string
 	// Refunds lists every refund the stub carried out, in order.
 	Refunds []int64
 }
@@ -49,7 +51,8 @@ func (s *stubAllPay) ledger(w http.ResponseWriter, show string, body map[string]
 		}
 	}
 	if show == methodPaymentStatus {
-		ans := map[string]any{"order_id": orderID, "status": status, "amount": json.Number(MinorToMajor(o.Amount)), "currency": o.Currency}
+		ans := map[string]any{"order_id": orderID, "status": status, "amount": json.Number(MinorToMajor(o.Amount)),
+			"currency_display": o.Currency, "currency_payment": o.ChargeCurrency, "currency_course": json.Number("1")}
 		if o.Discount > 0 {
 			ans["discount"] = json.Number(MinorToMajor(o.Discount))
 		}
@@ -89,6 +92,9 @@ func (s *stubAllPay) addOrder(id string, o stubOrder) *stubOrder {
 	defer s.mu.Unlock()
 	if o.Currency == "" {
 		o.Currency = "ILS"
+	}
+	if o.ChargeCurrency == "" {
+		o.ChargeCurrency = o.Currency
 	}
 	cp := o
 	s.orders[id] = &cp
@@ -281,10 +287,12 @@ func TestRefund_OrderStatesThatNeedAHuman(t *testing.T) {
 	stub := newStubAllPay(t, "pp1", "key")
 	stub.addOrder("o-unpaid", stubOrder{Status: 0, Amount: 10000, Currency: "ILS"})
 	stub.addOrder("o-usd", stubOrder{Status: StatusPaid, Amount: 10000, Currency: "USD"})
+	stub.addOrder("o-fb", stubOrder{Status: StatusPaid, Amount: 10000, Currency: "ILS", ChargeCurrency: "EUR"})
 	a := newTestAdapter(stub, Config{})
 	for order, code := range map[string]string{
 		"o-unpaid":  RefundCodeNotPaid,
 		"o-usd":     RefundCodeCurrency,
+		"o-fb":      RefundCodeCurrency,
 		"o-missing": RefundCodeOrderNotFound,
 	} {
 		_, err := a.Refund(t.Context(), refundReq(order, 1000, 10000, "r-"+order))

@@ -234,6 +234,46 @@ func sweepRouteSet() map[string]bool {
 // handler really loads the child and compares its organization to {org_id}; if
 // in doubt add a sweepRows entry instead — a failing row is cheaper than a leak.
 var orgIsolationAuditedSafe = map[string]string{
+	// Staff invitations (spec 46, INV-02, hinvitations): issue and list load the
+	// session with GetInvitationSessionTarget and compare its organization;
+	// cancel loads the order with GetInvitationOrder(order_id, org_id).
+	// staff_invitations_inv02_integration_test.go drives a foreign org and expects 404.
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/invitations": "invitations",
+	// The organization-wide list (INV-05) selects orders by org_id in SQL;
+	// staff_invitations_inv05_integration_test.go drives a foreign org.
+	"GET /v1/organizations/{org_id}/invitations":                        "invitations",
+	"POST /v1/organizations/{org_id}/sessions/{session_id}/invitations": "invitations",
+	"POST /v1/organizations/{org_id}/invitations/{order_id}/cancel":     "invitations",
+	"POST /v1/organizations/{org_id}/invitations/{order_id}/resend":     "invitations",
+	"GET /v1/organizations/{org_id}/invitations/{order_id}/tickets.pdf": "invitations",
+	// Bulk invitations (INV-06): the upload loads the session and compares its
+	// organization; a batch is read by (id, org_id).
+	"POST /v1/organizations/{org_id}/sessions/{session_id}/invitation-batches": "invitations",
+	"GET /v1/organizations/{org_id}/invitation-batches/{id}":                   "invitations",
+	"GET /v1/organizations/{org_id}/invitation-batches/{id}/result.csv":        "invitations",
+	// Merchandise shop (spec 47, migration 0172): internal/platform/shop loads
+	// every product and order by (id, org_id) and answers the route's own 404;
+	// a page is keyed by (org_id, slug), a picture's media must be the
+	// organization's own. shop_integration_test.go TestShop_OrganizationIsolation,
+	// shop_parity_integration_test.go (the note and the repeat e-mail answer 404 for another organization),
+	// shop_third_pass_integration_test.go (resolve answers 404 for another organization's order).
+	"DELETE /v1/organizations/{org_id}/shop/pages/{slug}":                            "shop",
+	"DELETE /v1/organizations/{org_id}/shop/products/{product_id}":                   "shop",
+	"DELETE /v1/organizations/{org_id}/shop/products/{product_id}/images/{media_id}": "shop",
+	"GET /v1/organizations/{org_id}/shop/orders/{order_id}":                          "shop",
+	"GET /v1/organizations/{org_id}/shop/orders/{order_id}/courier-text":             "shop",
+	"GET /v1/organizations/{org_id}/shop/products/{product_id}":                      "shop",
+	"PATCH /v1/organizations/{org_id}/shop/orders/{order_id}":                        "shop",
+	"PATCH /v1/organizations/{org_id}/shop/products/{product_id}":                    "shop",
+	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/cancel":                  "shop",
+	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/refund":                  "shop",
+	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/resend-email":            "shop",
+	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/resolve":                 "shop",
+	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/ship":                    "shop",
+	"POST /v1/organizations/{org_id}/shop/products/{product_id}/images":              "shop",
+	"PUT /v1/organizations/{org_id}/shop/pages/{slug}":                               "shop",
+	"PUT /v1/organizations/{org_id}/shop/products/{product_id}/variants":             "shop",
+
 	// hcatalog tiers, price schedules, bulk pricing: requireSessionInOrg
 	// (hcatalog/tier_org.go, EC-15) and requireEventInOrg; tier_org_isolation_integration_test.go.
 	"DELETE /v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}":             "tiers",

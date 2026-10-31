@@ -79,3 +79,17 @@ func (q *Queries) ListTicketVIPByIDs(ctx context.Context, ids []uuid.UUID) (map[
 	}
 	return out, rows.Err()
 }
+
+const setTicketsVIPForOrder = `-- name: SetTicketsVIPForOrder :exec
+UPDATE tickets
+SET    vip        = true,
+       vip_set_by = (SELECT o.issued_by FROM orders o WHERE o.id = $1),
+       vip_set_at = now()
+WHERE  id = ANY($2::uuid[])`
+
+// SetTicketsVIPForOrder marks the given tickets of a staff invitation order
+// as VIP, in the issuing transaction, attributed to the order's issuer.
+func (q *Queries) SetTicketsVIPForOrder(ctx context.Context, orderID uuid.UUID, ticketIDs []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, setTicketsVIPForOrder, orderID, ticketIDs)
+	return err
+}

@@ -9,6 +9,9 @@ package httpserver
 // the plan becomes a place, every category a priced tier). Then the event is
 // opened for editing: "Prices and categories" asks only the prices, and the
 // change reaches the tiers while the places and the plan stay as they were.
+// On top of the plan's categories the owner adds an extra price category
+// (VIP, its colour): it is created with no places, keeps none after the edit,
+// and the bot points to where the seats are painted.
 
 import (
 	"context"
@@ -152,10 +155,17 @@ func TestBotE2E_WizardSeatedDate(t *testing.T) {
 	for i := 0; i < categories; i++ {
 		expect := "Категория «"
 		if i == categories-1 {
-			expect = "Схема «"
+			expect = "Нужны ещё ценовые категории"
 		}
 		owner.say(prices[i], expect)
 	}
+	owner.press("wz:extra:add", "Название новой ценовой категории")
+	owner.say("VIP", "Сколько стоит билет категории «VIP»")
+	owner.say("120", "Каким цветом")
+	if text := owner.press("wz:color:#dc2626", "Нужны ещё ценовые категории"); !strings.Contains(text, "🟥 VIP") {
+		t.Fatalf("extra list: %s", text)
+	}
+	owner.press("wz:extra:done", "из них новых 1")
 	owner.press("wz:next", "Описание мероприятия") // no shared ticket questions for a date sold by the plan
 	owner.press("wz:skip", "Валюта цен")
 	owner.press("wz:cur:EUR", "Открыть продажи сразу")
@@ -181,8 +191,24 @@ func TestBotE2E_WizardSeatedDate(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM ticket_tiers WHERE session_id = $1`, sessionID).Scan(&tiers); err != nil {
 		t.Fatal(err)
 	}
-	if seats != geometry.SeatCount() || tiers != categories {
-		t.Fatalf("places = %d seats / %d tiers, want %d / %d", seats, tiers, geometry.SeatCount(), categories)
+	if seats != geometry.SeatCount() || tiers != categories+1 {
+		t.Fatalf("places = %d seats / %d tiers, want %d / %d", seats, tiers, geometry.SeatCount(), categories+1)
+	}
+	vipPlaces := func() (int, string) {
+		t.Helper()
+		var n int
+		var color *string
+		if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM session_seats ss WHERE ss.tier_id = tt.id), tt.color
+		        FROM ticket_tiers tt WHERE tt.session_id = $1 AND tt.name = 'VIP'`, sessionID).Scan(&n, &color); err != nil {
+			t.Fatalf("VIP tier: %v", err)
+		}
+		if color == nil {
+			return n, ""
+		}
+		return n, *color
+	}
+	if n, color := vipPlaces(); n != 0 || color != "#dc2626" {
+		t.Fatalf("VIP = %d places colour %q, want 0 and #dc2626", n, color)
 	}
 	tierPrice := func() map[string]int64 {
 		t.Helper()
@@ -215,11 +241,12 @@ func TestBotE2E_WizardSeatedDate(t *testing.T) {
 	// "Done!" is followed by the sample ticket and the menu, sent in the
 	// background: a press that lands before them is answered as out of date.
 	tg.waitFor(t, "sample-ticket.pdf")
+	tg.waitFor(t, "Сеанс продаётся по схеме зала")
 	owner.press("wz:edit:"+eventID.String(), "Правим")
 	owner.press("wz:e:tickets", "Категория «")
-	for i := 0; i < categories; i++ {
+	for i := 0; i < categories+1; i++ {
 		expect := "Категория «"
-		if i == categories-1 {
+		if i == categories {
 			expect = "Правка мероприятия"
 		}
 		if i == 0 {
@@ -241,7 +268,7 @@ func TestBotE2E_WizardSeatedDate(t *testing.T) {
 			}
 		}
 	}
-	if changed != 1 || len(after) != categories {
+	if changed != 1 || len(after) != categories+1 {
 		t.Fatalf("after the edit: %v (before %v), changed %d", after, created, changed)
 	}
 	var seatsAfter int
@@ -254,5 +281,12 @@ func TestBotE2E_WizardSeatedDate(t *testing.T) {
 	}
 	if seatsAfter != seats || versionAfter != version {
 		t.Fatalf("the edit touched the places: %d seats, version %s", seatsAfter, versionAfter)
+	}
+	if n, _ := vipPlaces(); n != 0 {
+		t.Fatalf("the edit gave the unpainted VIP category %d places, want 0", n)
+	}
+	var mode string
+	if err := pool.QueryRow(ctx, `SELECT admission_mode FROM sessions WHERE id = $1`, sessionID).Scan(&mode); err != nil || mode != "assigned_seats" {
+		t.Fatalf("admission mode after the edit %q %v, want assigned_seats", mode, err)
 	}
 }

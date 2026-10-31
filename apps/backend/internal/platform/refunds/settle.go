@@ -226,11 +226,25 @@ func (e *Engine) cancelOne(ctx context.Context, req CancelRequest) bool {
 // whether the projection is in place (true when there is no order).
 func (e *Engine) projectOrder(ctx context.Context, r Refund, pay Payment) bool {
 	if r.OrderID == nil && pay.CheckoutSessionID == nil {
-		return true
+		return e.projectPaymentOnly(ctx, r, pay)
 	}
 	err := e.inTx(ctx, func(tx pgx.Tx) error { return e.ProjectOrderTx(ctx, tx, r, pay) })
 	if err != nil {
 		e.logger.Error("refunds: order projection failed; the sweep repair retries it", "refund_id", r.ID.String(), "error", err.Error())
+		return false
+	}
+	return true
+}
+
+// projectPaymentOnly runs Options.ProjectPayment for a payment that is
+// neither a ticket order nor a checkout (a shop order).
+func (e *Engine) projectPaymentOnly(ctx context.Context, r Refund, pay Payment) bool {
+	if e.projectPayment == nil || pay.ID == uuid.Nil {
+		return true
+	}
+	err := e.inTx(ctx, func(tx pgx.Tx) error { return e.projectPayment(ctx, tx, pay.ID) })
+	if err != nil {
+		e.logger.Error("refunds: payment projection failed; the sweep repair retries it", "refund_id", r.ID.String(), "error", err.Error())
 		return false
 	}
 	return true

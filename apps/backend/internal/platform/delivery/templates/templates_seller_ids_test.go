@@ -22,11 +22,14 @@ func TestRender_SellerIDsInEveryBuyerLetter(t *testing.T) {
 	}
 	base := Data{TicketID: "id", EventName: "E", RecipientEmail: "x@y.z"}
 	kinds := map[string]Data{
-		TemplateKindTicket:     base,
-		TemplateKindInvitation: base,
-		TemplateKindChange:     changeTestData(),
-		TemplateKindCancel:     changeTestData(),
-		TemplateKindRefund:     refundData(),
+		TemplateKindTicket:            base,
+		TemplateKindInvitation:        base,
+		TemplateKindChange:            changeTestData(),
+		TemplateKindCancel:            changeTestData(),
+		TemplateKindRefund:            refundData(),
+		TemplateKindShopOrderReceived: shopTestData(),
+		TemplateKindShopOrderShipped:  shopTestData(),
+		TemplateKindShopOrderRefunded: shopRefundTestData(),
 	}
 	want := map[string]string{
 		"en": "Registration no. B12345678 · VAT ID ESB12345678",
@@ -79,11 +82,14 @@ func TestRender_ContactFormLinkInsteadOfAnAddress(t *testing.T) {
 	}
 	base := Data{TicketID: "id", EventName: "E", RecipientEmail: "x@y.z"}
 	kinds := map[string]Data{
-		TemplateKindTicket:     base,
-		TemplateKindInvitation: base,
-		TemplateKindChange:     changeTestData(),
-		TemplateKindCancel:     changeTestData(),
-		TemplateKindRefund:     refundData(),
+		TemplateKindTicket:            base,
+		TemplateKindInvitation:        base,
+		TemplateKindChange:            changeTestData(),
+		TemplateKindCancel:            changeTestData(),
+		TemplateKindRefund:            refundData(),
+		TemplateKindShopOrderReceived: shopTestData(),
+		TemplateKindShopOrderShipped:  shopTestData(),
+		TemplateKindShopOrderRefunded: shopRefundTestData(),
 	}
 	for kind, d := range kinds {
 		for _, loc := range SupportedLocales {

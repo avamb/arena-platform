@@ -661,34 +661,37 @@ test.describe('2 — Hybrid cart: seated + GA in one cart', () => {
     expect(realErrors).toHaveLength(0);
   });
 
-  test('schema ETag is sent on second load (immutable cache)', async ({ page }) => {
-    let etagRequestCount = 0;
+  test('schema is fetched fresh on every load, never conditionally', async ({ page }) => {
+    let schemaRequests = 0;
+    let conditional = 0;
 
-    // Override schema route to capture If-None-Match header.
+    // A server that still sent an ETag must not make the widget revalidate:
+    // the schema is read from the current state every time.
     await page.route(`**/v1/event-sessions/${SESSION_ID}/schema`, (route) => {
-      const ifNoneMatch = route.request().headers()['if-none-match'];
-      if (ifNoneMatch) etagRequestCount++;
-
-      if (ifNoneMatch === '"palac-geometry-v1"') {
-        void route.fulfill({ status: 304, body: '' });
-      } else {
-        void route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          headers: { ETag: '"palac-geometry-v1"' },
-          body: JSON.stringify(buildPalacSchema()),
-        });
-      }
+      schemaRequests++;
+      if (route.request().headers()['if-none-match']) conditional++;
+      void route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { ETag: '"palac-geometry-v1"' },
+        body: JSON.stringify(buildPalacSchema()),
+      });
     });
 
-    // First load — no ETag.
-    await page.goto('/demo/palac-akropolis.html');
-    await page.waitForFunction(() => {
+    const svgShown = () => page.waitForFunction(() => {
       const el = document.querySelector('#widget-hybrid-en');
       return el?.shadowRoot?.querySelector('svg') !== null;
     }, { timeout: 10_000 });
 
-    expect(etagRequestCount).toBe(0); // No If-None-Match on first request.
+    await page.goto('/demo/palac-akropolis.html');
+    await svgShown();
+    const afterFirst = schemaRequests;
+    await page.reload();
+    await svgShown();
+
+    expect(afterFirst).toBeGreaterThan(0);
+    expect(schemaRequests).toBeGreaterThan(afterFirst);
+    expect(conditional).toBe(0);
   });
 
   test('seat status poll URL includes since_version for delta requests', async ({ page }) => {

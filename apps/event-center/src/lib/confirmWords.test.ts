@@ -19,10 +19,11 @@ function botText(locale: string, key: string): string {
 }
 
 describe("the table equals the bot's catalogs", () => {
-  for (const kind of CONFIRM_KINDS) {
+  // A word that only the web asks for (shop_fulfil) has no bot key.
+  for (const kind of CONFIRM_KINDS.filter((k) => BOT_KEYS[k] !== undefined)) {
     for (const locale of LOCALES) {
       it(`${kind} in ${locale}`, () => {
-        expect(CONFIRM_WORDS[kind][locale]).toBe(botText(locale, BOT_KEYS[kind]));
+        expect(CONFIRM_WORDS[kind][locale]).toBe(botText(locale, BOT_KEYS[kind] as string));
       });
     }
   }

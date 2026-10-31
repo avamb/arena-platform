@@ -34,6 +34,7 @@
   import { getPromoStrings } from './lib/promoI18n.js';
   import { MAX_CART_SEATS, cartLimitMessage, seatCapMessage } from './lib/cartLimits.js';
   import { buyerErrorText } from './lib/errorI18n.js';
+  import { buildTierColorMap } from './lib/seatmap-render.js';
   import { consentErrorMessage, consentPayload, forceConsent } from './lib/consent.js';
   import { captureAttribution, type AttributionPayload } from './lib/attribution.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
@@ -48,6 +49,8 @@
     buildCategoryByIndex,
     buildTierById,
     identifyGaTiers,
+    seatedTiersOf,
+    tiersAreFree,
     planlessGaTiers,
     identifyGaAreas,
     buildGaItems,
@@ -64,6 +67,7 @@
   import MiniCart from './components/MiniCart.svelte';
   import CartSheet from './components/CartSheet.svelte';
   import GaTierCard from './components/GaTierCard.svelte';
+  import SeatedTierCard from './components/SeatedTierCard.svelte';
   import GaAreaPopover from './components/GaAreaPopover.svelte';
   import OrderStatus from './components/OrderStatus.svelte';
   import Materials from './components/Materials.svelte';
@@ -199,6 +203,8 @@
 
   let seatCategoryIndex = $state<ReadonlyMap<string, number>>(new Map());
   let categoryByCategoryIndex = $state<ReadonlyMap<number, CategoryPrice>>(new Map());
+  // Legend colours: each tier in the colour its seats carry on the plan.
+  const tierColors = $derived(buildTierColorMap([...categoryByCategoryIndex.values()]));
   let tierById = $state<ReadonlyMap<string, Tier>>(new Map());
   let gaTiers = $state<import('./types.js').Tier[]>([]);
   // AB-40D: GA categories that carry a hit-test polygon and render as
@@ -206,6 +212,8 @@
   // schema on load; the picker overlay opens over the map when a buyer
   // taps one of these areas.
   let gaAreas = $state<GaArea[]>([]);
+  // Seated categories (taken on the plan, no quantity card), set when the schema loads.
+  let seatedTiers = $state<import('./types.js').Tier[]>([]);
   let openGaAreaTierId = $state<string | null>(null);
 
   // A plan-less general-admission session has no schema_url, so SeatMapView is
@@ -485,6 +493,7 @@
     categoryByCategoryIndex = buildCategoryByIndex(categoryPrices);
     tierById = selectedSession ? buildTierById(selectedSession.tiers) : new Map();
     gaTiers = selectedSession ? identifyGaTiers(selectedSession.tiers, categoryPrices) : [];
+    seatedTiers = selectedSession ? seatedTiersOf(selectedSession.tiers, categoryPrices) : [];
     // AB-40D: identify GA polygons that render on the hall map. GA tiers
     // WITHOUT polygons stay as always-visible cards below the map — the
     // widget spec requires both surfaces (geography for polygons, cards for
@@ -948,6 +957,7 @@
           sessions={event.sessions}
           locale={normLocale}
           {selectedSession}
+          {tierColors}
           onSelectSession={(s) => {
             // Reset seat/GA selection when switching sessions so stale keys
             // from a different session don't carry over (WID-S1 fix #6).
@@ -972,6 +982,17 @@
         {#if cartLimitNotice}
           <p class="arena-tickets-limit" role="status">{cartLimitNotice}</p>
         {/if}
+        <!-- The seated category has no stepper, so it gets a card of the same kind that says where it is taken. -->
+        {#if !salesClosed && selectedSession?.schema_url && seatedTiers.length > 0}
+          <div class="ga-tiers-section">
+            <SeatedTierCard
+              tiers={seatedTiers}
+              note={tiersAreFree(seatedTiers) ? t.seat_hint_free : t.seat_hint_paid}
+              freeLabel={t.seat_hint_free_label}
+            />
+          </div>
+        {/if}
+
         <!-- Seat map (only for sessions with schema_url) -->
         {#if !salesClosed && selectedSession && selectedSession.schema_url}
           <div class="arena-tickets-map-wrap">
@@ -996,7 +1017,7 @@
           </div>
         {/if}
 
-        <!-- GA tier cards (shown below the map for hybrid/GA sessions) -->
+        <!-- GA tier cards (below the map; the card above the map tells a buyer where the seated category is taken) -->
         {#if !salesClosed && gaTiers.length > 0}
           <div class="ga-tiers-section">
             {#each gaTiers as tier (tier.id)}
@@ -1197,6 +1218,11 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
+    /* A host with a fixed height squeezes this box; what no longer fits is
+       clipped here instead of spilling over the category cards below it
+       (this box is positioned, so it would paint ON TOP of them and
+       swallow their clicks). */
+    overflow: hidden;
   }
   .arena-tickets-map-wrap :global(.ga-popover) {
     top: 3rem;

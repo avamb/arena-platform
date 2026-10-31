@@ -166,6 +166,12 @@ var stepUpMoneyRoutes = []string{
 	"POST /v1/refunds/{id}/reject",
 	// 4-2: the web cancels an unpaid order after the password question.
 	"POST /v1/organizations/{org_id}/orders/{id}/cancel",
+	// The merchandise shop (spec 47): a refund returns money, a cancel ends
+	// an unpaid order.
+	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/refund",
+	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/cancel",
+	// Resolving a late payment may return the whole payment (SB-04).
+	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/resolve",
 }
 
 // stepUpExempt are writes whose path looks like money but which are not a

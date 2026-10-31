@@ -20,6 +20,8 @@ export interface ConfirmPressDialogProps {
   explain: string;
   confirmLabel: string;
   testId?: string;
+  /** Extra controls between the explanation and the buttons (a checkbox). */
+  children?: ReactNode;
   onConfirm: () => void | Promise<void>;
   onCancel: () => void;
 }
@@ -30,6 +32,7 @@ export function ConfirmPressDialog({
   explain,
   confirmLabel,
   testId = "confirm-press",
+  children,
   onConfirm,
   onCancel,
 }: ConfirmPressDialogProps) {
@@ -79,6 +82,7 @@ export function ConfirmPressDialog({
           </p>
         )}
         <p id={`${ids}-explain`}>{explain}</p>
+        {children}
         {failure !== null && <ErrorNotice error={failure.error} />}
         <div className="dialog-actions">
           <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void press()} data-testid={`${testId}-submit`}>

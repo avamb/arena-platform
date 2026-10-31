@@ -327,6 +327,7 @@ func run() error {
 		logger.Info("reservation expire sweep job scheduled at startup")
 	}
 	scheduleRefundSweep(rootCtx, pool.Pool, logger)
+	scheduleShopSweep(rootCtx, pool.Pool, logger)
 
 	// billing.collect writes the billable events the rate job turns into
 	// charges. It runs only once the owner names the date X
@@ -542,6 +543,10 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		Logger:    logger,
 		Scheduler: ordering.NewPGSweepScheduler(pool),
 	}))
+	// shop.order.expire_sweep is the same sweep for the merchandise shop: an
+	// unpaid shop order whose hold passed expires and its goods go back on
+	// sale (spec 47, migration 0172).
+	registerShopSweepHandler(reg, pool, logger)
 
 	// reservation.expire_sweep releases the inventory (held session_seats /
 	// ga_unit rows plus the inventory_ledger.capacity_held counter) behind a
@@ -609,12 +614,23 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		HandlerOptions: deliveryOpts,
 		DB:             pool,
 	}))
+	// invitation.cancel_email tells a guest their staff invitation was
+	// withdrawn (spec 46, section 3.4); the cancel route queues it.
+	reg.Register(delivery.JobTypeInvitationCancelEmail, delivery.NewInvitationCancelEmailHandler(delivery.InvitationCancelEmailOptions{
+		HandlerOptions: deliveryOpts,
+		DB:             pool,
+	}))
 	// refund.buyer_email is the letter about money that went back (PAY-07);
 	// the refund engine queues it once a refund of an operation settles.
 	reg.Register(refunds.JobTypeBuyerEmail, delivery.NewRefundEmailHandler(delivery.RefundEmailOptions{
 		HandlerOptions: deliveryOpts,
 		DB:             pool,
 	}))
+
+	// shop.order_email is the buyer's letter of a merchandise shop order
+	// (received when it is paid, shipped when the organizer ships it); the
+	// shop queues it in the same transaction as the status change.
+	registerShopEmailHandler(reg, pool, cfg, deliveryOpts)
 
 	// refund.scanned_alert_email tells an organization's owners that a refund
 	// of an already scanned ticket was refused (refunds.RecordScannedBlock
@@ -848,6 +864,8 @@ func buildMediaRepo(pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger)
 		Pool:          pool,
 		Storage:       st,
 		SigningSecret: cfg.MediaSigningKey(),
+		// The prerender job renders under the same one-at-a-time limit.
+		VariantWorkers: cfg.MediaVariantWorkers,
 	})
 	if err != nil {
 		logger.Error("media repo init failed", "error", err.Error())
@@ -913,6 +931,11 @@ func registerMediaGCHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *confi
 		Repo:   repo,
 		Logger: logger,
 	}))
+	reg.Register(mediastore.RenderVariantsJobType, mediastore.NewRenderVariantsHandler(mediastore.RenderVariantsHandlerOptions{
+		Repo:   repo,
+		Logger: logger,
+	}))
+	logger.Info("media.render_variants handler registered", "widths", mediastore.PrerenderWidths)
 	logger.Info("media-gc handler registered",
 		"backend", cfg.MediaBackend,
 		"retention", mediastore.DefaultRetention.String(),

@@ -26,6 +26,7 @@ func (s *Server) paymentsHandler() *hpayments.Handler {
 		WithStripeBaseURL(s.stripeBaseURL()).
 		WithFlittBaseURL(s.flittBaseURL()).
 		WithAllPayBaseURL(s.allpayBaseURL()).
+		WithPayPlusBaseURL(s.payplusBaseURL()).
 		WithCallbackBase(s.cfg.APIPublicBaseURL())
 }
 

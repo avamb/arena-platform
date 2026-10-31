@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -107,6 +108,9 @@ func (h *Handler) executeArenaImport(ctx context.Context, q *gen.Queries, tx pgx
 		if err := materializeArenaSeating(ctx, q, eventID, sessionID, seated, orderedTiers); err != nil {
 			return importResult{}, err
 		}
+	}
+	if err := markPricingOnly(ctx, q, plan, eventID, sessionID, seated, cats); err != nil {
+		return importResult{}, err
 	}
 	if err := refuseSeatedChainLinks(ctx, q, plan, sessionID, orderedTiers); err != nil {
 		return importResult{}, err
@@ -727,6 +731,10 @@ func (h *Handler) upsertArenaTiers(
 		if err := checkCategoryPrice(i, price); err != nil {
 			return nil, nil, err
 		}
+		color, colorErr := categoryColor(i, c)
+		if colorErr != nil {
+			return nil, nil, colorErr
+		}
 		mode := "fixed"
 		if price == 0 {
 			mode = "free"
@@ -763,6 +771,9 @@ func (h *Handler) upsertArenaTiers(
 			if insErr != nil {
 				return nil, nil, fmt.Errorf("insert ticket tier: %w", insErr)
 			}
+			if err := setCategoryColor(ctx, q, row.ID, sessionID, color); err != nil {
+				return nil, nil, err
+			}
 			ordered = append(ordered, row.ID)
 			cats = append(cats, importedCategory{TierID: row.ID, Availability: c.Availability, Created: true})
 			touched[row.ID] = struct{}{}
@@ -785,6 +796,9 @@ func (h *Handler) upsertArenaTiers(
 		}
 		if updErr != nil {
 			return nil, nil, fmt.Errorf("update ticket tier: %w", updErr)
+		}
+		if err := setCategoryColor(ctx, q, updated.ID, sessionID, color); err != nil {
+			return nil, nil, err
 		}
 		ordered = append(ordered, updated.ID)
 		cats = append(cats, importedCategory{TierID: updated.ID, Availability: c.Availability})
@@ -983,4 +997,34 @@ func resolveArenaPromoter(ctx context.Context, q *gen.Queries, plan importPlan) 
 		return promoterChange{}, invalid
 	}
 	return promoterChange{set: true, promoterID: p.ID}, nil
+}
+
+// categoryColorRE is the #rrggbb form of a category's seat-map colour
+// (ticket_tiers.color, migration 0171).
+var categoryColorRE = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+// categoryColor reads categoryList[i].color: "" keeps the stored colour, a
+// #rrggbb value is returned lower-case, anything else is a 422.
+func categoryColor(i int, c bil24compat.ImportSessionCategory) (string, error) {
+	v := trimSpace(c.Color)
+	if v == "" {
+		return "", nil
+	}
+	if !categoryColorRE.MatchString(v) {
+		return "", failImportAt(http.StatusUnprocessableEntity, "import.invalid_color",
+			fmt.Sprintf("/categoryList/%d/color", i),
+			fmt.Sprintf("categoryList[%d].color %q must be #rrggbb", i, v))
+	}
+	return strings.ToLower(v), nil
+}
+
+// setCategoryColor stores a category's colour; "" leaves it as it is.
+func setCategoryColor(ctx context.Context, q *gen.Queries, tierID, sessionID uuid.UUID, color string) error {
+	if color == "" {
+		return nil
+	}
+	if _, err := q.SetTicketTierColor(ctx, tierID, sessionID, &color); err != nil {
+		return fmt.Errorf("set ticket tier colour: %w", err)
+	}
+	return nil
 }

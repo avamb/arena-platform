@@ -77,7 +77,7 @@ func newStubAllPay(t *testing.T, login, key string) *stubAllPay {
 		case methodCheckKeys:
 			_, _ = w.Write([]byte(`{"last_paid_order_id":"-1","last_paid_order_date":"-1"}`))
 		case methodPaymentStatus:
-			_, _ = w.Write([]byte(`{"order_id":"o-1","status":4,"amount":100.00,"refunded":30.5,"currency":"ILS"}`))
+			_, _ = w.Write([]byte(`{"order_id":"o-1","status":4,"amount":100.00,"refunded":30.5,"currency_display":"ILS","currency_payment":"ILS","currency_course":1}`))
 		default:
 			_, _ = w.Write([]byte(`{"error_code":20,"error_msg":"Incorrect method"}`))
 		}
@@ -140,7 +140,8 @@ func TestCreateCheckoutSession_WhatAllPayIsAskedFor(t *testing.T) {
 	}
 	b := req.Body
 	want := map[string]string{
-		"login": "pp100", "order_id": "6f1c0f6e-0000-4000-8000-000000000001", "currency": "ILS",
+		"login": "pp100", "order_id": "6f1c0f6e-0000-4000-8000-000000000001",
+		"currency_display": "ILS", "currency_payment": "ILS",
 		"webhook_url": "https://api.example/v1/payment-intents/webhook/cfg", "lang": "HE",
 		"success_url": "https://api.example/v1/public/payment-return?r=x", "backlink_url": "https://api.example/v1/public/payment-return?r=x",
 		"client_email": "buyer@example.com", "expire": "1800001860", "test_mode": "1", "inst": "6",
@@ -149,6 +150,10 @@ func TestCreateCheckoutSession_WhatAllPayIsAskedFor(t *testing.T) {
 		if got, _ := scalarValue(b[k]); got != v {
 			t.Errorf("%s = %q; want %q", k, got, v)
 		}
+	}
+	// mode=api15 refuses a non-empty `currency` with error 2.
+	if _, sent := b["currency"]; sent {
+		t.Errorf("currency was sent (%v); api15 takes currency_display and currency_payment", b["currency"])
 	}
 	items, _ := b["items"].([]any)
 	if len(items) != 1 {
@@ -163,6 +168,34 @@ func TestCreateCheckoutSession_WhatAllPayIsAskedFor(t *testing.T) {
 	}
 	if v, _ := scalarValue(item["vat"]); v != "1" {
 		t.Errorf("vat = %q; want the configured 1", v)
+	}
+}
+
+// The read-back names the amounts' currency currency_display, falls back to the
+// v14 `currency` and then to currency_payment, and keeps currency_payment as
+// the charge currency.
+func TestPaymentStatus_CurrencyFieldsFallbackOrder(t *testing.T) {
+	cases := []struct {
+		name, body, display, charge string
+	}{
+		{"v15", `{"order_id":"o-1","status":1,"amount":10,"currency_display":"eur","currency_payment":"EUR","currency_course":1}`, "EUR", "EUR"},
+		{"display wins over legacy", `{"order_id":"o-1","status":1,"amount":10,"currency":"ILS","currency_display":"USD"}`, "USD", ""},
+		{"legacy currency", `{"order_id":"o-1","status":1,"amount":10,"currency":"ils"}`, "ILS", ""},
+		{"payment only", `{"order_id":"o-1","status":1,"amount":10,"currency_payment":"ILS"}`, "ILS", "ILS"},
+		{"none", `{"order_id":"o-1","status":1,"amount":10}`, "", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			stub := newStubAllPay(t, "pp100", "KEY")
+			stub.answer[methodPaymentStatus] = c.body
+			st, err := newTestAdapter(stub, Config{}).PaymentStatus(t.Context(), "o-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if st.Currency != c.display || st.ChargeCurrency != c.charge {
+				t.Errorf("currency = %q charge = %q; want %q / %q", st.Currency, st.ChargeCurrency, c.display, c.charge)
+			}
+		})
 	}
 }
 

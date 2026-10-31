@@ -222,6 +222,9 @@ func checkBundleFields(plan importPlan, issues *issueSink) {
 		if _, _, err := categorySaleWindow(i, c, plan.SaleWindowStart); err != nil {
 			issues.add(err)
 		}
+		if _, err := categoryColor(i, c); err != nil {
+			issues.add(err)
+		}
 		if c.NextCategoryIndex != nil {
 			if j := *c.NextCategoryIndex; j != -1 && nextIndexOutsideList(i, j, len(req.CategoryList)) {
 				issues.add(errInvalidNextCategory(i, j))

@@ -1,0 +1,13 @@
+{
+  "pages": [
+    { "file": "pages__о-нас.html", "slug": "about", "position": 10 },
+    { "file": "pages__наши-мероприятия.html", "slug": "events", "position": 20 },
+    { "file": "pages__частные-мероприятия.html", "slug": "private-events", "position": 30 },
+    { "file": "pages__наши-партнеры.html", "slug": "partners", "position": 40 },
+    { "file": "pages__contact.html", "slug": "contact", "title": "Контакты", "position": 50 },
+    { "file": "policies__contact-information.html", "slug": "contact-information", "position": 60 },
+    { "file": "policies__refund-policy.html", "slug": "refund-policy", "position": 70 },
+    { "file": "policies__privacy-policy.html", "slug": "privacy-policy", "position": 80 },
+    { "file": "policies__terms-of-service.html", "slug": "terms-of-service", "position": 90 }
+  ]
+}

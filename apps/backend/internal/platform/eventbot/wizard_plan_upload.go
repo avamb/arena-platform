@@ -58,6 +58,11 @@ func (w *Wizard) withoutPlan(loc string, d *Draft) (string, error) {
 	if d.Scratch.PlanAfter == planAfterFinish {
 		return w.finishSession(loc, d)
 	}
+	if len(d.Scratch.Plans) == 0 {
+		// An existing venue with no plan, and none sent: say so on the places
+		// question and offer another venue, as when the plan is not offered.
+		d.Scratch.NoPlanVenueID = d.session().VenueID
+	}
 	d.goTo(stSCapacity)
 	return "", nil
 }

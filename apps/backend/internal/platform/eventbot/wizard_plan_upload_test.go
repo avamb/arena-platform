@@ -56,6 +56,21 @@ func TestWizardPlanUpload_VenueWithoutPlanOffersTheUpload(t *testing.T) {
 		t.Fatalf("buttons = %v", screen.Buttons)
 	}
 	r.press("plan:skip", stSCapacity)
+	// the places question says plainly that the venue has no plan, and offers
+	// another venue (#338), as when no upload is offered
+	places, err := r.w.Render(context.Background(), r.ws, r.d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := false
+	for _, row := range places.Buttons {
+		for _, b := range row {
+			other = other || b.Data == "venue:other"
+		}
+	}
+	if !other || places.Text == "" || r.d.Scratch.NoPlanVenueID != "akr" {
+		t.Fatalf("no-plan note missing: venue=%q other=%v text=%q", r.d.Scratch.NoPlanVenueID, other, places.Text)
+	}
 	r.press("keep", stSMore)
 	if r.d.Sessions[0].seated() {
 		t.Fatalf("session = %+v", r.d.Sessions[0])
@@ -85,7 +100,9 @@ func TestWizardPlanUpload_SentPlanLeadsThePlanQuestion(t *testing.T) {
 	}
 	r.press("plan:0", stSPlanPrice)
 	r.text("20", stSPlanPrice)
-	r.text("10", stSMore)
+	// the wizard goes on as for any plan: prices, then the extra category question
+	r.text("10", stSPlanExtra)
+	r.press("extra:done", stSMore)
 	s := r.d.Sessions[0]
 	if s.PlanVersionID != uploadedPlan().VersionID || s.Capacity != 12 || len(s.Tickets.Categories) != 2 {
 		t.Fatalf("session = %+v", s)

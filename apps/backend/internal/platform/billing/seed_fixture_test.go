@@ -70,6 +70,10 @@ type termsSpec struct {
 	override       *gen.OrgRateOverrideRow
 	extra          []gen.PriceListRuleRow
 	at             time.Time
+	// complimentary is billing_account_terms.complimentary_billing ("" =
+	// free); freeLimit is the price list's free_tickets_annual_limit.
+	complimentary string
+	freeLimit     *int32
 }
 
 // buildTerms assembles Terms on the standard-2026 seed for one account.
@@ -85,9 +89,10 @@ func buildTerms(t *testing.T, s termsSpec) billing.Terms {
 		s.at = saleAt
 	}
 	acc := gen.BillingAccountRow{ID: uuid.New(), OrgID: uuid.New(), Currency: s.currency, AccountKind: "organizer"}
-	pl := gen.PriceListRow{ID: uuid.New(), Code: "standard-2026", Version: 1, Currency: s.currency, EffectiveFrom: seedDate}
+	pl := gen.PriceListRow{ID: uuid.New(), Code: "standard-2026", Version: 1, Currency: s.currency, EffectiveFrom: seedDate,
+		FreeTicketsAnnualLimit: s.freeLimit}
 	terms := gen.BillingAccountTermsRow{ID: uuid.New(), AccountID: acc.ID, EffectiveFrom: seedDate,
-		PriceListCode: "standard-2026", PlanKind: s.plan, BillingCycle: "monthly"}
+		PriceListCode: "standard-2026", PlanKind: s.plan, BillingCycle: "monthly", ComplimentaryBilling: s.complimentary}
 	rules := append(seedRules(pl.ID, s.currency), s.extra...)
 	if s.lowPriceParams != "" {
 		rules[0].Params = []byte(s.lowPriceParams)

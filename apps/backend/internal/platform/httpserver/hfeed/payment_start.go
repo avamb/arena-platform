@@ -201,6 +201,20 @@ type HostedCheckoutRequest struct {
 	// checkout_sessions.buyer_locale. Forwarded so the provider's hosted
 	// page speaks it too; empty leaves the provider to guess.
 	BuyerLocale string
+	// ShopOrderID, when set, makes this the payment of a merchandise shop
+	// order (internal/platform/shop) instead of a ticket checkout: the shop
+	// order id is the reference the provider knows the payment by (client
+	// reference, idempotency key, Flitt's order_id) and CheckoutSessionID is
+	// ignored. CheckoutToken is then the shop order's token.
+	ShopOrderID *uuid.UUID
+}
+
+// reference is the arena id a hosted payment is filed under at the provider.
+func (r HostedCheckoutRequest) reference() string {
+	if r.ShopOrderID != nil {
+		return r.ShopOrderID.String()
+	}
+	return r.CheckoutSessionID.String()
 }
 
 // HostedCheckoutResult is the provider's answer: where to send the buyer and
@@ -283,6 +297,13 @@ func (s *StripePaymentStarter) WithFlitt(baseURL, callbackBase string) *StripePa
 // set: both take their webhook URL per order).
 func (s *StripePaymentStarter) WithAllPay(baseURL string) *StripePaymentStarter {
 	s.opts.AllPayAPIBaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	return s
+}
+
+// WithPayPlus sets the PayPlus test seam (the callback base is the one
+// WithFlitt set). Empty keeps the real hosts, chosen by the config's mode.
+func (s *StripePaymentStarter) WithPayPlus(baseURL string) *StripePaymentStarter {
+	s.opts.PayPlusAPIBaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	return s
 }
 
@@ -429,6 +450,10 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 		"arena_checkout_session_id": req.CheckoutSessionID.String(),
 		"arena_org_id":              req.OrgID.String(),
 	}
+	if req.ShopOrderID != nil {
+		delete(metadata, "arena_checkout_session_id")
+		metadata["arena_shop_order_id"] = req.ShopOrderID.String()
+	}
 	if req.OrderID != nil {
 		metadata["arena_order_id"] = req.OrderID.String()
 	}
@@ -451,7 +476,7 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 		CustomerEmail:     req.BuyerEmail,
 		CustomerName:      strings.TrimSpace(req.BuyerName),
 		CustomerPhone:     strings.TrimSpace(req.BuyerPhone),
-		ClientReferenceID: req.CheckoutSessionID.String(),
+		ClientReferenceID: req.reference(),
 		Metadata:          metadata,
 		// The buyer returns to the SAME page either way. Stripe's own
 		// cancel flow and a successful payment differ only in what the
@@ -463,7 +488,7 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 		CallbackURL:   callbackURL,
 		// One hosted session per arena checkout: a retry of this call for the
 		// same checkout must return the SAME cs_ id, never charge twice.
-		IdempotencyKey: req.CheckoutSessionID.String(),
+		IdempotencyKey: req.reference(),
 	})
 	if err != nil {
 		// Name the config the key came from. An org keeps one row per

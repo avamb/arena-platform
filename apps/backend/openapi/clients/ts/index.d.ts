@@ -1582,7 +1582,7 @@ export interface paths {
          *     the session is 30 minutes, the chat gets no "signed in" notice and no
          *     code of another purpose is taken back. An unknown purpose is 400
          *     `bot.invalid_purpose`, a miniapp code without a valid `kind` and
-         *     `event_id` is 400 `bot.invalid_miniapp_target`.
+         *     `event_id` is 400 `bot.invalid_miniapp_target` (`kind: invitations` also needs `session_id`).
          */
         post: operations["createBotWebLoginCode"];
         delete?: never;
@@ -1608,6 +1608,33 @@ export interface paths {
          *     once. The bot tells the person and offers "Sign out everywhere".
          */
         post: operations["claimBotWebLoginNotices"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/invitations/pdf-notices/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Staff invitations whose PDF the bot must send to the issuer
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN`. Returns up to 20
+         *     staff invitations of the last day that were issued from Telegram (the
+         *     bot or the Mini App, `orders.metadata.invitation.via`) by a user with
+         *     a live bot link, once every ticket of the invitation is issued, and
+         *     marks each as handed out, so it comes once. The bot then fetches the
+         *     invitation PDF as the issuer and sends it into the issuer's chat as a
+         *     document. An invitation issued on the web, by an API key or from a CSV
+         *     file is never handed out.
+         */
+        post: operations["claimBotInvitationPdfNotices"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2595,12 +2622,10 @@ export interface paths {
          *     the endpoint returns 404 (indistinguishable to unauthenticated
          *     callers by design).
          *
-         *     The response carries a **strong ETag** equal to the plan version's
-         *     `geometry_checksum` and `Cache-Control: public, max-age=86400,
-         *     immutable`. A new plan version always produces a new checksum, so
-         *     caches can safely treat cached copies as immutable for the max-age
-         *     window. Matching `If-None-Match` short-circuits with a 304 before
-         *     any per-seat / per-tier query runs.
+         *     The schema is never cached: `Cache-Control: no-store`, no ETag,
+         *     never a 304. Tier prices, names, colours and per-seat categories
+         *     change without a new plan geometry, so every request reads the
+         *     current state.
          */
         get: operations["getPublicSessionSchema"];
         put?: never;
@@ -4150,6 +4175,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/event-sessions/{id}/schema/admin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The organizer's seating schema of a session, published or not
+         * @description The payload of `GET /v1/event-sessions/{id}/schema` (geometry,
+         *     `category_prices`, `seat_category_index`, `extra_categories`) for
+         *     the organizer's seat map, WITHOUT the published gate: a draft
+         *     event's seats are painted into its price categories before the
+         *     event goes on sale. Requires JWT + `session.seats.manage`; the
+         *     tenant is resolved from the session's owning organization.
+         *     Never cached, like the public schema: `Cache-Control: no-store`,
+         *     no ETag, never a 304.
+         */
+        get: operations["getSessionSchemaAdmin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/event-sessions/{id}/seats/category": {
         parameters: {
             query?: never;
@@ -5358,6 +5410,15 @@ export interface paths {
          *     whose amount or currency differs from the payment parks the
          *     payment in `manual_review` (failure code `paid_amount_mismatch`)
          *     and issues no tickets.
+         *
+         *     **PayPlus** signs its callback in the `hash` header,
+         *     base64(HMAC-SHA256(secret_key, body)), and is likewise accepted on
+         *     this route only (`400 webhook.payplus_requires_config_route` on the
+         *     un-suffixed one). A Charge with `status_code` `000` pays the order;
+         *     any other status code is one failed attempt on a link that stays
+         *     open and moves nothing; a Refund callback is acknowledged without a
+         *     transition. Amounts arrive in major units and are compared with the
+         *     payment like Flitt's and AllPay's.
          */
         post: operations["paymentIntentWebhookForConfig"];
         delete?: never;
@@ -7448,6 +7509,231 @@ export interface paths {
         patch: operations["updateExternalAllocation"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the staff invitations of the whole organization
+         * @description Every staff invitation of the organization, whoever issued it and for
+         *     whichever session, newest first (spec 46, section 6.1). The Telegram
+         *     bot and the web screen list all sessions at once through it. Each item
+         *     is the session list item plus the session it is for. `state=active`
+         *     (default) leaves out invitations whose tickets are all cancelled,
+         *     `cancelled` shows only those, `all` both; an invitation whose tickets
+         *     are not issued yet counts as active. Pages are keyset pages: pass the
+         *     `next_cursor` of one page as `cursor` of the next.
+         */
+        get: operations["listOrgStaffInvitations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the staff invitations of a session
+         * @description Every staff invitation of the session, whoever issued it, newest
+         *     first (at most 500): guest, places with their origin, delivery mode,
+         *     who issued it, when, status and ticket counts.
+         */
+        get: operations["listStaffInvitations"];
+        put?: never;
+        /**
+         * Issue a staff invitation on chosen seats
+         * @description Issues free tickets (an order for 0 with source `complimentary`) on
+         *     chosen seats and General Admission places of the session, in one
+         *     transaction (spec 46, section 3.2). The seats may be free
+         *     (`available`) or held back by the organizer (`unavailable`); each
+         *     place remembers where it came from (`origin`) and goes back there
+         *     when the invitation is cancelled. Sales end, closed categories, sale
+         *     windows and the start time do not apply; only a cancelled or
+         *     deleted session refuses. Tickets are issued right after the commit
+         *     (`tickets_status` `issuing`). A repeat with the same `request_id`
+         *     answers 200 with the first order and `replayed` true.
+         */
+        post: operations["issueStaffInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/invitations/{order_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a staff invitation
+         * @description Cancels the named tickets of a staff invitation, or all of them,
+         *     with no money involved. Each seat goes back where it came from: a
+         *     seat taken from the reserve becomes `unavailable` again, a seat
+         *     taken from sale becomes `available`. Every named ticket is
+         *     cancelled in one transaction, or none is. The order keeps its
+         *     status (`paid`): an invitation stays billed after it is cancelled.
+         *     A manager may cancel an invitation issued by the owner.
+         */
+        post: operations["cancelStaffInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/invitations/{order_id}/tickets.pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the tickets of a staff invitation as one PDF
+         * @description One PDF with a page per active ticket of the invitation, in the same
+         *     layout the guest receives (invitation wording, no price), served as an
+         *     attachment named `invitation-<order number>.pdf` and never cached.
+         *     Available whatever the delivery mode: the organizer can always take the
+         *     file and forward it.
+         */
+        get: operations["downloadStaffInvitationTicketsPdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/invitations/{order_id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send the tickets of a staff invitation again
+         * @description Queues the active tickets of the invitation for delivery again, as one
+         *     e-mail in the invitation template with every ticket attached. Without
+         *     a body the letter goes to the guest's e-mail; when the invitation has
+         *     none it goes to the caller's own address, else to the staff member who
+         *     issued it. A given `email` is a one-time address, valid for 24 hours,
+         *     and never replaces the guest's address on the order. The letter is
+         *     sent asynchronously, so the answer is 202.
+         */
+        post: operations["resendStaffInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/invitation-batches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue staff invitations from a CSV file
+         * @description Bulk staff invitations (spec 46, section 3.5). Each guest of the file
+         *     gets ONE order, written exactly like a one-by-one invitation, and
+         *     ONE letter; the whole file is issued in one transaction, so a bad
+         *     row, a seat sold in the meantime or a category with too few places
+         *     writes nothing. A CSV file is always charged at the standard rate.
+         *
+         *     With `dry_run=true` nothing is written (no `request_id` needed): the
+         *     answer is the validation report - per-row errors, the number of
+         *     guests, places and places from the reserve - for the check table.
+         *     Without it the same validation runs first and a file with errors is
+         *     refused with 422 `invitation_batch.invalid` and the report in
+         *     `details.report`. The check covers the plan, the seats' status and
+         *     categories and the session's capacity; a file is at most 100 guests
+         *     and 250 places because it is one transaction.
+         *
+         *     Send a multipart form (`file`, `request_id`, `delivery`). The
+         *     `request_id` identifies the file AND its `delivery`: the same id with
+         *     another file or another delivery is 409. The batch and its orders are
+         *     read back with the batch routes. The work has a 60 second budget
+         *     independent of the router's request timeout: if the connection
+         *     drops or answers invitation_batch.timeout, repeat the same
+         *     `request_id` - it answers the batch (200, replayed true) if it
+         *     committed and issues it if it did not.
+         */
+        post: operations["createInvitationBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/invitation-batches/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read an issued invitation batch
+         * @description A batch issued from a CSV file with one order per guest (order id,
+         *     order number, delivery, places and their keys). Another
+         *     organization's batch answers 404.
+         */
+        get: operations["getInvitationBatch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/invitation-batches/{id}/result.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The result file of an invitation batch
+         * @description A `text/csv` attachment with one line per guest and the order number
+         *     the guest's tickets belong to. Written like every spreadsheet the
+         *     platform hands out: UTF-8 with a BOM, `;` as the separator, quoted
+         *     text, CRLF line ends.
+         */
+        get: operations["getInvitationBatchResult"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/complimentary": {
         parameters: {
             query?: never;
@@ -7471,6 +7757,10 @@ export interface paths {
          *     recipients: real tickets with barcodes that take places from the
          *     category, and an invitation e-mail to each recipient with an
          *     address. Revocation annuls the tickets and returns the places.
+         *     This route cannot name a seat: on a strictly seated session it answers
+         *     422 `complimentary.use_invitations_route`, and invitations go through
+         *     `POST /v1/organizations/{org_id}/sessions/{session_id}/invitations`.
+         *     General-admission and hybrid sessions are served here as before.
          */
         post: operations["createComplimentaryIssuance"];
         delete?: never;
@@ -10103,6 +10393,777 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/shop/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the shop settings
+         * @description The shop settings of the organization: currency, flat shipping fee,
+         *     age gate, announcement, contact, logistics note, the sales channel whose
+         *     payment provider takes the money, and the storefront domain (read only for
+         *     the organization). `configured` is false while the settings were never
+         *     saved; the defaults are shown and the public storefront answers 404 until
+         *     they are.
+         *
+         *     Requires JWT or API key + the `shop.read` permission and membership of the organization.
+         */
+        get: operations["getShopSettings"];
+        /**
+         * Replace the shop settings
+         * @description Writes the whole settings row. Money is in minor units of `currency`.
+         *     `sales_channel_id` names the channel whose payment provider and the
+         *     organization's payment config take the shop's money (absent: the
+         *     organization's oldest channel whose provider can host a payment page with a
+         *     configured provider account). `shop_domain` and `enabled` (the switch that
+         *     opens the storefront and its checkout) may be changed by a platform
+         *     superadmin only (absent keeps them, `""` clears the domain).
+         *
+         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         */
+        put: operations["putShopSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the shop products
+         * @description Every live product of the organization in display order, with its
+         *     pictures and variants. `status` filters to `draft`, `active` or `archived`.
+         *
+         *     Requires JWT or API key + the `shop.read` permission and membership of the organization.
+         */
+        get: operations["listShopProducts"];
+        put?: never;
+        /**
+         * Create a shop product
+         * @description Creates a product with its variants (one `Default Title` variant at
+         *     price 0 when `variants` is left out) and the shop settings row when this is
+         *     the organization's first product. `slug` defaults to a slug of the title;
+         *     `status` defaults to `draft`. A stock above zero is journaled as a manual
+         *     stock move.
+         *
+         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         */
+        post: operations["createShopProduct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/products/{product_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a shop product
+         * @description One product with its pictures and variants.
+         *
+         *     Requires JWT or API key + the `shop.read` permission and membership of the organization.
+         */
+        get: operations["getShopProduct"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a shop product
+         * @description Removes the product from the shop (soft delete): its slug is free again
+         *     and past orders keep their own copy of its title and price.
+         *
+         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         */
+        delete: operations["deleteShopProduct"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit a shop product
+         * @description Changes the fields present in the body; absent fields keep their value.
+         *     Variants are replaced with `PUT .../variants`, not here (a body carrying
+         *     `variants` answers 400).
+         *
+         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         */
+        patch: operations["patchShopProduct"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/products/{product_id}/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Attach a picture to a product
+         * @description Attaches a media object the organization uploaded (`POST /v1/media`,
+         *     owner type `shop_product`) to the product. `position` left out appends it;
+         *     attaching a picture again moves and relabels it.
+         *
+         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         */
+        post: operations["addShopProductImage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/products/{product_id}/images/{media_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Detach a picture from a product
+         * @description Detaches the picture from the product; the media object itself stays.
+         *
+         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         */
+        delete: operations["removeShopProductImage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/products/{product_id}/variants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace the variants of a product
+         * @description Makes the product's variants exactly the list sent (1 to 100): an item
+         *     with `id` updates that variant, one without creates a variant, and every
+         *     variant left out is deleted (orders keep pointing at it). A stock change is
+         *     journaled as a manual stock move. Stock never comes back automatically after
+         *     a refund: correct it here.
+         *
+         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         */
+        put: operations["replaceShopProductVariants"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the storefront pages
+         * @description The static pages of the storefront (about, contacts, policies) in
+         *     display order.
+         *
+         *     Requires JWT or API key + the `shop.read` permission and membership of the organization.
+         */
+        get: operations["listShopPages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/pages/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Create or replace a storefront page
+         * @description Creates the page with this slug or replaces its title, text and
+         *     position.
+         *
+         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         */
+        put: operations["putShopPage"];
+        post?: never;
+        /**
+         * Delete a storefront page
+         * @description Removes the page.
+         *
+         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         */
+        delete: operations["deleteShopPage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the shop orders
+         * @description Newest first, with their lines. `q` matches the order number exactly or
+         *     the buyer's e-mail or name as a substring; `from` and `to` bound the creation
+         *     time. `next_offset` is present only when another page follows. A search text
+         *     (a buyer's name or e-mail) belongs in `POST .../shop/orders/search`, whose
+         *     body keeps it out of access logs.
+         *
+         *     Requires JWT or API key + the `shop.read` permission and membership of the organization.
+         */
+        get: operations["listShopOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/orders/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search the shop orders
+         * @description The same filters and the same answer as `GET .../shop/orders`, with the
+         *     filters in the JSON body. A buyer's e-mail or name typed into `q` therefore
+         *     stays out of the access logs of the proxy and of Cloudflare. `from` is the
+         *     first instant included and `to` the first instant NOT included, each an
+         *     RFC 3339 time with a zone (the web event center sends the shop's day
+         *     boundaries, so an order placed at 00:30 in the shop's zone falls on the
+         *     right day) or a `YYYY-MM-DD` date (UTC midnight). Every member of the body
+         *     is optional.
+         *
+         *     Requires JWT or API key + the `shop.read` permission and membership of the organization.
+         */
+        post: operations["searchShopOrders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/orders/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Count the shop orders of each tab
+         * @description How many orders each tab of the order list holds, in one request: all,
+         *     to ship, unpaid, shipped and refunds. Use it for the numbers on the tabs;
+         *     `GET .../shop/orders?view=` lists the orders behind each number.
+         *
+         *     Requires JWT or API key + the `shop.read` permission and membership of the organization.
+         */
+        get: operations["getShopOrderCounts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/orders/{order_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a shop order
+         * @description One order with its lines and payment. Reading never changes the order:
+         *     refunds reach `refunded_minor` and the status when they succeed, through the
+         *     refund engine (a pending refund counts once the provider confirms it, a
+         *     reversed one stops counting).
+         *
+         *     Requires JWT or API key + the `shop.read` permission and membership of the organization.
+         */
+        get: operations["getShopOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Write the internal note of a shop order
+         * @description Replaces the internal note of the order (an empty text erases it). The note
+         *     is for the shop's staff: it is not shown to the buyer, in the buyer's letters,
+         *     on the storefront or in the courier text. The answer carries who saved it and
+         *     when. Allowed for an order of any status.
+         *
+         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         */
+        patch: operations["updateShopOrderNote"];
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/orders/{order_id}/resend-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send the buyer's order e-mail once more
+         * @description Queues the letter the buyer got when the order was paid (`received`),
+         *     shipped (`shipped`) or refunded (`refunded`, the letter about the newest
+         *     succeeded refund; an order with none answers 409) for the worker to send again,
+         *     to the address on the order, in the buyer's language. The first send's
+         *     "already sent" marker does not stop it. Answers 202 at once; the delivery itself is asynchronous. One request per
+         *     order per minute: a second one answers 429 `shop.rate_limited` with `Retry-After`.
+         *     Writes the audit event `v1.shop.order.resend_email`.
+         *
+         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         */
+        post: operations["resendShopOrderEmail"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/orders/{order_id}/ship": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark a shop order shipped
+         * @description Moves a paid (or partially refunded) order to `shipped`, stores the
+         *     optional tracking note and writes the `v1.shop.order.shipped` event. Shipping
+         *     a shipped order again only updates the note. Shipping an order in
+         *     `manual_review` takes its goods off the shelf at that moment, only when they
+         *     are free after every live hold (409 `shop.out_of_stock` otherwise). The body
+         *     may be empty.
+         *
+         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         */
+        post: operations["shipShopOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/orders/{order_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel an unpaid shop order
+         * @description Cancels an order that is still waiting for its payment; its goods go
+         *     back on sale, and the provider's hosted payment page is closed where the
+         *     provider supports it (Stripe). A paid order is refunded instead. From the web
+         *     event center the request needs a fresh password confirmation
+         *     (`X-Step-Up-Token`).
+         *
+         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         */
+        post: operations["cancelShopOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/orders/{order_id}/refund": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refund a shop order
+         * @description Returns money of a paid order through the organization's payment
+         *     provider: a refund is recorded on the order's payment, approved and driven
+         *     to the provider (the same refund engine as tickets). `amount_minor` left out
+         *     refunds what is left. The answer carries the order and the refund's state:
+         *     `succeeded`, `provider_pending` (no answer yet; refund.sweep follows it up),
+         *     `failed` or `manual_review`. Only succeeded refunds count: the order becomes
+         *     `refunded` when all of it went back and `partially_refunded` when some did (an
+         *     order in `manual_review` stays there until all of it went back), and
+         *     `v1.shop.order.refunded` is written; a pending refund changes the order when
+         *     the provider confirms it. Stock is not put back. From the web event center the request needs
+         *     a fresh password confirmation (`X-Step-Up-Token`).
+         *
+         *     The call needs an `Idempotency-Key`. Repeating it with the same key (after a
+         *     dropped connection or a timeout) answers the first refund with `replayed: true`
+         *     and writes no second one, and gives a refund that was recorded but never
+         *     reached the provider another push; the same key with a different order or
+         *     amount is 409 `shop.idempotency_key_reused`. The work is not cut by the request: a
+         *     client that hangs up repeats the call to read the result. AllPay has no key of
+         *     its own, so this key is what keeps one click from returning the money twice.
+         *     Keep one key per open refund dialog.
+         *
+         *     Requires JWT or API key + the `shop.manage`, `refund.create` and `refund.approve` permissions and membership of the organization.
+         */
+        post: operations["refundShopOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/orders/{order_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Settle a shop order parked for its goods
+         * @description Decides an order parked in `manual_review` with `review_reason`
+         *     `late_payment_no_stock` (the payment arrived after the hold ended and the
+         *     goods were gone; the money is taken). `action: fulfil` checks the stock once
+         *     more and pays the order like any other (409 `shop.out_of_stock`, with the short
+         *     lines in the details, when the goods are still not free; 409
+         *     `shop.payment_unconfirmed` when the payment is not `succeeded`).
+         *     `action: refund_and_cancel` returns the whole payment through the refund engine
+         *     (the same engine and rules as `.../refund`): the order ends `refunded` once the
+         *     provider confirms, stays `manual_review` while the refund is pending, and stays
+         *     for another try when it fails (the answer carries the refund and its state).
+         *     An order whose `review_reason` is `payment_unconfirmed` has nothing to decide
+         *     yet: it answers 409 `shop.order_not_resolvable` and follows its payment instead
+         *     (settle the payment intent as `succeeded` or `failed`). An order that is not in
+         *     `manual_review` answers 409 `shop.order_not_in_review`, except for a repeat of
+         *     the call that settled it. From the web event center the request needs a fresh
+         *     password confirmation (`X-Step-Up-Token`).
+         *
+         *     The call needs an `Idempotency-Key` of 1 to 255 characters (one per open dialog).
+         *     Repeating it with the same key answers the first decision with `replayed: true`
+         *     and writes nothing; `refund_and_cancel` uses the key as the refund's key, so one
+         *     click can never return the money twice.
+         *
+         *     Requires JWT or API key + the `shop.manage`, `refund.create` and `refund.approve` permissions and membership of the organization.
+         */
+        post: operations["resolveShopOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/orders/{order_id}/courier-text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Courier text of a shop order
+         * @description The delivery details one per line, ready to paste into a courier form:
+         *     name, phone, city, address, postal code, each line of the order, the total,
+         *     the buyer's comment. Empty fields are left out.
+         *
+         *     Requires JWT or API key + the `shop.read` permission and membership of the organization.
+         */
+        get: operations["getShopOrderCourierText"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/shop/by-host": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve a storefront host
+         * @description The organization slug whose storefront lives on `host`
+         *     (`organizations.shop_domain`); a `www.` prefix and a port are ignored. No
+         *     login; rate-limited per client address.
+         */
+        get: operations["getPublicShopByHost"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/shop/checkout/{order_token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Status of a storefront order
+         * @description Where the buyer's order stands: `pending` (with `payment_url` to go
+         *     back to the payment page), `paid`, `expired` or `cancelled`. An order parked
+         *     for review reads by its cause (`review_reason`, `review_message`): `pending`
+         *     without a payment page while its payment is being checked, `paid` while the
+         *     availability of its goods is being checked. The token in the
+         *     path is the credential; the provider sends the buyer back to the storefront
+         *     with it as `checkout_token`. No login; rate-limited per address and per
+         *     token.
+         */
+        get: operations["getPublicShopCheckoutStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/shop/checkout/{order_token}/downloads": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Files of a paid storefront order
+         * @description The files the buyer bought: one link per digital line of the order (spec
+         *     47 section 1b), each pointing at the file route. Listing signs nothing and
+         *     counts nothing: opening the order page or refreshing the links is not a
+         *     download. Only while the order's payment stands (`paid`, `shipped` or
+         *     `partially_refunded`); an order that is pending, expired, cancelled,
+         *     refunded or parked for review answers 404 like a token that names nothing.
+         *     Each line serves the file it was sold with, fixed at purchase. The period is
+         *     bounded: 30 days after payment and 20 downloads per line; after that the
+         *     answer is 410 `shop.download_expired`. The token in the path is the
+         *     credential. No login; rate-limited per address and per token; never
+         *     cached.
+         */
+        get: operations["listPublicShopCheckoutDownloads"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/shop/checkout/{order_token}/downloads/{item_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download one file of a paid storefront order
+         * @description The one place a download is counted. It checks what the list checks (the
+         *     order's payment stands, 30 days after payment, 20 downloads per line),
+         *     signs the file's URL, counts one download against the line's limit in a
+         *     single atomic step and answers 302 to the short-lived signed URL. A file
+         *     that cannot be signed costs the buyer nothing (503
+         *     `shop.download_unavailable`). A line that is not a digital line of the order,
+         *     has no file, or a malformed `item_id` answers 404 like a token that names
+         *     nothing. The token in the path is the credential. No login; rate-limited per
+         *     address and per token; never cached.
+         */
+        get: operations["downloadPublicShopCheckoutFile"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/shop/pages/{org_slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Storefront pages
+         * @description Every static page of the shop with its text. No login; rate-limited
+         *     per client address.
+         */
+        get: operations["listPublicShopPages"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/shop/{org_slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Storefront catalog
+         * @description The shop's public settings, its active products with their variants
+         *     and pictures, and the list of its static pages. A variant's `available` is
+         *     capped at the shop's `max_line_qty` (the exact shelf and the article number
+         *     are not published); `in_stock` says whether anything is left. No login;
+         *     rate-limited per client address.
+         */
+        get: operations["getPublicShopCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/shop/{org_slug}/pages/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Storefront page
+         * @description One static page by its slug, or by the handle it had on the shop it was
+         *     imported from (`legacy_slug`); a slug match wins. The answer always names
+         *     the canonical `slug`, so a client that arrived on an old address (for
+         *     example `/pages/наши-мероприятия`) can show the new one. The match is
+         *     case-insensitive and Unicode-normalized (NFC). No login; rate-limited
+         *     per client address.
+         */
+        get: operations["getPublicShopPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/shop/{org_slug}/products/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Storefront product
+         * @description One active product by its slug (the Shopify handle for an imported
+         *     shop). No login; rate-limited per client address.
+         */
+        get: operations["getPublicShopProduct"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/shop/{org_slug}/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Place a storefront order
+         * @description Creates the order from the cart, holds its goods for the payment window
+         *     plus a grace, and starts the payment on the shop's provider-hosted page
+         *     (`payment_url`). The payment configuration and `return_url` are checked
+         *     before any stock is held; the hosted page is created after the order
+         *     commits. A cart one of whose lines cannot be served answers 409
+         *     `shop.out_of_stock` with `details.items` = [{variant_id, requested,
+         *     available}] and holds nothing. A cart that costs nothing is completed at
+         *     once (`status` paid, empty `payment_url`). The provider sends the buyer back
+         *     to `return_url` with `checkout_token` = the order token. `ship` is required
+         *     only when the cart holds a physical product; a cart of digital products and
+         *     services takes no address, pays no shipping and gets delivery_kind `none`.
+         *     A line may hold
+         *     at most the shop's `max_line_qty` units (422 `shop.invalid_items` with
+         *     `details.max_line_qty`), and one buyer e-mail, and one client address
+         *     (an IPv6 address counts by its /64 prefix), may each have at most 3 orders
+         *     waiting for payment in the shop (409 `shop.too_many_pending`). When the
+         *     shop publishes a `captcha_site_key` the request must carry the widget's
+         *     `captcha_token`; the test runs before any stock is held. No login;
+         *     rate-limited per client address: 30 valid checkout requests a minute per
+         *     shop, on top of the public routes' shared budget.
+         */
+        post: operations["createPublicShopCheckout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -10268,10 +11329,12 @@ export interface components {
              *     referenced by a seating_plan_versions row. `session_poster`
              *     is a session-level poster. `event_gallery` and `event_report`
              *     (migration 0153) are photos of an event page gallery and of its
-             *     photo report.
+             *     photo report. `shop_product` (migration 0172) is a picture of a
+             *     merchandise shop product; `shop_digital` is the file a digital
+             *     shop product sells (offered to the buyer only after payment).
              * @enum {string}
              */
-            owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report";
+            owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product" | "shop_digital";
             /**
              * Format: uuid
              * @description UUID of the owning row in the table implied by
@@ -11246,17 +12309,22 @@ export interface components {
              * @default web
              */
             purpose: string;
-            /** @description Which text the mini app opens: `description` or `email_note` (a plain string, not an enum). Required, and only used, for `purpose: miniapp`. */
+            /** @description What the mini app opens: `description` or `email_note` (the event's texts) or `invitations` (the staff invitations screen of one session, spec 46) - a plain string, not an enum. Required, and only used, for `purpose: miniapp`. */
             kind?: string;
             /**
              * Format: uuid
-             * @description The event whose text the mini app opens. Required, and only used, for `purpose: miniapp`.
+             * @description The event whose text (or whose session) the mini app opens. Required, and only used, for `purpose: miniapp`.
              */
             event_id?: string;
+            /**
+             * Format: uuid
+             * @description The session whose invitations the mini app opens. Required for `kind: invitations`, ignored otherwise.
+             */
+            session_id?: string;
         };
         /** @description A one-time link to the web event center for the private chat. */
         BotWebLoginCodeResponse: {
-            /** @description `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`, or for `purpose: miniapp` `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=<kind>&event=<event_id>`. The code is after `#`, so it never reaches a server log. */
+            /** @description `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`, or for `purpose: miniapp` `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=<kind>&event=<event_id>`, or for `kind: invitations` `<EVENT_CENTER_PUBLIC_URL>/tg/invitations?session=<session_id>&event=<event_id>#code=<code>`. The code is after `#`, so it never reaches a server log. */
             url: string;
             /**
              * Format: date-time
@@ -11281,6 +12349,47 @@ export interface components {
         BotWebLoginNoticesResponse: {
             /** @description Sign-ins not reported yet; each is handed out once. */
             notices: components["schemas"]["BotWebLoginNotice"][];
+        };
+        /** @description A staff invitation issued from Telegram whose PDF the bot must send into the issuer's chat. It carries no e-mail or phone of the guest. */
+        BotInvitationPdfNotice: {
+            /**
+             * Format: uuid
+             * @description The invitation order; the bot fetches `GET /v1/organizations/{org_id}/invitations/{order_id}/tickets.pdf` as the issuer.
+             */
+            order_id: string;
+            /**
+             * Format: uuid
+             * @description The organization that issued the invitation.
+             */
+            org_id: string;
+            /**
+             * Format: int64
+             * @description The invitation number the PDF file is named after (`invitation-<system_id>.pdf`).
+             */
+            system_id: number;
+            /**
+             * Format: int64
+             * @description The Telegram account of the issuer, whose private chat gets the document.
+             */
+            telegram_user_id: number;
+            /** @description The issuer's bot language. */
+            locale: string;
+            /** @description The name printed on the invitation; empty when none was given. */
+            guest_name: string;
+            /** @description The event the invitation is for. */
+            event_name: string;
+            /**
+             * Format: date-time
+             * @description When the date starts (UTC).
+             */
+            session_start_at: string;
+            /** @description The IANA zone of the venue, to show the start in local time. */
+            session_timezone: string;
+        };
+        /** @description Answer of POST /v1/bot/invitations/pdf-notices/claim. */
+        BotInvitationPdfNoticesResponse: {
+            /** @description Invitations whose PDF is not sent yet; each is handed out once. */
+            notices: components["schemas"]["BotInvitationPdfNotice"][];
         };
         AuthLogoutRequest: {
             /**
@@ -15975,7 +17084,7 @@ export interface components {
              */
             org_id: string;
             /**
-             * @description Provider slug. Must be one of: stripe, allpay, flitt,
+             * @description Provider slug. Must be one of: stripe, allpay, flitt, payplus,
              *     cloudpayments, yookassa, manual. `flitt` needs the secrets
              *     `merchant_id` and `payment_key` (the portal's payment key signs
              *     requests and callbacks; there is no separate webhook secret).
@@ -15983,7 +17092,11 @@ export interface components {
              *     `secret_key` (its API key, which also signs webhooks); `vat`
              *     (0, 1 or 3), `max_installments` (2 to 12) and
              *     `installments_min_amount` (the smallest order total in shekels
-             *     that offers installments) are optional.
+             *     that offers installments) are optional. `payplus` needs
+             *     `api_key` and `secret_key` (the dashboard's key pair; the secret
+             *     key also signs callbacks) and `payment_page_uid` (the payment page
+             *     links are generated from); a `test` config talks to
+             *     restapidev.payplus.co.il, a `live` one to restapi.payplus.co.il.
              * @example stripe
              */
             provider: string;
@@ -16090,7 +17203,7 @@ export interface components {
          */
         CreatePaymentProviderConfigRequest: {
             /**
-             * @description Provider slug (one of stripe, allpay, flitt, cloudpayments, yookassa, manual).
+             * @description Provider slug (one of stripe, allpay, flitt, payplus, cloudpayments, yookassa, manual).
              * @example stripe
              */
             provider: string;
@@ -16119,7 +17232,8 @@ export interface components {
              * @description Map of secret credential fields to values. Stripe expects
              *     api_key + webhook_secret; AllPay expects merchant_id (the API
              *     login) + secret_key (the API key), optionally vat,
-             *     max_installments and installments_min_amount; etc. Values are
+             *     max_installments and installments_min_amount; PayPlus expects
+             *     api_key + secret_key + payment_page_uid; etc. Values are
              *     never returned.
              * @example {
              *       "api_key": "sk_live_xxx",
@@ -18851,8 +19965,10 @@ export interface components {
             arena_orders: number;
             /** @description Orders sold through a website; such a change cannot be saved yet (`blocked`). */
             site_orders: number;
-            /** @description Arena-route orders with no buyer e-mail address; their buyers cannot be written to. */
+            /** @description Arena-route orders with no buyer e-mail address (and no issuer to fall back to); their buyers cannot be written to. */
             no_address: number;
+            /** @description Staff invitations among the Arena-route orders that have no guest e-mail. Their letter goes to the staff member who issued them, so the organizer is told "N invitations without a guest e-mail - the letter goes to the issuer". */
+            invitations_to_issuer: number;
             /**
              * @description Empty when the change may be saved, otherwise why not:
              *     `contact_missing` (no organizer e-mail for buyers to answer) or
@@ -24292,10 +25408,10 @@ export interface components {
          * @description Response body for `GET /v1/event-sessions/{id}/schema`. Contains the
          *     raw canonical geometry (byte-for-byte identical to the stored
          *     `seating_plan_versions.geometry`) plus a `category_prices` overlay
-         *     with per-category tier / price resolution. The strong `ETag`
-         *     response header is set to `"<geometry_checksum>"` and the response
-         *     is served with `Cache-Control: public, max-age=86400, immutable`
-         *     because a new plan version always yields a new checksum.
+         *     with per-category tier / price resolution. Served with
+         *     `Cache-Control: no-store` and no ETag: tier prices, colours and
+         *     per-seat categories change without a new geometry, so the schema
+         *     is read from the current state on every request.
          */
         SeatingSchemaResponse: {
             /**
@@ -24463,7 +25579,7 @@ export interface components {
              *     needs no database migration.
              * @enum {string}
              */
-            provider?: "stripe" | "allpay" | "flitt";
+            provider?: "stripe" | "allpay" | "flitt" | "payplus";
             /**
              * @description Merchant account identifier at the provider. Required
              *     (non-empty after trim) when `payment_mode` is
@@ -24525,7 +25641,7 @@ export interface components {
              *     `channel.invalid_config`.
              * @enum {string}
              */
-            provider?: "stripe" | "allpay" | "flitt";
+            provider?: "stripe" | "allpay" | "flitt" | "payplus";
             /**
              * @description New merchant account identifier. Omitting the key OR sending
              *     JSON `null` both leave the stored value unchanged (the
@@ -24807,6 +25923,485 @@ export interface components {
              * @description ISO-8601 timestamp of the last quantity update, if any.
              */
             updated_at?: string;
+        };
+        /** @description A staff invitation on chosen seats and GA places (spec 46, section 3.1). One to 50 places in total. */
+        StaffInvitationIssueRequest: {
+            /**
+             * Format: uuid
+             * @description Client-chosen id; a repeat with the same id answers the first invitation (200, replayed true).
+             */
+            request_id: string;
+            /** @description Seats by key, free or held back by the organizer. */
+            seats?: components["schemas"]["StaffInvitationSeatRef"][];
+            /** @description General Admission places by category; free places are taken first, then the reserve. */
+            ga?: components["schemas"]["StaffInvitationGALine"][];
+            /** @description The guest the invitation is for. */
+            guest: components["schemas"]["StaffInvitationGuest"];
+            /** @description How the tickets travel - guest_email (a letter to guest.email, required then), my_email (a letter to the issuing user, for forwarding) or pdf_only (no letter, download the PDF). */
+            delivery: string;
+            /** @description Internal note, at most 1000 characters, never shown to the guest. */
+            note?: string | null;
+            /**
+             * @description Mark every ticket of the invitation with the organizer's private VIP flag (it never reaches the guest). Stored on the order and applied when the tickets are minted. Part of the request fingerprint: a repeat of the same request_id with a different vip answers 409 invitation.request_id_reused.
+             * @default false
+             */
+            vip: boolean;
+        };
+        /** @description One seat of the session by key. */
+        StaffInvitationSeatRef: {
+            /** @description session_seats.seat_key of the seat. */
+            seat_key: string;
+        };
+        /** @description Places of one General Admission category. */
+        StaffInvitationGALine: {
+            /**
+             * Format: uuid
+             * @description Category of the session.
+             */
+            tier_id: string;
+            /** @description Number of places. */
+            qty: number;
+        };
+        /** @description The guest; the name is printed on the ticket. */
+        StaffInvitationGuest: {
+            /** @description Guest name, 1 to 200 characters. */
+            name: string;
+            /** @description Guest e-mail; required only for delivery guest_email. */
+            email?: string | null;
+            /** @description Guest phone, optional. */
+            phone?: string | null;
+            /** @description Language of the guest's letter (cs, de, en, es, fr, he, ru); anything else falls back to the default. */
+            locale?: string | null;
+        };
+        /** @description One place of a staff invitation. */
+        StaffInvitationPlace: {
+            /** @description Key of the seat or GA place. */
+            seat_key?: string | null;
+            /** @description Sector name of the seat. */
+            sector?: string | null;
+            /** @description Row of the seat. */
+            row?: string | null;
+            /** @description Seat number. */
+            seat?: string | null;
+            /** @description seat or ga_unit. */
+            kind?: string | null;
+            /**
+             * Format: uuid
+             * @description Category of the place.
+             */
+            tier_id: string;
+            /** @description Category name. */
+            tier_name: string;
+            /**
+             * Format: int64
+             * @description Face value of the place in minor units; the invitation itself costs 0.
+             */
+            face_value: number;
+            /** @description Where the place came from - available (from sale) or unavailable (from the organizer's reserve). A cancelled ticket returns its place there. */
+            origin?: string | null;
+            /** @description The ticket of this place once issued. */
+            ticket_id?: string | null;
+            /** @description Status of the place's ticket - active while it can be used, cancelled after a cancellation, null until the ticket is issued. A client offers a per-ticket cancel only for active. */
+            ticket_status?: string | null;
+            /** @description The organizer's private VIP mark of the place's ticket (never shown to the guest). False until the ticket is issued. */
+            vip: boolean;
+            /** @description True once the place's ticket was used at the door (a scanned barcode, a used_at stamp or an admitted scan). Such a ticket cannot be cancelled. False until the ticket is issued. */
+            scanned: boolean;
+        };
+        /** @description The invitation as written. */
+        StaffInvitationIssueResponse: {
+            /**
+             * Format: uuid
+             * @description Order id of the invitation.
+             */
+            order_id: string;
+            /**
+             * Format: int64
+             * @description Order number shown to people.
+             */
+            system_id: number;
+            /** @description Order status - paid for an issued invitation; it stays paid after a cancellation (tickets_status and the ticket counts tell a cancelled invitation). */
+            status: string;
+            /** @description Guest name. */
+            guest_name?: string | null;
+            /** @description Delivery mode - guest_email, my_email or pdf_only. */
+            delivery: string;
+            /** @description The places of the invitation. */
+            places: components["schemas"]["StaffInvitationPlace"][];
+            /** @description How many places came from the organizer's reserve. */
+            from_reserve: number;
+            /** @description issuing right after the issue (tickets are minted asynchronously), issued once every place has its ticket. */
+            tickets_status: string;
+            /** @description Billing preview of the invitation (spec 46, section 3.6) - what the platform will charge the organization for these tickets, computed by the same rule as the billing rate job. Null when it cannot be computed (the organization has no usable billing terms); the invitation is issued either way. */
+            charge?: components["schemas"]["InvitationChargePreview"] | null;
+            /** @description True when the request_id was already used and this is the first invitation. */
+            replayed: boolean;
+        };
+        /**
+         * @description What invitations cost the organization (spec 46, section 3.6). A CSV file is always charged the
+         *     standard rate; otherwise an account whose terms say complimentary_billing standard pays the standard
+         *     rate, and every other invitation is free up to the yearly free limit of the price list, then charged
+         *     as a general-admission ticket. The standard rate is the organization's individual rate, else the
+         *     fixed per-ticket rate of the price list, seated or not. A cancelled invitation keeps its charge.
+         */
+        InvitationChargePreview: {
+            /** @description Why the tickets cost what they cost - free (free up to the yearly limit), standard (the account's terms) or bulk (a CSV file). */
+            mode: string;
+            /** @description Currency of the organization's billing account; every amount is in it. */
+            currency: string;
+            /** @description Tickets quoted. */
+            tickets: number;
+            /** @description Tickets that cost nothing. */
+            free_tickets: number;
+            /** @description Tickets that are charged. */
+            charged_tickets: number;
+            /**
+             * Format: int64
+             * @description Total charge in minor units of currency.
+             */
+            amount_minor: number;
+            /** @description The charged tickets grouped by unit rate; empty when every ticket is free. */
+            lines: components["schemas"]["InvitationChargeLine"][];
+            /**
+             * Format: int64
+             * @description The yearly free limit, or null when there is none or the tickets are not billed free.
+             */
+            free_limit: number | null;
+            /**
+             * Format: int64
+             * @description What is left of the yearly free limit after these tickets, or null with free_limit.
+             */
+            free_left: number | null;
+            /** @description A short English summary such as "12 × 0.50 EUR = 6.00 EUR" or "free, 488 of the yearly limit left". Clients in another language build their own from the numbers. */
+            text: string;
+        };
+        /** @description One group of charged invitation tickets with the same unit rate. */
+        InvitationChargeLine: {
+            /** @description Tickets in the group. */
+            tickets: number;
+            /**
+             * Format: int64
+             * @description Charge per ticket in minor units.
+             */
+            unit_minor: number;
+            /**
+             * Format: int64
+             * @description tickets times unit_minor.
+             */
+            amount_minor: number;
+            /** @description Currency of the amounts, the billing account's. */
+            currency: string;
+        };
+        /** @description Who issued the invitation; all null for an organization API key. */
+        StaffInvitationIssuer: {
+            /** @description User id of the issuer. */
+            user_id?: string | null;
+            /** @description Issuer e-mail. */
+            email?: string | null;
+            /** @description Issuer first name. */
+            first_name?: string | null;
+            /** @description Issuer last name. */
+            last_name?: string | null;
+        };
+        /** @description One staff invitation of the session. */
+        StaffInvitationListItem: {
+            /**
+             * Format: uuid
+             * @description Order id of the invitation.
+             */
+            order_id: string;
+            /**
+             * Format: int64
+             * @description Order number shown to people.
+             */
+            system_id: number;
+            /** @description Order status - paid, also after every ticket is cancelled (an invitation stays billed); tickets_active = 0 marks a fully cancelled invitation. */
+            status: string;
+            /** @description Guest name. */
+            guest_name?: string | null;
+            /** @description Delivery mode - guest_email, my_email or pdf_only. */
+            delivery: string;
+            /** @description staff (one by one) or staff_bulk (a CSV file). */
+            issued_via: string;
+            /** @description Who issued it. */
+            issued_by: components["schemas"]["StaffInvitationIssuer"];
+            /**
+             * Format: date-time
+             * @description When it was issued.
+             */
+            created_at: string;
+            /**
+             * Format: uuid
+             * @description The CSV batch (invitation_batches.id) a bulk invitation came from; null for a one-by-one invitation.
+             */
+            invitation_batch_id?: string | null;
+            /**
+             * Format: int64
+             * @description Tickets issued so far.
+             */
+            tickets_total: number;
+            /**
+             * Format: int64
+             * @description Tickets still active.
+             */
+            tickets_active: number;
+            /** @description The places of the invitation. */
+            places: components["schemas"]["StaffInvitationPlace"][];
+            /** @description The guest's letter folded over the delivery jobs of the order's tickets; null when no letter was queued (pdf_only, or the tickets are not issued yet). */
+            letter?: components["schemas"]["StaffInvitationLetter"] | null;
+        };
+        /** @description The state of the letter that carries the tickets of a staff invitation to the guest. */
+        StaffInvitationLetter: {
+            /** @description failed (a delivery job failed), pending (queued or being sent), sent (every letter went out), skipped (no letter was sent: no address or the one-time address expired) or disabled (the platform sends no e-mail). */
+            status: string;
+            /**
+             * Format: date-time
+             * @description When the latest letter went out; set when status is sent.
+             */
+            sent_at: string | null;
+            /** @description Why the letter did not go out, a short category and never the raw error text: address_rejected, address_expired, no_recipient, sender_disabled or send_failed. Null when there is nothing to report. */
+            last_error_code: string | null;
+        };
+        /** @description The staff invitations of a session. */
+        StaffInvitationListResponse: {
+            /** @description Newest first, at most 500. */
+            items: components["schemas"]["StaffInvitationListItem"][];
+            /** @description The venue's IANA time zone (UTC for a session without a venue). A client shows the issue and letter times in it, never in the device's zone. */
+            timezone: string;
+        };
+        /** @description The session a staff invitation is for. */
+        StaffInvitationSession: {
+            /**
+             * Format: uuid
+             * @description Session id.
+             */
+            id: string;
+            /**
+             * Format: date-time
+             * @description When the session starts (UTC instant).
+             */
+            start_at: string;
+            /**
+             * Format: uuid
+             * @description Event the session belongs to.
+             */
+            event_id: string;
+            /** @description Event name. */
+            event_name: string;
+            /** @description Venue name, null when the session has no venue. */
+            venue_name?: string | null;
+            /** @description IANA time zone of the venue, UTC when it has none. */
+            timezone: string;
+        };
+        /** @description One staff invitation of the organization - the same fields as the session list item plus the session it is for. */
+        StaffInvitationOrgListItem: components["schemas"]["StaffInvitationListItem"] & {
+            /** @description The session the invitation is for. */
+            session: components["schemas"]["StaffInvitationSession"];
+        };
+        /** @description A page of the staff invitations of the organization. */
+        StaffInvitationOrgListResponse: {
+            /** @description Newest first. */
+            items: components["schemas"]["StaffInvitationOrgListItem"][];
+            /** @description Opaque cursor for the next page (pass it as the cursor query parameter), null on the last page. */
+            next_cursor: string | null;
+        };
+        /** @description Which tickets to cancel; an empty body cancels them all. */
+        StaffInvitationCancelRequest: {
+            /** @description Tickets of this invitation to cancel; absent or empty means all. */
+            ticket_ids?: string[];
+            /** @description Send the guest the cancellation letter when the invitation has the guest's e-mail (default true). */
+            notify_guest?: boolean;
+        };
+        /** @description What the cancellation did. */
+        StaffInvitationCancelResponse: {
+            /**
+             * Format: uuid
+             * @description Order id of the invitation.
+             */
+            order_id: string;
+            /** @description Order status after the cancellation. A cancellation moves no money, so it stays `paid` even when every ticket is cancelled (the invitation is still billed); a client labels a fully cancelled invitation by its active ticket count. */
+            order_status: string;
+            /** @description Tickets cancelled by this request. */
+            cancelled_ticket_ids: string[];
+            /** @description Named tickets that were already not active. */
+            skipped_ticket_ids: string[];
+            /** @description Whether the guest is to be told. */
+            notify_guest: boolean;
+        };
+        /** @description Optional one-time address for the resend. */
+        StaffInvitationResendRequest: {
+            /** @description Send to this address instead (valid for 24 hours; it never becomes the order's address). Absent or empty means the guest, else the caller, else the issuer. */
+            email?: string;
+        };
+        /** @description What the resend queued. */
+        StaffInvitationResendResponse: {
+            /**
+             * Format: uuid
+             * @description Order id of the invitation.
+             */
+            order_id: string;
+            /** @description Active tickets queued; they travel in one e-mail. */
+            queued_tickets: number;
+            /** @description True when the letter goes to a one-time address, not the guest's own. */
+            different_address: boolean;
+            /** @description The address the letter goes to, with all but the first characters hidden. */
+            recipient_masked: string;
+            /**
+             * Format: date-time
+             * @description When a one-time address stops being valid; null for the guest's own address.
+             */
+            expires_at: string | null;
+        };
+        /**
+         * @description A CSV upload of staff invitations (spec 46, section 3.5), sent as a
+         *     multipart form.
+         */
+        InvitationBatchUploadRequest: {
+            /**
+             * Format: binary
+             * @description The CSV file, UTF-8 with or without a BOM, at most 512 KB, 100
+             *     guests and 250 places (split a longer list into several files; a
+             *     body over the router's 1 MiB limit answers http.payload_too_large).
+             *     Excel's `sep=;` first line is accepted. Quotes are strict: an
+             *     unclosed quote is invitation_batch.invalid_csv with the line. The
+             *     separator is `,` or `;` (detected from the header), the
+             *     header row is mandatory and the columns may come in any order:
+             *     `guest` (a guest number - rows with the same number are ONE order
+             *     and ONE letter; the name, e-mail, phone and language come from the
+             *     guest's first row), `name` (required), `email`, `phone`, `locale`,
+             *     `note`, and for the place either `seat_key`, or `sector`, `row`,
+             *     `seat` (the sector may be left out when the row and seat are
+             *     unique), or `category` (a name or an id) with `qty` for General
+             *     Admission places.
+             */
+            file: string;
+            /**
+             * Format: uuid
+             * @description Client-chosen id of the upload; required unless dry_run is true. A repeat with the same id and the same file answers the first batch (200, replayed true).
+             */
+            request_id?: string;
+            /** @description Delivery of a guest WITHOUT an e-mail in the file - pdf_only (default, no letter) or my_email (a letter to the uploading user). A guest with an e-mail always gets the letter. guest_email makes a missing e-mail a row error. */
+            delivery?: string;
+        };
+        /** @description One problem of one row of an upload. */
+        InvitationBatchRowIssue: {
+            /** @description Line of the file (the header is line 1); 0 for a problem of the file as a whole. */
+            row: number;
+            /** @description The column the problem is about; empty when it is about the row or the file. */
+            field: string;
+            /** @description Machine-readable code - name_required, invalid_email, email_required, place_missing, place_ambiguous, unknown_seat, ambiguous_seat, seat_taken, duplicate_seat, unknown_category, ambiguous_category, category_not_ga, invalid_qty, not_enough_places, too_many_places, too_many_guests, seat_without_category, capacity_exceeded, or the code of a refusal of the transaction (for example invitation.seats_taken). */
+            code: string;
+            /** @description Human-readable explanation in English. */
+            message: string;
+        };
+        /** @description One guest of an upload as the validation sees it. */
+        InvitationBatchPreviewGuest: {
+            /** @description Position of the guest in the file, from 1. */
+            guest: number;
+            /** @description Guest name from the guest's first row. */
+            name: string;
+            /** @description Guest e-mail, empty when the file has none. */
+            email: string;
+            /** @description guest_email, my_email or pdf_only. */
+            delivery: string;
+            /** @description Tickets this guest gets. */
+            places: number;
+        };
+        /**
+         * @description The validation report of an upload: the answer of a dry run, and the
+         *     `details.report` of a refused real upload (422 invitation_batch.invalid
+         *     or the refusal of the transaction). Nothing was written either way.
+         */
+        InvitationBatchReport: {
+            /** @description True for a dry run. */
+            dry_run: boolean;
+            /** @description True when the file can be issued as it is. */
+            valid: boolean;
+            /** @description The batch-wide delivery used for guests without an e-mail. */
+            delivery: string;
+            /** @description Data rows of the file. */
+            rows: number;
+            /** @description Guests, that is orders and letters, the file makes. */
+            guests: number;
+            /** @description Tickets the file hands out. */
+            places: number;
+            /** @description Of them, seats on the plan. */
+            seats: number;
+            /** @description Of them, General Admission places. */
+            ga_places: number;
+            /** @description Places taken from the organizer's reserve (closed seats, reserve GA places). */
+            from_reserve: number;
+            /** @description The problems found, by row. Empty when valid. */
+            errors: components["schemas"]["InvitationBatchRowIssue"][];
+            /** @description The guests of the file in order, for the check table. */
+            preview: components["schemas"]["InvitationBatchPreviewGuest"][];
+            /** @description Billing preview (spec 46, section 3.6) - a CSV file is always charged at the standard rate, computed by the same rule as the billing rate job. Null when it cannot be computed or the file hands out no places; the file is issued either way. */
+            charge?: components["schemas"]["InvitationChargePreview"] | null;
+        };
+        /** @description The order one guest of a batch got. */
+        InvitationBatchOrder: {
+            /** @description Position of the guest in the file, from 1. */
+            guest: number;
+            /**
+             * Format: uuid
+             * @description Order id.
+             */
+            order_id: string;
+            /**
+             * Format: int64
+             * @description Order number shown to people.
+             */
+            system_id: number;
+            /** @description Order status - paid. */
+            status: string;
+            /** @description Guest name. */
+            guest_name?: string | null;
+            /** @description Guest e-mail; only set when the letter goes to the guest. */
+            guest_email?: string | null;
+            /** @description guest_email, my_email or pdf_only. */
+            delivery: string;
+            /** @description Tickets of the order. */
+            places: number;
+            /** @description Of them, taken from the organizer's reserve. */
+            from_reserve: number;
+            /** @description Keys of the places of the order. */
+            seat_keys: string[];
+        };
+        /** @description An issued CSV batch of staff invitations with the order of each guest. */
+        InvitationBatch: {
+            /**
+             * Format: uuid
+             * @description Batch id.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Session the batch was issued for.
+             */
+            session_id: string;
+            /** @description issued. */
+            status: string;
+            /** @description User who uploaded the file; null for an organization API key. */
+            created_by?: string | null;
+            /**
+             * Format: date-time
+             * @description When the batch was issued.
+             */
+            created_at: string;
+            /** @description Data rows of the file. */
+            rows: number;
+            /** @description Orders the batch made. */
+            guests: number;
+            /** @description Tickets the batch handed out. */
+            places: number;
+            /** @description Places taken from the organizer's reserve. */
+            from_reserve: number;
+            /** @description One order per guest, in file order. */
+            orders: components["schemas"]["InvitationBatchOrder"][];
+            /** @description Billing of the batch (spec 46, section 3.6) - the standard rate for every place of the file, priced at the time of the upload. Null when it cannot be computed. */
+            charge?: components["schemas"]["InvitationChargePreview"] | null;
+            /** @description True when the request_id was already used and this is the first batch. */
+            replayed: boolean;
         };
         /**
          * @description A complimentary (free / comp) ticket issuance granted to a named
@@ -25475,6 +27070,26 @@ export interface components {
              *     tier sells. Omitted when absent.
              */
             planCategoryIndex?: number;
+            /**
+             * @description Arena extension, source=arena only: on a bundle that creates a
+             *     session from `actionEvent.arenaSeatingPlanVersionId`, this entry
+             *     is NOT a plan category but an extra price category of the new
+             *     session (a plan drawn with one category, priced several ways).
+             *     It is created with no places of its own (`availability` is
+             *     ignored); the organizer paints plan seats into it afterwards
+             *     (PATCH .../seats/category, seat layouts). Its name may not repeat
+             *     a plan category's or another entry's name (422
+             *     import.seating_category_duplicate). Ignored on a session that
+             *     already exists. Omitted when false.
+             */
+            planExtra?: boolean;
+            /**
+             * @description Arena extension, source=arena only: the category's colour on the
+             *     seat map, `#rrggbb` (stored lower-case). Absent or empty keeps
+             *     the stored colour. Anything else answers 422
+             *     import.invalid_color.
+             */
+            color?: string;
             /**
              * Format: int64
              * @description Bil24 category-price identifier. Must be positive and below 1e9
@@ -28502,6 +30117,8 @@ export interface components {
             due_days: number | null;
             /** @description Who pays the platform commission on a sold ticket, organizer_pays (the organizer is billed) or buyer_pays (the buyer pays it as the service charge). */
             fee_mode: string;
+            /** @description How staff invitations of the account are billed, free (free up to the yearly free limit of the price list) or standard (the fixed per-ticket rate, or the organization's individual rate). An invitation issued from a CSV file always pays the standard rate. */
+            complimentary_billing: string;
             /** @description Whether only a superadmin may change the row. */
             locked: boolean;
             /** @description Id of the operator who created the row, or migration. */
@@ -28603,6 +30220,8 @@ export interface components {
             due_days?: number | null;
             /** @description Who pays the platform commission on a sold ticket, organizer_pays (default) or buyer_pays. Any other value is 422 billing.invalid_terms. */
             fee_mode?: string;
+            /** @description How staff invitations are billed from effective_from on, free (free up to the yearly free limit) or standard (the fixed per-ticket rate or the organization's individual rate). Absent keeps the value of the terms in force at effective_from. Like every terms row it starts in the future, so invitations already issued keep the charge of their own date. Any other value is 422 billing.invalid_terms. */
+            complimentary_billing?: string;
         };
         /** @description The per-ticket rate of the purchased lot that pays next. */
         BillingCurrentRate: {
@@ -29329,6 +30948,1001 @@ export interface components {
         BillingBankTransactionList: {
             /** @description The payments, newest first. */
             transactions: components["schemas"]["BillingBankTransaction"][];
+        };
+        /** @description The shop settings of an organization (migration 0172). Money in minor units of `currency`. */
+        ShopSettings: {
+            /**
+             * Format: uuid
+             * @description The organization.
+             */
+            org_id: string;
+            /** @description False while the settings were never saved (defaults are shown and the storefront is closed). */
+            configured: boolean;
+            /** @description ISO 4217 code of every price in the shop. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Flat delivery fee added to every order, minor units.
+             */
+            shipping_fee_minor: number;
+            /** @description How the delivery is called on the storefront. */
+            shipping_label: string;
+            /** @description The shop's country (ISO 3166-1 alpha-2), or null. */
+            country_iso2?: string | null;
+            /**
+             * Format: int32
+             * @description Minimum buyer age the storefront asks to confirm, or null for no age gate.
+             */
+            age_gate_min_age?: number | null;
+            /** @description Text of the storefront's announcement bar. */
+            announcement_text: string;
+            /** @description Address buyers may write to, or null. */
+            contact_email?: string | null;
+            /** @description Internal note for whoever ships the orders. */
+            logistics_note: string;
+            /**
+             * Format: uuid
+             * @description Sales channel whose payment provider takes the shop's money; null means the organization's oldest channel whose provider can host a payment page with a configured provider account.
+             */
+            sales_channel_id?: string | null;
+            /** @description Host name of the storefront, set by the platform operator; null when none. */
+            shop_domain?: string | null;
+            /**
+             * Format: int32
+             * @description How many units of one variant an order may hold (1-99, 24 by default).
+             */
+            max_line_qty: number;
+            /** @description Whether the storefront and its checkout are open. Only the platform operator opens or closes a shop; it starts closed. */
+            enabled: boolean;
+            /**
+             * Format: date-time
+             * @description When the settings were last saved; null when never.
+             */
+            updated_at?: string | null;
+        };
+        /** @description The whole settings row (PUT replaces it). */
+        ShopSettingsUpdateRequest: {
+            /** @description ISO 4217 code, e.g. EUR or ILS. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Flat delivery fee, minor units, zero or more.
+             */
+            shipping_fee_minor?: number;
+            /** @description How the delivery is called on the storefront, up to 200 characters. */
+            shipping_label?: string;
+            /** @description Two-letter country code, or null. */
+            country_iso2?: string | null;
+            /**
+             * Format: int32
+             * @description 1-99, or null for no age gate.
+             */
+            age_gate_min_age?: number | null;
+            /** @description Announcement bar text, up to 500 characters. */
+            announcement_text?: string;
+            /** @description Contact address, or null. */
+            contact_email?: string | null;
+            /** @description Internal note for the logistician, up to 2000 characters. */
+            logistics_note?: string;
+            /**
+             * Format: uuid
+             * @description A sales channel of this organization, or null for the oldest one whose provider can take the payment.
+             */
+            sales_channel_id?: string | null;
+            /** @description Storefront host (platform superadmin only); absent or null keeps it, an empty string clears it. */
+            shop_domain?: string | null;
+            /**
+             * Format: int32
+             * @description How many units of one variant an order may hold, 1-99; absent or null keeps the stored value (24 for a new shop).
+             */
+            max_line_qty?: number | null;
+            /** @description Opens (true) or closes (false) the storefront and its checkout, platform superadmin only; absent, null or the current value keeps it. */
+            enabled?: boolean | null;
+            /**
+             * Format: date-time
+             * @description The `updated_at` the editor loaded the settings with, sent back unchanged.
+             *     When the stored settings were saved since (a colleague, the operator) the
+             *     request is refused with 409 `shop.settings_changed` and nothing is applied.
+             *     Absent or null skips the check.
+             */
+            expected_updated_at?: string | null;
+        };
+        /** @description A picture of a product. */
+        ShopImage: {
+            /**
+             * Format: uuid
+             * @description The media object.
+             */
+            media_id: string;
+            /** @description Signed download address of the picture; empty when it cannot be signed. */
+            url: string;
+            /**
+             * Format: int32
+             * @description Display order, lowest first.
+             */
+            position: number;
+            /** @description Alternative text. */
+            alt: string;
+            /**
+             * Format: int32
+             * @description Width of the picture in pixels, read from its header at upload; absent when the size was never recorded (a picture uploaded before sizes were read and not yet re-imported).
+             */
+            width?: number | null;
+            /**
+             * Format: int32
+             * @description Height of the picture in pixels, read from its header at upload; absent when the size was never recorded.
+             */
+            height?: number | null;
+        };
+        /** @description A variant as the organization sees it. */
+        ShopVariant: {
+            /**
+             * Format: uuid
+             * @description The variant.
+             */
+            id: string;
+            /** @description Variant title; `Default Title` for the one variant of a simple product. */
+            title: string;
+            /** @description Stock keeping unit, or null. */
+            sku?: string | null;
+            /**
+             * Format: int64
+             * @description Price, minor units of the shop currency.
+             */
+            price_minor: number;
+            /**
+             * Format: int64
+             * @description Former price shown struck through, or null.
+             */
+            compare_at_minor?: number | null;
+            /**
+             * Format: int32
+             * @description Units on the shelf; may go below zero after an oversell.
+             */
+            stock: number;
+            /** @description False when the variant sells without a stock limit. */
+            track_stock: boolean;
+            /**
+             * Format: int32
+             * @description Units unpaid orders hold right now.
+             */
+            held: number;
+            /** @description Units still for sale (stock minus held, never below zero); null when the variant does not track stock. */
+            available?: number | null;
+            /**
+             * Format: int32
+             * @description Display order, lowest first.
+             */
+            position: number;
+            /** @description First option value, or null. */
+            option1?: string | null;
+            /** @description Second option value, or null. */
+            option2?: string | null;
+            /** @description Third option value, or null. */
+            option3?: string | null;
+        };
+        /** @description A shop product with its pictures and variants. */
+        ShopProduct: {
+            /** @description `physical`, `digital` or `service` (spec 47 section 1b). */
+            kind: string;
+            /**
+             * Format: uuid
+             * @description The file a digital product sells (owner_type `shop_digital`); null for other kinds or when none is attached. Never shown on the storefront.
+             */
+            digital_media_id?: string | null;
+            /** @description Names of the product's options, in the order of the variants' option1..option3. */
+            option_names: string[];
+            /**
+             * Format: uuid
+             * @description The product.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The organization.
+             */
+            org_id: string;
+            /** @description Address of the product on the storefront (`/products/{slug}`). */
+            slug: string;
+            /** @description Product title. */
+            title: string;
+            /** @description Description, sanitized rich-text HTML (p, br, strong, em, u, a, ul, ol, li, h3, h4, blockquote). */
+            body_html: string;
+            /** @description `draft`, `active` (on sale) or `archived`. */
+            status: string;
+            /** @description Free product type label. */
+            product_type: string;
+            /** @description Free vendor label. */
+            vendor: string;
+            /**
+             * Format: int32
+             * @description Display order, lowest first.
+             */
+            sort_order: number;
+            /** @description Pictures in display order. */
+            images: components["schemas"]["ShopImage"][];
+            /** @description Live variants in display order. */
+            variants: components["schemas"]["ShopVariant"][];
+            /**
+             * Format: date-time
+             * @description Creation time.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Last change.
+             */
+            updated_at: string;
+        };
+        /** @description The products of a shop. */
+        ShopProductList: {
+            /** @description Products in display order. */
+            products: components["schemas"]["ShopProduct"][];
+        };
+        /** @description One variant of a create or replace request. */
+        ShopVariantInput: {
+            /**
+             * Format: uuid
+             * @description An existing variant of the product to update; absent creates one.
+             */
+            id?: string;
+            /** @description Variant title; empty means `Default Title`. */
+            title?: string;
+            /** @description Stock keeping unit, up to 100 characters. */
+            sku?: string | null;
+            /**
+             * Format: int64
+             * @description Price, minor units, zero or more.
+             */
+            price_minor?: number;
+            /**
+             * Format: int64
+             * @description Former price, or null.
+             */
+            compare_at_minor?: number | null;
+            /**
+             * Format: int32
+             * @description Units on the shelf, zero or more. For an existing variant (with `id`) it is
+             *     written only together with `expected_stock`; a row without `expected_stock`
+             *     keeps the stored stock whatever is sent here.
+             */
+            stock?: number;
+            /** @description Whether stock limits sales; absent means true. */
+            track_stock?: boolean;
+            /**
+             * Format: int32
+             * @description Display order; absent means the place in the list.
+             */
+            position?: number;
+            /** @description First option value. */
+            option1?: string | null;
+            /** @description Second option value. */
+            option2?: string | null;
+            /** @description Third option value. */
+            option3?: string | null;
+            /**
+             * Format: int32
+             * @description The stock this variant had when the editor loaded it; only with `id`.
+             *     The event center sends the loaded value. When the stock changed since
+             *     (a sale, an import, another editor) the whole request is refused with
+             *     409 `shop.stock_changed`, whose details list each variant's current
+             *     stock, and nothing is applied. Absent leaves the stock of an existing
+             *     variant untouched (the event center sends it only for a row whose stock
+             *     the person edited).
+             */
+            expected_stock?: number | null;
+        };
+        /** @description A new product. */
+        ShopProductCreateRequest: {
+            /** @description `physical` (tracks stock, ships to an address), `digital` (sells the file `digital_media_id`, never tracks stock, needs no address or shipping) or `service` (needs no address or shipping; its variants may track stock or not). Absent keeps it; a new product is physical. */
+            kind?: string;
+            /**
+             * Format: uuid
+             * @description The file a digital product sells, a media object of the organization uploaded with owner_type `shop_digital` (a `shop_product` picture is refused, 422 `shop.invalid_digital_media`). Only for kind digital; absent keeps it, null removes it. Turning the product away from digital removes it.
+             */
+            digital_media_id?: string | null;
+            /** @description Names of the product's options (up to 3, e.g. Size, Colour), matched by position with the variants' option1..option3 values. Absent keeps them; an empty list removes them. */
+            option_names?: string[];
+            /** @description Storefront address; absent derives it from the title. */
+            slug?: string;
+            /** @description Product title, up to 300 characters. */
+            title: string;
+            /** @description Description, HTML, up to 100000 characters. Sanitized on write to the rich-text subset (p, br, strong, em, u, a with https or mailto, ul, ol, li, h3, h4, blockquote); images, tables, section, style, classes and inline styles are dropped. A text the sanitizer refuses answers 422 `shop.invalid_body_html`. */
+            body_html?: string;
+            /** @description `draft` (default), `active` or `archived`. */
+            status?: string;
+            /** @description Free product type label. */
+            product_type?: string;
+            /** @description Free vendor label. */
+            vendor?: string;
+            /**
+             * Format: int32
+             * @description Display order.
+             */
+            sort_order?: number;
+            /** @description The variants, 1-100; absent creates one `Default Title` variant at price 0. */
+            variants?: components["schemas"]["ShopVariantInput"][];
+        };
+        /** @description The product fields to change; absent fields keep their value. */
+        ShopProductPatchRequest: {
+            /** @description `physical` (tracks stock, ships to an address), `digital` (sells the file `digital_media_id`, never tracks stock, needs no address or shipping) or `service` (needs no address or shipping; its variants may track stock or not). Absent keeps it; a new product is physical. */
+            kind?: string;
+            /**
+             * Format: uuid
+             * @description The file a digital product sells, a media object of the organization uploaded with owner_type `shop_digital` (a `shop_product` picture is refused, 422 `shop.invalid_digital_media`). Only for kind digital; absent keeps it, null removes it. Turning the product away from digital removes it.
+             */
+            digital_media_id?: string | null;
+            /** @description Names of the product's options (up to 3, e.g. Size, Colour), matched by position with the variants' option1..option3 values. Absent keeps them; an empty list removes them. */
+            option_names?: string[];
+            /** @description Storefront address. */
+            slug?: string;
+            /** @description Product title. */
+            title?: string;
+            /** @description Description, sanitized rich-text HTML (p, br, strong, em, u, a, ul, ol, li, h3, h4, blockquote). */
+            body_html?: string;
+            /** @description `draft`, `active` or `archived`. */
+            status?: string;
+            /** @description Free product type label. */
+            product_type?: string;
+            /** @description Free vendor label. */
+            vendor?: string;
+            /**
+             * Format: int32
+             * @description Display order.
+             */
+            sort_order?: number;
+        };
+        /** @description The complete variant list of a product. */
+        ShopVariantsReplaceRequest: {
+            /** @description 1-100 variants; variants left out are deleted. */
+            variants: components["schemas"]["ShopVariantInput"][];
+            /**
+             * @description The ids of the variants the editor loaded. When the product's live variants
+             *     are not exactly this set (a colleague added or removed one) the request is
+             *     refused with 409 `shop.variants_changed` and nothing is applied, because the
+             *     replace deletes every variant it leaves out. Absent or null skips the check.
+             */
+            expected_variant_ids?: string[] | null;
+        };
+        /** @description A picture to attach. */
+        ShopImageAddRequest: {
+            /**
+             * Format: uuid
+             * @description A live media object of this organization.
+             */
+            media_id: string;
+            /**
+             * Format: int32
+             * @description Display order; absent appends.
+             */
+            position?: number;
+            /** @description Alternative text, up to 500 characters. */
+            alt?: string;
+        };
+        /** @description A static storefront page. */
+        ShopPage: {
+            /** @description Address of the page. Always the canonical one, even when the page was asked for by its old address. */
+            slug: string;
+            /** @description The handle the page had on the shop it was imported from, when that differs from `slug` (for example a Cyrillic `наши-мероприятия` for `events`); null when the page has no other address. `GET /v1/public/shop/{org_slug}/pages/{slug}` resolves it as an alias. Set by the import, not by `PUT`. */
+            legacy_slug: string | null;
+            /** @description Page title. */
+            title: string;
+            /** @description Page text, sanitized HTML (the rich-text tags plus pictures and tables). A link to another page of the same storefront may be a root path such as `/pages/contact`; the storefront puts its own base in front of it. */
+            body_html: string;
+            /**
+             * Format: int32
+             * @description Display order.
+             */
+            position: number;
+            /**
+             * Format: date-time
+             * @description Last change.
+             */
+            updated_at: string;
+        };
+        /** @description One storefront page. */
+        ShopPublicPageResponse: {
+            /** @description The page; its `slug` is the canonical one. */
+            page: components["schemas"]["ShopPage"];
+        };
+        /** @description Storefront pages. */
+        ShopPageList: {
+            /** @description Pages in display order. */
+            pages: components["schemas"]["ShopPage"][];
+        };
+        /** @description A page's content. */
+        ShopPagePutRequest: {
+            /** @description Page title, up to 300 characters. */
+            title: string;
+            /** @description Page text, HTML, up to 200000 characters. Sanitized on write to the product description's tags plus pictures (img with an https src, alt, width, height, loading) and tables (table, thead, tbody, tfoot, tr, th, td with colspan and rowspan); every other tag, attribute and URL scheme is dropped. A text the sanitizer refuses answers 422 `shop.invalid_body_html`. */
+            body_html?: string;
+            /**
+             * Format: int32
+             * @description Display order.
+             */
+            position?: number;
+        };
+        /** @description One line of an order, as sold. */
+        ShopOrderItem: {
+            /** @description The product's kind when the line was bought: `physical`, `digital` or `service`. */
+            product_kind: string;
+            /**
+             * Format: uuid
+             * @description The variant sold, or null for an imported line.
+             */
+            variant_id?: string | null;
+            /** @description Product title at the time of sale. */
+            product_title: string;
+            /** @description Variant title at the time of sale. */
+            variant_title: string;
+            /** @description Stock keeping unit at the time of sale. */
+            sku?: string | null;
+            /**
+             * Format: int32
+             * @description Units.
+             */
+            qty: number;
+            /**
+             * Format: int64
+             * @description Price of one unit, minor units.
+             */
+            unit_price_minor: number;
+            /**
+             * Format: int64
+             * @description unit_price_minor x qty.
+             */
+            total_minor: number;
+        };
+        /** @description Who pays. */
+        ShopBuyer: {
+            /** @description Buyer's name. */
+            name: string;
+            /** @description Buyer's e-mail. */
+            email: string;
+            /** @description Buyer's phone. */
+            phone?: string;
+        };
+        /** @description Where the goods go. */
+        ShopAddress: {
+            /** @description Recipient; empty means the buyer. */
+            name?: string;
+            /** @description Street and number. */
+            address1: string;
+            /** @description Apartment, floor, building. */
+            address2?: string;
+            /** @description City. */
+            city: string;
+            /** @description Postal code. Required when the order is shipped (422 `shop.postal_required` when empty). For `country` IL it must be exactly 7 digits, any other country takes 3-12 characters (422 `shop.invalid_postal`). */
+            postal?: string;
+            /** @description Two-letter country code. */
+            country: string;
+        };
+        /** @description The payment of an order. */
+        ShopOrderPayment: {
+            /**
+             * Format: uuid
+             * @description The payment intent.
+             */
+            id: string;
+            /** @description Payment provider. */
+            provider: string;
+            /** @description Payment intent state, e.g. `created`, `succeeded`, `failed`. */
+            state: string;
+            /**
+             * Format: int64
+             * @description Amount charged, minor units.
+             */
+            amount: number;
+            /** @description ISO 4217 code. */
+            currency: string;
+        };
+        /** @description A shop order. total = subtotal - discount + shipping_fee. */
+        ShopOrder: {
+            /**
+             * Format: uuid
+             * @description The order.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The organization.
+             */
+            org_id: string;
+            /**
+             * Format: int64
+             * @description Order number shown to people.
+             */
+            number: number;
+            /** @description `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review` (parked for a person; `review_reason` says why). */
+            status: string;
+            /** @description Why a `manual_review` order waits, null otherwise. `late_payment_no_stock`: the money was taken but the hold had ended and the goods were gone (`paid_at` is set; settle it with `POST .../resolve`: `fulfil` or `refund_and_cancel`). `payment_unconfirmed`: the provider's report is not trusted (the amount differs, the payment was reversed before arena confirmed it), the money may not have arrived and `paid_at` is empty; nothing is decided about the goods yet, the order follows the payment: when the payment intent is settled as `succeeded` (the provider's next webhook, or `POST /v1/payment-intents/{id}/transition`) the order is paid like any other, when `failed` it ends `expired`. The order cannot be shipped before that (`shop.payment_unconfirmed`). */
+            review_reason?: string | null;
+            /** @description `web` (the storefront) or `shopify` (imported). */
+            source: string;
+            /**
+             * Format: uuid
+             * @description The buyer's customer, resolved from the e-mail and phone at checkout; null when the resolution failed or for an imported order.
+             */
+            customer_id?: string | null;
+            /** @description Order number in the system the order was imported from. */
+            external_ref?: string | null;
+            /** @description Who paid. */
+            buyer: components["schemas"]["ShopBuyer"];
+            /** @description Where the goods go. */
+            ship: components["schemas"]["ShopAddress"];
+            /** @description `shipping`, `pickup`, or `none` for an order of digital products and services only (no address, no shipping fee). */
+            delivery_kind: string;
+            /** @description The buyer's comment. */
+            delivery_note: string;
+            /** @description ISO 4217 code of every amount. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Sum of the lines, minor units.
+             */
+            subtotal: number;
+            /**
+             * Format: int64
+             * @description Discount, minor units.
+             */
+            discount: number;
+            /**
+             * Format: int64
+             * @description Delivery fee, minor units.
+             */
+            shipping_fee: number;
+            /**
+             * Format: int64
+             * @description What the buyer paid, minor units.
+             */
+            total: number;
+            /**
+             * Format: int64
+             * @description What succeeded refunds have returned so far, minor units.
+             */
+            refunded_minor: number;
+            /** @description Language the buyer shopped in. */
+            buyer_locale?: string | null;
+            /** @description Tracking number or note given when shipped. */
+            tracking_note: string;
+            /** @description The internal note of the shop staff. Never shown to the buyer or on the storefront. */
+            staff_note: components["schemas"]["ShopStaffNote"];
+            /** @description The lines in order. */
+            items: components["schemas"]["ShopOrderItem"][];
+            /** @description The payment, or null when the order has none. */
+            payment?: components["schemas"]["ShopOrderPayment"] | null;
+            /**
+             * Format: date-time
+             * @description Until when an unpaid order holds its goods.
+             */
+            expires_at?: string | null;
+            /**
+             * Format: date-time
+             * @description When the payment arrived.
+             */
+            paid_at?: string | null;
+            /**
+             * Format: date-time
+             * @description When the order was shipped.
+             */
+            shipped_at?: string | null;
+            /**
+             * Format: date-time
+             * @description When the order was cancelled.
+             */
+            cancelled_at?: string | null;
+            /**
+             * Format: date-time
+             * @description Creation time.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Last change.
+             */
+            updated_at: string;
+        };
+        /** @description The internal note of a shop order. An order without a note has an empty text, an empty author and a null time. */
+        ShopStaffNote: {
+            /** @description The note, up to 2000 characters; empty when there is none. */
+            text: string;
+            /** @description Who wrote it, by name (the e-mail when the account has no name), as it was when the note was saved. */
+            by: string;
+            /**
+             * Format: date-time
+             * @description When the note was saved; null when there is no note.
+             */
+            at: string | null;
+        };
+        /** @description The internal note of an order. */
+        ShopOrderNoteRequest: {
+            /** @description The whole note, up to 2000 characters. An empty text erases it. */
+            staff_note: string;
+        };
+        /** @description How many orders each tab of the order list holds. */
+        ShopOrderCounts: {
+            /**
+             * Format: int64
+             * @description Every order of the shop.
+             */
+            all: number;
+            /**
+             * Format: int64
+             * @description Paid or partly refunded orders with something to hand over (shipping or pickup) that are not shipped yet. An order of digital products or services only is never counted.
+             */
+            to_ship: number;
+            /**
+             * Format: int64
+             * @description Orders still waiting for their payment (`pending_payment`).
+             */
+            unpaid: number;
+            /**
+             * Format: int64
+             * @description Shipped orders.
+             */
+            shipped: number;
+            /**
+             * Format: int64
+             * @description Refunded and partly refunded orders.
+             */
+            refunds: number;
+        };
+        /** @description Which buyer letter to send once more. */
+        ShopResendEmailRequest: {
+            /** @description `received` (the order is confirmed), `shipped` (the order is on its way) or `refunded` (money of the order went back to the buyer). */
+            kind: string;
+        };
+        /** @description The letter was queued for the worker. */
+        ShopResendEmailResponse: {
+            /** @description Always true; the worker sends the letter within moments. */
+            queued: boolean;
+            /** @description The letter that was queued, `received`, `shipped` or `refunded`. */
+            kind: string;
+        };
+        /** @description One page of orders. */
+        ShopOrderList: {
+            /** @description Orders, newest first. */
+            orders: components["schemas"]["ShopOrder"][];
+            /** @description Offset of the next page; null on the last page. */
+            next_offset?: number | null;
+        };
+        /** @description Shipping details (the body may be empty). */
+        ShopShipRequest: {
+            /** @description Tracking number or note, up to 2000 characters. */
+            tracking_note?: string;
+        };
+        /** @description A refund of a shop order (the body may be empty to refund everything left). */
+        ShopRefundRequest: {
+            /**
+             * Format: int64
+             * @description Amount to return, minor units; absent refunds what is left.
+             */
+            amount_minor?: number | null;
+            /** @description Why, up to 2000 characters. */
+            reason?: string;
+        };
+        /** @description The operator's decision on an order parked as `late_payment_no_stock`. */
+        ShopResolveRequest: {
+            /** @description `fulfil`: the goods are there again; the stock is checked once more and the order is paid like any other (taken off the shelf, `v1.shop.order.paid`, the buyer's "received" letter), ready to ship. `refund_and_cancel`: the goods will not come; the whole payment goes back through the refund engine and the order ends `refunded` as soon as the provider confirms it (it stays `manual_review` while the refund is pending, and stays there for another try if the refund fails). */
+            action: string;
+        };
+        /** @description The order after the decision. */
+        ShopResolveResponse: {
+            /** @description The action that was taken, as asked. */
+            action: string;
+            /** @description True when the `Idempotency-Key` had been used before and this is the first call's result. Nothing new was written. */
+            replayed: boolean;
+            /** @description The order. */
+            order: components["schemas"]["ShopOrder"];
+            /** @description The refund, for `refund_and_cancel`; null for `fulfil`. */
+            refund: components["schemas"]["ShopRefund"] | null;
+        };
+        /** @description The filters of the shop order list, in a body. */
+        ShopOrderSearchRequest: {
+            /** @description Order number, or part of the buyer's e-mail or name. */
+            q?: string;
+            /** @description A tab of the list: `to_ship`, `unpaid`, `shipped` or `refunds`. */
+            view?: string;
+            /** @description Only orders of this status. */
+            status?: string;
+            /** @description Created at or after this instant (RFC 3339 with a zone, or YYYY-MM-DD for UTC midnight). */
+            from?: string;
+            /** @description Created before this instant (RFC 3339 with a zone, or YYYY-MM-DD for UTC midnight). */
+            to?: string;
+            /** @description Page size, 1-200 (default 50). */
+            limit?: number;
+            /** @description How many orders to skip (the previous page's `next_offset`). */
+            offset?: number;
+        };
+        /** @description A refund of a shop order's payment. */
+        ShopRefund: {
+            /**
+             * Format: uuid
+             * @description The refund.
+             */
+            id: string;
+            /** @description `provider_pending`, `succeeded`, `failed` or `manual_review`. */
+            state: string;
+            /**
+             * Format: int64
+             * @description Amount, minor units.
+             */
+            amount: number;
+            /** @description ISO 4217 code. */
+            currency: string;
+            /** @description The provider's refund id, once it accepted. */
+            provider_refund_id?: string | null;
+            /** @description Why the refund failed. */
+            failure_code?: string | null;
+            /** @description The failure in words. */
+            failure_reason?: string | null;
+        };
+        /** @description The order after a refund, and the refund. */
+        ShopRefundResponse: {
+            /** @description True when the `Idempotency-Key` had been used before and this is the first call's refund. Nothing new was written. */
+            replayed?: boolean;
+            /** @description The order. */
+            order: components["schemas"]["ShopOrder"];
+            /** @description The refund. */
+            refund: components["schemas"]["ShopRefund"];
+        };
+        /** @description What the storefront needs of the shop settings. */
+        ShopPublicSettings: {
+            /** @description ISO 4217 code of every price. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Flat delivery fee, minor units.
+             */
+            shipping_fee_minor: number;
+            /** @description How the delivery is called. */
+            shipping_label: string;
+            /** @description The shop's country. */
+            country_iso2?: string | null;
+            /**
+             * Format: int32
+             * @description Minimum age to confirm, or null.
+             */
+            age_gate_min_age?: number | null;
+            /** @description Announcement bar text. */
+            announcement_text: string;
+            /** @description Contact address, or null. */
+            contact_email?: string | null;
+            /**
+             * Format: int32
+             * @description How many units of one variant an order may hold; the quantity picker stops there.
+             */
+            max_line_qty?: number;
+            /** @description Cloudflare Turnstile site key the checkout form renders its widget with; the widget's token goes to checkout as `captcha_token`. Absent while the shop's checkout has no captcha. */
+            captcha_site_key?: string;
+        };
+        /** @description The organization behind a storefront. */
+        ShopPublicOrg: {
+            /** @description Organization slug. */
+            slug: string;
+            /** @description Organization name. */
+            name: string;
+            /** @description Storefront host, or null. */
+            shop_domain?: string | null;
+        };
+        /** @description A variant on the storefront. */
+        ShopPublicVariant: {
+            /**
+             * Format: uuid
+             * @description The variant (what checkout takes as `variant_id`).
+             */
+            id: string;
+            /** @description Variant title. */
+            title: string;
+            /**
+             * Format: int64
+             * @description Price, minor units.
+             */
+            price_minor: number;
+            /**
+             * Format: int64
+             * @description Former price, or null.
+             */
+            compare_at_minor?: number | null;
+            /** @description How many units a buyer can put in a cart, the real stock capped at the shop's `max_line_qty` (the exact shelf is never shown; an untracked variant reports the cap). Null only when the shop has no line limit and the variant does not track stock. The article number is not published. */
+            available?: number | null;
+            /** @description Whether at least one unit can be bought. */
+            in_stock: boolean;
+            /** @description First option value. */
+            option1?: string | null;
+            /** @description Second option value. */
+            option2?: string | null;
+            /** @description Third option value. */
+            option3?: string | null;
+        };
+        /** @description A product on the storefront. */
+        ShopPublicProduct: {
+            /** @description `physical` (ships, the checkout asks for an address), `digital` (a file offered after payment) or `service`. */
+            kind: string;
+            /** @description Names of the product's options, in the order of the variants' option1..option3. */
+            option_names: string[];
+            /** @description Product address. */
+            slug: string;
+            /** @description Product title. */
+            title: string;
+            /** @description Description, sanitized rich-text HTML (p, br, strong, em, u, a, ul, ol, li, h3, h4, blockquote). */
+            body_html: string;
+            /** @description Product type label. */
+            product_type: string;
+            /** @description Vendor label. */
+            vendor: string;
+            /**
+             * Format: int64
+             * @description Lowest variant price, minor units.
+             */
+            price_min_minor: number;
+            /** @description Pictures in display order. */
+            images: components["schemas"]["ShopImage"][];
+            /** @description Variants in display order. */
+            variants: components["schemas"]["ShopPublicVariant"][];
+        };
+        /** @description A page in the catalog's page list. */
+        ShopPageLink: {
+            /** @description Page address. */
+            slug: string;
+            /** @description Page title. */
+            title: string;
+        };
+        /** @description A storefront's catalog. */
+        ShopPublicCatalog: {
+            /** @description The organization. */
+            org: components["schemas"]["ShopPublicOrg"];
+            /** @description Public settings. */
+            settings: components["schemas"]["ShopPublicSettings"];
+            /** @description Active products in display order. */
+            products: components["schemas"]["ShopPublicProduct"][];
+            /** @description Static pages. */
+            pages: components["schemas"]["ShopPageLink"][];
+        };
+        /** @description One storefront product. */
+        ShopPublicProductResponse: {
+            /** @description ISO 4217 code of the prices. */
+            currency: string;
+            /** @description The product. */
+            product: components["schemas"]["ShopPublicProduct"];
+        };
+        /** @description The organization a storefront host belongs to. */
+        ShopByHostResponse: {
+            /** @description Organization slug for the other public shop routes. */
+            org_slug: string;
+        };
+        /** @description One cart line. */
+        ShopCheckoutLine: {
+            /**
+             * Format: uuid
+             * @description The variant.
+             */
+            variant_id: string;
+            /** @description Units, 1-99 (repeated variants are added up). */
+            qty: number;
+        };
+        /** @description A storefront purchase. */
+        ShopCheckoutRequest: {
+            /** @description The cart, 1-50 lines. */
+            items: components["schemas"]["ShopCheckoutLine"][];
+            /** @description Who pays. */
+            buyer: components["schemas"]["ShopBuyer"];
+            /** @description Where the goods go. Required when the cart holds a physical product (422 `shop.invalid_address` without a street, city and country, `shop.postal_required` or `shop.invalid_postal` for the postal code); left out for a cart of digital products and services only. */
+            ship?: components["schemas"]["ShopAddress"];
+            /** @description Comment for the delivery, up to 2000 characters. */
+            delivery_note?: string;
+            /** @description Language of the storefront (two letters); the payment page uses it. */
+            locale?: string;
+            /** @description Storefront page the provider sends the buyer back to (an allowed origin), with `checkout_token`. */
+            return_url?: string;
+            /** @description The buyer confirmed the shop's minimum age; required when the shop has an age gate. */
+            age_confirmed?: boolean;
+            /** @description The Cloudflare Turnstile response the widget produced; required while the catalog settings publish a `captcha_site_key` (422 `shop.captcha_required` without it, 422 `shop.captcha_failed` when the test did not pass). */
+            captcha_token?: string;
+        };
+        /** @description A placed order and where to pay it. */
+        ShopCheckoutResponse: {
+            /** @description `shipping` when the order holds a physical product, `none` for digital products and services only. */
+            delivery_kind: string;
+            /** @description The buyer's handle on the order (for GET /v1/public/shop/checkout/{order_token}). */
+            order_token: string;
+            /**
+             * Format: int64
+             * @description Order number.
+             */
+            number: number;
+            /** @description `pending`, or `paid` for an order that cost nothing. */
+            status: string;
+            /** @description Provider-hosted payment page; empty for an order that cost nothing. */
+            payment_url: string;
+            /** @description ISO 4217 code. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Sum of the lines, minor units.
+             */
+            subtotal: number;
+            /**
+             * Format: int64
+             * @description Delivery fee, minor units.
+             */
+            shipping_fee: number;
+            /**
+             * Format: int64
+             * @description Amount to pay, minor units.
+             */
+            total: number;
+            /**
+             * Format: date-time
+             * @description Until when the order holds its goods.
+             */
+            expires_at?: string | null;
+        };
+        /** @description One file a buyer bought. */
+        ShopDownload: {
+            /** @description The product, as sold. */
+            product_title: string;
+            /** @description The variant, as sold. */
+            variant_title: string;
+            /** @description Absolute address of the file route (`GET /v1/public/shop/checkout/{order_token}/downloads/{item_id}`). It does not expire by itself and costs nothing to read; opening it is the download: it is counted against the line's limit and answers 302 to a short-lived signed URL of the file. */
+            url: string;
+            /**
+             * Format: date-time
+             * @description When the order's download period ends (30 days after payment); after that `url` answers 410 `shop.download_expired`.
+             */
+            expires_at: string;
+        };
+        /** @description The files of a paid order's digital lines. */
+        ShopDownloadList: {
+            /** @description One entry per digital line whose product has a file, in the order's line order. */
+            downloads: components["schemas"]["ShopDownload"][];
+        };
+        /** @description Where a storefront order stands. */
+        ShopCheckoutStatus: {
+            /** @description `shipping` when the order holds a physical product, `none` for digital products and services only. */
+            delivery_kind: string;
+            /** @description `pending`, `paid`, `expired` or `cancelled`. An order parked for review reads by its cause: with `review_reason` `payment_unconfirmed` it is `pending` (nothing is known to be paid; there is no `payment_url` and no `expires_at`), with `late_payment_no_stock` it is `paid`. */
+            status: string;
+            /** @description `payment_unconfirmed` (the payment is being checked) or `late_payment_no_stock` (paid, the availability is being checked) while the order waits for a person; null otherwise. Clients word it from this code. */
+            review_reason?: string | null;
+            /** @description A ready sentence for the buyer that goes with `review_reason`, in the language the order was placed in (English when that has no catalog); null when there is no review. */
+            review_message?: string | null;
+            /**
+             * Format: int64
+             * @description Order number.
+             */
+            number: number;
+            /** @description ISO 4217 code. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Sum of the lines, minor units.
+             */
+            subtotal: number;
+            /**
+             * Format: int64
+             * @description Delivery fee, minor units.
+             */
+            shipping_fee: number;
+            /**
+             * Format: int64
+             * @description Total, minor units.
+             */
+            total: number;
+            /** @description The lines. */
+            items: components["schemas"]["ShopOrderItem"][];
+            /** @description Payment page to go back to while pending; empty otherwise. */
+            payment_url: string;
+            /**
+             * Format: date-time
+             * @description Until when the order holds its goods.
+             */
+            expires_at?: string | null;
+            /**
+             * Format: date-time
+             * @description When the payment arrived.
+             */
+            paid_at?: string | null;
         };
     };
     responses: never;
@@ -33597,6 +36211,44 @@ export interface operations {
             };
         };
     };
+    claimBotInvitationPdfNotices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invitations whose PDF is to be sent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotInvitationPdfNoticesResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     deleteV1AdminUser: {
         parameters: {
             query?: never;
@@ -37756,10 +40408,7 @@ export interface operations {
     getPublicSessionSchema: {
         parameters: {
             query?: never;
-            header?: {
-                /** @description Standard conditional-request header. When it matches the current `geometry_checksum` ETag the server responds 304 with no body. */
-                "If-None-Match"?: string;
-            };
+            header?: never;
             path: {
                 /** @description UUIDv7 primary key of the event session. */
                 id: string;
@@ -37771,26 +40420,13 @@ export interface operations {
             /** @description Canonical geometry + category price resolution. */
             200: {
                 headers: {
-                    /** @description Strong entity tag = `"<geometry_checksum>"`. */
-                    ETag?: string;
-                    /** @description Always `public, max-age=86400, immutable`. */
+                    /** @description Always `no-store`. */
                     "Cache-Control"?: string;
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["SeatingSchemaResponse"];
                 };
-            };
-            /** @description Client's `If-None-Match` matches the current `geometry_checksum` ETag; body omitted. */
-            304: {
-                headers: {
-                    /** @description Strong entity tag = `"<geometry_checksum>"`. */
-                    ETag?: string;
-                    /** @description Always `public, max-age=86400, immutable`. */
-                    "Cache-Control"?: string;
-                    [name: string]: unknown;
-                };
-                content?: never;
             };
             /**
              * @description Session is not published, is `general_admission`, has no
@@ -44328,6 +46964,80 @@ export interface operations {
                 };
             };
             /** @description Session not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getSessionSchemaAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Event session id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canonical geometry + category price resolution. */
+            200: {
+                headers: {
+                    /** @description Always `no-store`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatingSchemaResponse"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks permission or org membership. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Session not found (`session.not_found`), or it is
+             *     `general_admission` / has no bound seating plan version
+             *     (`event_session.schema_not_found`).
+             */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -51002,7 +53712,7 @@ export interface operations {
                     /** Format: binary */
                     file: string;
                     /** @enum {string} */
-                    owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report";
+                    owner_type: "org_logo" | "event_poster" | "artist_photo" | "seating_plan_svg" | "session_poster" | "event_gallery" | "event_report" | "shop_product" | "shop_digital";
                     /** Format: uuid */
                     owner_id?: string;
                     /** Format: uuid */
@@ -51380,8 +54090,22 @@ export interface operations {
             query: {
                 /** @description Unix-seconds expiry timestamp embedded in the signed URL. */
                 expires: number;
-                /** @description HMAC-SHA256 signature over `id:expires`. Required in production; optional in dev when no MEDIA_SIGNING_SECRET is set. */
+                /** @description HMAC-SHA256 signature over `id:expires`. Required in production; optional in dev when no MEDIA_SIGNING_SECRET is set. The signature does not cover `w`, so a width can be added to a URL that was signed without it. */
                 sig?: string;
+                /**
+                 * @description Ask for a smaller copy of a JPEG or PNG picture, this many pixels wide.
+                 *     Only the widths 165, 240, 360, 480, 533, 720, 990 and 1200 exist: any
+                 *     other value is rounded UP to the next one, and a value above 1200 means
+                 *     the original. A picture is never enlarged, so a width at or above the
+                 *     original's returns the original bytes. The aspect ratio and the format
+                 *     are kept (JPEG at quality 82). Any other format (GIF, WebP, SVG, PDF), a
+                 *     picture over 40 megapixels and a copy that cannot be built are served
+                 *     as the original. Copies are rendered once and stored beside the original.
+                 *     Not a whole number: 400 `media.invalid_width`. Works for the local
+                 *     storage backend and for any request that reaches this route; a presigned
+                 *     S3 URL goes to the bucket directly and ignores it.
+                 */
+                w?: number;
             };
             header?: never;
             path: {
@@ -51392,7 +54116,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Streaming response carrying the stored bytes. */
+            /** @description Streaming response carrying the stored bytes, or the resized copy when `w` asked for one (then `Content-Type` and `Content-Length` are the copy's). */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -51401,7 +54125,7 @@ export interface operations {
                     "application/octet-stream": string;
                 };
             };
-            /** @description Invalid media id or missing expires parameter. */
+            /** @description Invalid media id, missing expires parameter, or `w` is not a whole number (`media.invalid_width`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -54982,6 +57706,838 @@ export interface operations {
             };
         };
     };
+    listOrgStaffInvitations: {
+        parameters: {
+            query?: {
+                /** @description Only invitations of this session. */
+                session_id?: string;
+                /** @description Only invitations of the sessions of this event. */
+                event_id?: string;
+                /** @description active (default), cancelled or all. */
+                state?: string;
+                /** @description Page size, 1 to 200, default 50. */
+                limit?: number;
+                /** @description The next_cursor of the previous page. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the invitations of the organization. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffInvitationOrgListResponse"];
+                };
+            };
+            /** @description invitation.invalid_filter (a filter is not a UUID), invitation.invalid_state, invitation.invalid_limit, invitation.invalid_cursor, or org_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks complimentary.read in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listStaffInvitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Session (date) of the organization the invitations are for. A session of another organization answers 404. */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invitations of the session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffInvitationListResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks complimentary.read in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found in this organization (session.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    issueStaffInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Session (date) of the organization the invitations are for. A session of another organization answers 404. */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StaffInvitationIssueRequest"];
+            };
+        };
+        responses: {
+            /** @description The request_id was already used for this session - the first invitation, nothing new written. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffInvitationIssueResponse"];
+                };
+            };
+            /** @description Invitation issued, tickets are being issued. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffInvitationIssueResponse"];
+                };
+            };
+            /** @description Invalid request - invitation.empty, invitation.too_many (over 50 places), invitation.unknown_seat (details.seat_keys), invitation.unknown_category, invitation.invalid_request_id, invitation.invalid_seats, invitation.invalid_ga, invitation.invalid_guest_name, invitation.invalid_guest_email, invitation.invalid_delivery, invitation.note_too_long, invitation.invalid_body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks complimentary.issue in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found in this organization (session.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description invitation.seats_taken (details.seat_keys - held or sold seats, including seats sold in an earlier system), invitation.not_enough_places (a GA category has fewer free or reserved places), invitation.capacity_exceeded, invitation.request_id_reused (the request_id was used for another session or with a different request body). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description invitation.session_cancelled, invitation.guest_email_required (delivery guest_email without guest.email), invitation.my_email_requires_user (an API key has no e-mail), invitation.seat_without_category. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cancelStaffInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Order id of the staff invitation. Any other order, or another organization's, answers 404 invitation.not_found. */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StaffInvitationCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description The tickets were cancelled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffInvitationCancelResponse"];
+                };
+            };
+            /** @description invitation.unknown_ticket (a ticket_id is not a ticket of this invitation) or invitation.invalid_body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks complimentary.revoke in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invitation not found in this organization (invitation.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description invitation.tickets_not_issued - the tickets are still being issued, try again in a moment. invitation.ticket_scanned (details.ticket_id) - a ticket was already used at the door; nothing was cancelled. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or the ticket service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    downloadStaffInvitationTicketsPdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Order id of the staff invitation. Any other order, or another organization's, answers 404 invitation.not_found. */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The PDF (Content-Disposition attachment). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description org_id or order_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks complimentary.read in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invitation not found in this organization (invitation.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description invitation.tickets_not_issued - the tickets are still being issued, try again in a moment. invitation.no_active_tickets - every ticket was cancelled. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal error, or the PDF could not be rendered (invitation.pdf_failed). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or the PDF service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    resendStaffInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Order id of the staff invitation. Any other order, or another organization's, answers 404 invitation.not_found. */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["StaffInvitationResendRequest"];
+            };
+        };
+        responses: {
+            /** @description The tickets were queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffInvitationResendResponse"];
+                };
+            };
+            /** @description invitation.invalid_body or invitation.invalid_email. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks complimentary.issue in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invitation not found in this organization (invitation.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description invitation.tickets_not_issued or invitation.no_active_tickets (every ticket was cancelled). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description invitation.no_recipient - no address could be found, pass `email`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or the delivery service unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createInvitationBatch: {
+        parameters: {
+            query?: {
+                /** @description true validates the file and writes nothing (answers the report, 200). Default false. */
+                dry_run?: boolean;
+            };
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Session (date) of the organization the invitations are for. A session of another organization answers 404. */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["InvitationBatchUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description A dry run - the validation report; or a repeat of an upload already issued (same request_id and file) - the first batch, nothing new written. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationBatchReport"] | components["schemas"]["InvitationBatch"];
+                };
+            };
+            /** @description The file was issued, tickets are being issued. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationBatch"];
+                };
+            };
+            /** @description Invalid request - invitation_batch.invalid_request_id, invitation_batch.invalid_delivery, invitation_batch.invalid_dry_run, invitation_batch.invalid_body, invitation_batch.file_required, invitation_batch.invalid_encoding (not UTF-8), invitation_batch.invalid_csv (details.line), invitation_batch.empty_file. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks complimentary.issue in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found in this organization (session.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The transaction refused the file and wrote nothing - invitation.seats_taken (a seat was held or sold since the check), invitation.not_enough_places, invitation.capacity_exceeded, each with details.report pointing at the rows; invitation_batch.request_id_reused (the request_id belongs to another session, another file or another delivery). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The file is larger than 512 KB (invitation_batch.file_too_large); a body over 1 MiB answers http.payload_too_large. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description invitation_batch.invalid (details.report lists the row errors), invitation_batch.invalid_header (details.missing), invitation_batch.too_many_rows, invitation_batch.too_many_places (over 250), invitation.session_cancelled, invitation.my_email_requires_user (an API key has no e-mail). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable, or invitation_batch.timeout - the 60 second budget ran out and the result is unknown (the deadline may have struck during the commit). Repeat the request with the same request_id. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getInvitationBatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Batch id (invitation_batches.id) from the upload answer. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The batch. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationBatch"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks complimentary.read in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Batch not found in this organization (invitation_batch.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getInvitationBatchResult: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+                /** @description Batch id (invitation_batches.id) from the upload answer. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The CSV attachment, `Content-Disposition: attachment;
+             *     filename="invitation-batch-<first 8 characters of the id>.csv"`.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks complimentary.read in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Batch not found in this organization (invitation_batch.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     listComplimentaryIssuances: {
         parameters: {
             query?: {
@@ -55102,7 +58658,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description No available inventory. */
+            /** @description The session is strictly seated (`complimentary.use_invitations_route`) - invitations with a chosen seat go through the staff invitations route of the session - or no inventory is available. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -61886,7 +65442,8 @@ export interface operations {
              *     `import.seating_category_duplicate`,
              *     `import.seating_category_missing` and
              *     `import.seated_category_chain` (a `nextCategoryIndex` link to or
-             *     from a seated category).
+             *     from a seated category); `import.invalid_color` (source=arena,
+             *     a `categoryList[].color` that is not `#rrggbb`).
              */
             422: {
                 headers: {
@@ -63618,6 +67175,2562 @@ export interface operations {
             };
             /** @description Missing or wrong service token */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getShopSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopSettings"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putShopSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopSettingsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description The settings as stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopSettings"];
+                };
+            };
+            /** @description The body is not valid JSON for this route (`shop.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `shop.manage`, is not a member, or is not a platform superadmin and tried to change `shop_domain` (`shop.domain_superadmin_only`) or `enabled` (`shop.enabled_superadmin_only`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Another organization already uses this domain (`shop.duplicate_domain`), the settings were saved since `expected_updated_at` (`shop.settings_changed`), or the currency cannot change because the organization already has shop products or orders, whose prices are not converted (`shop.currency_locked`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`, `shop.invalid_max_line_qty`) or the payment provider of the sales channel cannot charge in the currency (`shop.currency_unsupported`; AllPay charges ILS, USD and EUR only). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listShopProducts: {
+        parameters: {
+            query?: {
+                /** @description Only products of this status: `draft`, `active` or `archived`. */
+                status?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The products. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopProductList"];
+                };
+            };
+            /** @description Unknown status (`shop.invalid_status`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createShopProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopProductCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description The new product. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopProduct"];
+                };
+            };
+            /** @description The body is not valid JSON for this route (`shop.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.manage` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Another live product of the shop uses this slug (`shop.duplicate_slug`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A field is invalid (`shop.invalid_title`, `shop.invalid_slug`, `shop.invalid_status`, `shop.text_too_long`, `shop.invalid_variants`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getShopProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop product (a product of another organization answers 404). */
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The product. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopProduct"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such product in this organization (`shop.product_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteShopProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop product (a product of another organization answers 404). */
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Done; no body. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.manage` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such product in this organization (`shop.product_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patchShopProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop product (a product of another organization answers 404). */
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopProductPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description The product as stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopProduct"];
+                };
+            };
+            /** @description The body is not valid JSON for this route, or carries `variants` (`shop.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.manage` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such product in this organization (`shop.product_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Another live product of the shop uses this slug (`shop.duplicate_slug`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A field is invalid (`shop.invalid_title`, `shop.invalid_slug`, `shop.invalid_status`, `shop.text_too_long`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    addShopProductImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop product (a product of another organization answers 404). */
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopImageAddRequest"];
+            };
+        };
+        responses: {
+            /** @description The product with its pictures. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopProduct"];
+                };
+            };
+            /** @description The body is not valid JSON for this route (`shop.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.manage` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such product in this organization (`shop.product_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The media object is missing, deleted or another organization's (`shop.invalid_media`), or `alt` is too long (`shop.text_too_long`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    removeShopProductImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop product (a product of another organization answers 404). */
+                product_id: string;
+                /** @description UUID of the attached media object. */
+                media_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The product with its remaining pictures. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopProduct"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.manage` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such product (`shop.product_not_found`) or the picture is not attached to it (`shop.image_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    replaceShopProductVariants: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop product (a product of another organization answers 404). */
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopVariantsReplaceRequest"];
+            };
+        };
+        responses: {
+            /** @description The product with its variants. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopProduct"];
+                };
+            };
+            /** @description The body is not valid JSON for this route (`shop.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.manage` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such product in this organization (`shop.product_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The stock of a variant changed since the editor loaded it (`shop.stock_changed`, details list each variant's current stock), or the set of variants is not the one in `expected_variant_ids` (`shop.variants_changed`, details list the live variant ids); nothing was applied. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The list is empty or too long, a value is invalid (`shop.invalid_variants`), or an id is not a variant of this product (`shop.invalid_variant`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listShopPages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pages. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopPageList"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putShopPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description Slug of the page (lower case, no spaces, '/', '?' or '#'). */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopPagePutRequest"];
+            };
+        };
+        responses: {
+            /** @description The page as stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopPage"];
+                };
+            };
+            /** @description The body is not valid JSON for this route (`shop.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.manage` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The slug or title is invalid or the text too long (`shop.invalid_slug`, `shop.invalid_title`, `shop.text_too_long`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteShopPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description Slug of the page (lower case, no spaces, '/', '?' or '#'). */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Done; no body. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.manage` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such page (`shop.page_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listShopOrders: {
+        parameters: {
+            query?: {
+                /** @description Only orders of this status: `pending_payment`, `paid`, `shipped`, `cancelled`, `expired`, `refunded`, `partially_refunded` or `manual_review`. */
+                status?: string;
+                /** @description A tab of the order list, combined with `status` when both are given: `to_ship` (paid or partly refunded, something to hand over, not shipped yet), `unpaid`, `shipped` or `refunds`. `GET .../shop/orders/counts` gives the size of each. */
+                view?: string;
+                /** @description Order number, or part of the buyer's e-mail or name. */
+                q?: string;
+                /** @description Created at or after this instant (RFC 3339, or YYYY-MM-DD for UTC midnight). */
+                from?: string;
+                /** @description Created before this instant (RFC 3339, or YYYY-MM-DD for UTC midnight). */
+                to?: string;
+                /** @description Page size, 1-200 (default 50). */
+                limit?: number;
+                /** @description How many orders to skip (the previous page's `next_offset`). */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of orders. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopOrderList"];
+                };
+            };
+            /** @description A filter is malformed (`shop.invalid_filter`, also for an unknown `view`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    searchShopOrders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ShopOrderSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description One page of orders. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopOrderList"];
+                };
+            };
+            /** @description A filter is malformed (`shop.invalid_filter`) or the body is not valid JSON for this route (`shop.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getShopOrderCounts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopOrderCounts"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getShopOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop order (an order of another organization answers 404). */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopOrder"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such order in this organization (`shop.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateShopOrderNote: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop order (an order of another organization answers 404). */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopOrderNoteRequest"];
+            };
+        };
+        responses: {
+            /** @description The order with its note. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopOrder"];
+                };
+            };
+            /** @description The body is not valid JSON for this route or `staff_note` is missing (`shop.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.manage` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such order in this organization (`shop.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The note is too long (`shop.text_too_long`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    resendShopOrderEmail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop order (an order of another organization answers 404). */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopResendEmailRequest"];
+            };
+        };
+        responses: {
+            /** @description The letter was queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopResendEmailResponse"];
+                };
+            };
+            /** @description The body is not valid JSON for this route, or `kind` is not `received`, `shipped` or `refunded` (`shop.invalid_body`, `shop.invalid_email_kind`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.manage` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such order in this organization (`shop.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order has no buyer e-mail (`shop.order_no_buyer_email`), or it is not in a state that has this letter, for example unpaid, never shipped or never refunded (`shop.order_email_unavailable`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The letter of this order was queued less than a minute ago (`shop.rate_limited`; `Retry-After` gives the seconds to wait). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    shipShopOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop order (an order of another organization answers 404). */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopShipRequest"];
+            };
+        };
+        responses: {
+            /** @description The order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopOrder"];
+                };
+            };
+            /** @description The body is not valid JSON for this route (`shop.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.manage` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such order in this organization (`shop.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order is not paid, or it holds only digital or service goods and has nothing to ship (`shop.order_not_shippable`), or it is parked in `manual_review` and its goods are not free on the shelf (`shop.out_of_stock`, `details.items` lists the short lines), or it is parked in `manual_review` because its payment waits for a human and that payment has not succeeded (`shop.payment_unconfirmed`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The tracking note is too long (`shop.text_too_long`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cancelShopOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop order (an order of another organization answers 404). */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cancelled order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopOrder"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `shop.manage` or is not a member (`permissions.denied`), or the web did not confirm the password (`auth.step_up_required`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such order in this organization (`shop.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order is not waiting for its payment, or the buyer has paid it already (`shop.order_not_cancellable`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    refundShopOrder: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-chosen key of 1 to 255 characters (a UUID) that identifies this refund; one per open refund dialog. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop order (an order of another organization answers 404). */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopRefundRequest"];
+            };
+        };
+        responses: {
+            /** @description The order after the refund, and the refund. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopRefundResponse"];
+                };
+            };
+            /** @description The body is not valid JSON for this route (`shop.invalid_body`) or the `Idempotency-Key` header is missing or longer than 255 characters (`shop.idempotency_key_required`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `shop.manage`, `refund.create` or `refund.approve`, or is not a member (`permissions.denied`), or the web did not confirm the password (`auth.step_up_required`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such order in this organization (`shop.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order is not paid or not paid through arena (`shop.order_not_refundable`), nothing is left to refund (`shop.nothing_to_refund`), or the `Idempotency-Key` was used for a different order or amount (`shop.idempotency_key_reused`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The amount is not between 1 and what is left (`shop.invalid_refund_amount`, details carry `refundable_minor`) or the reason is too long (`shop.text_too_long`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    resolveShopOrder: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-chosen key of 1 to 255 characters (a UUID) that identifies this decision; one per open dialog. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop order (an order of another organization answers 404). */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopResolveRequest"];
+            };
+        };
+        responses: {
+            /** @description The order after the decision (and the refund, for `refund_and_cancel`). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopResolveResponse"];
+                };
+            };
+            /** @description The body is not valid JSON for this route (`shop.invalid_body`), `action` is not `fulfil` or `refund_and_cancel` (`shop.invalid_action`), or the `Idempotency-Key` header is missing or longer than 255 characters (`shop.idempotency_key_required`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `shop.manage`, `refund.create` or `refund.approve`, or is not a member (`permissions.denied`), or the web did not confirm the password (`auth.step_up_required`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such order in this organization (`shop.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order is not in `manual_review` (`shop.order_not_in_review`), waits for its payment rather than its goods (`shop.order_not_resolvable`), the goods are still not free (`shop.out_of_stock`), the payment is not `succeeded` (`shop.payment_unconfirmed`), a refund refusal of `.../refund` (`shop.order_not_refundable`, `shop.nothing_to_refund`), or the `Idempotency-Key` was used for a different request (`shop.idempotency_key_reused`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getShopOrderCourierText: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop order (an order of another organization answers 404). */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The courier text. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.read` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such order in this organization (`shop.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicShopByHost: {
+        parameters: {
+            query: {
+                /** @description The storefront host name, e.g. `einatwinery.com`. */
+                host: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization slug. */
+            200: {
+                headers: {
+                    /** @description `public, max-age=30`: the answer may be cached for 30 seconds. */
+                    "Cache-Control"?: string;
+                    /** @description Includes `Origin`. */
+                    Vary?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopByHostResponse"];
+                };
+            };
+            /** @description No open shop lives on this host (`shop.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicShopCheckoutStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The order token checkout answered (64 hex characters). */
+                order_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The order status. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopCheckoutStatus"];
+                };
+            };
+            /** @description No order with this token (`shop.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listPublicShopCheckoutDownloads: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The order token checkout answered (64 hex characters). */
+                order_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The files. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopDownloadList"];
+                };
+            };
+            /** @description No paid order with this token (`shop.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The download period of the order is over (`shop.download_expired`), 30 days after payment or when every digital line used its 20 downloads. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`), or a file cannot be signed right now (`shop.download_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    downloadPublicShopCheckoutFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The order token checkout answered (64 hex characters). */
+                order_token: string;
+                /** @description UUID of the order line, as in the `url` of the downloads list. */
+                item_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the signed URL of the file; the download is counted. */
+            302: {
+                headers: {
+                    /** @description The short-lived signed URL of the file. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No paid order with this token, or no downloadable line with this id (`shop.order_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The download period of the order is over (`shop.download_expired`), 30 days after payment or when the line used its 20 downloads. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`), or the file cannot be signed right now (`shop.download_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listPublicShopPages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the organization that owns the shop. */
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pages. */
+            200: {
+                headers: {
+                    /** @description `public, max-age=30`: the answer may be cached for 30 seconds. */
+                    "Cache-Control"?: string;
+                    /** @description Includes `Origin`. */
+                    Vary?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopPageList"];
+                };
+            };
+            /** @description No open shop with this slug (`shop.not_found`); a shop the platform operator has not enabled reads as missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicShopCatalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the organization that owns the shop. */
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The catalog. */
+            200: {
+                headers: {
+                    /** @description `public, max-age=30`: the answer may be cached for 30 seconds. */
+                    "Cache-Control"?: string;
+                    /** @description Includes `Origin`. */
+                    Vary?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopPublicCatalog"];
+                };
+            };
+            /** @description No open shop with this slug (`shop.not_found`); a shop the platform operator has not enabled reads as missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicShopPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the organization that owns the shop. */
+                org_slug: string;
+                /** @description Slug or old address (`legacy_slug`) of the page. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page. */
+            200: {
+                headers: {
+                    /** @description `public, max-age=30`: the answer may be cached for 30 seconds. */
+                    "Cache-Control"?: string;
+                    /** @description Includes `Origin`. */
+                    Vary?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopPublicPageResponse"];
+                };
+            };
+            /** @description No open shop with this slug (`shop.not_found`) or no page with this slug or old address (`shop.page_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicShopProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the organization that owns the shop. */
+                org_slug: string;
+                /** @description Slug of the product. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The product. */
+            200: {
+                headers: {
+                    /** @description `public, max-age=30`: the answer may be cached for 30 seconds. */
+                    "Cache-Control"?: string;
+                    /** @description Includes `Origin`. */
+                    Vary?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopPublicProductResponse"];
+                };
+            };
+            /** @description No open shop with this slug (`shop.not_found`) or no active product with this slug (`shop.product_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createPublicShopCheckout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Slug of the organization that owns the shop. */
+                org_slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopCheckoutRequest"];
+            };
+        };
+        responses: {
+            /** @description The order and where to pay. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopCheckoutResponse"];
+                };
+            };
+            /** @description The body is not valid JSON for this route (`shop.invalid_body`), or `return_url` is not allowed and no fallback is configured (`checkout.invalid_return_url`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No open shop with this slug (`shop.not_found`); a shop the platform operator has not enabled reads as missing. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Some items are not available in the quantity requested (`shop.out_of_stock`), or the buyer's e-mail or address already has 3 orders waiting for payment here (`shop.too_many_pending`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The cart, buyer or address is invalid (`shop.invalid_items`, `shop.invalid_item`, `shop.invalid_buyer`, `shop.invalid_address`, `shop.postal_required`, `shop.invalid_postal`, `shop.text_too_long`, `shop.age_confirmation_required`), the anti-robot test is missing or failed (`shop.captcha_required`, `shop.captcha_failed`), or online payment is not set up (`checkout.payment_not_configured`, `checkout.payment_provider_unsupported`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`, `checkout.payment_start_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`), the anti-robot test could not be checked (`shop.captcha_unavailable`), or the payment provider could not start the payment (`checkout.payment_start_failed`, `checkout.payment_not_configured`). */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

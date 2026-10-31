@@ -33,6 +33,7 @@ export function TicketVipButton({
   vip,
   active,
   canUpdate,
+  compact = false,
 }: {
   orgId: string;
   orderId: string;
@@ -41,6 +42,8 @@ export function TicketVipButton({
   vip: boolean;
   active: boolean;
   canUpdate: boolean;
+  /** A small star button for a row of the tickets table; the full sentence is its accessible name. */
+  compact?: boolean;
 }) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
@@ -61,6 +64,25 @@ export function TicketVipButton({
       setBusy(false);
     }
   };
+
+  if (compact) {
+    return (
+      <>
+        <button
+          type="button"
+          className={vip ? "btn btn-sm vip-toggle vip-on" : "btn btn-sm vip-toggle"}
+          disabled={busy}
+          aria-label={t(vip ? "vip.unmark" : "vip.mark", { number })}
+          title={t(vip ? "vip.unmark" : "vip.mark", { number })}
+          onClick={() => void press()}
+          data-testid={vip ? "ticket-vip-off" : "ticket-vip-on"}
+        >
+          <span aria-hidden="true">{vip ? "★" : "☆"}</span> {t("vip.badge")}
+        </button>
+        {error !== null && <ErrorNotice error={error} testId="ticket-vip-error" />}
+      </>
+    );
+  }
 
   return (
     <>

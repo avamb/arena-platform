@@ -66,14 +66,14 @@ func TestValidateChannelProviderWith_RefusesWhatHasNoModule(t *testing.T) {
 
 // The production registry keeps exactly what the dropped CHECK allowed.
 func TestValidateChannelConfig_ProductionRegistryKeepsThePrePAY02List(t *testing.T) {
-	for _, p := range []string{"stripe", "flitt", "allpay"} {
+	for _, p := range []string{"stripe", "flitt", "allpay", "payplus"} {
 		if msg := ValidateChannelConfig("merchant_of_record", p, ""); msg != "" {
 			t.Errorf("%q: got %q, want accepted", p, msg)
 		}
 	}
 	for _, p := range []string{"manual", "cloudpayments", "yookassa", "mock", "paypal"} {
 		msg := ValidateChannelConfig("merchant_of_record", p, "")
-		if !strings.HasPrefix(msg, "provider must be 'stripe', 'flitt' or 'allpay'") {
+		if !strings.HasPrefix(msg, "provider must be 'stripe', 'flitt', 'allpay' or 'payplus'") {
 			t.Errorf("%q: got %q, want the provider refusal", p, msg)
 		}
 	}

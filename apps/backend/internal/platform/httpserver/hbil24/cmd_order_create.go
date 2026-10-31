@@ -211,7 +211,7 @@ func (h *Handler) handleBil24CreateOrderExtSession(w http.ResponseWriter, r *htt
 	// re-states the fee with the cart's rounding before anything is persisted.
 	bd = applyGatewayCharge(bd, cartFeePercent(cc.channel))
 	if req.Complimentary {
-		bd = complimentaryBreakdown(bd)
+		bd = hcheckout.ComplimentaryBreakdown(bd)
 	}
 
 	h.orderPersist(ctx, w, req, cc, sess, res, units, bd, promoCodeID)
@@ -829,20 +829,6 @@ var errOpenOrderExists = errors.New("hbil24: customer already has a live open or
 // the update through would leave a paid order priced at 0 or an invitation
 // carrying a price. The caller answers -2 and writes nothing.
 var errOrderKindChanged = errors.New("hbil24: order cannot switch between paid and complimentary")
-
-// complimentaryBreakdown turns a priced cart into an invitation: every
-// ticket keeps its face value (subtotal and the per-line prices stay, so
-// order_items still say what the seat is worth), the whole subtotal is
-// discounted, and no service charge, provider fee or tax applies. The total
-// the buyer owes — and PAY_ORDER expects — is 0.
-func complimentaryBreakdown(bd hcheckout.PricingBreakdown) hcheckout.PricingBreakdown {
-	bd.Discount = bd.Subtotal
-	bd.PlatformFee = 0
-	bd.ProviderFee = 0
-	bd.Tax = 0
-	bd.Total = 0
-	return bd
-}
 
 // orderWriteAggregate is spec §7.7 step 5, the one-open-order rule. The
 // customer may hold at most one pending_payment order per event session

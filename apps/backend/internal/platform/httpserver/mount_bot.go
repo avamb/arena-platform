@@ -48,5 +48,8 @@ func (s *Server) mountBotRoutes(r chi.Router) {
 		// linked person, and the sign-ins the bot reports back.
 		pr.Post("/bot/web-login-codes", s.handleCreateWebLoginCode)
 		pr.Post("/bot/web-login-notices/claim", s.handleClaimWebLoginNotices)
+		// INV-09: the invitations issued from Telegram whose PDF the bot sends
+		// into the issuer's chat, each handed out once.
+		pr.Post("/bot/invitations/pdf-notices/claim", s.handleClaimInvitationPDFNotices)
 	})
 }

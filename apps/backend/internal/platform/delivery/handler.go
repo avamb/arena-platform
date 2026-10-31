@@ -854,6 +854,20 @@ func renderInvitationEmailText(ticketNumber, recipientEmail string) string {
 // validated by resolvePoster. Empty means the date/venue block spans the
 // full page width — no placeholder, no reserved gutter.
 func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, branding templates.Branding, logoBytes, posterBytes []byte) ([]byte, error) {
+	t := buildPDFTicket(ticketID, p, branding, logoBytes, posterBytes)
+	bytesOut, err := pdf.Render(ctx, t)
+	if err == nil {
+		return bytesOut, nil
+	}
+	// On any validation/render failure, keep delivery moving with the
+	// legacy minimal PDF — the worker is not the right place to block on
+	// a missing event name. It prints the same buyer-facing number as the
+	// real layout, never the internal UUID.
+	return renderMinimalPDF(pdf.DisplayNumber(p.TicketNumber, ticketID.String()), time.Now().UTC()), nil
+}
+
+// buildPDFTicket maps a resolved payload onto the PDF layout's input.
+func buildPDFTicket(ticketID uuid.UUID, p Payload, branding templates.Branding, logoBytes, posterBytes []byte) pdf.Ticket {
 	// NOTE: Payload.QRPayload is no longer passed through. The PDF's QR code
 	// now carries the ticket's EAN-13 digits — the same value as the printed
 	// barcode, and the only value entrance control can resolve. It used to
@@ -896,15 +910,7 @@ func renderTicketPDF(ctx context.Context, ticketID uuid.UUID, p Payload, brandin
 		TaxID:                  branding.TaxID,
 		TaxIDScheme:            branding.TaxIDScheme,
 	}
-	bytesOut, err := pdf.Render(ctx, t)
-	if err == nil {
-		return bytesOut, nil
-	}
-	// On any validation/render failure, keep delivery moving with the
-	// legacy minimal PDF — the worker is not the right place to block on
-	// a missing event name. It prints the same buyer-facing number as the
-	// real layout, never the internal UUID.
-	return renderMinimalPDF(pdf.DisplayNumber(p.TicketNumber, ticketID.String()), time.Now().UTC()), nil
+	return t
 }
 
 // resolveBrandingResult bundles the branding fields and the optional

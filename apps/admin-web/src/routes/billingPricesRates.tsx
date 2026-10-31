@@ -11,6 +11,8 @@
 import type { CSSProperties, ReactNode } from "react";
 import {
   BILLING_CYCLES,
+  COMPLIMENTARY_BILLING_EXPLANATION,
+  COMPLIMENTARY_BILLING_MODES,
   FEE_MODES,
   PLAN_KINDS,
   SHORTFALL_POLICIES,
@@ -259,6 +261,12 @@ export function AccountsTable({ accounts, onChangeTerms }: AccountsTableProps): 
                       <Pill tone="info">Buyer pays</Pill>
                     </>
                   ) : null}
+                  {cur?.complimentary_billing === "standard" ? (
+                    <>
+                      {" "}
+                      <Pill tone="warn">Invitations: standard rate</Pill>
+                    </>
+                  ) : null}
                 </td>
                 <td style={tdStyle}>{cur ? cur.billing_cycle : "—"}</td>
                 <td style={tdStyle}>
@@ -374,6 +382,18 @@ export function TermsFormBody({ account, form, onChange, priceLists, errors, ser
           </select>
         </div>
         <div>
+          <label style={labelStyle} htmlFor="billing-terms-complimentary">
+            Invitations issued by staff
+          </label>
+          <select id="billing-terms-complimentary" style={inputStyle} value={form.complimentaryBilling} onChange={(e) => set({ complimentaryBilling: e.target.value === "standard" ? "standard" : "free" })} data-testid="billing-terms-complimentary">
+            {COMPLIMENTARY_BILLING_MODES.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
           <label style={labelStyle} htmlFor="billing-terms-delay">
             Invoice delay, days (empty: none)
           </label>
@@ -388,6 +408,9 @@ export function TermsFormBody({ account, form, onChange, priceLists, errors, ser
       </div>
       <p style={hintStyle} data-testid="billing-terms-fee-mode-hint">
         {FEE_MODES.find((m) => m.value === form.feeMode)?.explanation}
+      </p>
+      <p style={hintStyle} data-testid="billing-terms-complimentary-hint">
+        {COMPLIMENTARY_BILLING_EXPLANATION}
       </p>
       {errors.length > 0 ? (
         <ul style={{ ...warningStyle, margin: 0, paddingLeft: 28 }} data-testid="billing-form-errors">

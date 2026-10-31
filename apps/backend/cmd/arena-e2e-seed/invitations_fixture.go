@@ -16,6 +16,9 @@ package main
 //	                          delivery jobs, issuances) and puts the
 //	                          six places back, so a repeated run starts clean;
 //	--invitations-op inspect  prints {issuances, revoked, tickets, free_places};
+//	--invitations-op issue    mints the tickets of the staff invitations of the date,
+//	                          as arena-worker's checkout.issue_tickets job would (the
+//	                          harness runs no worker; see invitations_issue_op.go);
 //	--invitations-op deliver  --invitation-email X: the mail relay takes the
 //	                          letter of the guest X and Brevo reports it
 //	                          delivered (the harness runs no worker, so no
@@ -74,18 +77,15 @@ func applyInvitationsFixture(ctx context.Context, tx pgx.Tx) error {
 		ON CONFLICT (id) DO NOTHING`, invSessionID, invEventID, venueID, start, invPlaces); err != nil {
 		return err
 	}
-	// Everything the invitations of an earlier run left, children first.
+	// Everything the invitations of an earlier run left, children first: the staff-invitation
+	// orders, tickets and holds (session_sales_cleanup.go), then the old route's issuances.
+	if err := clearSessionSales(ctx, tx, "invitations", invSessionID); err != nil {
+		return err
+	}
 	for _, step := range []struct{ what, sql string }{
-		// email_letters rows stay: letters are dispute evidence and no code deletes
-		// them (tests/staticanalysis/email_letters_retention_test.go). They hold no
-		// foreign key to the tickets, so a run's letters just stay in the scratch base.
-		{"worker jobs", `DELETE FROM worker_jobs WHERE payload->>'ticket_id' IN (SELECT id::text FROM tickets WHERE session_id = $1)`},
-		{"delivery jobs", `DELETE FROM delivery_jobs WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`},
-		{"barcodes", `DELETE FROM barcodes WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`},
-		{"credentials", `DELETE FROM ticket_credentials WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`},
-		{"tickets", `DELETE FROM tickets WHERE session_id = $1`},
 		{"issuances", `DELETE FROM complimentary_issuances WHERE session_id = $1`},
 		{"places", `DELETE FROM session_seats WHERE session_id = $1`},
+		{"reservations", `DELETE FROM reservations WHERE session_id = $1`},
 		{"ledger", `DELETE FROM inventory_ledger WHERE session_id = $1`},
 		{"category", `DELETE FROM ticket_tiers WHERE session_id = $1`},
 	} {
@@ -161,6 +161,8 @@ func runInvitationsOp(op, email string) error {
 			}
 		}
 		return printCancelOrderJSON(map[string]int{"issuances": issuances, "revoked": revoked, "tickets": tickets, "free_places": free})
+	case "issue":
+		return issueInvitationTickets(ctx, pool)
 	case "deliver", "fail":
 		var jobID, ticketID uuid.UUID
 		err := pool.QueryRow(ctx, `
@@ -196,6 +198,6 @@ func runInvitationsOp(op, email string) error {
 		}
 		return printCancelOrderJSON(map[string]string{"ok": "delivered"})
 	default:
-		return fmt.Errorf("unknown --invitations-op %q (reset, inspect, deliver, fail)", op)
+		return fmt.Errorf("unknown --invitations-op %q (reset, inspect, issue, deliver, fail)", op)
 	}
 }

@@ -105,6 +105,7 @@ type fakeStore struct {
 	mu       sync.Mutex
 	subs     []Subscription
 	sales    map[string]Sale
+	shopOrds map[string]ShopOrder
 	refunds  map[string]Refund
 	claimed  map[string]bool
 	chatIDs  map[string]string
@@ -112,7 +113,7 @@ type fakeStore struct {
 }
 
 func newFakeStore(subs ...Subscription) *fakeStore {
-	return &fakeStore{subs: subs, sales: map[string]Sale{}, refunds: map[string]Refund{},
+	return &fakeStore{subs: subs, sales: map[string]Sale{}, shopOrds: map[string]ShopOrder{}, refunds: map[string]Refund{},
 		claimed: map[string]bool{}, chatIDs: map[string]string{}, lastErrs: map[string]string{}}
 }
 
@@ -123,6 +124,13 @@ func (f *fakeStore) SaleByOrder(_ context.Context, id string) (Sale, error) {
 		return Sale{}, ErrNotFound
 	}
 	return s, nil
+}
+func (f *fakeStore) ShopOrder(_ context.Context, _, id string) (ShopOrder, error) {
+	o, ok := f.shopOrds[id]
+	if !ok {
+		return ShopOrder{}, ErrNotFound
+	}
+	return o, nil
 }
 func (f *fakeStore) RefundByTicket(_ context.Context, id string) (Refund, error) {
 	r, ok := f.refunds[id]

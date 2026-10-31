@@ -62,7 +62,8 @@ func TestWizardSeated_CreateByPlan(t *testing.T) {
 	}
 	r.text("90", stSPlanPrice)
 	r.text("50", stSPlanPrice)
-	r.text("15", stSMore)
+	r.text("15", stSPlanExtra)
+	r.press("extra:done", stSMore)
 	s := r.d.Sessions[0]
 	if s.PlanVersionID != akropolisPlan().VersionID || s.Capacity != 200 || s.Tickets == nil || len(s.Tickets.Categories) != 3 {
 		t.Fatalf("session = %+v", s)
@@ -165,7 +166,8 @@ func TestWizardSeated_CopyAsksForTickets(t *testing.T) {
 	r.press("plan:0", stSPlanPrice)
 	r.text("90", stSPlanPrice)
 	r.text("50", stSPlanPrice)
-	r.text("15", stSMore)
+	r.text("15", stSPlanExtra)
+	r.press("extra:done", stSMore)
 	r.press("next", stXDescription)
 	c := CopyDraft(r.d)
 	if c.Tickets.Mode != "" || c.Scratch.ReturnToSummary {
@@ -223,5 +225,153 @@ func TestWizardSeated_NoCopyOfAPlanAndOwnMeansPrices(t *testing.T) {
 	d.Scratch.Edit = "dates"
 	if _, err := r.w.Apply(context.Background(), r.ws, d, WizInput{Data: "sc:own"}); err != nil || d.Step != stSPlanPrice {
 		t.Fatalf("sc:own on a seated date: step %s err %v", d.Step, err)
+	}
+}
+
+func hasButton(s Screen, data string) bool {
+	for _, row := range s.Buttons {
+		for _, b := range row {
+			if b.Data == data {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// A plan drawn with one category ("Church": every seat one colour): after its
+// price the wizard offers extra price categories — name, price, colour — and
+// the bundle sends them as planExtra, without places, after the plan's own.
+func TestWizardSeated_ExtraCategoriesOverAOneCategoryPlan(t *testing.T) {
+	refs := newFakeRefs()
+	refs.plans = map[string][]PlanRef{"akr": {{
+		VersionID: "22222222-2222-2222-2222-222222222222", Name: "Church", Seats: 100,
+		Categories: []PlanCategory{{Index: 1, Name: "Hall", Places: 100}},
+	}}}
+	r := newWizardRun(t, refs)
+	seatedToVenue(r)
+	r.press("venue:akr", stSPlan)
+	r.press("plan:0", stSPlanPrice)
+	r.text("30", stSPlanExtra)
+	screen, err := r.w.Render(context.Background(), r.ws, r.d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(screen.Text, "одна категория") || !strings.Contains(screen.Text, "Hall") ||
+		!hasButton(screen, "extra:add") || !hasButton(screen, "extra:done") {
+		t.Fatalf("extra question = %q %v", screen.Text, screen.Buttons)
+	}
+
+	r.press("extra:add", stSPlanExtraName)
+	if note := r.text("  ", stSPlanExtraName); !strings.Contains(note, "VIP") {
+		t.Fatalf("an empty name must be refused: %q", note)
+	}
+	if note := r.text("hall", stSPlanExtraName); !strings.Contains(note, "уже есть") {
+		t.Fatalf("a name of the plan's category must be refused: %q", note)
+	}
+	r.text("VIP", stSPlanExtraPrice)
+	r.text("не цена", stSPlanExtraPrice)
+	r.text("90", stSPlanExtraColor)
+	screen, err = r.w.Render(context.Background(), r.ws, r.d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasButton(screen, "color:#dc2626") || !hasButton(screen, "color:#374151") {
+		t.Fatalf("colour buttons = %v", screen.Buttons)
+	}
+	r.press("color:#123456", stSPlanExtraColor) // not one of the offered colours
+	r.press("color:#dc2626", stSPlanExtra)
+	r.press("extra:add", stSPlanExtraName)
+	r.text("Student", stSPlanExtraPrice)
+	r.text("10", stSPlanExtraColor)
+	r.press("color:#16a34a", stSPlanExtra)
+	screen, err = r.w.Render(context.Background(), r.ws, r.d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(screen.Text, "одна категория") || !strings.Contains(screen.Text, "🟥 VIP") || !strings.Contains(screen.Text, "🟩 Student") {
+		t.Fatalf("list after two extras = %q", screen.Text)
+	}
+	// "Back" from the list returns to the plan's prices, not into the
+	// colour of a category that is already added.
+	if !r.d.back() || r.d.Step != stSPlanPrice {
+		t.Fatalf("back from the extra list went to %s", r.d.Step)
+	}
+	r.d.Step = stSPlanExtra
+
+	note := r.press("extra:done", stSMore)
+	if !strings.Contains(note, "новых 2") {
+		t.Fatalf("done note = %q", note)
+	}
+	s := r.d.Sessions[0]
+	if s.Capacity != 100 || s.Tickets == nil || len(s.Tickets.Categories) != 3 {
+		t.Fatalf("session = %+v", s)
+	}
+	req := BuildBundle(r.d, 0, 0, "", "tg:ref:1")
+	c := req.CategoryList
+	if len(c) != 3 || c[0].PlanExtra || c[0].PlanCategoryIndex == nil || c[0].Price != 30 {
+		t.Fatalf("plan category = %+v", c)
+	}
+	for i, want := range []struct {
+		name  string
+		price float64
+		color string
+	}{{"VIP", 90, "#dc2626"}, {"Student", 10, "#16a34a"}} {
+		e := c[i+1]
+		if !e.PlanExtra || e.PlanCategoryIndex != nil || e.Availability != 0 || e.CategoryPriceName != want.name ||
+			e.Price != want.price || e.Color != want.color {
+			t.Fatalf("extra %d = %+v", i, e)
+		}
+	}
+}
+
+// The extra categories stop at the seat layouts' fifteen.
+func TestWizardSeated_ExtraCategoriesStopAtFifteen(t *testing.T) {
+	r := seatedRun(t)
+	seatedToVenue(r)
+	r.press("venue:akr", stSPlan)
+	r.press("plan:0", stSPlanPrice)
+	r.text("90", stSPlanPrice)
+	r.text("50", stSPlanPrice)
+	r.text("15", stSPlanExtra)
+	for i := 0; i < maxSeatCategories-3; i++ {
+		r.press("extra:add", stSPlanExtraName)
+		r.text("C"+itoa(i), stSPlanExtraPrice)
+		r.text("5", stSPlanExtraColor)
+		r.press("color:#2563eb", stSPlanExtra)
+	}
+	screen, err := r.w.Render(context.Background(), r.ws, r.d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasButton(screen, "extra:add") {
+		t.Fatal("a sixteenth category is offered")
+	}
+	r.press("extra:add", stSPlanExtra)
+}
+
+// An existing venue without a seating plan does not silently sell without
+// seats: the places question says so and offers another venue.
+func TestWizardSeated_VenueWithoutPlanSaysSo(t *testing.T) {
+	r := newWizardRun(t, newFakeRefs())
+	r.eventHead()
+	r.text("15.12.2026", stSTime)
+	r.press("default", stSCountry)
+	r.press("country:cz", stSCity)
+	r.press("city:prg", stSVenue)
+	r.press("venue:akr", stSCapacity)
+	screen, err := r.w.Render(context.Background(), r.ws, r.d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(screen.Text, "нет загруженной схемы") || !hasButton(screen, "venue:other") {
+		t.Fatalf("places question = %q %v", screen.Text, screen.Buttons)
+	}
+	r.press("venue:other", stSVenue)
+	// A venue with a plan, chosen next, asks about the plan as usual.
+	r.w.refs.(*fakeRefs).plans = map[string][]PlanRef{"akr": {akropolisPlan()}}
+	r.press("venue:akr", stSPlan)
+	if r.d.Scratch.NoPlanVenueID != "" {
+		t.Fatalf("the no-plan mark stayed: %q", r.d.Scratch.NoPlanVenueID)
 	}
 }

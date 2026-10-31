@@ -444,6 +444,24 @@ func (a *Adapter) CreateCheckoutSession(ctx context.Context, req payments.Create
 	}, nil
 }
 
+// ExpireCheckoutSession closes a hosted Checkout Session before its own
+// expiry (POST /v1/checkout/sessions/{id}/expire), so a buyer who still has
+// the page open can no longer pay on it. Stripe refuses a session that is
+// already complete or expired; that comes back as an error.
+//
+// Implements payments.HostedCheckoutExpirer.
+func (a *Adapter) ExpireCheckoutSession(ctx context.Context, sessionID string) error {
+	id := strings.TrimSpace(sessionID)
+	if !strings.HasPrefix(id, "cs_") {
+		return fmt.Errorf("stripe: ExpireCheckoutSession: %q is not a checkout session id", id)
+	}
+	endpoint := a.cfg.BaseURL + "/checkout/sessions/" + url.PathEscape(id) + "/expire"
+	if _, _, err := a.doRequest(ctx, http.MethodPost, endpoint, url.Values{}, ""); err != nil {
+		return fmt.Errorf("stripe: ExpireCheckoutSession: %w", err)
+	}
+	return nil
+}
+
 // CapturePayment captures a previously authorised Stripe PaymentIntent via
 // POST /v1/payment_intents/{id}/capture. When req.Amount > 0, the
 // amount_to_capture field is included for partial captures; otherwise Stripe

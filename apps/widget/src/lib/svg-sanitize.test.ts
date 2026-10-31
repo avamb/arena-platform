@@ -58,6 +58,57 @@ describe('sanitizeDecorSvg — pass-through of legitimate decor', () => {
   });
 });
 
+describe('sanitizeDecorSvg — prefixed decor as the backend stores it', () => {
+  it('keeps svg:-prefixed elements and drops inkscape:/sodipodi: ones', () => {
+    const input =
+      '<svg:g transform="translate(5 6)">' +
+      '<svg:rect x="0" y="0" width="10" height="4"/>' +
+      '<svg:text x="1" y="2">12</svg:text>' +
+      '<sodipodi:namedview id="nv"/>' +
+      '<inkscape:perspective id="p"/>' +
+      '</svg:g>';
+    const out = sanitizeDecorSvg(input);
+    expect(out).toContain('<text x="1" y="2">12</text>');
+    expect(out).toContain('<rect x="0" y="0" width="10" height="4"/>');
+    expect(out).not.toContain('namedview');
+    expect(out).not.toContain('perspective');
+    expect(out).not.toContain('svg:');
+  });
+
+  it('does not let a prefixed attribute through', () => {
+    const out = sanitizeDecorSvg('<svg:rect x="0" y="0" width="1" height="1" inkscape:label="x"/>');
+    expect(out).toBe('<rect x="0" y="0" width="1" height="1"/>');
+  });
+});
+
+describe('sanitizeDecorSvg — inline style fills', () => {
+  it('turns allowlisted style declarations into attributes', () => {
+    const out = sanitizeDecorSvg('<rect x="0" y="0" width="5" height="5" style="fill:#ffffff;stroke:#c8d0d8;stroke-width:2"/>');
+    expect(out).toBe('<rect x="0" y="0" width="5" height="5" fill="#ffffff" stroke="#c8d0d8" stroke-width="2"/>');
+  });
+
+  it('lets style override the attribute of the same name', () => {
+    const out = sanitizeDecorSvg('<rect x="0" y="0" width="1" height="1" fill="#000000" style="fill:#eef1f4"/>');
+    expect(out).toContain('fill="#eef1f4"');
+    expect(out).not.toContain('#000000');
+  });
+
+  it('keeps text styling and drops properties outside the allowlist', () => {
+    const out = sanitizeDecorSvg('<text x="1" y="2" style="fill:#17202a;font-size:20;text-anchor:middle;position:fixed;behavior:x">7</text>');
+    expect(out).toContain('fill="#17202a"');
+    expect(out).toContain('font-size="20"');
+    expect(out).toContain('text-anchor="middle"');
+    expect(out).not.toContain('position');
+    expect(out).not.toContain('behavior');
+    expect(out).not.toContain('style=');
+  });
+
+  it('rejects url() and !important values inside style', () => {
+    const out = sanitizeDecorSvg('<rect x="0" y="0" width="1" height="1" style="fill:url(#x);stroke:red !important"/>');
+    expect(out).toBe('<rect x="0" y="0" width="1" height="1"/>');
+  });
+});
+
 describe('sanitizeDecorSvg — XSS fixtures', () => {
   it('strips onload event handler attributes', () => {
     const out = sanitizeDecorSvg('<rect x="0" y="0" width="10" height="10" onload="alert(1)"/>');

@@ -27,13 +27,15 @@ package hseating
 import (
 	"sort"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
 )
 
-// syntheticCategoryPalette colours the synthetic categories. A tier has no
-// colour of its own until ticket_tiers.color exists (plan 26, step S1d), so a
-// repainted seat gets a stable, distinct swatch instead of its old category's.
+// syntheticCategoryPalette colours the synthetic categories of tiers without a
+// colour of their own (ticket_tiers.color, migration 0171), so a repainted seat
+// gets a stable, distinct swatch instead of its old category's.
 var syntheticCategoryPalette = []string{
 	"#8e24aa", "#00897b", "#f4511e", "#3949ab",
 	"#7cb342", "#d81b60", "#00acc1", "#6d4c41",
@@ -170,6 +172,25 @@ func resolveSeatCategories(
 		res.SeatIndex[st.key] = rep[st.tier]
 	}
 	return res
+}
+
+// withTierColors gives every synthetic category the colour of its own tier
+// when the organizer chose one (ticket_tiers.color: the colour of the
+// category in the seat manager and the event wizard), so a buyer sees the
+// seat in the colour the organizer painted it. Tiers without a colour keep
+// the palette swatch.
+func (r seatCategoryResolution) withTierColors(colors map[uuid.UUID]string) seatCategoryResolution {
+	if len(colors) == 0 || len(r.Extra) == 0 {
+		return r
+	}
+	extra := append([]extraCategory(nil), r.Extra...)
+	for i := range extra {
+		if c := colors[extra[i].Tier.ID]; c != "" {
+			extra[i].Color = c
+		}
+	}
+	r.Extra = extra
+	return r
 }
 
 // EffectiveIndex returns the category index a seat shows: the override when

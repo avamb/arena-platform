@@ -62,7 +62,7 @@ export interface OpenTgEditDeps extends TgEditDeps {
   list: (orgId: string) => Promise<{ events: readonly EventItem[] }>;
 }
 
-function failureKey(err: unknown): MessageKey {
+export function failureKey(err: unknown): MessageKey {
   return err instanceof ApiError && err.status === 0 ? "common.error.network" : "common.error.generic";
 }
 

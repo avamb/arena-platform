@@ -76,6 +76,43 @@ func (q *Queries) GetPublicSessionSchema(ctx context.Context, sessionID uuid.UUI
 	return r, err
 }
 
+const getAdminSessionSchema = `-- name: GetAdminSessionSchema :one
+SELECT s.id,
+       s.event_id,
+       s.admission_mode,
+       s.seating_plan_version_id,
+       s.seat_status_version,
+       v.geometry,
+       v.geometry_checksum,
+       v.capacity_seated,
+       v.capacity_standing
+FROM   sessions s
+JOIN   events e             ON e.id = s.event_id
+JOIN   seating_plan_versions v ON v.id = s.seating_plan_version_id
+WHERE  s.id             = $1
+  AND  s.deleted_at    IS NULL
+  AND  e.deleted_at    IS NULL
+  AND  s.admission_mode <> 'general_admission'`
+
+// GetAdminSessionSchema is GetPublicSessionSchema without the published
+// gate: the organizer's seat map of a seated session, published or not.
+func (q *Queries) GetAdminSessionSchema(ctx context.Context, sessionID uuid.UUID) (PublicSessionSchemaRow, error) {
+	row := q.db.QueryRow(ctx, getAdminSessionSchema, sessionID)
+	var r PublicSessionSchemaRow
+	err := row.Scan(
+		&r.ID,
+		&r.EventID,
+		&r.AdmissionMode,
+		&r.SeatingPlanVersionID,
+		&r.SeatStatusVersion,
+		&r.Geometry,
+		&r.GeometryChecksum,
+		&r.CapacitySeated,
+		&r.CapacityStanding,
+	)
+	return r, err
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PublicSessionSeatStatusMetaRow — result type for GetPublicSessionSeatStatusMeta
 // ─────────────────────────────────────────────────────────────────────────────

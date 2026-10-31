@@ -112,6 +112,32 @@ export type ApiErrorStem =
   | "invitationRecipient"
   | "invitationAlreadyRevoked"
   | "invitationScanned"
+  | "invitationSeatsTaken"
+  | "invitationNotEnough"
+  | "invitationRequestReused"
+  | "invitationSessionCancelled"
+  | "invitationNotIssued"
+  | "invitationTicketScanned"
+  | "invitationEmailNeeded"
+  | "invitationMyEmail"
+  | "invitationEmpty"
+  | "invitationUnknownSeat"
+  | "invitationTooManyPlaces"
+  | "invitationListInvalid"
+  | "invitationNoneActive"
+  | "invitationSeatedRoute"
+  | "invitationGuestName"
+  | "invitationGuestEmail"
+  | "invitationNoteLong"
+  | "invitationCategory"
+  // INV-06b: the CSV upload
+  | "batchTooBig"
+  | "batchCsvBroken"
+  | "batchEncoding"
+  | "batchEmptyFile"
+  | "batchHeader"
+  | "batchInvalid"
+  | "batchTimeout"
   // 4-5
   | "resendTooSoon"
   | "invitationChannel"
@@ -155,7 +181,28 @@ export type ApiErrorStem =
   | "seatTooMany"
   | "seatTierGone"
   | "seatStageNeeded"
-  | "seatNoPlan";
+  | "seatNoPlan"
+  // The shop (spec 47)
+  | "shopStockChanged"
+  | "shopDuplicateSlug"
+  | "shopVariantsInvalid"
+  | "shopMediaInvalid"
+  | "shopNotShippable"
+  | "shopNotCancellable"
+  | "shopNotRefundable"
+  | "shopRefundAmount"
+  | "shopCurrency"
+  | "shopOperatorOnly"
+  | "shopNothingToRefund"
+  | "shopOutOfStock"
+  | "shopOrderChanged"
+  | "shopOrderEmailUnavailable"
+  | "shopOrderNoBuyerEmail"
+  | "shopDuplicateDomain"
+  | "shopVariantsChanged"
+  | "shopSettingsChanged"
+  | "shopCurrencyLocked"
+  | "shopCurrencyUnsupported";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -187,6 +234,17 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "emailNoteEmpty", "emailNoteRateLimited", "textRefused",
   // S2b/S2c
   "seatNothingToRevert", "seatTooMany", "seatTierGone", "seatStageNeeded", "seatNoPlan",
+  // Spec 46: invitations on chosen seats
+  "invitationSeatsTaken", "invitationNotEnough", "invitationRequestReused", "invitationSessionCancelled", "invitationNotIssued", "invitationTicketScanned", "invitationEmailNeeded", "invitationMyEmail", "invitationEmpty",
+  "invitationUnknownSeat", "invitationTooManyPlaces", "invitationGuestName", "invitationGuestEmail", "invitationNoteLong", "invitationCategory",
+  // INV-04b: the organization list and the old route on a seated date
+  "invitationListInvalid", "invitationNoneActive", "invitationSeatedRoute",
+  // INV-06b: the CSV upload
+  "batchTooBig", "batchCsvBroken", "batchEncoding", "batchEmptyFile", "batchHeader", "batchInvalid", "batchTimeout",
+  // The shop (spec 47)
+  "shopStockChanged", "shopDuplicateSlug", "shopVariantsInvalid", "shopMediaInvalid", "shopNotShippable", "shopNotCancellable", "shopNotRefundable", "shopRefundAmount", "shopCurrency", "shopOperatorOnly",
+  "shopNothingToRefund", "shopOutOfStock", "shopOrderChanged", "shopOrderEmailUnavailable", "shopOrderNoBuyerEmail", "shopDuplicateDomain",
+  "shopVariantsChanged", "shopSettingsChanged", "shopCurrencyLocked", "shopCurrencyUnsupported",
 ];
 
 /**
@@ -251,6 +309,46 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "complimentary.already_revoked": "invitationAlreadyRevoked",
   "complimentary.scanned_ticket_requires_manual_review": "invitationScanned",
   "complimentary.capacity_overflow": "tierSoldOut",
+  // Spec 46: invitations on chosen seats
+  "invitation.seats_taken": "invitationSeatsTaken",
+  "invitation.not_enough_places": "invitationNotEnough",
+  "invitation.capacity_exceeded": "invitationNotEnough",
+  "invitation.request_id_reused": "invitationRequestReused",
+  "invitation.session_cancelled": "invitationSessionCancelled",
+  "invitation.tickets_not_issued": "invitationNotIssued",
+  "invitation.ticket_scanned": "invitationTicketScanned",
+  "invitation.guest_email_required": "invitationEmailNeeded",
+  "invitation.my_email_requires_user": "invitationMyEmail",
+  "invitation.empty": "invitationEmpty",
+  "invitation.unknown_seat": "invitationUnknownSeat",
+  "invitation.too_many": "invitationTooManyPlaces",
+  "invitation.invalid_guest_name": "invitationGuestName",
+  "invitation.invalid_guest_email": "invitationGuestEmail",
+  "invitation.note_too_long": "invitationNoteLong",
+  "invitation.unknown_category": "invitationCategory",
+  "invitation.seat_without_category": "invitationCategory",
+  "invitation.invalid_cursor": "invitationListInvalid",
+  "invitation.invalid_filter": "invitationListInvalid",
+  "invitation.invalid_state": "invitationListInvalid",
+  "invitation.invalid_limit": "invitationListInvalid",
+  "invitation.no_active_tickets": "invitationNoneActive",
+  "complimentary.use_invitations_route": "invitationSeatedRoute",
+  // INV-06b: the CSV upload (the 409 refusals of the transaction keep their single-invitation codes, the screen reads their report)
+  "invitation_batch.too_many_rows": "batchTooBig",
+  "invitation_batch.too_many_places": "batchTooBig",
+  "invitation_batch.file_too_large": "batchTooBig",
+  "invitation_batch.invalid_csv": "batchCsvBroken",
+  "invitation_batch.invalid_encoding": "batchEncoding",
+  "invitation_batch.empty_file": "batchEmptyFile",
+  "invitation_batch.file_required": "batchEmptyFile",
+  "invitation_batch.invalid_header": "batchHeader",
+  "invitation_batch.invalid": "batchInvalid",
+  "invitation_batch.timeout": "batchTimeout",
+  "invitation_batch.request_id_reused": "invitationRequestReused",
+  "invitation_batch.invalid_request_id": "invalid",
+  "invitation_batch.invalid_delivery": "invalid",
+  "invitation_batch.invalid_dry_run": "invalid",
+  "invitation_batch.invalid_body": "invalid",
   "membership.last_owner": "lastOwner",
   // 4-5: the team and its invitations (bot.* routes, DELETE members)
   "bot.invitation_resend_too_soon": "resendTooSoon",
@@ -320,6 +418,34 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "session.change_message_invalid": "textRefused",
   "text.too_long": "textRefused",
   "text.invalid": "textRefused",
+  // The shop (spec 47)
+  "shop.stock_changed": "shopStockChanged",
+  "shop.duplicate_slug": "shopDuplicateSlug",
+  "shop.invalid_variants": "shopVariantsInvalid",
+  "shop.invalid_variant": "shopVariantsInvalid",
+  "shop.invalid_media": "shopMediaInvalid",
+  "shop.order_not_shippable": "shopNotShippable",
+  // A manual_review order whose payment is still unsettled (second audit pass, SB-01).
+  "shop.payment_unconfirmed": "shopNotShippable",
+  "shop.order_not_cancellable": "shopNotCancellable",
+  "shop.order_not_refundable": "shopNotRefundable",
+  "shop.nothing_to_refund": "shopNothingToRefund",
+  "shop.out_of_stock": "shopOutOfStock",
+  "shop.order_changed": "shopOrderChanged",
+  "shop.order_email_unavailable": "shopOrderEmailUnavailable",
+  "shop.order_no_buyer_email": "shopOrderNoBuyerEmail",
+  "shop.duplicate_domain": "shopDuplicateDomain",
+  "shop.variants_changed": "shopVariantsChanged",
+  "shop.settings_changed": "shopSettingsChanged",
+  "shop.currency_locked": "shopCurrencyLocked",
+  "shop.currency_unsupported": "shopCurrencyUnsupported",
+  "shop.invalid_refund_amount": "shopRefundAmount",
+  "shop.invalid_currency": "shopCurrency",
+  "shop.enabled_superadmin_only": "shopOperatorOnly",
+  "shop.domain_superadmin_only": "shopOperatorOnly",
+  "shop.invalid_digital_media": "shopMediaInvalid",
+  "shop.invalid_body_html": "textRefused",
+  "shop.text_too_long": "textRefused",
   "auth.step_up_required": "stepUpRequired",
   "auth.step_up_wrong_password": "stepUpWrong",
   "permissions.denied": "forbidden",

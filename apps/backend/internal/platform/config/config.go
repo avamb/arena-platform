@@ -211,6 +211,13 @@ type Config struct {
 	// carry a valid return_url is refused with checkout.invalid_return_url.
 	PublicTicketsBaseURL string `env:"PUBLIC_TICKETS_BASE_URL" required:"false" default:""`
 
+	// ShopPublicBaseURL is the platform's storefront origin for the
+	// merchandise shop (e.g. https://shop.arenasoldout.com). A shop order's
+	// e-mail links its status page as <this>/<organization slug>/checkout/<token>
+	// when the organization has no shop_domain of its own. Empty: such an
+	// order's e-mail carries no status link.
+	ShopPublicBaseURL string `env:"SHOP_PUBLIC_BASE_URL" required:"false" default:""`
+
 	// ShortLinkBaseURL is the host printed under a QR code of a sales link and
 	// encoded in it (spec 43). The redirect itself is host-independent: any host
 	// that reaches arena-api resolves a code.
@@ -258,6 +265,15 @@ type Config struct {
 	// refused — the organizer's API key signs every request, and a
 	// redirected endpoint could replay a signed order.
 	AllPayAPIBaseURL string `env:"ALLPAY_API_BASE_URL" required:"false" default:""`
+
+	// PayPlusAPIBaseURL is the same seam for PayPlus. It replaces BOTH real
+	// hosts (restapi.payplus.co.il for a live configuration,
+	// restapidev.payplus.co.il for a test one) and must carry the /api/v1.0
+	// root, e.g. http://localhost:12114/api/v1.0. TEST AND DEVELOPMENT ONLY:
+	// Validate() refuses a non-empty value under APP_ENV=production — every
+	// request carries the organizer's api-key and secret-key headers, and the
+	// secret key also signs the callbacks arena trusts.
+	PayPlusAPIBaseURL string `env:"PAYPLUS_API_BASE_URL" required:"false" default:""`
 
 	// -------------------------------------------------------------------------
 	// Database (PostgreSQL 17)
@@ -468,6 +484,13 @@ type Config struct {
 	MediaS3SecretAccessKey string `env:"MEDIA_S3_SECRET_ACCESS_KEY" required:"false" default:""`
 	MediaS3UsePathStyle    bool   `env:"MEDIA_S3_USE_PATH_STYLE"    required:"false" default:"true"`
 
+	// MediaVariantWorkers caps how many resized copies of a picture
+	// (GET /v1/media-files/{id}?w=) one process renders at the same time
+	// (1..8, default 1). A render of a 20 MP photo peaks at ~230 MB, so the
+	// default keeps arena-api inside its memory limit however many shop cards
+	// ask for a new width at once.
+	MediaVariantWorkers int `env:"MEDIA_VARIANT_WORKERS" required:"false" default:"1"`
+
 	// -------------------------------------------------------------------------
 	// Ops watchdog / Telegram alerting (internal/platform/opsalert,
 	// internal/platform/opswatchdog) — sale notifications and early-warning
@@ -526,6 +549,13 @@ type Config struct {
 	// is live: today /tg/edit is a placeholder. It needs EVENT_CENTER_PUBLIC_URL
 	// (https) on arena-api and the /tg/ nginx location of apps/event-center.
 	BotMiniappEditorEnabled bool `env:"BOT_MINIAPP_EDITOR_ENABLED" required:"false" default:"false"`
+	// BotMiniappInvitesEnabled (read by arena-bot) makes the "Invitations"
+	// entry of a SEATED date a Telegram web_app button that opens the Mini App
+	// page /tg/invitations (spec 46, INV-05), with the same sign-in code as the
+	// editor. Off (default): the entry is a short text with a link to the same
+	// screen of the web event center. Needs EVENT_CENTER_PUBLIC_URL (https) on
+	// arena-api and on the bot, and the /tg/invitations page of apps/event-center.
+	BotMiniappInvitesEnabled bool `env:"BOT_MINIAPP_INVITES_ENABLED" required:"false" default:"false"`
 	// BotSchemeButton (read by arena-bot) is the "Seat map" button on the card of
 	// a seated date: "off" (default) shows none, "url" an ordinary link button,
 	// "web_app" the Telegram Mini App button. It needs EVENT_CENTER_PUBLIC_URL on
@@ -560,6 +590,14 @@ type Config struct {
 	// both are set, and the send route answers 503 without a secret.
 	ContactFormTurnstileSecret  string `env:"CONTACT_FORM_TURNSTILE_SECRET" required:"false" default:""`
 	ContactFormTurnstileSiteKey string `env:"CONTACT_FORM_TURNSTILE_SITE_KEY" required:"false" default:""`
+	// ShopTurnstileSecret / ShopTurnstileSiteKey protect the merchandise
+	// shop's checkout (audit SA-05): with a secret set, POST
+	// /v1/public/shop/{org_slug}/checkout needs a valid captcha_token (422
+	// shop.captcha_required / shop.captcha_failed) and the catalog settings
+	// publish the site key as captcha_site_key. Empty secret = no captcha, as
+	// before. The Turnstile widget must list every storefront host.
+	ShopTurnstileSecret  string `env:"SHOP_TURNSTILE_SECRET" required:"false" default:""`
+	ShopTurnstileSiteKey string `env:"SHOP_TURNSTILE_SITE_KEY" required:"false" default:""`
 	// BotArenaAPIURL is where the bot process reaches arena-api
 	// (http://api:8080 inside compose).
 	BotArenaAPIURL string `env:"BOT_ARENA_API_URL" required:"false" default:"http://localhost:8080"`
@@ -844,6 +882,8 @@ func LoadFor(role Role) (*Config, error) {
 		OnboardingTurnstileSecret:   getenv("ONBOARDING_TURNSTILE_SECRET", ""),
 		ContactFormTurnstileSecret:  getenv("CONTACT_FORM_TURNSTILE_SECRET", ""),
 		ContactFormTurnstileSiteKey: strings.TrimSpace(getenv("CONTACT_FORM_TURNSTILE_SITE_KEY", "")),
+		ShopTurnstileSecret:         strings.TrimSpace(getenv("SHOP_TURNSTILE_SECRET", "")),
+		ShopTurnstileSiteKey:        strings.TrimSpace(getenv("SHOP_TURNSTILE_SITE_KEY", "")),
 		BotMetricsAddr:              getenv("BOT_METRICS_ADDR", ":9092"),
 		PosterLLMAPIKey:             getenv("POSTER_LLM_API_KEY", ""),
 		PosterLLMModel:              getenv("POSTER_LLM_MODEL", "claude-sonnet-5"),
@@ -1002,6 +1042,7 @@ func LoadFor(role Role) (*Config, error) {
 	// PUBLIC_TICKETS_BASE_URL / WIDGET_PAYMENT_WINDOW_SECONDS /
 	// WIDGET_PAYMENT_GRACE_SECONDS — widget hosted-payment redirect flow.
 	cfg.PublicTicketsBaseURL = strings.TrimRight(strings.TrimSpace(getenv("PUBLIC_TICKETS_BASE_URL", "")), "/")
+	cfg.ShopPublicBaseURL = strings.TrimRight(strings.TrimSpace(getenv("SHOP_PUBLIC_BASE_URL", "")), "/")
 	cfg.ShortLinkBaseURL = strings.TrimRight(strings.TrimSpace(getenv("SHORT_LINK_BASE_URL", "https://go.arenasoldout.com")), "/")
 	cfg.ShortLinkFallbackURL = strings.TrimRight(strings.TrimSpace(getenv("SHORT_LINK_FALLBACK_URL", "")), "/")
 
@@ -1023,6 +1064,8 @@ func LoadFor(role Role) (*Config, error) {
 	cfg.FlittAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("FLITT_API_BASE_URL", "")), "/")
 	// ALLPAY_API_BASE_URL — test/dev only, rejected in production by Validate.
 	cfg.AllPayAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("ALLPAY_API_BASE_URL", "")), "/")
+	// PAYPLUS_API_BASE_URL — test/dev only, rejected in production by Validate.
+	cfg.PayPlusAPIBaseURL = strings.TrimRight(strings.TrimSpace(getenv("PAYPLUS_API_BASE_URL", "")), "/")
 
 	d, err := getenvDuration("REQUEST_TIMEOUT_SECONDS", 30*time.Second, true)
 	if err != nil {
@@ -1119,6 +1162,12 @@ func LoadFor(role Role) (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.BotMiniappEditorEnabled = b
+
+	b, err = getenvBool("BOT_MINIAPP_INVITES_ENABLED", false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.BotMiniappInvitesEnabled = b
 
 	cfg.BotSchemeButton = strings.ToLower(strings.TrimSpace(getenv("BOT_SCHEME_BUTTON", "off")))
 	switch cfg.BotSchemeButton {
@@ -1245,6 +1294,16 @@ func LoadFor(role Role) (*Config, error) {
 	}
 	cfg.Bil24TokenCacheTTL = d
 
+	// MEDIA_VARIANT_WORKERS - concurrent picture renders per process.
+	iMVW, err := getenvInt("MEDIA_VARIANT_WORKERS", 1)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	if iMVW < 1 || iMVW > 8 {
+		parseErrs = append(parseErrs, fmt.Errorf("MEDIA_VARIANT_WORKERS %d is out of range (allowed: 1..8)", iMVW))
+	}
+	cfg.MediaVariantWorkers = iMVW
+
 	// Media S3 path-style flag.
 	b, err = getenvBool("MEDIA_S3_USE_PATH_STYLE", true)
 	if err != nil {
@@ -1315,6 +1374,14 @@ func (c *Config) Validate() error {
 	}
 	if !c.Role.valid() {
 		errs = append(errs, fmt.Errorf("config role %q is unknown", c.Role))
+	}
+
+	// 0 is the unset value of a hand-built Config (mediastore then uses its
+	// default); LoadFor rejects an explicit 0.
+	if c.MediaVariantWorkers < 0 || c.MediaVariantWorkers > 8 {
+		errs = append(errs, fmt.Errorf(
+			"MEDIA_VARIANT_WORKERS %d is out of range (allowed: 1..8)", c.MediaVariantWorkers,
+		))
 	}
 
 	// --- HTTP -----------------------------------------------------------------
@@ -1829,6 +1896,16 @@ func (c *Config) validateProduction() []error {
 		errs = append(errs, errors.New(
 			"ALLPAY_API_BASE_URL must not be set in production;"+
 				" it redirects hosted checkout calls away from allpay.to"+
+				" and is for tests and local development only",
+		))
+	}
+
+	// 17a. PAYPLUS_API_BASE_URL: same reasoning — it would receive the
+	// organizer's api-key and secret-key with every request.
+	if strings.TrimSpace(c.PayPlusAPIBaseURL) != "" {
+		errs = append(errs, errors.New(
+			"PAYPLUS_API_BASE_URL must not be set in production;"+
+				" it redirects hosted checkout calls away from restapi.payplus.co.il"+
 				" and is for tests and local development only",
 		))
 	}

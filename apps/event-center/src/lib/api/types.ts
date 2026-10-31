@@ -83,6 +83,8 @@ export type TierPriceScheduleEnvelope = S["TierPriceScheduleEnvelope"];
 export type PutTierPriceScheduleRequest = S["PutTierPriceScheduleRequest"];
 // 6-1a: the event wizard.
 export type VenueItem = S["VenueItem"];
+export type SeatingPlan = S["SeatingPlan"];
+export type SeatingPlanVersion = S["SeatingPlanVersion"];
 export type GeoCountryItem = S["GeoCountryItem"];
 export type GeoCountriesResponse = S["GeoCountriesResponse"];
 export type GeoCityItem = S["GeoCityItem"];
@@ -167,3 +169,50 @@ export type SeatLayoutSuggestResponse = S["SeatLayoutSuggestResponse"];
 export type SeatLayoutProposal = S["SeatLayoutProposal"];
 export type SeatLayoutMetrics = S["SeatLayoutMetrics"];
 export type SeatLayoutSlot = S["SeatLayoutSlot"];
+
+// ─── The shop (spec 47) ──────────────────────────────────────────────────────
+export type ShopSettings = S["ShopSettings"];
+export type ShopSettingsUpdateRequest = S["ShopSettingsUpdateRequest"];
+export type ShopImage = S["ShopImage"];
+export type ShopVariant = S["ShopVariant"];
+export type ShopProduct = S["ShopProduct"];
+export type ShopProductList = S["ShopProductList"];
+export type ShopVariantInput = S["ShopVariantInput"];
+export type ShopProductCreateRequest = S["ShopProductCreateRequest"];
+export type ShopProductPatchRequest = S["ShopProductPatchRequest"];
+export type ShopOrderItem = S["ShopOrderItem"];
+/** Why an order waits in "needs a check" (the backend sends it with the order; the generated client may not carry it yet). */
+export type ShopOrderReviewReason = "late_payment_no_stock" | "payment_unconfirmed";
+export type ShopOrder = S["ShopOrder"] & { review_reason?: ShopOrderReviewReason | string | null };
+/** The operator's decision on an order in "needs a check". */
+export type ShopOrderResolveAction = "fulfil" | "refund_and_cancel";
+export type ShopOrderList = S["ShopOrderList"];
+export type ShopOrderCounts = S["ShopOrderCounts"];
+export type ShopResendEmailResponse = S["ShopResendEmailResponse"];
+export type ShopRefund = S["ShopRefund"];
+export type ShopRefundResponse = S["ShopRefundResponse"];
+export type SalesChannelItem = S["Channel"];
+
+// ─── Staff invitations on chosen seats (spec 46) ─────────────────────────────
+/** `vip` is optional for a caller: the generated type marks it required only because the API defaults it to false. */
+export type StaffInvitationIssueRequest = Omit<S["StaffInvitationIssueRequest"], "vip"> & { vip?: boolean };
+export type StaffInvitationSeatRef = S["StaffInvitationSeatRef"];
+export type StaffInvitationGALine = S["StaffInvitationGALine"];
+export type StaffInvitationGuest = S["StaffInvitationGuest"];
+export type StaffInvitationPlace = S["StaffInvitationPlace"];
+export type StaffInvitationIssueResponse = S["StaffInvitationIssueResponse"];
+export type StaffInvitationIssuer = S["StaffInvitationIssuer"];
+export type StaffInvitationLetter = S["StaffInvitationLetter"];
+export type StaffInvitationListItem = S["StaffInvitationListItem"];
+export type StaffInvitationListResponse = S["StaffInvitationListResponse"];
+export type StaffInvitationSession = S["StaffInvitationSession"];
+export type StaffInvitationOrgListItem = S["StaffInvitationOrgListItem"];
+export type StaffInvitationOrgListResponse = S["StaffInvitationOrgListResponse"];
+export type StaffInvitationCancelRequest = S["StaffInvitationCancelRequest"];
+export type StaffInvitationCancelResponse = S["StaffInvitationCancelResponse"];
+export type InvitationBatch = S["InvitationBatch"];
+export type InvitationBatchOrder = S["InvitationBatchOrder"];
+export type InvitationBatchReport = S["InvitationBatchReport"];
+export type InvitationBatchRowIssue = S["InvitationBatchRowIssue"];
+export type InvitationBatchPreviewGuest = S["InvitationBatchPreviewGuest"];
+export type InvitationChargePreview = S["InvitationChargePreview"];

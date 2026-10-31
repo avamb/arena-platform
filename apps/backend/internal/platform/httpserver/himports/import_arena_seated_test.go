@@ -184,3 +184,106 @@ func TestZoneIndexOfKey(t *testing.T) {
 		}
 	}
 }
+
+func extra(name string) bil24compat.ImportSessionCategory {
+	return bil24compat.ImportSessionCategory{CategoryPriceName: name, Price: 20, PlanExtra: true, Availability: 99}
+}
+
+func TestPlanCategoryPairs_ExtraCategoriesPriceNoPlanCategory(t *testing.T) {
+	g := seatedTestGeometry()
+	// A plan with three placed categories, priced, plus two extra price
+	// categories the organizer paints seats into later.
+	list := []bil24compat.ImportSessionCategory{
+		cat("Parter", nil), extra("VIP"), cat("Balcony", nil), cat("Standing", nil), extra("Student"),
+	}
+	pairs, errs := planCategoryPairs(list, g, nil)
+	if len(errs) != 0 {
+		t.Fatalf("errors: %v", errs)
+	}
+	if pairs[1] != noPlanCategory || pairs[4] != noPlanCategory || pairs[0] != 1 || pairs[2] != 2 || pairs[3] != 3 {
+		t.Fatalf("pairs = %v", pairs)
+	}
+	// Extras never stand in for a plan category: a plan category nobody
+	// prices is still missing.
+	_, errs = planCategoryPairs([]bil24compat.ImportSessionCategory{cat("Parter", nil), extra("Balcony 2"), extra("Fans")}, g, nil)
+	if len(errs) != 1 || importErrOf(t, errs[0]).code != "import.seating_category_missing" {
+		t.Fatalf("errors = %v, want one missing", errs)
+	}
+}
+
+func TestPlanCategoryPairs_ExtraNameClashes(t *testing.T) {
+	g := seatedTestGeometry()
+	names := map[int]string{2: "Galerie"}
+	base := []bil24compat.ImportSessionCategory{cat("Parter", nil), cat("Balcony", nil), cat("Standing", nil)}
+	cases := []struct {
+		name  string
+		extra []bil24compat.ImportSessionCategory
+		code  string
+		field string
+	}{
+		{"named like a plan category", []bil24compat.ImportSessionCategory{extra(" parter")},
+			"import.seating_category_duplicate", "/categoryList/3/categoryPriceName"},
+		{"named like a display-name override", []bil24compat.ImportSessionCategory{extra("GALERIE")},
+			"import.seating_category_duplicate", "/categoryList/3/categoryPriceName"},
+		{"two extras of one name", []bil24compat.ImportSessionCategory{extra("VIP"), extra("vip ")},
+			"import.seating_category_duplicate", "/categoryList/4/categoryPriceName"},
+		{"an extra without a name", []bil24compat.ImportSessionCategory{extra("  ")},
+			"import.seating_category_unmatched", "/categoryList/3/categoryPriceName"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			list := append(append([]bil24compat.ImportSessionCategory{}, base...), tc.extra...)
+			_, errs := planCategoryPairs(list, g, names)
+			if len(errs) == 0 {
+				t.Fatal("no error")
+			}
+			ie := importErrOf(t, errs[0])
+			if ie.code != tc.code || ie.field != tc.field {
+				t.Fatalf("got %s %s (%s), want %s %s", ie.code, ie.field, ie.message, tc.code, tc.field)
+			}
+		})
+	}
+}
+
+func TestSeatedEntries_ExtrasOwnNoQuantity(t *testing.T) {
+	sp := &arenaSeatedPlan{geometry: seatedTestGeometry(), pairs: []int{1, noPlanCategory, 3}}
+	got := sp.seatedEntries()
+	if !got[0] || !got[1] || got[2] {
+		t.Fatalf("seatedEntries = %v, want seat, extra (no quantity), zone", got)
+	}
+	ex := sp.extraEntries()
+	if len(ex) != 1 || !ex[1] {
+		t.Fatalf("extraEntries = %v, want only entry 1", ex)
+	}
+	var none *arenaSeatedPlan
+	if none.extraEntries() != nil {
+		t.Fatal("a general-admission bundle has no extra entries")
+	}
+}
+
+func TestCategoryColor(t *testing.T) {
+	for _, tc := range []struct {
+		in, want string
+		bad      bool
+	}{
+		{"", "", false},
+		{"  ", "", false},
+		{"#A1B2C3", "#a1b2c3", false},
+		{" #00ff00 ", "#00ff00", false},
+		{"red", "", true},
+		{"#abc", "", true},
+		{"#abcdeg", "", true},
+	} {
+		got, err := categoryColor(2, bil24compat.ImportSessionCategory{Color: tc.in})
+		if tc.bad {
+			ie := importErrOf(t, err)
+			if ie.code != "import.invalid_color" || ie.field != "/categoryList/2/color" || ie.status != 422 {
+				t.Fatalf("%q: got %s %s %d", tc.in, ie.code, ie.field, ie.status)
+			}
+			continue
+		}
+		if err != nil || got != tc.want {
+			t.Fatalf("%q: got %q, %v; want %q", tc.in, got, err, tc.want)
+		}
+	}
+}

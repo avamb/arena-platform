@@ -293,6 +293,36 @@ describe("the reason gate", () => {
   });
 });
 
+describe("complimentary billing of the account terms", () => {
+  const f = { ...termsFormFrom(undefined), effectiveFromLocal: FUTURE, priceListCode: "b15-test" };
+  const current = { price_list_code: "b15-test", plan_kind: "venue", billing_cycle: "prepaid", shortfall_policy: "block_publishing", fee_mode: "buyer_pays", invoice_delay_days: 3, due_days: 14 };
+
+  it("defaults to free and sends the choice with the request", () => {
+    expect(f.complimentaryBilling).toBe("free");
+    const free = buildTermsRequest(f, "organizer", NOW);
+    expect(free.ok && free.request.complimentary_billing).toBe("free");
+    const std = buildTermsRequest({ ...f, complimentaryBilling: "standard" }, "organizer", NOW);
+    expect(std.ok && std.request.complimentary_billing).toBe("standard");
+  });
+
+  it("pre-fills the current value and keeps the other terms fields unchanged", () => {
+    const form = { ...termsFormFrom({ ...current, complimentary_billing: "standard" } as never), effectiveFromLocal: FUTURE };
+    expect(form.complimentaryBilling).toBe("standard");
+    expect(termsFormFrom({ ...current, complimentary_billing: "free" } as never).complimentaryBilling).toBe("free");
+    expect(termsFormFrom({ ...current, complimentary_billing: undefined } as never).complimentaryBilling).toBe("free");
+    const before = buildTermsRequest(form, "organizer", NOW);
+    const after = buildTermsRequest({ ...form, complimentaryBilling: "free" }, "organizer", NOW);
+    expect(before.ok && after.ok).toBe(true);
+    if (before.ok && after.ok) {
+      const { complimentary_billing: a, ...restBefore } = before.request;
+      const { complimentary_billing: b, ...restAfter } = after.request;
+      expect([a, b]).toEqual(["standard", "free"]);
+      expect(restAfter).toEqual(restBefore);
+      expect(restBefore).toMatchObject({ plan_kind: "venue", billing_cycle: "prepaid", shortfall_policy: "block_publishing", fee_mode: "buyer_pays", invoice_delay_days: 3, due_days: 14 });
+    }
+  });
+});
+
 describe("fee mode of the account terms", () => {
   const f = { ...termsFormFrom(undefined), effectiveFromLocal: FUTURE, priceListCode: "b15-test" };
 

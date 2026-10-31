@@ -113,6 +113,10 @@ func ProviderDescriptor() payments.Descriptor {
 			// PAY-14b: the refund is answered synchronously (refund.go).
 			Refund:        true,
 			PartialRefund: true,
+			// ILS, USD or EUR only: an account without USD/EUR permission
+			// would silently charge ILS, so the adapter refuses anything
+			// else (adapter.go) and the shop settings refuse it up front.
+			Currencies: []string{"EUR", "ILS", "USD"},
 		},
 	}
 }
@@ -219,6 +223,15 @@ func (a *Adapter) confirmPaid(ctx context.Context, ev payments.NormalizedEvent) 
 		// with the payment: it confirms nothing.
 		return payments.NormalizedEvent{}, fmt.Errorf("%w: allpay: order %s is reported paid without an amount or currency",
 			payments.ErrProviderUnreachable, ev.ProviderPaymentID)
+	case st.Status == StatusPaid && chargeCurrencyDiffers(st.Currency, st.ChargeCurrency):
+		// Arena asked for no conversion (currency_payment = currency_display);
+		// AllPay charged in another currency, so ChargedMinor is not what
+		// the card paid. A human decides, no tickets.
+		ev.Kind = payments.EventPaymentManualReview
+		ev.AmountMinor, ev.Currency = st.ChargedMinor(), st.Currency
+		ev.FailureCode = "allpay_charge_currency_differs"
+		ev.FailureMessage = "AllPay charged the card in " + st.ChargeCurrency + ", the order is in " + st.Currency
+		return ev, nil
 	case st.Status == StatusPaid:
 		ev.AmountMinor, ev.Currency = st.ChargedMinor(), st.Currency
 		return ev, nil

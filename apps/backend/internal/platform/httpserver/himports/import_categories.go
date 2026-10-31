@@ -58,6 +58,12 @@ type importedCategory struct {
 	// the quota model: its stored ticket_tiers.capacity is the quantity to
 	// materialize, not the package's availability.
 	Created bool
+	// PricingOnly marks a category of a session bound to a seating plan that
+	// has no places of its own and was given no quantity: a price category the
+	// organizer paints plan seats into (planExtra, or one added by hand and
+	// not painted yet). It is never given General Admission places — a seated
+	// hall would turn hybrid with one stray standing place.
+	PricingOnly bool
 }
 
 // syncImportedCategoryQuotas applies the rules above to one session.
@@ -129,6 +135,9 @@ func syncImportedCategoryQuotas(
 					return err
 				}
 			}
+			continue
+		}
+		if c.PricingOnly {
 			continue
 		}
 		kind, kErr := gaquota.CategoryKind(ctx, q, sessionID, c.TierID)

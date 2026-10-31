@@ -629,7 +629,40 @@ func (b *Bot) wizardSave(ctx context.Context, chatID int64, editMsgID *int, from
 			b.sendSampleTicket(ctx, chatID, ws.JWT, ws.OrgID, sessionID, loc, d.Event.Name)
 		}
 	}
+	b.sendPaintHint(ctx, chatID, loc, ws, d)
 	b.showHome(ctx, chatID, nil, from, "")
+}
+
+// sendPaintHint follows a new event sold by a seating plan: its seats still
+// carry the plan's categories, so the organizer is shown where to paint them
+// into the price categories — the seat map (when the bot offers it) and the
+// dates of the event, whose card has "Seat layout".
+func (b *Bot) sendPaintHint(ctx context.Context, chatID int64, loc string, ws WizSession, d *Draft) {
+	eventID, err := uuid.Parse(d.Saved.EventID)
+	if err != nil {
+		return
+	}
+	for i, s := range d.Sessions {
+		if !s.seated() || i >= len(d.Saved.Sessions) {
+			continue
+		}
+		sessionID, err := uuid.Parse(d.Saved.Sessions[i].SessionID)
+		if err != nil {
+			continue
+		}
+		var row []models.InlineKeyboardButton
+		if bt, ok := b.schemeButton(chatID, loc, ws.OrgID, eventID, sessionID); ok {
+			kb := models.InlineKeyboardButton{Text: bt.Label, URL: bt.URL}
+			if bt.WebApp {
+				kb = models.InlineKeyboardButton{Text: bt.Label, WebApp: &models.WebAppInfo{URL: bt.URL}}
+			}
+			row = append(row, kb)
+		}
+		row = append(row, models.InlineKeyboardButton{Text: b.texts.T(loc, "bot.wz.saved_dates_btn", nil), CallbackData: "ses:list:" + eventID.String()})
+		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.saved_paint_hint", nil),
+			&models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{row}})
+		return
+	}
 }
 
 // salesLink is the storefront page of the event: <tickets base>/<promoter

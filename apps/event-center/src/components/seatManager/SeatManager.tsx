@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createSeatBatch,
-  fetchSessionSchema,
+  fetchSessionSchemaAdmin,
   fetchSessionSeatsAdmin,
   listSeatBatches,
   listTiers,
@@ -117,7 +117,8 @@ export function SeatManager({ orgId, eventId, sessionId, embed = false }: SeatMa
 
   const schemaQ = useQuery({
     queryKey: ["seat-schema", sessionId],
-    queryFn: () => fetchSessionSchema(sessionId),
+    // The organizer's map: a draft event (just made by the wizard) has no public one yet.
+    queryFn: () => fetchSessionSchemaAdmin(sessionId),
     staleTime: 5 * 60_000,
     retry: false,
   });

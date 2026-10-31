@@ -77,6 +77,43 @@ func (t Terms) FeeMode() string {
 	return t.Terms.FeeMode
 }
 
+// Complimentary billing modes of billing_account_terms.complimentary_billing
+// (migration 0174, spec 46 section 3.6, owner decision R-7).
+const (
+	// ComplimentaryBillingFree: invitations are free up to the yearly free
+	// limit of the price list, then charged as an unseated ticket.
+	ComplimentaryBillingFree = "free"
+	// ComplimentaryBillingStandard: every invitation pays the standard
+	// per-ticket rate (StandardComplimentaryRate).
+	ComplimentaryBillingStandard = "standard"
+)
+
+// ComplimentaryBilling is the account's invitation billing mode at At; an
+// empty value (a row read before migration 0174) is free.
+func (t Terms) ComplimentaryBilling() string {
+	if t.Terms.ComplimentaryBilling == "" {
+		return ComplimentaryBillingFree
+	}
+	return t.Terms.ComplimentaryBilling
+}
+
+// FreeTicketsAnnualLimit is the yearly number of free complimentary tickets
+// of the price list version in force, nil when the version sets none (no
+// limit: every free invitation stays free).
+func (t Terms) FreeTicketsAnnualLimit() *int64 {
+	if t.PriceList.FreeTicketsAnnualLimit == nil {
+		return nil
+	}
+	n := int64(*t.PriceList.FreeTicketsAnnualLimit)
+	return &n
+}
+
+// FreeLimitYearStart is the start of the period the yearly free limit counts
+// over: the calendar year (UTC) of at.
+func FreeLimitYearStart(at time.Time) time.Time {
+	return time.Date(at.UTC().Year(), time.January, 1, 0, 0, 0, 0, time.UTC)
+}
+
 // TermsAt loads the conditions of accountID in force at occurredAt: the last
 // terms row with effective_from <= occurredAt, the version of its price list
 // in the account's currency in force at occurredAt (never the version in
@@ -95,6 +132,13 @@ func TermsAt(ctx context.Context, q TermsQueries, accountID uuid.UUID, occurredA
 	if err != nil {
 		return Terms{}, fmt.Errorf("billing: terms of account %s: %w", acc.ID, err)
 	}
+	return termsWith(ctx, q, acc, terms, occurredAt)
+}
+
+// termsWith completes Terms for an account and a terms row already read: the
+// price-list version in force at occurredAt, its rules and packs, and the
+// organization's individual rate at occurredAt.
+func termsWith(ctx context.Context, q TermsQueries, acc gen.BillingAccountRow, terms gen.BillingAccountTermsRow, occurredAt time.Time) (Terms, error) {
 	pl, err := q.GetPriceListVersionAt(ctx, terms.PriceListCode, acc.Currency, occurredAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Terms{}, fmt.Errorf("%w: %s %s at %s", ErrNoPriceList, terms.PriceListCode, acc.Currency,

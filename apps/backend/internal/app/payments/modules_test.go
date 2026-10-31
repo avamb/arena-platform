@@ -13,7 +13,7 @@ import (
 
 func TestModules_OrderAndRequiredSecretsMatchThePrePAY01Tables(t *testing.T) {
 	reg := apppayments.Registry()
-	if got, want := reg.Names(), []string{"stripe", "flitt", "allpay", "cloudpayments", "yookassa", "manual"}; !reflect.DeepEqual(got, want) {
+	if got, want := reg.Names(), []string{"stripe", "flitt", "allpay", "payplus", "cloudpayments", "yookassa", "manual"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("Names = %v; want %v", got, want)
 	}
 	// hpayments.requiredSecretFields before PAY-01.
@@ -21,6 +21,7 @@ func TestModules_OrderAndRequiredSecretsMatchThePrePAY01Tables(t *testing.T) {
 		"stripe":        {"api_key", "webhook_secret"},
 		"allpay":        {"merchant_id", "secret_key"},
 		"flitt":         {"merchant_id", "payment_key"},
+		"payplus":       {"api_key", "secret_key", "payment_page_uid"},
 		"cloudpayments": {"public_id", "api_secret"},
 		"yookassa":      {"shop_id", "secret_key"},
 		"manual":        {},
@@ -35,12 +36,13 @@ func TestModules_OrderAndRequiredSecretsMatchThePrePAY01Tables(t *testing.T) {
 		}
 	}
 	// hfeed.credentialFields / hostedProviders before PAY-01, plus AllPay
-	// since PAY-14.
+	// since PAY-14 and PayPlus since spec 47.
 	hosted := reg.NamesWhere(func(d payments.Descriptor) bool { return d.Capabilities.HostedCheckout })
-	if !reflect.DeepEqual(hosted, []string{"stripe", "flitt", "allpay"}) {
-		t.Errorf("hosted-checkout providers = %v; want [stripe flitt allpay]", hosted)
+	if !reflect.DeepEqual(hosted, []string{"stripe", "flitt", "allpay", "payplus"}) {
+		t.Errorf("hosted-checkout providers = %v; want [stripe flitt allpay payplus]", hosted)
 	}
-	creds := map[string][]string{"stripe": {"api_key"}, "flitt": {"merchant_id", "payment_key"}, "allpay": {"merchant_id", "secret_key"}}
+	creds := map[string][]string{"stripe": {"api_key"}, "flitt": {"merchant_id", "payment_key"}, "allpay": {"merchant_id", "secret_key"},
+		"payplus": {"api_key", "secret_key", "payment_page_uid"}}
 	for name, want := range creds {
 		e, _ := reg.Get(name)
 		if got := e.Descriptor.CredentialKeys(); !reflect.DeepEqual(got, want) {
@@ -48,7 +50,7 @@ func TestModules_OrderAndRequiredSecretsMatchThePrePAY01Tables(t *testing.T) {
 		}
 	}
 	// hcheckout.WebhookSecretFromConfig before PAY-01.
-	webhook := map[string]string{"stripe": "webhook_secret", "allpay": "secret_key", "flitt": "payment_key"}
+	webhook := map[string]string{"stripe": "webhook_secret", "allpay": "secret_key", "flitt": "payment_key", "payplus": "secret_key"}
 	for name, want := range webhook {
 		e, _ := reg.Get(name)
 		if got := e.Descriptor.WebhookSecretKey(); got != want {

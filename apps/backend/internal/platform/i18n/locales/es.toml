@@ -2204,6 +2204,81 @@ other = "La invitación de {{.Guest}} ya se escaneó en la puerta, así que no s
 ["bot.inv.private_only"]
 other = "Las direcciones de los invitados solo se muestran y se escriben en un chat privado con el bot. Abre Invitaciones allí."
 
+["bot.inv.seated_text"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nEsta fecha tiene plano de asientos, así que los asientos se eligen en el plano: los libres y los que te reservaste. Pulsa el botón y el plano se abre aquí, en Telegram."
+
+["bot.inv.seated_web"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nEsta fecha tiene plano de asientos, así que los asientos se eligen en el plano del centro de eventos web:\n{{.Link}}"
+
+["bot.inv.seated_nolink"]
+other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nEsta fecha tiene plano de asientos, así que los asientos se eligen en el plano del centro de eventos web: abre el evento, luego la fecha y después Invitaciones."
+
+["bot.inv.seated_btn"]
+other = "🪑 Elegir asientos"
+
+["bot.inv.seated_failed"]
+other = "Ahora no he podido abrir el plano. Pulsa «Atrás» e inténtalo de nuevo en un minuto, o abre el centro de eventos web."
+
+["bot.inv.why_cancelled"]
+other = "la fecha está cancelada."
+
+["bot.inv.legacy_btn"]
+other = "🗂 Invitaciones anteriores"
+
+["bot.inv.legacy_note"]
+other = "🗂 <b>Invitaciones anteriores</b>: emitidas antes del nuevo sistema. Aquí también puedes anularlas."
+
+["bot.inv.nlist_title"]
+other = "🎟 <b>Invitaciones</b> · {{.Org}}\nTodas las fechas, las nuevas primero · página {{.Page}}\n{{.Legend}}"
+
+["bot.inv.nlegend"]
+other = "✔ válida  ✕ anulada  ⚠ e-mail no enviado"
+
+["bot.inv.ncard"]
+other = "🎟 <b>{{.Event}}</b>\n{{.When}}\n\nInvitado: {{.Guest}}\nPlazas:\n{{.Places}}\n\nEstado: {{.State}}\nEmitida: {{.Issued}}\nEmitida por: {{.By}}{{.Letter}}"
+
+["bot.inv.state_issuing"]
+other = "se están emitiendo las entradas"
+
+["bot.inv.nrevoke_ask"]
+other = "🚫 <b>¿Anular esta invitación?</b>\n\n{{.Guest}}\n{{.Event}} · {{.When}}\n\nTodas las entradas ({{.N}}) dejan de funcionar al instante y cada plaza vuelve a donde estaba: a tu reserva o a la venta. No se puede deshacer. {{.Mail}}\n\nPara anular, escribe la palabra <b>{{.Word}}</b> como mensaje."
+
+["bot.inv.nrevoke_mail"]
+other = "El invitado recibe un correo con el aviso."
+
+["bot.inv.nrevoke_nomail"]
+other = "Arena no avisa al invitado: escríbele tú."
+
+["bot.inv.nrevoke_done"]
+other = "✔ La invitación de {{.Guest}} está anulada: {{.N}} entradas. Las plazas han vuelto a donde estaban."
+
+["bot.inv.nrevoke_skipped"]
+other = "{{.N}} entradas no se han anulado porque ya se usaron en la puerta."
+
+["bot.inv.nrevoke_used"]
+other = "La invitación de {{.Guest}} ya está usada: el escáner de la puerta aceptó una entrada. Por eso no la he anulado."
+
+["bot.inv.nrevoke_notyet"]
+other = "Las entradas de esta invitación aún se están emitiendo. Inténtalo de nuevo en un minuto."
+
+["bot.inv.pdf_caption"]
+other = "🎟 <b>Invitación n.º {{.Num}}</b>{{if .Name}} para {{.Name}}{{end}}\n{{.Title}}, {{.When}}\n\nReenvía este archivo al invitado: es la entrada, con un código de barras que funciona en la puerta."
+
+["bot.inv.letter_pending"]
+other = "✉ Enviando el e-mail…"
+
+["bot.inv.letter_sent"]
+other = "✉ E-mail enviado {{.When}}"
+
+["bot.inv.letter_failed"]
+other = "⚠ E-mail no enviado. Lo más probable es que el invitado no lo haya recibido. Revisa la dirección y envíalo otra vez en el centro de eventos."
+
+["bot.inv.letter_skipped"]
+other = "✉ E-mail no enviado"
+
+["bot.inv.letter_disabled"]
+other = "✉ E-mail no enviado, el envío de e-mails está desactivado"
+
 ["bot.promo.btn"]
 other = "🏷 Códigos promocionales"
 
@@ -4532,6 +4607,48 @@ other = "Categoría «{{.Name}}» ({{.N}} de {{.Total}}), plazas: {{.Places}}. �
 ["bot.wz.plan_done_note"]
 other = "Plano «{{.Plan}}»: {{.Seats}} plazas, {{.Count}} categorías con precio. Más adelante puedes cambiar qué plazas van a cada categoría: pulsa “Distribución de plazas” en la ficha de la fecha."
 
+["bot.wz.venue_no_plan_note"]
+other = "El recinto «{{.Venue}}» no tiene un plano de sala subido, así que esta sesión se vende sin asientos (aforo libre). Para vender asientos, elige otro recinto que tenga plano."
+
+["bot.wz.venue_other_btn"]
+other = "← Otro recinto"
+
+["bot.wz.ask_plan_extra"]
+other = "Precios de las categorías del plano: {{.List}}.\n\n¿Necesitas más categorías de precio, como VIP o reducida? Una categoría nueva empieza sin asientos: después de guardar, pinta asientos en ella en el plano, con el pincel o automáticamente."
+
+["bot.wz.plan_one_category_hint"]
+other = "El plano tiene una sola categoría: todos los asientos tienen el mismo color y precio. Para vender asientos a precios distintos, añade categorías."
+
+["bot.wz.plan_extra_add_btn"]
+other = "➕ Añadir categoría"
+
+["bot.wz.plan_extra_done_btn"]
+other = "✔ Listo"
+
+["bot.wz.ask_plan_extra_name"]
+other = "¿Nombre de la nueva categoría de precio? Por ejemplo: VIP."
+
+["bot.wz.ask_plan_extra_price"]
+other = "¿Cuánto cuesta la entrada de «{{.Name}}», en {{.Currency}}?"
+
+["bot.wz.ask_plan_extra_color"]
+other = "¿De qué color se muestra «{{.Name}}» en el plano?"
+
+["bot.wz.err_plan_extra_name"]
+other = "Escribe el nombre de la categoría, por ejemplo VIP."
+
+["bot.wz.err_plan_extra_dup"]
+other = "Ya existe la categoría «{{.Name}}». Escribe otro nombre."
+
+["bot.wz.plan_done_extra_note"]
+other = "Plano «{{.Plan}}»: {{.Seats}} plazas, {{.Count}} categorías con precio, {{.Extra}} de ellas nuevas y aún sin asientos. Después de guardar, pinta los asientos en las categorías."
+
+["bot.wz.saved_paint_hint"]
+other = "Esta sesión se vende por plano de sala. Sus asientos llevan ahora las categorías del plano. Para pintarlos en las categorías de precio, abre el «Plano» (pincel) o la sesión → «Distribución de plazas» (automática, con vista previa y deshacer)."
+
+["bot.wz.saved_dates_btn"]
+other = "📅 Sesiones: distribución de plazas"
+
 ["bot.wz.t_date_seated_note"]
 other = "Una fecha vendida por plano mantiene sus plazas y categorías. Solo cambian los precios."
 
@@ -4618,3 +4735,106 @@ other = "Una zona de pie no está del todo configurada: {{.Element}}. Necesita l
 
 ["bot.wz.plan_up_issue_other"]
 other = "El archivo tiene un problema ({{.Code}}): {{.Element}}."
+["shop.payment.description"]
+other = "{{.Org}}, pedido n.º {{.Number}}"
+
+# --- salesnotify.shop.*: Telegram announcements of the merchandise shop ---
+["salesnotify.shop.new_order"]
+other = "🛍 <b>Nuevo pedido de la tienda</b> — {{.Org}}"
+
+["salesnotify.shop.order_number"]
+other = "🧾 Pedido n.º {{.Number}}"
+
+["salesnotify.shop.total"]
+other = "💰 Total: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.delivery_none"]
+other = "📦 Sin envío (producto digital o servicio)"
+
+["salesnotify.shop.delivery_pickup"]
+other = "🏬 Entrega: recogida en tienda"
+
+["salesnotify.shop.delivery_shipping"]
+other = "🚚 Entrega: envío con mensajero"
+
+["salesnotify.shop.courier_form"]
+other = "📦 <b>Datos para el mensajero</b>"
+
+["salesnotify.shop.map_google"]
+other = "🗺 Google Maps: {{.Url}}"
+
+["salesnotify.shop.map_waze"]
+other = "🚗 Waze: {{.Url}}"
+
+["salesnotify.shop.items"]
+other = "🛒 <b>Artículos</b>"
+
+["salesnotify.shop.items_more"]
+other = "… y {{.Count}} línea(s) más"
+
+["salesnotify.shop.item_line"]
+other = "{{.Qty}} × {{.Name}} — {{.Price}} cada uno"
+
+["salesnotify.shop.shipping"]
+other = "🚚 Envío: {{.Amount}}"
+
+["salesnotify.shop.discount"]
+other = "🏷 Descuento: -{{.Amount}}"
+
+["salesnotify.shop.note"]
+other = "📝 Nota del comprador: {{.Note}}"
+
+["salesnotify.shop.refund_title"]
+other = "↩️ <b>Reembolso de la tienda</b> — {{.Org}}"
+
+["salesnotify.shop.refunded"]
+other = "💸 Reembolsado: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.refunded_so_far"]
+other = "💸 Reembolsado hasta ahora: {{.Amount}} de {{.Total}}"
+
+["salesnotify.shop.review_title"]
+other = "⚠️ <b>Un pedido de la tienda necesita tu atención</b> — {{.Org}}"
+
+["salesnotify.shop.review_paid"]
+other = "💰 Pagado: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_body"]
+other = "El pago del pedido {{.Number}} llegó cuando la reserva ya había terminado y el producto ya no estaba libre. Revisa el pedido en el centro de eventos."
+
+["salesnotify.shop.review_unconfirmed_amount"]
+other = "⏳ Pago aún sin confirmar: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_unconfirmed_body"]
+other = "La pasarela de pago no ha confirmado el pago del pedido {{.Number}}, puede que el dinero no haya llegado. No envíe ni entregue la mercancía hasta que se confirme: cuando ocurra, el pedido se anunciará como pagado. Los detalles están en el centro de eventos."
+
+["shop.public.review_payment_unconfirmed"]
+other = "Estamos comprobando su pago y le escribiremos."
+
+["shop.public.review_late_payment_no_stock"]
+other = "Su pago ha llegado. Estamos comprobando la disponibilidad de su pedido y le escribiremos."
+
+# --- salesnotify.shop.courier_*: the plain courier text of an order card ---
+["salesnotify.shop.courier_order"]
+other = "Pedido n.º {{.Number}}"
+
+["salesnotify.shop.courier_pickup"]
+other = "Recogida en tienda"
+
+["salesnotify.shop.courier_none"]
+other = "Sin envío (producto digital o servicio)"
+
+["salesnotify.shop.courier_item"]
+other = "{{.Name}} × {{.Qty}}"
+
+["salesnotify.shop.courier_total"]
+other = "Total: {{.Amount}}"
+
+["salesnotify.shop.courier_note"]
+other = "Nota del comprador: {{.Note}}"
+
+["salesnotify.shop.courier_map_google"]
+other = "Google Maps: {{.Url}}"
+
+["salesnotify.shop.courier_map_waze"]
+other = "Waze: {{.Url}}"

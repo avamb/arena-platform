@@ -7,7 +7,6 @@ import { fetchMe, fetchOrgMe, listEvents } from "@/lib/api/endpoints";
 import { organizationsOf, useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import {
-  bindBackButton,
   closeMiniApp,
   insideTelegram,
   loadTelegramScript,
@@ -15,6 +14,7 @@ import {
   tgEditTarget,
   type TgEditKind,
 } from "@/lib/tgEdit";
+import { useTelegramBack } from "@/lib/useTelegramBack";
 import { descriptionBaseOf, openTgEdit, type TgEditOpened } from "@/lib/tgEditEvent";
 import { LanguageSelect } from "@/screens/LanguageSelect";
 
@@ -38,26 +38,13 @@ export function TgEditView({ state, onClose }: { state: TgEditState; onClose: ()
   const [work, setWork] = useState<TgWork>({ dirty: false, busy: false });
   const busy = useRef(false);
   busy.current = work.busy;
-  // The Telegram back button closes the page, the same as the button below. The handler is read through a ref:
-  // a new function on every render must not take the button away and put it back.
+  // The Telegram back button closes the page, the same as the button below.
   const close = useRef(onClose);
   close.current = onClose;
   const closeIfIdle = useCallback(() => {
     if (!busy.current) close.current();
   }, []);
-  // The button is bound only once the Telegram script has loaded: the script is fetched after the page is
-  // drawn, and a bind before it is a bind to nothing (the button would never appear).
-  useEffect(() => {
-    let alive = true;
-    let unbind: () => void = () => undefined;
-    void loadTelegramScript().then(() => {
-      if (alive) unbind = bindBackButton(closeIfIdle);
-    });
-    return () => {
-      alive = false;
-      unbind();
-    };
-  }, [closeIfIdle]);
+  useTelegramBack(closeIfIdle);
   const dirty = work.dirty;
   useEffect(() => {
     let alive = true;

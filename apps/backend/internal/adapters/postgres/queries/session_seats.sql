@@ -419,10 +419,13 @@ RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
 -- AB-49: post-issuance seat release (ticket cancellation)
 -- ─────────────────────────────────────────────────────────────────────
 
--- name: ReleaseSoldSessionSeat :one
--- Conditional 'sold' -> 'available' transition — the ONLY legal way a
--- sold seat returns to sale, and only via ticket cancellation/refund
--- (AB-49 transition table; sold -> unavailable stays forbidden).
+-- name: ReleaseSoldSessionSeatTo :one
+-- Conditional 'sold' -> $4 transition, $4 being 'available' or
+-- 'unavailable' — the ONLY legal way a sold seat leaves 'sold', and only
+-- via ticket cancellation/refund (AB-49 transition table). 'unavailable'
+-- is used solely for a staff invitation that took the seat from the
+-- organizer's reserve (order_items.seat_origin, spec 46 decision R-2);
+-- every purchase passes 'available' through ReleaseSoldSessionSeat.
 -- Guarded so it cannot fire while any ACTIVE ticket still references
 -- the seat: several ticket rows may exist for one seat over a session's
 -- life (sold -> cancelled -> sold again), but only one is valid at a
@@ -431,7 +434,7 @@ RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
 -- or an active ticket still points at it — the caller MUST treat that
 -- as an inconsistency and abort the cancellation transaction.
 UPDATE session_seats ss
-SET    status         = 'available',
+SET    status         = $4::text,
        reservation_id = NULL,
        status_version = $3,
        updated_at     = now()
@@ -479,14 +482,15 @@ RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
           ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
           ss.status_version, ss.updated_at, ss.system_seat_id, ss.kind;
 
--- name: ReleaseSoldGAUnitBySeatKey :one
--- ga_unit twin of ReleaseSoldSessionSeat. Since AB-51 issuance stamps the
--- concrete unit's seat_key ("ga|pool|000003") on the GA ticket, so a
--- cancellation releases exactly THAT unit, guarded the same way (sold, and
--- no other ACTIVE ticket still references it). Returns pgx.ErrNoRows when
--- the unit is not sold or still referenced — the caller aborts.
+-- name: ReleaseSoldGAUnitBySeatKeyTo :one
+-- ga_unit twin of ReleaseSoldSessionSeatTo ($4 = 'available' or
+-- 'unavailable'). Since AB-51 issuance stamps the concrete unit's seat_key
+-- ("ga|t3|000003") on the GA ticket, so a cancellation releases exactly
+-- THAT unit, guarded the same way (sold, and no other ACTIVE ticket still
+-- references it). Returns pgx.ErrNoRows when the unit is not sold or still
+-- referenced — the caller aborts.
 UPDATE session_seats ss
-SET    status         = 'available',
+SET    status         = $4::text,
        reservation_id = NULL,
        status_version = $3,
        updated_at     = now()
@@ -503,6 +507,31 @@ WHERE  ss.session_id = $1
 RETURNING ss.id, ss.session_id, ss.seat_key, ss.sector_name, ss.row_name,
           ss.seat_number, ss.tier_id, ss.status, ss.reservation_id,
           ss.status_version, ss.updated_at, ss.system_seat_id, ss.kind;
+
+-- name: GetTicketSeatOrigin :one
+-- spec 46 (INV-01): the status the ticket's seat had before a staff
+-- invitation took it — order_items.seat_origin, matched by ticket_id first
+-- and by (order, seat) for an item that predates the ticket link. NULL for
+-- every purchase; the caller then releases to 'available'. staff_invitation
+-- tells the caller the ticket belongs to a staff invitation, whose missing
+-- origin is an inconsistency that must abort, never fall back.
+SELECT (SELECT oi.seat_origin
+        FROM   order_items oi
+        WHERE  oi.order_id = COALESCE(t.order_id,
+                   (SELECT o.id FROM orders o WHERE o.checkout_session_id = t.checkout_session_id LIMIT 1))
+          AND  (oi.ticket_id = t.id
+                OR (oi.ticket_id IS NULL AND oi.session_seat_id IS NOT NULL
+                    AND oi.session_seat_id = (SELECT ss.id FROM session_seats ss
+                                              WHERE ss.session_id = t.session_id
+                                                AND ss.seat_key = t.seat_key)))
+        ORDER  BY (oi.ticket_id = t.id) DESC NULLS LAST
+        LIMIT  1) AS seat_origin,
+       EXISTS (SELECT 1 FROM orders o
+               WHERE  o.issued_via IS NOT NULL
+                 AND  (o.id = t.order_id
+                       OR (t.order_id IS NULL AND o.checkout_session_id = t.checkout_session_id))) AS staff_invitation
+FROM   tickets t
+WHERE  t.id = $1;
 
 -- name: CountSessionSeatsByTier :many
 -- AB-48 step 3: per-tier inventory counts for the price forms ("Third:

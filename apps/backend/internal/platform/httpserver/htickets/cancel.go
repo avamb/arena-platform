@@ -446,9 +446,12 @@ func (o TicketReleaseOutcome) RowReleased() bool {
 // ReleaseCancelledTicketInventoryTx returns a cancelled ticket's place
 // to sale inside the caller's transaction:
 //
-//   - assigned seat (ticket.SeatKey != nil): conditional sold->available
-//     via ReleaseSoldSessionSeat, guarded against other ACTIVE tickets on
-//     the same seat;
+//   - assigned seat or stamped GA unit (ticket.SeatKey != nil):
+//     conditional sold->target via ReleaseSoldSessionSeatTo /
+//     ReleaseSoldGAUnitBySeatKeyTo, guarded against other ACTIVE tickets on
+//     the same place; target is 'unavailable' when a staff invitation took
+//     the place from the organizer's blocked places
+//     (order_items.seat_origin, SeatReleaseTargetTx), else 'available';
 //   - GA ticket: exactly one sold GA unit of the ticket's reservation +
 //     tier via ReleaseSoldGAUnitForReservation; zero rows means a legacy
 //     pre-AB-51 reservation (ledger-only restore) — not an error;
@@ -483,8 +486,15 @@ func ReleaseCancelledTicketInventoryTx(
 		// The place returns to ITS OWN category: ReleaseSoldGAUnitBySeatKey
 		// never touches tier_id, and since migration 0101 the category owns
 		// the row for good. Nothing resets it to a shared pool any more.
+		// A staff invitation may have taken the place from the organizer's
+		// blocked places (spec 46, owner decision R-2): order_items.seat_origin
+		// sends it back there, everything else goes back on sale.
+		target, err := SeatReleaseTargetTx(ctx, txq, ticket.ID)
+		if err != nil {
+			return out, err
+		}
 		if strings.HasPrefix(*ticket.SeatKey, "ga|") {
-			if _, err := txq.ReleaseSoldGAUnitBySeatKey(ctx, ticket.SessionID, *ticket.SeatKey, version); err != nil {
+			if _, err := txq.ReleaseSoldGAUnitBySeatKeyTo(ctx, ticket.SessionID, *ticket.SeatKey, version, target); err != nil {
 				if errors.Is(err, pgx.ErrNoRows) {
 					return out, errors.New("GA unit " + *ticket.SeatKey + " is not releasable (not sold, or an active ticket still references it)")
 				}
@@ -493,7 +503,7 @@ func ReleaseCancelledTicketInventoryTx(
 			out.GAUnitReleased = true
 			return out, nil
 		}
-		if _, err := txq.ReleaseSoldSessionSeat(ctx, ticket.SessionID, *ticket.SeatKey, version); err != nil {
+		if _, err := txq.ReleaseSoldSessionSeatTo(ctx, ticket.SessionID, *ticket.SeatKey, version, target); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				// Either the seat is not 'sold' or another ACTIVE ticket
 				// still references it — both are inconsistencies the

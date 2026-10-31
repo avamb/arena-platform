@@ -34,12 +34,12 @@ COPY apps ./apps
 # to go.mod/go.sum can occur during the build).
 RUN go mod download && go mod verify
 
-# Build all four binaries with -mod=readonly to guarantee reproducibility.
+# Build all the binaries with -mod=readonly to guarantee reproducibility.
 RUN go build -mod=readonly -ldflags="-s -w" -o /out/arena-api         ./apps/backend/cmd/arena-api         \
  && go build -mod=readonly -ldflags="-s -w" -o /out/arena-worker      ./apps/backend/cmd/arena-worker      \
  && go build -mod=readonly -ldflags="-s -w" -o /out/arena-migrate     ./apps/backend/cmd/arena-migrate     \
  && go build -mod=readonly -ldflags="-s -w" -o /out/arena-healthcheck ./apps/backend/cmd/arena-healthcheck \
- && go build -mod=readonly -ldflags="-s -w" -o /out/arena-bot         ./apps/backend/cmd/arena-bot
+ && go build -mod=readonly -ldflags="-s -w" -o /out/arena-bot         ./apps/backend/cmd/arena-bot          && go build -mod=readonly -ldflags="-s -w" -o /out/arena-shop-import ./apps/backend/cmd/arena-shop-import
 
 # ---- Stage 2: runtime ----
 FROM gcr.io/distroless/static-debian12:nonroot
@@ -51,6 +51,10 @@ COPY --from=build /out/arena-worker       /app/arena-worker
 COPY --from=build /out/arena-migrate      /app/arena-migrate
 COPY --from=build /out/arena-healthcheck  /app/arena-healthcheck
 COPY --from=build /out/arena-bot          /app/arena-bot
+# One-shot operator tool (docs/ops/shop_import.md). The runtime image has no
+# shell, so the tool must be inside it: run it with
+# `docker run --entrypoint /app/arena-shop-import ...`.
+COPY --from=build /out/arena-shop-import  /app/arena-shop-import
 
 USER nonroot:nonroot
 EXPOSE 8080

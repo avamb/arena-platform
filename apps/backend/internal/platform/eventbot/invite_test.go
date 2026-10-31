@@ -188,7 +188,8 @@ func TestInviteTexts_RenderInEveryLanguage(t *testing.T) {
 	vars := map[string]any{
 		"Org": "Org", "Max": 50, "Page": 1, "Pages": 2, "Name": "Swan Lake", "When": "15.10.2026 20:00", "Tier": "VIP", "N": 4,
 		"Left": 2, "Got": 2, "Sent": 3, "List": "1. Anna", "Line": 3, "Text": "x", "Reason": "r", "Done": 1, "Why": "w",
-		"Total": 7, "Legend": "l", "Event": "e", "Guests": "g", "Guest": "Anna", "State": "s", "Issued": "d", "Word": "ANNUL",
+		"Total": 7, "Legend": "l", "Event": "e", "Guests": "g", "Guest": "Anna", "State": "s", "Issued": "d", "Letter": "", "Word": "ANNUL",
+		"Link": "https://x.test/o", "Places": "p", "By": "b", "Mail": "ml", "Num": 42, "Title": "Swan Lake",
 	}
 	for _, loc := range SupportedLocales {
 		for _, key := range inviteKeys {
@@ -224,7 +225,7 @@ func TestInviteTexts_RenderInEveryLanguage(t *testing.T) {
 func TestInviteAnnulWord(t *testing.T) {
 	t.Parallel()
 	b := ecTestBot(t)
-	for loc, word := range map[string]string{"en": "ANNUL", "ru": "АННУЛИРОВАТЬ", "es": "ANULAR"} {
+	for loc, word := range map[string]string{"en": "ANNUL", "ru": "ОТМЕНИТЬ ПРИГЛАШЕНИЕ", "es": "ANULAR"} {
 		if !b.invIsAnnulWord(loc, word) || !b.invIsAnnulWord(loc, strings.ToLower(word)) || !b.invIsAnnulWord(loc, " «"+word+"». ") {
 			t.Errorf("%s: %q must be accepted", loc, word)
 		}
@@ -284,5 +285,31 @@ func TestInviteIssuedLinesCapAndEscape(t *testing.T) {
 	}
 	if strings.Count(out, "\n") > 26 || !strings.HasSuffix(out, "…") {
 		t.Errorf("a long list is cut with an ellipsis, got %d lines", strings.Count(out, "\n")+1)
+	}
+}
+
+// The VIP mark is fixed from the first attempt on: an attempt that got no
+// answer may have issued the guest, and a new batch would issue them again.
+func TestVIPChangeable_FixedFromTheFirstAttempt(t *testing.T) {
+	st := inviteDialog{Rcpt: []InviteRecipient{{Email: "a@example.com"}, {Email: "b@example.com"}}, Done: []int64{0, 0}, Batch: "b1"}
+	if !vipChangeable(st) {
+		t.Fatal("a fresh confirmation screen must allow the VIP tick")
+	}
+	st.Tried = true
+	if vipChangeable(st) {
+		t.Fatal("after an attempt whose answer may be lost the VIP tick must be fixed")
+	}
+	st = inviteDialog{Rcpt: st.Rcpt, Done: []int64{7, 0}, Batch: "b1"}
+	if vipChangeable(st) {
+		t.Fatal("after a guest was issued the VIP tick must be fixed")
+	}
+	// The flag survives the stored dialog (bot_dialogs JSON).
+	raw, err := json.Marshal(inviteDialog{Tried: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back inviteDialog
+	if err := json.Unmarshal(raw, &back); err != nil || !back.Tried {
+		t.Fatalf("Tried lost in the stored dialog: %v %+v", err, back)
 	}
 }

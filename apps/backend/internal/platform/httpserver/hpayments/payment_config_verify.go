@@ -84,7 +84,11 @@ func (h *Handler) CredentialVerifierFor(row gen.PaymentProviderConfigRow) (payme
 			return nil, false
 		}
 	}
-	module, err := paymodules.Registry().Build(d.Name, secrets, h.providerOptions)
+	// The module learns the row's mode: a provider with separate test and
+	// live hosts (PayPlus) must check a test key against its test host.
+	opts := h.providerOptions
+	opts.Mode = row.Mode
+	module, err := paymodules.Registry().Build(d.Name, secrets, opts)
 	if err != nil {
 		return nil, false
 	}
@@ -237,7 +241,9 @@ func (h *Handler) webhookWarnings(ctx context.Context, row gen.PaymentProviderCo
 	if !known {
 		return out
 	}
-	module, err := paymodules.Registry().Build(d.Name, payments.SecretsFromJSON(row.Secrets), h.providerOptions)
+	opts := h.providerOptions
+	opts.Mode = row.Mode
+	module, err := paymodules.Registry().Build(d.Name, payments.SecretsFromJSON(row.Secrets), opts)
 	if err != nil {
 		return out
 	}
