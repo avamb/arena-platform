@@ -1,0 +1,934 @@
+[
+  {
+    "platform": "Ticket Tailor",
+    "support": {
+      "channels": "Contact form / chat in help centre, email hi@tickettailor.com; phone not mentioned",
+      "hours": "Marketing page claims 24/7 support from real humans; help-centre article (Dec 2025) says 24/7 chat support; an older blog said 24h Mon-Fri",
+      "languages": null,
+      "response_time_promise": "'Back to you in 5 minutes or less, whatever your enquiry' (stated target, not an SLA)",
+      "human_support_free": "Yes, same support for all (flat per-ticket fee, no tiers)",
+      "account_manager": "Not mentioned; demo can be booked"
+    },
+    "onboarding": {
+      "done_for_you": "Not offered; self-service with step-by-step builder, videos, help articles; 'book a demo' with the team",
+      "data_import": null,
+      "staff_training": null,
+      "onsite_support": null
+    },
+    "seating": {
+      "who_draws": "Organizer, self-service seating chart builder (also on mobile)",
+      "cost": "Seated tickets cost 1 extra credit each (2 credits per seated paid ticket; 1 credit for a free seated ticket); on pay-as-you-go roughly double the per-ticket fee (0.60 GBP -> about 1.20 GBP per seat). No design service mentioned."
+    },
+    "branding": {
+      "white_label_price": "White label add-on (removes TT logo) priced in Billing > Add-ons; price not on the help page. Third parties citing TT help centre: white label GBP 39/month, custom domain GBP 7/month standalone (USD 8) or free with White label.",
+      "custom_domain": "Included free with White label add-on (official help article); standalone custom domain paid per month (third-party figure)",
+      "remove_branding": "Only via the White label add-on"
+    },
+    "ticket_design": "Not stated on pages read; customisation of event pages/emails only",
+    "scanning": {
+      "app_free": "Yes, free check-in app for everyone",
+      "hardware_rental": "No hardware prices; external scanners can be linked",
+      "offline_mode": "Yes, works offline"
+    },
+    "marketing": {
+      "email": "Order confirmations/updates + integrations (Mailchimp, Constant Contact, HubSpot, ActiveCampaign)",
+      "promo_codes": "Yes (fixed or percentage, limits, expiry)",
+      "social_pixel": "Meta and TikTok pixel; setup requires Custom domain feature (paid)",
+      "discovery_marketplace": "'Discover events' section exists; not positioned as a buyer-bringing marketplace",
+      "affiliate_tracking": "Trackable referral tags per channel"
+    },
+    "payouts": "Money goes straight to the organizer's own Stripe/PayPal/Square; TT does not touch payments (appears almost immediately; bank transfer about a week)",
+    "buyer_messaging": "Email only found; SMS not mentioned on page",
+    "full_service_offer": "None. Pricing: 0.60 GBP/ticket pay-as-you-go, from 0.22 GBP with prepaid credits; first 5 tickets free; 50% charity discount. Flat fee, 'no contracts'. Fee does NOT rise with service level.",
+    "notes": "Strong free baseline: 24/7 human support + free scanner app with offline + self-service seating. Charges extra for white label, custom domain, seating (double credit).",
+    "sources": [
+      {"url": "https://www.tickettailor.com/pricing", "read": "2026-10-10"},
+      {"url": "https://www.tickettailor.com/event-pros", "read": "2026-10-10"},
+      {"url": "https://www.tickettailor.com/build-seating-charts", "read": "2026-10-10"},
+      {"url": "https://www.tickettailor.com/free-checkin-app", "read": "2026-10-10"},
+      {"url": "https://www.tickettailor.com/promote-your-event", "read": "2026-10-10"},
+      {"url": "https://help.tickettailor.com/en/articles/1361918-how-can-i-remove-the-ticket-tailor-logo-from-my-box-office", "read": "2026-10-10"},
+      {"url": "https://www.eventcloud.io/compare/ticket-tailor", "read": "2026-10-10"},
+      {"url": "https://www.tickettailor.com/blog/forget-about-ticket-tailor-keep-your-events-yours-with-a-custom-domain", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "Eventbrite (incl. Pro and Sales Partnerships)",
+    "support": {
+      "channels": "Help centre and email for all; 24/7 chat for paid events; priority phone + 24/7 chat for Sales packages",
+      "hours": "Chat 24/7 (paid events); phone only business hours for Sales packages",
+      "languages": null,
+      "response_time_promise": null,
+      "human_support_free": "Chat only for paid events; free events get help centre/email",
+      "account_manager": "Sales Partnerships (large/complex/high-volume) get custom pricing, 1:1 onboarding, ongoing 1:1 strategic support; page says 'Strategic Advisor'; no named volume threshold; 'managed account' organizers have a separate contact route"
+    },
+    "onboarding": {
+      "done_for_you": "1:1 onboarding session for Sales customers; no event-setup-for-you service found",
+      "data_import": null,
+      "staff_training": null,
+      "onsite_support": null
+    },
+    "seating": {
+      "who_draws": "Organizer, drag-and-drop reserved seating designer",
+      "cost": "No separate price on page; complex events get 'customized pricing' via sales"
+    },
+    "branding": {
+      "white_label_price": null,
+      "custom_domain": null,
+      "remove_branding": null
+    },
+    "ticket_design": null,
+    "scanning": {
+      "app_free": null,
+      "hardware_rental": null,
+      "offline_mode": null
+    },
+    "marketing": {
+      "email": "Pro plan = email marketing volume: Pro 2K from USD 15/month (2,000 emails/day), tiers up to about USD 100/month for 10,000/day (third-party). Pro closed to new subscribers per help snippet.",
+      "promo_codes": null,
+      "social_pixel": null,
+      "discovery_marketplace": "Yes: global audience, Eventbrite Ads (sponsored placement, select markets, ad spend extra); Sales partnership builds 'custom strategy to access global audience' and Eventbrite-sponsored marketing",
+      "affiliate_tracking": null
+    },
+    "payouts": null,
+    "buyer_messaging": null,
+    "full_service_offer": "Sales Partnerships / managed account: custom fee structures and payout schedules, 1:1 onboarding, strategic support, premium support. No published price. Standard fee 3.7% + USD 1.79 per ticket + 2.9% processing (US); UK third-party figure 6.95% + 0.59 GBP.",
+    "notes": "Service is a perk of volume (negotiated fees), not a priced add-on. Pro is a marketing-email product, not a service tier.",
+    "sources": [
+      {"url": "https://www.eventbrite.com/organizer/pricing/", "read": "2026-10-10"},
+      {"url": "https://www.eventbrite.com/organizer/contact-sales/", "read": "2026-10-10"},
+      {"url": "https://www.eventbrite.com/organizer/features/reserved-seating/", "read": "2026-10-10"},
+      {"url": "https://eventcube.io/blog/eventbrite-fees-pricing-explained", "read": "2026-10-10"},
+      {"url": "https://tickts.co.uk/blog/true-cost-of-ticketing-fees", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "pretix (pretix Hosted / Enterprise)",
+    "support": {
+      "channels": "Email support@pretix.eu and phone +49 6221 32177-50",
+      "hours": "Mon-Fri 09:00-17:00 CET (phone); hosted: 'support via email and phone', no extra support tier",
+      "languages": "Not stated (German/English company); shop UI in German, Dutch, English per feature page",
+      "response_time_promise": "Enterprise (self-hosted) licence: email reply by next business day; phone subject to availability; no SLA mentioned",
+      "human_support_free": "Yes, included in hosted fee",
+      "account_manager": "Not mentioned"
+    },
+    "onboarding": {
+      "done_for_you": "Sales team 'happy to consult on your individual use case'; custom development billed hourly or via contribution share (Enterprise)",
+      "data_import": null,
+      "staff_training": "Remote technical training and guide with rented scanners is not stated; hardware services: devices tested before delivery, pre-configured system on request",
+      "onsite_support": "Not mentioned"
+    },
+    "seating": {
+      "who_draws": "Organizer, graphical editor seats.pretix.eu",
+      "cost": "Self-hosted Enterprise: seating plan plugin costs 3 licence points (Starter 3, Professional 10, Ultimate 20 points). Hosted: no separate price found."
+    },
+    "branding": {
+      "white_label_price": "Not offered as such; standard Enterprise licence does not allow running pretix for third-party organizers without an individual offer",
+      "custom_domain": "Supported; SSL free; 'contact us' for setup; price not stated",
+      "remove_branding": "'pretix branding kept low-key'; no price"
+    },
+    "ticket_design": "Not mentioned on shop feature page (pretix has a ticket editor in product, not verified here)",
+    "scanning": {
+      "app_free": "pretixSCAN exists as product; price not read; hosted fee includes access control software per pricing page",
+      "hardware_rental": "Scan smartphone EUR 95 for 3 event days; purchase: Zebra TC27 EUR 855, Sunmi L3 EUR 490, ticket reader TR51 turnstile EUR 2,790; turnstiles on request",
+      "offline_mode": null
+    },
+    "marketing": {
+      "email": null,
+      "promo_codes": "Vouchers/discounts (features exist, not itemised on pages read)",
+      "social_pixel": null,
+      "discovery_marketplace": "No marketplace (white-label shop model)",
+      "affiliate_tracking": null
+    },
+    "payouts": "Organizer's own payment provider (PayPal, Stripe, Mollie, bank); pretix invoices its fee monthly",
+    "buyer_messaging": "Email; shop in several languages (de, nl, en listed)",
+    "full_service_offer": "None. Hosted fee: 2.5% of net ticket price, max EUR 15/ticket; free tickets EUR 0.50 after 500 free/year; Lead scanning EUR 25 per exhibitor; Peppol/e-invoicing EUR 0.20/invoice; volume discounts on request. Enterprise (self-hosted) licence EUR 499-950/yr at lowest tier up to EUR 44,000-85,000/yr at >1M orders.",
+    "notes": "Support is bundled in the percentage; services (custom dev, consulting) are quote-based. Hardware price list is a useful anchor for scanner rental.",
+    "sources": [
+      {"url": "https://pretix.eu/about/en/pricing", "read": "2026-10-10"},
+      {"url": "https://pretix.eu/about/en/pricing/selfhosted", "read": "2026-10-10"},
+      {"url": "https://pretix.eu/about/en/hardware", "read": "2026-10-10"},
+      {"url": "https://pretix.eu/about/en/features/shop", "read": "2026-10-10"},
+      {"url": "https://pretix.eu/about/en/", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "Tito",
+    "support": {
+      "channels": "In-app support; sales@tito.io / support@tito.io",
+      "hours": null,
+      "languages": "Interface/attendee flows in 15 languages (auto-translation rolling out)",
+      "response_time_promise": "'Usually the same day'",
+      "human_support_free": "Yes (no tiers)",
+      "account_manager": "Not mentioned; Tito Pro is an invite-only product for professional events, no price"
+    },
+    "onboarding": {"done_for_you": null, "data_import": null, "staff_training": null, "onsite_support": null},
+    "seating": {"who_draws": null, "cost": null},
+    "branding": {"white_label_price": null, "custom_domain": null, "remove_branding": null},
+    "ticket_design": null,
+    "scanning": {"app_free": null, "hardware_rental": null, "offline_mode": null},
+    "marketing": {
+      "email": "Message attendees inside Tito",
+      "promo_codes": null,
+      "social_pixel": null,
+      "discovery_marketplace": null,
+      "affiliate_tracking": null
+    },
+    "payouts": "Via organizer's own Stripe/PayPal",
+    "buyer_messaging": "Email; 15 languages",
+    "full_service_offer": "None. 3% per ticket (2.5% charity), capped at EUR 25/ticket, 'no extra fee to use premium features'; Stripe fees on top (EU 1.4% + EUR 0.25).",
+    "notes": "Pricing page read; features page thin. Mostly conference-focused.",
+    "sources": [
+      {"url": "https://ti.to/pricing", "read": "2026-10-10"},
+      {"url": "https://ti.to/features", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "Weezevent",
+    "support": {
+      "channels": "Online help centre, phone (UK +44 20 3868 7483; FR +33 1 86 65 24 00), email, contact form; localized pages DE/ES/FR/NL/EN",
+      "hours": "UK consultants 9am-6pm Mon-Fri; FR/CH pricing pages claim customer service 24/7 and 'astreinte/emergency 24/7'; OMR listing: free events business hours, paid events 24/7",
+      "languages": "Localized sites in en, fr, de, es, nl (support language per channel not stated)",
+      "response_time_promise": null,
+      "human_support_free": "Yes - 'accompagnement gratuit et toujours disponible' on ticketing",
+      "account_manager": "'Chargé de projet dédié' / dedicated project manager shown in the tailored (sur-mesure) offer and cashless; no price. Client Success team co-manages events (2019 blog)."
+    },
+    "onboarding": {
+      "done_for_you": "Advisor walks organizer through back-office on first call and suggests features; organizers on premium options get hands-on help such as ticket or mini-site customisation (2019 blog, ticketing)",
+      "data_import": null,
+      "staff_training": "Remote technical training + usage guide for organizers who rent access-control terminals; page lists on-site staff training (no price)",
+      "onsite_support": "Free on-call emergency service for every organizer during the event (2019 blog); 'accompagnement terrain' listed; Crew-management & accreditation from EUR 1,000 per project (OMR)"
+    },
+    "seating": {
+      "who_draws": "2D/3D numbered seating shown as 'offre sur-mesure'; builder/service split not stated",
+      "cost": "No price published"
+    },
+    "branding": {
+      "white_label_price": "'Marque blanche' and personalised mini-site listed as features, no price",
+      "custom_domain": null,
+      "remove_branding": "White label listed"
+    },
+    "ticket_design": "Custom tickets and badges listed as features, no price; premium options include ticket customisation help",
+    "scanning": {
+      "app_free": "Yes - WeezAccess Mobile free on iOS/Android; access control shown as 'Gratuit'",
+      "hardware_rental": "WeezAccess Pro from EUR 90 per day (CHF 105, GBP 90); WeezAccess Box fixed terminals on quote",
+      "offline_mode": "Yes, listed (fonctionnement hors ligne)"
+    },
+    "marketing": {
+      "email": "Email + 'SMS & WhatsApp' feature listed (no price)",
+      "promo_codes": "Yes",
+      "social_pixel": "GA4, GTM, Facebook pixel integration",
+      "discovery_marketplace": null,
+      "affiliate_tracking": "Sales by channel tracking"
+    },
+    "payouts": "Payout every 15 days (EUR plan)",
+    "buyer_messaging": "Email; SMS & WhatsApp listed; multilingual mini-site",
+    "full_service_offer": "Dedicated project manager + field support inside 'sur-mesure' offer, unpriced. Ticket fee: 2.5% per ticket online, min EUR 0.99 (FR); 2.5% + 0.99 CHF/GBP (CH/UK); OMR lists EUR 0.55 + booking fees for paid events. Cashless from EUR 1.20 per user; Staff & accreditation EUR 1,000 per project.",
+    "notes": "Closest European analogue to a 'free service on top of ticket fee' model: advice, emergency line and project manager bundled for ticketing, paid items are cashless/crew/hardware.",
+    "sources": [
+      {"url": "https://weezevent.com/fr/nos-tarifs/", "read": "2026-10-10"},
+      {"url": "https://weezevent.com/fr/weezticket/tarifs-fonctionnalites/", "read": "2026-10-10"},
+      {"url": "https://weezevent.com/fr/blog/accompagnement-organisation-evenement/", "read": "2026-10-10"},
+      {"url": "https://weezevent.com/fr-ch/weezaccess/tarifs-fonctionnalites/", "read": "2026-10-10"},
+      {"url": "https://weezevent.com/en-gb/contact/help-and-support/", "read": "2026-10-10"},
+      {"url": "https://omr.com/en/reviews/product/weezevent", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "Fienta",
+    "support": {
+      "channels": "Live chat (with paid features), phone +372 6700 070, email",
+      "hours": null,
+      "languages": null,
+      "response_time_promise": null,
+      "human_support_free": "Yes - 'Free support' advertised",
+      "account_manager": "Not mentioned"
+    },
+    "onboarding": {"done_for_you": null, "data_import": null, "staff_training": null, "onsite_support": null},
+    "seating": {
+      "who_draws": "Self-service (chairs, rows, sectors, floors, tables, boxes)",
+      "cost": "Reserved seating adds EUR 0.20 per sold ticket"
+    },
+    "branding": {"white_label_price": null, "custom_domain": "Custom URL for events/page; own domain not confirmed", "remove_branding": null},
+    "ticket_design": "Yes - add your own image and text to the ticket (schedule, map, sponsor logos); free",
+    "scanning": {
+      "app_free": "Free validation app iOS/Android; hardware scanner can attach to a computer",
+      "hardware_rental": "Not mentioned",
+      "offline_mode": null
+    },
+    "marketing": {
+      "email": "Email tools incl. abandoned-cart emails",
+      "promo_codes": "Discount codes, hidden tickets, password-protected sales",
+      "social_pixel": "Meta Pixel; trackable links/QR codes",
+      "discovery_marketplace": null,
+      "affiliate_tracking": "Trackable marketing links"
+    },
+    "payouts": "Regular payouts monthly; extra payouts on request",
+    "buyer_messaging": "Email; buyer pages in Spanish, Catalan, Basque and many other languages",
+    "full_service_offer": "None found. Fee 3.5% per paid order min EUR 0.40 (+VAT where applicable); reserved seating +EUR 0.20/ticket; free events free.",
+    "notes": "Cheap, self-service, thin on stated service differentiation.",
+    "sources": [
+      {"url": "https://fienta.com/pricing", "read": "2026-10-10"},
+      {"url": "https://fienta.com/p/pricing", "read": "2026-10-10"},
+      {"url": "https://fienta.com/en/features", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "Eventim.Light",
+    "support": {
+      "channels": "Veranstaltersupport contact form",
+      "hours": null,
+      "languages": "Site in German and English; shop languages not stated",
+      "response_time_promise": null,
+      "human_support_free": "No charge listed",
+      "account_manager": "Not mentioned"
+    },
+    "onboarding": {"done_for_you": "Not offered (self-service)", "data_import": null, "staff_training": null, "onsite_support": null},
+    "seating": {
+      "who_draws": "Organizer, self-service Saalplan-Editor",
+      "cost": "No price listed"
+    },
+    "branding": {"white_label_price": null, "custom_domain": null, "remove_branding": "Shop customisable 'in your design', no separate charge"},
+    "ticket_design": "Own image or personal text on the PDF ticket layout (free)",
+    "scanning": {
+      "app_free": "Free EVENTIM.Access app",
+      "hardware_rental": "Not listed",
+      "offline_mode": null
+    },
+    "marketing": {
+      "email": null,
+      "promo_codes": "Promotion codes",
+      "social_pixel": "Meta and Google Analytics pixels; Facebook event posting; campaigns on Instagram/Facebook/Google Ads",
+      "discovery_marketplace": "Optional sale through EVENTIM network for +10% of base price per ticket (on top of ticket fee)",
+      "affiliate_tracking": null
+    },
+    "payouts": "Within 5 working days after the event is set to completed",
+    "buyer_messaging": null,
+    "full_service_offer": "None. Ticket fee 3.5% + EUR 0.49 (base price up to 6.99) or 3.5% + EUR 0.99 (7.00+), payment processing included; EVENTIM network +10%. NL: EUR 0.49 + 2% up to base EUR 15.99, EUR 0.99 + 2% above (snippet).",
+    "notes": "Clean data point: marketplace reach is a priced add-on (+10%), i.e. buyer acquisition is sold separately from software.",
+    "sources": [
+      {"url": "https://www.eventim-light.de/preise/", "read": "2026-10-10"},
+      {"url": "https://www.eventim-light.de/funktionen/", "read": "2026-10-10"},
+      {"url": "https://www.eventim-light.nl/en/pricing/", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "Humanitix",
+    "support": {
+      "channels": "Not stated on pricing page; 'Human support'",
+      "hours": null,
+      "languages": null,
+      "response_time_promise": null,
+      "human_support_free": "Yes - 'Free customer support'",
+      "account_manager": "Not mentioned; 'Custom' fee plan for larger organisers via contact form"
+    },
+    "onboarding": {"done_for_you": null, "data_import": null, "staff_training": null, "onsite_support": null},
+    "seating": {"who_draws": "Reserved seating listed as a feature, builder not stated", "cost": "Included in 'all plans include all features'"},
+    "branding": {"white_label_price": null, "custom_domain": "Selling on your own website listed", "remove_branding": "Design customisation and templates included"},
+    "ticket_design": null,
+    "scanning": {"app_free": "Scanning app included", "hardware_rental": null, "offline_mode": null},
+    "marketing": {
+      "email": "Email campaigns, Mailchimp integration",
+      "promo_codes": "Promotion tools",
+      "social_pixel": "Facebook integration",
+      "discovery_marketplace": null,
+      "affiliate_tracking": null
+    },
+    "payouts": "Scheduled payouts",
+    "buyer_messaging": null,
+    "full_service_offer": "None. UK fee 4.67% + GBP 0.46 per paid ticket; charities/schools 3.33% + 0.25; all profits go to charity (Scottish charitable company).",
+    "notes": "Positions service as free for everyone; the 'profit to charity' angle replaces any paid-service tier.",
+    "sources": [
+      {"url": "https://www.humanitix.com/pricing", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "TryBooking",
+    "support": {
+      "channels": "Australian-based team by phone or email",
+      "hours": null,
+      "languages": null,
+      "response_time_promise": null,
+      "human_support_free": "Yes, included, 'no tiers, no paywalls'",
+      "account_manager": "Not mentioned"
+    },
+    "onboarding": {"done_for_you": null, "data_import": null, "staff_training": null, "onsite_support": null},
+    "seating": {"who_draws": "Custom seating plans 'included for every organiser' (builder vs service not stated)", "cost": "Included"},
+    "branding": {"white_label_price": "White-label options included", "custom_domain": null, "remove_branding": "Included"},
+    "ticket_design": null,
+    "scanning": {"app_free": "Scanning/check-in and Box Office app included", "hardware_rental": "No prices", "offline_mode": null},
+    "marketing": {"email": "Marketing tools included (not itemised)", "promo_codes": null, "social_pixel": null, "discovery_marketplace": null, "affiliate_tracking": null},
+    "payouts": "Funds paid to nominated bank account after the event; scheduled payouts, no transfer fee",
+    "buyer_messaging": null,
+    "full_service_offer": "None. AUD 0.50 per paid ticket + 2.5% processing (tickets under 5: 0.15 + 2.5%), GST incl.; free tickets free.",
+    "notes": "Everything bundled (seating, white label) with no tiers - useful contrast to ThunderTix/Ticket Tailor unbundling.",
+    "sources": [
+      {"url": "https://www.trybooking.com/pricing", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "Billetto",
+    "support": {
+      "channels": "Email or call a real person",
+      "hours": "UK Mon-Thu 08:00-15:30, Fri 08:00-14:30 (Essential)",
+      "languages": "Site in 11 languages (en, da, no, sv, de, es, nl, it, fr, pt, fi)",
+      "response_time_promise": null,
+      "human_support_free": "Yes on Essential plan",
+      "account_manager": "Only Growth plan (1,000+ tickets/year): dedicated contact person; custom quote"
+    },
+    "onboarding": {"done_for_you": null, "data_import": null, "staff_training": null, "onsite_support": null},
+    "seating": {"who_draws": "Seating charts listed as feature; plan tier not stated", "cost": null},
+    "branding": {"white_label_price": null, "custom_domain": null, "remove_branding": null},
+    "ticket_design": "Not covered; POS can print physical tickets",
+    "scanning": {
+      "app_free": "Organiser and scanner apps (Android, iOS), QR and guest lists included",
+      "hardware_rental": "POS hardware sold: Adyen terminal EUR 199, ticket printer EUR 270 (one-off)",
+      "offline_mode": null
+    },
+    "marketing": {
+      "email": "Built-in email and SMS campaigns (Essential)",
+      "promo_codes": null,
+      "social_pixel": null,
+      "discovery_marketplace": "Yes - marketplace visibility; pay-per-sale advertising; Growth adds manual ad campaigns and homepage placement eligibility; claims '21.6% more ticket sales' (company claim)",
+      "affiliate_tracking": null
+    },
+    "payouts": "3-5 working days after the event; Growth plan includes prepayment of most revenue before event",
+    "buyer_messaging": "Email and SMS campaigns; multi-language site",
+    "full_service_offer": "Two tiers: Essential (up to 1,000 tickets/year, same fee) vs Growth (1,000+ tickets/yr: prepayment, dedicated contact, manual ad campaigns, homepage placement; custom price). Buyer fee 3.99% + GBP 0.90 per ticket (UK) excl. VAT; organiser may absorb.",
+    "notes": "Account manager and prepayment are volume-gated perks with custom pricing, not sold separately.",
+    "sources": [
+      {"url": "https://go.billetto.com/en-gb/pricing", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "DICE",
+    "support": {
+      "channels": "Not described for partners; legal contact only in T&Cs",
+      "hours": null,
+      "languages": null,
+      "response_time_promise": "System interruptions within DICE control: up to 30 business days to fix (T&C 20.2)",
+      "human_support_free": null,
+      "account_manager": "Not in T&Cs; partnerships are curated, can't simply sign up (third party)"
+    },
+    "onboarding": {"done_for_you": null, "data_import": null, "staff_training": null, "onsite_support": null},
+    "seating": {"who_draws": null, "cost": null},
+    "branding": {"white_label_price": null, "custom_domain": null, "remove_branding": null},
+    "ticket_design": null,
+    "scanning": {"app_free": "DICE Scan not mentioned in T&Cs", "hardware_rental": "Box office terminals exist (3% fee on box office sales in self sign-up T&Cs)", "offline_mode": null},
+    "marketing": {
+      "email": null,
+      "promo_codes": null,
+      "social_pixel": null,
+      "discovery_marketplace": "Yes: DICE appointed agent to 'advertise, promote and market' tickets, but no guaranteed volume and DICE may choose not to promote (T&Cs 2.1-2.5)",
+      "affiliate_tracking": null
+    },
+    "payouts": "Within 5 business days after the event; advances possible at DICE discretion; DICE may hold up to 5% for 6 months as chargeback allowance",
+    "buyer_messaging": "App-based; fans typically pay about 10-12% booking fee (third party)",
+    "full_service_offer": "No published service tiers. Self sign-up T&Cs (UK/IE, Apr 2026): service fee 8.5% + VAT of face value (min GBP 1) + 2.5% + VAT transaction fee; box office 8% (min 1, max 3.50) + 3%. Organiser pays; waiting list resale difference kept by DICE.",
+    "notes": "Fee 8.5% + 2.5% (about 11%) is the clearest 'marketplace with buyers brought' price point in Europe.",
+    "sources": [
+      {"url": "https://support.dice.fm/article/758-mio-ticketing-terms-and-conditions-uk", "read": "2026-10-10"},
+      {"url": "https://ticketingfees.co.uk/dice-fees/", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "TicketSource",
+    "support": {
+      "channels": "Email, telephone and live chat - all full access for everyone",
+      "hours": null,
+      "languages": "Country sites for 24 markets incl. Spain, France, Germany, Italy, Estonia etc.",
+      "response_time_promise": null,
+      "human_support_free": "Yes; full phone, chat, email for all, plus ticket-buyer support included",
+      "account_manager": "Not mentioned"
+    },
+    "onboarding": {"done_for_you": null, "data_import": null, "staff_training": null, "onsite_support": null},
+    "seating": {"who_draws": "Organizer, seating plan designer ('full access, unrestricted by pricing tiers')", "cost": "Included"},
+    "branding": {"white_label_price": null, "custom_domain": null, "remove_branding": null},
+    "ticket_design": null,
+    "scanning": {
+      "app_free": "Free scanning app (iPhone, iPad, Android); needs online connection",
+      "hardware_rental": "'Professional scanning kit' for big venues; no price on page",
+      "offline_mode": "Windows laptop app works offline with USB scanner; phone app does not"
+    },
+    "marketing": {"email": "Promoting features page exists; not itemised here", "promo_codes": null, "social_pixel": null, "discovery_marketplace": "'What's on' city listings", "affiliate_tracking": null},
+    "payouts": "Own processing: Monday after the event; or connect own Stripe for direct payouts",
+    "buyer_messaging": null,
+    "full_service_offer": "None. Single-tier: 7% + VAT per paid booking incl. card costs (min GBP 0.25 + VAT) or 4.5% + VAT with own Stripe; no fees for in-person bookings or free events; full refund of booking fee on cancelled events.",
+    "notes": "Strongest 'everything free, no tiers' positioning against competitors, explicitly marketing full support as unrestricted.",
+    "sources": [
+      {"url": "https://www.ticketsource.co.uk/pricing", "read": "2026-10-10"},
+      {"url": "https://www.ticketsource.co.uk/features/ticket-scanning", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "ThunderTix",
+    "support": {
+      "channels": "Unlimited human support included on every plan",
+      "hours": null,
+      "languages": null,
+      "response_time_promise": null,
+      "human_support_free": "Yes, all plans",
+      "account_manager": "Not named; White Glove plan = 'hand it off' full service"
+    },
+    "onboarding": {
+      "done_for_you": "White Glove ($1.95/ticket + $195/mo, includes first 100 tickets): free seating chart and account setup, 'we design your ticket templates', 'we build your public event pages', branded subdomain, thermal printing, Meta CAPI, branded receipts + mass email",
+      "data_import": null,
+      "staff_training": null,
+      "onsite_support": null
+    },
+    "seating": {
+      "who_draws": "ThunderTix team builds every custom interactive chart for you",
+      "cost": "One-time USD 0.55 per seat, minimum USD 250 (free on White Glove); Reserved Seating plan required"
+    },
+    "branding": {
+      "white_label_price": "Branded subdomain tickets.yourdomain.com included only in White Glove (otherwise add-on, price not shown); Email Branding add-on USD 10/month incl. 4,000 emails (extra USD 0.002 each)",
+      "custom_domain": "Branded subdomain (White Glove)",
+      "remove_branding": null
+    },
+    "ticket_design": "Done for you on White Glove; thermal ticket printing add-on USD 199 one-time otherwise",
+    "scanning": {"app_free": "Barcode scanning supported, pricing not on page", "hardware_rental": null, "offline_mode": null},
+    "marketing": {
+      "email": "Mailchimp/Constant Contact integrations; branded mass email add-on",
+      "promo_codes": "Unlimited coupons",
+      "social_pixel": "Meta Conversions API add-on USD 20/month (needs branded subdomain), included on White Glove; GTM",
+      "discovery_marketplace": null,
+      "affiliate_tracking": null
+    },
+    "payouts": "Nightly payouts",
+    "buyer_messaging": "Automated event reminders, post-event emails/surveys",
+    "full_service_offer": "FOUR PUBLISHED TIERS, 0% of sales: General Admission USD 1.00/ticket + USD 20/mo (20 tickets incl.); Reserved Seating USD 1.25 + USD 25/mo; White Glove USD 1.95 + USD 195/mo (100 incl.); K12 USD 0.65 + 3.5%. White Glove premium over Reserved = USD 0.70 per ticket + USD 170/month, in return for setup, charts, ticket templates, event pages, subdomain, CAPI, printing.",
+    "notes": "BEST SINGLE BENCHMARK: explicit 'managed' tier with itemised done-for-you scope and a per-ticket premium of about 56% (0.70 / 1.25) plus monthly floor.",
+    "sources": [
+      {"url": "https://www.thundertix.com/online-ticketing-software-pricing/", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "Ludus",
+    "support": {
+      "channels": "Live customer support, 7 days a week",
+      "hours": "7 days (hours not stated)",
+      "languages": null,
+      "response_time_promise": null,
+      "human_support_free": "Yes, included",
+      "account_manager": "Not mentioned"
+    },
+    "onboarding": {"done_for_you": "No setup/onboarding fees; migration help not described", "data_import": null, "staff_training": null, "onsite_support": null},
+    "seating": {"who_draws": "Not stated", "cost": "Unlimited seating charts free, no creation fees"},
+    "branding": {"white_label_price": null, "custom_domain": null, "remove_branding": null},
+    "ticket_design": null,
+    "scanning": {"app_free": null, "hardware_rental": null, "offline_mode": null},
+    "marketing": {"email": null, "promo_codes": null, "social_pixel": null, "discovery_marketplace": null, "affiliate_tracking": null},
+    "payouts": "Direct deposit daily/weekly/monthly or lump sum after event, or mailed check",
+    "buyer_messaging": null,
+    "full_service_offer": "None. 5% + USD 0.75 per ticket (processing included; typically passed to patron: 100% free to organization if passed on); comp/cash tickets no fee; class/marketing add USD 0.05.",
+    "notes": "Fee paid by patron, positions as free to the organization.",
+    "sources": [
+      {"url": "https://hello.ludus.com/pricing", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "Spektrix",
+    "support": {
+      "channels": "Client success specialists; 24/7 Support Centre access",
+      "hours": "24/7 Support Centre (self-serve)",
+      "languages": null,
+      "response_time_promise": null,
+      "human_support_free": "Included in the single service charge",
+      "account_manager": "Dedicated implementation project manager + client success specialists included"
+    },
+    "onboarding": {
+      "done_for_you": "Dedicated implementation PM, data migration, training before and after go-live, custom report, seating plan and ticket design services - all inside the service charge",
+      "data_import": "Data migration included",
+      "staff_training": "Included, before and after go-live",
+      "onsite_support": null
+    },
+    "seating": {"who_draws": "Seating plan design service included in service charge", "cost": "Included"},
+    "branding": {
+      "white_label_price": "White-label Spektrix subsites included; custom integrated website costs extra",
+      "custom_domain": null,
+      "remove_branding": null
+    },
+    "ticket_design": "Ticket design service included",
+    "scanning": {"app_free": null, "hardware_rental": "Extra hardware only if existing devices don't work; billed separately", "offline_mode": null},
+    "marketing": {"email": "Dotdigital licence with email allowance included", "promo_codes": null, "social_pixel": "GA4 / GTM integration support", "discovery_marketplace": null, "affiliate_tracking": null},
+    "payouts": null,
+    "buyer_messaging": "Email (Dotdigital)",
+    "full_service_offer": "One 'service charge' scaling with activity/revenue, nothing paid until go-live; amount not published, card processing extra. Third-party estimate (Software Finder, Apr 2026): implementation USD 500-10,000 for nonprofits.",
+    "notes": "The enterprise model: services are bundled inside an undisclosed revenue-linked charge. Good evidence that 'full service' is normally bundled, not itemised, for arts venues.",
+    "sources": [
+      {"url": "https://www.spektrix.com/en-gb/pricing/", "read": "2026-10-10"},
+      {"url": "https://softwarefinder.com/nonprofit/spektrix", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "GoOut / Ticketportal (PLG Czech Republic)",
+    "support": {
+      "channels": "Customer (buyer) support; organizer help centre and registration; contact form",
+      "hours": "Buyer support weekdays 10:00-18:00 (mapy.com listing)",
+      "languages": null,
+      "response_time_promise": null,
+      "human_support_free": null,
+      "account_manager": "CEO interview does not mention account managers"
+    },
+    "onboarding": {
+      "done_for_you": "Not published; sales launch takes 1-2 days after approval (third-party table); event editing not possible by organizer (table, smsticket-owned source, biased)",
+      "data_import": null,
+      "staff_training": null,
+      "onsite_support": "Planned: 'complex 360 degree service' - marketing, on-site administration (turnstiles, scanners, cashless), post-event billing (CEO, Aug 2025)"
+    },
+    "seating": {"who_draws": null, "cost": null},
+    "branding": {"white_label_price": null, "custom_domain": null, "remove_branding": null},
+    "ticket_design": null,
+    "scanning": {"app_free": null, "hardware_rental": "Turnstiles/scanners as future/ancillary service", "offline_mode": null},
+    "marketing": {
+      "email": "Marketing packages exist (CEO interview)",
+      "promo_codes": null,
+      "social_pixel": null,
+      "discovery_marketplace": "Yes - 'we ensure the audience'; GoOut about 4M tickets and Ticketstream about 1.5M tickets last year; Ticketportal strongest brand",
+      "affiliate_tracking": null
+    },
+    "payouts": null,
+    "buyer_messaging": null,
+    "full_service_offer": "No published packages. Organizer commission: GoOut 8% (7-8% in one source), Ticketportal 8% (min 20 CZK/ticket per one source, 5 CZK per another), Ticketstream 7-10% depending on source; buyer fee 3.5% (min 10 CZK). iRozhlas (May 2026): 'for organizers it is now common to pay eight percent'.",
+    "notes": "Fee sources are mostly competitor-owned (smsticket/AXIMA) or news snippets; treat exact numbers as third_party. The consolidated PLG pricing implies about 8% organizer + 3.5% buyer with a marketplace audience.",
+    "sources": [
+      {"url": "https://www.ceskenoviny.cz/pr/zpravy/revoluce-v-prodeji-vstupenek-prinasi-vyhody-pro-poradatele-i-navstevniky/2679602", "read": "2026-10-10"},
+      {"url": "https://www.axima-brno.cz/jak-vybrat-system-pro-prodej-vstupenek.html", "read": "2026-10-10"},
+      {"url": "https://www.irozhlas.cz/ekonomika/vstupenky-na-nejruznejsi-akce-zdrazuji-muze-za-spojeni-tri-velkych-hracu-pod-plg_2605121213_ako", "read": "2026-10-10"},
+      {"url": "https://www.plgmoments.com/news/after-a-multi-million-euro-acquisition-of-go-out-and-ticketportal-they-dominated-czechia-not-everyone-can-survive-says-their-ceo", "read": "2026-10-10"},
+      {"url": "https://poradatel.ticketportal.cz/cz", "read": "2026-10-10"}
+    ],
+    "confidence": "third_party"
+  },
+  {
+    "platform": "SMSticket (CZ)",
+    "support": {
+      "channels": "Help centre (Zendesk) + contact form; email poradatel@smsticket.cz for big/non-profit terms",
+      "hours": null,
+      "languages": "Site in Czech, English, Slovak, German, Polish",
+      "response_time_promise": null,
+      "human_support_free": "All platform functions included in the commission; one-off services extra",
+      "account_manager": "Not mentioned"
+    },
+    "onboarding": {
+      "done_for_you": "Paid extras: seating plan design from 1,250 CZK; ticket email template edit 500 CZK; PDF ticket design 500-1,000 CZK; processing tickets from other networks 1,000 CZK per event",
+      "data_import": "Tickets from other networks: 1,000 CZK per event",
+      "staff_training": "Box office staff training 1,000 CZK/hour",
+      "onsite_support": "Check-in staff from 600 CZK/hour; box office service intervention 1,000 CZK/hour; 'special check-in support' and 'box office intervention' are paid extras"
+    },
+    "seating": {
+      "who_draws": "smsticket graphic service (seating plan design from 1,250 CZK per unit); testimonials say seat plans included in standard setup",
+      "cost": "From 1,250 CZK per plan (excl. 21% VAT)"
+    },
+    "branding": {"white_label_price": null, "custom_domain": null, "remove_branding": "Sales iframe on organizer site can be customised; no price"},
+    "ticket_design": "PDF ticket design 500-1,000 CZK per unit; email template edit 500 CZK; printed tickets 5 CZK each",
+    "scanning": {
+      "app_free": "Yes - smsticket Brana mobile app",
+      "hardware_rental": "Reader loan 250 CZK per unit; Zebra TC26 reader sale 16,000 CZK; Zebra GK420d printer 8,000 CZK + 1,000 CZK installation",
+      "offline_mode": null
+    },
+    "marketing": {
+      "email": "Email campaign: 1,000 CZK prep + 0.30 CZK per email",
+      "promo_codes": null,
+      "social_pixel": "Meta Pixel 1,000 CZK per event; Google Analytics tag 1,000 CZK per event",
+      "discovery_marketplace": "Targeted campaigns via social/email/SMS (paid); custom FB/IG campaign 3,000 CZK prep + budget",
+      "affiliate_tracking": "Affiliate/partner rewards covered by commission"
+    },
+    "payouts": "Organizer withdraws own revenue; sent within 24 hours; advance payouts offered",
+    "buyer_messaging": "Tickets delivered by email and SMS with digital signature; informational SMS 1.50 CZK, promotional SMS 3 CZK",
+    "full_service_offer": "No bundled package; fully itemised extras list ('Extra sluzby'). Commission 5% of online ticket price (4% in special cases), min 5 CZK per box-office ticket; no other fees for standard services. Terminal rental commission 1.9-2.3% + 1 CZK.",
+    "notes": "BEST EVIDENCE OF A-LA-CARTE SERVICE PRICING in Europe: published price list for design, import, on-site staff and training. Hourly staff 600 CZK (~EUR 24) matches Vivetix EUR 21/h.",
+    "sources": [
+      {"url": "https://smsticket.zendesk.com/hc/cs/articles/360007427614-Cen%C3%ADk-a-seznam-extra-slu%C5%BEeb", "read": "2026-10-10"},
+      {"url": "https://www.smsticket.cz/pro-poradatele", "read": "2026-10-10"},
+      {"url": "https://smsticket.zendesk.com/hc/cs/articles/26620027048594-Jak%C3%A9-jsou-poplatky-z-prodeje-vstupenek", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "Entradium (ES)",
+    "support": {
+      "channels": "Help page and contact; details not retrievable",
+      "hours": null,
+      "languages": "Site in ES, EN, CA, EU, DE, PT, GL, IT, FR",
+      "response_time_promise": null,
+      "human_support_free": null,
+      "account_manager": null
+    },
+    "onboarding": {"done_for_you": "Per competitor (BuscaTuSitio): venue/seating map is configured by the Entradium team after contacting them, organizer cannot edit it", "data_import": null, "staff_training": null, "onsite_support": "Box office and cashless are extra services (competitor page)"},
+    "seating": {"who_draws": "Entradium team (platform service) per third party", "cost": null},
+    "branding": {"white_label_price": null, "custom_domain": null, "remove_branding": "Limited customisation; no organiser website/themes (third party)"},
+    "ticket_design": null,
+    "scanning": {"app_free": null, "hardware_rental": null, "offline_mode": null},
+    "marketing": {"email": null, "promo_codes": null, "social_pixel": null, "discovery_marketplace": "Yes - consumer marketplace with thousands of events", "affiliate_tracking": null},
+    "payouts": "Entradium collects money and transfers weekly on Tuesdays; platform issues the invoice (third party)",
+    "buyer_messaging": null,
+    "full_service_offer": "2.5% + VAT per ticket incl. payment processing (third-party statement, matches Premium plan).",
+    "notes": "Official pricing page returned 404/403; commission and seat-map service are only from a competitor's page, verify before using.",
+    "sources": [
+      {"url": "https://buscatusitio.com/comparativa/alternativa-entradium", "read": "2026-10-10"},
+      {"url": "https://entradium.com/", "read": "2026-10-10"}
+    ],
+    "confidence": "third_party"
+  },
+  {
+    "platform": "Vivetix (ES/LatAm)",
+    "support": {
+      "channels": "Phone +34 644 308 000, email info@vivetix.com; chat not confirmed",
+      "hours": "Social profile claims 24h attention and technical support (claim only)",
+      "languages": "Spanish-focused (Spain and Latin America)",
+      "response_time_promise": null,
+      "human_support_free": "Not stated on page read",
+      "account_manager": null
+    },
+    "onboarding": {
+      "done_for_you": null,
+      "data_import": null,
+      "staff_training": null,
+      "onsite_support": "Event staff: EUR 21 per person-hour, minimum 4 hours; night surcharge +EUR 7/hour (22:00-06:00)"
+    },
+    "seating": {"who_draws": null, "cost": null},
+    "branding": {"white_label_price": null, "custom_domain": null, "remove_branding": null},
+    "ticket_design": null,
+    "scanning": {
+      "app_free": "Free app and software; QR access-control app",
+      "hardware_rental": "PDA device EUR 60 per device per day (+EUR 3/day data line), extra battery EUR 10/day, delivery and pickup EUR 20, refundable deposit EUR 200 per device; online calculator and prepaid order",
+      "offline_mode": null
+    },
+    "marketing": {"email": null, "promo_codes": null, "social_pixel": null, "discovery_marketplace": "Public event search on site", "affiliate_tracking": null},
+    "payouts": null,
+    "buyer_messaging": null,
+    "full_service_offer": "Base fee 2% + EUR 0.10 per ticket + VAT, gateway included (Apr 2026); free events no fee; on-site staff and PDA rental sold as prepaid services.",
+    "notes": "Very low fee; monetises on-site operations at about EUR 21/h staff and EUR 60/day device.",
+    "sources": [
+      {"url": "https://vivetix.com/b/tarifa-precio-vivetix", "read": "2026-10-10"},
+      {"url": "https://vivetix.com/b/calculadora-coste-azafatas-pdas-eventos", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "Tickchak (Israel)",
+    "support": {
+      "channels": "Phone *6565, email info@tickchak.co.il, contact form",
+      "hours": null,
+      "languages": "Hebrew site",
+      "response_time_promise": "'Our representatives will get back to you soon'",
+      "human_support_free": null,
+      "account_manager": "A 'large events - personal attention' tier exists, no price/threshold shown"
+    },
+    "onboarding": {"done_for_you": null, "data_import": "Audience import tool listed", "staff_training": null, "onsite_support": null},
+    "seating": {"who_draws": "Seat reservations / seated events listed as feature", "cost": null},
+    "branding": {"white_label_price": null, "custom_domain": "Branded site under producer's own domain (festival pages)", "remove_branding": null},
+    "ticket_design": "Digital ticket app only; no design service listed",
+    "scanning": {"app_free": "Real-time entry dashboard + digital ticket app", "hardware_rental": null, "offline_mode": null},
+    "marketing": {"email": "Email campaigns, automations, lead management", "promo_codes": null, "social_pixel": "Tracking pixels", "discovery_marketplace": "Presents itself as home of Israeli culture / culture portals (Instagram bio)", "affiliate_tracking": null},
+    "payouts": null,
+    "buyer_messaging": "Branded SMS to buyer, SMS + email digital ticket, pre-event reminder",
+    "full_service_offer": "Plan labels seen: free ('small events'), monthly-billed-annually, 'large events - personal attention'; no amounts on page. Commission not published.",
+    "notes": "Pricing page gives no numbers. Plan names suggest a personal-service tier above the free plan.",
+    "sources": [
+      {"url": "https://tickchak.co.il/", "read": "2026-10-10"},
+      {"url": "https://tickchak.co.il/pricing", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "Eventer (Israel)",
+    "support": {
+      "channels": "Phone +972 3-750-6393, contact@eventer.co.il (from Facebook/search snippets)",
+      "hours": null,
+      "languages": "Hebrew/English",
+      "response_time_promise": null,
+      "human_support_free": null,
+      "account_manager": null
+    },
+    "onboarding": {"done_for_you": null, "data_import": null, "staff_training": null, "onsite_support": null},
+    "seating": {"who_draws": null, "cost": null},
+    "branding": {"white_label_price": null, "custom_domain": null, "remove_branding": null},
+    "ticket_design": null,
+    "scanning": {"app_free": "Eventer Backstage app (organizer management app, App Store)", "hardware_rental": null, "offline_mode": null},
+    "marketing": {"email": null, "promo_codes": null, "social_pixel": null, "discovery_marketplace": "Consumer ticket site", "affiliate_tracking": null},
+    "payouts": null,
+    "buyer_messaging": null,
+    "full_service_offer": null,
+    "notes": "Site is JS-rendered; pricing and producer pages returned template placeholders only. Nearly all fields unknown. For an Israeli reference see Takbull below.",
+    "sources": [
+      {"url": "https://www.eventer.co.il/", "read": "2026-10-10"},
+      {"url": "https://apps.apple.com/il/app/eventer-backstage/id1188247030?l=he", "read": "2026-10-10"}
+    ],
+    "confidence": "snippet"
+  },
+  {
+    "platform": "Takbull (Israel, extra)",
+    "support": {
+      "channels": "Phone, WhatsApp, email, contact form, knowledge centre/FAQ/guides",
+      "hours": null,
+      "languages": "Hebrew, English, French",
+      "response_time_promise": null,
+      "human_support_free": null,
+      "account_manager": null
+    },
+    "onboarding": {"done_for_you": null, "data_import": null, "staff_training": null, "onsite_support": null},
+    "seating": {"who_draws": "Venue and seat-map setup included in the tool", "cost": "No extra fee stated"},
+    "branding": {"white_label_price": null, "custom_domain": null, "remove_branding": null},
+    "ticket_design": null,
+    "scanning": {"app_free": "QR scanning from a phone at the entrance (guide linked)", "hardware_rental": null, "offline_mode": null},
+    "marketing": {"email": null, "promo_codes": null, "social_pixel": null, "discovery_marketplace": null, "affiliate_tracking": null},
+    "payouts": null,
+    "buyer_messaging": "Automatic receipts/invoices; 8 payment methods",
+    "full_service_offer": "None. 3.5% management fee capped at ILS 9 per ticket (before VAT) + 1.4% + VAT processing; no monthly fee; nonprofits ILS 300 provider opening fee.",
+    "notes": "Not in requested list; added as the only Israeli price data point found with numbers.",
+    "sources": [
+      {"url": "https://takbull.co.il/tickets/", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "Ticket Fairy (extra, same segment)",
+    "support": {
+      "channels": "Email, chat, social media for buyers; urgent event help 24/7",
+      "hours": "24/7",
+      "languages": null,
+      "response_time_promise": null,
+      "human_support_free": "Included in the 8-10% fee",
+      "account_manager": "Included: personal support from an experienced account manager for setup, marketing, operations"
+    },
+    "onboarding": {"done_for_you": "Account manager helps with setup; 'we set up events for you' not stated", "data_import": null, "staff_training": null, "onsite_support": "Urgent ticketing help any hour; no on-site staff described"},
+    "seating": {"who_draws": null, "cost": null},
+    "branding": {"white_label_price": null, "custom_domain": null, "remove_branding": null},
+    "ticket_design": null,
+    "scanning": {"app_free": "Mobile check-in app; RFID/cashless via partners", "hardware_rental": null, "offline_mode": null},
+    "marketing": {"email": "Built-in marketing tools incl. tracked campaigns and buyer referrals", "promo_codes": null, "social_pixel": null, "discovery_marketplace": null, "affiliate_tracking": "Buyer referrals/tracked campaigns"},
+    "payouts": null,
+    "buyer_messaging": null,
+    "full_service_offer": "All-inclusive 8-10% of ticket price (higher ticket = lower %), min GBP 1.00 (UK) / USD 2.00 (US) per paid ticket; account manager included. One of the few percentage 'managed' price points for festivals.",
+    "notes": "Marker for 'account manager bundled into a high-single-digit percentage'.",
+    "sources": [
+      {"url": "https://www.ticketfairy.co.uk/festival-ticketing-software", "read": "2026-10-10"},
+      {"url": "https://www.ticketfairy.com/event-ticketing/box-office-management-software", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "Weeztix / Eventix (extra, NL)",
+    "support": {
+      "channels": "Business-hours support for free events; 24/7 emergency hotline for paid events",
+      "hours": "Business hours (free) / 24/7 emergency (paid)",
+      "languages": null,
+      "response_time_promise": null,
+      "human_support_free": "Tiered by paid vs free events",
+      "account_manager": "'Dedicated Success Manager' and 2.5-hour onboarding listed in a tier table (which tier not clear)"
+    },
+    "onboarding": {"done_for_you": "2.5-hour onboarding listed", "data_import": null, "staff_training": null, "onsite_support": null},
+    "seating": {"who_draws": "Drawing seating plans listed", "cost": "'Extra fees apply' on several seating items, amounts not shown"},
+    "branding": {"white_label_price": null, "custom_domain": null, "remove_branding": "Embedded/hosted/custom shops, custom confirmation email (some extra fees)"},
+    "ticket_design": null,
+    "scanning": {"app_free": "Easy scan app", "hardware_rental": "Rental scan equipment and rental POS offered, no price shown", "offline_mode": null},
+    "marketing": {"email": null, "promo_codes": null, "social_pixel": "GTM and Facebook Conversion API; some marked 'Extra fees apply'", "discovery_marketplace": null, "affiliate_tracking": null},
+    "payouts": null,
+    "buyer_messaging": null,
+    "full_service_offer": "Paid events by quote. Free events: first 5,000 tickets free, then EUR 0.20/ticket. Success manager + onboarding + hotline sit in the paid-events tier.",
+    "notes": "Example of service (success manager, 24/7 hotline) gated by 'paid events' rather than priced separately.",
+    "sources": [
+      {"url": "https://weeztix.com/pricing", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "Little Box Office (extra, UK)",
+    "support": {
+      "channels": "Phone and email, dedicated support team, 7 days a week",
+      "hours": "7 days",
+      "languages": null,
+      "response_time_promise": "Quote requests answered usually within one working day",
+      "human_support_free": "Same support for all sizes",
+      "account_manager": "Not mentioned"
+    },
+    "onboarding": {"done_for_you": "Onboarding and training included; live data migration free; historical data scoped separately", "data_import": "Free live data migration", "staff_training": "Included", "onsite_support": null},
+    "seating": {"who_draws": "Platform builds custom seat maps during onboarding", "cost": "No extra charge"},
+    "branding": {"white_label_price": "Branding options included; only your branding at checkout", "custom_domain": null, "remove_branding": "Included"},
+    "ticket_design": null,
+    "scanning": {"app_free": null, "hardware_rental": "Kiosk sales supported, hardware cost not stated", "offline_mode": null},
+    "marketing": {"email": null, "promo_codes": null, "social_pixel": null, "discovery_marketplace": null, "affiliate_tracking": null},
+    "payouts": null,
+    "buyer_messaging": null,
+    "full_service_offer": "Fee based on volume: most clients start at about 4%, lower for large; setup, migration, seat-map building, branding all included.",
+    "notes": "Arts-focused benchmark where seat-map building and migration are bundled into roughly 4%.",
+    "sources": [
+      {"url": "https://littleboxoffice.com/pricing", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  },
+  {
+    "platform": "MARKET_EVIDENCE",
+    "summary": "No European platform publishes an explicit 'we run your box office for X%' package. Evidence falls into four patterns: (1) service bundled into a high-single-digit percentage or custom quote (Ticket Fairy 8-10% incl. account manager; DICE 8.5% + 2.5%; GoOut/Ticketportal about 8% + 3.5% buyer; Spektrix undisclosed revenue-linked service charge); (2) per-ticket managed tier with itemised scope (ThunderTix White Glove USD 1.95 vs USD 1.25 reserved); (3) a-la-carte hourly/one-off services on top of a low base commission (smsticket 5% + published extras; Vivetix 2% + EUR 0.10 + EUR 21/h staff, EUR 60/day PDA; pretix hardware list); (4) service as a perk of volume or paid-event status (Eventbrite Sales Partnerships, Billetto Growth 1,000+ tickets, Weeztix success manager, Weezevent project manager).",
+    "support_is_free_baseline": "Human support is free at: Ticket Tailor (24/7, 5-minute target), TicketSource (phone + chat + email), Ludus (7 days), TryBooking (phone/email), Humanitix, Fienta, pretix (phone, Mon-Fri), Weezevent (24/7 + free on-call during events), Little Box Office (7 days). What is NOT free: seating chart creation (ThunderTix USD 0.55 per seat min USD 250; smsticket from 1,250 CZK), PDF ticket design (smsticket 500-1,000 CZK), white label (Ticket Tailor about GBP 39/month, custom domain GBP 7/month - third party), on-site staff (smsticket 600 CZK/h, Vivetix EUR 21/h), scanner hardware (Weezevent EUR 90/day, pretix EUR 95 per 3 days, Vivetix EUR 60/day, smsticket 250 CZK per reader), marketing campaigns (smsticket SMS 1.50-3 CZK, FB/IG campaign 3,000 CZK prep).",
+    "managed_tier_price_points": [
+      {"who": "ThunderTix White Glove", "price": "USD 1.95 per ticket + USD 195/month (100 tickets incl.) vs Reserved Seating USD 1.25 + USD 25/month", "premium": "+USD 0.70 per ticket (+56%) and +USD 170/month for: free chart and account setup, ticket templates designed for you, event pages built for you, branded subdomain, Meta CAPI, thermal printing, branded receipts/mass email", "source": "https://www.thundertix.com/online-ticketing-software-pricing/", "confidence": "page"},
+      {"who": "Ticket Fairy", "price": "8-10% of ticket price, min GBP 1.00 / USD 2.00, account manager included", "premium": null, "source": "https://www.ticketfairy.co.uk/festival-ticketing-software", "confidence": "page"},
+      {"who": "DICE (UK/IE self sign-up)", "price": "8.5% + VAT service fee (min GBP 1) + 2.5% transaction fee, buyers-brought marketplace but no guaranteed volume", "premium": null, "source": "https://support.dice.fm/article/758-mio-ticketing-terms-and-conditions-uk", "confidence": "page"},
+      {"who": "GoOut / Ticketportal / Ticketstream (CZ)", "price": "Organizer about 7-10% (8% typical per iRozhlas May 2026) + buyer 3.5% min 10 CZK", "premium": null, "source": "https://www.ceskenoviny.cz/pr/zpravy/revoluce-v-prodeji-vstupenek-prinasi-vyhody-pro-poradatele-i-navstevniky/2679602", "confidence": "third_party"},
+      {"who": "smsticket (CZ)", "price": "5% (4% special cases) + a-la-carte extras list", "premium": null, "source": "https://smsticket.zendesk.com/hc/cs/articles/360007427614-Cen%C3%ADk-a-seznam-extra-slu%C5%BEeb", "confidence": "page"},
+      {"who": "Little Box Office (UK)", "price": "About 4% starting rate, onboarding/migration/seat maps included", "premium": null, "source": "https://littleboxoffice.com/pricing", "confidence": "page"},
+      {"who": "Weezevent", "price": "2.5% min EUR 0.99 per ticket (FR), dedicated project manager and on-call emergency service bundled in 'sur-mesure' ticketing, no price", "premium": null, "source": "https://weezevent.com/fr/nos-tarifs/", "confidence": "page"},
+      {"who": "Eventim.Light", "price": "3.5% + EUR 0.49/0.99 own shop; +10% of base price per ticket when also sold through the EVENTIM network", "premium": "Marketplace reach priced at +10%", "source": "https://www.eventim-light.de/preise/", "confidence": "page"},
+      {"who": "Ticketebo (AU)", "price": "4% of order value min AUD 1.20 'fully managed ticketing service'; on-site staff, box office and device hire are premium extras (quote)", "premium": null, "source": "https://www.ticketebo.com.au/pricing", "confidence": "page"},
+      {"who": "Vivetix (ES)", "price": "2% + EUR 0.10 per ticket + VAT; staff EUR 21 per hour (min 4h), PDA EUR 60/day", "premium": null, "source": "https://vivetix.com/b/calculadora-coste-azafatas-pdas-eventos", "confidence": "page"}
+    ],
+    "standard_self_serve_fee_benchmarks_eur_equivalent_for_context": [
+      "Ticket Tailor 0.60 GBP/ticket (0.22 prepaid)",
+      "Tito 3% (cap EUR 25)",
+      "pretix 2.5% (cap EUR 15)",
+      "Fienta 3.5% min EUR 0.40",
+      "Eventim.Light 3.5% + 0.49/0.99",
+      "Billetto 3.99% + GBP 0.90 (buyer)",
+      "Humanitix 4.67% + GBP 0.46",
+      "TicketSource 7% incl. card costs",
+      "Eventbrite 3.7% + USD 1.79 + 2.9% (US)"
+    ],
+    "on_site_and_hardware_price_anchors": [
+      "Scanner rental: Weezevent EUR 90/day; pretix EUR 95 per 3 days; Vivetix PDA EUR 60/day (+EUR 200 deposit); smsticket 250 CZK per reader loan",
+      "Event staff: Vivetix EUR 21/h (min 4h, night +EUR 7/h); smsticket check-in staff from 600 CZK/h; smsticket POS service intervention and training 1,000 CZK/h",
+      "Weezevent Crew-management & accreditation from EUR 1,000 per project (OMR)"
+    ],
+    "one_off_service_anchors": [
+      "Seating chart build: ThunderTix USD 0.55/seat min USD 250; smsticket from 1,250 CZK per plan; pretix seating plugin 3 licence points (self-hosted)",
+      "Ticket design: smsticket PDF 500-1,000 CZK, email template 500 CZK",
+      "Import tickets from other networks: smsticket 1,000 CZK per event",
+      "White label + domain: Ticket Tailor about GBP 39/month + GBP 7/month (third party); ThunderTix email branding USD 10/month, CAPI USD 20/month",
+      "Implementation for enterprise arts CRM: USD 500-10,000 estimate (Software Finder on Spektrix, third party)"
+    ],
+    "general_service_pricing_context": [
+      "White-glove event management is commonly priced as 15-25% of total event budget (Snapsight glossary) - this is event production, not ticketing, so it is only a ceiling reference: https://www.snapsight.com/en/resources/glossary/white-glove-services/ (snippet)",
+      "Gevme and ClearEvent articles say account managers, on-site crew and live onboarding usually add cost but publish no numbers: https://www.gevme.com/en/blog/event-management-software-pricing/"
+    ],
+    "implication_for_1_eur_per_ticket_hypothesis": "A published managed tier premium exists only at ThunderTix (+USD 0.70/ticket plus monthly floor) which is the nearest analogue to the hypothesised EUR 1. Percentage models that bundle an account manager (Ticket Fairy 8-10%, PLG about 8%) are far above EUR 1 on tickets over EUR 12. Service that most competitors give free: human support, scanner app, self-service seating. Service that is monetised: design done for you, seat map build, on-site staff/hardware, white label, campaigns.",
+    "gaps": "Not found: public managed-service percentage from any European box-office outsourcing agency; Eventer prices; Entradium official pricing page; DICE partner service scope; Humanitix hours; ticket-design pricing for most platforms; Ticket Tailor white-label price on an official page. Bright Data returned empty for several JS-heavy sites; some figures are from competitor or aggregator pages (flagged third_party).",
+    "sources": [
+      {"url": "https://www.thundertix.com/online-ticketing-software-pricing/", "read": "2026-10-10"},
+      {"url": "https://www.ticketfairy.co.uk/festival-ticketing-software", "read": "2026-10-10"},
+      {"url": "https://smsticket.zendesk.com/hc/cs/articles/360007427614-Cen%C3%ADk-a-seznam-extra-slu%C5%BEeb", "read": "2026-10-10"},
+      {"url": "https://vivetix.com/b/calculadora-coste-azafatas-pdas-eventos", "read": "2026-10-10"},
+      {"url": "https://littleboxoffice.com/pricing", "read": "2026-10-10"},
+      {"url": "https://www.ticketebo.com.au/pricing", "read": "2026-10-10"},
+      {"url": "https://www.snapsight.com/en/resources/glossary/white-glove-services/", "read": "2026-10-10"},
+      {"url": "https://www.gevme.com/en/blog/event-management-software-pricing/", "read": "2026-10-10"}
+    ],
+    "confidence": "page"
+  }
+]
