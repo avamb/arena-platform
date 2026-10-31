@@ -243,8 +243,9 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	press("wz:city:"+cityID.String(), "Где проходит")
 	press("wz:venue:new", "Название площадки")
 	say(venueName, "Адрес площадки")
-	say("Vabaduse väljak 1", "Сколько мест продаём") // the one question about places
-	say("120", "Сеанс 1: 15.12.2099 20:00")          // zone guessed: straight to "one more date?"
+	say("Vabaduse väljak 1", "Сколько мест продаём")   // the one question about places
+	say("120", "нет схемы зала")                       // zone guessed: the venue is made, and it has no hall plan
+	press("wz:plan:skip", "Сеанс 1: 15.12.2099 20:00") // go on without one: straight to "one more date?"
 	press("wz:next", "Билеты одинаковые")
 
 	// Step 3 — one category with a price change.
@@ -474,7 +475,8 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	press("wz:none", "В какой части мира")
 	press("wz:keep", "В каком городе")
 	press("wz:keep", "Где проходит")
-	press("wz:keep", "Сколько мест продаём")
+	press("wz:keep", "нет схемы зала") // the remembered venue has no hall plan: offered, and skipped
+	press("wz:plan:skip", "Сколько мест продаём")
 	press("wz:keep", "ещё один сеанс")
 	copySummary := press("wz:next", "Проверьте и опубликуйте")
 	if !strings.Contains(copySummary, "20.12.2099 20:00") || !strings.Contains(copySummary, "27,50 EUR") || !strings.Contains(copySummary, renamed) {
