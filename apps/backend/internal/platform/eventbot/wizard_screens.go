@@ -340,7 +340,7 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		rows = append(rows, []Button{btn("bot.wz.venue_new", "venue:new")})
 		return Screen{Text: header(2, "bot.wz.title_when") + t("bot.wz.ask_venue", nil), Buttons: nav(rows...)}, nil
 
-	case stSPlan, stSPlanPrice:
+	case stSPlan, stSPlanPrice, stSPlanExtra, stSPlanExtraName, stSPlanExtraPrice, stSPlanExtraColor:
 		return w.renderSeated(loc, d, header, nav), nil
 
 	case stVName:
@@ -359,6 +359,12 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		if s.Capacity > 0 {
 			rows = append(rows, []Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": s.Capacity}), Data: "keep"}})
 			text = t("bot.wz.ask_capacity_known", map[string]any{"Venue": Esc(s.VenueName), "Capacity": s.Capacity})
+		}
+		if s.VenueID != "" && d.Scratch.NoPlanVenueID == s.VenueID {
+			// An existing venue without a seating plan: say so instead of
+			// silently selling without seats, and offer another venue.
+			text = t("bot.wz.venue_no_plan_note", map[string]any{"Venue": Esc(s.VenueName)}) + "\n\n" + text
+			rows = append(rows, []Button{btn("bot.wz.venue_other_btn", "venue:other")})
 		}
 		return Screen{Text: header(2, "bot.wz.title_when") + text, Buttons: nav(rows...)}, nil
 
@@ -784,6 +790,9 @@ func (w *Wizard) categoriesList(loc, cur string, tk *DraftTickets) string {
 	parts := []string{}
 	for _, c := range tk.Categories {
 		p := Esc(c.Name) + " " + FormatMoney(c.PriceMinor, cur, loc)
+		if sq := colorEmoji(c.Color); sq != "" {
+			p = sq + " " + p
+		}
 		switch tk.Mode {
 		case ModeParallel:
 			// A category of a seating plan that was read back has no count of its own.

@@ -141,6 +141,40 @@ func (s *Server) handlePatchSessionSeatsCategory(w http.ResponseWriter, r *http.
 	s.seatingHandler().HandlePatchSessionSeatsCategory(w, r)
 }
 
+// handleGetSessionSchemaAdmin serves the organizer's seat map of a session
+// (the public schema without the published gate). Same auth model as the
+// category PATCH above.
+func (s *Server) handleGetSessionSchemaAdmin(w http.ResponseWriter, r *http.Request) {
+	if s.sessionQueries == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "database is not available", r,
+		))
+		return
+	}
+	sessionID, ok := httputil.UUIDPathParam(w, r, "id")
+	if !ok {
+		return
+	}
+	orgCtx, err := s.sessionQueries.GetSessionOrgContext(r.Context(), sessionID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"session.not_found", "session not found", r,
+			))
+			return
+		}
+		s.logger.Error("seating: admin schema org lookup failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"event_session.schema_failed", "failed to resolve session organization", r,
+		))
+		return
+	}
+	if !s.enforceMembershipInOrg(w, r, orgCtx.OrgID) {
+		return
+	}
+	s.seatingHandler().HandleGetSessionSchemaAdmin(w, r)
+}
+
 // handleListSessionSeatsAdmin serves the admin seat inventory GET (AB-39,
 // feature #429). Same auth model as the category PATCH above.
 func (s *Server) handleListSessionSeatsAdmin(w http.ResponseWriter, r *http.Request) {

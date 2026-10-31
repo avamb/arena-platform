@@ -18618,6 +18618,26 @@ components:
             plan category nobody prices). Ignored on a session that already
             exists; written by GET .../event-bundle for the plan category a
             tier sells. Omitted when absent.
+        planExtra:
+          type: boolean
+          description: |
+            Arena extension, source=arena only: on a bundle that creates a
+            session from `actionEvent.arenaSeatingPlanVersionId`, this entry
+            is NOT a plan category but an extra price category of the new
+            session (a plan drawn with one category, priced several ways).
+            It is created with no places of its own (`availability` is
+            ignored); the organizer paints plan seats into it afterwards
+            (PATCH .../seats/category, seat layouts). Its name may not repeat
+            a plan category's or another entry's name (422
+            import.seating_category_duplicate). Ignored on a session that
+            already exists. Omitted when false.
+        color:
+          type: string
+          description: |
+            Arena extension, source=arena only: the category's colour on the
+            seat map, `#rrggbb` (stored lower-case). Absent or empty keeps
+            the stored colour. Anything else answers 422
+            import.invalid_color.
         categoryPriceId:
           type: integer
           format: int64
@@ -38601,6 +38621,87 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/event-sessions/{id}/schema/admin:
+    get:
+      operationId: getSessionSchemaAdmin
+      summary: The organizer's seating schema of a session, published or not
+      description: |
+        The payload of `GET /v1/event-sessions/{id}/schema` (geometry,
+        `category_prices`, `seat_category_index`, `extra_categories`) for
+        the organizer's seat map, WITHOUT the published gate: a draft
+        event's seats are painted into its price categories before the
+        event goes on sale. Requires JWT + `session.seats.manage`; the
+        tenant is resolved from the session's owning organization.
+        `Cache-Control: private, no-cache`; the ETag is the public one.
+      tags: [v1, seating]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event session id.
+          schema:
+            type: string
+            format: uuid
+        - name: If-None-Match
+          in: header
+          required: false
+          description: Standard conditional-request header; a match answers 304 with no body.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Canonical geometry + category price resolution.
+          headers:
+            ETag:
+              description: Strong entity tag = `"<geometry_checksum>-v<seat_status_version>"`.
+              schema:
+                type: string
+            Cache-Control:
+              description: Always `private, no-cache`.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeatingSchemaResponse"
+        "304":
+          description: Client's `If-None-Match` matches the current ETag; body omitted.
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks permission or org membership.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            Session not found (`session.not_found`), or it is
+            `general_admission` / has no bound seating plan version
+            (`event_session.schema_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/event-sessions/{id}/seats/category:
     patch:
       operationId: patchSessionSeatsCategory
@@ -56925,7 +57026,8 @@ paths:
             `import.seating_category_duplicate`,
             `import.seating_category_missing` and
             `import.seated_category_chain` (a `nextCategoryIndex` link to or
-            from a seated category).
+            from a seated category); `import.invalid_color` (source=arena,
+            a `categoryList[].color` that is not `#rrggbb`).
           content:
             application/json:
               schema:

@@ -58,33 +58,40 @@ const (
 	stSCapacity     = "s_capacity"
 	stSPlan         = "s_plan"       // a venue with seating plans: sell by a plan or without seats
 	stSPlanPrice    = "s_plan_price" // the price of each category of the chosen plan
-	stSMore         = "s_more"
-	stTMode         = "t_mode"
-	stTName         = "t_name"
-	stTPrice        = "t_price"
-	stTChanges      = "t_changes"
-	stTChangeDate   = "t_change_date"
-	stTChangePrice  = "t_change_price"
-	stTChangeMore   = "t_change_more"
-	stTKind         = "t_kind"
-	stTCatName      = "t_cat_name"
-	stTCatPrice     = "t_cat_price"
-	stTCatPlaces    = "t_cat_places"
-	stTCatLast      = "t_cat_last"
-	stTCatUntil     = "t_cat_until"
-	stTCatMore      = "t_cat_more"
-	stTDate         = "t_date"    // edited event: which date's categories change
-	stSTickets      = "s_tickets" // edited event, new date: same categories or its own
-	stSConfirm      = "s_confirm" // edited event, new date: its summary before "one more date?"
-	stXDescription  = "x_description"
-	stXCurrency     = "x_currency"
-	stXChannels     = "x_channels"
-	stXPublish      = "x_publish"
-	stSummary       = "summary"
-	stEditMenu      = "edit_menu"
-	stPreview       = "publish_preview" // edited event: what "Publish changes" sends
-	stCancel        = "cancel_confirm"
-	stDone          = "done"
+	// More price categories over the plan's own (a plan drawn with one
+	// category, sold at several prices): name, price and seat-map colour of
+	// each; they get places when the organizer paints seats into them.
+	stSPlanExtra      = "s_plan_extra"
+	stSPlanExtraName  = "s_plan_extra_name"
+	stSPlanExtraPrice = "s_plan_extra_price"
+	stSPlanExtraColor = "s_plan_extra_color"
+	stSMore           = "s_more"
+	stTMode           = "t_mode"
+	stTName           = "t_name"
+	stTPrice          = "t_price"
+	stTChanges        = "t_changes"
+	stTChangeDate     = "t_change_date"
+	stTChangePrice    = "t_change_price"
+	stTChangeMore     = "t_change_more"
+	stTKind           = "t_kind"
+	stTCatName        = "t_cat_name"
+	stTCatPrice       = "t_cat_price"
+	stTCatPlaces      = "t_cat_places"
+	stTCatLast        = "t_cat_last"
+	stTCatUntil       = "t_cat_until"
+	stTCatMore        = "t_cat_more"
+	stTDate           = "t_date"    // edited event: which date's categories change
+	stSTickets        = "s_tickets" // edited event, new date: same categories or its own
+	stSConfirm        = "s_confirm" // edited event, new date: its summary before "one more date?"
+	stXDescription    = "x_description"
+	stXCurrency       = "x_currency"
+	stXChannels       = "x_channels"
+	stXPublish        = "x_publish"
+	stSummary         = "summary"
+	stEditMenu        = "edit_menu"
+	stPreview         = "publish_preview" // edited event: what "Publish changes" sends
+	stCancel          = "cancel_confirm"
+	stDone            = "done"
 )
 
 // Draft modes.
@@ -222,6 +229,11 @@ type DraftCategory struct {
 	// date prices (new dates only); GA marks a standing zone of the plan.
 	PlanIndex int  `json:"plan_index,omitempty"`
 	GA        bool `json:"ga,omitempty"`
+	// Extra marks a price category added over a seating plan's own (new
+	// dates only): it is created with no places and the organizer paints
+	// plan seats into it. Color is its #rrggbb colour on the seat map.
+	Extra bool   `json:"extra,omitempty"`
+	Color string `json:"color,omitempty"`
 }
 
 // DraftPriceStep is one "from date → price" row of the single category.
@@ -289,6 +301,11 @@ type DraftScratch struct {
 	SeatWork *DraftTickets `json:"seat_work,omitempty"`
 	SeatIdx  int           `json:"seat_idx,omitempty"`
 	SeatFor  int           `json:"seat_for,omitempty"`
+	// SeatExtra is the extra price category being entered over the plan's.
+	SeatExtra *DraftCategory `json:"seat_extra,omitempty"`
+	// NoPlanVenueID is the existing venue just chosen that has no seating
+	// plan: the places question says so and offers another venue.
+	NoPlanVenueID string `json:"no_plan_venue_id,omitempty"`
 }
 
 // DraftSaved is what the non-atomic save already wrote.
@@ -1199,9 +1216,11 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 					// plan of the first one does not belong to this one.
 					s.PlanVersionID, s.PlanName, s.Tickets = "", "", nil
 				}
+				d.Scratch.NoPlanVenueID = ""
 				if w.offerPlans(ctx, ws, d) {
 					return "", nil
 				}
+				d.Scratch.NoPlanVenueID = v.ID
 				d.goTo(stSCapacity)
 				return "", nil
 			}
@@ -1260,6 +1279,11 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 
 	case stSCapacity:
 		s := d.session()
+		if data == "venue:other" {
+			// The chosen venue has no seating plan: back to the venues.
+			d.goTo(stSVenue)
+			return "", nil
+		}
 		if data == "keep" && s.Capacity > 0 {
 			// keep the pre-filled value
 		} else {
@@ -1287,7 +1311,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			d.section(stTMode)
 		}
 
-	case stSPlan, stSPlanPrice:
+	case stSPlan, stSPlanPrice, stSPlanExtra, stSPlanExtraName, stSPlanExtraPrice, stSPlanExtraColor:
 		return w.applySeated(loc, d, text, data)
 
 	case stTMode:

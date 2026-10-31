@@ -52,9 +52,28 @@ const schemaCacheControl = "public, max-age=86400, immutable"
 // so we serve them uncacheable at the edge.
 const seatStatusCacheControl = "no-cache"
 
+// adminSchemaCacheControl is the Cache-Control header of the organizer's
+// schema: a draft event's map is nobody else's, and a repaint must show at
+// once (the ETag still saves the body on a revalidation).
+const adminSchemaCacheControl = "private, no-cache"
+
 // HandleGetPublicSessionSchema serves the geometry + category price
 // resolution payload for a published seated session.
 func (h *Handler) HandleGetPublicSessionSchema(w http.ResponseWriter, r *http.Request) {
+	h.serveSessionSchema(w, r, false)
+}
+
+// HandleGetSessionSchemaAdmin serves the same payload to the organizer for any
+// seated session, published or not: the seat map of a draft event is painted
+// before the event goes on sale. The route's shim has checked the session's
+// organization (session.seats.manage).
+func (h *Handler) HandleGetSessionSchemaAdmin(w http.ResponseWriter, r *http.Request) {
+	h.serveSessionSchema(w, r, true)
+}
+
+// serveSessionSchema is the body of both schema routes; admin drops the
+// published gate and makes the answer private.
+func (h *Handler) serveSessionSchema(w http.ResponseWriter, r *http.Request, admin bool) {
 	if h.queries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "database is not available", r,
@@ -67,7 +86,11 @@ func (h *Handler) HandleGetPublicSessionSchema(w http.ResponseWriter, r *http.Re
 	}
 	ctx := r.Context()
 
-	schemaRow, err := h.queries.GetPublicSessionSchema(ctx, sessionID)
+	lookup, cacheControl := h.queries.GetPublicSessionSchema, schemaCacheControl
+	if admin {
+		lookup, cacheControl = h.queries.GetAdminSessionSchema, adminSchemaCacheControl
+	}
+	schemaRow, err := lookup(ctx, sessionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
@@ -93,7 +116,7 @@ func (h *Handler) HandleGetPublicSessionSchema(w http.ResponseWriter, r *http.Re
 	etag := `"` + schemaRow.GeometryChecksum + "-v" +
 		strconv.FormatInt(schemaRow.SeatStatusVersion, 10) + `"`
 	w.Header().Set("ETag", etag)
-	w.Header().Set("Cache-Control", schemaCacheControl)
+	w.Header().Set("Cache-Control", cacheControl)
 	if matchesETag(r.Header.Get("If-None-Match"), etag) {
 		w.WriteHeader(http.StatusNotModified)
 		return

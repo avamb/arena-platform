@@ -92,6 +92,7 @@ func TestManagerPermissions0129_OrganizerPassesEveryEventCenterGate(t *testing.T
 		{"session.seats.manage", http.MethodPatch, orgPath + "/events/" + random + "/sessions/" + random + "/seats", `{"action":"block","seat_keys":["S|A|1"]}`},
 		{"session.seats.manage", http.MethodPatch, "/v1/event-sessions/" + random + "/seats/category", `{"seat_keys":["S|A|1"],"tier_id":"` + random + `"}`},
 		{"session.seats.manage", http.MethodGet, "/v1/event-sessions/" + random + "/seats/admin", ""},
+		{"session.seats.manage", http.MethodGet, "/v1/event-sessions/" + random + "/schema/admin", ""},
 		// Wave C release: S1c seat batches and S1e layout suggestions moved to the same gate.
 		{"session.seats.manage", http.MethodGet, orgPath + "/sessions/" + random + "/seat-batches", ""},
 		{"session.seats.manage", http.MethodPost, orgPath + "/sessions/" + random + "/seat-batches", `{}`},

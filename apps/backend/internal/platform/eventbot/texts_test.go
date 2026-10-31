@@ -37,7 +37,7 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		"Unavailable": 1, "Scope": "sc", "Charge": "1 EUR", "RefundCount": 1, "Refunded": "1 EUR", "External": "1 EUR",
 		"PendingOrders": 1, "Rows": 3, "What": "w", "Bot": "@Bot",
 		// categories per date (wizard_date_tickets.go)
-		"Prev": "15.12.2026 20:00", "Plan": "P",
+		"Prev": "15.12.2026 20:00", "Plan": "P", "Extra": 1,
 		// the orders screens (ord_keys.go)
 		"Tab": "t", "Num": 1000000500, "Chip": "c", "Contacts": "", "Tier": "t", "Seat": "", "Entered": "", "Channel": "ch", "Provider": "stripe", "Msg": "m",
 		// the invitations screens (invite_keys.go)

@@ -34,7 +34,8 @@ func TestWizard_EveryStepRendersInBothLocales(t *testing.T) {
 		stSCountry, stSCity, stCityName, stSVenue, stVName, stVAddress, stVCapacity, stVTz, stSCapacity, stSMore, stTMode,
 		stTName, stTPrice, stTChanges, stTChangeDate, stTChangePrice, stTChangeMore, stTKind, stTCatName, stTCatPrice,
 		stTCatPlaces, stTCatLast, stTCatUntil, stTCatMore, stXDescription, stXCurrency, stXChannels, stXPublish, stSummary,
-		stEditMenu, stCancel, stTDate, stSTickets, stSConfirm, stPreview, stSPlan, stSPlanPrice}
+		stEditMenu, stCancel, stTDate, stSTickets, stSConfirm, stPreview, stSPlan, stSPlanPrice,
+		stSPlanExtra, stSPlanExtraName, stSPlanExtraPrice, stSPlanExtraColor}
 	for _, loc := range SupportedLocales {
 		r.ws.Locale = loc
 		for _, st := range steps {

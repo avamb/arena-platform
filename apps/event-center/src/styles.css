@@ -899,6 +899,33 @@ fieldset legend {
   margin-block: 0.5rem;
 }
 
+/* The colour of an extra category over a hall plan (WizardSeatingSection). */
+.wizard-colors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-block: 0.5rem;
+}
+
+.wizard-color {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.wizard .wizard-color input {
+  width: auto;
+}
+
+.wizard-color-swatch {
+  display: inline-block;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+}
+
 /* 7-1: the poster. The picture keeps its own proportions (height:auto from the
    width/height attributes) and never grows past the screen. */
 .poster-img {

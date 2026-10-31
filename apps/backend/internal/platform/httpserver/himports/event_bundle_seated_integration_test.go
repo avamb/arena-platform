@@ -559,3 +559,116 @@ func TestEventBundleSeated_ReadRoundTripsAndCopies(t *testing.T) {
 		t.Fatalf("copy: %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+// TestEventBundleSeated_ExtraPriceCategories: a plan drawn with fewer
+// categories than the organizer sells. planExtra entries become categories
+// of the new session with no place of their own (availability ignored) and
+// their colour; the hall keeps exactly the plan's places and admission mode.
+// A repeat import that names them without a quantity (what the event-bundle
+// read sends for a category nobody painted yet) still gives them no General
+// Admission place.
+func TestEventBundleSeated_ExtraPriceCategories(t *testing.T) {
+	pool := import517Pool(t)
+	ctx := context.Background()
+	sf := newSeatedFixture(t, ctx, pool)
+	defer sf.cleanup()
+	h := newBundle525Handler(t, pool)
+
+	body := sf.seatedPayload()
+	body.CategoryList[0].Color = "#AA0000"
+	body.CategoryList = append(body.CategoryList,
+		bil24compat.ImportSessionCategory{CategoryPriceName: "VIP", Price: 90, PlanExtra: true, Availability: 30, Color: "#00AA00"},
+		bil24compat.ImportSessionCategory{CategoryPriceName: "Student", Price: 10, PlanExtra: true},
+	)
+	rec, out := sf.call(h, body)
+	if rec.Code != http.StatusOK || !out.Created || out.SeatsMaterialized != 53 {
+		t.Fatalf("create: %d places %d %s", rec.Code, out.SeatsMaterialized, rec.Body.String())
+	}
+	var mode string
+	if err := pool.QueryRow(ctx, `SELECT admission_mode FROM sessions WHERE id = $1`, out.SessionID).Scan(&mode); err != nil || mode != "hybrid" {
+		t.Fatalf("admission mode %q %v, want the plan's hybrid", mode, err)
+	}
+	tiers := tierByName(ctx, t, pool, out.SessionID)
+	for _, name := range []string{"VIP", "Student"} {
+		tier, ok := tiers[name]
+		if !ok {
+			t.Fatalf("extra category %s not created: %v", name, tiers)
+		}
+		if tier.Capacity != nil {
+			t.Errorf("%s carries a quantity %d, want none", name, *tier.Capacity)
+		}
+		var places int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM session_seats WHERE session_id = $1 AND tier_id = $2`, out.SessionID, tier.ID).Scan(&places); err != nil || places != 0 {
+			t.Errorf("%s owns %d places (%v), want 0", name, places, err)
+		}
+	}
+	if tiers["VIP"].PriceAmount != 9000 {
+		t.Errorf("VIP price = %d, want 9000", tiers["VIP"].PriceAmount)
+	}
+	q := gen.New(pool)
+	for name, want := range map[string]string{"Parter": "#aa0000", "VIP": "#00aa00"} {
+		c, err := q.GetTicketTierColor(ctx, tiers[name].ID, out.SessionID)
+		if err != nil || c == nil || *c != want {
+			t.Errorf("%s colour = %v %v, want %s", name, c, err, want)
+		}
+	}
+	if c, err := q.GetTicketTierColor(ctx, tiers["Student"].ID, out.SessionID); err != nil || c != nil {
+		t.Errorf("Student colour = %v %v, want none", c, err)
+	}
+	before := sessionSeatSnapshot(ctx, t, pool, out.SessionID)
+
+	// The event is a draft: buyers see no seat map, the organizer does (the
+	// seats are painted into VIP and Student before the sale).
+	if _, err := pool.Exec(ctx, `UPDATE events SET status = 'draft' WHERE id = $1`, out.EventID); err != nil {
+		t.Fatal(err)
+	}
+	sh := hseating.New(gen.New(pool), pool, nil, slog.Default())
+	if rec := callSeatingHandler(t, out.SessionID, sh.HandleGetPublicSessionSchema); rec.Code != http.StatusNotFound {
+		t.Fatalf("public schema of a draft: %d", rec.Code)
+	}
+	adminRec := callSeatingHandler(t, out.SessionID, sh.HandleGetSessionSchemaAdmin)
+	if adminRec.Code != http.StatusOK || !strings.Contains(adminRec.Body.String(), `"s|b|1"`) ||
+		adminRec.Header().Get("Cache-Control") != "private, no-cache" {
+		t.Fatalf("admin schema of a draft: %d %q %s", adminRec.Code, adminRec.Header().Get("Cache-Control"), adminRec.Body.String())
+	}
+
+	// The repeat: every category by its arena id, the extras without a
+	// quantity and without the flag (it is ignored on an existing session).
+	again := sf.seatedPayload()
+	again.ActionEvent.ArenaSeatingPlanVersionID = ""
+	again.CategoryList = append(again.CategoryList,
+		bil24compat.ImportSessionCategory{ArenaTierID: tiers["VIP"].ID.String(), CategoryPriceName: "VIP", Price: 95},
+		bil24compat.ImportSessionCategory{ArenaTierID: tiers["Student"].ID.String(), CategoryPriceName: "Student", Price: 12},
+	)
+	rec, re := sf.call(h, again)
+	if rec.Code != http.StatusOK || re.Created {
+		t.Fatalf("repeat: %d %s", rec.Code, rec.Body.String())
+	}
+	after := sessionSeatSnapshot(ctx, t, pool, out.SessionID)
+	if len(after) != len(before) {
+		t.Fatalf("the repeat changed the places: %d -> %d", len(before), len(after))
+	}
+	if err := pool.QueryRow(ctx, `SELECT admission_mode FROM sessions WHERE id = $1`, out.SessionID).Scan(&mode); err != nil || mode != "hybrid" {
+		t.Fatalf("admission mode after the repeat %q %v", mode, err)
+	}
+	tiers = tierByName(ctx, t, pool, out.SessionID)
+	if tiers["VIP"].PriceAmount != 9500 || !tiers["VIP"].IsOpen {
+		t.Errorf("VIP after the repeat: price %d open %v", tiers["VIP"].PriceAmount, tiers["VIP"].IsOpen)
+	}
+
+	// A name clash with a plan category is refused and writes nothing.
+	clash := sf.seatedPayload()
+	clash.ExternalRef = sf.externalRef + ":clash"
+	clash.CategoryList = append(clash.CategoryList, bil24compat.ImportSessionCategory{CategoryPriceName: "parter", Price: 5, PlanExtra: true})
+	if rec, _ := sf.call(h, clash); rec.Code != http.StatusUnprocessableEntity ||
+		!strings.Contains(rec.Body.String(), "import.seating_category_duplicate") {
+		t.Fatalf("clash: %d %s", rec.Code, rec.Body.String())
+	}
+	bad := sf.seatedPayload()
+	bad.ExternalRef = sf.externalRef + ":color"
+	bad.CategoryList[1].Color = "green"
+	if rec, _ := sf.call(h, bad); rec.Code != http.StatusUnprocessableEntity ||
+		!strings.Contains(rec.Body.String(), "import.invalid_color") {
+		t.Fatalf("bad colour: %d %s", rec.Code, rec.Body.String())
+	}
+}

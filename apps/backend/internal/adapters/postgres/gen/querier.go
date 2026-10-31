@@ -598,6 +598,7 @@ type Querier interface {
 
 	// Public session seating — unauthenticated schema + seat-status endpoints (feature #307, Wave SEAT-B3)
 	GetPublicSessionSchema(ctx context.Context, sessionID uuid.UUID) (PublicSessionSchemaRow, error)
+	GetAdminSessionSchema(ctx context.Context, sessionID uuid.UUID) (PublicSessionSchemaRow, error)
 	GetPublicSessionSeatStatusMeta(ctx context.Context, sessionID uuid.UUID) (PublicSessionSeatStatusMetaRow, error)
 	ListSessionAdmissionModesByEvent(ctx context.Context, eventID uuid.UUID) ([]SessionAdmissionModeRow, error)
 
