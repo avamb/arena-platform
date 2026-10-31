@@ -1807,3 +1807,735 @@ fieldset legend {
 .org-inv-filters select {
   max-width: 100%;
 }
+
+/*
+ * Compact screens (owner decision 2026-10-30, after the WordPress ops center):
+ * the order card and the orders list. A smaller base size and tighter blocks;
+ * the tokens and the 44 px tap targets stay as they are.
+ */
+.dense {
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+.dense h1 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+.dense h2 {
+  font-size: 0.9375rem;
+  margin: 0 0 0.5rem;
+}
+.dense > * + * {
+  margin-block-start: 0.75rem;
+}
+.small {
+  font-size: 0.8125rem;
+}
+.num {
+  text-align: end;
+  white-space: nowrap;
+}
+.strong {
+  font-weight: 700;
+}
+.btn-sm {
+  min-height: 36px;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.8125rem;
+}
+.btn-outline {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.btn-primary {
+  font-weight: 600;
+}
+.back-link {
+  margin: 0;
+}
+.badge-dot::before,
+.ord-title-row .badge::before,
+.or-status .badge-ok::before,
+.or-status .badge-wait::before,
+.or-status .badge-neutral::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  margin-inline-end: 6px;
+  vertical-align: 1px;
+}
+
+.ord-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.875rem;
+}
+.ord-card.ord-flush {
+  padding: 0;
+  overflow: hidden;
+}
+.ord-flush > .ord-card-head {
+  padding: 0.625rem 0.875rem;
+  border-block-end: 1px solid var(--border);
+}
+.ord-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+.ord-card-head h2 {
+  margin: 0;
+}
+.ord-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem 0.75rem;
+  border-block-start: 1px solid var(--border);
+}
+.ord-card-foot:empty {
+  display: none;
+}
+.ord-card-foot > * {
+  margin: 0;
+}
+.ord-card-foot .panel {
+  flex-basis: 100%;
+}
+.ord-card-action {
+  margin: 0.75rem 0 0;
+}
+
+.ord-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  align-items: center;
+}
+.ord-head-main {
+  flex: 999 1 22rem;
+  min-width: 0;
+  display: grid;
+  gap: 0.375rem;
+}
+.ord-head-buyer {
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+.ord-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 0.625rem;
+  align-items: center;
+}
+.ord-total {
+  margin-inline-start: auto;
+  font-size: 1.0625rem;
+}
+.ord-event {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.125rem 0.5rem;
+  align-items: baseline;
+}
+.ord-event a {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--text);
+  text-decoration-color: var(--border);
+  text-underline-offset: 3px;
+}
+.ord-money {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.2rem 2rem;
+  align-items: start;
+}
+.ord-money > .facts-grid:first-child {
+  max-width: 22rem;
+}
+.facts-grid.compact {
+  margin: 0;
+  gap: 0.2rem 1rem;
+}
+
+/* The buyer: initials, name, e-mail, phone, then call and WhatsApp. */
+.buyer {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+.avatar {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.buyer-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.buyer-name {
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+.buyer-email {
+  overflow-wrap: anywhere;
+}
+.buyer-phone {
+  color: var(--muted);
+  text-decoration: none;
+}
+.buyer-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex: none;
+}
+.round-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--neutral-bg);
+  color: var(--neutral-text);
+}
+.round-btn-wa {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+@media (max-width: 599px) {
+  .ord-head-buyer {
+    padding-block-start: 0.625rem;
+    border-block-start: 1px solid var(--border);
+  }
+}
+
+/* The tickets of an order: a table from 600 px, three short lines per ticket below. */
+.table-scroll {
+  overflow-x: auto;
+}
+.ticket-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.ticket-table th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-align: start;
+  padding: 0.5rem 0.75rem;
+  border-block-end: 1px solid var(--border);
+  white-space: nowrap;
+}
+.ticket-table th.num {
+  text-align: end;
+}
+.ticket-table td {
+  padding: 0.5rem 0.75rem;
+  vertical-align: middle;
+}
+.ticket-table tbody + tbody {
+  border-block-start: 1px solid var(--border);
+}
+.ticket-table .tk-num {
+  font-weight: 700;
+}
+.ticket-table .tk-code {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+}
+.tk-tier {
+  display: block;
+  font-size: 0.8125rem;
+}
+.tk-status > * + * {
+  margin-inline-start: 0.375rem;
+}
+.tk-act {
+  text-align: end;
+}
+.tk-extra td {
+  padding-block-start: 0;
+}
+.tk-extra p,
+.tk-extra .facts {
+  margin: 0.25rem 0;
+}
+.vip-on {
+  background: var(--wait-bg);
+  color: var(--wait-text);
+  border-color: var(--wait-text);
+}
+@media (max-width: 599px) {
+  .ticket-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .ticket-table,
+  .ticket-table tbody,
+  .ticket-table tr,
+  .ticket-table td {
+    display: block;
+  }
+  .ticket-table tbody > tr:first-child {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    grid-template-areas:
+      "num seat price"
+      "code code act"
+      "st st act";
+    gap: 0.125rem 0.5rem;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+  }
+  .ticket-table tbody > tr:first-child > td {
+    padding: 0;
+  }
+  .ticket-table .tk-num {
+    grid-area: num;
+  }
+  .ticket-table .tk-seat {
+    grid-area: seat;
+  }
+  .ticket-table .tk-price {
+    grid-area: price;
+    font-weight: 600;
+  }
+  .ticket-table .tk-code {
+    grid-area: code;
+  }
+  .ticket-table .tk-status {
+    grid-area: st;
+  }
+  .ticket-table .tk-act {
+    grid-area: act;
+  }
+  .ticket-table .tk-extra td {
+    padding: 0 0.75rem 0.5rem;
+  }
+}
+
+/* The ticket letter as three points: sent, delivered, opened. */
+.steps {
+  position: relative;
+  max-width: 32rem;
+  margin: 0.25rem auto 0;
+}
+.steps-line {
+  position: absolute;
+  inset-block-start: 6px;
+  inset-inline: 16.66%;
+  height: 2px;
+  background: var(--border);
+}
+.steps-line-done {
+  background: var(--ok-text);
+  inset-inline-end: 83.34%;
+}
+.steps-line-done.steps-done-2 {
+  inset-inline-end: 50%;
+}
+.steps-line-done.steps-done-3 {
+  inset-inline-end: 16.66%;
+}
+.steps-list {
+  position: relative;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  text-align: center;
+}
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.125rem;
+}
+.step-dot {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 2px solid var(--muted);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--surface);
+}
+.step-done .step-dot {
+  border-color: var(--ok-text);
+  background: var(--ok-text);
+}
+.step-wait .step-dot {
+  border: 3px solid var(--wait-text);
+}
+.step-bad .step-dot {
+  border-color: var(--bad-text);
+  background: var(--bad-text);
+}
+.step-label {
+  margin-block-start: 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+.step-todo .step-label {
+  font-weight: 400;
+  color: var(--muted);
+}
+.step-wait .step-label {
+  color: var(--wait-text);
+}
+.step-bad .step-label {
+  color: var(--bad-text);
+}
+.step-time {
+  min-height: 1.1rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.steps-caption {
+  text-align: center;
+  margin: 0.375rem 0 0;
+}
+.ord-card .notice {
+  margin: 0.75rem 0 0;
+}
+
+/* Every letter of the order, behind a disclosure. */
+.letter-history {
+  margin-block-start: 0.75rem;
+  border-block-start: 1px solid var(--border);
+  padding-block-start: 0.25rem;
+}
+.letter-history summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  color: var(--accent);
+}
+.letter-history-list {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.letter-entry {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  display: grid;
+  gap: 0.2rem;
+}
+.letter-entry p {
+  margin: 0;
+}
+.letter-entry-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+.letter-entry-head time {
+  font-size: 0.75rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.letter-entry-to {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  align-items: center;
+}
+.letter-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.125rem 0.75rem;
+}
+.letter-ev-opened {
+  color: var(--ok-text);
+  font-weight: 600;
+}
+.letter-ev-failed {
+  color: var(--bad-text);
+  font-weight: 600;
+}
+.letter-history > .small {
+  margin: 0.5rem 0 0;
+}
+
+/* The orders search: one card first on the page, with its label and a hint. */
+.search-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.375rem;
+}
+.search-card label {
+  margin: 0;
+  font-size: 0.8125rem;
+}
+.search-card p {
+  margin: 0;
+}
+.search-card-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.search-field {
+  position: relative;
+  flex: 999 1 16rem;
+  min-width: 0;
+}
+.search-field svg {
+  position: absolute;
+  inset-inline-start: 0.75rem;
+  inset-block-start: 13px;
+  color: var(--muted);
+}
+.search-field input {
+  width: 100%;
+  padding-inline-start: 2.4rem;
+  border: 2px solid var(--accent);
+  font-size: 0.9375rem;
+}
+.search-card-row .btn-primary {
+  flex: 1 1 auto;
+}
+@media (min-width: 600px) {
+  .search-card-row .btn-primary {
+    flex: none;
+  }
+}
+.dense .tabs {
+  flex-wrap: wrap;
+  overflow: visible;
+  margin-block-end: 0;
+}
+.dense .tab {
+  padding: 0.25rem 0.875rem;
+}
+@media (max-width: 599px) {
+  .dense .tabs {
+    gap: 0.375rem;
+  }
+  .dense .tab {
+    padding-inline: 0.625rem;
+  }
+}
+.btn-outline,
+.vip-toggle {
+  gap: 0.375rem;
+}
+
+/* The orders list: dense rows, columns from 900 px. */
+.order-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.order-list:empty {
+  display: none;
+}
+.order-row + .order-row {
+  border-block-start: 1px solid var(--border);
+}
+.order-row-link {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  grid-template-areas:
+    "num status total"
+    "buyer buyer buyer"
+    "event event event";
+  gap: 0.125rem 0.5rem;
+  align-items: center;
+  padding: 0.625rem 0.875rem;
+  min-height: 44px;
+  color: inherit;
+  text-decoration: none;
+}
+.order-row-link:hover .or-num {
+  text-decoration: underline;
+}
+.or-num {
+  grid-area: num;
+  font-weight: 700;
+  color: var(--accent);
+}
+.or-status {
+  grid-area: status;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.or-total {
+  grid-area: total;
+  font-weight: 700;
+  text-align: end;
+  white-space: nowrap;
+}
+.or-buyer,
+.or-event {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+  min-width: 0;
+}
+.or-buyer {
+  grid-area: buyer;
+}
+.or-event {
+  grid-area: event;
+  font-size: 0.8125rem;
+}
+.order-list-head {
+  display: none;
+}
+@media (min-width: 900px) {
+  .order-list-head,
+  .order-row-link {
+    display: grid;
+    grid-template-columns: 8.5rem 11rem minmax(0, 1fr) minmax(0, 1.3fr) 6.5rem;
+    grid-template-areas: "num status buyer event total";
+    gap: 0 1rem;
+  }
+  .order-list-head {
+    padding: 0 0.875rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .or-buyer,
+  .or-event {
+    flex-direction: column;
+  }
+  .or-event {
+    font-size: inherit;
+  }
+}
+
+/*
+ * Every screen of an organization is compact like the order card (owner
+ * decision 2026-10-30): a 14 px base, smaller headings, tighter cards, tables
+ * and notices, status badges with a dot. Only spacing and type change here:
+ * the tokens, the tap targets and the layouts of the screens stay.
+ */
+.page {
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+.page h1 {
+  font-size: 1.25rem;
+  margin: 0.25rem 0 0.75rem;
+}
+.page h2 {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.5rem;
+}
+.page h3 {
+  font-size: 0.9375rem;
+  margin: 1rem 0 0.375rem;
+}
+.page .cards {
+  gap: 0.5rem;
+}
+.page .card {
+  padding: 0.625rem 0.875rem;
+}
+.page .card-title {
+  font-size: 0.9375rem;
+}
+.page .card-meta {
+  margin: 0.125rem 0;
+}
+.page .badge {
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+}
+.page .card-meta .badge-ok::before,
+.page .card-meta .badge-bad::before,
+.page .card-meta .badge-neutral::before,
+.page .table .badge-ok::before,
+.page .table .badge-bad::before,
+.page .table .badge-neutral::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  margin-inline-end: 6px;
+  vertical-align: 1px;
+}
+.page .notice {
+  padding: 0.5rem 0.75rem;
+}
+.page .facts-grid {
+  gap: 0.2rem 1rem;
+  margin: 0.5rem 0;
+}
+.page .actions {
+  margin-block: 0.75rem;
+}
+.page .table th {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.page .table th,
+.page .table td {
+  padding: 0.375rem 0.5rem;
+}
+.page label {
+  margin-block: 0.5rem 0.2rem;
+}
+.topbar {
+  padding-block: 0.25rem;
+}
+.page .search-card label {
+  margin: 0;
+}
+.page .dense h1 {
+  margin: 0;
+}
+.page .dense h2 {
+  font-size: 0.9375rem;
+  margin: 0 0 0.5rem;
+}
+.page .ord-card-head h2,
+.page .notice h2 {
+  margin: 0;
+}

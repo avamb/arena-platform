@@ -78,9 +78,35 @@ export function letterStepTime(l: OrderLetter): string | null {
   return l.sent_at;
 }
 
+/** When a letter entry happened: sent, else queued, else failed (ms, -Infinity when unknown). */
+function letterTime(l: OrderLetter): number {
+  const at = l.sent_at ?? l.queued_at ?? l.failed_at;
+  const ms = at ? Date.parse(at) : NaN;
+  return Number.isNaN(ms) ? -Infinity : ms;
+}
+
+/**
+ * The newest ticket letter of every ticket. A resend adds a letter for tickets
+ * that already had one; the card speaks about the letter the buyer got last,
+ * so an old bounce no longer counts once a later letter for the same tickets
+ * went out. An entry that names no ticket is always kept.
+ */
+export function latestTicketLetters(letters: readonly OrderLetter[]): OrderLetter[] {
+  const ticket = letters.filter((l) => l.kind === "ticket");
+  const newest = new Map<string, OrderLetter>();
+  for (const l of ticket) {
+    for (const id of l.ticket_ids) {
+      const cur = newest.get(id);
+      if (cur === undefined || letterTime(l) > letterTime(cur)) newest.set(id, l);
+    }
+  }
+  const keep = new Set(newest.values());
+  return ticket.filter((l) => l.ticket_ids.length === 0 || keep.has(l));
+}
+
 /** The ticket letters of the order, folded into one status. */
 export function ticketLetterStatus(order: Pick<OrderDetail, "letters" | "delivery" | "buyer_email">): LetterStatus {
-  const letters = (order.letters ?? []).filter((l) => l.kind === "ticket");
+  const letters = latestTicketLetters(order.letters ?? []);
   if (letters.length === 0) return ticketLetterStatusFromDelivery(order);
   const st: LetterStatus = { ...EMPTY, to: (order.buyer_email ?? "").trim() };
   let pending = 0;
@@ -201,6 +227,103 @@ function withLatestRefundLetter(st: LetterStatus, letters: readonly OrderLetter[
     st.state = latest.status as LetterState;
     st.at = letterStepTime(latest);
   }
+}
+
+/** One point of the letter scale: sent, delivered, opened, or the problem that stopped it. */
+export type LetterStepKey = "sent" | "delivered" | "opened" | "delayed" | "stuck" | "bounced" | "failed";
+export interface LetterStep {
+  key: LetterStepKey;
+  mark: "done" | "todo" | "wait" | "bad";
+  /** When every letter reached this point (ISO), if known. */
+  at: string | null;
+}
+
+function latest(values: readonly (string | null | undefined)[]): string | null {
+  let out: string | null = null;
+  for (const v of values) if (v) out = later(out, v);
+  return out;
+}
+
+/**
+ * The three points of the ticket letter scale for a status, with the time each
+ * was reached by the newest letters. null when there is no letter to show.
+ */
+export function ticketLetterSteps(order: Pick<OrderDetail, "letters">, st: LetterStatus): LetterStep[] | null {
+  const ls = latestTicketLetters(order.letters ?? []);
+  const sent = latest(ls.map((l) => l.sent_at));
+  const delivered = latest(ls.map((l) => l.delivered_at ?? l.proxy_opened_at ?? l.clicked_at ?? (l.opened_at ? l.sent_at : null)));
+  const opened = latest(ls.map((l) => l.opened_at));
+  const todo = (key: LetterStepKey): LetterStep => ({ key, mark: "todo", at: null });
+  const done = (key: LetterStepKey, at: string | null): LetterStep => ({ key, mark: "done", at });
+  switch (st.state) {
+    case "queued":
+      return [todo("sent"), todo("delivered"), todo("opened")];
+    case "partial_queued":
+    case "partial":
+      return [done("sent", null), todo("delivered"), todo("opened")];
+    case "sent":
+      return [done("sent", sent ?? st.at), todo("delivered"), todo("opened")];
+    case "delivered":
+      return [done("sent", sent), done("delivered", delivered ?? st.at), todo("opened")];
+    case "opened":
+      return [done("sent", sent), done("delivered", delivered), done("opened", opened ?? st.at)];
+    case "delayed":
+      return [done("sent", sent), { key: "delayed", mark: "wait", at: latest(ls.map((l) => l.deferred_at)) }, todo("opened")];
+    case "stuck":
+      return [done("sent", sent), { key: "stuck", mark: "bad", at: null }, todo("opened")];
+    case "bounced":
+      return [done("sent", sent), { key: "bounced", mark: "bad", at: latest(ls.map((l) => l.failed_at)) }, todo("opened")];
+    case "failed":
+      return [{ key: "failed", mark: "bad", at: latest(ls.map((l) => l.failed_at)) }, todo("delivered"), todo("opened")];
+    default:
+      return null;
+  }
+}
+
+/** One thing that happened to a letter, for the letter history. */
+export type LetterEventKey = "queued" | "sent" | "delayed" | "delivered" | "proxy" | "opened" | "clicked" | "failed";
+export interface LetterEvent {
+  key: LetterEventKey;
+  at: string;
+}
+
+/** What happened to one letter, oldest first. */
+export function letterEvents(l: OrderLetter): LetterEvent[] {
+  const all: [LetterEventKey, string | null | undefined][] = [
+    ["queued", l.sent_at ? null : l.queued_at],
+    ["sent", l.sent_at],
+    ["delayed", l.deferred_at],
+    ["delivered", l.delivered_at],
+    ["proxy", l.proxy_opened_at],
+    ["opened", l.opened_at],
+    ["clicked", l.clicked_at],
+    ["failed", l.failed_at],
+  ];
+  return all
+    .filter((e): e is [LetterEventKey, string] => typeof e[1] === "string" && e[1] !== "")
+    .map(([key, at]) => ({ key, at }))
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+}
+
+export interface LetterHistoryEntry {
+  letter: OrderLetter;
+  /** A ticket letter for tickets an earlier ticket letter already carried. */
+  resend: boolean;
+  /** Sent to an address other than the order's own. */
+  otherAddress: boolean;
+}
+
+/** Every letter of the order, oldest first, each marked as a resend or a letter to another address. */
+export function letterHistory(order: Pick<OrderDetail, "letters" | "buyer_email">): LetterHistoryEntry[] {
+  const own = (order.buyer_email ?? "").trim().toLowerCase();
+  const sorted = [...(order.letters ?? [])].filter((l) => l.kind !== "invitation").sort((a, b) => letterTime(a) - letterTime(b));
+  const seen = new Set<string>();
+  return sorted.map((l) => {
+    const resend = l.kind === "ticket" && l.ticket_ids.some((id) => seen.has(id));
+    if (l.kind === "ticket") for (const id of l.ticket_ids) seen.add(id);
+    const to = l.recipient.trim().toLowerCase();
+    return { letter: l, resend, otherAddress: to !== "" && own !== "" && to !== own };
+  });
 }
 
 /** The visual tone of a letter line. A tone always comes with words. */
