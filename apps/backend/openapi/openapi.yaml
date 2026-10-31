@@ -38621,6 +38621,87 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/event-sessions/{id}/schema/admin:
+    get:
+      operationId: getSessionSchemaAdmin
+      summary: The organizer's seating schema of a session, published or not
+      description: |
+        The payload of `GET /v1/event-sessions/{id}/schema` (geometry,
+        `category_prices`, `seat_category_index`, `extra_categories`) for
+        the organizer's seat map, WITHOUT the published gate: a draft
+        event's seats are painted into its price categories before the
+        event goes on sale. Requires JWT + `session.seats.manage`; the
+        tenant is resolved from the session's owning organization.
+        `Cache-Control: private, no-cache`; the ETag is the public one.
+      tags: [v1, seating]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Event session id.
+          schema:
+            type: string
+            format: uuid
+        - name: If-None-Match
+          in: header
+          required: false
+          description: Standard conditional-request header; a match answers 304 with no body.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Canonical geometry + category price resolution.
+          headers:
+            ETag:
+              description: Strong entity tag = `"<geometry_checksum>-v<seat_status_version>"`.
+              schema:
+                type: string
+            Cache-Control:
+              description: Always `private, no-cache`.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeatingSchemaResponse"
+        "304":
+          description: Client's `If-None-Match` matches the current ETag; body omitted.
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks permission or org membership.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            Session not found (`session.not_found`), or it is
+            `general_admission` / has no bound seating plan version
+            (`event_session.schema_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database pool unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/event-sessions/{id}/seats/category:
     patch:
       operationId: patchSessionSeatsCategory

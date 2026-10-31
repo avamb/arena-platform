@@ -20478,6 +20478,12 @@ type GetPublicSessionSchemaParams struct {
 	IfNoneMatch *string `json:"If-None-Match,omitempty"`
 }
 
+// GetSessionSchemaAdminParams defines parameters for GetSessionSchemaAdmin.
+type GetSessionSchemaAdminParams struct {
+	// IfNoneMatch Standard conditional-request header; a match answers 304 with no body.
+	IfNoneMatch *string `json:"If-None-Match,omitempty"`
+}
+
 // GetPublicSessionSeatStatusParams defines parameters for GetPublicSessionSeatStatus.
 type GetPublicSessionSeatStatusParams struct {
 	// SinceVersion Optional non-negative integer cursor. Present ⇒ delta mode

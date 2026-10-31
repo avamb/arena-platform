@@ -72,6 +72,8 @@ import type {
   TierPriceWindowInput,
   UpdateTicketTierRequest,
   VenueItem,
+  SeatingPlan,
+  SeatingPlanVersion,
   TextFormatRequest,
   TextFormatResponse,
   AdminSeatsResponse,
@@ -720,6 +722,16 @@ export function listVenues(orgId: string): Promise<{ venues: VenueItem[] }> {
   return call<{ venues: VenueItem[] }>({ route: API.venues, params: { org_id: orgId } });
 }
 
+/** The seating plans of a venue (`seating_plan.read`). */
+export function listVenueSeatingPlans(venueId: string): Promise<{ seating_plans: SeatingPlan[] }> {
+  return call<{ seating_plans: SeatingPlan[] }>({ route: API.venueSeatingPlans, params: { venue_id: venueId } });
+}
+
+/** The versions of a seating plan, each with its geometry (`seating_plan.read`). */
+export function listSeatingPlanVersions(planId: string): Promise<{ seating_plan_versions: SeatingPlanVersion[] }> {
+  return call<{ seating_plan_versions: SeatingPlanVersion[] }>({ route: API.seatingPlanVersions, params: { id: planId } });
+}
+
 export function listCountries(lang?: string): Promise<GeoCountriesResponse> {
   return call<GeoCountriesResponse>({ route: API.geoCountries, query: { lang } });
 }
@@ -1130,6 +1142,11 @@ export function downloadSalesLinkQr(orgId: string, linkId: string, format: "png"
 /** The hall of a session: geometry and the category of every plan category. */
 export function fetchSessionSchema(sessionId: string): Promise<SchemaResponse> {
   return call<SchemaResponse>({ route: API.sessionSchema, params: { id: sessionId } });
+}
+
+/** The same hall for the organizer (`session.seats.manage`), also of an event that is not published yet. */
+export function fetchSessionSchemaAdmin(sessionId: string): Promise<SchemaResponse> {
+  return call<SchemaResponse>({ route: API.sessionSchemaAdmin, params: { id: sessionId } });
 }
 
 /** Every seat of the session with its category and status (the organizer's view). */

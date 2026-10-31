@@ -160,6 +160,11 @@ export const API = {
   // geo reads are public and feed the venue form.
   eventBundleCheck: { method: "POST", path: "/v1/organizations/{org_id}/imports/event-bundle" },
   venues: { method: "GET", path: "/v1/organizations/{org_id}/venues" },
+  // The wizard's "Hall plan": the plans of the chosen venue and their versions
+  // (seating_plan.read). Plans are not organization-scoped routes: the server
+  // answers the organization's own and the shared ones.
+  venueSeatingPlans: { method: "GET", path: "/v1/venues/{venue_id}/seating-plans" },
+  seatingPlanVersions: { method: "GET", path: "/v1/seating-plans/{id}/versions" },
   // Sales page materials of an event: gallery, videos, other sellers, the map
   // point and the photo report (reads event.read, writes event.update), and the
   // venue's own postal address (venue.update).
@@ -213,6 +218,8 @@ export const API = {
   // are flat routes (the session id names the organization); the batches and the
   // automatic layout are organization routes. All need session.seats.manage.
   sessionSchema: { method: "GET", path: "/v1/event-sessions/{id}/schema" },
+  // The same map for the organizer, published or not: a draft event's seats are painted before the sale.
+  sessionSchemaAdmin: { method: "GET", path: "/v1/event-sessions/{id}/schema/admin" },
   sessionSeatsAdmin: { method: "GET", path: "/v1/event-sessions/{id}/seats/admin" },
   seatBatches: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/seat-batches" },
   seatBatchCreate: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/seat-batches" },

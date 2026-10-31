@@ -182,6 +182,11 @@ func TestPermOrg_FlatRowRoutesDecideInTheRowOrganization(t *testing.T) {
 		p.refused(t, http.StatusForbidden, "permissions.denied", http.MethodGet,
 			"/v1/event-sessions/"+w.s1.String()+"/seats/admin", "")
 		p.allowed(t, http.StatusOK, http.MethodGet, "/v1/event-sessions/"+w.s1.String()+"/seats/admin", "")
+		// The organizer's seat map: same gate. The date is a free-seating one,
+		// so the owner passes the gate and meets the route's own 404.
+		p.refused(t, http.StatusForbidden, "permissions.denied", http.MethodGet,
+			"/v1/event-sessions/"+w.s1.String()+"/schema/admin", "")
+		p.allowed(t, http.StatusNotFound, http.MethodGet, "/v1/event-sessions/"+w.s1.String()+"/schema/admin", "")
 	})
 
 	t.Run("session media", func(t *testing.T) {

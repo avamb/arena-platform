@@ -617,6 +617,21 @@ func TestEventBundleSeated_ExtraPriceCategories(t *testing.T) {
 	}
 	before := sessionSeatSnapshot(ctx, t, pool, out.SessionID)
 
+	// The event is a draft: buyers see no seat map, the organizer does (the
+	// seats are painted into VIP and Student before the sale).
+	if _, err := pool.Exec(ctx, `UPDATE events SET status = 'draft' WHERE id = $1`, out.EventID); err != nil {
+		t.Fatal(err)
+	}
+	sh := hseating.New(gen.New(pool), pool, nil, slog.Default())
+	if rec := callSeatingHandler(t, out.SessionID, sh.HandleGetPublicSessionSchema); rec.Code != http.StatusNotFound {
+		t.Fatalf("public schema of a draft: %d", rec.Code)
+	}
+	adminRec := callSeatingHandler(t, out.SessionID, sh.HandleGetSessionSchemaAdmin)
+	if adminRec.Code != http.StatusOK || !strings.Contains(adminRec.Body.String(), `"s|b|1"`) ||
+		adminRec.Header().Get("Cache-Control") != "private, no-cache" {
+		t.Fatalf("admin schema of a draft: %d %q %s", adminRec.Code, adminRec.Header().Get("Cache-Control"), adminRec.Body.String())
+	}
+
 	// The repeat: every category by its arena id, the extras without a
 	// quantity and without the flag (it is ignored on an existing session).
 	again := sf.seatedPayload()

@@ -329,6 +329,7 @@ var flatRouteFamilies = []flatFamily{
 	{"*", "/v1/sessions/{id}/media", flatRowGuard, "requireOrgMembership on the session's organization"},
 	// /v1/event-sessions/{id}/seats/*  (flatRowGuard): membership on the session's organization
 	{"GET", "/v1/event-sessions/{id}/seats/admin", flatRowGuard, "membership on the session's organization"},
+	{"GET", "/v1/event-sessions/{id}/schema/admin", flatRowGuard, "membership on the session's organization"},
 	{"PATCH", "/v1/event-sessions/{id}/seats/category", flatRowGuard, "membership on the session's organization"},
 	{"POST", "/v1/venues/{venue_id}/seating-plans", flatRowGuard, "membership of the owner organization"},
 	{"PATCH", "/v1/seating-plans/{id}", flatRowGuard, "membership of the owner organization"},

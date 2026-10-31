@@ -83,6 +83,8 @@ export type TierPriceScheduleEnvelope = S["TierPriceScheduleEnvelope"];
 export type PutTierPriceScheduleRequest = S["PutTierPriceScheduleRequest"];
 // 6-1a: the event wizard.
 export type VenueItem = S["VenueItem"];
+export type SeatingPlan = S["SeatingPlan"];
+export type SeatingPlanVersion = S["SeatingPlanVersion"];
 export type GeoCountryItem = S["GeoCountryItem"];
 export type GeoCountriesResponse = S["GeoCountriesResponse"];
 export type GeoCityItem = S["GeoCityItem"];

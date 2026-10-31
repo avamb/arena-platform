@@ -4177,6 +4177,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/event-sessions/{id}/schema/admin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The organizer's seating schema of a session, published or not
+         * @description The payload of `GET /v1/event-sessions/{id}/schema` (geometry,
+         *     `category_prices`, `seat_category_index`, `extra_categories`) for
+         *     the organizer's seat map, WITHOUT the published gate: a draft
+         *     event's seats are painted into its price categories before the
+         *     event goes on sale. Requires JWT + `session.seats.manage`; the
+         *     tenant is resolved from the session's owning organization.
+         *     `Cache-Control: private, no-cache`; the ETag is the public one.
+         */
+        get: operations["getSessionSchemaAdmin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/event-sessions/{id}/seats/category": {
         parameters: {
             query?: never;
@@ -46955,6 +46981,92 @@ export interface operations {
                 };
             };
             /** @description Session not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database pool unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getSessionSchemaAdmin: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Standard conditional-request header; a match answers 304 with no body. */
+                "If-None-Match"?: string;
+            };
+            path: {
+                /** @description Event session id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Canonical geometry + category price resolution. */
+            200: {
+                headers: {
+                    /** @description Strong entity tag = `"<geometry_checksum>-v<seat_status_version>"`. */
+                    ETag?: string;
+                    /** @description Always `private, no-cache`. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatingSchemaResponse"];
+                };
+            };
+            /** @description Client's `If-None-Match` matches the current ETag; body omitted. */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks permission or org membership. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description Session not found (`session.not_found`), or it is
+             *     `general_admission` / has no bound seating plan version
+             *     (`event_session.schema_not_found`).
+             */
             404: {
                 headers: {
                     [name: string]: unknown;

@@ -156,6 +156,12 @@ func applySeatsFixture(ctx context.Context, tx pgx.Tx) error {
 		ON CONFLICT (id) DO NOTHING`, seatsVersionID, seatsPlanID, string(geoJSON), checksum, seatCount); err != nil {
 		return err
 	}
+	// The plan's current version: the wizard's "Hall plan" offers a plan at its
+	// current version only (the twin live/wizard-seating.spec.ts).
+	if err := run("plan current version", `
+		UPDATE seating_plans SET current_version_id = $2 WHERE id = $1 AND current_version_id IS NULL`, seatsPlanID, seatsVersionID); err != nil {
+		return err
+	}
 	start := time.Now().UTC().AddDate(0, 0, 45).Truncate(time.Hour)
 	if err := run("session", `
 		INSERT INTO sessions (id, event_id, venue_id, start_at, end_at, capacity_total, status, admission_mode, seating_plan_version_id, currency, currency_source)
