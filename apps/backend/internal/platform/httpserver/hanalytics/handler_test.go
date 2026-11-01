@@ -350,3 +350,59 @@ func TestSite_FullBufferDoesNotSlowTheRequest(t *testing.T) {
 type adder func(float64)
 
 func (a adder) Add(v float64) { a(v) }
+
+func TestSite_EmailClickDedupedPerCidAndPageView(t *testing.T) {
+	rec := &recorder{}
+	h := New(Options{Tracker: rec, Codes: fakeCodes{"x7k2qpm3ab": true}})
+	send := func(body string) {
+		h.HandleSite(httptest.NewRecorder(), mustReq(body))
+	}
+	noAID := `{"cid":"x7k2qpm3ab","pv":"p_Q9abcdef","events":[{"name":"page_view","props":{"path":"/"}}]}`
+	withAID := `{"aid":"a_7Hk2abcd","cid":"x7k2qpm3ab","pv":"p_Q9abcdef","events":[{"name":"page_view","props":{"path":"/"}}]}`
+	clicks := func() (n, withPair int) {
+		for _, e := range rec.list() {
+			if e.Name == "email_click" {
+				n++
+				if e.Props["aid"] == "a_7Hk2abcd" {
+					withPair++
+				}
+			}
+		}
+		return
+	}
+	send(noAID)
+	send(noAID) // a reload resending the same pair: no second click
+	if n, _ := clicks(); n != 1 {
+		t.Fatalf("clicks after two aid-less sends = %d, want 1", n)
+	}
+	send(withAID) // after consent: the pair is written once
+	send(withAID)
+	if n, pair := clicks(); n != 2 || pair != 1 {
+		t.Fatalf("clicks = %d, with aid = %d, want 2 and 1", n, pair)
+	}
+	// Another page view of the same contact is a new click.
+	send(strings.Replace(noAID, "p_Q9abcdef", "p_Zzzzzzzz", 1))
+	if n, _ := clicks(); n != 3 {
+		t.Errorf("clicks = %d, want 3", n)
+	}
+}
+
+func TestSite_ClientCannotSetEmailClickAID(t *testing.T) {
+	rec := &recorder{}
+	h := New(Options{Tracker: rec, Codes: fakeCodes{"x7k2qpm3ab": true}})
+	h.HandleSite(httptest.NewRecorder(), mustReq(`{"cid":"x7k2qpm3ab","pv":"p_Q9abcdef","events":[
+		{"name":"email_click","props":{"aid":"a_forged00"}},
+		{"name":"page_view","props":{"path":"/","aid":"a_forged00"}}]}`))
+	for _, e := range rec.list() {
+		if e.Name == "email_click" && e.ServerOrigin {
+			if _, has := e.Props["aid"]; has {
+				t.Errorf("aid set without a visitor aid: %v", e.Props)
+			}
+		}
+	}
+	// The client-sent email_click goes through the same dictionary as any
+	// other client event and is dropped there (server-only).
+	if _, ok := analytics.Sanitize(analytics.SurfaceSite, "email_click", map[string]any{"aid": "a_forged00"}, true); ok {
+		t.Error("client email_click accepted by the dictionary")
+	}
+}

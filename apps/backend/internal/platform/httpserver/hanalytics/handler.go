@@ -26,6 +26,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -88,7 +89,22 @@ type Handler struct {
 	siteRL    *ratelimit.SlidingWindow
 	userRL    *ratelimit.SlidingWindow
 	calls     atomic.Uint64
+
+	clickMu   sync.Mutex
+	clickSeen map[string]clickSeen
 }
+
+// clickSeen remembers, per (cid, pv), that an email_click was written and
+// whether it already carried the visitor's aid.
+type clickSeen struct {
+	withAID bool
+	at      time.Time
+}
+
+const (
+	clickSeenTTL = 24 * time.Hour
+	clickSeenMax = 50000
+)
 
 // New builds a Handler.
 func New(o Options) *Handler {
@@ -112,6 +128,7 @@ func New(o Options) *Handler {
 		now:       o.Now,
 		siteRL:    ratelimit.New(ratelimit.Config{MaxAttempts: o.SiteLimit, Window: time.Minute}),
 		userRL:    ratelimit.New(ratelimit.Config{MaxAttempts: o.UserLimit, Window: time.Minute}),
+		clickSeen: map[string]clickSeen{},
 	}
 }
 
@@ -244,6 +261,13 @@ func (h *Handler) trackEmailClick(ctx context.Context, b batch, idKind, idValue 
 	if h.codes == nil || !cidRe.MatchString(b.CID) {
 		return
 	}
+	// One email_click per (cid, pv): the site resends the cid together with
+	// the aid right after the visitor accepts consent on the same page. That
+	// second send is the one that carries the pair, so it is written once more
+	// (an aid-less click never blocks it, an aid-bearing one is never repeated).
+	if !h.firstClick(b.CID, b.PV, idKind == analytics.IDKindAID) {
+		return
+	}
 	lctx, cancel := context.WithTimeout(ctx, codeLookupBudget)
 	defer cancel()
 	ok, err := h.codes.ContactCodeExists(lctx, b.CID)
@@ -304,6 +328,30 @@ func batchTimes(events []batchEvent, now time.Time) []time.Time {
 		}
 	}
 	return out
+}
+
+// firstClick reports whether an email_click for (cid, pv) should be written
+// now, and remembers it. The memory is per process and bounded.
+func (h *Handler) firstClick(cid, pv string, withAID bool) bool {
+	key := cid + "|" + pv
+	now := h.now()
+	h.clickMu.Lock()
+	defer h.clickMu.Unlock()
+	if prev, ok := h.clickSeen[key]; ok && now.Sub(prev.at) < clickSeenTTL && (prev.withAID || !withAID) {
+		return false
+	}
+	if len(h.clickSeen) >= clickSeenMax {
+		for k, v := range h.clickSeen {
+			if now.Sub(v.at) >= clickSeenTTL {
+				delete(h.clickSeen, k)
+			}
+		}
+		if len(h.clickSeen) >= clickSeenMax {
+			h.clickSeen = map[string]clickSeen{}
+		}
+	}
+	h.clickSeen[key] = clickSeen{withAID: withAID, at: now}
+	return true
 }
 
 func (h *Handler) maybePrune() {
