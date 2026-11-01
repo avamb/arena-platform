@@ -703,6 +703,28 @@ func (h *Handler) orderPersist(
 		h.orderInternal(w, req, "insert checkout session failed", err)
 		return
 	}
+	// The code's max_uses is taken here, under a lock per code held until
+	// this transaction commits the order (P0-1 defect D-02):
+	// orderPromoDiscount counts recorded redemptions only, and PAY_ORDER
+	// records them. A code used up meanwhile refuses the order and writes
+	// nothing; the cart keeps its hold, so the site can send it again
+	// without the code.
+	if promoCodeID != nil {
+		exhausted, err := hcheckout.ReservePromoUseTx(ctx, txq, hcheckout.PromoUse{
+			PromoCodeID: *promoCodeID, OrgID: cc.orgID,
+			ReservationID: &res.ID, CustomerID: &customerID,
+			BuyerEmail: strings.TrimSpace(req.Email),
+		})
+		if err != nil {
+			h.orderTransient(w, req, cc, "reserve promo code use failed", err)
+			return
+		}
+		if exhausted {
+			writeBil24JSON(w, http.StatusOK, bil24Error(req.Command, ResultCodeUserVisible,
+				h.localizeDesc(req.Locale, cc.locale, "bil24.promo_exhausted", "promo code has already been used up", nil)))
+			return
+		}
+	}
 	cs, err = txq.ConfirmCheckoutSession(ctx, cs.ID,
 		bd.Subtotal, bd.Discount, bd.PlatformFee, bd.ProviderFee, bd.Tax, bd.Total,
 		bd.Currency, promoCodeID,

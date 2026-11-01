@@ -149,3 +149,28 @@ LEFT JOIN sales_channels c ON c.id = r.channel_id
 WHERE p.org_id = $1
   AND ($2::uuid IS NULL OR r.promo_code_id = $2::uuid)
 ORDER BY r.redeemed_at DESC;
+
+-- name: LockPromoCodeUses :exec
+-- Serializes every reservation of one code's max_uses (P0-1 defect D-02):
+-- held until the transaction that writes the order commits.
+SELECT pg_advisory_xact_lock(hashtextextended('promo_code_uses:' || $1::text, 0));
+
+-- name: CountPromoCodeUsesInFlight :one
+-- max_uses of the code, and the uses already taken: recorded redemptions
+-- plus orders carrying the code that have no redemption yet and either were
+-- paid or still hold their places. A live unpaid order of the same
+-- reservation or the same buyer is not counted (a re-sent cart, a buyer who
+-- came back from the payment page).
+SELECT pc.max_uses,
+       ((SELECT COUNT(*) FROM promo_code_redemptions r WHERE r.promo_code_id = pc.id)
+        + (SELECT COUNT(*) FROM orders o
+            WHERE o.org_id = pc.org_id AND o.promo_code_id = pc.id
+              AND NOT EXISTS (SELECT 1 FROM promo_code_redemptions r WHERE r.order_id = o.id)
+              AND (o.status IN ('paid', 'partially_refunded', 'refunded', 'manual_review')
+                   OR (o.status = 'pending_payment' AND o.expires_at > now()
+                       AND o.reservation_id IS DISTINCT FROM $3::uuid
+                       AND NOT (($4::uuid IS NOT NULL AND o.customer_id = $4::uuid)
+                                OR ($5::text <> '' AND lower(o.buyer_email) = lower($5::text))))))
+       )::int AS used
+FROM promo_codes pc
+WHERE pc.id = $1 AND pc.org_id = $2;

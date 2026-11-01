@@ -5,6 +5,10 @@
 // a widget checkout at the same moment with the same session-scoped code of
 // max_uses=1, then both pay. Expected (plan ORD-08): one discount, one
 // recorded redemption.
+//
+// P0-1 defect D-02: the checkout that commits its order second counts the
+// first one under the code's lock (hcheckout.ReservePromoUseTx) and is
+// refused with promo.exhausted.
 package httpserver
 
 import (
@@ -12,7 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -23,9 +27,6 @@ import (
 )
 
 func TestORD08_TwoConcurrentOrdersWithAMaxUsesOneCode(t *testing.T) {
-	if os.Getenv("ARENA_P0_KNOWN_GAPS") != "1" {
-		t.Skip("known gap P0-1/D-02: max_uses is checked against recorded redemptions only; ARENA_P0_KNOWN_GAPS=1 runs it")
-	}
 	pool := integrationPool(t)
 	ctx := t.Context()
 	f := newHostedOrgFixture(t, ctx, pool, "p0ord8")
@@ -124,5 +125,27 @@ func TestORD08_TwoConcurrentOrdersWithAMaxUsesOneCode(t *testing.T) {
 	}
 	if redemptions != 1 {
 		t.Errorf("redemptions recorded = %d, want exactly 1", redemptions)
+	}
+	refused := 0
+	for i, r := range results {
+		if r.status == http.StatusCreated {
+			continue
+		}
+		refused++
+		if r.status != http.StatusUnprocessableEntity || !strings.Contains(string(r.body), `"promo.exhausted"`) {
+			t.Errorf("buyer %d refused with %d %s, want 422 promo.exhausted", i, r.status, r.body)
+		}
+	}
+	if refused != 1 {
+		t.Errorf("refused checkouts = %d, want exactly 1", refused)
+	}
+	// The refused buyer's hold is released at once, not left to its TTL.
+	var cancelledHolds int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM reservations
+		WHERE session_id = $1 AND state = 'cancelled'`, f.sessionID).Scan(&cancelledHolds); err != nil {
+		t.Fatal(err)
+	}
+	if cancelledHolds != refused {
+		t.Errorf("released holds = %d, want %d (one per refused checkout)", cancelledHolds, refused)
 	}
 }

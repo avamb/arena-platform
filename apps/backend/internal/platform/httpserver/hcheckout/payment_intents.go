@@ -677,6 +677,12 @@ type webhookPaymentIntentRequest struct {
 	// here and stored in payment_intents.provider_charge_ref, because a
 	// refund is driven through the pi_…, never through the cs_… id.
 	HostedPaymentID string `json:"-"`
+	// PaidAmountMinor and PaidCurrency are what a Stripe envelope says was
+	// charged: data.object.amount_total on a checkout.session event,
+	// data.object.amount_received on a payment_intent event. Nil when the
+	// event names no amount (the flat mock shape, a non-payment event).
+	PaidAmountMinor *int64 `json:"-"`
+	PaidCurrency    string `json:"-"`
 }
 
 // providerChargeRef returns the pi_… this event carries, or nil when it
@@ -715,6 +721,11 @@ type stripeEventEnvelope struct {
 			// and the pi_… Stripe created behind the hosted session.
 			PaymentStatus string `json:"payment_status"`
 			PaymentIntent string `json:"payment_intent"`
+			// What was charged, in minor units of Currency: amount_total on
+			// a checkout.session, amount_received on a payment_intent.
+			AmountTotal    *int64 `json:"amount_total"`
+			AmountReceived *int64 `json:"amount_received"`
+			Currency       string `json:"currency"`
 		} `json:"object"`
 	} `json:"data"`
 }
@@ -766,6 +777,13 @@ func parseWebhookPaymentIntentRequest(body []byte) (webhookPaymentIntentRequest,
 		EventPayload:      json.RawMessage(body),
 		PaymentStatus:     env.Data.Object.PaymentStatus,
 		HostedPaymentID:   env.Data.Object.PaymentIntent,
+		PaidCurrency:      env.Data.Object.Currency,
+	}
+	switch {
+	case env.Data.Object.AmountTotal != nil:
+		req.PaidAmountMinor = env.Data.Object.AmountTotal
+	case env.Data.Object.AmountReceived != nil:
+		req.PaidAmountMinor = env.Data.Object.AmountReceived
 	}
 	if env.Data.Object.LastPaymentError != nil {
 		if code := env.Data.Object.LastPaymentError.Code; code != "" {
@@ -1021,6 +1039,13 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 	var req webhookPaymentIntentRequest
 	if route.Event != nil {
 		req = webhookRequestFromEvent(*route.Event)
+		if route.ExpectedProvider == "" {
+			// A Stripe event on its config route: the module normalizes
+			// the kind, the envelope still names what was charged (D-01).
+			if env, err := parseWebhookPaymentIntentRequest(body); err == nil {
+				req.PaidAmountMinor, req.PaidCurrency = env.PaidAmountMinor, env.PaidCurrency
+			}
+		}
 	} else {
 		if d, configOnly := configRouteOnlyProvider(body); configOnly {
 			// A body of a provider that signs its callbacks with the key of
@@ -1187,11 +1212,23 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	// A module's paid event must name the amount arena asked for
+	// A paid event must name the amount arena asked for
 	// (payment_amount_guard.go). A disagreement parks the payment for a
-	// human instead of shipping tickets.
-	if route.Event != nil && route.ExpectedProvider != "" && targetState == "succeeded" {
-		if why := paidAmountMismatch(*route.Event, pi.Amount, pi.Currency); why != "" {
+	// human instead of shipping tickets. A module's event is checked on its
+	// config route; a Stripe envelope is checked whenever it names the
+	// charged amount, which Stripe does on every payment event.
+	if targetState == "succeeded" {
+		why := ""
+		switch {
+		case route.Event != nil && route.ExpectedProvider != "":
+			why = paidAmountMismatch(*route.Event, pi.Amount, pi.Currency)
+		case route.ExpectedProvider == "" && req.PaidAmountMinor != nil:
+			why = paidAmountMismatch(payments.NormalizedEvent{
+				AmountMinor: *req.PaidAmountMinor,
+				Currency:    req.PaidCurrency,
+			}, pi.Amount, pi.Currency)
+		}
+		if why != "" {
 			h.logger.Error("PAYMENT AMOUNT MISMATCH: payment intent parked in manual_review",
 				slog.String("payment_intent_id", pi.ID.String()),
 				slog.String("provider", pi.Provider),

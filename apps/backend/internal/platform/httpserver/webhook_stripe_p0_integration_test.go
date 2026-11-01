@@ -17,7 +17,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
@@ -152,15 +151,10 @@ func stripeSessionCompletedWithAmount(sessionID, chargeRef string, amount int64,
 // event whose amount is not the intent's must park the payment in
 // manual_review and issue no tickets.
 //
-// KNOWN GAP (P0-1 follow-up, see the PR): the amount guard of
-// hcheckout/payment_amount_guard.go runs only for config-route-only modules
-// (Flitt, AllPay, PayPlus), so a Stripe event is not checked and the order is
-// paid. The test is skipped until the product decides; set
-// ARENA_P0_KNOWN_GAPS=1 to run it.
+// P0-1 defect D-01: the core envelope parser reads amount_total and the
+// currency of a Stripe event into the same amount guard the config-route-only
+// modules use (hcheckout/payment_amount_guard.go).
 func TestStripeWebhookP0_PaidAmountMismatchIsParked(t *testing.T) {
-	if os.Getenv("ARENA_P0_KNOWN_GAPS") != "1" {
-		t.Skip("known gap P0-1/D-01: Stripe paid events are not checked against the intent amount; ARENA_P0_KNOWN_GAPS=1 runs it")
-	}
 	pool := integrationPool(t)
 	ctx := t.Context()
 	f := newHostedOrgFixture(t, ctx, pool, "p0amt")
