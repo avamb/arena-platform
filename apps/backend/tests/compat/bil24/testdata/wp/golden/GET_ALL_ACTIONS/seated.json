@@ -26,6 +26,7 @@
           "sellEndTime": "{{sellEndTime}}",
           "salesState": "open",
           "arenaSessionId": "{{arenaSessionId}}",
+          "salesStateManual": false,
           "seatingPlanId": "{{actionEventId}}",
           "seatingPlanName": "Palác Akropolis (harness)",
           "eTicket": true,
