@@ -35,11 +35,27 @@ var shopUnsubscribeNotes = map[string]string{
 	"he": "אם תלחצו על ״ביטול הרשמה״, לא תקבלו יותר את המיילים על ההזמנות שלכם. אנחנו לא שולחים דיוורים שיווקיים ללא הסכמתכם.",
 }
 
+// saleUnsubscribeNotes is the note of the two "notify me when sales open"
+// letters (owner decision 2026-10-31): the person has no ticket yet, and the
+// note says plainly that "Unsubscribe" blocks every letter to the address for
+// good, tickets included.
+var saleUnsubscribeNotes = map[string]string{
+	"en": "If you click «Unsubscribe», letters from us will never reach this address again, tickets included.",
+	"ru": "Если вы нажмёте «Отписаться», письма от нас на этот адрес больше никогда не придут, в том числе билеты.",
+	"es": "Si pulsas «Cancelar suscripción», nuestros correos no volverán a llegar nunca a esta dirección, tampoco las entradas.",
+	"cs": "Pokud kliknete na „Odhlásit odběr“, e-maily od nás už na tuto adresu nikdy nepřijdou, ani vstupenky.",
+	"de": "Wenn Sie auf „Abbestellen“ klicken, erreichen Sie unsere E-Mails an diese Adresse nie wieder, auch keine Tickets.",
+	"fr": "Si vous cliquez sur « Se désabonner », nos e-mails n’arriveront plus jamais à cette adresse, billets compris.",
+	"he": "אם תלחצו על ״ביטול הרשמה״, המיילים שלנו לא יגיעו יותר לעולם לכתובת הזאת, גם לא כרטיסים.",
+}
+
 // noteFor is the note the letters of a kind end with.
 func noteFor(kind, loc string) string {
 	switch kind {
 	case TemplateKindShopOrderReceived, TemplateKindShopOrderShipped, TemplateKindShopOrderRefunded:
 		return shopUnsubscribeNotes[loc]
+	case TemplateKindSaleSubscribeConfirm, TemplateKindSaleOpen:
+		return saleUnsubscribeNotes[loc]
 	}
 	return unsubscribeNotes[loc]
 }
@@ -50,14 +66,16 @@ func noteFor(kind, loc string) string {
 func buyerLetterKinds() map[string]Data {
 	base := Data{TicketID: "id", EventName: "E", RecipientEmail: "x@y.z"}
 	return map[string]Data{
-		TemplateKindTicket:            base,
-		TemplateKindInvitation:        base,
-		TemplateKindChange:            changeTestData(),
-		TemplateKindCancel:            changeTestData(),
-		TemplateKindRefund:            refundData(),
-		TemplateKindShopOrderReceived: shopTestData(),
-		TemplateKindShopOrderShipped:  shopTestData(),
-		TemplateKindShopOrderRefunded: shopRefundTestData(),
+		TemplateKindTicket:               base,
+		TemplateKindInvitation:           base,
+		TemplateKindChange:               changeTestData(),
+		TemplateKindCancel:               changeTestData(),
+		TemplateKindRefund:               refundData(),
+		TemplateKindShopOrderReceived:    shopTestData(),
+		TemplateKindShopOrderShipped:     shopTestData(),
+		TemplateKindShopOrderRefunded:    shopRefundTestData(),
+		TemplateKindSaleSubscribeConfirm: {EventName: "E", RecipientEmail: "x@y.z", SaleNotice: SaleNoticeData{URL: "https://t.example/c", When: "w"}},
+		TemplateKindSaleOpen:             {EventName: "E", RecipientEmail: "x@y.z", SaleNotice: SaleNoticeData{URL: "https://t.example/b", When: "w"}},
 	}
 }
 
@@ -108,7 +126,7 @@ func TestBuyerLetters_EndWithTheUnsubscribeNote(t *testing.T) {
 
 // The organizer letters are not for buyers and carry no note.
 func TestOrganizerLetters_HaveNoUnsubscribeNote(t *testing.T) {
-	for _, kind := range []string{TemplateKindRefundBlocked, TemplateKindScanException} {
+	for _, kind := range []string{TemplateKindRefundBlocked, TemplateKindScanException, TemplateKindSalesAlert} {
 		for _, loc := range SupportedLocales {
 			raw, err := templateFS.ReadFile(kind + "." + loc + ".tmpl")
 			if err != nil {

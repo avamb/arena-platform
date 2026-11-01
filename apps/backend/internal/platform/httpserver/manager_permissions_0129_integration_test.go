@@ -83,6 +83,10 @@ func TestManagerPermissions0129_OrganizerPassesEveryEventCenterGate(t *testing.T
 		{"report.read", http.MethodGet, "/v1/events/" + random + "/report", ""},
 		{"report.generate", http.MethodPost, "/v1/events/" + random + "/report", ""},
 		{"tier.update", http.MethodPatch, orgPath + "/events/" + random + "/sessions/" + random + "/tiers/" + random, `{"name":"x"}`},
+		// Migration 0183: the session's sales state (owner decision 2026-10-31:
+		// a manager switches it like the owner).
+		{"session.read", http.MethodGet, orgPath + "/sessions/" + random + "/sales-state", ""},
+		{"session.update", http.MethodPut, orgPath + "/sessions/" + random + "/sales-state", `{"state":"sold_out"}`},
 		// EC-10: the event card's status buttons (granted since 0014/0074, driven here
 		// so the first live run under the manager does not find a 403).
 		{"event.publish", http.MethodPost, orgPath + "/events/" + random + "/status", `{"status":"published"}`},

@@ -46,6 +46,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesstate"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -301,8 +302,14 @@ type publicFeedSessionResponse struct {
 	// it: a buyer whose phone lives in another zone (found 2026-09-29 — an
 	// organizer in UTC+3 saw her 11:00 and 12:30 Madrid shows as 13:00 and
 	// 14:30) must still read the venue's local time, the one on the door.
-	Timezone string                   `json:"timezone"`
-	Tiers    []publicFeedTierResponse `json:"tiers"`
+	Timezone string `json:"timezone"`
+	// SalesState is the session's sales state by the rule every surface
+	// shares (package salesstate, migration 0183): open, soon, sold_out,
+	// ended or cancelled. "soon" and "sold_out" set by the organizer close
+	// the sale in every channel; the widget then shows the state instead of
+	// the picker. "" only when the state could not be loaded.
+	SalesState string                   `json:"sales_state"`
+	Tiers      []publicFeedTierResponse `json:"tiers"`
 	// PosterMediaID / PosterURL are the resolved cover (AB-47c): the session
 	// value when set, otherwise the event fallback. Same on both fields.
 	// The widget uses PosterURL directly; media_id is exposed for callers
@@ -801,10 +808,32 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 				}
 			}
 			venueTimezones := map[uuid.UUID]string{}
+			// One batched read of every session's sales facts (migration
+			// 0183). Non-fatal: without them sales_state is "" and the
+			// categories still report their own availability.
+			salesNow := time.Now().UTC()
+			sessionIDs := make([]uuid.UUID, 0, len(sessions))
 			for _, sess := range sessions {
-				// The same status rule the hold gate applies.
+				sessionIDs = append(sessionIDs, sess.ID)
+			}
+			salesFacts, factsErr := h.sessionQueries.ListSessionSalesFacts(ctx, sessionIDs, salesNow)
+			if factsErr != nil {
+				h.logger.Error("public_feed: session sales facts failed",
+					slog.String("event_id", eventID.String()),
+					slog.String("error", factsErr.Error()),
+				)
+			}
+			for _, sess := range sessions {
+				// The same status rule the hold gate applies, and the
+				// organizer's sales state the gate also refuses on.
 				sessionWithdrawn := hcheckout.SessionStatusRefusal(sess.Status, uuid.Nil, time.Time{}) != nil
 				sessResp := h.publicFeedSessionFromRow(ctx, sess, defaultBuyerFields)
+				if f, ok := salesFacts[sess.ID]; ok {
+					sessResp.SalesState = salesstate.Effective(f.Manual, salesstate.FactsFromRow(f), salesNow)
+					if salesstate.ValidManual(f.Manual) {
+						sessionWithdrawn = true
+					}
+				}
 				sessResp.ServiceFeePercent = serviceFeePercent
 				sessResp.PromoCodesAvailable = promoCodesAvailable
 				sessResp.ShowWithdrawalNotice = showWithdrawalNotice

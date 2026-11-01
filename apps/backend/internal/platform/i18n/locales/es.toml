@@ -1494,6 +1494,81 @@ other = "No indicar la apertura de puertas"
 ["bot.ses.sale_times_saved"]
 other = "Guardado. A los compradores no se les envía nada."
 
+["bot.ses.ss_line"]
+other = "Ventas: {{.State}}"
+
+["bot.ses.ss_line_manual"]
+other = "Ventas: {{.State}} (puesto a mano)"
+
+["bot.ses.ss_name_open"]
+other = "🟢 abiertas"
+
+["bot.ses.ss_name_soon"]
+other = "⏳ próximamente"
+
+["bot.ses.ss_name_sold_out"]
+other = "🔴 agotado"
+
+["bot.ses.ss_name_ended"]
+other = "⏹ terminadas"
+
+["bot.ses.ss_name_cancelled"]
+other = "✖ sesión cancelada"
+
+["bot.ses.ss_btn_open"]
+other = "🟢 Abrir ventas"
+
+["bot.ses.ss_btn_soon"]
+other = "⏳ Próximamente"
+
+["bot.ses.ss_btn_sold_out"]
+other = "🔴 Agotado"
+
+["bot.ses.ss_confirm_soon"]
+other = "<b>{{.Name}}</b> · {{.When}}\n\n¿Poner «Próximamente»?\n\nLas nuevas reservas se detienen en todas partes: el widget, la página de entradas y los sitios. Los compradores verán «Próximamente». Los pagos que ya empezaron se completan. «Abrir ventas» devuelve la venta."
+
+["bot.ses.ss_confirm_sold_out"]
+other = "<b>{{.Name}}</b> · {{.When}}\n\n¿Poner «Agotado»?\n\nLas nuevas reservas se detienen en todas partes: el widget, la página de entradas y los sitios. Los compradores verán «Agotado» aunque queden plazas. Los pagos que ya empezaron se completan y puedes seguir emitiendo invitaciones. «Abrir ventas» devuelve la venta."
+
+["bot.ses.ss_confirm_open"]
+other = "<b>{{.Name}}</b> · {{.When}}\n\n¿Abrir ventas?\n\nSe quita el estado que pusiste y todos los canales vuelven a vender según las plazas y las fechas de venta de las categorías."
+
+["bot.ses.ss_places"]
+other = "Plazas libres ahora: {{.Free}}, en reservas sin pagar: {{.Held}}."
+
+["bot.ses.ss_external"]
+other = "Hay socios con cupos para esta sesión ({{.Count}}). El estado no los cierra: avísales tú."
+
+["bot.ses.ss_go_btn"]
+other = "✅ Sí, aplicar"
+
+["bot.ses.ss_done"]
+other = "Hecho. Ventas: {{.State}}."
+
+["bot.ses.ss_no_change"]
+other = "El estado ya era este. No ha cambiado nada."
+
+["bot.ses.ss_auto_note"]
+other = "Ventas ahora: {{.State}}. Lo decide la plataforma sola: no quedan plazas libres o la venta de las categorías aún no ha empezado."
+
+["bot.ses.ss_site_pending"]
+other = "Sitios que venden este evento: {{.Sites}}. Se actualizan en un par de minutos."
+
+["bot.ses.ss_site_retrying"]
+other = "El sitio aún no ha respondido, lo intentamos de nuevo (intentos: {{.Attempts}})."
+
+["bot.ses.ss_site_delivered"]
+other = "Sitios actualizados ✓"
+
+["bot.ses.ss_site_failed"]
+other = "El sitio no aceptó el cambio. Revisa la página del evento en el sitio y escribe a soporte."
+
+["bot.ses.ss_check_btn"]
+other = "🔄 Comprobar los sitios"
+
+["bot.ses.ss_no_chat"]
+other = "Tu organización no tiene un chat de ventas en Telegram, así que los propietarios y los gestores sabrán del agotado solo por correo. Para recibir estos mensajes en Telegram, escribe a soporte y conectaremos un chat de ventas."
+
 ["bot.draft_reminder"]
 other = "Dejaste un evento sin terminar. El borrador te espera, y se eliminará si pasan 7 días sin respuestas."
 

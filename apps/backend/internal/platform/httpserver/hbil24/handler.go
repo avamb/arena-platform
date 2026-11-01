@@ -34,6 +34,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/orderexport"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesubscribe"
 )
 
 // AdmissionQuerier is the narrow contract handleBil24GetSeatList and
@@ -363,6 +364,9 @@ type Handler struct {
 	// guardrail (tests/compat/bil24/no_uuid_in_wire_test.go) ensures the
 	// production path never regresses.
 	compatDB gen.DBTX
+	// saleSubscribe serves SUBSCRIBE_SALE (WithSaleSubscriptions); nil
+	// answers -99.
+	saleSubscribe *salesubscribe.Service
 
 	// scanQ (feature #472, W1-A1c) is the optional narrow interface used
 	// by the SCAN_TICKET handler for barcode + ticket lookups. When nil,

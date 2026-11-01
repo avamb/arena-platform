@@ -105,6 +105,9 @@ func (s *Server) mountSessionRoutes(r chi.Router) {
 			pr.Get("/organizations/{org_id}/sessions/{session_id}/change-impact", s.handleSessionChangeImpact)
 			// The organizer's preview of a buyer's e-ticket (migration 0119).
 			pr.Get("/organizations/{org_id}/sessions/{session_id}/sample-ticket", s.handleSessionSampleTicket)
+			// One sales state for every channel (migration 0183).
+			pr.Get("/organizations/{org_id}/sessions/{session_id}/sales-state", s.handleGetSessionSalesState)
+			pr.Get("/organizations/{org_id}/sessions/{session_id}/sales-state/history", s.handleListSessionSalesStateHistory)
 		})
 	}
 	if s.authEnabled() && s.sessionQueries != nil && s.pool != nil {
@@ -115,6 +118,7 @@ func (s *Server) mountSessionRoutes(r chi.Router) {
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "session.update", "sessions")
 			pr.Patch("/organizations/{org_id}/events/{event_id}/sessions/{id}", s.handleUpdateSession)
+			pr.Put("/organizations/{org_id}/sessions/{session_id}/sales-state", s.handleSetSessionSalesState)
 		})
 		r.Group(func(pr chi.Router) {
 			s.applyAuth(pr, "session.delete", "sessions")
@@ -271,4 +275,10 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 	// database, so it is always mounted.
 	r.Get("/public/payment-return", s.handlePublicPaymentReturn)
 	r.Post("/public/payment-return", s.handlePublicPaymentReturn)
+	// "Notify me when sales open" on a coming-soon session (salesubscribe):
+	// the widget's form and the link of the confirmation letter.
+	if s.publicFeedQueries != nil {
+		r.Post("/public/feeds/{feed_token}/sessions/{session_id}/sale-subscriptions", s.handleCreateSaleSubscription)
+	}
+	r.Get("/public/sale-subscriptions/confirm", s.handleConfirmSaleSubscription)
 }

@@ -111,8 +111,8 @@ describe('ArenaTickets: a cancelled selection offers nothing to buy', () => {
   });
 
   it('keeps the seat map, the category steppers and the cart bar behind the flag', () => {
-    expect(widgetSource).toContain('{#if !salesClosed && selectedSession && selectedSession.schema_url}');
-    expect(widgetSource).toContain('{#if !salesClosed && gaTiers.length > 0}');
-    expect(widgetSource).toContain('{#if selectedSession && !salesClosed}');
+    expect(widgetSource).toContain('{#if !salesClosed && !salesPaused && selectedSession && selectedSession.schema_url}');
+    expect(widgetSource).toContain('{#if !salesClosed && !salesPaused && gaTiers.length > 0}');
+    expect(widgetSource).toContain('{#if selectedSession && !salesClosed && (!salesPaused || cart.lines.length > 0)}');
   });
 });

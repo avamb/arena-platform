@@ -397,6 +397,14 @@ func (h *Handler) writeHoldError(ctx context.Context, w http.ResponseWriter, com
 		resp := bil24Error(command, ResultCodeInvalidRequest, "one or more requested seats are not available")
 		resp.Data = map[string]any{"conflicts": conflicts.Conflicts}
 		writeBil24JSON(w, http.StatusOK, resp)
+	case errors.Is(err, hcheckout.ErrSessionSalesSoon),
+		errors.Is(err, hcheckout.ErrSessionSoldOut):
+		// The organizer set the session to "coming soon" or "sold out"
+		// (migration 0183): one state for every channel, so the hold is
+		// refused whatever places are left. salesState names it in the
+		// catalog's own vocabulary.
+		writeBil24JSON(w, http.StatusOK, salesStateRefusal(command,
+			h.localizeDesc("", "", salesStateDescKey(err), salesStateDescFallback(err), nil), err))
 	case errors.Is(err, hcheckout.ErrSessionCancelled):
 		// A cancelled session keeps its categories, so the hold gate refuses
 		// it on the session's status. Same wording CREATE_ORDER_EXT uses for

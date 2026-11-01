@@ -32,6 +32,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesstate"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 )
 
@@ -109,6 +110,11 @@ type sessionDialog struct {
 	// CanSales: the person may read sales figures, so the card offers the
 	// summary and the export of the date (event_summary.go, event_csv.go).
 	CanSales bool
+	// SalesTo is the sales state the confirm screen offers (sessions_sales_state.go).
+	SalesTo string
+	// SalesCheck: the latest state change must reach WordPress sites, so the
+	// card offers to ask whether it did.
+	SalesCheck bool
 	// dropped is set by drop(); a dropped dialog is not written back.
 	dropped bool
 }
@@ -384,6 +390,8 @@ func (b *Bot) sesShow(ctx context.Context, chatID int64, msgID *int, id *Identit
 		b.sesShowSalesEnd(ctx, chatID, msgID, loc, dlg, prefix)
 	case sesStepDoors:
 		b.sesShowDoors(ctx, chatID, msgID, loc, dlg, prefix)
+	case sesStepSalesState:
+		b.sesShowSalesState(ctx, chatID, msgID, jwt, loc, dlg, prefix)
 	case sesStepEmail:
 		name := ""
 		if dlg.Impact != nil {
@@ -456,6 +464,9 @@ func (b *Bot) sesShowCard(ctx context.Context, chatID int64, msgID *int, jwt, lo
 	}
 	if !it.cancelled() {
 		text += "\n" + b.sesSaleTimesLine(loc, it)
+		if line := b.sesSalesStateLine(loc, it); line != "" {
+			text += "\n" + line
+		}
 		text += "\n\n" + b.sesT(loc, "bot.ses.card_hint", nil)
 		if dlg.CanSales {
 			rows = append(rows, []Button{b.sesBtn(loc, "bot.cat.btn", "ct", nil)}) // categories of the date (EC-15)
@@ -474,8 +485,14 @@ func (b *Bot) sesShowCard(ctx context.Context, chatID int64, msgID *int, jwt, lo
 		rows = append(rows,
 			[]Button{b.sesBtn(loc, "bot.ses.move_btn", "mv", nil)},
 			[]Button{b.sesBtn(loc, "bot.ses.sales_end_btn", "se", nil), b.sesBtn(loc, "bot.ses.doors_btn", "dr", nil)},
-			[]Button{b.sesBtn(loc, "bot.ses.cancel_btn", "cx", nil)},
 		)
+		if row := b.sesSalesStateRow(loc, it); len(row) > 0 {
+			rows = append(rows, row)
+		}
+		if dlg.SalesCheck {
+			rows = append(rows, []Button{b.sesBtn(loc, "bot.ses.ss_check_btn", "ssck", nil)})
+		}
+		rows = append(rows, []Button{b.sesBtn(loc, "bot.ses.cancel_btn", "cx", nil)})
 	}
 	rows = append(rows, b.sesNav(loc, "list:"+dlg.EventID.String()), b.sesHomeRow(loc))
 	b.sesReply(ctx, chatID, msgID, dlg, text, rows)
@@ -776,6 +793,7 @@ func (b *Bot) sessionsCallback(ctx context.Context, chatID int64, msgID int, fro
 			return
 		}
 		dlg.Cur, dlg.Step, dlg.Mode, dlg.Impact, dlg.MessageSet = n, sesStepCard, "", nil, false
+		dlg.SalesTo, dlg.SalesCheck = "", false
 		b.sesShow(ctx, chatID, &msgID, id, jwt, from, dlg, "")
 	case data == "or":
 		if dlg.Cur < 0 || dlg.Cur >= len(dlg.Items) || !canViewSales(id) {
@@ -835,6 +853,17 @@ func (b *Bot) sessionsCallback(ctx context.Context, chatID int64, msgID int, fro
 		b.sesShow(ctx, chatID, &msgID, id, jwt, from, dlg, "")
 	case (strings.HasPrefix(data, "se:") && dlg.Step == sesStepSalesEnd) || (strings.HasPrefix(data, "dr:") && dlg.Step == sesStepDoors):
 		b.sesSaleTimesInput(ctx, chatID, &msgID, id, jwt, from, dlg, "", data)
+	case strings.HasPrefix(data, "ss:"):
+		to := strings.TrimPrefix(data, "ss:")
+		if !b.sesCurOpen(dlg) || (to != salesstate.Open && to != salesstate.Soon && to != salesstate.SoldOut) {
+			return
+		}
+		dlg.Mode, dlg.Impact, dlg.Step, dlg.SalesTo = "", nil, sesStepSalesState, to
+		b.sesShow(ctx, chatID, &msgID, id, jwt, from, dlg, "")
+	case data == "ssgo":
+		b.sesSalesStateGo(ctx, chatID, &msgID, id, jwt, dlg)
+	case data == "ssck":
+		b.sesSalesStateCheck(ctx, chatID, &msgID, id, jwt, dlg)
 	case data == "cx":
 		if !b.sesCurOpen(dlg) {
 			return

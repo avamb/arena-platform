@@ -54,6 +54,27 @@ other = "Čas vypršel. Začněte nákup znovu."
 ["bil24.sales_closed"]
 other = "Prodej vstupenek na tento termín skončil."
 
+["bil24.sales_soon"]
+other = "Prodej vstupenek na tento termín ještě nezačal."
+
+["bil24.session_sold_out"]
+other = "Tento termín je vyprodaný."
+
+["bil24.subscription_invalid_email"]
+other = "Zkontrolujte e-mailovou adresu a odešlete ji znovu."
+
+["bil24.subscription_consent"]
+other = "Zaškrtněte souhlas, abyste dostali e-mail."
+
+["bil24.subscription_sales_open"]
+other = "Prodej je již otevřen. Obnovte stránku a kupte vstupenky."
+
+["bil24.subscription_not_soon"]
+other = "U tohoto termínu se otevření prodeje nečeká."
+
+["bil24.subscription_rate_limited"]
+other = "Příliš mnoho pokusů. Zkuste to za hodinu."
+
 ["bil24.promo_invalid"]
 other = "Tento slevový kód nefunguje. Zkontrolujte kód nebo nakupte bez něj."
 

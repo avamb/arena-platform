@@ -201,6 +201,13 @@ export interface FeedSession {
   end_at: string;
   capacity_total: number;
   status: string;
+  /**
+   * What a buyer can do with the date: "open", "soon" (sales not started),
+   * "sold_out", "ended" or "cancelled". While it is soon or sold out every
+   * category reports available 0. Absent on older backends (treated as today:
+   * nothing special is shown).
+   */
+  sales_state?: string;
   /** Populated only for seated/hybrid sessions. */
   admission_mode?: string;
   /** URL to fetch the session schema (only for seated/hybrid sessions). */

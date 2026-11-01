@@ -36,6 +36,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesstate"
 )
 
 // Reasons a category may refuse a new hold. They are the errors.Is
@@ -53,6 +54,13 @@ var (
 	// through the session-change flow). Its row and categories stay, so the
 	// gate has to refuse the hold on the session's status.
 	ErrSessionCancelled = errors.New("hcheckout: session is cancelled")
+	// ErrSessionSalesSoon — the organizer set the session to "coming soon"
+	// (session_sales_states, migration 0183). Every channel refuses a new
+	// hold until the state is lifted.
+	ErrSessionSalesSoon = errors.New("hcheckout: session sales have not started")
+	// ErrSessionSoldOut — the organizer declared the session sold out
+	// (session_sales_states, migration 0183), whatever places are left.
+	ErrSessionSoldOut = errors.New("hcheckout: session is sold out")
 )
 
 // CategoryNotSellableError reports which category refused the hold and
@@ -76,6 +84,10 @@ func (e *CategoryNotSellableError) Error() string {
 		return fmt.Sprintf("hcheckout: category %s not found in this session", e.TierID)
 	case errors.Is(e.Reason, ErrSessionCancelled):
 		return "hcheckout: session is cancelled"
+	case errors.Is(e.Reason, ErrSessionSalesSoon):
+		return "hcheckout: session sales have not started"
+	case errors.Is(e.Reason, ErrSessionSoldOut):
+		return "hcheckout: session is sold out"
 	case e.Start != nil && e.Now.Before(*e.Start):
 		return fmt.Sprintf("hcheckout: category %s is not on sale until %s",
 			e.TierID, e.Start.UTC().Format(time.RFC3339))
@@ -168,12 +180,30 @@ func SessionStatusRefusal(status string, tierID uuid.UUID, now time.Time) error 
 	return nil
 }
 
+// ManualSalesStateRefusal reports the refusal for a session the organizer
+// set to "coming soon" or "sold out" (session_sales_states, migration 0183),
+// or nil. The state is one for every sales channel (owner decision
+// 2026-10-31), so this is the only place it is enforced: every hold path
+// runs CheckSessionSalesOpen. Holds taken before the state was set are not
+// touched — CREATE_ORDER_EXT of a held cart, PAY_ORDER and the payment
+// webhook do not run the gate, so a payment already under way completes.
+func ManualSalesStateRefusal(manual string, tierID uuid.UUID, now time.Time) error {
+	switch manual {
+	case salesstate.Soon:
+		return &CategoryNotSellableError{TierID: tierID, Reason: ErrSessionSalesSoon, Now: now}
+	case salesstate.SoldOut:
+		return &CategoryNotSellableError{TierID: tierID, Reason: ErrSessionSoldOut, Now: now}
+	}
+	return nil
+}
+
 // CheckSessionSalesOpen refuses a NEW hold on a cancelled session
-// (SessionStatusRefusal) and once the session's sales end has
+// (SessionStatusRefusal), on a session the organizer set to "coming soon" or
+// "sold out" (ManualSalesStateRefusal) and once the session's sales end has
 // passed. A session row it cannot find is left to the category checks
 // (they answer ErrCategoryNotFound for its categories).
 func CheckSessionSalesOpen(ctx context.Context, txq *gen.Queries, sessionID, tierID uuid.UUID, now time.Time) error {
-	end, status, err := txq.GetSessionSalesState(ctx, sessionID)
+	end, status, manual, err := txq.GetSessionSalesState(ctx, sessionID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
@@ -181,6 +211,9 @@ func CheckSessionSalesOpen(ctx context.Context, txq *gen.Queries, sessionID, tie
 		return fmt.Errorf("hcheckout: load session sales state: %w", err)
 	}
 	if err := SessionStatusRefusal(status, tierID, now); err != nil {
+		return err
+	}
+	if err := ManualSalesStateRefusal(manual, tierID, now); err != nil {
 		return err
 	}
 	return SessionSalesClosed(end, tierID, now)
@@ -361,6 +394,10 @@ func CategoryGateErrorCode(err error) string {
 	switch {
 	case errors.Is(err, ErrSessionCancelled):
 		return "session.cancelled"
+	case errors.Is(err, ErrSessionSalesSoon):
+		return "session.sales_not_started"
+	case errors.Is(err, ErrSessionSoldOut):
+		return "session.sold_out"
 	case errors.Is(err, ErrCategoryClosed):
 		return "tier.closed"
 	case errors.Is(err, ErrCategoryNotOnSale):
@@ -377,12 +414,29 @@ func CategoryGateMessage(err error) string {
 	switch {
 	case errors.Is(err, ErrSessionCancelled):
 		return "this session has been cancelled"
+	case errors.Is(err, ErrSessionSalesSoon):
+		return "tickets for this session are not on sale yet"
+	case errors.Is(err, ErrSessionSoldOut):
+		return "this session is sold out"
 	case errors.Is(err, ErrCategoryClosed):
 		return "ticket category is closed"
 	case errors.Is(err, ErrCategoryNotOnSale):
 		return "ticket category is not on sale right now"
 	case errors.Is(err, ErrCategoryNotFound):
 		return "ticket category not found in this session"
+	default:
+		return ""
+	}
+}
+
+// CategoryGateSalesState is the organizer's sales state behind a gate
+// refusal ("soon" / "sold_out"), or "" when the refusal has another reason.
+func CategoryGateSalesState(err error) string {
+	switch {
+	case errors.Is(err, ErrSessionSalesSoon):
+		return salesstate.Soon
+	case errors.Is(err, ErrSessionSoldOut):
+		return salesstate.SoldOut
 	default:
 		return ""
 	}
@@ -407,6 +461,9 @@ func writeCategoryGateError(w http.ResponseWriter, r *http.Request, err error) {
 	details := map[string]any{}
 	if tid := CategoryGateTierID(err); tid != uuid.Nil {
 		details["tier_id"] = tid.String()
+	}
+	if st := CategoryGateSalesState(err); st != "" {
+		details["sales_state"] = st
 	}
 	switch code {
 	case "":

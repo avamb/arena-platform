@@ -107,6 +107,7 @@ func run(args []string) error {
 	// Independent live fixtures for the three release features.
 	eventStatusOp := fs.String("event-status-op", "", "5-1 twin helper: reset or inspect")
 	saleTimesOp := fs.String("sale-times-op", "", "5-3 twin helper: reset or inspect")
+	salesStateOp := fs.String("sales-state-op", "", "sales state twin helper: reset (see sales_state_fixture.go)")
 	categoriesOp := fs.String("categories-op", "", "5-4 twin helper: reset or inspect")
 	refundOp := fs.String("refund-op", "", "8-1 twin helper: reset, inspect or scan (see refund_fixture.go)")
 	seatsOp := fs.String("seats-op", "", "S2b twin helper: reset, inspect or sell (see seats_fixture.go)")
@@ -140,6 +141,9 @@ func run(args []string) error {
 	}
 	if *saleTimesOp != "" {
 		return runSaleTimesOp(*saleTimesOp)
+	}
+	if *salesStateOp != "" {
+		return runSalesStateOp(*salesStateOp)
 	}
 	if *invitationsOp != "" {
 		return runInvitationsOp(*invitationsOp, *invitationEmail)
@@ -297,6 +301,10 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	}
 	// 5-3: the date of the sales end and doors-open twin test (sale_times_fixture.go).
 	if err := applySaleTimesFixture(ctx, tx); err != nil {
+		return err
+	}
+	// Migration 0183: the sales state twin test's date (sales_state_fixture.go).
+	if err := applySalesStateFixture(ctx, tx); err != nil {
 		return err
 	}
 	// 5-4: the categories twin test's date (categories_fixture.go).

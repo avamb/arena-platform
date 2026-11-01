@@ -283,6 +283,10 @@ func (h *Handler) HandleBil24Command(w http.ResponseWriter, r *http.Request) {
 		// whose tickets are not issued yet answers 0 with empty lists — never
 		// an error, because the poll runs in a loop the buyer is watching.
 		h.handleBil24GetTicketsByOrder(w, r, req)
+	case "SUBSCRIBE_SALE":
+		// Arena extension: "notify me when sales open" on a coming-soon
+		// session (cmd_sale_subscribe.go).
+		h.handleBil24SubscribeSale(w, r, req)
 	case "SEND_TICKETS_TO_EMAIL":
 		// Feature #495 / spec §7.11: the buyer asks for the tickets again,
 		// possibly at a different address; queues delivery_jobs for every

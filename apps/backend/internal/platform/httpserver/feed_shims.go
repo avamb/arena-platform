@@ -11,8 +11,10 @@ import (
 	"net/http"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbil24"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hfeed"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesubscribe"
 )
 
 // ─── handler construction ─────────────────────────────────────────────────────
@@ -56,7 +58,41 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		WithCheckoutConsent(s.platformTermsURL(), s.contactFormPrivacyURL()).
 		WithLegalTerms(s.legalTermsAPIBase()).
 		WithMetrics(s.typedMetrics).
-		WithPromoAttempts(s.promoAttemptRecorder())
+		WithPromoAttempts(s.promoAttemptRecorder()).
+		WithSaleSubscriptions(s.saleSubscriptionService(), s.saleSubscriptionSalt())
+}
+
+// saleSubscriptionService is "notify me when sales open"; nil without a pool.
+func (s *Server) saleSubscriptionService() *salesubscribe.Service {
+	if s.pgxPool == nil {
+		return nil
+	}
+	return salesubscribe.New(s.pgxPool, nil)
+}
+
+// withGatewaySaleSubscriptions wires the gateway's SUBSCRIBE_SALE to the
+// same service; without a pool the command answers -99.
+func (s *Server) withGatewaySaleSubscriptions(h *hbil24.Handler) *hbil24.Handler {
+	if svc := s.saleSubscriptionService(); svc != nil {
+		return h.WithSaleSubscriptions(svc)
+	}
+	return h
+}
+
+// saleSubscriptionSalt keys the stored client-address hash, like onboarding's.
+func (s *Server) saleSubscriptionSalt() string {
+	if s.cfg == nil {
+		return ""
+	}
+	return s.cfg.JWTSecretStub
+}
+
+func (s *Server) handleCreateSaleSubscription(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandleCreateSaleSubscription(w, r)
+}
+
+func (s *Server) handleConfirmSaleSubscription(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandleConfirmSaleSubscription(w, r)
 }
 
 // ─── type aliases ─────────────────────────────────────────────────────────────

@@ -94,7 +94,7 @@ func (s *Server) bil24Handler() *hbil24.Handler {
 	// so *pgxpool.Pool satisfies it. Nil-safe: a Server built without a pool
 	// (many unit tests) leaves the pre-W1 UUID-string wire form in place.
 	if s.pool != nil {
-		h = h.WithCompatDB(s.pool)
+		h = s.withGatewaySaleSubscriptions(h.WithCompatDB(s.pool))
 	}
 	// Feature #478 (W1-A3b): wire the platform i18n bundle so non-OK
 	// descriptions surface in the request's negotiated locale (ru/en/he/

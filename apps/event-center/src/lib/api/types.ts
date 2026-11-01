@@ -73,6 +73,9 @@ export type EventEnvelope = S["EventEnvelope"];
 export type EventDeleteImpact = S["EventDeleteImpact"];
 // 5-3
 export type SessionEnvelope = S["SessionEnvelope"];
+export type SessionSalesState = S["SessionSalesState"];
+export type SessionSalesStateChange = S["SessionSalesStateChange"];
+export type SessionSalesStateHistory = S["SessionSalesStateHistory"];
 // 5-4: a date's categories (open, price, sale window, quantity).
 export type TicketTierEnvelope = S["TicketTierEnvelope"];
 export type UpdateTicketTierRequest = S["UpdateTicketTierRequest"];

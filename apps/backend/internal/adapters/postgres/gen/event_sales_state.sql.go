@@ -17,7 +17,9 @@ SELECT s.event_id,
        count(*) FILTER (WHERE s.end_at > now())::bigint   AS future_sessions,
        min(s.start_at) FILTER (WHERE s.end_at > now())    AS next_session_at,
        COALESCE(bool_or(
-           s.end_at > now() AND s.sales_end_at > now() AND EXISTS (
+           s.end_at > now() AND s.sales_end_at > now()
+           AND NOT EXISTS (SELECT 1 FROM session_sales_states st WHERE st.session_id = s.id)
+           AND EXISTS (
                SELECT 1
                FROM   session_seats ss
                JOIN   ticket_tiers  tt ON tt.id = ss.tier_id
@@ -29,7 +31,10 @@ SELECT s.event_id,
                  AND  (tt.sale_window_end   IS NULL OR tt.sale_window_end   >= now()))
        ), false)                                          AS selling,
        COALESCE(bool_or(
-           s.end_at > now() AND EXISTS (
+           s.end_at > now()
+           AND NOT EXISTS (SELECT 1 FROM session_sales_states st
+                            WHERE st.session_id = s.id AND st.state = 'sold_out')
+           AND EXISTS (
                SELECT 1
                FROM   session_seats ss
                JOIN   ticket_tiers  tt ON tt.id = ss.tier_id

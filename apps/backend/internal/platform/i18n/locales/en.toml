@@ -63,6 +63,27 @@ other = "Your time ran out. Start the purchase again."
 ["bil24.sales_closed"]
 other = "Ticket sales for this session have ended."
 
+["bil24.sales_soon"]
+other = "Ticket sales for this session have not started yet."
+
+["bil24.session_sold_out"]
+other = "This session is sold out."
+
+["bil24.subscription_invalid_email"]
+other = "Check the e-mail address and send it again."
+
+["bil24.subscription_consent"]
+other = "Tick the consent box to get the letter."
+
+["bil24.subscription_sales_open"]
+other = "Sales are open now. Reload the page to buy tickets."
+
+["bil24.subscription_not_soon"]
+other = "This session is not waiting for sales to open."
+
+["bil24.subscription_rate_limited"]
+other = "Too many attempts. Try again in an hour."
+
 ["bil24.promo_invalid"]
 other = "This promo code does not work. Check the code or buy without it."
 
@@ -1641,6 +1662,81 @@ other = "Do not show a doors time"
 
 ["bot.ses.sale_times_saved"]
 other = "Saved. Buyers are not sent anything."
+
+["bot.ses.ss_line"]
+other = "Sales: {{.State}}"
+
+["bot.ses.ss_line_manual"]
+other = "Sales: {{.State}} (set by hand)"
+
+["bot.ses.ss_name_open"]
+other = "🟢 open"
+
+["bot.ses.ss_name_soon"]
+other = "⏳ coming soon"
+
+["bot.ses.ss_name_sold_out"]
+other = "🔴 sold out"
+
+["bot.ses.ss_name_ended"]
+other = "⏹ over"
+
+["bot.ses.ss_name_cancelled"]
+other = "✖ session canceled"
+
+["bot.ses.ss_btn_open"]
+other = "🟢 Open sales"
+
+["bot.ses.ss_btn_soon"]
+other = "⏳ Coming soon"
+
+["bot.ses.ss_btn_sold_out"]
+other = "🔴 Sold out"
+
+["bot.ses.ss_confirm_soon"]
+other = "<b>{{.Name}}</b> · {{.When}}\n\nSet “Coming soon”?\n\nNew bookings stop everywhere: the widget, the tickets page and the sites. Buyers see “Coming soon”. Payments already under way go through. “Open sales” brings the sale back."
+
+["bot.ses.ss_confirm_sold_out"]
+other = "<b>{{.Name}}</b> · {{.When}}\n\nSet “Sold out”?\n\nNew bookings stop everywhere: the widget, the tickets page and the sites. Buyers see “Sold out” even if places are left. Payments already under way go through, and you can still issue invitations. “Open sales” brings the sale back."
+
+["bot.ses.ss_confirm_open"]
+other = "<b>{{.Name}}</b> · {{.When}}\n\nOpen sales?\n\nThis removes the state you set. Every channel then sells again by the places and the sale dates of the categories."
+
+["bot.ses.ss_places"]
+other = "Free places now: {{.Free}}, in unpaid bookings: {{.Held}}."
+
+["bot.ses.ss_external"]
+other = "Partners have quotas for this session ({{.Count}}). The state does not close them: tell those partners yourself."
+
+["bot.ses.ss_go_btn"]
+other = "✅ Yes, apply"
+
+["bot.ses.ss_done"]
+other = "Done. Sales: {{.State}}."
+
+["bot.ses.ss_no_change"]
+other = "The state was already this. Nothing changed."
+
+["bot.ses.ss_auto_note"]
+other = "Sales now: {{.State}}. The platform decides that by itself: no free place is left, or the sale of the categories has not started yet."
+
+["bot.ses.ss_site_pending"]
+other = "Sites selling this event: {{.Sites}}. They update within a couple of minutes."
+
+["bot.ses.ss_site_retrying"]
+other = "The site has not answered yet, trying again (attempts: {{.Attempts}})."
+
+["bot.ses.ss_site_delivered"]
+other = "Sites updated ✓"
+
+["bot.ses.ss_site_failed"]
+other = "The site never took the change. Check the event page on the site and write to support."
+
+["bot.ses.ss_check_btn"]
+other = "🔄 Check the sites"
+
+["bot.ses.ss_no_chat"]
+other = "Your organization has no sales chat in Telegram, so the owners and managers hear of a sell-out by e-mail only. To get such messages in Telegram, write to support and we will connect a sales chat."
 
 ["bot.draft_reminder"]
 other = "You left an event unfinished. The draft waits for you. After 7 days without answers, I delete it."

@@ -11,6 +11,7 @@
   import { priceLabelBesideName } from '../lib/priceLabel.js';
   import { getCheckoutI18n } from '../lib/checkout.js';
   import { isSessionCancelled } from '../lib/store.js';
+  import { getSaleStateStrings, pausedSalesState } from '../lib/saleSubscribe.js';
 
   interface Props {
     sessions: FeedSession[];
@@ -24,6 +25,7 @@
   const { sessions, selectedSession, onSelectSession, locale = 'en', tierColors = new Map() }: Props = $props();
 
   const t = $derived(getCheckoutI18n(locale));
+  const saleWords = $derived(getSaleStateStrings(locale));
 
   /** Format a price for the legend chip. */
   function formatPrice(tier: Tier): string {
@@ -65,6 +67,11 @@
         {/if}
         {#if isSessionCancelled(session)}
           <span class="chip-cancelled-label" data-testid="session-cancelled-label">{t.session_cancelled}</span>
+        {:else if pausedSalesState(session)}
+          <!-- "soon" / "sold_out": the date stays selectable (its notice and the notify form are under the chips). -->
+          <span class="chip-cancelled-label" data-testid="session-state-label">
+            {pausedSalesState(session) === 'soon' ? saleWords.soon_label : saleWords.sold_out_label}
+          </span>
         {/if}
       </button>
     {/each}

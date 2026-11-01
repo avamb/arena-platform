@@ -76,6 +76,21 @@ const TemplateKindRefundBlocked = "refund_blocked"
 // scanned (owner decision 2026-10-13).
 const TemplateKindScanException = "refund_scan_exception"
 
+// TemplateKindSalesAlert is sent to an organization's owners and managers
+// when a session sold out (by hand or with its last place), and to its
+// owners when the sites did not take a sales state change (package
+// salesalert, owner decisions 2026-10-31). Data.SalesAlert says which.
+const TemplateKindSalesAlert = "sales_alert"
+
+// TemplateKindSaleSubscribeConfirm asks a buyer who left an address on a
+// "coming soon" session to confirm it (double opt-in, package salesubscribe).
+// TemplateKindSaleOpen tells a confirmed address that sales opened, with a
+// link back to the page it subscribed on. Data.SaleNotice carries the link.
+const (
+	TemplateKindSaleSubscribeConfirm = "sale_subscribe_confirm"
+	TemplateKindSaleOpen             = "sale_open"
+)
+
 // TemplateKindRefund is sent to a buyer when money for their tickets was
 // returned (PAY-07). It states the amount and the usual bank delay and
 // promises nothing beyond that.
@@ -216,6 +231,14 @@ type Data struct {
 	// "refund_blocked"); zero for every other kind.
 	Alert ScanAlertData
 
+	// SalesAlert is what the sales alert says (kind "sales_alert"); zero for
+	// every other kind.
+	SalesAlert SalesAlertData
+
+	// SaleNotice is what the two subscriber letters say (kinds
+	// sale_subscribe_confirm and sale_open); zero for every other kind.
+	SaleNotice SaleNoticeData
+
 	// Refund is what the refund e-mail says; nil for every other kind. The
 	// refunded tickets themselves are listed in Tickets, each with the
 	// amount returned for it in Price.
@@ -256,6 +279,33 @@ type ScanAlertData struct {
 	// granted and until when it is valid, ready to print.
 	Reason string
 	Until  string
+}
+
+// SaleNoticeData is the content of a subscriber letter.
+type SaleNoticeData struct {
+	// URL is the confirmation link, or the page to buy on.
+	URL string
+	// When is the session start on the venue's clock; Venue its venue.
+	When  string
+	Venue string
+}
+
+// SalesAlertData is the content of a sales alert.
+type SalesAlertData struct {
+	// Kind is "sold_out" or "site_stale" (salesalert.KindSoldOut / KindSiteStale).
+	Kind string
+	// Manual: the sell-out was set by hand; Actor names who did it.
+	Manual bool
+	Actor  string
+	// When is the session start on the venue's clock, ready to print; Venue its venue.
+	When  string
+	Venue string
+	// Total and Free count the places of the session.
+	Total int64
+	Free  int64
+	// State is the new state of the change the sites did not take
+	// ("open", "soon" or "sold_out"), named by the template.
+	State string
 }
 
 // RefundData is the refund e-mail's own block.

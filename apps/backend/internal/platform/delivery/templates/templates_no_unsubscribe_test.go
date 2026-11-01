@@ -21,6 +21,9 @@ func withoutNotes(s string) string {
 	for _, n := range shopUnsubscribeNotes {
 		s = strings.ReplaceAll(s, n, "")
 	}
+	for _, n := range saleUnsubscribeNotes {
+		s = strings.ReplaceAll(s, n, "")
+	}
 	return s
 }
 
@@ -87,7 +90,7 @@ func TestTransactionalTemplates_RenderedLettersCarryNoUnsubscribe(t *testing.T) 
 	}
 	kinds := []string{
 		TemplateKindTicket, TemplateKindInvitation, TemplateKindChange, TemplateKindCancel,
-		TemplateKindRefund, TemplateKindRefundBlocked, TemplateKindScanException,
+		TemplateKindRefund, TemplateKindRefundBlocked, TemplateKindScanException, TemplateKindSalesAlert,
 	}
 	rendered := 0
 	for _, kind := range kinds {

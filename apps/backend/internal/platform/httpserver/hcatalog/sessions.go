@@ -170,13 +170,18 @@ func (h *Handler) WithSeatingBinder(b SeatingBinder) *Handler {
 
 // SessionResponse is the JSON representation of a single session.
 type SessionResponse struct {
-	ID                     string  `json:"id"`
-	EventID                string  `json:"event_id"`
-	VenueID                string  `json:"venue_id"`
-	StartAt                string  `json:"start_at"`
-	EndAt                  string  `json:"end_at"`
-	SalesEndAt             string  `json:"sales_end_at"`
-	DoorsOpenAt            *string `json:"doors_open_at"`
+	ID          string  `json:"id"`
+	EventID     string  `json:"event_id"`
+	VenueID     string  `json:"venue_id"`
+	StartAt     string  `json:"start_at"`
+	EndAt       string  `json:"end_at"`
+	SalesEndAt  string  `json:"sales_end_at"`
+	DoorsOpenAt *string `json:"doors_open_at"`
+	// SalesState / ManualSalesState (migration 0183) are filled by the list
+	// and the single read: the effective state every channel follows, and
+	// the organizer's own state ("soon" / "sold_out", "" when none).
+	SalesState             string  `json:"sales_state,omitempty"`
+	ManualSalesState       string  `json:"manual_sales_state,omitempty"`
 	CapacityTotal          int32   `json:"capacity_total"`
 	CapacityOverride       *int32  `json:"capacity_override"`
 	Status                 string  `json:"status"`
@@ -766,6 +771,7 @@ func (h *Handler) HandleListSessions(w http.ResponseWriter, r *http.Request) {
 	for _, sess := range rows {
 		result = append(result, SessionFromRow(sess, hasOverlap))
 	}
+	h.hydrateSessionSalesStates(ctx, result)
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"sessions":                 result,
@@ -827,8 +833,10 @@ func (h *Handler) HandleGetSession(w http.ResponseWriter, r *http.Request) {
 	overlapCount, overlapErr := h.sessionQueries.CountOverlappingSessions(ctx, eventID, sessionID, sess.StartAt, sess.EndAt)
 	hasOverlap := overlapErr == nil && overlapCount > 0
 
+	one := []SessionResponse{SessionFromRow(sess, hasOverlap)}
+	h.hydrateSessionSalesStates(ctx, one)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"session": SessionFromRow(sess, hasOverlap),
+		"session": one[0],
 	})
 }
 

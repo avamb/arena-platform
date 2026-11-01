@@ -15,6 +15,7 @@ import { Badge, DownloadButton, ErrorBox, Loading } from "@/components/ui";
 import { CategoryCard } from "@/components/CategoryCard";
 import { SalesFigures } from "@/components/SalesFigures";
 import { SessionSaleTimes } from "@/components/SessionSaleTimes";
+import { SessionSalesState } from "@/components/SessionSalesState";
 import { SessionChange } from "@/components/SessionChange";
 import { SessionTickets } from "@/components/SessionTickets";
 import { useOrg } from "@/screens/OrgLayout";
@@ -302,6 +303,18 @@ export function SessionScreen() {
         </section>
       )}
 
+      {/* Migration 0183: open / coming soon / sold out for every channel. */}
+      {access.can("session.read") && item !== undefined && (
+        <SessionSalesState
+          key={`${orgId}:${sessionId}`}
+          orgId={orgId}
+          eventId={eventId}
+          sessionId={sessionId}
+          timezone={tz}
+          canUpdate={canUpdate}
+          cancelled={(head?.status ?? item.status) === "cancelled"}
+        />
+      )}
       {/* 5-3 */}
       {canUpdate && item !== undefined && (
         <SessionSaleTimes

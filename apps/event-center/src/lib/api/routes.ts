@@ -141,6 +141,13 @@ export const API = {
   emailNoteTest: { method: "POST", path: "/v1/organizations/{org_id}/events/{event_id}/email-note/test" },
   // 5-3: the sales end and doors-open time of a session
   sessionUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{id}" },
+  // The sales state of a session, for every channel at once (migration 0183).
+  sessionSalesState: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/sales-state" },
+  sessionSalesStateSet: { method: "PUT", path: "/v1/organizations/{org_id}/sessions/{session_id}/sales-state" },
+  sessionSalesStateHistory: {
+    method: "GET",
+    path: "/v1/organizations/{org_id}/sessions/{session_id}/sales-state/history",
+  },
   // 5-4: a date's categories. PATCH changes ONE thing of a category (open,
   // base price, sale window, quantity). The price schedule is read and put
   // back whole when the window in force now is the price being changed.

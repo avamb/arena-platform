@@ -404,6 +404,19 @@ export const PARITY: readonly ParityRow[] = [
     routes: [`PATCH ${O}/events/{event_id}/sessions/{id}`],
     ready: { twin: "live/sale-times.spec.ts", smoke: "sale-times.mock.spec.ts" }, // 5-3
   },
+  {
+    area: "Сеансы",
+    fn: "Статус продаж: продажи идут, скоро в продаже, распродано",
+    bot: "sessions_sales_state.go, `ses:ss:`, `ses:ssgo`, `ses:ssck`",
+    web: "R4",
+    routes: [
+      `GET ${O}/sessions/{session_id}/sales-state`,
+      `PUT ${O}/sessions/{session_id}/sales-state`,
+      `GET ${O}/sessions/{session_id}/sales-state/history`,
+    ],
+    ready: { twin: "live/sales-state.spec.ts" },
+    note: "Миграция 0183. Один переключатель для всех каналов: виджет, страница билетов, сайты. Обратимо и без писем, поэтому одно нажатие с подтверждением, без набора слова. После смены видно, приняли ли её сайты, и можно спросить ещё раз. Журнал: кто, когда, через какой клиент.",
+  },
   // ── Категории ───────────────────────────────────────────────────────
   {
     area: "Категории",

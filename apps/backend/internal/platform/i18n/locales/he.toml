@@ -54,6 +54,27 @@ other = "הזמן הסתיים. התחילו את הרכישה מחדש."
 ["bil24.sales_closed"]
 other = "מכירת הכרטיסים למועד זה הסתיימה."
 
+["bil24.sales_soon"]
+other = "מכירת הכרטיסים למועד זה עדיין לא התחילה."
+
+["bil24.session_sold_out"]
+other = "הכרטיסים למועד זה אזלו."
+
+["bil24.subscription_invalid_email"]
+other = "בדקו את כתובת המייל ושלחו שוב."
+
+["bil24.subscription_consent"]
+other = "סמנו את תיבת ההסכמה כדי לקבל את המייל."
+
+["bil24.subscription_sales_open"]
+other = "המכירה כבר נפתחה. רעננו את הדף כדי לקנות כרטיסים."
+
+["bil24.subscription_not_soon"]
+other = "למופע הזה לא צפויה פתיחת מכירה."
+
+["bil24.subscription_rate_limited"]
+other = "יותר מדי ניסיונות. נסו שוב בעוד שעה."
+
 ["bil24.promo_invalid"]
 other = "קוד ההטבה הזה לא פועל. בדקו את הקוד או קנו בלעדיו."
 
