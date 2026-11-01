@@ -1,7 +1,7 @@
 ---
 name: arena-ux-tester
 description: "UX/UI audit of Arena Sold Out from the organizer's point of view: the marketing site arenasoldout.com, the organizer application, the Telegram event-center bot @EventsCentrBot and the web event center events.arenasoldout.com. Runs a clean from-scratch pass (new application -> approval -> first event -> first free sale) and then tries every function of the bot and the web event center in a sandbox organization, finds weak spots, bugs, contradictions and unclear places, and writes a report with recommendations. Second run type: a functional run in the test organization ABH TEAM with paid Stripe test-mode purchases, refunds and a check of every created event's sales page. Third run type: zero to first paid sale — a brand-new organization registers a new Stripe test account, connects it, sells with Stripe test cards and measures how hard connecting Stripe is. Use when Andrei asks to test, audit or review Arena / ArenaSoldOut UX, the site, the bot or the event center."
-version: 2.2.0
+version: 2.3.0
 author: Andrei Andreev
 metadata:
   hermes:
@@ -230,7 +230,9 @@ metadata:
     повторе писем; UXH-18 срок счетов в Usage; UXH-19 подпись у «Write to the organizer»;
     UXH-20 цифры на главной сайта; UXH-21 срок одобрения заявки; UXF-01 «Скоро в продаже»;
     UXF-02 лимит бесплатных мероприятий.
-13. **В конце** отчёт по `references/report-template.md` в папке прогона и короткая сводка
+13. **В конце** отчёт по `references/report-template.md` в папке прогона, **и протокол `results.md`**
+    (манифест версий, статус каждого шага: PASS / FAIL / BLOCKED / SKIP / NOT RUN, evidence;
+    раздел «Протокол результата» шаблона), и короткая сводка
     Андрею (топ-10, число находок по серьёзности, ссылка на файл) в ваш обычный чат, **не через
     аккаунт Марины**. Песочницу не удаляй и не архивируй: это делает Андрей.
 
