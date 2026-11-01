@@ -127,6 +127,9 @@ type draftSweeper struct {
 	texts  *Texts
 	send   draftSender
 	logger *slog.Logger
+	// track, when set, records the sweep's two events for product analytics:
+	// draft_reminder and wizard_exit expired. It never blocks or fails.
+	track func(ctx context.Context, row gen.BotDraftReminderRow, event string, props map[string]any)
 }
 
 // draftSweepResult counts what one pass did, for the log line and the tests.
@@ -153,6 +156,7 @@ func (s *draftSweeper) sweep(ctx context.Context, now time.Time) draftSweepResul
 	}
 	for _, row := range gone {
 		res.Deleted++
+		s.record(ctx, row, "wizard_exit", map[string]any{"step": draftStep(row.State), "how": "expired"})
 		if ctx.Err() != nil {
 			// Shutting down: the drafts are already deleted, so the notices
 			// that did not go out are the price of the stop, not a retry.
@@ -180,6 +184,7 @@ func (s *draftSweeper) sweep(ctx context.Context, now time.Time) draftSweepResul
 		switch {
 		case err == nil:
 			res.Reminded++
+			s.record(ctx, row, "draft_reminder", map[string]any{"step": draftStep(row.State)})
 		case errors.Is(err, errChatUnreachable):
 			res.Unreachable++
 		default:
@@ -201,6 +206,24 @@ func (s *draftSweeper) sweep(ctx context.Context, now time.Time) draftSweepResul
 			slog.Int("unreachable", res.Unreachable), slog.Int("failed", res.Failed))
 	}
 	return res
+}
+
+// record passes an event to the analytics hook, when there is one.
+func (s *draftSweeper) record(ctx context.Context, row gen.BotDraftReminderRow, event string, props map[string]any) {
+	if s.track != nil {
+		s.track(ctx, row, event, props)
+	}
+}
+
+// draftStep reads the step a stored draft was left on, "" when unreadable.
+func draftStep(state json.RawMessage) string {
+	var s struct {
+		Step string `json:"step"`
+	}
+	if json.Unmarshal(state, &s) != nil {
+		return ""
+	}
+	return s.Step
 }
 
 // warn logs a failure unless it is only the bot shutting down.
@@ -236,6 +259,12 @@ func (b *Bot) sweepDrafts(ctx context.Context, now time.Time) {
 		return
 	}
 	s := &draftSweeper{q: b.queries, texts: b.texts, send: b.sendChecked, logger: b.logger}
+	if b.an != nil {
+		s.track = func(ctx context.Context, row gen.BotDraftReminderRow, event string, props map[string]any) {
+			org := row.OrgID
+			b.an.track(ctx, row.TelegramUserID, &org, event, props)
+		}
+	}
 	s.sweep(ctx, now)
 }
 

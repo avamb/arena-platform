@@ -168,7 +168,9 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	}
 	tg := newStubTelegram(t)
 	tg.restartGap()
+	aw := newBotAnalyticsWriter(pool)
 	bot, err := eventbot.New(eventbot.Options{
+		Analytics:         aw,
 		Token:             "123:test-token",
 		Queries:           q,
 		Arena:             eventbot.NewArenaClient(api.URL, botTestServiceToken, api.Client()),
@@ -514,4 +516,45 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("bot did not stop after cancel")
 	}
+
+	// ── Product analytics (spec 50 §4.4): the whole run above, as the
+	// linked manager, is in analytics.events - and nothing typed is.
+	var managerUser uuid.UUID
+	if err := pool.QueryRow(context.Background(), `SELECT user_id FROM bot_telegram_links WHERE telegram_user_id = $1`, int64(e2eWizardTelegramUser)).Scan(&managerUser); err != nil {
+		t.Fatalf("manager user: %v", err)
+	}
+	rows := closeAndReadBotAnalytics(t, pool, aw, managerUser.String())
+	for _, r := range rows {
+		if r.IDKind != "user" || r.OrgID == nil || *r.OrgID != f.orgID {
+			t.Errorf("%s: identity %s/%s org %v, want the linked user in the organization", r.Name, r.IDKind, r.IDValue, r.OrgID)
+		}
+	}
+	if n := len(botAnalyticsNamed(rows, "bot_update")); n < 40 {
+		t.Errorf("bot_update events = %d, want one per update of the run", n)
+	}
+	for _, want := range []struct {
+		name  string
+		props map[string]any
+	}{
+		{"bot_update", map[string]any{"kind": "callback", "prefix": "wz"}},
+		{"bot_update", map[string]any{"kind": "message", "step": "ev_name"}},
+		{"wizard_step", map[string]any{"from": "ev_name", "to": "ev_age", "mode": "create"}},
+		{"wizard_step", map[string]any{"from": "s_date", "to": "s_time", "mode": "create"}},
+		{"wizard_step", map[string]any{"from": "edit_menu", "to": "ev_name", "mode": "edit"}},
+		{"wizard_input_error", map[string]any{"step": "ev_name", "reason": "name_invalid"}},
+		{"wizard_input_error", map[string]any{"step": "s_date", "reason": "date_unparsed"}},
+		{"wizard_exit", map[string]any{"how": "cancel"}},
+		{"wizard_exit", map[string]any{"how": "keep"}},
+		{"wizard_exit", map[string]any{"how": "drop"}},
+		{"wizard_exit", map[string]any{"how": "done", "step": "summary"}},
+	} {
+		if !botAnalyticsHas(rows, want.name, want.props) {
+			t.Errorf("no %s event with %v", want.name, want.props)
+		}
+	}
+	if n := len(botAnalyticsNamed(rows, "wizard_exit")); n < 6 {
+		t.Errorf("wizard_exit events = %d, want the cancels, a keep, a drop and three saves", n)
+	}
+	// Nothing the manager typed or the event holds is stored.
+	assertNoneContain(t, rows, eventName, venueName, renamed, "Vabaduse", "Черновик", strings.Repeat("Ы", 20), "32.13.2099", "15.12.2099", "27,50")
 }

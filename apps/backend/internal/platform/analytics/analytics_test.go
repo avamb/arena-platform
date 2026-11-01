@@ -60,7 +60,7 @@ func TestDictionary_EveryEventHasASurface(t *testing.T) {
 func TestDictionary_SpecEventsPresent(t *testing.T) {
 	for _, n := range []string{"page_view", "engaged", "scroll", "click", "email_click", "consent",
 		"screen_view", "flow_step", "ui_error", "rage_click", "bot_update", "wizard_step",
-		"wizard_input_error", "wizard_exit"} {
+		"wizard_input_error", "wizard_exit", "draft_reminder"} {
 		if _, ok := Events[n]; !ok {
 			t.Errorf("spec event %q missing", n)
 		}
