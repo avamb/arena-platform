@@ -16460,6 +16460,11 @@ type SessionSalesState struct {
 	// Manual The organizer's state, `soon` or `sold_out`; null when none is set.
 	Manual *string `json:"manual"`
 
+	// OrgSalesChat The organization has a sales Telegram chat. A sell-out and a site
+	// that did not update are posted there; without one the owners and
+	// managers hear of a sell-out by e-mail only, and the clients say so.
+	OrgSalesChat bool `json:"org_sales_chat"`
+
 	// SalesEndAt The session's own sales end (RFC 3339, UTC).
 	SalesEndAt time.Time `json:"sales_end_at"`
 

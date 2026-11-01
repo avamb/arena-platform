@@ -108,7 +108,7 @@ func TestBuyerLetters_EndWithTheUnsubscribeNote(t *testing.T) {
 
 // The organizer letters are not for buyers and carry no note.
 func TestOrganizerLetters_HaveNoUnsubscribeNote(t *testing.T) {
-	for _, kind := range []string{TemplateKindRefundBlocked, TemplateKindScanException} {
+	for _, kind := range []string{TemplateKindRefundBlocked, TemplateKindScanException, TemplateKindSalesAlert} {
 		for _, loc := range SupportedLocales {
 			raw, err := templateFS.ReadFile(kind + "." + loc + ".tmpl")
 			if err != nil {

@@ -80,6 +80,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/reservationexpiry"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesalert"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesnotify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/tierchain"
@@ -280,6 +281,7 @@ func run() error {
 	registerMediaGCHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerOpsWatchdogHandler(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerEventWatchHandler(registry, pool.Pool, cfg, salesNotifier, logger)
+	registerSalesAlertWatch(registry, pool.Pool, salesNotifier, logger)
 	registerContactFormHandler(registry, pool.Pool, cfg, salesNotifier, opsNotifier, logger)
 	registerOnboardingHandlers(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerRefundSweepHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
@@ -360,6 +362,10 @@ func run() error {
 	if err := eventwatch.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: the operator hears about an event a little later.
 		logger.Warn("could not schedule initial event change watch job", "error", err.Error())
+	}
+	if err := salesalert.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
+		// Non-fatal: the organizer hears about a sell-out a little later.
+		logger.Warn("could not schedule initial sales state watch job", "error", err.Error())
 	}
 
 	// 7e. Ops watchdog startup scheduling -------------------------------------
@@ -641,6 +647,16 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		Templates:   deliveryOpts.Templates,
 		DB:          pool,
 		Logger:      logger,
+	}))
+
+	// sales_state.alert_email tells the owners and managers that a session
+	// sold out, or the owners that the sites did not take a sales state
+	// change (salesalert queues it).
+	reg.Register(salesalert.JobTypeAlertEmail, delivery.NewSalesAlertHandler(delivery.SalesAlertOptions{
+		Sender:    deliveryOpts.Sender,
+		Templates: deliveryOpts.Templates,
+		DB:        pool,
+		Logger:    logger,
 	}))
 
 	// event.email_note_test mails the organizer a sample ticket letter with

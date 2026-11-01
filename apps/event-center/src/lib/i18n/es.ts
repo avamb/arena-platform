@@ -1180,6 +1180,7 @@ export const es: Record<MessageKey, string> = {
   "salesState.site.delivered": "Los sitios están actualizados.",
   "salesState.site.failed": "El sitio no aceptó el cambio. Revisa la página del evento en el sitio y escribe a soporte.",
   "salesState.site.check": "Comprobar de nuevo",
+  "salesState.noChat": "Tu organización no tiene un chat de ventas en Telegram: los propietarios y los gestores sabrán del agotado por correo. Para recibir mensajes en Telegram, escribe a soporte.",
   "salesState.cancelledNote": "La sesión está cancelada. Su estado de venta ya no cambia.",
   "salesState.history.show": "Ver el historial de cambios",
   "salesState.history.hide": "Ocultar el historial",

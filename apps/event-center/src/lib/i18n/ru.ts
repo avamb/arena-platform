@@ -1180,6 +1180,7 @@ export const ru: Record<MessageKey, string> = {
   "salesState.site.delivered": "Сайты обновлены.",
   "salesState.site.failed": "Сайт так и не принял изменение. Проверьте страницу мероприятия на сайте и напишите в поддержку.",
   "salesState.site.check": "Проверить ещё раз",
+  "salesState.noChat": "Чата продаж в Telegram у организации нет: о распродаже владелец и менеджеры узнают по почте. Чтобы получать сообщения в Telegram, напишите в поддержку.",
   "salesState.cancelledNote": "Сеанс отменён, статус продаж больше не меняется.",
   "salesState.history.show": "Показать журнал изменений",
   "salesState.history.hide": "Скрыть журнал",

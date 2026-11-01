@@ -1180,6 +1180,7 @@ export const en = {
   "salesState.site.delivered": "The sites are updated.",
   "salesState.site.failed": "The site never took the change. Check the event page on the site and write to support.",
   "salesState.site.check": "Check again",
+  "salesState.noChat": "Your organization has no sales chat in Telegram: the owners and managers hear of a sell-out by e-mail. To get messages in Telegram, write to support.",
   "salesState.cancelledNote": "The session is canceled. Its sales state no longer changes.",
   "salesState.history.show": "Show the history of changes",
   "salesState.history.hide": "Hide the history",

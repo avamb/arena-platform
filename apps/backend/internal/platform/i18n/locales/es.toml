@@ -1566,6 +1566,9 @@ other = "El sitio no aceptó el cambio. Revisa la página del evento en el sitio
 ["bot.ses.ss_check_btn"]
 other = "🔄 Comprobar los sitios"
 
+["bot.ses.ss_no_chat"]
+other = "Tu organización no tiene un chat de ventas en Telegram, así que los propietarios y los gestores sabrán del agotado solo por correo. Para recibir estos mensajes en Telegram, escribe a soporte y conectaremos un chat de ventas."
+
 ["bot.draft_reminder"]
 other = "Dejaste un evento sin terminar. El borrador te espera, y se eliminará si pasan 7 días sin respuestas."
 

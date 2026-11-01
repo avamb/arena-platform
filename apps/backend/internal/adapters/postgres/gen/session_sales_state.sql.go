@@ -98,6 +98,25 @@ func (q *Queries) ListSessionSalesFacts(ctx context.Context, sessionIDs []uuid.U
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// HasOrgSalesChat
+// ─────────────────────────────────────────────────────────────────────────────
+
+const hasOrgSalesChat = `-- name: HasOrgSalesChat :one
+SELECT EXISTS (
+    SELECT 1 FROM sales_notification_subscriptions
+    WHERE  org_id = $1 AND allowed
+      AND  (cardinality(kinds) = 0 OR 'tickets' = ANY(kinds)))`
+
+// HasOrgSalesChat reports whether the organization has an allowed sales chat
+// of its own that hears ticket messages (salesnotify.AnnounceToOrg posts the
+// sell-out alerts there; the operator's chats do not count).
+func (q *Queries) HasOrgSalesChat(ctx context.Context, orgID uuid.UUID) (bool, error) {
+	var ok bool
+	err := q.db.QueryRow(ctx, hasOrgSalesChat, orgID).Scan(&ok)
+	return ok, err
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ListManualSalesStatesByOrg
 // ─────────────────────────────────────────────────────────────────────────────
 

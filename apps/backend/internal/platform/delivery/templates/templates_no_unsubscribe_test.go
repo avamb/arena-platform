@@ -87,7 +87,7 @@ func TestTransactionalTemplates_RenderedLettersCarryNoUnsubscribe(t *testing.T) 
 	}
 	kinds := []string{
 		TemplateKindTicket, TemplateKindInvitation, TemplateKindChange, TemplateKindCancel,
-		TemplateKindRefund, TemplateKindRefundBlocked, TemplateKindScanException,
+		TemplateKindRefund, TemplateKindRefundBlocked, TemplateKindScanException, TemplateKindSalesAlert,
 	}
 	rendered := 0
 	for _, kind := range kinds {

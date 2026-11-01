@@ -174,6 +174,11 @@ func (b *Bot) sesSalesStateGo(ctx context.Context, chatID int64, msgID *int, id 
 	if asked == salesstate.Open && st.Effective != salesstate.Open {
 		note += "\n" + b.sesT(loc, "bot.ses.ss_auto_note", map[string]any{"State": b.sesSalesStateName(loc, st.Effective)})
 	}
+	if st.Effective == salesstate.SoldOut && !st.OrgSalesChat {
+		// Owner decision 2026-10-31: without a sales chat the sell-out goes
+		// by e-mail only, and the organizer is told how to get it here.
+		note += "\n" + b.sesT(loc, "bot.ses.ss_no_chat", nil)
+	}
 	dlg.SalesCheck = st.SiteSync.Sites > 0
 	if site := b.sesSiteNote(loc, st.SiteSync); site != "" {
 		note += "\n" + site

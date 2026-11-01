@@ -260,7 +260,11 @@ func TestBotE2E_SessionsMoveKeepsTheSessionAndWritesToBuyers(t *testing.T) {
 		t.Fatalf("card lacks the sales state:\n%s", card)
 	}
 	press("ses:ss:sold_out", "Поставить «Распродано»?")
-	press("ses:ssgo", "Готово. Продажи: 🔴 распродано")
+	soldOut := press("ses:ssgo", "Готово. Продажи: 🔴 распродано")
+	// The organization has no sales chat: the bot says the sell-out goes by e-mail.
+	if !strings.Contains(soldOut, "нет чата продаж") {
+		t.Fatalf("no hint about the missing sales chat:\n%s", soldOut)
+	}
 	var manual, source, role string
 	if err := pool.QueryRow(ctx, `SELECT state FROM session_sales_states WHERE session_id = $1`, sessionID).Scan(&manual); err != nil || manual != "sold_out" {
 		t.Fatalf("stored state = %q (%v), want sold_out", manual, err)

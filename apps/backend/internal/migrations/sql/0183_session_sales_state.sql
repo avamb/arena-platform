@@ -14,6 +14,15 @@
 -- client (event center web, Telegram bot, site, API) and the outbox row
 -- (v1.session.updated) that tells the WordPress sites. The row's delivery is
 -- what the event center shows as "the site is updated / not yet".
+--
+-- The alerts (package salesalert, job sales_state.watch):
+--   session_soldout_notices holds a session while the organizer has been told
+--   it is sold out (by hand, or the last place sold with no unpaid hold left);
+--   the row is deleted when places come back, so the next sell-out is told
+--   again. site_alerted_at marks a journal row whose site delivery was still
+--   missing after 15 minutes and was told to the owner once.
+--   sales_alert_watch_state remembers the first pass, which records the
+--   sessions already sold out at deploy without telling anybody.
 
 -- +goose Up
 
@@ -52,7 +61,26 @@ CREATE INDEX session_sales_state_changes_session_idx
 COMMENT ON TABLE session_sales_state_changes IS
     'Journal of session sales state changes: who, role, when, from which client, and the outbox row that tells the sites.';
 
+ALTER TABLE session_sales_state_changes ADD COLUMN site_alerted_at timestamptz NULL;
+
+CREATE TABLE session_soldout_notices (
+    session_id   uuid        PRIMARY KEY REFERENCES sessions(id)      ON DELETE CASCADE,
+    org_id       uuid        NOT NULL    REFERENCES organizations(id) ON DELETE CASCADE,
+    manual       boolean     NOT NULL,
+    notified_at  timestamptz NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE session_soldout_notices IS
+    'Sessions the organizer has been told are sold out; deleted when places come back so the next sell-out is told again.';
+
+CREATE TABLE sales_alert_watch_state (
+    id         smallint    PRIMARY KEY CHECK (id = 1),
+    seeded_at  timestamptz NOT NULL DEFAULT now()
+);
+
 -- +goose Down
 
+DROP TABLE IF EXISTS sales_alert_watch_state;
+DROP TABLE IF EXISTS session_soldout_notices;
 DROP TABLE IF EXISTS session_sales_state_changes;
 DROP TABLE IF EXISTS session_sales_states;

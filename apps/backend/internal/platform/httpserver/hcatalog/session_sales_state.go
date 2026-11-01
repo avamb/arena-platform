@@ -68,6 +68,7 @@ type sessionSalesStateResponse struct {
 	ChangedBy           *salesStateActorOut   `json:"changed_by"`
 	SiteSync            salesStateSiteSyncOut `json:"site_sync"`
 	ExternalAllocations int                   `json:"external_allocations"`
+	OrgSalesChat        bool                  `json:"org_sales_chat"`
 	Changed             *bool                 `json:"changed,omitempty"`
 }
 
@@ -355,6 +356,9 @@ func (h *Handler) loadSessionSalesState(ctx context.Context, q *gen.Queries, org
 		if out.SiteSync.Status == salesstate.SiteNone || out.SiteSync.Status == salesstate.SiteDelivered {
 			out.SiteSync.LastError = nil
 		}
+	}
+	if out.OrgSalesChat, err = q.HasOrgSalesChat(ctx, orgID); err != nil {
+		return sessionSalesStateResponse{}, err
 	}
 	n, err := q.CountLiveExternalAllocations(ctx, sessionID)
 	if err != nil {

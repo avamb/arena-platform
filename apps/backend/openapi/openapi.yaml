@@ -10330,7 +10330,7 @@ components:
           description: The last delivery error while not delivered, else null.
     SessionSalesState:
       type: object
-      required: [session_id, event_id, manual, effective, total_places, free_places, held_places, sales_end_at, changed_at, changed_by, site_sync, external_allocations]
+      required: [session_id, event_id, manual, effective, total_places, free_places, held_places, sales_end_at, changed_at, changed_by, site_sync, external_allocations, org_sales_chat]
       description: |
         One sales state per session for EVERY sales channel (migration 0183).
         The organizer may set `soon` or `sold_out`; while either is set no
@@ -10389,6 +10389,12 @@ components:
           description: |
             Partner quotas of the session that may still sell outside arena.
             A sales state cannot close them: tell those partners by hand.
+        org_sales_chat:
+          type: boolean
+          description: |
+            The organization has a sales Telegram chat. A sell-out and a site
+            that did not update are posted there; without one the owners and
+            managers hear of a sell-out by e-mail only, and the clients say so.
         changed:
           type: boolean
           description: |

@@ -20180,6 +20180,12 @@ export interface components {
              */
             external_allocations: number;
             /**
+             * @description The organization has a sales Telegram chat. A sell-out and a site
+             *     that did not update are posted there; without one the owners and
+             *     managers hear of a sell-out by e-mail only, and the clients say so.
+             */
+            org_sales_chat: boolean;
+            /**
              * @description Only on a PUT: true when the state changed, false when the
              *     session already had it (nothing was written).
              */

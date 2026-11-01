@@ -1720,6 +1720,9 @@ other = "The site never took the change. Check the event page on the site and wr
 ["bot.ses.ss_check_btn"]
 other = "🔄 Check the sites"
 
+["bot.ses.ss_no_chat"]
+other = "Your organization has no sales chat in Telegram, so the owners and managers hear of a sell-out by e-mail only. To get such messages in Telegram, write to support and we will connect a sales chat."
+
 ["bot.draft_reminder"]
 other = "You left an event unfinished. The draft waits for you. After 7 days without answers, I delete it."
 

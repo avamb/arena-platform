@@ -1,0 +1,42 @@
+{{define "subject"}}{{if eq .SalesAlert.Kind "site_stale"}}The site has not updated{{else if .SalesAlert.Manual}}Sales closed as sold out{{else}}Sold out{{end}}: {{.EventName}} — {{.SalesAlert.When}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{if eq .SalesAlert.Kind "site_stale"}}The site has not taken the change{{else if .SalesAlert.Manual}}Sales were closed as «Sold out»{{else}}The session is sold out{{end}}</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  <tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">{{if eq .SalesAlert.Kind "site_stale"}}The site has not taken the change{{else if .SalesAlert.Manual}}Sales were closed as «Sold out»{{else}}The session is sold out{{end}}</h1>
+  <p style="margin:0 0 12px 0;"><strong>{{.EventName}}</strong></p>
+  <p style="margin:0 0 12px 0;">Session: <strong>{{.SalesAlert.When}}</strong>{{with .SalesAlert.Venue}}<br>Venue: {{.}}{{end}}</p>
+  {{if eq .SalesAlert.Kind "site_stale"}}<p style="margin:0 0 12px 0;">The sales state changed to «{{if eq .SalesAlert.State "open"}}Open{{else if eq .SalesAlert.State "soon"}}Coming soon{{else if eq .SalesAlert.State "sold_out"}}Sold out{{else}}{{.SalesAlert.State}}{{end}}», but the site that sells this event has not taken the change for more than 15 minutes. Buyers on the site may still see the old state.</p><p style="margin:0 0 12px 0;">Check the event page on the site. If it still shows the old state, write to support.</p>{{else if .SalesAlert.Manual}}<p style="margin:0 0 12px 0;">The sales state of this session was set to «Sold out» by hand. Buyers see «Sold out» in every channel: the widget, the tickets page and the sites. Free places left in the system: {{.SalesAlert.Free}}.</p>{{with .SalesAlert.Actor}}<p style="margin:0 0 12px 0;">Set by: <strong>{{.}}</strong></p>{{end}}<p style="margin:0 0 12px 0;">To sell again, open sales in the event center or in the Telegram bot.</p>{{else}}<p style="margin:0 0 12px 0;">All {{.SalesAlert.Total}} places of this session are sold, and no unpaid booking is left.</p>{{end}}
+  </td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — automated message</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}
+
+{{if eq .SalesAlert.Kind "site_stale"}}The site has not taken the change{{else if .SalesAlert.Manual}}Sales were closed as «Sold out»{{else}}The session is sold out{{end}}
+
+{{.EventName}}
+Session: {{.SalesAlert.When}}
+{{with .SalesAlert.Venue}}Venue: {{.}}
+{{end}}
+{{if eq .SalesAlert.Kind "site_stale"}}The sales state changed to «{{if eq .SalesAlert.State "open"}}Open{{else if eq .SalesAlert.State "soon"}}Coming soon{{else if eq .SalesAlert.State "sold_out"}}Sold out{{else}}{{.SalesAlert.State}}{{end}}», but the site that sells this event has not taken the change for more than 15 minutes. Buyers on the site may still see the old state.
+
+Check the event page on the site. If it still shows the old state, write to support.
+{{else if .SalesAlert.Manual}}The sales state of this session was set to «Sold out» by hand. Buyers see «Sold out» in every channel: the widget, the tickets page and the sites. Free places left in the system: {{.SalesAlert.Free}}.
+{{with .SalesAlert.Actor}}
+Set by: {{.}}
+{{end}}
+To sell again, open sales in the event center or in the Telegram bot.
+{{else}}All {{.SalesAlert.Total}} places of this session are sold, and no unpaid booking is left.
+{{end}}
+Arena Platform — automated message
+{{end}}

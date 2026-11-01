@@ -135,6 +135,11 @@ export function SessionSalesState({ orgId, eventId, sessionId, timezone, canUpda
                 </p>
               )}
               {checkError !== null && <ErrorNotice error={checkError} testId="sales-state-check-error" />}
+              {canUpdate && !cancelled && d.org_sales_chat === false && (
+                <p className="muted" data-testid="sales-state-no-chat">
+                  {t("salesState.noChat")}
+                </p>
+              )}
               {cancelled && (
                 <p className="notice" data-testid="sales-state-cancelled">
                   {t("salesState.cancelledNote")}

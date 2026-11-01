@@ -31,6 +31,7 @@ const open: SalesStateResponse = {
   changed_by: null,
   site_sync: { status: "none", sites: 0, attempts: 0, last_error: null },
   external_allocations: 0,
+  org_sales_chat: true,
 } as SalesStateResponse;
 
 function render(data: SalesStateResponse, over: Partial<SessionSalesStateProps> = {}, locale: "en" | "ru" | "es" = "en"): string {
@@ -54,6 +55,12 @@ describe("SessionSalesState", () => {
     expect(html).toContain('data-testid="sales-state-set-sold_out"');
     expect(html).not.toContain('data-testid="sales-state-set-open"');
     expect(html).not.toContain('data-testid="sales-state-site"');
+    expect(html).not.toContain('data-testid="sales-state-no-chat"');
+  });
+
+  it("says that a sell-out goes by e-mail only when the organization has no sales chat", () => {
+    expect(render({ ...open, org_sales_chat: false })).toContain('data-testid="sales-state-no-chat"');
+    expect(render({ ...open, org_sales_chat: false }, { canUpdate: false })).not.toContain("sales-state-no-chat");
   });
 
   it("names who set the state by hand and whether the sites heard", () => {

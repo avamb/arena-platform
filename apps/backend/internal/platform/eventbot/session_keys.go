@@ -46,6 +46,7 @@ var sessionKeys = []string{
 	"bot.ses.ss_site_delivered",
 	"bot.ses.ss_site_failed",
 	"bot.ses.ss_check_btn",
+	"bot.ses.ss_no_chat",
 	"bot.ses.cancel_btn",
 	"bot.ses.to_sessions_btn",
 	"bot.ses.move_date_q",
