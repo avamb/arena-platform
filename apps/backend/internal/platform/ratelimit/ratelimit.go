@@ -196,3 +196,26 @@ func (sw *SlidingWindow) Purge() {
 	defer sw.mu.Unlock()
 	sw.windows = make(map[string][]time.Time)
 }
+
+// Prune deletes every key that has no hit left inside the window. Allow and
+// Take prune only the key they are called for, so a limiter that sees many
+// one-off keys (one per client address) must call Prune now and then or its
+// map only grows.
+func (sw *SlidingWindow) Prune() {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+
+	cutoff := sw.nowFn().Add(-sw.window)
+	for key, hits := range sw.windows {
+		live := false
+		for _, t := range hits {
+			if t.After(cutoff) {
+				live = true
+				break
+			}
+		}
+		if !live {
+			delete(sw.windows, key)
+		}
+	}
+}

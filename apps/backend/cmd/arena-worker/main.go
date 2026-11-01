@@ -288,6 +288,7 @@ func run() error {
 	registerRefundSweepHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 	registerBillingReconcileHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 	registerJobRetentionHandler(registry, pool.Pool, logger)
+	registerAnalyticsHandlers(registry, pool.Pool, logger)
 
 	// 7b. Idempotency cleanup startup scheduling (feature #48) ---------------
 	// Enqueue an idempotency.cleanup job immediately if none is already
@@ -330,6 +331,7 @@ func run() error {
 		logger.Info("reservation expire sweep job scheduled at startup")
 	}
 	scheduleRefundSweep(rootCtx, pool.Pool, logger)
+	scheduleAnalyticsJobs(rootCtx, pool.Pool, logger)
 	scheduleShopSweep(rootCtx, pool.Pool, logger)
 
 	// billing.collect writes the billable events the rate job turns into

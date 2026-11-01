@@ -13,6 +13,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/analytics"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/apikeys"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
@@ -90,6 +91,7 @@ type Server struct {
 	publicFeedQueries     *gen.Queries
 	publicFeedRL          *publicFeedRateLimiter
 	shortLinks            *hgo.Handler           // GET /go/{code}, one per process (mount_go.go)
+	analytics             *analytics.Writer      // product analytics buffer, one per process (mount_analytics.go)
 	brevoWebhookRL        *publicFeedRateLimiter // per-IP limit of the Brevo delivery-status webhook
 	sessionQueries        *gen.Queries
 	gdprQueries           *gen.Queries

@@ -96,3 +96,18 @@ func TestTakeRelease_Concurrent(t *testing.T) {
 		t.Fatalf("count = %d, kept = %d", got, want)
 	}
 }
+
+func TestPrune_DropsKeysWithNoLiveHit(t *testing.T) {
+	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	sw := New(Config{MaxAttempts: 5, Window: time.Minute, Now: func() time.Time { return now }})
+	sw.Take("old")
+	now = now.Add(2 * time.Minute)
+	sw.Take("fresh")
+	sw.Prune()
+	if len(sw.windows) != 1 {
+		t.Fatalf("keys after Prune = %d, want 1", len(sw.windows))
+	}
+	if sw.Count("fresh") != 1 {
+		t.Error("a live key lost its hit")
+	}
+}
