@@ -196,7 +196,7 @@ function CreateForm() {
 
         {create.error !== null && <ErrorNotice error={create.error} testId="link-create-error" />}
         <div className="actions">
-          <button type="submit" className="btn btn-primary" disabled={create.isPending} data-testid="link-create-go">
+          <button type="submit" className="btn btn-primary" disabled={create.isPending} data-testid="link-create-go" data-track="sales_link_create_submit">
             {create.isPending ? t("links.creating") : t("links.create.go")}
           </button>
         </div>

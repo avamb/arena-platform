@@ -26,6 +26,14 @@ describe("analytics opt-out", () => {
     expect(isOptedOut()).toBe(true);
   });
 
+  it("a failing write cannot lose the opt-out, even when reads still work", () => {
+    vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+      throw new Error("quota");
+    });
+    setOptedOut(true);
+    expect(isOptedOut()).toBe(true);
+  });
+
   it("survives a blocked storage: no throw, the choice lasts in memory", () => {
     const boom = () => {
       throw new Error("blocked");

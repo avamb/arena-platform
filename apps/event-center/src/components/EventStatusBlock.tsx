@@ -155,6 +155,7 @@ export function EventStatusBlock({ orgId, eventId, eventName, status, canPublish
             disabled={busy}
             onClick={() => open(action)}
             data-testid={`event-status-${action}`}
+            data-track={`event_status_${action}`}
           >
             {t(`eventStatus.button.${action}`)}
           </button>

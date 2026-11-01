@@ -30,7 +30,12 @@ function getTracker(): Tracker | null {
       flag: import.meta.env.VITE_ANALYTICS,
       apiBaseUrl: config.apiBaseUrl,
       clientChannel: CLIENT_CHANNEL,
-      accessToken: () => session.getAccessToken(),
+      accessToken: () => {
+        const token = session.getAccessToken();
+        const expires = session.getAccessExpiresAt();
+        return token !== null && expires !== null && expires > Date.now() ? token : null;
+      },
+      userId: () => session.getUserId(),
       optedOut: isOptedOut,
       orgId: () => currentOrg,
     });
@@ -43,7 +48,8 @@ export function trackScreen(screen: string, orgId: string | undefined): void {
   const t = getTracker();
   if (t === null) return;
   if (orgId !== currentOrg) {
-    t.flush();
+    // The engaged time of the screen being left belongs to the organization it was in.
+    t.settle();
     currentOrg = orgId;
   }
   currentScreen = screen;
@@ -66,3 +72,6 @@ export function resetAnalyticsForTests(): void {
   currentOrg = undefined;
   currentScreen = "";
 }
+
+// A hot reload replaces this module: close the old tracker's timer and listeners first.
+import.meta.hot?.dispose(() => resetAnalyticsForTests());

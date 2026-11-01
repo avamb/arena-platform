@@ -15,21 +15,23 @@ let memory = false;
 const listeners = new Set<() => void>();
 
 export function isOptedOut(): boolean {
+  let stored = false;
   try {
-    return localStorage.getItem(OPT_OUT_KEY) === "1";
+    stored = localStorage.getItem(OPT_OUT_KEY) === "1";
   } catch {
     // Storage blocked: the in-memory choice below.
   }
-  return memory;
+  return memory || stored;
 }
 
 export function setOptedOut(value: boolean): void {
-  memory = value;
   try {
     if (value) localStorage.setItem(OPT_OUT_KEY, "1");
     else localStorage.removeItem(OPT_OUT_KEY);
+    memory = false; // the storage holds the choice
   } catch {
-    // The choice then lasts until the page reloads.
+    // The choice then lasts until the page reloads. A failed write can never lose an opt-out.
+    memory = value;
   }
   for (const fn of [...listeners]) fn();
 }

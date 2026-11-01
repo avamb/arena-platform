@@ -22,10 +22,16 @@ interface Call {
 
 let calls: Call[];
 
-async function signIn() {
+async function signIn(over: { token?: string; userId?: string; expiresInMs?: number } = {}) {
   const s = createSession({ store: { get: () => null, set: () => undefined }, bus: null, locks: null });
   useSessionForTests(s);
-  await s.signedIn({ accessToken: "tok-1", refreshToken: "r-1", expiresAt: new Date(Date.now() + 900_000).toISOString(), userId: "u1" });
+  await s.signedIn({
+    accessToken: over.token ?? "tok-1",
+    refreshToken: "r-1",
+    expiresAt: new Date(Date.now() + (over.expiresInMs ?? 900_000)).toISOString(),
+    userId: over.userId ?? "u1",
+  });
+  return s;
 }
 
 beforeEach(async () => {
@@ -84,6 +90,44 @@ describe("with VITE_ANALYTICS=1", () => {
     trackScreen("/events", OTHER);
     window.dispatchEvent(new Event("pagehide"));
     expect(calls.map((c) => c.body.org_id)).toEqual([ORG, OTHER]);
+  });
+
+  it("keeps the batch while the access token has expired and sends it after a refresh", async () => {
+    await signIn({ expiresInMs: -1000 });
+    trackScreen("/events", ORG);
+    window.dispatchEvent(new Event("pagehide"));
+    expect(calls).toHaveLength(0);
+    await signIn({ token: "tok-2" });
+    window.dispatchEvent(new Event("pagehide"));
+    expect(calls).toHaveLength(1);
+    expect(calls[0].headers.Authorization).toBe("Bearer tok-2");
+  });
+
+  it("events of a user who signed out are not sent under the next user", async () => {
+    trackScreen("/events", ORG);
+    trackFlow("event_create", "started");
+    await signIn({ token: "tok-b", userId: "u2" });
+    trackFlow("event_create", "venue");
+    window.dispatchEvent(new Event("pagehide"));
+    expect(all().map((e) => e.props.step)).toEqual(["venue"]);
+    expect(calls[0].headers.Authorization).toBe("Bearer tok-b");
+  });
+
+  it("the engaged time of the screen left goes to the organization it was in", () => {
+    vi.useFakeTimers();
+    try {
+      const OTHER = "8a8a8a8a-0000-4000-8000-000000000002";
+      trackScreen("/events", ORG);
+      document.dispatchEvent(new Event("pointerdown"));
+      window.dispatchEvent(new Event("pointerdown"));
+      vi.advanceTimersByTime(12_000);
+      trackScreen("/events", OTHER);
+      window.dispatchEvent(new Event("pagehide"));
+      const mine = calls.flatMap((c) => c.body.events.map((e) => `${c.body.org_id}:${e.name}`));
+      expect(mine).toEqual([`${ORG}:screen_view`, `${ORG}:engaged`, `${OTHER}:screen_view`]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("an opt-out stops everything, and turning it back on resumes", () => {

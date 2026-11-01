@@ -545,6 +545,7 @@ function Wizard() {
           disabled={!canCreate}
           aria-describedby={createHint === null ? undefined : "wizard-create-hint"}
           data-testid="wizard-create"
+          data-track="event_create_submit"
         >
           {saving
             ? t(posterBusy ? "wizard.create.uploading" : "wizard.create.saving")

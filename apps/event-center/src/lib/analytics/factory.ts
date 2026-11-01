@@ -17,7 +17,10 @@ export interface FactoryParts {
   flag: unknown;
   apiBaseUrl: string;
   clientChannel: string;
+  /** The access token, or null when there is none or it has expired (the batch then waits for a refresh). */
   accessToken: () => string | null;
+  /** The signed-in user, so events of a user who signed out are never sent under the next one. */
+  userId: () => string | null;
   optedOut: () => boolean;
   orgId: () => string | undefined;
   win?: Window;
@@ -29,6 +32,7 @@ export function makeTracker(p: FactoryParts): Tracker {
     endpoint: analyticsFlagOn(p.flag) ? `${p.apiBaseUrl.replace(/\/+$/, "")}${COLLECTOR_PATH}` : "",
     surface: "event_center",
     enabled: () => !p.optedOut(),
+    getIdentity: p.userId,
     getHeaders: () => {
       const token = p.accessToken();
       return token === null ? null : { Authorization: `Bearer ${token}`, "X-Client-Channel": p.clientChannel };

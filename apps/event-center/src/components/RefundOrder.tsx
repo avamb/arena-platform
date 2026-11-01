@@ -452,7 +452,7 @@ function RefundBody({ o, number, step, draft, setDraft, problem, plan, canApprov
           </p>
         )}
         <div className="actions">
-          <button type="button" className="btn btn-primary" onClick={onGo} data-testid="refund-go">
+          <button type="button" className="btn btn-primary" onClick={onGo} data-testid="refund-go" data-track="refund_review_go">
             {t("refund.final.go", { amount: money(plan.total, plan.currency) })}
           </button>
           <button type="button" className="btn" onClick={onBack} data-testid="refund-back">

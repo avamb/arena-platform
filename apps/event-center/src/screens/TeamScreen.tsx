@@ -144,7 +144,7 @@ function InviteForm({ orgId, onDone }: { orgId: string; onDone: (n: Notice) => v
       </select>
       {invite.error !== null && <ErrorNotice error={invite.error} testId="team-invite-error" />}
       <p>
-        <button type="submit" className="btn btn-primary" disabled={invite.isPending} data-testid="team-invite-submit">
+        <button type="submit" className="btn btn-primary" disabled={invite.isPending} data-testid="team-invite-submit" data-track="member_invite_send">
           {invite.isPending ? t("confirmWord.working") : t("team.invite.submit")}
         </button>
       </p>

@@ -105,7 +105,7 @@ export function ConfirmWordDialog({ kind, subject, title, explain, onConfirm, on
           )}
           {failure !== null && <ErrorNotice error={failure.error} />}
           <div className="dialog-actions">
-            <button type="submit" className="btn btn-primary" disabled={busy} data-testid="confirm-word-submit">
+            <button type="submit" className="btn btn-primary" disabled={busy} data-testid="confirm-word-submit" data-track={`confirm_${kind}`}>
               {busy ? t("confirmWord.working") : button}
             </button>
             <button type="button" className="btn" disabled={busy} onClick={onCancel} data-testid="confirm-word-cancel">

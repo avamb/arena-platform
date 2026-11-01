@@ -166,7 +166,7 @@ describe("queue and flush", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("splits a big queue into batches of at most 50 events and under 60 KB", () => {
+  it("splits a big queue into batches of at most 50 events and under 16 KB measured in bytes", () => {
     const t = make();
     t.view("/events");
     for (let i = 0; i < 120; i++) t.flowStep("event_create", `step-${i}`.padEnd(200, "x"));
@@ -174,7 +174,7 @@ describe("queue and flush", () => {
     expect(sent.length).toBeGreaterThan(2);
     for (const s of sent) {
       expect(s.body.events.length).toBeLessThanOrEqual(50);
-      expect(String(s.init.body).length).toBeLessThan(60_000);
+      expect(new TextEncoder().encode(String(s.init.body)).length).toBeLessThanOrEqual(16_000);
     }
     expect(events().length).toBe(121);
   });
@@ -210,6 +210,86 @@ describe("queue and flush", () => {
     t.flowStep("a", "b");
     vi.advanceTimersByTime(20_000);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("context and identity travel with the event", () => {
+  it("an event keeps the organization it happened in, even if the context changes before the send", () => {
+    let org = "org-1";
+    const t = make({ getContext: () => ({ org_id: org }) });
+    t.view("/events");
+    document.dispatchEvent(new Event("pointerdown"));
+    vi.advanceTimersByTime(10_000);
+    // The screen is left for another organization: the engaged time of the old screen is closed first.
+    t.settle();
+    org = "org-2";
+    t.view("/events");
+    t.flush();
+    const pairs = sent.flatMap((s) => s.body.events.map((e) => `${s.body.org_id}:${e.name}`));
+    expect(pairs).toEqual(["org-1:screen_view", "org-1:engaged", "org-2:screen_view"]);
+    expect(events().find((e) => e.name === "engaged")?.props).toEqual({ screen: "/events", seconds: 10 });
+  });
+
+  it("a context change without settle still keeps events recorded earlier under their own context", () => {
+    let org = "org-1";
+    const t = make({ getContext: () => ({ org_id: org }) });
+    t.flowStep("event_create", "started");
+    org = "org-2";
+    t.flowStep("event_create", "venue");
+    t.flush();
+    expect(sent.map((s) => s.body.org_id)).toEqual(["org-1", "org-2"]);
+  });
+
+  it("drops events recorded for a user who signed out, and sends the next user's own", () => {
+    let user: string | null = "u1";
+    const t = make({ getIdentity: () => user, getHeaders: () => (user === null ? null : { Authorization: `Bearer ${user}` }) });
+    t.view("/events");
+    t.flowStep("event_create", "started");
+    user = null; // sign-out
+    t.flush();
+    expect(fetchMock).not.toHaveBeenCalled();
+    user = "u2"; // the next person signs in on the same tab
+    t.flowStep("event_create", "venue");
+    t.flush();
+    expect(events().map((e) => e.name)).toEqual(["flow_step"]);
+    expect(events()[0].props.step).toBe("venue");
+    expect(sent[0].init.headers).toMatchObject({ Authorization: "Bearer u2" });
+  });
+
+  it("keeps events recorded while signed out until the same state, and never gives them to a user who signs in", () => {
+    let user: string | null = null;
+    const t = make({ getIdentity: () => user, getHeaders: () => (user === null ? null : { Authorization: "Bearer t" }) });
+    t.view("/login");
+    t.flush();
+    expect(fetchMock).not.toHaveBeenCalled();
+    user = "u1";
+    t.flush();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("body size", () => {
+  it("measures bytes, not characters: multi-byte text stays under 16 KB", () => {
+    const t = make();
+    t.view("/events");
+    for (let i = 0; i < 60; i++) t.error("/events", "ж".repeat(150));
+    t.flush();
+    for (const s of sent) expect(new TextEncoder().encode(String(s.init.body)).length).toBeLessThanOrEqual(16_000);
+    expect(events().length).toBe(61);
+  });
+
+  it("when leaving, the keepalive posts together stay under 60 KB and the oldest are dropped", () => {
+    const t = make({ getHeaders: () => ({ Authorization: "Bearer t" }) });
+    t.view("/events");
+    // About 200 events of 400+ bytes: over 80 KB of queue in several bodies of at most 15 KB.
+    for (let i = 0; i < 199; i++) t.error("/events", `e${String(i).padStart(3, "0")}` + "ж".repeat(195));
+    window.dispatchEvent(new Event("pagehide"));
+    const total = sent.reduce((n, s) => n + new TextEncoder().encode(String(s.init.body)).length, 0);
+    expect(total).toBeLessThanOrEqual(60_000);
+    expect(sent.length).toBeGreaterThan(1);
+    const codes = events().filter((e) => e.name === "ui_error").map((e) => String(e.props.code).slice(0, 4));
+    expect(codes[codes.length - 1]).toBe("e198");
+    expect(codes.length).toBeLessThan(199);
   });
 });
 

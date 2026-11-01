@@ -43,6 +43,11 @@ export interface TrackerOptions {
    */
   getHeaders?: () => Record<string, string> | null;
   getContext?: () => TrackerContext;
+  /**
+   * Who is signed in (an authenticated surface). An event is tagged with it when it happens and is
+   * dropped, never sent, if somebody else (or nobody) is signed in by the time the batch leaves.
+   */
+  getIdentity?: () => string | null;
   /** Report scroll depth 25/50/75/100 (the site; off by default). */
   scrollDepth?: boolean;
   /** Queue flush period, default 5000 ms. */
@@ -55,6 +60,8 @@ export interface TrackerOptions {
 export interface Tracker {
   /** A page (site) or screen (event center) was opened. `name` is a route template, never a concrete path with ids. */
   view(name: string, extra?: Props): void;
+  /** Closes the engaged time of the current screen now. Call it before changing what getContext reports. */
+  settle(): void;
   /** A dictionary event with its allowed properties; anything else is dropped. */
   track(name: string, props?: Props): void;
   flowStep(flow: string, step: string): void;
@@ -64,7 +71,7 @@ export interface Tracker {
   destroy(): void;
 }
 
-const NOOP: Tracker = Object.freeze({ view() {}, track() {}, flowStep() {}, error() {}, flush() {}, destroy() {} });
+const NOOP: Tracker = Object.freeze({ view() {}, settle() {}, track() {}, flowStep() {}, error() {}, flush() {}, destroy() {} });
 
 // Dictionary (spec 50, section 5), the part the browser may send. Allowed surfaces and properties.
 const S = 1;
@@ -85,7 +92,10 @@ const MAX_STR = 200;
 const MAX_QUEUE = 200;
 /** Collector limit is 50 events a request; a keepalive request may carry 64 KB, keep well under. */
 const MAX_BATCH = 50;
-const MAX_BODY = 55_000;
+/** Spec 50, 4.2: a body is at most 16 KB. Measured in BYTES, with room to spare. */
+const MAX_BODY = 15_000;
+/** Browsers share one 64 KB budget between all keepalive requests in flight: stay under it when leaving. */
+const MAX_LEAVE_BYTES = 60_000;
 const ACTIVE_MS = 30_000;
 const RAGE_CLICKS = 3;
 const RAGE_MS = 1000;
@@ -118,8 +128,16 @@ function uid(win: Window): string {
 
 interface Queued {
   pv: string;
+  /** Context (org_id, aid, cid) as it was when the event happened, not when it is sent. */
+  ctx: TrackerContext;
+  ctxKey: string;
+  /** Who was signed in when the event happened (null: nobody), or "" when the surface has no identity. */
+  user: string | null;
   ev: { name: string; at: string; props: Record<string, PropValue> };
 }
+
+const enc = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
+const bytes = (s: string): number => (enc ? enc.encode(s).length : s.length * 3);
 
 export function createTracker(o: TrackerOptions): Tracker {
   try {
@@ -183,7 +201,9 @@ function build(o: TrackerOptions, win: Window, doc: Document): Tracker {
       const v = cleanValue(k, props[k]);
       if (v !== undefined) clean[k] = v;
     }
-    queue.push({ pv, ev: { name, at: new Date(now()).toISOString(), props: clean } });
+    const ctx = o.getContext?.() ?? {};
+    const user = o.getIdentity ? o.getIdentity() : "";
+    queue.push({ pv, ctx, ctxKey: JSON.stringify(ctx), user, ev: { name, at: new Date(now()).toISOString(), props: clean } });
     if (queue.length > MAX_QUEUE) queue.shift();
   };
 
@@ -220,25 +240,39 @@ function build(o: TrackerOptions, win: Window, doc: Document): Tracker {
       queue.length = 0;
       return;
     }
+    // What was recorded under another identity (sign-out, another user, before the sign-in) never goes out.
+    if (o.getIdentity) {
+      const who = o.getIdentity();
+      for (let k = queue.length - 1; k >= 0; k--) if (queue[k].user !== who) queue.splice(k, 1);
+      if (queue.length === 0) return;
+    }
     const headers = o.getHeaders ? o.getHeaders() : null;
-    if (o.getHeaders && headers === null) return; // signed out: keep the batch for after the sign-in
-    const ctx = o.getContext?.() ?? {};
+    if (o.getHeaders && headers === null) return; // signed out or token expired: keep the batch
     const items = queue.splice(0, queue.length);
+    const bodies: string[] = [];
     let i = 0;
     while (i < items.length) {
-      const group = items[i].pv;
+      const first = items[i];
+      const head = bytes(JSON.stringify({ ...first.ctx, pv: first.pv, events: [] }));
       const events: Queued["ev"][] = [];
-      let body = "";
-      while (i < items.length && items[i].pv === group && events.length < MAX_BATCH) {
-        const next = [...events, items[i].ev];
-        const candidate = JSON.stringify({ ...ctx, pv: group, events: next });
-        if (candidate.length > MAX_BODY && events.length > 0) break;
+      let size = head;
+      while (i < items.length && items[i].pv === first.pv && items[i].ctxKey === first.ctxKey && events.length < MAX_BATCH) {
+        const add = bytes(JSON.stringify(items[i].ev)) + (events.length > 0 ? 1 : 0);
+        if (size + add > MAX_BODY && events.length > 0) break;
         events.push(items[i].ev);
-        body = candidate;
+        size += add;
         i++;
       }
-      post(body, headers, leaving);
+      bodies.push(JSON.stringify({ ...first.ctx, pv: first.pv, events }));
     }
+    // Leaving: only the newest bodies that fit the shared keepalive budget. The oldest are dropped.
+    let from = 0;
+    if (leaving) {
+      let total = 0;
+      from = bodies.length;
+      while (from > 0 && total + bytes(bodies[from - 1]) <= MAX_LEAVE_BYTES) total += bytes(bodies[--from]);
+    }
+    for (let k = from; k < bodies.length; k++) post(bodies[k], headers, leaving);
   };
 
   const leave = safe(() => {
@@ -329,6 +363,7 @@ function build(o: TrackerOptions, win: Window, doc: Document): Tracker {
 
   return {
     view,
+    settle: safe(emitEngaged),
     track: safe((name: string, props?: Props) => push(name, props)),
     flowStep: safe((flow: string, step: string) => push("flow_step", { flow, step })),
     error: safe((s: string, code: string) => push("ui_error", { screen: s, code })),
