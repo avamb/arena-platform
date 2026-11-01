@@ -6875,6 +6875,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/feeds/{feed_token}/sessions/{session_id}/sale-subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask to be told when sales of a coming-soon session open
+         * @description The "notify me when sales open" form of the widget. Accepted only while
+         *     the session's sales state is `soon` (set by the organizer, or a category
+         *     whose sale window has not started). The address is confirmed by a link
+         *     in a letter (double opt-in); the letter about open sales goes only to
+         *     confirmed addresses. The answer is the same `202` whether the address is
+         *     new, waiting for confirmation or already confirmed, so the endpoint never
+         *     reveals which addresses are known. `page_url` is kept only when its
+         *     origin is on the return-URL allow-list; the letters link to it, else to
+         *     the event page. No JWT is required: the feed token in the path is the
+         *     credential. Rate-limited per feed token, per address and per client
+         *     address.
+         */
+        post: operations["createPublicSaleSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/sale-subscriptions/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Confirm a "notify me when sales open" request
+         * @description The link of the confirmation letter. A valid token confirms the address
+         *     and answers `303` to the page the buyer subscribed on (else the tickets
+         *     site) with `arena_subscription=confirmed`; an unknown, used or expired
+         *     token answers `303` to the tickets site with
+         *     `arena_subscription=invalid`. Without a configured tickets site the
+         *     answer is JSON instead. No JWT is required.
+         */
+        get: operations["confirmPublicSaleSubscription"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/checkout/{checkout_token}": {
         parameters: {
             query?: never;
@@ -23453,6 +23508,39 @@ export interface components {
             name?: string | null;
             /** @description Buyer's phone number; required only when the channel's `buyer_fields` entry `phone` has `required` true, otherwise optional and may be empty or null. */
             phone?: string | null;
+        };
+        /** @description A "notify me when sales open" request. */
+        PublicSaleSubscriptionRequest: {
+            /** @description The buyer's e-mail address. */
+            email: string;
+            /**
+             * @description The storefront language (`cs`, `de`, `en`, `es`, `fr`, `he`, `ru`);
+             *     the letters use it, then the organization's language, then English.
+             */
+            locale?: string;
+            /** @description The buyer ticked the consent box. Without it the request is refused. */
+            consent: boolean;
+            /**
+             * @description The version of the consent text the page showed, currently
+             *     `sale-notify-2026-11-01`. Another value is refused with
+             *     `subscription.consent_outdated`.
+             */
+            consent_version: string;
+            /**
+             * @description The absolute http(s) page the buyer subscribed on. Kept only when
+             *     its origin is on the return-URL allow-list; the letters link to it.
+             */
+            page_url?: string;
+        };
+        /** @description The request was saved. */
+        PublicSaleSubscriptionAccepted: {
+            /** @description Always `check_email`. */
+            status: string;
+        };
+        /** @description The address was confirmed. */
+        PublicSaleSubscriptionConfirmed: {
+            /** @description Always `confirmed`. */
+            status: string;
         };
         PublicFeedCheckoutStartRequest: {
             /**
@@ -55807,6 +55895,139 @@ export interface operations {
              *     and no fallback is configured.
              */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createPublicSaleSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Public feed token that scopes the available sessions. */
+                feed_token: string;
+                /** @description The session to watch. */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublicSaleSubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved. A confirmation letter is on its way unless the address is already confirmed. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicSaleSubscriptionAccepted"];
+                };
+            };
+            /**
+             * @description `subscription.invalid_session_id`, `subscription.invalid_json`,
+             *     `subscription.invalid_email`, `subscription.consent_required` (the
+             *     consent box was not ticked) or `subscription.consent_outdated` (the
+             *     page shows an older consent text).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `feed.session_not_on_feed` - the session is not sold through this feed. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `subscription.sales_open` - sales are open, the buyer can buy now;
+             *     `subscription.not_coming_soon` - the session is not waiting for sales
+             *     to open (sold out, ended or cancelled).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `subscription.rate_limited` or `feed.rate_limited` - too many attempts. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    confirmPublicSaleSubscription: {
+        parameters: {
+            query: {
+                /** @description The one-time token from the letter. */
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Confirmed, and no page to send the buyer to is configured. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicSaleSubscriptionConfirmed"];
+                };
+            };
+            /** @description Redirect to the buyer's page with `arena_subscription` set. */
+            303: {
+                headers: {
+                    /** @description The destination with `arena_subscription=confirmed` or `invalid`. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `subscription.link_invalid` - the token is unknown, used or expired and no tickets site is configured. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

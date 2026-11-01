@@ -275,4 +275,10 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 	// database, so it is always mounted.
 	r.Get("/public/payment-return", s.handlePublicPaymentReturn)
 	r.Post("/public/payment-return", s.handlePublicPaymentReturn)
+	// "Notify me when sales open" on a coming-soon session (salesubscribe):
+	// the widget's form and the link of the confirmation letter.
+	if s.publicFeedQueries != nil {
+		r.Post("/public/feeds/{feed_token}/sessions/{session_id}/sale-subscriptions", s.handleCreateSaleSubscription)
+	}
+	r.Get("/public/sale-subscriptions/confirm", s.handleConfirmSaleSubscription)
 }

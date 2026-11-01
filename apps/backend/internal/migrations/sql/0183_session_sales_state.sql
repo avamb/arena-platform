@@ -23,6 +23,15 @@
 --   missing after 15 minutes and was told to the owner once.
 --   sales_alert_watch_state remembers the first pass, which records the
 --   sessions already sold out at deploy without telling anybody.
+--
+-- session_sale_subscriptions: "notify me when sales open" (package
+-- salesubscribe). A buyer leaves an address on a "coming soon" session, ticks
+-- the consent (its version, time and a salted hash of the address the request
+-- came from are kept), and confirms it from a letter (double opt-in). When the
+-- session opens, every confirmed address that was not told yet gets one
+-- letter linking back to the page it subscribed on. Rows are kept: the
+-- consent also covers invitations to the organizer's later events (owner
+-- decision 2026-10-31); a new subscription to the same session asks again.
 
 -- +goose Up
 
@@ -73,6 +82,40 @@ CREATE TABLE session_soldout_notices (
 COMMENT ON TABLE session_soldout_notices IS
     'Sessions the organizer has been told are sold out; deleted when places come back so the next sell-out is told again.';
 
+CREATE TABLE session_sale_subscriptions (
+    id                 uuid        PRIMARY KEY DEFAULT uuidv7(),
+    session_id         uuid        NOT NULL REFERENCES sessions(id)       ON DELETE CASCADE,
+    event_id           uuid        NOT NULL REFERENCES events(id)         ON DELETE CASCADE,
+    org_id             uuid        NOT NULL REFERENCES organizations(id)  ON DELETE CASCADE,
+    channel_id         uuid        NULL     REFERENCES sales_channels(id) ON DELETE SET NULL,
+    email              text        NOT NULL,
+    email_normalized   text        NOT NULL,
+    locale             text        NOT NULL DEFAULT '',
+    page_url           text        NOT NULL DEFAULT '',
+    source             text        NOT NULL CHECK (source IN ('widget', 'site')),
+    consent_version    text        NOT NULL,
+    consent_at         timestamptz NOT NULL,
+    ip_hash            text        NULL,
+    status             text        NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed')),
+    confirm_token_hash text        NULL,
+    confirm_sent_at    timestamptz NULL,
+    confirmed_at       timestamptz NULL,
+    notified_at        timestamptz NULL,
+    created_at         timestamptz NOT NULL DEFAULT now(),
+    updated_at         timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (session_id, email_normalized)
+);
+
+CREATE INDEX session_sale_subscriptions_waiting_idx
+    ON session_sale_subscriptions (session_id) WHERE status = 'confirmed' AND notified_at IS NULL;
+CREATE UNIQUE INDEX session_sale_subscriptions_token_idx
+    ON session_sale_subscriptions (confirm_token_hash) WHERE confirm_token_hash IS NOT NULL;
+CREATE INDEX session_sale_subscriptions_ip_idx
+    ON session_sale_subscriptions (ip_hash, created_at) WHERE ip_hash IS NOT NULL;
+
+COMMENT ON TABLE session_sale_subscriptions IS
+    'Notify me when sales open: double opt-in addresses per session, with the consent version, time and a salted IP hash.';
+
 CREATE TABLE sales_alert_watch_state (
     id         smallint    PRIMARY KEY CHECK (id = 1),
     seeded_at  timestamptz NOT NULL DEFAULT now()
@@ -81,6 +124,7 @@ CREATE TABLE sales_alert_watch_state (
 -- +goose Down
 
 DROP TABLE IF EXISTS sales_alert_watch_state;
+DROP TABLE IF EXISTS session_sale_subscriptions;
 DROP TABLE IF EXISTS session_soldout_notices;
 DROP TABLE IF EXISTS session_sales_state_changes;
 DROP TABLE IF EXISTS session_sales_states;

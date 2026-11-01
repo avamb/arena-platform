@@ -75,6 +75,9 @@ func TestCompatBil24_SalesState_CatalogAndReservation(t *testing.T) {
 	if got := entry["salesState"]; got != "open" {
 		t.Fatalf("baseline salesState = %v, want open", got)
 	}
+	if got := entry["salesStateManual"]; got != false {
+		t.Errorf("baseline salesStateManual = %v, want false", got)
+	}
 	if got := entry["arenaSessionId"]; got != st.GAsessID {
 		t.Errorf("arenaSessionId = %v, want %s", got, st.GAsessID)
 	}
@@ -119,6 +122,9 @@ func TestCompatBil24_SalesState_CatalogAndReservation(t *testing.T) {
 			e := ssCatalogEntry(t, base, st, actionEventID)
 			if got := e["salesState"]; got != tc.wire {
 				t.Errorf("salesState = %v, want %s", got, tc.wire)
+			}
+			if got := e["salesStateManual"]; got != true {
+				t.Errorf("salesStateManual = %v, want true", got)
 			}
 			if a, _ := e["availability"].(float64); a != 0 {
 				t.Errorf("availability = %v, want 0 while the organizer's state is set", e["availability"])
@@ -171,4 +177,74 @@ func TestCompatBil24_SalesState_StartedPaymentCompletes(t *testing.T) {
 	}
 	sc5AssertOrderPaid(t, st, orderID, "woo_bank_card")
 	sc5AssertTickets(t, st, orderID, 1, email)
+}
+
+// SUBSCRIBE_SALE (arena extension): a WordPress site's "notify me when sales
+// open" form. A coming-soon session takes the address with its consent and
+// queues the confirmation letter; a missing consent is -2; an open session is
+// 101 with salesState "open" and saves nothing.
+func TestCompatBil24_SubscribeSale(t *testing.T) {
+	st := setupHarness(t)
+	base := startHarnessServer(t, st)
+	ctx := context.Background()
+	defer ssSetState(t, st, st.GAsessID, "")
+	defer func() {
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM worker_jobs WHERE job_type = 'sales_state.subscribe_confirm_email'
+			AND payload->>'subscription_id' IN (SELECT id::text FROM session_sale_subscriptions WHERE session_id = $1)`, st.GAsessID)
+		_, _ = st.Pool.Exec(ctx, `DELETE FROM session_sale_subscriptions WHERE session_id = $1`, st.GAsessID)
+	}()
+	actionEventID := mustActionEventID(t, st, st.GAsessID)
+	subscribe := func(email string, consent any) map[string]any {
+		return postBil24(t, base, map[string]any{
+			"command":        "SUBSCRIBE_SALE",
+			"fid":            st.ChannelFID,
+			"token":          st.ChannelToken,
+			"locale":         "ru",
+			"actionEventId":  actionEventID,
+			"email":          email,
+			"pageUrl":        "https://site.example/event/#buy",
+			"consent":        consent,
+			"consentVersion": "sale-notify-2026-11-01",
+		})
+	}
+	saved := func(email string) (n int) {
+		t.Helper()
+		if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM session_sale_subscriptions
+			WHERE session_id = $1 AND email_normalized = $2`, st.GAsessID, email).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+
+	// Sales are open: refused, the site may switch to the buy button.
+	resp := subscribe("open-sub@example.test", true)
+	if code := numberField(t, resp, "resultCode"); code != 101 || resp["salesState"] != "open" {
+		t.Fatalf("open session: resultCode %v salesState %v (%v)", code, resp["salesState"], resp["description"])
+	}
+	if saved("open-sub@example.test") != 0 {
+		t.Fatal("a refused subscription was saved")
+	}
+
+	ssSetState(t, st, st.GAsessID, "soon")
+	if code := numberField(t, subscribe("noconsent@example.test", "0"), "resultCode"); code != -2 {
+		t.Fatalf("no consent: resultCode %v, want -2", code)
+	}
+	resp = subscribe("Site-Sub@Example.test", "1")
+	if code := numberField(t, resp, "resultCode"); code != 0 || resp["status"] != "check_email" {
+		t.Fatalf("SUBSCRIBE_SALE: resultCode %v status %v (%v)", code, resp["status"], resp["description"])
+	}
+	var source, page string
+	var channel *string
+	if err := st.Pool.QueryRow(ctx, `SELECT source, page_url, channel_id::text FROM session_sale_subscriptions
+		WHERE session_id = $1 AND email_normalized = 'site-sub@example.test'`, st.GAsessID).Scan(&source, &page, &channel); err != nil {
+		t.Fatalf("subscription row: %v", err)
+	}
+	if source != "site" || page != "https://site.example/event/" || channel == nil {
+		t.Errorf("row = source %s page %s channel %v", source, page, channel)
+	}
+	var jobs int
+	if err := st.Pool.QueryRow(ctx, `SELECT count(*) FROM worker_jobs WHERE job_type = 'sales_state.subscribe_confirm_email'
+		AND payload->>'subscription_id' IN (SELECT id::text FROM session_sale_subscriptions WHERE session_id = $1)`, st.GAsessID).Scan(&jobs); err != nil || jobs != 1 {
+		t.Fatalf("confirmation jobs = %d, %v", jobs, err)
+	}
 }

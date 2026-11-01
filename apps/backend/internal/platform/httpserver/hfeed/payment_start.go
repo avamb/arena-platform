@@ -149,6 +149,13 @@ func (p ReturnURLPolicy) Resolve(candidate string) (string, error) {
 	}
 }
 
+// AllowsOrigin reports whether an absolute http(s) URL's origin is on the
+// allow-list (the "notify me" page check). An empty or relative URL is not.
+func (p ReturnURLPolicy) AllowsOrigin(raw string) bool {
+	origin := normalizeOrigin(raw)
+	return origin != "" && p.allows(origin)
+}
+
 // allows reports whether the normalized origin is on the allow-list.
 func (p ReturnURLPolicy) allows(origin string) bool {
 	for _, a := range p.AllowedOrigins {

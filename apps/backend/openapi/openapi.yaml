@@ -14242,6 +14242,49 @@ components:
           type: [string, "null"]
           description: Buyer's phone number; required only when the channel's `buyer_fields` entry `phone` has `required` true, otherwise optional and may be empty or null.
 
+    PublicSaleSubscriptionRequest:
+      type: object
+      description: A "notify me when sales open" request.
+      required: [email, consent, consent_version]
+      properties:
+        email:
+          type: string
+          description: The buyer's e-mail address.
+        locale:
+          type: string
+          description: |
+            The storefront language (`cs`, `de`, `en`, `es`, `fr`, `he`, `ru`);
+            the letters use it, then the organization's language, then English.
+        consent:
+          type: boolean
+          description: The buyer ticked the consent box. Without it the request is refused.
+        consent_version:
+          type: string
+          description: |
+            The version of the consent text the page showed, currently
+            `sale-notify-2026-11-01`. Another value is refused with
+            `subscription.consent_outdated`.
+        page_url:
+          type: string
+          description: |
+            The absolute http(s) page the buyer subscribed on. Kept only when
+            its origin is on the return-URL allow-list; the letters link to it.
+    PublicSaleSubscriptionAccepted:
+      type: object
+      description: The request was saved.
+      required: [status]
+      properties:
+        status:
+          type: string
+          description: Always `check_email`.
+    PublicSaleSubscriptionConfirmed:
+      type: object
+      description: The address was confirmed.
+      required: [status]
+      properties:
+        status:
+          type: string
+          description: Always `confirmed`.
     PublicFeedCheckoutStartRequest:
       type: object
       required: [session_id, holder_email]
@@ -48121,6 +48164,132 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/public/feeds/{feed_token}/sessions/{session_id}/sale-subscriptions:
+    post:
+      operationId: createPublicSaleSubscription
+      summary: Ask to be told when sales of a coming-soon session open
+      description: |
+        The "notify me when sales open" form of the widget. Accepted only while
+        the session's sales state is `soon` (set by the organizer, or a category
+        whose sale window has not started). The address is confirmed by a link
+        in a letter (double opt-in); the letter about open sales goes only to
+        confirmed addresses. The answer is the same `202` whether the address is
+        new, waiting for confirmation or already confirmed, so the endpoint never
+        reveals which addresses are known. `page_url` is kept only when its
+        origin is on the return-URL allow-list; the letters link to it, else to
+        the event page. No JWT is required: the feed token in the path is the
+        credential. Rate-limited per feed token, per address and per client
+        address.
+      tags: [v1, public]
+      parameters:
+        - name: feed_token
+          in: path
+          required: true
+          description: Public feed token that scopes the available sessions.
+          schema:
+            type: string
+        - name: session_id
+          in: path
+          required: true
+          description: The session to watch.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublicSaleSubscriptionRequest"
+      responses:
+        "202":
+          description: Saved. A confirmation letter is on its way unless the address is already confirmed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicSaleSubscriptionAccepted"
+        "400":
+          description: |
+            `subscription.invalid_session_id`, `subscription.invalid_json`,
+            `subscription.invalid_email`, `subscription.consent_required` (the
+            consent box was not ticked) or `subscription.consent_outdated` (the
+            page shows an older consent text).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "`feed.session_not_on_feed` - the session is not sold through this feed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            `subscription.sales_open` - sales are open, the buyer can buy now;
+            `subscription.not_coming_soon` - the session is not waiting for sales
+            to open (sold out, ended or cancelled).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: "`subscription.rate_limited` or `feed.rate_limited` - too many attempts."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "`dependency.database_unavailable` - the service is not wired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/public/sale-subscriptions/confirm:
+    get:
+      operationId: confirmPublicSaleSubscription
+      summary: Confirm a "notify me when sales open" request
+      description: |
+        The link of the confirmation letter. A valid token confirms the address
+        and answers `303` to the page the buyer subscribed on (else the tickets
+        site) with `arena_subscription=confirmed`; an unknown, used or expired
+        token answers `303` to the tickets site with
+        `arena_subscription=invalid`. Without a configured tickets site the
+        answer is JSON instead. No JWT is required.
+      tags: [v1, public]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: The one-time token from the letter.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Confirmed, and no page to send the buyer to is configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicSaleSubscriptionConfirmed"
+        "303":
+          description: Redirect to the buyer's page with `arena_subscription` set.
+          headers:
+            Location:
+              description: The destination with `arena_subscription=confirmed` or `invalid`.
+              schema:
+                type: string
+        "404":
+          description: "`subscription.link_invalid` - the token is unknown, used or expired and no tickets site is configured."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "`dependency.database_unavailable` - the service is not wired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/public/checkout/{checkout_token}:
     get:
       operationId: getPublicCheckoutStatus

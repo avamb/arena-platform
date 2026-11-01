@@ -34,6 +34,7 @@
   import { getPromoStrings } from './lib/promoI18n.js';
   import { MAX_CART_SEATS, cartLimitMessage, seatCapMessage } from './lib/cartLimits.js';
   import { buyerErrorText } from './lib/errorI18n.js';
+  import { pausedSalesState } from './lib/saleSubscribe.js';
   import { buildTierColorMap } from './lib/seatmap-render.js';
   import { consentErrorMessage, consentPayload, forceConsent } from './lib/consent.js';
   import { captureAttribution, type AttributionPayload } from './lib/attribution.js';
@@ -67,6 +68,7 @@
   import MiniCart from './components/MiniCart.svelte';
   import CartSheet from './components/CartSheet.svelte';
   import GaTierCard from './components/GaTierCard.svelte';
+  import SaleStateNotice from './components/SaleStateNotice.svelte';
   import SeatedTierCard from './components/SeatedTierCard.svelte';
   import GaAreaPopover from './components/GaAreaPopover.svelte';
   import OrderStatus from './components/OrderStatus.svelte';
@@ -188,6 +190,12 @@
   // the cart bar — both for a cancelled selection and for an event whose every
   // date was cancelled (no session is selected then).
   const salesClosed = $derived(isSessionCancelled(selectedSession) || allSessionsCancelled(event));
+
+  // A date that is "soon" (sales not started) or "sold_out" has every category at
+  // available 0: one notice (and, for "soon", the notify form) replaces the map
+  // and the steppers. A buyer who already holds seats keeps the cart bar. A
+  // missing or unknown `sales_state` (older API) is not paused.
+  const salesPaused = $derived(!salesClosed && selectedSession !== null && pausedSalesState(selectedSession) !== null);
 
   // ── Widget stage ───────────────────────────────────────────────────────────
 
@@ -979,11 +987,22 @@
         {#if salesClosed}
           <p class="arena-tickets-cancelled" role="status" data-testid="session-cancelled-notice">{t.session_cancelled_notice}</p>
         {/if}
+        {#if salesPaused && selectedSession}
+          {#key selectedSession.id}
+            <SaleStateNotice
+              session={selectedSession}
+              feedToken={normFeedToken}
+              apiBase={resolvedApiBase}
+              locale={normLocale}
+              orgName={selectedSession.consent?.seller_legal_name ?? ''}
+            />
+          {/key}
+        {/if}
         {#if cartLimitNotice}
           <p class="arena-tickets-limit" role="status">{cartLimitNotice}</p>
         {/if}
         <!-- The seated category has no stepper, so it gets a card of the same kind that says where it is taken. -->
-        {#if !salesClosed && selectedSession?.schema_url && seatedTiers.length > 0}
+        {#if !salesClosed && !salesPaused && selectedSession?.schema_url && seatedTiers.length > 0}
           <div class="ga-tiers-section">
             <SeatedTierCard
               tiers={seatedTiers}
@@ -994,7 +1013,7 @@
         {/if}
 
         <!-- Seat map (only for sessions with schema_url) -->
-        {#if !salesClosed && selectedSession && selectedSession.schema_url}
+        {#if !salesClosed && !salesPaused && selectedSession && selectedSession.schema_url}
           <div class="arena-tickets-map-wrap">
             <SeatMapView
               session={selectedSession}
@@ -1018,7 +1037,7 @@
         {/if}
 
         <!-- GA tier cards (below the map; the card above the map tells a buyer where the seated category is taken) -->
-        {#if !salesClosed && gaTiers.length > 0}
+        {#if !salesClosed && !salesPaused && gaTiers.length > 0}
           <div class="ga-tiers-section">
             {#each gaTiers as tier (tier.id)}
               <GaTierCard
@@ -1031,7 +1050,7 @@
         {/if}
 
         <!-- Mini cart bar -->
-        {#if selectedSession && !salesClosed}
+        {#if selectedSession && !salesClosed && (!salesPaused || cart.lines.length > 0)}
           <MiniCart
             lines={cart.lines}
             expiresAt={holdExpiresAt}

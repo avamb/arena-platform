@@ -69,6 +69,21 @@ other = "Ticket sales for this session have not started yet."
 ["bil24.session_sold_out"]
 other = "This session is sold out."
 
+["bil24.subscription_invalid_email"]
+other = "Check the e-mail address and send it again."
+
+["bil24.subscription_consent"]
+other = "Tick the consent box to get the letter."
+
+["bil24.subscription_sales_open"]
+other = "Sales are open now. Reload the page to buy tickets."
+
+["bil24.subscription_not_soon"]
+other = "This session is not waiting for sales to open."
+
+["bil24.subscription_rate_limited"]
+other = "Too many attempts. Try again in an hour."
+
 ["bil24.promo_invalid"]
 other = "This promo code does not work. Check the code or buy without it."
 

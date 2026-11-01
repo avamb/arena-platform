@@ -134,6 +134,8 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/public/shop/{org_slug}/checkout", flatPublic, "public storefront of an organization slug or host, or the order token in the URL; reads only active catalog rows (hshop)"},
 	{"POST", "/v1/public/feeds/{feed_token}/events", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/payment-return", flatPublic, "feed token or checkout token in the URL"},
+	{"POST", "/v1/public/feeds/{feed_token}/sessions/{session_id}/sale-subscriptions", flatPublic, "feed token in the URL, the session must be on that feed"},
+	{"GET", "/v1/public/sale-subscriptions/confirm", flatPublic, "one-time token from the confirmation letter"},
 	{"GET", "/v1/feeds/{token}", flatPublic, "feed token in the URL"},
 	{"GET", "/v1/event-sessions/{id}/schema", flatPublic, "published sessions only"},
 	{"GET", "/v1/event-sessions/{id}/seat-status", flatPublic, "published sessions only"},

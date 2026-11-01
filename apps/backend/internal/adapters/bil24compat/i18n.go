@@ -116,6 +116,12 @@ func LocalizeDescription(loc *goi18n.Localizer, key, english string, params map[
 // symbol so completeness tests (every key present in every locale
 // bundle) can iterate it without a text-file scrape.
 var Bil24DescriptionKeys = []string{
+	// SUBSCRIBE_SALE (arena extension, "notify me when sales open").
+	"bil24.subscription_invalid_email",
+	"bil24.subscription_consent",
+	"bil24.subscription_sales_open",
+	"bil24.subscription_not_soon",
+	"bil24.subscription_rate_limited",
 	"bil24.ok",
 	"bil24.seat_taken",
 	"bil24.category_sold_out",

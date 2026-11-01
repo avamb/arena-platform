@@ -13954,6 +13954,40 @@ type PublicMaterialVideo struct {
 	VideoId *string `json:"video_id"`
 }
 
+// PublicSaleSubscriptionAccepted The request was saved.
+type PublicSaleSubscriptionAccepted struct {
+	// Status Always `check_email`.
+	Status string `json:"status"`
+}
+
+// PublicSaleSubscriptionConfirmed The address was confirmed.
+type PublicSaleSubscriptionConfirmed struct {
+	// Status Always `confirmed`.
+	Status string `json:"status"`
+}
+
+// PublicSaleSubscriptionRequest A "notify me when sales open" request.
+type PublicSaleSubscriptionRequest struct {
+	// Consent The buyer ticked the consent box. Without it the request is refused.
+	Consent bool `json:"consent"`
+
+	// ConsentVersion The version of the consent text the page showed, currently
+	// `sale-notify-2026-11-01`. Another value is refused with
+	// `subscription.consent_outdated`.
+	ConsentVersion string `json:"consent_version"`
+
+	// Email The buyer's e-mail address.
+	Email string `json:"email"`
+
+	// Locale The storefront language (`cs`, `de`, `en`, `es`, `fr`, `he`, `ru`);
+	// the letters use it, then the organization's language, then English.
+	Locale *string `json:"locale,omitempty"`
+
+	// PageUrl The absolute http(s) page the buyer subscribed on. Kept only when
+	// its origin is on the return-URL allow-list; the letters link to it.
+	PageUrl *string `json:"page_url,omitempty"`
+}
+
 // PublicTermsResponse The organizer's terms of sale rendered for one seller, channel, event and language (P3a).
 type PublicTermsResponse struct {
 	// DocumentVersion Version of the template that was rendered.
@@ -21570,6 +21604,12 @@ type PostPublicPaymentReturnParams struct {
 	CheckoutToken string `form:"checkout_token" json:"checkout_token"`
 }
 
+// ConfirmPublicSaleSubscriptionParams defines parameters for ConfirmPublicSaleSubscription.
+type ConfirmPublicSaleSubscriptionParams struct {
+	// Token The one-time token from the letter.
+	Token string `form:"token" json:"token"`
+}
+
 // GetPublicShopByHostParams defines parameters for GetPublicShopByHost.
 type GetPublicShopByHostParams struct {
 	// Host The storefront host name, e.g. `einatwinery.com`.
@@ -22258,6 +22298,9 @@ type StartPublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutStartRequest
 
 // PostPublicFeedFunnelEventsJSONRequestBody defines body for PostPublicFeedFunnelEvents for application/json ContentType.
 type PostPublicFeedFunnelEventsJSONRequestBody = WidgetFunnelEventsBatch
+
+// CreatePublicSaleSubscriptionJSONRequestBody defines body for CreatePublicSaleSubscription for application/json ContentType.
+type CreatePublicSaleSubscriptionJSONRequestBody = PublicSaleSubscriptionRequest
 
 // SendOrganizerContactJSONRequestBody defines body for SendOrganizerContact for application/json ContentType.
 type SendOrganizerContactJSONRequestBody = OrganizerContactRequest

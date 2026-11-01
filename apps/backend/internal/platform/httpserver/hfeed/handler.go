@@ -32,6 +32,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesubscribe"
 )
 
 // pgUniqueViolation is the PostgreSQL error code for unique-constraint violations.
@@ -97,6 +98,10 @@ type Handler struct {
 	// entirely and uses the TCP peer address — correct only when this
 	// process is reachable directly, not behind Traefik/nginx/etc.
 	trustedProxies int
+	// saleSubscribe / saleSubscribeSalt serve "notify me when sales open"
+	// (WithSaleSubscriptions, sale_subscribe.go); nil answers 503.
+	saleSubscribe     *salesubscribe.Service
+	saleSubscribeSalt string
 	// paymentStarter creates the provider-hosted payment page after the
 	// checkout transaction has committed. Nil means this deployment cannot
 	// take money for a paid cart: checkout/start then answers

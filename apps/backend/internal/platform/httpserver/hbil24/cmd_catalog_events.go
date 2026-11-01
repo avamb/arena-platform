@@ -286,6 +286,9 @@ func (h *Handler) projectActionEvents(
 		// category does on this wire.
 		entry["salesState"] = salesstate.Wire(actionEventSalesState(s, bySession[s.SessionID], manual[s.SessionID], now))
 		entry["arenaSessionId"] = s.SessionID.String()
+		// salesStateManual: the state above was set by hand (soon / soldout)
+		// and only the organizer lifts it; false = the platform derived it.
+		entry["salesStateManual"] = salesstate.ValidManual(manual[s.SessionID])
 		if salesstate.ValidManual(manual[s.SessionID]) {
 			sessionAvail = 0
 			closed := make([]gen.ActionEventTierRow, len(bySession[s.SessionID]))

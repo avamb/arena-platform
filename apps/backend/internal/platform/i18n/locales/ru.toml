@@ -63,6 +63,21 @@ other = "Продажа билетов на этот сеанс ещё не на
 ["bil24.session_sold_out"]
 other = "Билеты на этот сеанс распроданы."
 
+["bil24.subscription_invalid_email"]
+other = "Проверьте адрес электронной почты и отправьте ещё раз."
+
+["bil24.subscription_consent"]
+other = "Отметьте согласие, чтобы получить письмо."
+
+["bil24.subscription_sales_open"]
+other = "Продажи уже открыты. Обновите страницу, чтобы купить билеты."
+
+["bil24.subscription_not_soon"]
+other = "На этот сеанс не ожидается открытие продаж."
+
+["bil24.subscription_rate_limited"]
+other = "Слишком много попыток. Попробуйте через час."
+
 ["bil24.promo_invalid"]
 other = "Этот промокод не действует. Проверьте код или купите без него."
 

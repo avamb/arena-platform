@@ -15,6 +15,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesstate"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesubscribe"
 )
 
 // JobType is the self-scheduling worker job that runs the watch.
@@ -123,6 +124,13 @@ func (w *Watcher) RunOnce(ctx context.Context, now time.Time) (int, error) {
 	told += n
 	if err != nil {
 		return told, err
+	}
+	// "Notify me when sales open": the subscribers of every session that
+	// opened get their letter (package salesubscribe).
+	if n, err := salesubscribe.ClaimOpened(ctx, w.pool, now); err != nil {
+		return told, err
+	} else if n > 0 {
+		w.logger.Info("sales state watch queued sale-open letters", "letters", n)
 	}
 	if !seeded {
 		if _, err := w.pool.Exec(ctx, `INSERT INTO sales_alert_watch_state (id) VALUES (1) ON CONFLICT DO NOTHING`); err != nil {

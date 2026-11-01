@@ -9,6 +9,7 @@
  *   POST /v1/public/feeds/{token}/checkout/quote   (price + promo code, no hold)
  *   GET  /v1/public/checkout/{token}               (WID-D)
  *   POST /v1/public/checkout/{token}/recover       (WID-D, wraps WID-0c)
+ *   POST /v1/public/feeds/{token}/sessions/{id}/sale-subscriptions  ("notify me when sales open")
  *
  * The schema cache is module-level so a single widget instance does not
  * re-download the geometry on every re-render.  It is keyed by session ID
@@ -29,6 +30,7 @@ import type {
   CheckoutStatusResponse,
   CheckoutRecoverResponse,
 } from './lib/checkout.js';
+import type { SaleSubscriptionPayload, SaleSubscriptionResponse } from './lib/saleSubscribe.js';
 import { applySeatCategoryOverlay } from './lib/seatCategories.js';
 
 // ─── Structured API error ────────────────────────────────────────────────────
@@ -389,4 +391,34 @@ export async function postCheckoutRecover(
     );
   }
   return res.json() as Promise<CheckoutRecoverResponse>;
+}
+
+// ─── Sale subscription ("notify me when sales open") ─────────────────────────
+
+/**
+ * POST /v1/public/feeds/{feedToken}/sessions/{sessionId}/sale-subscriptions
+ *
+ * Asks the platform to e-mail the buyer when sales open for a session that is
+ * "soon". The answer is 202 `{status: "check_email"}`: nothing is subscribed
+ * until the buyer opens the letter and confirms the address.
+ *
+ * @throws ApiError when the response is non-2xx. The `code` is one of
+ *         `subscription.invalid_email`, `.consent_required`, `.consent_outdated`,
+ *         `.sales_open`, `.rate_limited` or `feed.rate_limited`.
+ */
+export async function postSaleSubscription(
+  feedToken: string,
+  sessionId: string,
+  payload: SaleSubscriptionPayload,
+  apiBase = '',
+): Promise<SaleSubscriptionResponse> {
+  const url = `${apiBase}/v1/public/feeds/${encodeURIComponent(feedToken)}/sessions/${encodeURIComponent(sessionId)}/sale-subscriptions`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await apiErrorFromResponse(res, 'postSaleSubscription');
+  // The 202 is the whole answer; a body that does not parse must not turn it into a failure.
+  return res.json().catch(() => ({ status: 'check_email' })) as Promise<SaleSubscriptionResponse>;
 }

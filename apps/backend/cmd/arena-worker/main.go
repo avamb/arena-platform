@@ -82,6 +82,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/reservationexpiry"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesalert"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesnotify"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesubscribe"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/tierchain"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
@@ -658,6 +659,19 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		DB:        pool,
 		Logger:    logger,
 	}))
+
+	// "Notify me when sales open" (salesubscribe): the confirmation letter
+	// of a new address, and the letter when the session opens.
+	saleLetters := delivery.SaleLetterOptions{
+		Sender:         deliveryOpts.Sender,
+		Templates:      deliveryOpts.Templates,
+		DB:             pool,
+		APIBaseURL:     cfg.APIPublicBaseURL(),
+		TicketsBaseURL: cfg.PublicTicketsBaseURL,
+		Logger:         logger,
+	}
+	reg.Register(salesubscribe.JobTypeConfirmEmail, delivery.NewSaleConfirmHandler(saleLetters))
+	reg.Register(salesubscribe.JobTypeOpenEmail, delivery.NewSaleOpenHandler(saleLetters))
 
 	// event.email_note_test mails the organizer a sample ticket letter with
 	// the event's own note (EC-31). A preview: never recorded as a buyer letter.

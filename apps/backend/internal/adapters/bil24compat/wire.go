@@ -171,6 +171,16 @@ type Request struct {
 	// attribution.Clean; a bad value never fails the order.
 	Attribution json.RawMessage `json:"attribution,omitempty"`
 
+	// ── SUBSCRIBE_SALE fields (arena extension, package salesubscribe) ──
+
+	// PageURL is the site's own page of the session: the sale-open letter
+	// links back to it.
+	PageURL string `json:"pageUrl"`
+	// Consent is the buyer's ticked consent, decoded flexibly (true / 1 /
+	// "1" / "true"); ConsentVersion names the text the site showed.
+	Consent        bool
+	ConsentVersion string `json:"consentVersion"`
+
 	// ── REFUND_TICKET fields (feature #509, spec §7.13) ──────────────────
 
 	// Reason is the optional operator-supplied refund reason. When empty
@@ -254,6 +264,7 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 		TicketIDList    json.RawMessage `json:"ticketIdList"`
 		Complimentary   json.RawMessage `json:"complimentary"`
 		Attribution     json.RawMessage `json:"attribution"`
+		Consent         json.RawMessage `json:"consent"`
 	}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -291,6 +302,7 @@ func (r *Request) UnmarshalJSON(data []byte) error {
 	// where the value came from; all of them mean yes.
 	r.Complimentary = flexWireBool(aux.Complimentary)
 	r.Attribution = flexWireObject(aux.Attribution)
+	r.Consent = flexWireBool(aux.Consent)
 	return nil
 }
 
