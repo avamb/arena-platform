@@ -107,6 +107,8 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/me/consent", flatOwnAccount, "the caller's own data requests"},
 	{"POST", "/v1/me/data-delete", flatOwnAccount, "the caller's own data requests"},
 	{"POST", "/v1/me/data-export", flatOwnAccount, "the caller's own data requests"},
+	{"POST", "/v1/me/t", flatRowGuard, "own events only (user from the token); the body's org_id is kept only for a member or a superadmin, else stored empty (hanalytics, TestAnalytics_EventCenterUserFromTokenAndOrgChecked)"},
+	{"POST", "/v1/t", flatPublic, "no credential; writes anonymous website events through the dictionary, answers nothing about why (spec 50)"},
 
 	// ── anonymous buyer and widget flows ────────────────────────────────────
 	// /v1/public/*  (flatPublic): feed token or checkout token in the URL

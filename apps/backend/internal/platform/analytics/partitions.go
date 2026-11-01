@@ -117,7 +117,7 @@ func MaintainPartitions(ctx context.Context, db PartitionDB, now time.Time) (cre
 		// Names and bounds come from time arithmetic, never from input.
 		q := fmt.Sprintf(
 			"CREATE TABLE IF NOT EXISTS analytics.%s PARTITION OF analytics.events FOR VALUES FROM ('%s') TO ('%s')",
-			name, m.Format("2006-01-02 15:04:05+00"), m.AddDate(0, 1, 0).Format("2006-01-02 15:04:05+00"))
+			name, partitionBound(m), partitionBound(m.AddDate(0, 1, 0)))
 		if _, err := tx.Exec(ctx, q); err != nil {
 			return nil, nil, fmt.Errorf("analytics: create partition %s: %w", name, err)
 		}
@@ -239,4 +239,11 @@ func SchedulePartitionsJob(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("analytics: enqueue initial partitions job: %w", err)
 	}
 	return nil
+}
+
+// partitionBound spells a month boundary as a SQL timestamptz literal for the
+// DDL of a partition (DDL cannot take bind parameters). The value comes from
+// time arithmetic on a UTC month start, never from input.
+func partitionBound(m time.Time) string {
+	return m.UTC().Format("2006-01-02 15:04:05+00") // allow:timeformat DDL literal, not a wire timestamp
 }

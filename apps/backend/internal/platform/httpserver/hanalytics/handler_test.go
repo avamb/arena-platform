@@ -310,7 +310,7 @@ func TestMe_RateLimitPerUser(t *testing.T) {
 
 type blockedCopier struct{ release chan struct{} }
 
-func (b blockedCopier) CopyFrom(_ context.Context, _ pgx.Identifier, _ []string, src pgx.CopyFromSource) (int64, error) {
+func (b blockedCopier) CopyFrom(_ context.Context, _ pgx.Identifier, _ []string, _ pgx.CopyFromSource) (int64, error) {
 	<-b.release
 	return 0, nil
 }

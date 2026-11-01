@@ -60,6 +60,10 @@ type Copier interface {
 type Options struct {
 	DB     Copier
 	Logger *slog.Logger
+	// Context is the parent of the batch writes: its values (trace, log
+	// fields) carry over but its cancellation does not, so the last batch is
+	// still written at shutdown. nil means context.TODO().
+	Context context.Context
 	// Dropped counts events thrown away because the buffer was full
 	// (arena_analytics_dropped_total).
 	Dropped Counter
@@ -87,6 +91,7 @@ type row struct {
 // user is never slowed or failed by analytics.
 type Writer struct {
 	db          Copier
+	baseCtx     context.Context
 	log         *slog.Logger
 	dropped     Counter
 	flushFailed Counter
@@ -113,8 +118,12 @@ func NewWriter(o Options) *Writer {
 	if o.Logger == nil {
 		o.Logger = slog.Default()
 	}
+	if o.Context == nil {
+		o.Context = context.TODO()
+	}
 	w := &Writer{
 		db:          o.DB,
+		baseCtx:     context.WithoutCancel(o.Context),
 		log:         o.Logger,
 		dropped:     o.Dropped,
 		flushFailed: o.FlushFailed,
@@ -236,7 +245,7 @@ func (w *Writer) write(batch []row) {
 	if w.db == nil {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), flushTimeout)
+	ctx, cancel := context.WithTimeout(w.baseCtx, flushTimeout)
 	defer cancel()
 	rows := make([][]any, len(batch))
 	for i, r := range batch {

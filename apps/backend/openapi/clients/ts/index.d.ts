@@ -834,6 +834,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/t": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a batch of website behaviour events (product analytics)
+         * @description Receiver of the product analytics script of arenasoldout.com (spec 50,
+         *     section 4.2). No JWT, no cookie. The body is a batch of at most 50
+         *     events and at most 16 KiB. Each event name and property is checked
+         *     against the platform's dictionary: an unknown event is dropped whole,
+         *     an unknown property silently, strings are cut to 200 characters. The
+         *     server's clock is authoritative; the client's `at` only keeps the order
+         *     inside the batch and is ignored when it is more than a day from the
+         *     server's.
+         *
+         *     The visitor is `aid` (only after consent), else the page-view id `pv`
+         *     (anonymous). A batch with neither usable identifier stores nothing. A
+         *     `cid` (the contact code of a link in one of our e-mails) that exists
+         *     also writes one server-side `email_click` event.
+         *
+         *     The answer is always 204 with an empty body, whatever was stored or
+         *     refused, including a request over the limit of 120 per minute per
+         *     client address; the receiver tells nothing about the reason. Only a
+         *     body that is not readable JSON, or is larger than 16 KiB, is 400. The
+         *     client's address and browser are used for the limit and the suspect
+         *     flag and are stored nowhere.
+         */
+        post: operations["postAnalyticsSite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/t": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a batch of event center behaviour events (product analytics)
+         * @description Receiver of the product analytics script of the event center (spec 50,
+         *     section 4.2). Same body, same dictionary and same always-204 answer as
+         *     `POST /v1/t`, but the surface is `event_center` and the person is the
+         *     signed-in user.
+         *
+         *     The user is taken from the token and never from the body. `org_id` is
+         *     the organization of the current screen: it is stored only when the
+         *     caller is a member of it (or a platform superadmin), otherwise it is
+         *     stored as empty. Limit: 300 requests per minute per user. `aid`, `cid`
+         *     and `pv` are ignored here.
+         */
+        post: operations["postAnalyticsMe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me": {
         parameters: {
             query?: never;
@@ -19000,6 +19068,69 @@ export interface components {
             report_photos: components["schemas"]["PublicMaterialPhoto"][];
         };
         /**
+         * @description Body of POST /v1/t and POST /v1/me/t, the product analytics receivers
+         *     (spec 50, section 4.2). Unknown fields are ignored: a client cannot name
+         *     its own user, surface or time of storage.
+         */
+        AnalyticsBatchRequest: {
+            /**
+             * @description Optional visitor id of arenasoldout.com, sent only after the
+             *     visitor consented to analytics: 8 to 40 characters of `A-Za-z0-9_-`.
+             *     Ignored by POST /v1/me/t.
+             * @example a_7Hk2xQp9
+             */
+            aid?: string;
+            /**
+             * @description Optional contact code of the link in one of our e-mails, only in the
+             *     first batch after the visit started from it. Ignored by POST /v1/me/t.
+             * @example x7k2qpm3ab
+             */
+            cid?: string;
+            /**
+             * @description Id of the current page view, kept in the tab's memory only: 4 to 40
+             *     characters of `A-Za-z0-9_-`. It identifies an anonymous visitor
+             *     (one without `aid`) and is ignored by POST /v1/me/t.
+             * @example p_Q9xLm2Ke
+             */
+            pv?: string;
+            /**
+             * @description POST /v1/me/t only: id of the organization of the current screen.
+             *     Stored only when the caller is a member of it or a platform
+             *     superadmin, otherwise stored as empty.
+             */
+            org_id?: string;
+            /** @description At most 50 events; further ones are ignored. */
+            events: components["schemas"]["AnalyticsEvent"][];
+        };
+        /** @description One behaviour event of a batch. */
+        AnalyticsEvent: {
+            /**
+             * @description Event name from the dictionary: `page_view`, `engaged`, `scroll`,
+             *     `click`, `consent` (website), `screen_view`, `flow_step`,
+             *     `ui_error`, `rage_click` (event center, plus `engaged` and `click`).
+             *     An unknown name drops the event.
+             * @example page_view
+             */
+            name: string;
+            /**
+             * @description Client time in RFC 3339. It only keeps the order of the events
+             *     inside the batch; the server time is stored. Ignored when more than
+             *     a day from the server's time.
+             * @example 2026-11-01T10:00:00Z
+             */
+            at?: string;
+            /**
+             * @description Properties of the event, a flat object. Only the properties the
+             *     dictionary lists for the event are kept (for example `path`, `lang`,
+             *     `utm_source` for `page_view`; `flow` and `step` for `flow_step`);
+             *     strings are cut to 200 characters. Never put an e-mail, a phone, a
+             *     name, a text typed by a person or an id of an entity here.
+             */
+            props?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
          * @description Body of POST /v1/public/pages/{org_slug}/{event_slug}/track, the hosted
          *     page's statistics beacon (HP-2a). Unknown fields are ignored.
          */
@@ -34085,6 +34216,77 @@ export interface operations {
             };
             /** @description Database not available. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postAnalyticsSite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnalyticsBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted, or silently refused. Empty body. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body is not a readable JSON object or is over 16 KiB (`track.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postAnalyticsMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnalyticsBatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted, or silently refused. Empty body. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body is not a readable JSON object or is over 16 KiB (`track.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT Authorization header. */
+            401: {
                 headers: {
                     [name: string]: unknown;
                 };

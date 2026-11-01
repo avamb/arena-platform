@@ -12,6 +12,7 @@
 package analytics
 
 import (
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -62,6 +63,9 @@ type PropDef struct {
 	// Path makes a string property a page path: everything from the first
 	// "?" or "#" is cut off, because a query string may carry an address.
 	Path bool
+	// Pattern, when set, keeps only values that match it entirely (checked
+	// after cleaning and cutting).
+	Pattern *regexp.Regexp
 	// Host makes a string property a host name: a full URL is reduced to its
 	// host.
 	Host bool
@@ -84,6 +88,9 @@ var (
 	pathProp = PropDef{Kind: PropString, MaxLen: MaxStringLen, Path: true}
 	hostProp = PropDef{Kind: PropString, MaxLen: 100, Host: true}
 	utmProp  = str(100)
+	// labelProp is the data-track label of a clicked element: a constant
+	// chosen by our developers, lower-case [a-z0-9_.-], at most 64 characters.
+	labelProp = PropDef{Kind: PropString, MaxLen: 64, Pattern: regexp.MustCompile(`^[a-z0-9_.-]+$`)}
 )
 
 func site() []string        { return []string{SurfaceSite} }
@@ -110,7 +117,7 @@ var Events = map[string]EventDef{
 		"path": pathProp, "depth": {Kind: PropInt, OneOfInts: []int{25, 50, 75, 100}},
 	}},
 	"click": {Surfaces: []string{SurfaceSite, SurfaceEventCenter}, Props: map[string]PropDef{
-		"name": str(100), "path": pathProp, "screen": str(100),
+		"name": labelProp, "path": pathProp, "screen": str(100),
 	}},
 	"email_click": {Surfaces: site(), ServerOnly: true, Props: map[string]PropDef{
 		// aid is set by the server when the same visit carried both codes: it
@@ -130,7 +137,7 @@ var Events = map[string]EventDef{
 		"screen": str(100), "code": str(100),
 	}},
 	"rage_click": {Surfaces: eventCenter(), Props: map[string]PropDef{
-		"screen": str(100), "name": str(100),
+		"screen": str(100), "name": labelProp,
 	}},
 	"bot_update": {Surfaces: bot(), Props: map[string]PropDef{
 		"kind": str(32), "prefix": str(32), "step": str(64),
@@ -200,6 +207,9 @@ func (pd PropDef) clean(v any) (any, bool) {
 		}
 		s = cleanString(s, pd)
 		if s == "" {
+			return nil, false
+		}
+		if pd.Pattern != nil && !pd.Pattern.MatchString(s) {
 			return nil, false
 		}
 		if len(pd.OneOfStrings) > 0 && !containsString(pd.OneOfStrings, s) {

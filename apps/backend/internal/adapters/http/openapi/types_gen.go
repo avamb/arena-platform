@@ -1339,6 +1339,54 @@ type AdminUserNameResponse struct {
 	UserId openapi_types.UUID `json:"user_id"`
 }
 
+// AnalyticsBatchRequest Body of POST /v1/t and POST /v1/me/t, the product analytics receivers
+// (spec 50, section 4.2). Unknown fields are ignored: a client cannot name
+// its own user, surface or time of storage.
+type AnalyticsBatchRequest struct {
+	// Aid Optional visitor id of arenasoldout.com, sent only after the
+	// visitor consented to analytics: 8 to 40 characters of `A-Za-z0-9_-`.
+	// Ignored by POST /v1/me/t.
+	Aid *string `json:"aid,omitempty"`
+
+	// Cid Optional contact code of the link in one of our e-mails, only in the
+	// first batch after the visit started from it. Ignored by POST /v1/me/t.
+	Cid *string `json:"cid,omitempty"`
+
+	// Events At most 50 events; further ones are ignored.
+	Events []AnalyticsEvent `json:"events"`
+
+	// OrgId POST /v1/me/t only: id of the organization of the current screen.
+	// Stored only when the caller is a member of it or a platform
+	// superadmin, otherwise stored as empty.
+	OrgId *string `json:"org_id,omitempty"`
+
+	// Pv Id of the current page view, kept in the tab's memory only: 4 to 40
+	// characters of `A-Za-z0-9_-`. It identifies an anonymous visitor
+	// (one without `aid`) and is ignored by POST /v1/me/t.
+	Pv *string `json:"pv,omitempty"`
+}
+
+// AnalyticsEvent One behaviour event of a batch.
+type AnalyticsEvent struct {
+	// At Client time in RFC 3339. It only keeps the order of the events
+	// inside the batch; the server time is stored. Ignored when more than
+	// a day from the server's time.
+	At *string `json:"at,omitempty"`
+
+	// Name Event name from the dictionary: `page_view`, `engaged`, `scroll`,
+	// `click`, `consent` (website), `screen_view`, `flow_step`,
+	// `ui_error`, `rage_click` (event center, plus `engaged` and `click`).
+	// An unknown name drops the event.
+	Name string `json:"name"`
+
+	// Props Properties of the event, a flat object. Only the properties the
+	// dictionary lists for the event are kept (for example `path`, `lang`,
+	// `utm_source` for `page_view`; `flow` and `step` for `flow_step`);
+	// strings are cut to 200 characters. Never put an e-mail, a phone, a
+	// name, a text typed by a person or an id of an entity here.
+	Props *map[string]interface{} `json:"props,omitempty"`
+}
+
 // ApiKeyItem A single organization API key row. Never includes the secret or
 // its hash — only the non-secret `key_prefix` used to identify
 // the key in logs and audit events. The full secret is returned
@@ -21960,6 +22008,9 @@ type PostMACSScanEventsJSONRequestBody = MACSScanBatchRequest
 // RecordConsentJSONRequestBody defines body for RecordConsent for application/json ContentType.
 type RecordConsentJSONRequestBody RecordConsentJSONBody
 
+// PostAnalyticsMeJSONRequestBody defines body for PostAnalyticsMe for application/json ContentType.
+type PostAnalyticsMeJSONRequestBody = AnalyticsBatchRequest
+
 // PostV1MediaMultipartRequestBody defines body for PostV1Media for multipart/form-data ContentType.
 type PostV1MediaMultipartRequestBody PostV1MediaMultipartBody
 
@@ -22355,6 +22406,9 @@ type CreateSeatingPlanVersionJSONRequestBody = CreateSeatingPlanVersionRequest
 
 // ReplaceSessionMediaJSONRequestBody defines body for ReplaceSessionMedia for application/json ContentType.
 type ReplaceSessionMediaJSONRequestBody = SessionMediaReplaceRequest
+
+// PostAnalyticsSiteJSONRequestBody defines body for PostAnalyticsSite for application/json ContentType.
+type PostAnalyticsSiteJSONRequestBody = AnalyticsBatchRequest
 
 // CancelTicketJSONRequestBody defines body for CancelTicket for application/json ContentType.
 type CancelTicketJSONRequestBody = CancelTicketRequest

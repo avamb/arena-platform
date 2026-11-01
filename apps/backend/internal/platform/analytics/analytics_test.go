@@ -355,3 +355,25 @@ func (failingDB) BeginTx(context.Context, pgx.TxOptions) (pgx.Tx, error) {
 func (failingDB) Query(context.Context, string, ...any) (pgx.Rows, error) {
 	return nil, context.DeadlineExceeded
 }
+
+func TestSanitize_ClickNameIsADeveloperLabel(t *testing.T) {
+	for _, ev := range []struct{ surface, name string }{{SurfaceSite, "click"}, {SurfaceEventCenter, "rage_click"}} {
+		got, ok := Sanitize(ev.surface, ev.name, map[string]any{"name": "cta_apply.v2"}, true)
+		if !ok || got["name"] != "cta_apply.v2" {
+			t.Errorf("%s: label dropped: %v", ev.name, got)
+		}
+		for _, bad := range []string{"John Smith", "a@b.c", "CTA"} {
+			got, _ := Sanitize(ev.surface, ev.name, map[string]any{"name": bad}, true)
+			if _, has := got["name"]; has {
+				t.Errorf("%s: label %q kept", ev.name, bad)
+			}
+		}
+	}
+	got, _ := Sanitize(SurfaceSite, "click", map[string]any{"name": strings.Repeat("a", 90)}, true)
+	if n := len(got["name"].(string)); n != 64 {
+		t.Errorf("label length = %d, want it cut to 64", n)
+	}
+	if got, ok := Sanitize(SurfaceEventCenter, "screen_view", map[string]any{"screen": "/events/:id"}, true); !ok || got["screen"] != "/events/:id" {
+		t.Errorf("screen_view = %v %v", got, ok)
+	}
+}
