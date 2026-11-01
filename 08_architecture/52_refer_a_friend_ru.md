@@ -229,7 +229,7 @@ AllPay — `amount` с проверкой `paymentstatus` (уже в модул�
 
 | Шаг | Что | Тесты |
 |---|---|---|
-| RF-1 | Миграция: `referral_programs`, `referral_rewards`, `promo_codes.purpose/referral_*`, `refunds.origin` + значение; права не новые | парность, CHECK ↔ Go |
+| RF-1 | Миграция: `referral_programs`, `referral_rewards`, `promo_codes.origin/referral_*`, `refunds.origin` + значение; права не новые | парность, CHECK ↔ Go |
 | RF-2 | Пакет `internal/platform/referral`: выдача кода, проверка самоприглашения, расчёт, состояние | юнит + интеграция |
 | RF-3 | Маршруты организации: программа (CRUD), начисления (список, выплатить, не выплачивать) | изоляция организаций, права |
 | RF-4 | Публичные: код для заказа по checkout-токену; `?promo=` в виджете и странице; блок на странице «спасибо» | e2e виджета |
