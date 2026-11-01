@@ -1,0 +1,3 @@
+ Test Files  120 passed (120)
+      Tests  1656 passed (1656)
+ ✓ src/parity/parity.test.ts (169 tests) 144ms

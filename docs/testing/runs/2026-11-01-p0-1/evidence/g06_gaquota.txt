@@ -1,0 +1,15 @@
+--- PASS: TestGAQuota_HandOver_MovesFreePlacesAndSwitchesCategories
+--- PASS: TestGAQuota_HandOver_LaterSweepMovesAReturnedPlaceWithoutReopening
+--- PASS: TestGAQuota_HandOver_ChainCascadesThroughExpiredWindows
+--- PASS: TestGAQuota_HandOver_RefusesSeatedTarget
+--- PASS: TestGAQuota_CreateCategory_MaterializesPlacesAndCapacity
+--- PASS: TestGAQuota_SetQuantity_GrowsAndShrinks
+--- PASS: TestGAQuota_SetQuantity_BelowHeldAndSoldRefused
+--- PASS: TestGAQuota_SetQuantity_ReferencedPlaceIsNeverDeleted
+--- PASS: TestGAQuota_DeleteCategory
+--- PASS: TestGAQuota_SeatedCategoryIsReadOnly
+--- PASS: TestGAQuota_FirstGACategoryTurnsSeatedSessionHybrid
+--- PASS: TestGAQuota_SetOpen_RoundTrip
+--- PASS: TestGAQuota_Recompute_CreatesMissingLedgerRow
+--- PASS: TestGAQuota_Recompute_NeverBreaksTheLedgerInvariant
+ok  	github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/gaquota	2.463s

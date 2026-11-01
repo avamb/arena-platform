@@ -1,0 +1,6 @@
+--- PASS: TestSign_MatchesReferenceAlgorithm
+--- PASS: TestSign_SkipsEmptyAndSignatureButKeepsZero
+--- PASS: TestVerifyCallback_AcceptsAndParses
+--- PASS: TestVerifyCallback_RejectsWrongKeyTamperingAndMissingSignature
+--- PASS: TestLooksLikeCallback
+ok  	github.com/abhteam/arena_new/apps/backend/internal/adapters/flitt	0.925s

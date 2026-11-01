@@ -1,0 +1,5 @@
+--- PASS: TestSign_DocumentedWorkedExample
+--- PASS: TestSign_ValueRules
+--- PASS: TestVerifyCallback
+--- PASS: TestLooksLikeCallback_OnlyItsShape
+ok  	github.com/abhteam/arena_new/apps/backend/internal/adapters/allpay	0.884s

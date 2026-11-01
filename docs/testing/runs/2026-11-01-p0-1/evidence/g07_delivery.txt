@@ -1,0 +1,10 @@
+--- PASS: TestDelivery_SMTPSuccess
+--- PASS: TestDelivery_SMTPRefused
+--- PASS: TestDelivery_DevSenderProducesDisabled
+--- PASS: TestDelivery_NilSenderProducesDisabled
+--- PASS: TestDelivery_NoEmailProducesSkipped
+--- PASS: TestDelivery_IdempotencyProcessingSkip
+--- PASS: TestOrderLetter_OneEmailCarriesEveryTicketAndThePayment
+--- PASS: TestOrderLetter_ResendOfOneTicketIsASingleTicketLetter
+--- PASS: TestOrderLetter_FailedSendReleasesEveryJob
+ok  	github.com/abhteam/arena_new/apps/backend/internal/platform/delivery	30.911s

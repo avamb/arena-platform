@@ -1,0 +1,20 @@
+g03_hs | ./apps/backend/internal/platform/httpserver | start 2026-11-01 13:43:03 +0100 | end 2026-11-01 13:44:55 +0100 | EXIT:0
+g04_domain_payments | ./apps/backend/internal/domain/payments | start 2026-11-01 13:44:55 +0100 | end 2026-11-01 13:44:57 +0100 | EXIT:0
+g04_flitt_adapter | ./apps/backend/internal/adapters/flitt | start 2026-11-01 13:44:57 +0100 | end 2026-11-01 13:45:00 +0100 | EXIT:0
+g04_allpay_adapter | ./apps/backend/internal/adapters/allpay | start 2026-11-01 13:45:00 +0100 | end 2026-11-01 13:45:03 +0100 | EXIT:0
+g04_hs | ./apps/backend/internal/platform/httpserver | start 2026-11-01 13:45:03 +0100 | end 2026-11-01 13:45:16 +0100 | EXIT:0
+g05_hs | ./apps/backend/internal/platform/httpserver | start 2026-11-01 13:45:16 +0100 | end 2026-11-01 13:45:33 +0100 | EXIT:0
+g05_hcheckout | ./apps/backend/internal/platform/httpserver/hcheckout | start 2026-11-01 13:45:33 +0100 | end 2026-11-01 13:45:37 +0100 | EXIT:0
+g06_hcheckout | ./apps/backend/internal/platform/httpserver/hcheckout | start 2026-11-01 13:45:37 +0100 | end 2026-11-01 13:45:46 +0100 | EXIT:0
+g06_hs | ./apps/backend/internal/platform/httpserver | start 2026-11-01 13:45:46 +0100 | end 2026-11-01 13:45:54 +0100 | EXIT:0
+g06_gaquota | ./apps/backend/internal/platform/httpserver/gaquota | start 2026-11-01 13:45:54 +0100 | end 2026-11-01 13:45:59 +0100 | EXIT:0
+g06_bil24promo | ./apps/backend/tests/compat/bil24 | start 2026-11-01 13:45:59 +0100 | end 2026-11-01 13:46:08 +0100 | EXIT:0
+g07_delivery | ./apps/backend/internal/platform/delivery | start 2026-11-01 13:46:08 +0100 | end 2026-11-01 13:46:53 +0100 | EXIT:0
+g08_worker | ./apps/backend/cmd/arena-worker | start 2026-11-01 13:46:53 +0100 | end 2026-11-01 13:46:59 +0100 | EXIT:0
+g08_outbox | ./apps/backend/internal/platform/outbox | start 2026-11-01 13:46:59 +0100 | end 2026-11-01 13:47:04 +0100 | EXIT:0
+g08_bil24 | ./apps/backend/tests/compat/bil24 | start 2026-11-01 13:47:04 +0100 | end 2026-11-01 13:47:16 +0100 | EXIT:0
+g09_hs | ./apps/backend/internal/platform/httpserver | start 2026-11-01 13:47:16 +0100 | end 2026-11-01 13:48:21 +0100 | EXIT:0
+g10_migrations | ./apps/backend/internal/migrations | start 2026-11-01 13:48:21 +0100 | end 2026-11-01 13:48:24 +0100 | EXIT:0
+g10_hs_parity | ./apps/backend/internal/platform/httpserver | start 2026-11-01 13:48:24 +0100 | end 2026-11-01 13:48:29 +0100 | EXIT:0
+g10_staticanalysis | ./apps/backend/tests/staticanalysis/... | start 2026-11-01 13:48:29 +0100 | end 2026-11-01 13:48:58 +0100 | EXIT:0
+DONE

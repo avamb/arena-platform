@@ -1,0 +1,7 @@
+--- PASS: TestBotE2E_Refund_OwnerReturnsOneTicket
+--- PASS: TestBotE2E_Refund_SendLostToARestartIsOfferedAgain
+--- PASS: TestRefundEngineHTTP_ApproveDrivesStripeAndCancelsAfterwards
+--- PASS: TestWebhookWidgetCompletion_StripeEnvelopeSuccess_CompletesCheckoutAndPaysOrder
+--- PASS: TestWebhookWidgetCompletion_FlatBodyStillWorksEndToEnd
+--- PASS: TestWebhookWidgetCompletion_PaymentAfterExpiry_ParksForManualReview
+ok  	github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver	11.477s

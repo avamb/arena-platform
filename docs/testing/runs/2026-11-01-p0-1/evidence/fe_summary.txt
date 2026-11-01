@@ -1,0 +1,9 @@
+fe_ec_ci | start 13:49:48 +0100 | end 13:50:18 +0100 | EXIT:0
+fe_re_ci | start 13:50:18 +0100 | end 13:50:27 +0100 | EXIT:0
+fe_re_build | start 13:50:27 +0100 | end 13:50:33 +0100 | EXIT:0
+fe_ec_typecheck | start 13:50:33 +0100 | end 13:50:44 +0100 | EXIT:0
+fe_ec_vitest | start 13:50:44 +0100 | end 13:51:04 +0100 | EXIT:0
+fe_w_ci | start 13:51:04 +0100 | end 13:51:16 +0100 | EXIT:0
+fe_w_typecheck | start 13:51:16 +0100 | end 13:51:18 +0100 | EXIT:0
+fe_w_vitest | start 13:51:18 +0100 | end 13:51:29 +0100 | EXIT:0
+DONE

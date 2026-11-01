@@ -1,0 +1,11 @@
+Set up job	success
+Checkout	success
+Detect changes in the generator	success
+Set up Python	skipped
+Install dependencies	skipped
+Unit tests (pytest)	skipped
+Build the Docker image	skipped
+Image smoke (the CLI starts)	skipped
+Image smoke (the HTTP service answers /healthz)	skipped
+Post Checkout	success
+Complete job	success

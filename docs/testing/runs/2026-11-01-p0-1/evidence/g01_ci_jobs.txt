@@ -1,0 +1,19 @@
+https://github.com/avamb/arena-platform/actions/runs/41262841049
+success
+2026-11-01T01:52:08Z
+2026-11-01T02:24:40Z
+Integration (PostgreSQL + Testcontainers)	success	2026-11-01T02:07:22Z	2026-11-01T02:22:06Z
+Unit / Race	success	2026-11-01T01:52:11Z	2026-11-01T02:02:08Z
+Shop page (unit / build / container smoke)	success	2026-11-01T01:52:10Z	2026-11-01T01:53:00Z
+Widget Acceptance (real backend)	success	2026-11-01T01:52:10Z	2026-11-01T01:54:30Z
+Event center (unit / build / smoke / container smoke)	success	2026-11-01T01:52:11Z	2026-11-01T01:58:57Z
+Lint	success	2026-11-01T01:52:10Z	2026-11-01T01:53:49Z
+Tickets page (unit / build / container smoke)	success	2026-11-01T01:52:10Z	2026-11-01T01:53:05Z
+Widget (unit / build / size / mock E2E)	success	2026-11-01T01:52:10Z	2026-11-01T01:53:37Z
+OpenAPI Check (Go types + TS client drift)	success	2026-11-01T01:52:11Z	2026-11-01T01:52:38Z
+Admin (unit / build / container smoke)	success	2026-11-01T01:52:10Z	2026-11-01T01:54:16Z
+Rich editor (unit / build)	success	2026-11-01T01:52:10Z	2026-11-01T01:52:41Z
+Event center (live twin tests, real backend)	success	2026-11-01T01:52:13Z	2026-11-01T02:04:15Z
+Venue SVG generator (pytest / docker build)	success	2026-11-01T01:52:20Z	2026-11-01T01:52:35Z
+Widget Publish (master only)	success	2026-11-01T02:22:08Z	2026-11-01T02:22:21Z
+Build and Push Docker Image	success	2026-11-01T02:22:09Z	2026-11-01T02:24:39Z

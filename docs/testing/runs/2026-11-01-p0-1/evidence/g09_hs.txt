@@ -1,0 +1,12 @@
+--- PASS: TestBotE2E_SessionCancelPhraseAfterRestart
+--- PASS: TestBotE2E_InvitationToMyEvents
+--- PASS: TestBotE2E_Refund_OwnerReturnsOneTicket
+--- PASS: TestBotE2E_Refund_SendLostToARestartIsOfferedAgain
+--- PASS: TestBotE2E_Refund_ScannedTicketRefusalAndOperatorException
+--- PASS: TestBotE2E_SessionsMoveKeepsTheSessionAndWritesToBuyers
+--- PASS: TestBotE2E_WizardPerDateCategories
+--- PASS: TestBotE2E_WizardCreatesAnEvent
+--- PASS: TestBotE2E_WizardSeatedDate
+--- PASS: TestBotInvitationIntegration_OwnerInvitesManagerAndTelegramIsBound
+--- PASS: TestBotInvitationIntegration_ExistingMemberKeepsRoleAndOutsidersAreRefused
+ok  	github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver	59.885s

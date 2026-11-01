@@ -1,0 +1,5 @@
+--- PASS: TestCompatBil24_498_GetAllActions_Performance
+--- PASS: TestCompatBil24_495_TicketsByOrderGoldensExist
+--- PASS: TestCompatBil24_494_PayOrderGoldensExist
+--- PASS: TestCompatBil24_492_CreateOrderGoldensExist
+ok  	github.com/abhteam/arena_new/apps/backend/tests/compat/bil24	1.399s

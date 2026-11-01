@@ -1,0 +1,7 @@
+--- PASS: TestCompatBil24_0108_PromoQuoteScopeAndLimits
+--- PASS: TestCompatBil24_491_PromoCodes_WireContract
+--- PASS: TestCompatBil24_491_PromoGoldensExist
+--- PASS: TestPromoAttempts_GatewayJournalsWrongSessionAndApplied
+--- PASS: TestPromoAttempts_PurgeKeepsRecentRows
+--- PASS: TestCompatBil24_CreateOrder_PromoCodeListIsTheWholeTruth
+ok  	github.com/abhteam/arena_new/apps/backend/tests/compat/bil24	3.334s

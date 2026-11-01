@@ -1,0 +1,19 @@
+  ok  1 tests\smoke\live\events-three-roles.spec.ts:34:5 › events list on the three roles (live) › owner (org_admin) sees the event and the sales figures
+  ok  2 tests\smoke\live\events-three-roles.spec.ts:34:5 › events list on the three roles (live) › manager (organizer) sees the event and the sales figures
+  ok  3 tests\smoke\live\events-three-roles.spec.ts:34:5 › events list on the three roles (live) › agent (agent) sees the event and no money
+  ok  4 tests\smoke\live\refund-resilience.spec.ts:108:3 › refund: unknown outcomes, double presses and exact amounts (live) › an unverified gateway answer is UNKNOWN: same key, one provider call
+  ok  5 tests\smoke\live\refund-resilience.spec.ts:108:3 › refund: unknown outcomes, double presses and exact amounts (live) › an unverified invalid_json answer is UNKNOWN: same key, one provider call
+  ok  6 tests\smoke\live\refund-resilience.spec.ts:108:3 › refund: unknown outcomes, double presses and exact amounts (live) › an unverified missing_fields answer is UNKNOWN: same key, one provider call
+  ok  7 tests\smoke\live\refund-resilience.spec.ts:108:3 › refund: unknown outcomes, double presses and exact amounts (live) › an unverified wrong_order answer is UNKNOWN: same key, one provider call
+  ok  8 tests\smoke\live\refund-resilience.spec.ts:158:3 › refund: unknown outcomes, double presses and exact amounts (live) › a double press on the password button is ONE refund request and ONE provider call
+  ok  9 tests\smoke\live\refund-resilience.spec.ts:180:3 › refund: unknown outcomes, double presses and exact amounts (live) › a part of the price is exact in minor units (19,99 is 1999, never 1998 or 2000)
+  ok 10 tests\smoke\live\refund-resilience.spec.ts:197:3 › refund: unknown outcomes, double presses and exact amounts (live) › the card of another order starts clean: no ticked ticket, reason or key carries over, and no request leaves
+  ok 11 tests\smoke\live\refund.spec.ts:129:3 › refund an order (live) › owner: nothing ticked, a wrong word refunds nothing, the word and the password return one ticket
+  ok 12 tests\smoke\live\refund.spec.ts:214:3 › refund an order (live) › owner: closing the password question sends nothing
+  ok 13 tests\smoke\live\refund.spec.ts:233:3 › refund an order (live) › owner: a lost answer survives a reload and is checked with the same key, never refunding twice
+  ok 14 tests\smoke\live\refund.spec.ts:285:3 › refund an order (live) › manager: a ticket scanned while the screen is open is refused, and the owners are told
+  ok 15 tests\smoke\live\refund.spec.ts:313:3 › refund an order (live) › manager: the provider's refusal, then part of one ticket's amount
+  ok 16 tests\smoke\live\refund.spec.ts:362:3 › refund an order (live) › an order of the seller's own site only gets an explanation
+  ok 17 tests\smoke\live\refund.spec.ts:374:3 › refund an order (live) › the API refuses a web money request without the password again
+  ok 18 tests\smoke\live\refund.spec.ts:386:3 › refund an order (live) › agent: no refund button, and the API refuses the agent
+  18 passed

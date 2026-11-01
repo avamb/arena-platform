@@ -1,0 +1,3 @@
+--- PASS: TestOutboxLegs_DisabledGenericLegDoesNotBlockTheRest
+--- PASS: TestOutboxLegs_NoopGenericLegStays
+ok  	github.com/abhteam/arena_new/apps/backend/cmd/arena-worker	0.090s

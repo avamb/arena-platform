@@ -1,0 +1,7 @@
+--- PASS: TestGAQuota_SetQuantityVsGAHold_NoDeadlock
+--- PASS: TestPromoAttemptsRoutes_ReadOwnJournalAndStayInsideTheOrganization
+--- PASS: TestPublicFeedCheckout_ConcurrentSameNewBuyer_NoRaceAbortedTx
+--- PASS: TestPublicPromoBudget_ConcurrentWrongCodesCannotOvershoot
+--- PASS: TestPublicPromoBudget_ConcurrentWrongCodesOnStartCannotOvershoot
+--- PASS: TestPublicPromoBudget_AcceptedCodesLeaveTheBudgetWhole
+ok  	github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver	3.865s

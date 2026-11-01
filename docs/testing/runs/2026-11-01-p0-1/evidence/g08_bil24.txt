@@ -1,0 +1,4 @@
+--- PASS: TestCompatBil24_450_Harness_Scenarios
+--- PASS: TestCompatBil24_450_Harness_ScenarioCoverage
+--- PASS: TestCompatBil24_508_WPReceiverRoundTrip
+ok  	github.com/abhteam/arena_new/apps/backend/tests/compat/bil24	8.136s

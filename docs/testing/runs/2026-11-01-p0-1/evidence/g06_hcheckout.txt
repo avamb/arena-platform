@@ -1,0 +1,17 @@
+--- PASS: TestGAHoldDeadlockRace_LiveDB
+--- PASS: TestW1A5a_ConcurrentExtendShrink_GA_LiveDB
+--- PASS: TestW1A5a_ConcurrentExtend_SameSeats_LiveDB
+--- PASS: TestW1A5a_ShrinkToEmptyCancels_LiveDB
+--- PASS: TestW1A5a_RefreshHoldExpiry_LiveDB
+--- PASS: TestReservationExpireSweep_GAHold_ReleasesUnitsAndCapacity_LiveDB
+--- PASS: TestReservationExpireSweep_SeatedHold_ReleasesSeatsAndCapacity_LiveDB
+--- PASS: TestReservationExpireSweep_LeavesCancelledReservationsAlone_LiveDB
+--- PASS: TestW1A5a_HoldStateMutable_MatchesDomainStateMachine
+--- PASS: TestW1A5a_NotMutableError
+--- PASS: TestW1A5a_PricingSentinelDistinct
+--- PASS: TestW1A5a_HoldMutationInputNow
+--- PASS: TestW1A5a_MutationInputRequiresContent
+--- PASS: TestW1A5a_NilGuards
+--- PASS: TestW1A5a_RefreshHoldExpiryInputValidation
+--- PASS: TestW1A5a_ValidateGATiers
+ok  	github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout	6.824s
