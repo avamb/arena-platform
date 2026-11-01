@@ -9,7 +9,7 @@
  * `membership.read`, inviting is `membership.grant`, removing and revoking
  * are `membership.revoke`.
  */
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ConfirmPressDialog } from "@/components/ConfirmPressDialog";
 import { ErrorNotice } from "@/components/ErrorNotice";
@@ -33,6 +33,7 @@ import {
   type MemberState,
 } from "@/lib/team";
 import { roleKey } from "@/screens/OrgsScreen";
+import { useFlow } from "@/lib/analytics/hooks";
 import { useOrg } from "@/screens/OrgLayout";
 
 interface Notice {
@@ -58,10 +59,14 @@ function InviteForm({ orgId, onDone }: { orgId: string; onDone: (n: Notice) => v
   const [channel, setChannel] = useState<InviteChannel>("web");
   const [letterLocale, setLetterLocale] = useState<Locale>(locale);
   const [problem, setProblem] = useState<"email" | null>(null);
+  // Analytics (spec 50): the member_invite flow, steps only, never the address.
+  const flow = useFlow("member_invite");
+  useEffect(() => flow.mark("open"), [flow]);
 
   const invite = useMutation({
     mutationFn: () => inviteMember(orgId, { email: email.trim(), role, channel, locale: letterLocale }),
     onSuccess: async (res) => {
+      flow.mark("sent");
       const effective = res.invitation.role;
       const keptRole = effective !== role;
       onDone({
@@ -84,6 +89,7 @@ function InviteForm({ orgId, onDone }: { orgId: string; onDone: (n: Notice) => v
       return;
     }
     setProblem(null);
+    flow.mark("submit");
     invite.mutate();
   };
 

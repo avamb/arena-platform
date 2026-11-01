@@ -4,7 +4,7 @@
  * the placement, the label, and the utm labels behind a fold: left empty
  * they stay the server's defaults, exactly as the bot never asks for them.
  */
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createSalesLink } from "@/lib/api/endpoints";
@@ -16,6 +16,7 @@ import { ErrorNotice } from "@/components/ErrorNotice";
 import { SalesLinkTargetPicker, type TargetChoice } from "@/components/SalesLinkTargetPicker";
 import { NoLinksAccess } from "@/screens/LinksNoAccess";
 import { useOrg } from "@/screens/OrgLayout";
+import { useFlow } from "@/lib/analytics/hooks";
 
 interface Errors {
   target?: MessageKey;
@@ -93,10 +94,18 @@ function CreateForm() {
   const [label, setLabel] = useState("");
   const [utm, setUtm] = useState<Record<UtmKey, string>>({ utm_source: "", utm_medium: "", utm_campaign: "", utm_content: "", utm_term: "" });
   const [errors, setErrors] = useState<Errors>({});
+  // Analytics (spec 50): the sales_link_create flow.
+  const flow = useFlow("sales_link_create");
+  useEffect(() => flow.mark("open"), [flow]);
+  const targetChosen = targetComplete(choice.target);
+  useEffect(() => {
+    if (targetChosen) flow.mark("target");
+  }, [flow, targetChosen]);
 
   const create = useMutation({
     mutationFn: (body: Parameters<typeof createSalesLink>[1]) => createSalesLink(orgId, body),
     onSuccess: async (link) => {
+      flow.mark("created");
       await queryClient.invalidateQueries({ queryKey: ["salesLinks", orgId] });
       queryClient.setQueryData(["salesLink", orgId, link.id], link);
       await navigate({ to: "/o/$orgId/links/$linkId", params: { orgId, linkId: link.id }, search: { created: true } });
@@ -114,6 +123,7 @@ function CreateForm() {
     setErrors(next);
     if (next.target !== undefined || !lab.ok || !labels.ok || !targetComplete(choice.target)) return;
     create.reset();
+    flow.mark("submit");
     create.mutate({
       target: targetBody(choice.target),
       label: lab.value,

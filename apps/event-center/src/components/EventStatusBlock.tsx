@@ -42,12 +42,14 @@ export interface EventStatusBlockProps {
   canPublish: boolean;
   /** `event.delete` in the organization. */
   canDelete: boolean;
+  /** Called after a status move went through (analytics). */
+  onMoved?: (action: "publish" | "off" | "archive") => void;
 }
 
 type MoveAction = Exclude<StatusAction, "delete">;
 type Step = "none" | "off" | "archive" | "impact" | "word";
 
-export function EventStatusBlock({ orgId, eventId, eventName, status, canPublish, canDelete }: EventStatusBlockProps) {
+export function EventStatusBlock({ orgId, eventId, eventName, status, canPublish, canDelete, onMoved }: EventStatusBlockProps) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -77,6 +79,7 @@ export function EventStatusBlock({ orgId, eventId, eventName, status, canPublish
       throw error;
     }
     setDone(action);
+    onMoved?.(action);
     await reload();
   };
 

@@ -61,6 +61,7 @@ import {
   type ScannedRefusal,
 } from "@/lib/refunds";
 import { StepUpCancelled, withStepUp } from "@/lib/stepUp";
+import { useFlow } from "@/lib/analytics/hooks";
 
 export interface RefundOrderProps {
   orgId: string;
@@ -86,6 +87,8 @@ export function RefundOrder({ orgId, orderId, systemId, status, canCreate, canAp
   const queryClient = useQueryClient();
   const ids = useId();
   const heading = useRef<HTMLHeadingElement>(null);
+  // Analytics (spec 50): the refund flow. Every opening of the panel is a new attempt.
+  const flow = useFlow("refund");
 
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<Step>("pick");
@@ -147,6 +150,8 @@ export function RefundOrder({ orgId, orderId, systemId, status, canCreate, canAp
   };
 
   const openPanel = () => {
+    flow.reset();
+    flow.mark("open");
     setOpen(true);
     setResult(null);
     setFailure(null);
@@ -178,6 +183,7 @@ export function RefundOrder({ orgId, orderId, systemId, status, canCreate, canAp
 
   const finished = async (res: CreateOrderRefundsResponse) => {
     settled();
+    flow.mark("done");
     setResult(res);
     setUnknown(false);
     startOver();
@@ -261,6 +267,7 @@ export function RefundOrder({ orgId, orderId, systemId, status, canCreate, canAp
       return;
     }
     setProblem(null);
+    flow.mark("review");
     setPlan(p.value);
     setHeld(keyFor(held, p.value));
     setStep("final");
@@ -317,7 +324,10 @@ export function RefundOrder({ orgId, orderId, systemId, status, canCreate, canAp
               canApprove={canApprove}
               onContinue={() => toFinal(options.data as OrderRefundOptions)}
               onBack={() => setStep("pick")}
-              onGo={() => setWordOpen(true)}
+              onGo={() => {
+                flow.mark("confirm");
+                setWordOpen(true);
+              }}
               money={money}
             />
           ) : null}

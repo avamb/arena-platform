@@ -25,12 +25,14 @@
 #   VITE_API_BASE_URL  — backend API base URL (required; no trailing slash)
 #   VITE_ENABLE_SOURCEMAPS — set to "true" to generate .map files (CI only)
 #   VITE_FEATURE_WIZARD — "1" (the default) shows "Create event"; "0" is the rollback
+#   VITE_ANALYTICS — "1" sends screen and step events to POST /v1/me/t (spec 50); "0" (the default) sends nothing
 #
 # ============================================================
 
 ARG VITE_API_BASE_URL
 ARG VITE_ENABLE_SOURCEMAPS=false
 ARG VITE_FEATURE_WIZARD=1
+ARG VITE_ANALYTICS=0
 
 # ---- Stage 1: build ----
 FROM node:20-alpine AS build
@@ -61,6 +63,10 @@ RUN npm --prefix /rich-editor run build
 COPY apps/widget/src/types.ts /widget/src/types.ts
 COPY apps/widget/src/lib/pan-zoom.ts apps/widget/src/lib/svg-sanitize.ts apps/widget/src/lib/consent.ts apps/widget/src/lib/consentI18n.ts /widget/src/lib/
 
+# The shared analytics tracker (spec 50, 4.1): one TypeScript source, imported through the @arena-track alias,
+# which from /app is /packages/arena-track/src.
+COPY packages/arena-track/src/index.ts /packages/arena-track/src/index.ts
+
 # Copy the OpenAPI TypeScript declarations (type-only; needed by tsc).
 COPY apps/backend/openapi/clients/ts/ /openapi-clients/ts/
 
@@ -78,9 +84,11 @@ RUN mkdir -p ../backend/openapi/clients && \
 ARG VITE_API_BASE_URL
 ARG VITE_ENABLE_SOURCEMAPS=false
 ARG VITE_FEATURE_WIZARD=1
+ARG VITE_ANALYTICS=0
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV VITE_ENABLE_SOURCEMAPS=${VITE_ENABLE_SOURCEMAPS}
 ENV VITE_FEATURE_WIZARD=${VITE_FEATURE_WIZARD}
+ENV VITE_ANALYTICS=${VITE_ANALYTICS}
 
 RUN npm run build
 

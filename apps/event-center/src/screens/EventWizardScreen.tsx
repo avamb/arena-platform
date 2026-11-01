@@ -64,6 +64,8 @@ import { WizardEventSection } from "@/components/WizardEventSection";
 import { WizardVenueSection } from "@/components/WizardVenueSection";
 import { WizardSeatingSection } from "@/components/WizardSeatingSection";
 import { useOrg } from "@/screens/OrgLayout";
+import { useFlow } from "@/lib/analytics/hooks";
+import { wizardStepOfField } from "@/lib/analytics/flows";
 
 /** What the Create button shows after a press. */
 type SaveView =
@@ -173,7 +175,16 @@ function Wizard() {
       aliveRef.current = false;
     };
   }, []);
-  const touch = useCallback((field: string) => setTouched((s) => (s.has(field) ? s : new Set(s).add(field))), []);
+  // Analytics (spec 50): the first work in a section is the step of the event_create flow.
+  const flow = useFlow("event_create");
+  useEffect(() => flow.mark("started"), [flow]);
+  const touch = useCallback(
+    (field: string) => {
+      flow.mark(wizardStepOfField(field));
+      setTouched((s) => (s.has(field) ? s : new Set(s).add(field)));
+    },
+    [flow],
+  );
   useEffect(() => saveDraft(orgId, draft), [orgId, draft]);
 
   const { state, request, retry } = useBundleCheck(orgId);
@@ -290,6 +301,12 @@ function Wizard() {
   const posterDecided = posterStepSettled(posterCan, draft.posterDecision);
   const canCreate =
     checkSettled && nothingWrong && blockers.length === 0 && !saving && !created && !posterUnsettled && posterDecided && !posterUploading;
+  useEffect(() => {
+    if (posterDecided && !blank) flow.mark("poster");
+  }, [flow, posterDecided, blank]);
+  useEffect(() => {
+    if (canCreate) flow.mark("checked");
+  }, [flow, canCreate]);
   let createHint: string | null = null;
   if (blockers[0] === "oneDate") createHint = t("wizard.create.hint.oneDate");
   else if (blockers[0] === "existingVenue") createHint = t("wizard.create.hint.existingVenue");
@@ -302,6 +319,7 @@ function Wizard() {
   const onCreate = async () => {
     // A double click, or a click while the answer is awaited, never makes a second POST or upload.
     if (!canCreate || saver.inFlight() || posterBusyRef.current) return;
+    flow.mark("submit");
     posterBusyRef.current = true;
     const sent = draft;
     const chosen = picker.state.phase === "ready" ? picker.state : null;
@@ -336,6 +354,7 @@ function Wizard() {
       return;
     }
     if (result.kind === "done") {
+      flow.mark("created");
       setSaveView({ phase: "saved" });
       clearDraftIfSaved(orgId, sent.id);
       await queryClient.invalidateQueries({ queryKey: ["events", orgId] });
