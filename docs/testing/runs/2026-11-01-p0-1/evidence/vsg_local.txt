@@ -1,0 +1,9 @@
+pytest (python:3.12-slim, Python 3.12.15):
+SKIPPED [3] xlsx_seating_adapter/tests/test_adapter.py: needs private client data that is not in the repository
+SKIPPED [5] seating_svg_renderer/tests/test_renderer.py: needs private client data that is not in the repository
+SKIPPED [1] m1_product/tests/test_m1_product.py:142: real fixtures unavailable: set M1_HUNTER_XLSX and M1_ARIBAU_XLSX
+SKIPPED [1] independent_evaluation/test_reference_evaluator.py: needs private client data that is not in the repository
+48 passed, 10 skipped, 1 warning in 6.49s
+docker build EXIT:0
+smoke CLI 'python -m m1_product --help' EXIT:0, first line: usage: m1_product [-h] {pack} ...
+smoke HTTP GET /healthz: {"status":"ok"}

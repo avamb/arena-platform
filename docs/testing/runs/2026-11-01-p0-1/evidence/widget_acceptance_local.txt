@@ -1,0 +1,26 @@
+  ok  1 [chromium] › tests\palac-promo-real.e2e.ts:65:3 › promo code — real backend › the feed tells the widget the organization has a usable code
+  ok  3 [chromium] › tests\palac-promo-real.e2e.ts:74:3 › promo code — real backend › the quote holds nothing and the sheet total is the stored checkout total
+  ok  4 [chromium] › tests\palac-promo-real.e2e.ts:142:3 › promo code — real backend › a code that does not fit gets the one neutral answer and changes nothing
+  ok  2 [chromium] › tests\palac-akropolis-real.e2e.ts:128:3 › 1 — Cold load: Moto G / Fast 3G › seat map becomes interactive within 5 s on simulated Fast 3G
+  ok  5 [chromium] › tests\palac-promo-real.e2e.ts:161:3 › promo code — real backend › an order below the code minimum says so
+  ok  6 [chromium] › tests\palac-akropolis-real.e2e.ts:173:3 › 1 — Cold load: Moto G / Fast 3G › JS bundle size is ≤ 600 KB raw (proxy for gzip gate)
+  ok  7 [chromium] › tests\palac-akropolis-real.e2e.ts:205:3 › 2 — Real schema: 260 seats from backend › renders 260 seat circles from REAL backend data
+  ok  8 [chromium] › tests\palac-akropolis-real.e2e.ts:219:3 › 2 — Real schema: 260 seats from backend › GA category "Galérie" served by the real schema (AB-40)
+  ok  9 [chromium] › tests\palac-akropolis-real.e2e.ts:273:3 › 2 — Real schema: 260 seats from backend › no JS console errors on initial load
+  ok 10 [chromium] › tests\palac-akropolis-real.e2e.ts:292:3 › 2 — Real schema: 260 seats from backend › schema is never cached: no-store, no ETag, a repeat request gets the full body
+  ok 11 [chromium] › tests\palac-akropolis-real.e2e.ts:338:3 › 3 — Concurrent 409 from second browser context (REAL) › ctx2 checkout/start returns 409 after ctx1 holds B01+B02
+  ok 12 [chromium] › tests\palac-akropolis-real.e2e.ts:418:3 › 3 — Concurrent 409 from second browser context (REAL) › ctx2 409 response carries nested error envelope with conflictKeys (WID-S2)
+  ok 13 [chromium] › tests\palac-akropolis-real.e2e.ts:517:3 › 4 — Checkout start contract (real backend) › POST checkout/start returns 201 with redirect_url, checkout_token, expires_at
+  ok 14 [chromium] › tests\palac-akropolis-real.e2e.ts:575:3 › 4 — Checkout start contract (real backend) › GET checkout/{token} returns status in [pending, created] and a payment_url before payment
+  -  15 [chromium] › tests\palac-akropolis-real.e2e.ts:616:3 › 4 — Checkout start contract (real backend) › full Stripe purchase — skipped without STRIPE_TEST_KEY
+  ok 16 [chromium] › tests\palac-akropolis-real.e2e.ts:638:3 › 5 — Hold expiry recovery (real backend) › POST /v1/public/checkout/{token}/recover returns 200 or 400/404
+  ok 17 [chromium] › tests\palac-akropolis-real.e2e.ts:673:3 › 5 — Hold expiry recovery (real backend) › GET checkout/{freshToken}/status shape — status is string, checkout_session_id present
+  ok 18 [chromium] › tests\palac-akropolis-real.e2e.ts:710:3 › 6 — A11y: axe WCAG 2.2 AA on POPULATED real map › axe scan — no critical/serious WCAG 2.2 AA violations
+  ok 19 [chromium] › tests\palac-akropolis-real.e2e.ts:725:3 › 6 — A11y: axe WCAG 2.2 AA on POPULATED real map › #widget-hybrid-he has dir=rtl in shadow root
+  ok 20 [chromium] › tests\palac-akropolis-real.e2e.ts:736:3 › 6 — A11y: axe WCAG 2.2 AA on POPULATED real map › #widget-hybrid-en has dir=ltr in shadow root
+  ok 21 [chromium] › tests\palac-akropolis-real.e2e.ts:747:3 › 6 — A11y: axe WCAG 2.2 AA on POPULATED real map › seat map container has the WID-T5 composite role and aria-label
+  ok 22 [chromium] › tests\palac-akropolis-real.e2e.ts:774:3 › 7 — API contract shapes (real backend) › schema response has session_id, geometry with sections array, category_prices with tier_id and price_amount
+  ok 23 [chromium] › tests\palac-akropolis-real.e2e.ts:799:3 › 7 — API contract shapes (real backend) › seat-status response has session_id, status_version (number), seats (object), delta (boolean)
+  ok 24 [chromium] › tests\palac-akropolis-real.e2e.ts:816:3 › 7 — API contract shapes (real backend) › all seat statuses from seat-status are valid
+  1 skipped
+  23 passed

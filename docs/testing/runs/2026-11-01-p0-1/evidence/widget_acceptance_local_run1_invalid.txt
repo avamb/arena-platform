@@ -1,0 +1,7 @@
+  x  13 [chromium] › tests\palac-akropolis-real.e2e.ts:517:3 › 4 — Checkout start contract (real backend) › POST checkout/start returns 201 with redirect_url, checkout_token, expires_at
+  x  14 [chromium] › tests\palac-akropolis-real.e2e.ts:575:3 › 4 — Checkout start contract (real backend) › GET checkout/{token} returns status in [pending, created] and a payment_url before payment
+    Error: redirect_url must point at the payment provider (http://localhost:12111), got: http://localhost:12211/pay/cs_test_…
+    Error: payment_url must point at the payment provider (http://localhost:12111)
+  2 failed
+  1 skipped
+  21 passed
