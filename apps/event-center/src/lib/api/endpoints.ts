@@ -64,6 +64,8 @@ import type {
   SalesLinkUpdateRequest,
   SessionChangeImpact,
   SessionEnvelope,
+  SessionSalesState,
+  SessionSalesStateHistory,
   SessionListResponse,
   SessionSummary,
   TicketTierEnvelope,
@@ -663,6 +665,36 @@ export function deleteEvent(orgId: string, eventId: string): Promise<unknown> {
 // 5-3: the sales end and doors-open time of a session. One PATCH names ONE
 // of the two (the body builders are in lib/saleTimes.ts). No journal row and
 // no letter: neither time is a buyer-visible change.
+/** The session's sales state, its places and the delivery of its latest change to the sites. */
+export function getSessionSalesState(orgId: string, sessionId: string): Promise<SessionSalesState> {
+  return call<SessionSalesState>({ route: API.sessionSalesState, params: { org_id: orgId, session_id: sessionId } });
+}
+
+/**
+ * Sets "soon" or "sold_out" for every channel, or lifts the state with "open".
+ * Reversible and no letter goes out, so the screen asks with one press.
+ */
+export function setSessionSalesState(
+  orgId: string,
+  sessionId: string,
+  state: "open" | "soon" | "sold_out",
+): Promise<SessionSalesState> {
+  return call<SessionSalesState>({
+    route: API.sessionSalesStateSet,
+    params: { org_id: orgId, session_id: sessionId },
+    body: { state },
+  });
+}
+
+/** Who switched the sales state and when, newest first. */
+export function listSessionSalesStateHistory(orgId: string, sessionId: string): Promise<SessionSalesStateHistory> {
+  return call<SessionSalesStateHistory>({
+    route: API.sessionSalesStateHistory,
+    params: { org_id: orgId, session_id: sessionId },
+    query: { limit: 10 },
+  });
+}
+
 export function updateSessionSaleTimes(
   orgId: string,
   eventId: string,

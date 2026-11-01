@@ -102,6 +102,9 @@ func TestBotE2E_SessionsMoveKeepsTheSessionAndWritesToBuyers(t *testing.T) {
 			{`DELETE FROM reservations WHERE id = $1`, []any{resID}},
 			{`DELETE FROM sales_channels WHERE id = $1`, []any{chanID}},
 			{`DELETE FROM inventory_ledger WHERE session_id = $1`, []any{sessionID}},
+			{`DELETE FROM session_sales_state_changes WHERE session_id = $1`, []any{sessionID}},
+			{`DELETE FROM session_sales_states WHERE session_id = $1`, []any{sessionID}},
+			{`DELETE FROM outbox_events WHERE aggregate_id = $1::text`, []any{eventID}},
 			{`DELETE FROM sessions WHERE id = $1`, []any{sessionID}},
 			{`DELETE FROM events WHERE id = $1`, []any{eventID}},
 			{`DELETE FROM venues WHERE id = $1`, []any{venueID}},
@@ -246,6 +249,34 @@ func TestBotE2E_SessionsMoveKeepsTheSessionAndWritesToBuyers(t *testing.T) {
 	_ = pool.QueryRow(ctx, `SELECT count(*) FROM worker_jobs WHERE job_type = 'session.change_email' AND payload->>'order_id' = $1`, orderID.String()).Scan(&jobs)
 	if changes != 1 || jobs != 1 {
 		t.Fatalf("sale times wrote %d journal rows and %d letters, want 1 and 1 (the move's)", changes, jobs)
+	}
+
+	// The sales state (migration 0183): one confirmation press closes the sale
+	// in every channel and journals the bot as the client; "open" lifts it.
+	// The session has no places on sale, so without a state it reads "soon".
+	press("ses:list:"+eventID.String(), "Сеансы мероприятия")
+	card = press("ses:o:0", "Здесь можно перенести")
+	if !strings.Contains(card, "Продажи: ⏳ скоро в продаже") {
+		t.Fatalf("card lacks the sales state:\n%s", card)
+	}
+	press("ses:ss:sold_out", "Поставить «Распродано»?")
+	press("ses:ssgo", "Готово. Продажи: 🔴 распродано")
+	var manual, source, role string
+	if err := pool.QueryRow(ctx, `SELECT state FROM session_sales_states WHERE session_id = $1`, sessionID).Scan(&manual); err != nil || manual != "sold_out" {
+		t.Fatalf("stored state = %q (%v), want sold_out", manual, err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT source, actor_role FROM session_sales_state_changes WHERE session_id = $1 ORDER BY created_at DESC LIMIT 1`, sessionID).Scan(&source, &role); err != nil {
+		t.Fatal(err)
+	}
+	if source != "telegram_bot" || role != "organizer" {
+		t.Fatalf("journal = %s/%s, want telegram_bot/organizer", source, role)
+	}
+	press("ses:ss:open", "Открыть продажи?")
+	press("ses:ssgo", "Сейчас продажи: ⏳ скоро в продаже")
+	var left int
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM session_sales_states WHERE session_id = $1`, sessionID).Scan(&left)
+	if left != 0 {
+		t.Fatalf("the state survived \"open\": %d rows", left)
 	}
 
 	// Cancelling the whole event (one session, so the button is the session's

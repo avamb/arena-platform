@@ -48,6 +48,8 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		"Seats": 3, "Share": 40, "Changed": 2, "Same": 1,
 		// a hall plan sent from the wizard (plan_upload.go)
 		"Element": "e",
+		// the sales state of a session (sessions_sales_state.go)
+		"Free": 4, "Sites": 1, "Attempts": 2,
 	}
 	for _, loc := range SupportedLocales {
 		for _, key := range MessageKeys {
