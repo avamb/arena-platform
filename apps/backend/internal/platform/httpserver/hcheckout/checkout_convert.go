@@ -88,7 +88,18 @@ func ConvertReservationInTx(ctx context.Context, q *gen.Queries, reservationID u
 	if q == nil {
 		return nil
 	}
-	reservation, err := q.GetReservationByID(ctx, reservationID)
+	// Lock the reservation row before deciding anything. Duplicate
+	// checkout.convert_reservation jobs (a retry racing the first run, the
+	// inline webhook call racing the worker) used to read the state unlocked,
+	// both see 'active', and both move Quantity from held to sold: the loser
+	// either failed on ConfirmCapacity (held < quantity) or, with another
+	// reservation still holding places on the session, confirmed that other
+	// reservation's places a second time. Under the lock the second copy
+	// waits, then reads 'converted' and returns as an idempotent replay.
+	// Lock order matches the hold mutations (hold_mutation.go): reservation
+	// row, then the sessions row (sellReservationSeatsTx), then
+	// inventory_ledger (ConfirmCapacity).
+	reservation, err := q.LockReservationForUpdate(ctx, reservationID)
 	if err != nil {
 		return fmt.Errorf("convertReservationInTx: get reservation %s: %w", reservationID, err)
 	}
