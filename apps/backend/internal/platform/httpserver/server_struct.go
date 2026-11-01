@@ -30,6 +30,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ratelimit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/redissession"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesfunnel"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/textformat"
 )
 
@@ -89,6 +90,7 @@ type Server struct {
 	publicationQueries    *gen.Queries
 	publicFeedQueries     *gen.Queries
 	publicFeedRL          *publicFeedRateLimiter
+	funnelDedupe          salesfunnel.Deduper    // duplicate filter of POST /v1/public/funnel, one per process
 	shortLinks            *hgo.Handler           // GET /go/{code}, one per process (mount_go.go)
 	brevoWebhookRL        *publicFeedRateLimiter // per-IP limit of the Brevo delivery-status webhook
 	sessionQueries        *gen.Queries

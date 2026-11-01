@@ -148,6 +148,12 @@ export function EventScreen() {
             {t("event.orders")}
           </Link>
         )}
+        {/* A7: how far buyers got, from the first look to the payment. */}
+        {access.can("report.read") && (
+          <Link to="/o/$orgId/events/$eventId/funnel" params={{ orgId, eventId }} className="btn" data-testid="event-funnel-link">
+            {t("funnel.button")}
+          </Link>
+        )}
         {/* QL-12: a short link and QR code that lead to this event. */}
         {access.can("sales_link.manage") && (
           <Link to="/o/$orgId/links/new" params={{ orgId }} search={{ event: eventId }} className="btn" data-testid="event-qr-link">

@@ -26,6 +26,7 @@ Replace `YOUR_FEED_TOKEN` with the feed token obtained from the Arena platform.
 | `session-id`  | No       | —       | Pre-select a specific session. When omitted the user sees a session picker. |
 | `locale`      | No       | `en`    | UI locale. Supported: `en`, `ru`, `cs`, `he`. |
 | `materials`   | No       | shown   | `hidden` drops the event's photos, videos, map, "where else to buy" links and photo report. Anything else (or absent) shows them whenever the event has any. |
+| `funnel`      | No       | `widget` | Only for pages Arena hosts: `hosted_page` or `tickets_page` files the widget's anonymous funnel counters (event shown, session opened, seats chosen) under that page. Leave it off on your own site. The counters hold no cookie, no storage and no visitor data. |
 
 ---
 

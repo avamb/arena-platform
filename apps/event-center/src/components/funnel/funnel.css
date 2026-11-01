@@ -1,0 +1,60 @@
+/* The sales funnel screen (spec 50, A7). Local to the screen: nothing here is reused. */
+.funnel-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0 1rem;
+  align-items: end;
+  margin-block-end: 1rem;
+}
+
+.funnel-filters input,
+.funnel-filters select {
+  width: 100%;
+}
+
+.funnel-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block-end: 1rem;
+}
+
+.funnel-steps {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.funnel-step {
+  display: grid;
+  grid-template-columns: minmax(8rem, 12rem) 1fr;
+  gap: 0.25rem 1rem;
+  align-items: center;
+}
+
+.funnel-step-name {
+  font-weight: 600;
+}
+
+.funnel-step progress {
+  width: 100%;
+  height: 0.9rem;
+}
+
+.funnel-step-figures {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+
+@media (max-width: 36rem) {
+  .funnel-step {
+    grid-template-columns: 1fr;
+  }
+  .funnel-step-figures {
+    grid-column: 1;
+  }
+}

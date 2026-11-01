@@ -296,6 +296,9 @@ export function renderEvent(
   // The page itself draws the gallery, videos, map, other sellers and the
   // photo report below (renderMaterials); the widget must not repeat them.
   widget.setAttribute('materials', 'hidden');
+  // Buyer funnel (spec 50 A7): the page counted the view itself (main.ts), the
+  // widget sends session_open and seats_chosen under the same surface.
+  widget.setAttribute('funnel', 'hosted_page');
   widget.setAttribute('locale', toWidgetLocale(locale));
   if (options.apiBase) {
     widget.setAttribute('api-base', options.apiBase);
@@ -693,6 +696,9 @@ function mountTicketPicker(
   widget.setAttribute('frame', 'hidden');
   // A catalog/promoter card is only a picker; its event page shows the materials.
   widget.setAttribute('materials', 'hidden');
+  // Buyer funnel (spec 50 A7): a card is the only thing that knows its event was
+  // opened, so the widget counts every step under the promoter page's surface.
+  widget.setAttribute('funnel', 'tickets_page');
   widget.setAttribute('locale', toWidgetLocale(locale));
   if (options.apiBase) {
     widget.setAttribute('api-base', options.apiBase);

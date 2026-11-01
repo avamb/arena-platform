@@ -11,6 +11,7 @@
       sessions: { type: 'String', attribute: 'sessions' },
       frame: { type: 'String', attribute: 'frame' },
       materials: { type: 'String', attribute: 'materials' },
+      funnel: { type: 'String', attribute: 'funnel' },
     },
   }}
 />
@@ -38,6 +39,7 @@
   import { buildTierColorMap } from './lib/seatmap-render.js';
   import { consentErrorMessage, consentPayload, forceConsent } from './lib/consent.js';
   import { captureAttribution, type AttributionPayload } from './lib/attribution.js';
+  import { createFunnel, parseFunnelSurface, type Funnel, type FunnelStep } from './lib/funnel.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
   import {
@@ -113,9 +115,14 @@
      * the buyer does not see everything twice. Anything else (or absent)
      * shows the block whenever the event has any material. */
     materials?: string;
+    /** Where this widget sits, for the buyer funnel (spec 50 A7): 'hosted_page'
+     * inside the hosted event page (the page counts the view itself),
+     * 'tickets_page' inside a promoter-page card, anything else (or absent) a
+     * plain embed. Only decides what the anonymous step counters are filed under. */
+    funnel?: string;
   }
 
-  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '', materials = '' }: Props = $props();
+  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '', materials = '', funnel = '' }: Props = $props();
 
   /**
    * Host element reference for CustomEvent dispatch (WID-S5).
@@ -259,6 +266,21 @@
   // Spec 43: the sales link / utm touch that brought the buyer, read from the
   // page address on mount (kept 7 days per feed token). Sent with checkout/start.
   let attribution: AttributionPayload | null = null;
+  // Spec 50 A7: the anonymous buyer-funnel beacon (view, session_open,
+  // seats_chosen). It reads its utm from the same stored touch as the checkout.
+  // Built on first use, when the props are known; a step is sent once per
+  // event and session. Fire-and-forget: never blocks or breaks the buyer.
+  let funnelBeacon: Funnel | null = null;
+  function sendFunnel(step: FunnelStep, sessionId?: string): void {
+    if (!event) return;
+    funnelBeacon ??= createFunnel({
+      apiBase: resolvedApiBase,
+      feedToken: normFeedToken,
+      surface: parseFunnelSurface(funnel),
+      touch: () => attribution,
+    });
+    funnelBeacon.track(step, event.id, sessionId);
+  }
   /** Why the last tap on a seat was refused (the order is at the seat cap), or null. */
   let cartLimitNotice = $state<string | null>(null);
   /**
@@ -295,6 +317,12 @@
   const effectiveCart = $derived({ ...cart, expiresAt: holdExpiresAt });
 
   const cartCount = $derived(totalSelectionCount(selectedSeatKeys, gaQuantities));
+
+  // Spec 50 A7: seats or tickets were put in the cart (once per session).
+  $effect(() => {
+    const sid = selectedSession?.id;
+    if (cartCount > 0 && sid) untrack(() => sendFunnel('seats_chosen', sid));
+  });
 
   // ── Promo code ─────────────────────────────────────────────────────────────
   //
@@ -453,6 +481,12 @@
   function applyFeedEvent(data: import('./types.js').FeedEventDetailResponse): void {
     event = data.event;
     selectedSession = pickInitialSession(data.event, normSessionId);
+    // Spec 50 A7: the event was shown. A single-session event or a deep-linked
+    // date shows its seat map at once, which is an opened session.
+    sendFunnel('view');
+    if (selectedSession && (data.event.sessions.length === 1 || selectedSession.id === normSessionId)) {
+      sendFunnel('session_open', selectedSession.id);
+    }
   }
 
   /**
@@ -981,6 +1015,8 @@
               gaAreas = [];
             }
             selectedSession = s;
+            // Spec 50 A7: the buyer opened a session.
+            if (s) sendFunnel('session_open', s.id);
           }}
         />
         {/if}

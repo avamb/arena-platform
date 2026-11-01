@@ -75,6 +75,45 @@ export function sendTrack(ctx: TrackContext, kind: TrackKind, fetchImpl: typeof 
   }
 }
 
+/**
+ * The buyer funnel's first step (spec 50, stage A7): the hosted event page was
+ * shown. The same anonymous, cookie-less, storage-less beacon as above, to
+ * POST /v1/public/funnel, naming the event by its address. The widget inside
+ * the page sends the later steps (session_open, seats_chosen) itself, filed
+ * under the same surface because it carries funnel="hosted_page".
+ */
+export function funnelViewBody(ctx: Pick<TrackContext, 'slug' | 'eventSlug' | 'search'>): string {
+  return JSON.stringify({
+    page: { slug: ctx.slug, event_slug: ctx.eventSlug },
+    step: 'view',
+    surface: 'hosted_page',
+    ...utmFromSearch(ctx.search),
+  });
+}
+
+/** The funnel beacon URL. */
+export function funnelURL(ctx: Pick<TrackContext, 'apiBase'>): string {
+  return `${ctx.apiBase.replace(/\/+$/, '')}/v1/public/funnel`;
+}
+
+/** Sends the funnel's `view` step. Silent on any failure, like every beacon here. */
+export function trackFunnelView(ctx: TrackContext, fetchImpl: typeof fetch = fetch): void {
+  try {
+    void fetchImpl(funnelURL(ctx), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: funnelViewBody(ctx),
+      keepalive: true,
+      credentials: 'omit',
+      mode: 'cors',
+    }).catch(() => {
+      /* counting is best effort */
+    });
+  } catch {
+    /* an old browser without fetch, a blocked request: nothing to do */
+  }
+}
+
 /** The event page was shown. Called once from main.ts. */
 export function trackPageView(ctx: TrackContext): void {
   sendTrack(ctx, 'page_view');
