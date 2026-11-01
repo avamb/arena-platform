@@ -183,9 +183,16 @@ func buildRow(ev Event) (row, bool) {
 	if err != nil {
 		return row{}, false
 	}
+	// Whatever the caller says, the stored time is inside [now - 24 h, now]:
+	// a monthly partition exists for it, so a stray clock can never fail a
+	// whole COPY batch.
+	now := time.Now()
 	at := ev.At
-	if at.IsZero() {
-		at = time.Now()
+	if at.IsZero() || at.After(now) {
+		at = now
+	}
+	if at.Before(now.Add(-24 * time.Hour)) {
+		at = now
 	}
 	var org any
 	if ev.OrgID != nil && *ev.OrgID != uuid.Nil {

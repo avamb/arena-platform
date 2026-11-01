@@ -406,3 +406,67 @@ func TestSite_ClientCannotSetEmailClickAID(t *testing.T) {
 		t.Error("client email_click accepted by the dictionary")
 	}
 }
+
+func TestBatchTimes_SpreadLimitedToAnHourAndInsideTheDay(t *testing.T) {
+	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	got := batchTimes([]batchEvent{
+		{At: "2026-11-01T11:59:00Z"},
+		{At: "2026-11-01T10:30:00Z"}, // 89 minutes older than the newest: no longer trusted
+		{At: "2026-11-01T11:00:00Z"}, // exactly an hour older: kept
+		{At: "2026-11-02T11:00:00Z"}, // 23 h ahead of the server: valid skew, still never in the future
+	}, now)
+	if !got[1].Equal(now) {
+		t.Errorf("event over an hour older than the batch's newest = %v, want server time", got[1])
+	}
+	for i, ts := range got {
+		if ts.After(now) || ts.Before(now.Add(-24*time.Hour)) {
+			t.Errorf("event %d = %v is outside [now-24h, now]", i, ts)
+		}
+	}
+	if !got[3].Equal(now) {
+		t.Errorf("newest = %v, want server time", got[3])
+	}
+}
+
+// flakyCodes fails its first lookups, then knows the code.
+type flakyCodes struct {
+	mu       sync.Mutex
+	failures int
+}
+
+func (f *flakyCodes) ContactCodeExists(context.Context, string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.failures > 0 {
+		f.failures--
+		return false, errors.New("db down")
+	}
+	return true, nil
+}
+
+func TestSite_LookupErrorDoesNotBlockTheClickAndRandomCodesAreNotRemembered(t *testing.T) {
+	rec := &recorder{}
+	h := New(Options{Tracker: rec, Codes: &flakyCodes{failures: 1}})
+	body := `{"cid":"x7k2qpm3ab","pv":"p_Q9abcdef","events":[{"name":"page_view","props":{"path":"/"}}]}`
+	h.HandleSite(httptest.NewRecorder(), mustReq(body))
+	h.HandleSite(httptest.NewRecorder(), mustReq(body))
+	clicks := 0
+	for _, e := range rec.list() {
+		if e.Name == "email_click" {
+			clicks++
+		}
+	}
+	if clicks != 1 {
+		t.Fatalf("clicks = %d: a failed lookup must not block the next send, and the second success is written once", clicks)
+	}
+
+	// Unknown codes are never remembered, whatever their number.
+	h2 := New(Options{Tracker: &recorder{}, Codes: fakeCodes{}, SiteLimit: 100000})
+	for i := 0; i < 500; i++ {
+		b := fmt.Sprintf(`{"cid":"zz%06d","pv":"p_Q9abcdef","events":[{"name":"page_view"}]}`, i)
+		h2.HandleSite(httptest.NewRecorder(), mustReq(b))
+	}
+	if n := len(h2.clickSeen); n != 0 {
+		t.Errorf("%d unknown codes were remembered", n)
+	}
+}

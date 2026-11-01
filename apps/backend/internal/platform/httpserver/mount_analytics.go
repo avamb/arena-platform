@@ -9,6 +9,7 @@ package httpserver
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -28,10 +29,14 @@ func (p pgContactCodes) ContactCodeExists(ctx context.Context, code string) (boo
 	return ok, err
 }
 
-// analyticsWriter returns the process-wide Writer, or nil without a database
-// (a nil Writer is a safe no-op).
+// analyticsWriter returns the process-wide Writer, built on first use so a
+// server that never receives an analytics batch never starts its flusher
+// goroutine. It is nil without a database or after shutdown (a nil Writer is a
+// safe no-op).
 func (s *Server) analyticsWriter() *analytics.Writer {
-	if s.analytics != nil || s.pgxPool == nil {
+	s.analyticsMu.Lock()
+	defer s.analyticsMu.Unlock()
+	if s.analytics != nil || s.pgxPool == nil || s.analyticsClosed {
 		return s.analytics
 	}
 	o := analytics.Options{DB: s.pgxPool, Logger: s.logger}
@@ -41,6 +46,29 @@ func (s *Server) analyticsWriter() *analytics.Writer {
 	}
 	s.analytics = analytics.NewWriter(o)
 	return s.analytics
+}
+
+// lazyTracker hands events to the Writer, building it at the first one.
+type lazyTracker struct{ s *Server }
+
+func (l lazyTracker) Track(ctx context.Context, ev analytics.Event) {
+	l.s.analyticsWriter().Track(ctx, ev)
+}
+
+// analyticsFlushBudget is how long shutdown waits for the buffered events. It
+// is its own deadline: the shutdown context may already be spent by draining
+// requests, and the events of those last requests are worth a few seconds.
+const analyticsFlushBudget = 5 * time.Second
+
+// closeAnalytics flushes and stops the Writer. Safe when there is none.
+func (s *Server) closeAnalytics(parent context.Context) error {
+	s.analyticsMu.Lock()
+	w := s.analytics
+	s.analyticsClosed = true
+	s.analyticsMu.Unlock()
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), analyticsFlushBudget)
+	defer cancel()
+	return w.Close(ctx)
 }
 
 // analyticsOrgAccess decides whether the signed-in caller may attach orgID to
@@ -60,12 +88,9 @@ func (s *Server) analyticsOrgAccess(ctx context.Context, orgID uuid.UUID) (bool,
 }
 
 func (s *Server) mountAnalyticsRoutes(r chi.Router) {
-	opts := hanalytics.Options{Logger: s.logger, OrgAccess: s.analyticsOrgAccess}
-	if w := s.analyticsWriter(); w != nil {
-		opts.Tracker = w
+	opts := hanalytics.Options{Logger: s.logger, OrgAccess: s.analyticsOrgAccess, Tracker: lazyTracker{s: s}}
+	if s.pgxPool != nil {
 		opts.Codes = pgContactCodes{s: s}
-	} else {
-		opts.Tracker = (*analytics.Writer)(nil)
 	}
 	h := hanalytics.New(opts)
 	r.Post("/t", h.HandleSite)

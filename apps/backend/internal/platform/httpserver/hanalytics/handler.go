@@ -41,11 +41,13 @@ import (
 
 // Limits of the receivers (spec 50 section 4.2).
 const (
-	MaxBodyBytes     = 16 * 1024
-	MaxEvents        = 50
-	SiteIPPerMinute  = 120
-	UserPerMinute    = 300
-	maxClientSkew    = 24 * time.Hour
+	MaxBodyBytes    = 16 * 1024
+	MaxEvents       = 50
+	SiteIPPerMinute = 120
+	UserPerMinute   = 300
+	maxClientSkew   = 24 * time.Hour
+	// MaxBatchSpread is how far apart in time the events of one batch may be.
+	MaxBatchSpread   = time.Hour
 	codeLookupBudget = 500 * time.Millisecond
 	pruneEvery       = 2000
 )
@@ -261,21 +263,28 @@ func (h *Handler) trackEmailClick(ctx context.Context, b batch, idKind, idValue 
 	if h.codes == nil || !cidRe.MatchString(b.CID) {
 		return
 	}
-	// One email_click per (cid, pv): the site resends the cid together with
-	// the aid right after the visitor accepts consent on the same page. That
-	// second send is the one that carries the pair, so it is written once more
-	// (an aid-less click never blocks it, an aid-bearing one is never repeated).
-	if !h.firstClick(b.CID, b.PV, idKind == analytics.IDKindAID) {
+	withAID := idKind == analytics.IDKindAID
+	// Already written for this (cid, pv)? Only a verified code is ever
+	// remembered, so this needs no lookup.
+	if h.clickDone(b.CID, b.PV, withAID) {
 		return
 	}
 	lctx, cancel := context.WithTimeout(ctx, codeLookupBudget)
 	defer cancel()
 	ok, err := h.codes.ContactCodeExists(lctx, b.CID)
 	if err != nil {
+		// Not remembered: a database hiccup must not block the click for a day.
 		h.log.Warn("analytics: contact code lookup failed", slog.String("error", err.Error()))
 		return
 	}
 	if !ok {
+		return
+	}
+	// One email_click per (cid, pv): the site resends the cid together with
+	// the aid right after the visitor accepts consent on the same page. That
+	// second send is the one that carries the pair, so it is written once more
+	// (an aid-less click never blocks it, an aid-bearing one is never repeated).
+	if !h.rememberClick(b.CID, b.PV, withAID) {
 		return
 	}
 	props := map[string]any{}
@@ -302,8 +311,10 @@ func (h *Handler) trackEmailClick(ctx context.Context, b batch, idKind, idValue 
 
 // batchTimes gives every event the server time minus how much older it is
 // than the newest client time of the batch. A client time more than a day
-// from the server's (or unparsable) is discarded and the event gets the
-// server time.
+// from the server's, unparsable, or more than MaxBatchSpread older than the
+// batch's newest event is discarded and the event gets the server time. The
+// result is always inside [now - 24 h, now], so it falls in a partition that
+// exists whatever the client's clock says.
 func batchTimes(events []batchEvent, now time.Time) []time.Time {
 	client := make([]time.Time, len(events))
 	var newest time.Time
@@ -323,16 +334,43 @@ func batchTimes(events []batchEvent, now time.Time) []time.Time {
 	out := make([]time.Time, len(events))
 	for i := range events {
 		out[i] = now
-		if !client[i].IsZero() {
-			out[i] = now.Add(-newest.Sub(client[i]))
+		if client[i].IsZero() {
+			continue
 		}
+		offset := newest.Sub(client[i])
+		if offset > MaxBatchSpread {
+			continue
+		}
+		out[i] = clampTime(now.Add(-offset), now.Add(-maxClientSkew), now)
 	}
 	return out
 }
 
-// firstClick reports whether an email_click for (cid, pv) should be written
-// now, and remembers it. The memory is per process and bounded.
-func (h *Handler) firstClick(cid, pv string, withAID bool) bool {
+func clampTime(t, lo, hi time.Time) time.Time {
+	if t.Before(lo) {
+		return lo
+	}
+	if t.After(hi) {
+		return hi
+	}
+	return t
+}
+
+// clickDone reports whether an email_click that covers this send was already
+// written: the same (cid, pv) seen within the TTL, with an aid when this send
+// has one.
+func (h *Handler) clickDone(cid, pv string, withAID bool) bool {
+	h.clickMu.Lock()
+	defer h.clickMu.Unlock()
+	prev, ok := h.clickSeen[cid+"|"+pv]
+	return ok && h.now().Sub(prev.at) < clickSeenTTL && (prev.withAID || !withAID)
+}
+
+// rememberClick records a click about to be written for a VERIFIED code and
+// reports whether to write it (false: a concurrent request just did). The
+// memory is per process and bounded: when it is full of live entries a new
+// pair is written without being remembered, the map is never flushed.
+func (h *Handler) rememberClick(cid, pv string, withAID bool) bool {
 	key := cid + "|" + pv
 	now := h.now()
 	h.clickMu.Lock()
@@ -347,7 +385,7 @@ func (h *Handler) firstClick(cid, pv string, withAID bool) bool {
 			}
 		}
 		if len(h.clickSeen) >= clickSeenMax {
-			h.clickSeen = map[string]clickSeen{}
+			return true
 		}
 	}
 	h.clickSeen[key] = clickSeen{withAID: withAID, at: now}
