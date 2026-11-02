@@ -37,6 +37,7 @@
   import { pausedSalesState } from './lib/saleSubscribe.js';
   import { buildTierColorMap } from './lib/seatmap-render.js';
   import { consentErrorMessage, consentPayload, forceConsent } from './lib/consent.js';
+  import { MARKETING_DISCOUNT_USED_CODE, marketingErrorMessage, marketingPayload } from './lib/marketing.js';
   import { captureAttribution, type AttributionPayload } from './lib/attribution.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
@@ -256,6 +257,9 @@
   // session did not ask for it (the switch was turned on after the page
   // loaded). The checkbox is shown for it instead of a dead end.
   let consentForcedFor = $state<string | null>(null);
+  // Spec 51-1: the session whose subscriber discount the platform said is
+  // used up for the typed address; the next press sends `discount: false`.
+  let marketingDiscountUsedFor = $state<string | null>(null);
   // Spec 43: the sales link / utm touch that brought the buyer, read from the
   // page address on mount (kept 7 days per feed token). Sent with checkout/start.
   let attribution: AttributionPayload | null = null;
@@ -655,6 +659,13 @@
       // Spec 43: the sales link / utm touch, when there is one. The platform
       // cleans it and never refuses a purchase over it.
       if (attribution) payload.attribution = attribution;
+      // Spec 51-1: the organizer's mailing tick, sent only when ticked.
+      const marketing = marketingPayload(
+        selectedSession.marketing_optin,
+        values.marketingAccepted === true,
+        marketingDiscountUsedFor === selectedSession.id,
+      );
+      if (marketing) payload.marketing_consent = marketing;
       // Language for the buyer's ticket e-mail / PDF — the same resolved
       // locale the widget renders its own copy in. The backend ignores a
       // locale it has no e-mail template for, so sending it is always safe.
@@ -710,6 +721,12 @@
         conflictKeys = new Set();
         checkoutError = consentErrorMessage(err.code, normLocale);
         consentForcedFor = selectedSession?.id ?? null;
+      } else if (err instanceof ApiError && marketingErrorMessage(err.code, normLocale) !== null) {
+        // The reward is once per address: say so and let the buyer pay the
+        // regular price with the next press (the tick is still recorded).
+        conflictKeys = new Set();
+        checkoutError = marketingErrorMessage(err.code, normLocale);
+        if (err.code === MARKETING_DISCOUNT_USED_CODE) marketingDiscountUsedFor = selectedSession?.id ?? null;
       } else if (err instanceof ApiError && cartLimitMessage(err.code, normLocale) !== null) {
         // The platform refused the size of the cart: say so in the buyer's language.
         conflictKeys = new Set();
@@ -1087,6 +1104,9 @@
         promoAvailable={selectedSession.promo_codes_available === true}
         showWithdrawalNotice={selectedSession.show_withdrawal_notice === true}
         consent={forceConsent(selectedSession.consent, consentForcedFor === selectedSession.id)}
+        marketing={selectedSession.marketing_optin ?? null}
+        marketingDiscountUsed={marketingDiscountUsedFor === selectedSession.id}
+        cartReminder={selectedSession.cart_reminder === true}
         locale={normLocale}
         submitting={checkoutSubmitting}
         submitError={checkoutError}

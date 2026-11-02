@@ -132,6 +132,11 @@ export interface BuyerFormValues {
    * asks for it; never stored anywhere.
    */
   consentAccepted?: boolean;
+  /**
+   * The buyer ticked the organizer's mailing box (spec 51-1). Only set when
+   * the session offers it; never pre-ticked, never stored.
+   */
+  marketingAccepted?: boolean;
 }
 
 /** Per-field validation errors (undefined = no error). */
@@ -189,6 +194,11 @@ export interface CheckoutStartPayload {
    * (422 `checkout.consent_required`).
    */
   consent?: import('./consent.js').CheckoutConsentPayload;
+  /**
+   * The buyer's tick on the organizer's mailings (spec 51-1), sent only when
+   * ticked. It may earn the organizer's reward code for this order.
+   */
+  marketing_consent?: import('./marketing.js').MarketingConsentPayload;
   /**
    * The sales link and utm labels that brought the buyer (spec 43), read from
    * the page address and kept for 7 days. Optional; the platform cleans it and

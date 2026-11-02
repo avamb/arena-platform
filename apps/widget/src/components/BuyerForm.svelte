@@ -32,6 +32,8 @@
     type SessionConsent,
   } from '../lib/consent.js';
   import { getConsentStrings } from '../lib/consentI18n.js';
+  import { marketingLabel, marketingOffered, type SessionMarketingOptIn } from '../lib/marketing.js';
+  import { getMarketingStrings } from '../lib/marketingI18n.js';
 
   interface Props {
     buyerFields: BuyerFieldConfig[];
@@ -54,6 +56,12 @@
      * is shown above the pay button, which stays disabled until it is ticked.
      */
     consent?: SessionConsent | null;
+    /** The session's `marketing_optin` block (spec 51-1): the separate, optional mailing tick. */
+    marketing?: SessionMarketingOptIn | null;
+    /** The platform said this address already used the subscriber discount. */
+    marketingDiscountUsed?: boolean;
+    /** The organizer sends the one unpaid-order reminder: say so under the e-mail field. */
+    cartReminder?: boolean;
     onSubmit: (values: BuyerFormValues) => void;
   }
 
@@ -64,8 +72,17 @@
     submitText,
     withdrawalNotice = false,
     consent = null,
+    marketing = null,
+    marketingDiscountUsed = false,
+    cartReminder = false,
     onSubmit,
   }: Props = $props();
+
+  // Spec 51-1: the mailing tick is never pre-ticked and never required.
+  const offersMarketing = $derived(marketingOffered(marketing));
+  const marketingWords = $derived(getMarketingStrings(locale));
+  const marketingText = $derived(marketingLabel(marketing, locale, marketingDiscountUsed));
+  let marketingAccepted = $state(false);
 
   // The checkout consent (P2). The tick lives in this component only: it is
   // never stored, so a buyer who comes back starts unticked.
@@ -116,6 +133,7 @@
     if (!isBuyerFormValid(errors)) return;
     if (payWaitsForConsent) return;
     if (needsConsent) values.consentAccepted = consentAccepted;
+    if (offersMarketing) values.marketingAccepted = marketingAccepted;
     onSubmit(values);
   }
 
@@ -139,7 +157,7 @@
       oninput={onEmailInput}
       autocomplete="email"
       aria-invalid={!!errors.email}
-      aria-describedby={errors.email ? 'bf-email-err' : undefined}
+      aria-describedby={errors.email ? 'bf-email-err' : cartReminder ? 'bf-email-reminder' : undefined}
       disabled={submitting}
     />
     {#if errors.email}
@@ -153,6 +171,10 @@
       </p>
     {/if}
   </div>
+
+  {#if cartReminder}
+    <p id="bf-email-reminder" class="consent-hint email-reminder" data-testid="cart-reminder-note">{marketingWords.reminder}</p>
+  {/if}
 
   <!-- Name (conditional) -->
   {#if showName}
@@ -232,6 +254,24 @@
       {#if payWaitsForConsent}
         <p id="bf-consent-hint" class="consent-hint">{consentWords.hint}</p>
       {/if}
+    </div>
+  {/if}
+
+  {#if offersMarketing}
+    <!-- Spec 51-1: the organizer's mailings, a separate optional tick. -->
+    <div class="consent" data-testid="marketing-optin">
+      <label class="consent-label">
+        <input
+          type="checkbox"
+          class="consent-box"
+          bind:checked={marketingAccepted}
+          disabled={submitting}
+          aria-describedby="bf-marketing-note"
+          data-testid="marketing-optin-box"
+        />
+        <span class="consent-text">{marketingText}</span>
+      </label>
+      <p id="bf-marketing-note" class="consent-hint">{marketingWords.note}</p>
     </div>
   {/if}
 
@@ -364,6 +404,10 @@
 
   .consent-seller {
     font-weight: 600;
+  }
+
+  .email-reminder {
+    margin-top: -0.5rem;
   }
 
   .consent-hint {

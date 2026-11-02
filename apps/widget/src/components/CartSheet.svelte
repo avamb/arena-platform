@@ -9,6 +9,7 @@
   import BuyerForm from './BuyerForm.svelte';
   import type { BuyerFieldConfig, BuyerFormValues } from '../lib/checkout.js';
   import type { SessionConsent } from '../lib/consent.js';
+  import type { SessionMarketingOptIn } from '../lib/marketing.js';
 
   interface Props {
     cart: CartState;
@@ -30,6 +31,12 @@
      * the sale terms" checkbox when it is required.
      */
     consent?: SessionConsent | null;
+    /** The session's mailing tick (spec 51-1), handed to the buyer form. */
+    marketing?: SessionMarketingOptIn | null;
+    /** The platform said the subscriber discount is used up for this address. */
+    marketingDiscountUsed?: boolean;
+    /** The organizer sends the one unpaid-order reminder. */
+    cartReminder?: boolean;
     submitting?: boolean;
     submitError?: string | null;
     /**
@@ -79,7 +86,7 @@
     onCheckout: (values: BuyerFormValues) => void;
   }
   const {
-    cart, buyerFields, locale = 'en', serviceFeePercent = null, showWithdrawalNotice = false, consent = null, submitting = false, submitError = null,
+    cart, buyerFields, locale = 'en', serviceFeePercent = null, showWithdrawalNotice = false, consent = null, marketing = null, marketingDiscountUsed = false, cartReminder = false, submitting = false, submitError = null,
     promoCode = null, promoQuote = null, cartKey = '', promoAvailable = false, promoExpanded = false, promoBusy = false, promoError = null, promoNote = null,
     onApplyPromo, onRemovePromo, onContinue,
     conflictKeys, onContinueWithoutConflicts,
@@ -285,6 +292,9 @@
         submitText={payLabel}
         withdrawalNotice={shouldShowWithdrawalNotice(showWithdrawalNotice, payTotal)}
         {consent}
+        {marketing}
+        {marketingDiscountUsed}
+        {cartReminder}
         onSubmit={onCheckout}
       />
     </div>

@@ -95,6 +95,21 @@ func (h *Handler) loadMarketing(ctx context.Context, orgID uuid.UUID) (marketing
 	return offer, name
 }
 
+// cartReminderOn reads whether the organizer sends the unpaid-order reminder.
+// A failed read says no: the widget then promises nothing.
+func (h *Handler) cartReminderOn(ctx context.Context, orgID uuid.UUID) bool {
+	if h.promoQueries == nil {
+		return false
+	}
+	s, err := marketing.LoadSettings(ctx, h.promoQueries.DB(), orgID)
+	if err != nil {
+		h.logger.Error("public_feed: growth settings lookup failed",
+			slog.String("org_id", orgID.String()), slog.String("error", err.Error()))
+		return false
+	}
+	return s.CartReminder
+}
+
 // marketingBlockFor is the feed session block.
 func marketingBlockFor(offer marketing.Offer, orgName string) publicMarketingBlock {
 	if !offer.Enabled {

@@ -241,6 +241,16 @@ export interface FeedSession {
    */
   consent?: import('./lib/consent.js').SessionConsent;
   /**
+   * The organizer's mailing tick (spec 51-1): offered, for whom, the text
+   * version and the discount it earns. Absent on older backends (not offered).
+   */
+  marketing_optin?: import('./lib/marketing.js').SessionMarketingOptIn;
+  /**
+   * True when the organizer reminds a buyer once by e-mail of an unpaid order
+   * (spec 51-1); the buyer form then says so under the e-mail field.
+   */
+  cart_reminder?: boolean;
+  /**
    * IANA zone of the session's venue ("Europe/Madrid"); "" or absent when
    * unknown. Session chips are formatted in it — the time on the door —
    * never in the buyer's own zone.

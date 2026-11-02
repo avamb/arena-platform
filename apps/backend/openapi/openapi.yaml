@@ -47564,6 +47564,9 @@ paths:
             whether the widget offers the separate, never-required tick
             "send me news and offers", whose mailings it is for, the text
             version to send back and the discount it earns.
+          * `cart_reminder` — boolean. True when the organizer reminds a
+            buyer once by e-mail of an unpaid order (spec 51-1); the
+            widget then says so under the e-mail field.
           * `poster_media_id` — resolved cover: session's own value when
             set, otherwise the event fallback. Same on `poster_url`.
           * `media_gallery: SessionMediaItem[]` — ordered per-session
