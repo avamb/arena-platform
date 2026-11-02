@@ -29,6 +29,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -187,4 +188,113 @@ func TestConvertVsExpiry_SeatedHold_NoDeadlockOneWinner_LiveDB(t *testing.T) {
 		t.Errorf("the TTL sweep hit a deadlock:\n%s", log)
 	}
 	t.Logf("%d of %d holds converted, the rest expired or released", converted, rounds)
+}
+
+// TestConvertTwice_SecondConversionWaitsAndChangesNothing_LiveDB pins the
+// order of two conversions of ONE hold (commit 198025b2), with no timing
+// luck: the first conversion runs and stays open, the second starts and is
+// seen waiting on a lock, then the first commits. The second must then read
+// 'converted' and change nothing. Before the reservation row was locked, the
+// second had already read 'active' unlocked: once released it confirmed the
+// hold's places again and took them from the OTHER hold on the session.
+func TestConvertTwice_SecondConversionWaitsAndChangesNothing_LiveDB(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL not set — skipping live DB integration test")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	defer pool.Close()
+
+	f := newHoldFixture(t, ctx, pool, "assigned_seats", 100, 4)
+	defer f.cleanup()
+	q := gen.New(pool)
+	keys := f.seatKeys(4)
+	hold := func(k []string) uuid.UUID {
+		h, err := hcheckout.CreateSeatedHold(ctx, pool, q, hcheckout.SeatedHoldInput{
+			OrgID: f.orgID, ChannelID: f.channelID, SessionID: f.sessionID,
+			SeatKeys: k, ExpiresAt: time.Now().Add(20 * time.Minute),
+		})
+		if err != nil {
+			t.Fatalf("CreateSeatedHold: %v", err)
+		}
+		return h.Reservation.ID
+	}
+	resA := hold(keys[:2])
+	resB := hold(keys[2:]) // another buyer's live hold on the same session
+
+	tx1, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx1.Rollback(ctx) }()
+	if err := hcheckout.ConvertReservationInTx(ctx, gen.New(tx1), resA); err != nil {
+		t.Fatalf("first conversion: %v", err)
+	}
+
+	pidCh, errCh := make(chan int32, 1), make(chan error, 1)
+	go func() {
+		tx2, err := pool.Begin(ctx)
+		if err != nil {
+			pidCh <- 0
+			errCh <- err
+			return
+		}
+		defer func() { _ = tx2.Rollback(ctx) }()
+		var pid int32
+		if err := tx2.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&pid); err != nil {
+			pidCh <- 0
+			errCh <- err
+			return
+		}
+		pidCh <- pid
+		if err := hcheckout.ConvertReservationInTx(ctx, gen.New(tx2), resA); err != nil {
+			errCh <- err
+			return
+		}
+		errCh <- tx2.Commit(ctx)
+	}()
+
+	pid := <-pidCh
+	if pid == 0 {
+		t.Fatalf("second conversion could not start: %v", <-errCh)
+	}
+	waiting := false
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		var wait *string
+		if err := pool.QueryRow(ctx, `SELECT wait_event_type FROM pg_stat_activity WHERE pid = $1`, pid).Scan(&wait); err != nil {
+			t.Fatal(err)
+		}
+		if wait != nil && *wait == "Lock" {
+			waiting = true
+			break
+		}
+	}
+	if !waiting {
+		t.Fatal("the second conversion never waited on a lock behind the first")
+	}
+	if err := tx1.Commit(ctx); err != nil {
+		t.Fatalf("commit first conversion: %v", err)
+	}
+	if err := <-errCh; err != nil {
+		t.Fatalf("second conversion of the same hold: %v", err)
+	}
+
+	var held, sold int32
+	if err := pool.QueryRow(ctx, `SELECT capacity_held, capacity_sold FROM inventory_ledger
+		WHERE session_id = $1 AND tier_id IS NULL`, f.sessionID).Scan(&held, &sold); err != nil {
+		t.Fatal(err)
+	}
+	if held != 2 || sold != 2 {
+		t.Errorf("inventory_ledger held = %d, sold = %d after converting one 2-seat hold twice; want 2 and 2 (the other hold keeps its places)", held, sold)
+	}
+	if r, err := q.GetReservationByID(ctx, resA); err != nil || r.State != "converted" {
+		t.Errorf("converted hold = %q (%v), want converted", r.State, err)
+	}
+	if r, err := q.GetReservationByID(ctx, resB); err != nil || (r.State != "draft" && r.State != "active") {
+		t.Errorf("the other hold = %q (%v), want it still held", r.State, err)
+	}
 }

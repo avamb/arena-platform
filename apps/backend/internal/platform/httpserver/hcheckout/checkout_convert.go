@@ -161,22 +161,25 @@ func (h *Handler) convertReservationTx(ctx context.Context, reservationID uuid.U
 		return nil
 	}
 
-	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return fmt.Errorf("convertReservationTx: begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	// The conversion takes its locks in the same order as every hold
+	// mutation, so a deadlock should not happen; if one ever does (or a
+	// serialization failure), the whole transaction is retried, as the hold
+	// mutations do (retry.go).
+	return retryOnSerializationFailure(ctx, holdMutationRetryAttempts, func() error {
+		tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+		if err != nil {
+			return fmt.Errorf("convertReservationTx: begin tx: %w", err)
+		}
+		defer tx.Rollback(ctx) //nolint:errcheck
 
-	q := gen.New(tx)
-
-	if err := h.convertReservationInTx(ctx, q, reservationID); err != nil {
-		return err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("convertReservationTx: commit tx for reservation %s: %w", reservationID, err)
-	}
-	return nil
+		if err := h.convertReservationInTx(ctx, gen.New(tx), reservationID); err != nil {
+			return err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("convertReservationTx: commit tx for reservation %s: %w", reservationID, err)
+		}
+		return nil
+	})
 }
 
 // ConvertReservationTx is the exported form of convertReservationTx, for use

@@ -241,3 +241,37 @@ func TestCompatBil24_P0_PerCustomerOneCode_ConcurrentOrders(t *testing.T) {
 	created := p0RaceOrders(t, base, buyers)
 	p0AssertOneUse(t, st, promoID, created, "already used this promo code")
 }
+
+// TestCompatBil24_P0_OneBuyerTwoDatesInARow_MaxUsesOneCode — finding 1 of the
+// review of PR #346: with no race at all, one buyer writes an order on one
+// date with a max_uses=1 code and does not pay, then writes an order on
+// another date with the same code. The first order counts: the second is
+// refused (bil24.open_order_exists only ever covered ONE date).
+func TestCompatBil24_P0_OneBuyerTwoDatesInARow_MaxUsesOneCode(t *testing.T) {
+	st := setupHarness(t)
+	base := startHarnessServer(t, st)
+	code := "P0SEQ" + strings.ToUpper(uuid.NewString()[:6])
+	promoID := p0InsertPromo(t, st, code, "max_uses")
+
+	email := "p0-seq-" + uuid.NewString()[:8] + "@example.test"
+	ga := p0GABuyer(t, base, st, email, code)
+	seat := p0SeatBuyer(t, base, st, email, code, sortedSeatLabels(st)[0])
+
+	first := postBil24(t, base, ga.order)
+	if c := numberField(t, first, "resultCode"); c != 0 {
+		t.Fatalf("first CREATE_ORDER_EXT resultCode = %v (%v)", c, first["description"])
+	}
+	second := postBil24(t, base, seat.order)
+	desc, _ := second["description"].(string)
+	if c := numberField(t, second, "resultCode"); c != 101 || !strings.Contains(strings.ToLower(desc), "used up") &&
+		!strings.Contains(strings.ToLower(desc), "no uses left") {
+		t.Errorf("second date of the same buyer = %v %q, want 101 naming the used-up code", c, desc)
+	}
+	var withCode int
+	if err := st.Pool.QueryRow(context.Background(), `SELECT count(*) FROM orders WHERE promo_code_id = $1`, promoID).Scan(&withCode); err != nil {
+		t.Fatal(err)
+	}
+	if withCode != 1 {
+		t.Errorf("orders written with the max_uses=1 code = %d, want 1", withCode)
+	}
+}

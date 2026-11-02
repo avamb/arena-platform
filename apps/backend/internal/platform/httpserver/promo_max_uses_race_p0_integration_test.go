@@ -171,27 +171,7 @@ func TestORD08_OneBuyerTwoConcurrentOrdersWithAPerCustomerOneCode(t *testing.T) 
 	q := gen.New(pool)
 
 	// A second date of the same event with its own category and places.
-	session2, tier2 := uuid.New(), uuid.New()
-	for i, st := range []struct {
-		sql  string
-		args []any
-	}{
-		{`INSERT INTO sessions (id, event_id, venue_id, start_at, end_at,
-		    capacity_total, status, admission_mode, currency, currency_source)
-		  VALUES ($1, $2, $3, now() + interval '31 days',
-		    now() + interval '31 days 2 hours', 100, 'scheduled',
-		    'general_admission', 'EUR', 'override')`, []any{session2, f.eventID, f.venueID}},
-		{`INSERT INTO ticket_tiers (id, session_id, name, pricing_mode, price_amount, currency, sort_order)
-		  VALUES ($1, $2, 'HOCO Tier 2', 'fixed', 2500, 'EUR', 0)`, []any{tier2, session2}},
-		{`INSERT INTO inventory_ledger (session_id, tier_id, capacity_total) VALUES ($1, NULL, 100)`, []any{session2}},
-	} {
-		if _, err := pool.Exec(ctx, st.sql, st.args...); err != nil {
-			t.Fatalf("second date step %d: %v", i, err)
-		}
-	}
-	if _, err := q.InsertGAUnits(ctx, session2, "ga|t1", 0, &tier2, 5); err != nil {
-		t.Fatalf("second date places: %v", err)
-	}
+	session2, tier2 := f.addSecondDate(t, ctx)
 
 	code := "MINE" + f.orgID.String()[:6]
 	promoID := f.insertPromo(t, ctx, code, "percent", 50,
@@ -280,4 +260,32 @@ func TestORD08_OneBuyerTwoConcurrentOrdersWithAPerCustomerOneCode(t *testing.T) 
 		!strings.Contains(string(b), `"promo.per_customer_limit"`) {
 		t.Errorf("third checkout of the same buyer = %d %s, want 422 promo.per_customer_limit", c, b)
 	}
+}
+
+// addSecondDate adds a second date of the fixture's event: its own 25.00 EUR
+// category with five places. The fixture's cleanup removes it with the event.
+func (f *hostedOrgFixture) addSecondDate(t *testing.T, ctx context.Context) (session, tier uuid.UUID) {
+	t.Helper()
+	session, tier = uuid.New(), uuid.New()
+	for i, st := range []struct {
+		sql  string
+		args []any
+	}{
+		{`INSERT INTO sessions (id, event_id, venue_id, start_at, end_at,
+		    capacity_total, status, admission_mode, currency, currency_source)
+		  VALUES ($1, $2, $3, now() + interval '31 days',
+		    now() + interval '31 days 2 hours', 100, 'scheduled',
+		    'general_admission', 'EUR', 'override')`, []any{session, f.eventID, f.venueID}},
+		{`INSERT INTO ticket_tiers (id, session_id, name, pricing_mode, price_amount, currency, sort_order)
+		  VALUES ($1, $2, 'HOCO Tier 2', 'fixed', 2500, 'EUR', 0)`, []any{tier, session}},
+		{`INSERT INTO inventory_ledger (session_id, tier_id, capacity_total) VALUES ($1, NULL, 100)`, []any{session}},
+	} {
+		if _, err := f.pool.Exec(ctx, st.sql, st.args...); err != nil {
+			t.Fatalf("second date step %d: %v", i, err)
+		}
+	}
+	if _, err := gen.New(f.pool).InsertGAUnits(ctx, session, "ga|t1", 0, &tier, 5); err != nil {
+		t.Fatalf("second date places: %v", err)
+	}
+	return session, tier
 }
