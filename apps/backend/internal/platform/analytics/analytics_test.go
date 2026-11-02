@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync"
 	"testing"
@@ -434,5 +435,21 @@ func TestBuildRow_TimeIsClampedIntoThePartitionWindow(t *testing.T) {
 	ev.At = now.Add(-3 * time.Hour)
 	if r, _ := buildRow(ev); !r.at.Equal(ev.At.UTC()) {
 		t.Errorf("a plausible time was changed: %v", r.at)
+	}
+}
+
+func TestSanitize_NumbersFromAnyGoNumericType(t *testing.T) {
+	for _, v := range []any{12, int8(12), int16(12), int32(12), int64(12), uint(12), uint8(12), uint16(12),
+		uint32(12), uint64(12), float32(12), 12.0, json.Number("12")} {
+		got, ok := Sanitize(SurfaceBot, "wizard_step", map[string]any{"from": "a", "to": "b", "seconds": v}, false)
+		if !ok || got["seconds"] != 12 {
+			t.Errorf("%T: seconds = %v (ok=%v), want 12", v, got["seconds"], ok)
+		}
+	}
+	for _, v := range []any{12.5, int64(1) << 40, -1, "12", true, nil} {
+		got, _ := Sanitize(SurfaceBot, "wizard_step", map[string]any{"from": "a", "seconds": v}, false)
+		if _, has := got["seconds"]; has {
+			t.Errorf("%T %v kept", v, v)
+		}
 	}
 }

@@ -12,6 +12,8 @@
 package analytics
 
 import (
+	"encoding/json"
+	"math"
 	"net/url"
 	"regexp"
 	"sort"
@@ -225,11 +227,10 @@ func (pd PropDef) clean(v any) (any, bool) {
 		}
 		return s, true
 	case PropInt:
-		f, ok := v.(float64)
-		if !ok || f != float64(int64(f)) {
+		n, ok := wholeNumber(v)
+		if !ok {
 			return nil, false
 		}
-		n := int(f)
 		max := pd.Max
 		if max == 0 {
 			max = 86400
@@ -324,4 +325,60 @@ func scrubEmails(s string) string {
 		}
 	}
 	return opsalert.ScrubEmails(s)
+}
+
+// wholeNumber reads an integer property from any numeric Go type: float64 from
+// a decoded JSON body, int / int32 / int64 and friends from in-process callers
+// (the bot). A float must be a whole number.
+func wholeNumber(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int8:
+		return int(n), true
+	case int16:
+		return int(n), true
+	case int32:
+		return int(n), true
+	case int64:
+		if n > math.MaxInt32 || n < math.MinInt32 {
+			return 0, false
+		}
+		return int(n), true
+	case uint:
+		return clampUint(uint64(n))
+	case uint8:
+		return int(n), true
+	case uint16:
+		return int(n), true
+	case uint32:
+		return clampUint(uint64(n))
+	case uint64:
+		return clampUint(n)
+	case float32:
+		return wholeFloat(float64(n))
+	case float64:
+		return wholeFloat(n)
+	case json.Number:
+		f, err := n.Float64()
+		if err != nil {
+			return 0, false
+		}
+		return wholeFloat(f)
+	}
+	return 0, false
+}
+
+func clampUint(n uint64) (int, bool) {
+	if n > math.MaxInt32 {
+		return 0, false
+	}
+	return int(n), true
+}
+
+func wholeFloat(f float64) (int, bool) {
+	if f != math.Trunc(f) || f > math.MaxInt32 || f < math.MinInt32 {
+		return 0, false
+	}
+	return int(f), true
 }
