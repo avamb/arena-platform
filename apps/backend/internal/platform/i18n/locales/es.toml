@@ -5229,6 +5229,9 @@ other = "Ábrelo en un chat privado con el bot: la disputa contiene datos del co
 ["bot.dp.err_forbidden"]
 other = "Solo el propietario de la organización responde una disputa. Pídeselo."
 
+["bot.dp.err_package_changed"]
+other = "Las pruebas se volvieron a preparar después de que las abrieras, así que no se envió nada. Abre la disputa, revisa el paquete nuevo y envíalo otra vez."
+
 ["bot.dp.err_already"]
 other = "Esta disputa ya se respondió, así que no se envió nada otra vez. Ábrela para ver su estado."
 

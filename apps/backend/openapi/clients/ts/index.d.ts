@@ -15329,6 +15329,8 @@ export interface components {
         SubmitDisputeRequest: {
             /** @description win or lose: with a test payment key the provider decides the dispute that way; refused for a live key. */
             test_outcome?: string;
+            /** @description The package version the organizer looked at. When a newer version was built since, the answer is refused with 409 dispute.package_changed. Absent sends the newest. */
+            package_version?: number;
             /** @description The letter as the organizer edited it; absent takes the package draft. E-mail disputes only. */
             email?: components["schemas"]["DisputeEmailDraft"];
         };

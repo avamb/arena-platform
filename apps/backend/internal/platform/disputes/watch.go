@@ -81,15 +81,20 @@ func (s *Service) RunWatch(ctx context.Context, n Notifier, now time.Time) (int,
 	// Deadlines that passed: the dispute is expired.
 	if _, err := s.db.Exec(ctx, `UPDATE payment_disputes SET state = 'expired', outcome = 'expired',
 			closed_at = COALESCE(closed_at, $1), updated_at = $1
-		WHERE state IN ('needs_response','draft_ready') AND due_by IS NOT NULL AND due_by < $1`, now); err != nil {
+		WHERE state IN ('needs_response','draft_ready') AND due_by IS NOT NULL AND due_by < $1
+		  AND due_by_source <> 'default'`, now); err != nil {
 		return 0, err
 	}
 	if _, err := s.failStaleEmails(ctx); err != nil {
 		return 0, err
 	}
+	// Only disputes that can still owe a notice, newest first, so a backlog
+	// of old ones never hides a new one.
 	rows, err := s.db.Query(ctx, `SELECT `+disputeColumns+` FROM payment_disputes
-		WHERE closed_at IS NULL OR closed_at > $1::timestamptz - interval '7 days'
-		ORDER BY created_at LIMIT 500`, now)
+		WHERE (closed_at IS NULL OR closed_at > $1::timestamptz - interval '7 days')
+		  AND NOT EXISTS (SELECT 1 FROM payment_dispute_notices n WHERE n.dispute_id = payment_disputes.id
+		                  AND n.notice_key IN ('closed','expired'))
+		ORDER BY created_at DESC LIMIT 500`, now)
 	if err != nil {
 		return 0, err
 	}

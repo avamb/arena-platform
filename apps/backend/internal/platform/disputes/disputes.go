@@ -145,7 +145,9 @@ var ManualReasons = []string{"fraudulent", "product_not_received", "unrecognized
 func providerTransition(cur, status string, submitted bool) (state string, outcome string) {
 	switch strings.ToLower(status) {
 	case "warning_needs_response", "needs_response", "chargeback":
-		if cur == "" {
+		if cur == "" || cur == StateExpired {
+			// An expired dispute the provider still waits for is open again
+			// (a deadline arena guessed, or one the provider moved).
 			return StateNeedsResponse, ""
 		}
 		return cur, ""

@@ -51,6 +51,9 @@ func TestProviderTransition(t *testing.T) {
 		{StateNeedsResponse, "chargeback_revert", false, StateClosed, OutcomeWithdrawn},
 		{"", "chargeback", false, StateNeedsResponse, ""},
 		{StateDraftReady, "something_new", false, StateDraftReady, ""},
+		// An expired dispute the provider still waits for is open again.
+		{StateExpired, "needs_response", false, StateNeedsResponse, ""},
+		{StateExpired, "warning_needs_response", false, StateNeedsResponse, ""},
 	}
 	for _, c := range cases {
 		st, out := providerTransition(c.cur, c.status, c.submitted)

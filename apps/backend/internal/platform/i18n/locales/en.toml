@@ -5398,6 +5398,9 @@ other = "Open this in a private chat with the bot: the dispute holds the buyer's
 ["bot.dp.err_forbidden"]
 other = "Only the owner of the organization answers a dispute. Ask the owner to do it."
 
+["bot.dp.err_package_changed"]
+other = "The evidence was rebuilt after you opened it, so nothing was sent. Open the dispute, look at the new package and send again."
+
 ["bot.dp.err_already"]
 other = "This dispute was already answered, so nothing was sent again. Open it to see its state."
 

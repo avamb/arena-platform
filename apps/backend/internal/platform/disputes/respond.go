@@ -29,11 +29,18 @@ var (
 	ErrNeedRecipient   = &ErrInvalid{Code: "dispute.recipient_required", Message: "enter the address the answer goes to"}
 	ErrTestOutcomeLive = &ErrInvalid{Code: "dispute.test_outcome_live", Message: "a test outcome is only allowed with a test payment key"}
 	ErrWrongChannel    = &ErrInvalid{Code: "dispute.wrong_channel", Message: "this action does not apply to this dispute"}
+	ErrPackageChanged  = &ErrInvalid{Code: "dispute.package_changed", Message: "the evidence package was rebuilt since you looked at it; open it again before sending"}
+	ErrDueInPast       = &ErrInvalid{Code: "dispute.due_in_past", Message: "the deadline is in the past"}
 )
 
 // ErrProviderUnavailable: the provider could not be reached and the outcome
 // is not known; nothing is recorded as sent.
 var ErrProviderUnavailable = errors.New("disputes: the provider did not answer")
+
+// ErrOutcomeUnknown: the answer may have reached the provider and arena could
+// not read the dispute back; the card shows the truth once the provider's
+// event arrives.
+var ErrOutcomeUnknown = errors.New("disputes: the outcome of the answer is not known")
 
 // SubmitInput is the organizer's "Submit".
 type SubmitInput struct {
@@ -43,6 +50,9 @@ type SubmitInput struct {
 	// Email overrides the letter of an e-mail answer (the organizer may
 	// edit it); zero takes the package draft.
 	Email *EmailDraft
+	// PackageVersion is the version the organizer looked at; 0 sends the
+	// latest. A different latest version refuses the send.
+	PackageVersion int
 }
 
 // Submit sends the answer: through the provider's API for an API channel
@@ -62,6 +72,9 @@ func (s *Service) Submit(ctx context.Context, orgID, id uuid.UUID, in SubmitInpu
 	}
 	if pkg == nil {
 		return Dispute{}, ErrNoPackage
+	}
+	if in.PackageVersion > 0 && in.PackageVersion != pkg.Version {
+		return Dispute{}, ErrPackageChanged
 	}
 	if d.Channel != ChannelAPI {
 		return s.queueEmail(ctx, d, pkg, in.Email, actor)
@@ -95,10 +108,16 @@ func (s *Service) Submit(ctx context.Context, orgID, id uuid.UUID, in SubmitInpu
 			return Dispute{}, ErrKeyNotWritable
 		}
 		// The outcome is unknown or the provider refused: read the dispute
-		// back and let its own state decide.
-		cctx, cancel := context.WithTimeout(ctx, s.callTimeout)
+		// back and let its own state decide. The read gets its own time: the
+		// send may have used the whole budget.
+		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.callTimeout)
 		fresh, gerr := resp.GetDispute(cctx, *d.ProviderDisputeID)
 		cancel()
+		if gerr != nil && !errors.Is(serr, payments.ErrDisputeClosedForEvidence) {
+			_, _ = insertEvent(ctx, s.db, d, "submit_unknown", "", "", actor, map[string]any{"code": draftErrorCode(serr)})
+			s.logger.Warn("disputes: submit outcome unknown", slog.String("dispute_id", d.ID.String()), slog.String("error", serr.Error()))
+			return Dispute{}, ErrOutcomeUnknown
+		}
 		if gerr != nil || fresh.SubmissionCount == 0 {
 			_, _ = insertEvent(ctx, s.db, d, "submit_failed", "", "", actor, map[string]any{"code": draftErrorCode(serr)})
 			if errors.Is(serr, payments.ErrDisputeClosedForEvidence) {
@@ -182,6 +201,12 @@ func (s *Service) queueEmail(ctx context.Context, d Dispute, pkg *Package, overr
 	if pkg.EmailDraft != nil {
 		draft = *pkg.EmailDraft
 	}
+	// The address the organizer entered after the build (from the
+	// provider's letter) wins over the one frozen in the draft.
+	if v := strings.TrimSpace(d.RespondTo); v != "" {
+		draft.To = v
+	}
+	bodyEdited := false
 	if override != nil {
 		if strings.TrimSpace(override.To) != "" {
 			draft.To = strings.TrimSpace(override.To)
@@ -189,8 +214,9 @@ func (s *Service) queueEmail(ctx context.Context, d Dispute, pkg *Package, overr
 		if strings.TrimSpace(override.Subject) != "" {
 			draft.Subject = strings.TrimSpace(override.Subject)
 		}
-		if strings.TrimSpace(override.Body) != "" {
+		if strings.TrimSpace(override.Body) != "" && (pkg.EmailDraft == nil || override.Body != pkg.EmailDraft.Body) {
 			draft.Body = override.Body
+			bodyEdited = true
 		}
 	}
 	if draft.To == "" {
@@ -214,7 +240,12 @@ func (s *Service) queueEmail(ctx context.Context, d Dispute, pkg *Package, overr
 	if !cur.Open() {
 		return Dispute{}, ErrAlreadyAnswered
 	}
-	job := emailJob{DisputeID: d.ID.String(), PackageID: pkg.ID.String(), To: draft.To, Subject: draft.Subject, Body: draft.Body}
+	// The letter text stays in the package; the job carries it only when the
+	// organizer edited it, so the queue holds no copy of the buyer's data.
+	job := emailJob{DisputeID: d.ID.String(), PackageID: pkg.ID.String(), To: draft.To, Subject: draft.Subject}
+	if bodyEdited {
+		job.Body = draft.Body
+	}
 	if actor.UserID != nil {
 		job.ActorID = actor.UserID.String()
 	}
@@ -277,6 +308,10 @@ func (s *Service) Accept(ctx context.Context, orgID, id uuid.UUID, actor Actor) 
 	if err != nil {
 		return Dispute{}, err
 	}
+	if !cur.Open() {
+		// A send or a provider close won the race: never overwrite it.
+		return Dispute{}, ErrAlreadyAnswered
+	}
 	if _, err := tx.Exec(ctx, `UPDATE payment_disputes SET state = 'accepted', outcome = 'accepted',
 			closed_at = COALESCE(closed_at, now()), accepted_at = now(), accepted_by = $2,
 			provider_status = CASE WHEN $3 <> '' THEN $3 ELSE provider_status END, updated_at = now()
@@ -314,12 +349,18 @@ func (s *Service) SetDeadline(ctx context.Context, orgID, id uuid.UUID, in Deadl
 	if d.Channel == ChannelAPI && in.DueBy != nil {
 		return Dispute{}, ErrWrongChannel
 	}
-	if !d.Open() {
+	if in.DueBy != nil && !in.DueBy.After(s.now()) {
+		return Dispute{}, ErrDueInPast
+	}
+	// A letter dispute that expired on a deadline the organizer can still
+	// correct is reopened by a new, later deadline.
+	reopen := d.State == StateExpired && d.Channel != ChannelAPI && d.SubmittedAt == nil && in.DueBy != nil
+	if !d.Open() && !reopen {
 		return Dispute{}, ErrAlreadyAnswered
 	}
 	if in.RespondTo != nil {
 		v := strings.TrimSpace(*in.RespondTo)
-		if v != "" && !validEmail(v) {
+		if v != "" && (!validEmail(v) || len(v) > 320) {
 			return Dispute{}, ErrNeedRecipient
 		}
 		in.RespondTo = &v
@@ -327,13 +368,18 @@ func (s *Service) SetDeadline(ctx context.Context, orgID, id uuid.UUID, in Deadl
 	if _, err := tx.Exec(ctx, `UPDATE payment_disputes SET
 			due_by = COALESCE($2, due_by),
 			due_by_source = CASE WHEN $2::timestamptz IS NOT NULL THEN 'organizer' ELSE due_by_source END,
-			respond_to = COALESCE($3, respond_to), updated_at = now()
-		WHERE id = $1`, id, in.DueBy, in.RespondTo); err != nil {
+			respond_to = COALESCE($3, respond_to),
+			state = CASE WHEN $4 THEN (CASE WHEN EXISTS (SELECT 1 FROM payment_dispute_packages p WHERE p.dispute_id = $1)
+			                                THEN 'draft_ready' ELSE 'needs_response' END) ELSE state END,
+			outcome = CASE WHEN $4 THEN NULL ELSE outcome END,
+			closed_at = CASE WHEN $4 THEN NULL ELSE closed_at END,
+			updated_at = now()
+		WHERE id = $1`, id, in.DueBy, in.RespondTo, reopen); err != nil {
 		return Dispute{}, err
 	}
 	if in.DueBy != nil {
 		// Reminders follow the new deadline.
-		if _, err := tx.Exec(ctx, `DELETE FROM payment_dispute_notices WHERE dispute_id = $1 AND notice_key LIKE 'due_%'`, id); err != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM payment_dispute_notices WHERE dispute_id = $1 AND (notice_key LIKE 'due_%' OR notice_key = 'expired')`, id); err != nil {
 			return Dispute{}, err
 		}
 	}
@@ -343,6 +389,9 @@ func (s *Service) SetDeadline(ctx context.Context, orgID, id uuid.UUID, in Deadl
 	}
 	if in.RespondTo != nil {
 		payload["respond_to_set"] = *in.RespondTo != ""
+	}
+	if reopen {
+		payload["reopened"] = true
 	}
 	if _, err := insertEvent(ctx, tx, d, "deadline_set", "", "", actor, payload); err != nil {
 		return Dispute{}, err

@@ -37,7 +37,7 @@ var disputeKeys = []string{
 	"bot.dp.sending", "bot.dp.done_submit_api", "bot.dp.done_submit_email", "bot.dp.done_accept", "bot.dp.done_own",
 	"bot.dp.own_ask", "bot.dp.cancelled", "bot.dp.gone", "bot.dp.expired", "bot.dp.not_open", "bot.dp.private_only",
 	// refusals
-	"bot.dp.err_forbidden", "bot.dp.err_already", "bot.dp.err_closed", "bot.dp.err_no_package", "bot.dp.err_key",
+	"bot.dp.err_forbidden", "bot.dp.err_already", "bot.dp.err_package_changed", "bot.dp.err_closed", "bot.dp.err_no_package", "bot.dp.err_key",
 	"bot.dp.err_recipient", "bot.dp.err_test_live", "bot.dp.err_channel", "bot.dp.err_unknown", "bot.dp.err_refused",
 	"bot.dp.err_unavailable",
 }

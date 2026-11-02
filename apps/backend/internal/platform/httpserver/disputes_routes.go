@@ -96,12 +96,15 @@ func (s *Server) writeDisputeError(w http.ResponseWriter, r *http.Request, what 
 	case errors.As(err, &inv):
 		status := http.StatusUnprocessableEntity
 		switch inv.Code {
-		case "dispute.already_submitted", "dispute.duplicate", "dispute.closed_for_evidence":
+		case "dispute.already_submitted", "dispute.duplicate", "dispute.closed_for_evidence", "dispute.package_changed":
 			status = http.StatusConflict
 		case "dispute.order_not_found":
 			status = http.StatusNotFound
 		}
 		httputil.WriteJSON(w, status, httputil.ErrorEnvelope(inv.Code, inv.Message, r))
+	case errors.Is(err, disputes.ErrOutcomeUnknown):
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dispute.outcome_unknown",
+			"the answer may have reached the provider; the card shows the result when the provider reports it, do not send it again", r))
 	case errors.Is(err, disputes.ErrProviderUnavailable):
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dispute.provider_unavailable",
 			"the payment provider did not answer; nothing was sent, try again in a minute", r))

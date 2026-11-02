@@ -87,6 +87,36 @@ func (s *Service) EmailJobHandler(sender email.Sender) func(ctx context.Context,
 		if already {
 			return nil
 		}
+		if d.State != StateSubmitted {
+			// Accepted, closed or put back while the letter waited: nothing
+			// leaves for a dispute that no longer waits for this answer.
+			return nil
+		}
+		if j.Body == "" || j.Subject == "" {
+			// The text is the package's own unless the organizer edited it.
+			var raw []byte
+			err := s.db.QueryRow(ctx, `SELECT email_draft FROM payment_dispute_packages WHERE id = $1 AND dispute_id = $2`,
+				pkgID, d.ID).Scan(&raw)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			var draft EmailDraft
+			if len(raw) > 0 {
+				_ = json.Unmarshal(raw, &draft)
+			}
+			if j.Body == "" {
+				j.Body = draft.Body
+			}
+			if j.Subject == "" {
+				j.Subject = draft.Subject
+			}
+		}
+		if strings.TrimSpace(j.Body) == "" || strings.TrimSpace(j.To) == "" {
+			return errors.New("disputes: the answer has no text or no recipient")
+		}
 		files, err := packageFiles(ctx, s.db, pkgID)
 		if err != nil {
 			return err

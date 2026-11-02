@@ -75,10 +75,13 @@ func (c *ArenaClient) DisputeRebuild(ctx context.Context, jwt string, orgID, id 
 
 // DisputeSubmit sends the answer (owner). testOutcome ("win" or "lose") is
 // only for a test payment key; the server refuses it for a live one.
-func (c *ArenaClient) DisputeSubmit(ctx context.Context, jwt string, orgID, id uuid.UUID, testOutcome string) (openapi.DisputeCard, error) {
+func (c *ArenaClient) DisputeSubmit(ctx context.Context, jwt string, orgID, id uuid.UUID, testOutcome string, packageVersion int) (openapi.DisputeCard, error) {
 	body := map[string]any{}
 	if testOutcome != "" {
 		body["test_outcome"] = testOutcome
+	}
+	if packageVersion > 0 {
+		body["package_version"] = packageVersion
 	}
 	var out openapi.DisputeCard
 	err := c.slowDispute().do(ctx, http.MethodPost, disputeBase(orgID)+"/"+id.String()+"/submit", jwt, body, &out)

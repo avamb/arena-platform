@@ -107,6 +107,18 @@ type RecordResult struct {
 // organizer's provider account also serves their other sites). An error is
 // transient: the webhook answers 500 and the provider delivers again.
 func (s *Service) RecordProviderEvent(ctx context.Context, in RecordInput) (RecordResult, error) {
+	res, err := s.recordProviderEvent(ctx, in)
+	if errors.Is(err, errConcurrentFirst) {
+		// A parallel delivery of the same dispute inserted it first: the
+		// second attempt finds it and records this event on it.
+		res, err = s.recordProviderEvent(ctx, in)
+	}
+	return res, err
+}
+
+var errConcurrentFirst = errors.New("disputes: a parallel delivery recorded the dispute first")
+
+func (s *Service) recordProviderEvent(ctx context.Context, in RecordInput) (RecordResult, error) {
 	ev := in.Event
 	if ev.Dispute == nil || strings.TrimSpace(ev.Dispute.ID) == "" {
 		return RecordResult{}, nil
@@ -134,12 +146,20 @@ func (s *Service) RecordProviderEvent(ctx context.Context, in RecordInput) (Reco
 			// redelivery would not find it either.
 			return RecordResult{}, nil
 		}
-		if err != nil {
+		switch {
+		case errors.Is(err, payments.ErrDisputeNotWritable):
+			// The key may not read disputes. The delivery itself is verified,
+			// so its body is recorded; the payment-config check tells the
+			// organizer about the missing right.
+			s.logger.Warn("disputes: the key cannot read the dispute, the event body is used",
+				slog.String("org_id", in.OrgID.String()), slog.String("provider", in.Provider))
+		case err != nil:
 			return RecordResult{}, fmt.Errorf("disputes: read the dispute back: %w", err)
+		default:
+			fresh.FundsWithdrawn = pd.FundsWithdrawn
+			fresh.FundsReinstated = pd.FundsReinstated
+			pd = fresh
 		}
-		fresh.FundsWithdrawn = pd.FundsWithdrawn
-		fresh.FundsReinstated = pd.FundsReinstated
-		pd = fresh
 	}
 
 	pi, err := s.findPayment(ctx, in.OrgID, in.Provider, pd.PaymentIntentID)
@@ -150,10 +170,27 @@ func (s *Service) RecordProviderEvent(ctx context.Context, in RecordInput) (Reco
 		cctx, cancel := context.WithTimeout(ctx, s.callTimeout)
 		facts, ferr := resp.ChargeFacts(cctx, pd.ChargeID)
 		cancel()
-		if ferr != nil {
+		switch {
+		case errors.Is(ferr, payments.ErrDisputeNotWritable), errors.Is(ferr, payments.ErrDisputeNotFound):
+			// A charge the key may not read, or one this account does not
+			// have: a redelivery would end the same way.
+			s.logger.Warn("disputes: the charge of a dispute cannot be read",
+				slog.String("org_id", in.OrgID.String()), slog.String("provider", in.Provider))
+		case ferr != nil:
 			return RecordResult{}, fmt.Errorf("disputes: read the charge: %w", ferr)
+		default:
+			if pd.PaymentIntentID == "" {
+				pd.PaymentIntentID = facts.PaymentIntentID
+			}
+			if pi, err = s.findPayment(ctx, in.OrgID, in.Provider, facts.PaymentIntentID); err != nil {
+				return RecordResult{}, err
+			}
 		}
-		if pi, err = s.findPayment(ctx, in.OrgID, in.Provider, facts.PaymentIntentID); err != nil {
+	}
+	if pi == nil && pd.PaymentIntentID != "" && resp != nil {
+		// A payment whose charge reference was never stored (it is known
+		// only by its checkout id): resolve the latest few and look again.
+		if pi, err = s.resolveMissingChargeRefs(ctx, in.OrgID, in.Provider, resp, pd.PaymentIntentID); err != nil {
 			return RecordResult{}, err
 		}
 	}
@@ -177,6 +214,7 @@ func (s *Service) RecordProviderEvent(ctx context.Context, in RecordInput) (Reco
 	switch {
 	case errors.Is(err, ErrNotFound):
 		d, err = insertDispute(ctx, tx, newDisputeRow{
+			FundsWithdrawn: pd.FundsWithdrawn, FundsReinstated: pd.FundsReinstated, Now: now,
 			OrgID: in.OrgID, Provider: in.Provider, ProviderDisputeID: &pd.ID, Channel: channel,
 			PaymentIntentID: &pi.id, OrderID: pi.orderID, ConfigID: in.ConfigID,
 			AmountMinor: firstPositive(pd.AmountMinor, pi.amount), Currency: firstNonEmpty(pd.Currency, pi.currency),
@@ -184,10 +222,20 @@ func (s *Service) RecordProviderEvent(ctx context.Context, in RecordInput) (Reco
 			IsChargeRefundable: pd.IsChargeRefundable, DueBy: pd.DueBy, OpenedAt: firstTime(pd.Created, now),
 			Settings: settings,
 		})
+		if isUniqueViolation(err) {
+			return RecordResult{}, errConcurrentFirst
+		}
 		if err != nil {
 			return RecordResult{}, err
 		}
 		res.Created = true
+		if !d.Open() {
+			// First seen already closed: nobody needs to be told it opened.
+			if _, err := tx.Exec(ctx, `INSERT INTO payment_dispute_notices (dispute_id, notice_key) VALUES ($1, 'opened')
+				ON CONFLICT DO NOTHING`, d.ID); err != nil {
+				return RecordResult{}, err
+			}
+		}
 		if _, err := insertEvent(ctx, tx, d, "opened", "", pd.Status, Actor{Label: "provider"}, map[string]any{
 			"amount_minor": d.AmountMinor, "currency": d.Currency, "reason": d.Reason,
 		}); err != nil {
@@ -286,6 +334,9 @@ type newDisputeRow struct {
 	RespondTo          string
 	OpenedAt           time.Time
 	Settings           Settings
+	FundsWithdrawn     bool
+	FundsReinstated    bool
+	Now                time.Time
 }
 
 func insertDispute(ctx context.Context, q querier, r newDisputeRow) (Dispute, error) {
@@ -300,16 +351,33 @@ func insertDispute(ctx context.Context, q querier, r newDisputeRow) (Dispute, er
 		due, dueSource = &t, "default"
 	}
 	cur := strings.ToUpper(strings.TrimSpace(r.Currency))
-	state, _ := providerTransition("", r.ProviderStatus, false)
+	state, outcome := providerTransition("", r.ProviderStatus, false)
+	at := r.Now
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	var outcomePtr *string
+	var closedAt, withdrawnAt, reinstatedAt *time.Time
+	if outcome != "" {
+		outcomePtr, closedAt = &outcome, &at
+	}
+	if r.FundsWithdrawn {
+		withdrawnAt = &at
+	}
+	if r.FundsReinstated {
+		reinstatedAt = &at
+	}
 	return scanDispute(q.QueryRow(ctx, `INSERT INTO payment_disputes
 		(org_id, provider, provider_dispute_id, channel, payment_intent_id, order_id, config_id,
 		 amount_minor, currency, reason, reason_group, provider_status, state, is_inquiry,
-		 is_charge_refundable, due_by, due_by_source, respond_to, low_value, opened_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+		 is_charge_refundable, due_by, due_by_source, respond_to, low_value, opened_at,
+		 outcome, closed_at, funds_withdrawn_at, funds_reinstated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
 		RETURNING `+disputeColumns,
 		r.OrgID, r.Provider, r.ProviderDisputeID, r.Channel, r.PaymentIntentID, r.OrderID, r.ConfigID,
 		r.AmountMinor, cur, r.Reason, ReasonGroupOf(r.Reason), r.ProviderStatus, state, r.IsInquiry,
-		r.IsChargeRefundable, due, dueSource, r.RespondTo, r.Settings.IsLowValue(r.AmountMinor, cur), r.OpenedAt))
+		r.IsChargeRefundable, due, dueSource, r.RespondTo, r.Settings.IsLowValue(r.AmountMinor, cur), r.OpenedAt,
+		outcomePtr, closedAt, withdrawnAt, reinstatedAt))
 }
 
 // applyProviderState moves the dispute after a provider event.
@@ -319,11 +387,20 @@ func applyProviderState(ctx context.Context, q querier, d Dispute, pd payments.D
 	if outcome != "" {
 		outcomePtr = &outcome
 	}
+	// An expired dispute the provider still waits an answer for is open
+	// again: its outcome and the expiry notices go.
+	reopened := d.State == StateExpired && state != StateExpired && outcome == ""
+	if reopened {
+		if _, err := q.Exec(ctx, `DELETE FROM payment_dispute_notices WHERE dispute_id = $1
+			AND (notice_key LIKE 'due_%' OR notice_key = 'expired')`, d.ID); err != nil {
+			return err
+		}
+	}
 	_, err := q.Exec(ctx, `UPDATE payment_disputes SET
 			provider_status = $2,
 			state = $3,
-			outcome = COALESCE($4, outcome),
-			closed_at = CASE WHEN $4::text IS NOT NULL THEN COALESCE(closed_at, $5) ELSE closed_at END,
+			outcome = CASE WHEN $14 THEN NULL ELSE COALESCE($4, outcome) END,
+			closed_at = CASE WHEN $14 THEN NULL WHEN $4::text IS NOT NULL THEN COALESCE(closed_at, $5) ELSE closed_at END,
 			is_inquiry = $6,
 			is_charge_refundable = $7,
 			due_by = CASE WHEN $8::timestamptz IS NOT NULL THEN $8 ELSE due_by END,
@@ -337,8 +414,64 @@ func applyProviderState(ctx context.Context, q querier, d Dispute, pd payments.D
 		WHERE id = $1`,
 		d.ID, pd.Status, state, outcomePtr, now, isInquiry(pd.Status) || (d.IsInquiry && pd.Status == ""),
 		pd.IsChargeRefundable, pd.DueBy, pd.Reason, ReasonGroupOf(pd.Reason), pd.AmountMinor,
-		pd.FundsWithdrawn, pd.FundsReinstated)
+		pd.FundsWithdrawn, pd.FundsReinstated, reopened)
 	return err
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr interface{ SQLState() string }
+	return errors.As(err, &pgErr) && pgErr.SQLState() == "23505"
+}
+
+// resolveMissingChargeRefs asks the provider for the charge reference of the
+// organization's latest succeeded payments that are known only by their
+// checkout id, stores what it learns and looks for ref again.
+func (s *Service) resolveMissingChargeRefs(ctx context.Context, orgID uuid.UUID, provider string, resp payments.DisputeResponder, ref string) (*paymentRef, error) {
+	resolver, ok := resp.(payments.ChargeRefResolver)
+	if !ok {
+		return nil, nil
+	}
+	rows, err := s.db.Query(ctx, `SELECT id, provider_payment_id FROM payment_intents
+		WHERE org_id = $1 AND provider = $2 AND state = 'succeeded' AND provider_charge_ref IS NULL
+		  AND COALESCE(provider_payment_id, '') <> '' AND created_at > now() - interval '180 days'
+		ORDER BY created_at DESC LIMIT 5`, orgID, provider)
+	if err != nil {
+		return nil, fmt.Errorf("disputes: list payments without a charge reference: %w", err)
+	}
+	type cand struct {
+		id  uuid.UUID
+		ref string
+	}
+	var cands []cand
+	for rows.Next() {
+		var c cand
+		if err := rows.Scan(&c.id, &c.ref); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		cands = append(cands, c)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for _, c := range cands {
+		cctx, cancel := context.WithTimeout(ctx, s.callTimeout)
+		got, rerr := resolver.ResolveChargeRef(cctx, c.ref)
+		cancel()
+		got = strings.TrimSpace(got)
+		if rerr != nil || got == "" {
+			continue
+		}
+		if _, err := s.db.Exec(ctx, `UPDATE payment_intents SET provider_charge_ref = $2
+			WHERE id = $1 AND provider_charge_ref IS NULL`, c.id, got); err != nil {
+			return nil, err
+		}
+		if got == ref {
+			return s.findPayment(ctx, orgID, provider, ref)
+		}
+	}
+	return nil, nil
 }
 
 // ManualInput is a dispute the organizer enters from a provider's letter.
@@ -424,8 +557,7 @@ func (s *Service) CreateManual(ctx context.Context, orgID uuid.UUID, in ManualIn
 		OpenedAt: s.now().UTC(), Settings: settings,
 	})
 	if err != nil {
-		var pgErr interface{ SQLState() string }
-		if errors.As(err, &pgErr) && pgErr.SQLState() == "23505" {
+		if isUniqueViolation(err) {
 			return Dispute{}, &ErrInvalid{Code: "dispute.duplicate", Message: "a dispute with this reference already exists"}
 		}
 		return Dispute{}, err

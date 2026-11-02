@@ -18593,6 +18593,9 @@ type SubmitDisputeRequest struct {
 	// Email The letter as the organizer edited it; absent takes the package draft. E-mail disputes only.
 	Email *DisputeEmailDraft `json:"email,omitempty"`
 
+	// PackageVersion The package version the organizer looked at. When a newer version was built since, the answer is refused with 409 dispute.package_changed. Absent sends the newest.
+	PackageVersion *int `json:"package_version,omitempty"`
+
 	// TestOutcome win or lose: with a test payment key the provider decides the dispute that way; refused for a live key.
 	TestOutcome *string `json:"test_outcome,omitempty"`
 }

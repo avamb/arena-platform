@@ -56,8 +56,9 @@ func disputeNilIfEmpty(s string) *string {
 }
 
 type submitDisputeBody struct {
-	TestOutcome string               `json:"test_outcome"`
-	Email       *disputes.EmailDraft `json:"email"`
+	TestOutcome    string               `json:"test_outcome"`
+	Email          *disputes.EmailDraft `json:"email"`
+	PackageVersion int                  `json:"package_version"`
 }
 
 func decodeDisputeBody(w http.ResponseWriter, r *http.Request, dst any) bool {
@@ -99,7 +100,7 @@ func (s *Server) handleSubmitDispute(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := s.providerWork(w, r)
 	defer cancel()
-	if _, err := svc.Submit(ctx, orgID, id, disputes.SubmitInput{TestOutcome: b.TestOutcome, Email: b.Email}, disputeActor(r)); err != nil {
+	if _, err := svc.Submit(ctx, orgID, id, disputes.SubmitInput{TestOutcome: b.TestOutcome, Email: b.Email, PackageVersion: b.PackageVersion}, disputeActor(r)); err != nil {
 		s.writeDisputeError(w, r, "submit", err)
 		return
 	}

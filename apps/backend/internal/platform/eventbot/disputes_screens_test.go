@@ -21,6 +21,8 @@ func TestDisputeErrorKey_EveryCodeHasItsOwnText(t *testing.T) {
 	}{
 		{&APIError{Status: 409, Code: "dispute.already_submitted"}, "bot.dp.err_already"},
 		{&APIError{Status: 409, Code: "dispute.closed_for_evidence"}, "bot.dp.err_closed"},
+		{&APIError{Status: 409, Code: "dispute.package_changed"}, "bot.dp.err_package_changed"},
+		{&APIError{Status: 503, Code: "dispute.outcome_unknown"}, "bot.dp.err_unknown"},
 		{&APIError{Status: 422, Code: "dispute.package_missing"}, "bot.dp.err_no_package"},
 		{&APIError{Status: 422, Code: "dispute.key_not_writable"}, "bot.dp.err_key"},
 		{&APIError{Status: 422, Code: "dispute.recipient_required"}, "bot.dp.err_recipient"},

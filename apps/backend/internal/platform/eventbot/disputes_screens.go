@@ -170,6 +170,9 @@ type disputeDialog struct {
 	// final buttons.
 	Key   string `json:"key,omitempty"`
 	MsgID int    `json:"msg_id,omitempty"`
+	// PackageVersion is the evidence the person looked at; a rebuild after
+	// that makes the server refuse the send.
+	PackageVersion int `json:"package_version,omitempty"`
 }
 
 // disputeWordKey is the typed word of an action.
@@ -195,6 +198,8 @@ func disputeErrorKey(err error) string {
 		return "bot.ec.not_found"
 	case ae.Status == http.StatusConflict && ae.Code == "dispute.already_submitted":
 		return "bot.dp.err_already"
+	case ae.Status == http.StatusConflict && ae.Code == "dispute.package_changed":
+		return "bot.dp.err_package_changed"
 	case ae.Status == http.StatusConflict && ae.Code == "dispute.closed_for_evidence":
 		return "bot.dp.err_closed"
 	case ae.Status == http.StatusUnprocessableEntity && ae.Code == "dispute.package_missing":
@@ -704,6 +709,9 @@ func (b *Bot) startDisputeAction(ctx context.Context, chatID int64, editMsgID *i
 		OrgID: id.Current.OrgID, DisputeID: did, Action: action, Num: d.OrderNumber, Amount: d.Amount,
 		Currency: d.Currency, Channel: d.Channel, Event: d.EventName, TestOutcome: card.TestOutcomeAvailable,
 	}
+	if card.Package != nil {
+		st.PackageVersion = card.Package.Version
+	}
 	b.showDisputeWord(ctx, chatID, editMsgID, id, st, "")
 }
 
@@ -894,7 +902,7 @@ func (b *Bot) finalDisputePress(ctx context.Context, chatID int64, msgID int, fr
 	if st.Action == dpActionAccept {
 		card, err = b.arena.DisputeAccept(ctx, jwt, st.OrgID, st.DisputeID)
 	} else {
-		card, err = b.arena.DisputeSubmit(ctx, jwt, st.OrgID, st.DisputeID, testOutcome)
+		card, err = b.arena.DisputeSubmit(ctx, jwt, st.OrgID, st.DisputeID, testOutcome, st.PackageVersion)
 	}
 	if err != nil {
 		key := disputeErrorKey(err)
