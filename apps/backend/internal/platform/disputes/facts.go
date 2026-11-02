@@ -66,6 +66,18 @@ type PaymentFacts struct {
 	Amount                                 int64
 	Currency, State                        string
 	SucceededAt                            *time.Time
+	// Receipt is the provider's own receipt (archived by PR #359's
+	// payment.receipt_archive); nil when that change is not deployed or the
+	// payment has none.
+	Receipt *ProviderReceiptFacts
+}
+
+// ProviderReceiptFacts is the payment provider's receipt for the buyer.
+type ProviderReceiptFacts struct {
+	Number, URL          string
+	ArchivedAt           *time.Time
+	CopyType, CopySHA256 string
+	CopyBytes            int64
 }
 
 // SessionFacts is the event date.
@@ -176,6 +188,13 @@ func CollectFacts(ctx context.Context, q querier, d Dispute) (Facts, error) {
 		} else if !errors.Is(err, pgx.ErrNoRows) {
 			return f, fmt.Errorf("disputes: payment: %w", err)
 		}
+	}
+	if f.Payment != nil {
+		rc, err := providerReceipt(ctx, q, *d.PaymentIntentID)
+		if err != nil {
+			return f, err
+		}
+		f.Payment.Receipt = rc
 	}
 	if d.OrderID == nil {
 		return f, nil
@@ -395,4 +414,33 @@ func deref(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// providerReceipt reads the provider's receipt of the payment. The columns
+// come from another change (PR #359); without them, or without a receipt,
+// it answers nil.
+func providerReceipt(ctx context.Context, q querier, paymentIntentID uuid.UUID) (*ProviderReceiptFacts, error) {
+	var has bool
+	if err := q.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM information_schema.columns
+		WHERE table_schema = current_schema() AND table_name = 'payment_intents' AND column_name = 'provider_receipt_media_id')`).Scan(&has); err != nil {
+		return nil, fmt.Errorf("disputes: receipt columns: %w", err)
+	}
+	if !has {
+		return nil, nil
+	}
+	var rc ProviderReceiptFacts
+	if err := q.QueryRow(ctx, `SELECT COALESCE(pi.provider_receipt_number,''), COALESCE(pi.provider_receipt_url,''),
+			pi.provider_receipt_archived_at, COALESCE(m.content_type,''), COALESCE(m.checksum_sha256,''), COALESCE(m.byte_size,0)
+		FROM payment_intents pi
+		LEFT JOIN media_objects m ON m.id = pi.provider_receipt_media_id AND m.deleted_at IS NULL
+		WHERE pi.id = $1`, paymentIntentID).Scan(&rc.Number, &rc.URL, &rc.ArchivedAt, &rc.CopyType, &rc.CopySHA256, &rc.CopyBytes); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("disputes: receipt: %w", err)
+	}
+	if rc.Number == "" && rc.URL == "" && rc.CopyType == "" {
+		return nil, nil
+	}
+	return &rc, nil
 }

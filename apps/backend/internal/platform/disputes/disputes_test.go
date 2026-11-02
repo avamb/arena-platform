@@ -248,3 +248,31 @@ func TestReportKV_LongLabelWraps(t *testing.T) {
 		t.Fatalf("a long label should take at least two lines: short row %.1f, long row %.1f", short, long)
 	}
 }
+
+// The provider's receipt (PR #359's archive) reaches the answer: its number
+// is named in the case summary and the receipt file still renders.
+func TestBuildPackage_NamesTheProviderReceipt(t *testing.T) {
+	d := Dispute{ID: uuid.New(), Channel: ChannelAPI, AmountMinor: 5900, Currency: "EUR", Reason: "fraudulent", ReasonGroup: ReasonFraud, State: StateNeedsResponse}
+	f := sampleFacts(1)
+	at := time.Date(2026, 10, 1, 18, 1, 0, 0, time.UTC)
+	f.Payment.Receipt = &ProviderReceiptFacts{Number: "1234-5678", URL: "https://pay.stripe.com/receipts/x", ArchivedAt: &at, CopyType: "application/pdf", CopySHA256: "deadbeef", CopyBytes: 34000}
+	b, err := BuildPackage(d, f, "en", StripeBudget, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.Fields["uncategorized_text"], "receipt No. 1234-5678") {
+		t.Errorf("summary does not name the receipt: %q", b.Fields["uncategorized_text"])
+	}
+	without, err := BuildPackage(d, sampleFacts(1), "en", StripeBudget, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(without.Fields["uncategorized_text"], "receipt No.") {
+		t.Error("a payment without a provider receipt must not mention one")
+	}
+	for i, rf := range b.Files {
+		if rf.Kind == FileReceipt && len(rf.Content) <= len(without.Files[i].Content) {
+			t.Error("the receipt file should carry the provider's receipt rows")
+		}
+	}
+}

@@ -303,6 +303,15 @@ func writeOrder(r *report, f Facts) {
 				[2]string{r.lbl.get("card"), strings.TrimSpace(f.Charge.CardBrand + " " + f.Charge.Last4)},
 				[2]string{r.lbl.get("descriptor"), f.Charge.StatementDescriptor})
 		}
+		if rc := f.Payment.Receipt; rc != nil {
+			rows = append(rows,
+				[2]string{r.lbl.get("receipt_no"), rc.Number},
+				[2]string{r.lbl.get("receipt_link"), rc.URL})
+			if rc.CopyType != "" && rc.ArchivedAt != nil {
+				rows = append(rows, [2]string{r.lbl.get("receipt_copy"), fmt.Sprintf(r.lbl.get("receipt_copy_v"),
+					rc.CopyType, rc.CopyBytes, rc.ArchivedAt.UTC().Format("2006-01-02 15:04"), rc.CopySHA256)}) // allow:timeformat
+			}
+		}
 		r.kv(rows)
 	}
 	if len(f.Items) > 0 && r.heading(r.lbl.get("sec_items")) {
@@ -681,6 +690,9 @@ func caseSummary(d Dispute, f Facts) string {
 			fmt.Fprintf(&b, " on %s UTC", f.Order.PaidAt.UTC().Format("2006-01-02 15:04")) // allow:timeformat
 		}
 		b.WriteString(".")
+	}
+	if f.Payment != nil && f.Payment.Receipt != nil && f.Payment.Receipt.Number != "" {
+		fmt.Fprintf(&b, " The payment provider issued its receipt No. %s for this payment.", f.Payment.Receipt.Number)
 	}
 	delivered := 0
 	for _, l := range f.Letters {
