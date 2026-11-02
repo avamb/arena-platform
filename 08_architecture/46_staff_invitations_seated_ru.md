@@ -12,7 +12,7 @@ Claude-сессия-оркестратор (раздел 6), задачи раз
 покупает билет: выбирают места на схеме, заполняют данные гостя, получают билеты. Оплаты нет.
 Выбирать можно и **закрытые места** (`unavailable` — резерв организатора).
 
-Повод: Actorre, «Сердце на поводке», 27.10. Ряды 1–3 (60 мест) закрыты под резерв, гости пишут
+Повод: client-3, «Сердце на поводке», 27.10. Ряды 1–3 (60 мест) закрыты под резерв, гости пишут
 организатору напрямую, а выдать гостю конкретное место нечем: нынешний `POST …/complimentary`
 на рассадочном сеансе место не выбирает.
 
@@ -210,7 +210,7 @@ guest,name,email,phone,locale,sector,row,seat,category,qty,note
 гостя из `orders.buyer_*`). Это остаётся. Добавляется блок «кто выдал»:
 
 ```
-🎟 New sale — Actorre
+🎟 New sale — client-3
 …
 🧾 Order #1000000512 · invitation (Invitations)
 🎫 2 × Партер
@@ -220,7 +220,7 @@ guest,name,email,phone,locale,sector,row,seat,category,qty,note
 ✉️ ivan@example.com
 📞 +34 600 000 000
 
-🙋 Issued by: Manager · anna@actorre.es
+🙋 Issued by: Manager · anna@client3.example
 ```
 
 - Источник — `orders.issued_by` (0174) → `users.email`; роль — членство выдавшего в

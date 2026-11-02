@@ -2,7 +2,7 @@
 
 Назначение: организатор заводит и правит ивенты, видит список и сводку продаж и подключает
 сотрудников — из Telegram, с телефона. Платформа Arena — единственный источник; сайты
-организаторов (Vino&Co, Lampyris) получают всё из платформы и про бота не знают.
+организаторов (client-1, client-2) получают всё из платформы и про бота не знают.
 
 Исходная логика мастера (вопросы, поля, проверки, тексты, пакет event-bundle, правила
 правки): `docs/plans/event_center_logic_for_bot_2026-09-28_ru.md`. Здесь она не повторяется,
@@ -131,7 +131,7 @@ promoter.manage, order.read` (сводка) — грант в той же миг
 записано), и публикует во все; ключ API со своим каналом публикует в свой плюс
 названные; ответ несёт `publications[]` (всегда массив) и прежний `publication`
 (первый). Бот: если у организации один активный канал — молча в него; если
-несколько (Lampyris: сайт + витрина) — шаг «Где продавать» с галочками **один раз**,
+несколько (client-2: сайт + витрина) — шаг «Где продавать» с галочками **один раз**,
 ответ запоминается в `defaults` и дальше не спрашивается (решение владельца 29.09).
 Так ивент из бота попадает и в товар сайта (вебхук `event.created`), и на страницу
 промоутера. Тест: `himports/event_bundle_channel_ids_integration_test.go`.
@@ -263,13 +263,13 @@ bot_drafts           (id uuid PK, telegram_user_id bigint, org_id uuid, mode tex
 Волна 2 добавляет `organizations.activation jsonb`, `organizations.billing_status`,
 `password_reset_tokens.purpose` += `payment_setup`, `bot_invitation`.
 
-## 7. Сайты-ведомые (репозитории `lampyrisevents`, `vinoandco`)
+## 7. Сайты-ведомые (репозитории `client2-site`, `client1`)
 
-Плагин `lampyris-ops` учится принимать ивенты, которых он не создавал:
+Плагин `client2-ops` учится принимать ивенты, которых он не создавал:
 
 1. по вебхуку `event.created` / при синхронизации каталога (`GET_ALL_ACTIONS`) сеанс с
    `externalRef` не своего сайта (`tg:` или любой не `wp:<этот сайт>:…`) → создать товар
-   WooCommerce (Lampyris — и страницу `past-event`), записать `_lops_arena_event_id`,
+   WooCommerce (client-2 — и страницу `past-event`), записать `_lops_arena_event_id`,
    `_lops_arena_session_id`, `bil24_action_id`, `bil24_action_event_id`;
 2. картинку товара забрать с афиши Arena (`bigPosterUrl` в каталоге / медиа ивента);
 3. «Изменить» на сайте открывается для таких ивентов так же (форма читает Arena);
@@ -278,7 +278,7 @@ bot_drafts           (id uuid PK, telegram_user_id bigint, org_id uuid, mode tex
 4. Материалы, письма, тур — по-прежнему только на сайте; бот про них не спрашивает, карточка
    ивента в боте даёт ссылку «Дополнить на сайте» (URL карточки ивент-центра).
 
-Это отдельная работа в двух репозиториях сайтов, до неё ивент из бота у Vino/Lampyris
+Это отдельная работа в двух репозиториях сайтов, до неё ивент из бота у client-1/client-2
 появится в витрине Arena, но не в товаре сайта.
 
 ## 8. Языки
@@ -378,7 +378,7 @@ bot_drafts           (id uuid PK, telegram_user_id bigint, org_id uuid, mode tex
   заканчивается строкой «🤖 @ArenaEventsCentrBot — create and edit your events from
   Telegram» (`salesnotify.EventsBotFooter`, воркер передаёт
   `EVENTS_TELEGRAM_BOT_USERNAME` через `Dispatcher.WithEventsBot`; пусто — без строки).
-- **Шаг 6 (сайты-ведомые) — не начат, разведка сделана.** В `lampyrisevents` приёмник
+- **Шаг 6 (сайты-ведомые) — не начат, разведка сделана.** В `client2-site` приёмник
   вебхуков (`mu-plugins/bil24-notification-receiver.php`) на `event.created` /
   `event.changed` уже запускает синхронизацию каталога `bil24_acf_sync_cron`, а
   `bil24-acf-sync` умеет заводить товар для незнакомого сеанса
@@ -387,9 +387,9 @@ bot_drafts           (id uuid PK, telegram_user_id bigint, org_id uuid, mode tex
   проверить и доделать в репозиториях сайтов (§7): картинка товара с афиши Arena, мета
   `_lops_arena_event_id`/`_lops_arena_session_id` для такого товара, сохранение чужого
   `externalRef` при пересохранении через мастер сайта (иначе Arena заведёт копию), и
-  сценарий на staging Lampyris/Vino с реальным ботом. Рабочие копии обоих сайтов сейчас на
-  ветках с незакоммиченными правками владельца (`lampyrisevents` — `fix/tour-translations`,
-  `vinoandco` — `prod`), поэтому делать это отдельной сессией на чистых ветках.
+  сценарий на staging client-2/client-1 с реальным ботом. Рабочие копии обоих сайтов сейчас на
+  ветках с незакоммиченными правками владельца (`client2-site` — `fix/tour-translations`,
+  `client1` — `prod`), поэтому делать это отдельной сессией на чистых ветках.
 - **Деплой и первый живой прогон 29.09** (образ 50c245a, сервис `bot` в compose backend-prod,
   Deploy нажимает владелец): у аккаунта-суперадмина каждый экран отвечал «что-то пошло не так» —
   API требует `X-Admin-Reason` от суперадмина даже в его собственной организации. Исправлено
@@ -409,12 +409,12 @@ bot_drafts           (id uuid PK, telegram_user_id bigint, org_id uuid, mode tex
   объясняет, а у организаций нет постоянного номера.
 - **Не сделано в этой волне и требует владельца:** живой прогон бота с настоящим Telegram
   (афиша файлом, кнопки), деплой (`bot` — четвёртый сервис compose, env из
-  `deploy/DOKPLOY.md` §2.5, миграции 0115–0116), первые приглашения владельцев Lampyris /
-  Vino&Co / Actorre / Учебного театра через `POST .../bot-invitations` из админки.
+  `deploy/DOKPLOY.md` §2.5, миграции 0115–0116), первые приглашения владельцев client-2 /
+  client-1 / client-3 / Учебного театра через `POST .../bot-invitations` из админки.
 
 ## 10. Порядок работ
 
-**Волна 1 (подключаем существующих: Lampyris, Vino&Co, Actorre, Учебный театр):**
+**Волна 1 (подключаем существующих: client-2, client-1, client-3, Учебный театр):**
 
 1. Миграция 0115 (таблицы `bot_*`, `org_admin` в memberships, гранты) + эндпоинты:
    `bot-invitations` (admin + org), `invitations/{code}/accept`, `channelIds` в event-bundle.
@@ -426,7 +426,7 @@ bot_drafts           (id uuid PK, telegram_user_id bigint, org_id uuid, mode tex
    Тесты машины состояний на текстах документа. Прогон на staging-организации.
 4. Правка (§5 документа), «Повторить как новый», карточка со сводкой и ссылкой.
 5. Сотрудники: приглашение по e-mail из бота, список, отзыв. Письмо `bot_invitation`.
-6. Сайты-ведомые (§7) на staging Vino/Lampyris; затем прод по обычной процедуре
+6. Сайты-ведомые (§7) на staging client-1/client-2; затем прод по обычной процедуре
    (тег образа в трёх строках + `APP_COMMIT`, четвёртый сервис `bot` в compose).
 7. Ссылка на бот мероприятий в текстах @ArenaSoldOutSalesBot.
 
