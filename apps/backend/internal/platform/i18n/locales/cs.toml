@@ -284,3 +284,18 @@ other = "Mapy Google: {{.Url}}"
 
 ["salesnotify.shop.courier_map_waze"]
 other = "Waze: {{.Url}}"
+
+["salesnotify.referral.title_refunded"]
+other = "↩️ <b>Přiveď kamaráda: kamarád dostal peníze zpět</b> — {{.Org}}"
+
+["salesnotify.referral.title_disputed"]
+other = "⚠️ <b>Přiveď kamaráda: kamarád zahájil spor</b> — {{.Org}}"
+
+["salesnotify.referral.body_refunded"]
+other = "Kamarád s kódem <b>{{.Code}}</b> dostal zpět peníze za objednávku č. {{.Number}}. Cashback {{.Amount}} už byl vyplacen tomu, kdo kamaráda přivedl, a nelze jej vzít zpět."
+
+["salesnotify.referral.body_disputed"]
+other = "Kamarád s kódem <b>{{.Code}}</b> zahájil spor u objednávky č. {{.Number}}. Cashback {{.Amount}} už byl vyplacen tomu, kdo kamaráda přivedl, a nelze jej vzít zpět."
+
+["salesnotify.referral.code_paused"]
+other = "Kód <b>{{.Code}}</b> je pozastaven. Znovu ho zapnete v event centru."

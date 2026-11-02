@@ -264,6 +264,52 @@ type Data struct {
 	// Shop is the order the shop e-mails describe (kinds shop_order_received,
 	// shop_order_shipped and shop_order_refunded); Render fills an empty one when it is nil.
 	Shop *ShopOrderData
+
+	// Referral is what the three "Refer a friend" letters say (kinds
+	// referral_cashback_sent, referral_cashback_unavailable and
+	// referral_reversal_organizer); Render fills an empty one when it is nil.
+	Referral *ReferralData
+}
+
+// Kinds of the "Refer a friend" letters (spec 52). The first two go to the
+// referrer, who is a buyer (they end with the buyer unsubscribe note); the
+// third goes to the organization's owners and carries no note.
+const (
+	// TemplateKindReferralCashbackSent tells the referrer that the cashback
+	// went back to the card they paid with. It promises only the bank's delay.
+	TemplateKindReferralCashbackSent = "referral_cashback_sent"
+	// TemplateKindReferralCashbackUnavailable tells the referrer that the
+	// cashback could not be returned to their card and sends them to the
+	// organizer (the same contact rule as the ticket letters).
+	TemplateKindReferralCashbackUnavailable = "referral_cashback_unavailable"
+	// TemplateKindReferralReversalOrganizer tells an organization's owners
+	// that a friend got money back or opened a dispute after the cashback was
+	// paid.
+	TemplateKindReferralReversalOrganizer = "referral_reversal_organizer"
+)
+
+// Referral reversal kinds (ReferralData.Reversal).
+const (
+	ReferralReversalRefunded = "refunded"
+	ReferralReversalDisputed = "disputed"
+)
+
+// ReferralData is the content of a "Refer a friend" letter; every amount is
+// pre-formatted ("5.00 EUR").
+type ReferralData struct {
+	// Code is the personal code the friend used.
+	Code string
+	// Amount is the cashback (buyer letters) or the cashback already paid
+	// (organizer letter).
+	Amount string
+	// Order is the referrer's order number in the buyer letters and the
+	// friend's order number in the organizer letter (orders.system_id).
+	Order string
+	// Reversal is ReferralReversalRefunded or ReferralReversalDisputed
+	// (organizer letter only).
+	Reversal string
+	// CodePaused says the code was put on pause (organizer letter only).
+	CodePaused bool
 }
 
 // ScanAlertData is the content of a refund-blocked notice.
@@ -622,6 +668,9 @@ func (r *Renderer) Render(kind, locale string, data Data) (Rendered, error) {
 	}
 	if data.Shop == nil {
 		data.Shop = &ShopOrderData{}
+	}
+	if data.Referral == nil {
+		data.Referral = &ReferralData{}
 	}
 	resolved := r.ResolveLocale(kind, locale)
 	key := kind + "." + resolved

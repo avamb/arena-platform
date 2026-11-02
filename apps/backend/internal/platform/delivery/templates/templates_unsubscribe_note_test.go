@@ -66,16 +66,18 @@ func noteFor(kind, loc string) string {
 func buyerLetterKinds() map[string]Data {
 	base := Data{TicketID: "id", EventName: "E", RecipientEmail: "x@y.z"}
 	return map[string]Data{
-		TemplateKindTicket:               base,
-		TemplateKindInvitation:           base,
-		TemplateKindChange:               changeTestData(),
-		TemplateKindCancel:               changeTestData(),
-		TemplateKindRefund:               refundData(),
-		TemplateKindShopOrderReceived:    shopTestData(),
-		TemplateKindShopOrderShipped:     shopTestData(),
-		TemplateKindShopOrderRefunded:    shopRefundTestData(),
-		TemplateKindSaleSubscribeConfirm: {EventName: "E", RecipientEmail: "x@y.z", SaleNotice: SaleNoticeData{URL: "https://t.example/c", When: "w"}},
-		TemplateKindSaleOpen:             {EventName: "E", RecipientEmail: "x@y.z", SaleNotice: SaleNoticeData{URL: "https://t.example/b", When: "w"}},
+		TemplateKindTicket:                      base,
+		TemplateKindInvitation:                  base,
+		TemplateKindChange:                      changeTestData(),
+		TemplateKindCancel:                      changeTestData(),
+		TemplateKindRefund:                      refundData(),
+		TemplateKindShopOrderReceived:           shopTestData(),
+		TemplateKindShopOrderShipped:            shopTestData(),
+		TemplateKindShopOrderRefunded:           shopRefundTestData(),
+		TemplateKindSaleSubscribeConfirm:        {EventName: "E", RecipientEmail: "x@y.z", SaleNotice: SaleNoticeData{URL: "https://t.example/c", When: "w"}},
+		TemplateKindSaleOpen:                    {EventName: "E", RecipientEmail: "x@y.z", SaleNotice: SaleNoticeData{URL: "https://t.example/b", When: "w"}},
+		TemplateKindReferralCashbackSent:        referralBuyerData(),
+		TemplateKindReferralCashbackUnavailable: referralBuyerData(),
 	}
 }
 

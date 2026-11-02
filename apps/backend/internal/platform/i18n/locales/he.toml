@@ -284,3 +284,18 @@ other = "Google Maps: {{.Url}}"
 
 ["salesnotify.shop.courier_map_waze"]
 other = "Waze: {{.Url}}"
+
+["salesnotify.referral.title_refunded"]
+other = "↩️ <b>הבא חבר: חבר קיבל כסף בחזרה</b> — {{.Org}}"
+
+["salesnotify.referral.title_disputed"]
+other = "⚠️ <b>הבא חבר: חבר פתח מחלוקת</b> — {{.Org}}"
+
+["salesnotify.referral.body_refunded"]
+other = "חבר שהשתמש בקוד <b>{{.Code}}</b> קיבל כסף בחזרה על הזמנה {{.Number}}. הקאשבק בסך {{.Amount}} כבר שולם למי שהביא אותו ואי אפשר להחזיר אותו."
+
+["salesnotify.referral.body_disputed"]
+other = "חבר שהשתמש בקוד <b>{{.Code}}</b> פתח מחלוקת על הזמנה {{.Number}}. הקאשבק בסך {{.Amount}} כבר שולם למי שהביא אותו ואי אפשר להחזיר אותו."
+
+["salesnotify.referral.code_paused"]
+other = "הקוד <b>{{.Code}}</b> הושהה. אפשר להפעיל אותו שוב במרכז האירועים."

@@ -11,6 +11,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
 // maxRewardAttempts is how many transient failures a reward survives before it
@@ -255,17 +256,50 @@ type stateChange struct {
 
 // setState changes a reward that is in one of the from states. It reports
 // whether a row changed.
+//
+// A reward that reaches 'paid', or 'not_possible' for a reason the referrer
+// should hear about (LetterKindFor), queues the referrer's letter in the same
+// transaction: the letter exists exactly when the state does.
 func (s *Service) setState(ctx context.Context, id uuid.UUID, from []string, c stateChange) (bool, error) {
-	tag, err := s.pool.Exec(ctx, `UPDATE referral_rewards
-		SET state = $3, reason = COALESCE(NULLIF($4, ''), reason),
-		    amount_minor = COALESCE($5, amount_minor), refund_id = COALESCE($6, refund_id),
-		    refund_batch_id = COALESCE($7, refund_batch_id), next_attempt_at = NULL, updated_at = now()
-		WHERE id = $1 AND state = ANY($2)`,
-		id, from, c.State, c.Reason, c.Amount, c.RefundID, c.BatchID)
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return false, err
 	}
-	return tag.RowsAffected() > 0, nil
+	defer func() { _ = tx.Rollback(ctx) }()
+	// The amount owed before the change: a refused cashback ends at 0, and the
+	// letter that says so still names what was owed.
+	var owed int64
+	if err := tx.QueryRow(ctx, `SELECT amount_minor FROM referral_rewards WHERE id = $1 AND state = ANY($2) FOR UPDATE`,
+		id, from).Scan(&owed); errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	var reason string
+	var hasReferrerOrder, letterSent bool
+	err = tx.QueryRow(ctx, `UPDATE referral_rewards
+		SET state = $3, reason = COALESCE(NULLIF($4, ''), reason),
+		    amount_minor = COALESCE($5, amount_minor), refund_id = COALESCE($6, refund_id),
+		    refund_batch_id = COALESCE($7, refund_batch_id), next_attempt_at = NULL, updated_at = now()
+		WHERE id = $1 AND state = ANY($2)
+		RETURNING COALESCE(reason, ''), referrer_order_id IS NOT NULL, letter_sent_at IS NOT NULL`,
+		id, from, c.State, c.Reason, c.Amount, c.RefundID, c.BatchID).Scan(&reason, &hasReferrerOrder, &letterSent)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if kind, ok := LetterKindFor(c.State, reason); ok && hasReferrerOrder && !letterSent {
+		if _, err := worker.EnqueueInTx(ctx, tx, JobTypeCashbackEmail,
+			CashbackEmailPayload{RewardID: id.String(), Kind: kind, AmountMinor: owed}, letterMaxAttempts); err != nil {
+			return false, fmt.Errorf("referral: enqueue cashback letter: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // settleBatch finishes a reward whose refund batch already exists: it asks the

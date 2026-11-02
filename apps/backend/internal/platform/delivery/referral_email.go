@@ -1,0 +1,361 @@
+// referral_email.go — the letters of "Refer a friend" (spec 52 sections 5.2,
+// 6.2 and 7.3).
+//
+//   - referral.cashback_email {reward_id, kind} writes to the REFERRER, who is
+//     a buyer. "sent": a friend bought with their code and the cashback went
+//     back to the card they paid with (it promises only the bank's delay).
+//     "unavailable": the cashback was owed and could not be returned to the
+//     card; the letter sends them to the organizer by the ticket letters'
+//     contact rule (the sales page's public e-mail, else its contact form,
+//     never a private address).
+//   - referral.reversal_email {reward_id} writes to the organization's OWNERS:
+//     a friend took the money back or opened a dispute after the cashback was
+//     paid, so it cannot be taken back from the referrer.
+//
+// Rules it keeps:
+//
+//   - one cashback letter per reward: referral_rewards.letter_sent_at is
+//     claimed before the send and given back when the send fails, so a
+//     redelivered job never mails twice and a failed one is retried;
+//   - the letter is sent only while the reward still is in the state the job
+//     was queued for (a reward that moved on has nothing true to say);
+//   - the language is the buyer's own (checkout_sessions.buyer_locale of the
+//     referrer's order), else the organization's, else English;
+//   - buyer addresses never reach the logs.
+package delivery
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"strconv"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/referral"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
+)
+
+// ReferralEmailOptions are the dependencies of referral.cashback_email.
+type ReferralEmailOptions struct {
+	// HandlerOptions supplies the sender, media resolver, templates and the
+	// query set shared with ticket.deliver.
+	HandlerOptions
+	// DB reads the reward, the referrer's order and the organizer contact.
+	DB sessionchange.DB
+}
+
+type referralCashbackEmail struct {
+	opts     ReferralEmailOptions
+	logger   *slog.Logger
+	renderer *templates.Renderer
+	payloads *changeEmail
+}
+
+// NewReferralCashbackEmailHandler builds the worker handler of
+// referral.JobTypeCashbackEmail.
+func NewReferralCashbackEmailHandler(opts ReferralEmailOptions) worker.HandlerFunc {
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	renderer := opts.Templates
+	if renderer == nil {
+		r, err := templates.New()
+		if err != nil {
+			return func(context.Context, []byte) error {
+				return fmt.Errorf("delivery: referral e-mail templates unavailable: %w", err)
+			}
+		}
+		renderer = r
+	}
+	h := &referralCashbackEmail{opts: opts, logger: logger, renderer: renderer}
+	h.payloads = &changeEmail{opts: ChangeEmailOptions(opts), logger: logger, renderer: renderer}
+	return h.handle
+}
+
+func (h *referralCashbackEmail) handle(ctx context.Context, payload []byte) error {
+	var p referral.CashbackEmailPayload
+	if err := json.Unmarshal(payload, &p); err != nil {
+		h.logger.Error("delivery: malformed referral cashback e-mail payload", slog.String("error", err.Error()))
+		return nil // permanent
+	}
+	rewardID, err := uuid.Parse(p.RewardID)
+	if err != nil || (p.Kind != referral.LetterSent && p.Kind != referral.LetterUnavailable) {
+		h.logger.Error("delivery: invalid referral cashback e-mail payload")
+		return nil
+	}
+	rw, err := gen.ScanReferralRewardRow(h.opts.DB.QueryRow(ctx,
+		`SELECT `+gen.ReferralRewardColumns+` FROM referral_rewards WHERE id = $1`, rewardID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("delivery: read referral reward: %w", err)
+	}
+	reason := ""
+	if rw.Reason != nil {
+		reason = *rw.Reason
+	}
+	if want, ok := referral.LetterKindFor(rw.State, reason); !ok || want != p.Kind {
+		return nil // the reward moved on: nothing true to say
+	}
+	if rw.LetterSentAt != nil || rw.ReferrerOrderID == nil {
+		return nil
+	}
+	if h.opts.Sender == nil || email.IsDevOnly(h.opts.Sender) {
+		h.logger.Info("delivery: referral cashback e-mail skipped, no production e-mail sender configured")
+		return nil
+	}
+
+	// Claim the one letter of this reward.
+	tag, err := h.opts.DB.Exec(ctx, `UPDATE referral_rewards SET letter_sent_at = now()
+		WHERE id = $1 AND letter_sent_at IS NULL`, rw.ID)
+	if err != nil {
+		return fmt.Errorf("delivery: claim referral letter: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return nil // another run owns it, or it is mailed
+	}
+
+	recipient, err := sessionchange.LoadOrderRecipient(ctx, h.opts.DB, *rw.ReferrerOrderID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil // the order is gone: nobody to write to
+	}
+	if err != nil {
+		h.release(ctx, rw.ID)
+		return fmt.Errorf("delivery: read referrer order %s: %w", rw.ReferrerOrderID, err)
+	}
+	if recipient.Email == "" {
+		h.logger.Info("delivery: referral cashback e-mail not sent", slog.String("reason", "no address for the referrer"))
+		return nil
+	}
+
+	msg, letter, err := h.buildMessage(ctx, rw, recipient, p)
+	if err != nil {
+		h.release(ctx, rw.ID)
+		return err
+	}
+	var rec emailstatus.DB = h.opts.DB
+	if p.Kind != referral.LetterSent {
+		// email_letters knows no kind for "could not return the cashback"
+		// (a new kind needs a migration): the letter goes out without a
+		// delivery status.
+		rec = nil
+	}
+	if sendErr := sendRecorded(ctx, h.opts.Sender, rec, h.logger, letter, msg, nil); sendErr != nil {
+		h.release(ctx, rw.ID)
+		h.logger.Warn("delivery: referral cashback e-mail send failed; worker will retry",
+			slog.String("reward_id", rw.ID.String()), slog.String("kind", p.Kind))
+		return fmt.Errorf("delivery: send referral cashback e-mail for reward %s: %w", rw.ID, sendErr)
+	}
+	if len(letter.RefundIDs) > 0 {
+		// The letter is out; a lost mark only leaves the refund unmarked.
+		if _, err := h.opts.DB.Exec(ctx, `UPDATE refunds SET buyer_notified_at = now()
+			WHERE id = ANY($1) AND buyer_notified_at IS NULL`, letter.RefundIDs); err != nil {
+			h.logger.Warn("delivery: could not mark the cashback refunds as mailed", slog.String("error", err.Error()))
+		}
+	}
+	h.logger.Info("delivery: referral cashback e-mail sent",
+		slog.String("reward_id", rw.ID.String()), slog.String("kind", p.Kind))
+	return nil
+}
+
+// release gives the claim back so the retry can take it.
+func (h *referralCashbackEmail) release(ctx context.Context, id uuid.UUID) {
+	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if _, err := h.opts.DB.Exec(rctx, `UPDATE referral_rewards SET letter_sent_at = NULL WHERE id = $1`, id); err != nil {
+		h.logger.Warn("delivery: could not release the referral letter claim", slog.String("error", err.Error()))
+	}
+}
+
+// buildMessage renders the letter for the reward and prepares its record.
+func (h *referralCashbackEmail) buildMessage(ctx context.Context, rw gen.ReferralRewardRow, to sessionchange.OrderRecipient, p referral.CashbackEmailPayload) (email.Message, emailstatus.NewLetter, error) {
+	kind := p.Kind
+	amount := rw.AmountMinor
+	if kind == referral.LetterUnavailable && p.AmountMinor > 0 {
+		amount = p.AmountMinor
+	}
+	var code, orgLocale string
+	if err := h.opts.DB.QueryRow(ctx, `SELECT pc.code, COALESCE(o.default_locale, '')
+		FROM promo_codes pc JOIN organizations o ON o.id = pc.org_id WHERE pc.id = $1`, rw.PromoCodeID).
+		Scan(&code, &orgLocale); err != nil {
+		return email.Message{}, emailstatus.NewLetter{}, fmt.Errorf("delivery: read referral code: %w", err)
+	}
+	locale := to.LocaleHint
+	if locale == "" {
+		locale = orgLocale
+	}
+
+	// The seller's branding and the organizer contact come from a ticket of
+	// the referrer's order: the same resolution, the same contact rule, as
+	// the ticket letters.
+	var first Payload
+	var ticketID uuid.UUID
+	if err := h.opts.DB.QueryRow(ctx, `SELECT ticket_id FROM order_items
+		WHERE order_id = $1 AND ticket_id IS NOT NULL ORDER BY ordinal LIMIT 1`, *rw.ReferrerOrderID).
+		Scan(&ticketID); err == nil {
+		first = h.payloads.ticketPayload(ctx, ticketID, locale)
+	} else {
+		first = Payload{Locale: locale}
+	}
+	branding := resolveBranding(ctx, h.opts.Media, first, h.logger).Branding
+
+	tkind := templates.TemplateKindReferralCashbackSent
+	if kind == referral.LetterUnavailable {
+		tkind = templates.TemplateKindReferralCashbackUnavailable
+	}
+	data := templates.Data{
+		RecipientEmail: to.Email,
+		HolderName:     to.Name,
+		EventName:      first.EventName,
+		Branding:       branding,
+		Referral: &templates.ReferralData{
+			Code:   code,
+			Amount: formatMoney(amount, rw.Currency),
+			Order:  strconv.FormatInt(to.SystemID, 10),
+		},
+	}
+	out, err := h.renderer.Render(tkind, locale, data)
+	if err != nil {
+		return email.Message{}, emailstatus.NewLetter{}, fmt.Errorf("delivery: render referral cashback e-mail: %w", err)
+	}
+	msg := ticketEmailMessage(first, to.Email, out.Subject, out.HTMLBody, out.TextBody)
+
+	letter := emailstatus.NewLetter{
+		OrgID: rw.OrgID, OrderID: rw.ReferrerOrderID, Kind: emailstatus.KindRefund, Recipient: to.Email,
+		TemplateVersion: templateVersion(h.renderer, tkind, locale),
+	}
+	if kind == referral.LetterSent && rw.RefundBatchID != nil {
+		rows, err := h.opts.DB.Query(ctx, `SELECT id FROM refunds
+			WHERE batch_id = $1 AND state IN ('succeeded', 'provider_pending') ORDER BY created_at, id`, *rw.RefundBatchID)
+		if err != nil {
+			return email.Message{}, emailstatus.NewLetter{}, fmt.Errorf("delivery: read cashback refunds: %w", err)
+		}
+		for rows.Next() {
+			var id uuid.UUID
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return email.Message{}, emailstatus.NewLetter{}, err
+			}
+			letter.RefundIDs = append(letter.RefundIDs, id)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return email.Message{}, emailstatus.NewLetter{}, err
+		}
+	}
+	return msg, letter, nil
+}
+
+// ReferralReversalEmailOptions are the dependencies of referral.reversal_email.
+type ReferralReversalEmailOptions struct {
+	Sender    email.Sender
+	Templates *templates.Renderer
+	DB        ScannedAlertDB
+	Logger    *slog.Logger
+}
+
+// NewReferralReversalEmailHandler builds the worker handler of
+// referral.JobTypeReversalEmail: the letter to an organization's owners about
+// a friend who took the money back or opened a dispute.
+func NewReferralReversalEmailHandler(opts ReferralReversalEmailOptions) worker.HandlerFunc {
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	renderer := opts.Templates
+	if renderer == nil {
+		r, err := templates.New()
+		if err != nil {
+			return func(context.Context, []byte) error {
+				return fmt.Errorf("delivery: referral reversal templates unavailable: %w", err)
+			}
+		}
+		renderer = r
+	}
+	return func(ctx context.Context, payload []byte) error {
+		var p referral.ReversalEmailPayload
+		if err := json.Unmarshal(payload, &p); err != nil {
+			return nil // a payload nobody can read is never going to work
+		}
+		rewardID, err := uuid.Parse(p.RewardID)
+		if err != nil {
+			return nil
+		}
+		if opts.Sender == nil || email.IsDevOnly(opts.Sender) {
+			logger.Info("delivery: referral reversal e-mail skipped, no production e-mail sender configured")
+			return nil
+		}
+		rw, err := gen.ScanReferralRewardRow(opts.DB.QueryRow(ctx,
+			`SELECT `+gen.ReferralRewardColumns+` FROM referral_rewards WHERE id = $1`, rewardID))
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if rw.FriendReversal == nil {
+			return nil
+		}
+		facts, ok, err := referral.LoadReversalFacts(ctx, opts.DB, rw)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return nil
+		}
+		recipients, err := salesAlertRecipients(ctx, opts.DB, rw.OrgID, false)
+		if err != nil {
+			return err
+		}
+		if len(recipients) == 0 {
+			logger.Error("delivery: referral reversal has no recipient in the organization", slog.String("org_id", rw.OrgID.String()))
+			return nil
+		}
+		reversal := templates.ReferralReversalRefunded
+		if *rw.FriendReversal == "disputed" {
+			reversal = templates.ReferralReversalDisputed
+		}
+		data := templates.Data{
+			Branding: templates.Branding{OrgName: facts.OrgName},
+			Referral: &templates.ReferralData{
+				Code: facts.Code, Amount: formatMoney(rw.AmountMinor, rw.Currency),
+				Order: strconv.FormatInt(facts.FriendOrderNumber, 10), Reversal: reversal, CodePaused: facts.CodePaused(),
+			},
+		}
+		sent := 0
+		var firstErr error
+		for _, rc := range recipients {
+			data.RecipientEmail = rc.email
+			out, rerr := renderer.Render(templates.TemplateKindReferralReversalOrganizer, rc.locale, data)
+			if rerr != nil {
+				return rerr
+			}
+			if serr := opts.Sender.Send(ctx, email.Message{To: rc.email, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}); serr != nil {
+				logger.Warn("delivery: referral reversal e-mail not sent", slog.String("org_id", rw.OrgID.String()))
+				if firstErr == nil {
+					firstErr = serr
+				}
+				continue
+			}
+			sent++
+		}
+		// A retry would mail again everybody who already has it: retry only
+		// when nobody got the letter.
+		if sent == 0 {
+			return firstErr
+		}
+		return nil
+	}
+}

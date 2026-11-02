@@ -4916,3 +4916,18 @@ other = "Google Maps: {{.Url}}"
 
 ["salesnotify.shop.courier_map_waze"]
 other = "Waze: {{.Url}}"
+
+["salesnotify.referral.title_refunded"]
+other = "↩️ <b>Trae a un amigo: un amigo recuperó su dinero</b> — {{.Org}}"
+
+["salesnotify.referral.title_disputed"]
+other = "⚠️ <b>Trae a un amigo: un amigo abrió una disputa</b> — {{.Org}}"
+
+["salesnotify.referral.body_refunded"]
+other = "Un amigo que usó el código <b>{{.Code}}</b> recuperó su dinero del pedido {{.Number}}. El cashback de {{.Amount}} ya se pagó a quien lo invitó y no se puede recuperar."
+
+["salesnotify.referral.body_disputed"]
+other = "Un amigo que usó el código <b>{{.Code}}</b> abrió una disputa por el pedido {{.Number}}. El cashback de {{.Amount}} ya se pagó a quien lo invitó y no se puede recuperar."
+
+["salesnotify.referral.code_paused"]
+other = "El código <b>{{.Code}}</b> está en pausa. Puedes volver a activarlo en el centro de eventos."

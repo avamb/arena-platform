@@ -14,16 +14,27 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/referral"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesnotify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
 // registerReferralHandlers registers referral.payout and referral.payout_sweep.
+// The two letters (referral.cashback_email, referral.reversal_email) are
+// registered with the other delivery handlers.
 // The engine is the same one refund.sweep drives.
-func registerReferralHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, metrics *observability.Metrics, logger *slog.Logger) {
+func registerReferralHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, metrics *observability.Metrics, notifier *salesnotify.Dispatcher, logger *slog.Logger) {
+	// The organizer notice (spec 52 section 5.2): the sales chats and a letter
+	// to the owners. Without the sales bot the chats get nothing and the
+	// letter still goes out.
+	var announcer referral.OrgAnnouncer
+	if notifier != nil {
+		announcer = notifier
+	}
 	svc := referral.NewService(referral.Options{
-		Pool:   pool,
-		Engine: buildRefundEngine(pool, cfg, metrics, logger),
-		Logger: logger,
+		Pool:     pool,
+		Engine:   buildRefundEngine(pool, cfg, metrics, logger),
+		Notifier: referral.NewOrganizerNotifier(pool, announcer, logger),
+		Logger:   logger,
 	})
 	reg.Register(referral.JobTypePayout, referral.NewPayoutHandler(svc))
 	reg.Register(referral.JobTypeSweep, referral.NewSweepHandler(svc, referral.NewPGScheduler(pool)))

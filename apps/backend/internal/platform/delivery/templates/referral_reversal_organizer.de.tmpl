@@ -1,0 +1,31 @@
+{{define "subject"}}{{if eq .Referral.Reversal "disputed"}}Freund werben: ein Freund hat eine Streitigkeit eröffnet — Bestellung Nr. {{.Referral.Order}}{{else}}Freund werben: ein Freund hat sein Geld zurückerhalten — Bestellung Nr. {{.Referral.Order}}{{end}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="de" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{if eq .Referral.Reversal "disputed"}}Ein Freund hat eine Streitigkeit eröffnet{{else}}Ein Freund hat sein Geld zurückerhalten{{end}}</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  <tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">{{if eq .Referral.Reversal "disputed"}}Ein Freund hat eine Streitigkeit eröffnet{{else}}Ein Freund hat sein Geld zurückerhalten{{end}}</h1>
+  <p style="margin:0 0 12px 0;">{{if eq .Referral.Reversal "disputed"}}Ein Freund, der den Code <strong>{{.Referral.Code}}</strong> verwendet hat, hat zu Bestellung Nr. {{.Referral.Order}} eine Streitigkeit eröffnet. Das Cashback von {{.Referral.Amount}} wurde bereits an die einladende Person ausgezahlt und kann nicht zurückgeholt werden.{{else}}Ein Freund, der den Code <strong>{{.Referral.Code}}</strong> verwendet hat, hat das Geld für Bestellung Nr. {{.Referral.Order}} zurückerhalten. Das Cashback von {{.Referral.Amount}} wurde bereits an die einladende Person ausgezahlt und kann nicht zurückgeholt werden.{{end}}</p>
+  {{if .Referral.CodePaused}}<p style="margin:0 0 12px 0;">Der Code <strong>{{.Referral.Code}}</strong> ist pausiert. Sie können ihn im Event-Center wieder aktivieren.</p>{{end}}
+  </td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — automatische Nachricht</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}
+
+{{if eq .Referral.Reversal "disputed"}}Ein Freund hat eine Streitigkeit eröffnet{{else}}Ein Freund hat sein Geld zurückerhalten{{end}}
+
+{{if eq .Referral.Reversal "disputed"}}Ein Freund, der den Code {{.Referral.Code}} verwendet hat, hat zu Bestellung Nr. {{.Referral.Order}} eine Streitigkeit eröffnet. Das Cashback von {{.Referral.Amount}} wurde bereits an die einladende Person ausgezahlt und kann nicht zurückgeholt werden.{{else}}Ein Freund, der den Code {{.Referral.Code}} verwendet hat, hat das Geld für Bestellung Nr. {{.Referral.Order}} zurückerhalten. Das Cashback von {{.Referral.Amount}} wurde bereits an die einladende Person ausgezahlt und kann nicht zurückgeholt werden.{{end}}
+{{if .Referral.CodePaused}}
+Der Code {{.Referral.Code}} ist pausiert. Sie können ihn im Event-Center wieder aktivieren.
+{{end}}
+Arena Platform — automatische Nachricht
+{{end}}

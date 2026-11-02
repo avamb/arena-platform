@@ -5079,3 +5079,18 @@ other = "Google Карты: {{.Url}}"
 
 ["salesnotify.shop.courier_map_waze"]
 other = "Waze: {{.Url}}"
+
+["salesnotify.referral.title_refunded"]
+other = "↩️ <b>Приведи друга: друг вернул деньги</b> — {{.Org}}"
+
+["salesnotify.referral.title_disputed"]
+other = "⚠️ <b>Приведи друга: друг открыл спор</b> — {{.Org}}"
+
+["salesnotify.referral.body_refunded"]
+other = "Друг по коду <b>{{.Code}}</b> вернул деньги за заказ №{{.Number}}. Кэшбэк {{.Amount}} уже выплачен приводящему, вернуть его нельзя."
+
+["salesnotify.referral.body_disputed"]
+other = "Друг по коду <b>{{.Code}}</b> открыл спор по заказу №{{.Number}}. Кэшбэк {{.Amount}} уже выплачен приводящему, вернуть его нельзя."
+
+["salesnotify.referral.code_paused"]
+other = "Код <b>{{.Code}}</b> поставлен на паузу. Включить его снова можно в ивент-центре."
