@@ -13,7 +13,7 @@
 // now lock the reservation first, like ReleaseHold and the cart mutations.
 //
 // The test races, for one seated hold whose TTL has passed, a conversion,
-// ExpireHoldForOrderTx (PAY_ORDER's expiry), one pass of the TTL sweep and
+// ExpireHoldForOrderTx (PAY_ORDER's expiry), the TTL sweep's step for that hold and
 // ReleaseHold. No deadlock may surface, exactly one of them wins, and the
 // seats and inventory_ledger agree with the winner.
 package hcheckout_test
@@ -128,7 +128,14 @@ func TestConvertVsExpiry_SeatedHold_NoDeadlockOneWinner_LiveDB(t *testing.T) {
 		run(1, func() error {
 			return inTx(ctx, pool, func(q *gen.Queries) error { return hcheckout.ExpireHoldForOrderTx(ctx, q, resID) })
 		})
-		run(2, func() error { _, err := proc.ProcessExpiredReservations(ctx, 100); return err })
+		// The sweep's own per-reservation step, given this round's hold as
+		// its poll would: ProcessExpiredReservations itself would also expire
+		// other packages' holds on the shared CI database.
+		polled, err := q.GetReservationByID(ctx, resID)
+		if err != nil {
+			t.Fatalf("round %d load hold: %v", round, err)
+		}
+		run(2, func() error { return proc.ExpireOneReservation(ctx, polled) })
 		run(3, func() error {
 			_, err := hcheckout.ReleaseHold(ctx, pool, q, resID)
 			var notReleasable *hcheckout.NotReleasableError

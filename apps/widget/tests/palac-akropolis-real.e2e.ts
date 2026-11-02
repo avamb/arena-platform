@@ -75,9 +75,12 @@ const PURCHASE_SEATS = ['J20', 'J21'] as const;
  * arena-api's per-config webhook route, the way Stripe would after the buyer
  * paid on the hosted page. The signature is Stripe's scheme:
  * `Stripe-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">`.
+ * Like real Stripe the event names what was charged: arena parks a paid
+ * event without an amount, or with another one, for a human.
  */
 async function deliverPaidCheckoutWebhook(
   csId: string,
+  charged: { total: number; currency: string },
 ): Promise<{ status: number; body: Record<string, unknown>; configId: string }> {
   const raw = JSON.stringify({
     id: 'evt_test_' + randomBytes(12).toString('hex'),
@@ -90,6 +93,8 @@ async function deliverPaidCheckoutWebhook(
         payment_status: 'paid',
         status: 'complete',
         payment_intent: 'pi_test_' + randomBytes(12).toString('hex'),
+        amount_total: charged.total,
+        currency: charged.currency.toLowerCase(),
       },
     },
   });
@@ -719,12 +724,16 @@ test.describe('4 — Checkout start contract (real backend)', () => {
     // pass-through, the request still reaches the real backend unchanged.
     let startStatus = 0;
     let startBody: Record<string, unknown> = {};
-    let started: { checkout_token?: string; redirect_url?: string } = {};
+    let started: {
+      checkout_token?: string;
+      redirect_url?: string;
+      pricing?: { total: number; currency: string };
+    } = {};
     await page.route('**/checkout/start', async (route) => {
       const real = await route.fetch();
       startStatus = real.status();
       startBody = route.request().postDataJSON() as Record<string, unknown>;
-      started = (await real.json()) as { checkout_token?: string; redirect_url?: string };
+      started = (await real.json()) as typeof started;
       await route.fulfill({ response: real });
     });
 
@@ -767,13 +776,15 @@ test.describe('4 — Checkout start contract (real backend)', () => {
       expect(heldSeats[key], `${key} before payment`).toBe('held');
     }
 
-    // 4. Stripe tells arena the buyer paid.
-    const hook = await deliverPaidCheckoutWebhook(csId);
+    // 4. Stripe tells arena the buyer paid what checkout/start priced.
+    const charged = started.pricing;
+    expect(charged?.total, 'pricing.total from checkout/start').toBeGreaterThan(0);
+    const hook = await deliverPaidCheckoutWebhook(csId, charged!);
     expect(hook.status, `webhook answer ${JSON.stringify(hook.body)} (config ${hook.configId})`).toBe(200);
     expect(hook.body['processed'], `webhook body ${JSON.stringify(hook.body)}`).toBe(true);
 
     // A second delivery of the same payment changes nothing (terminal intent).
-    const replay = await deliverPaidCheckoutWebhook(csId);
+    const replay = await deliverPaidCheckoutWebhook(csId, charged!);
     expect(replay.status).toBe(200);
     expect(replay.body['processed']).toBe(false);
 
