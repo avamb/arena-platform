@@ -81,6 +81,24 @@ entries short and factual.
   run here.
 - A test green locally but red in CI is a defect: replicate the CI env
   assumptions before marking a feature passing.
+- **GitHub Actions minutes are PAID since the repo went private (2026-11-01):
+  one full CI run is ~85 billed minutes, and the 2 000 free minutes were gone
+  in a day.** The `changes` job at the top of `ci.yml` picks what runs on a
+  PR: documentation only (`docs/`, `0x_*/`, `ops/hermes/`, top-level
+  `*.md`/`*.txt`) runs nothing; a change inside one frontend app runs that
+  app's jobs (widget also runs tickets page and event center, rich editor
+  also runs event center); anything else runs every job. On a PR the Go unit
+  tests run WITHOUT `-race` and the event-center live twin tests do not run:
+  both run on every push to master, on a manual run (Actions → CI → Run
+  workflow) and on a PR labelled `ci:full` — add that label to a PR that
+  touches concurrency, money paths or event-center screens and permissions.
+  A draft PR runs nothing. Rules for sessions: verify locally first (the
+  recipes in Tests above), push ONCE when it is green, and do not push while
+  a run is going — a new push cancels it, but the minutes it used are billed
+  anyway (a third of the runs on 2026-11-01/02 were cancelled ones). Open the
+  PR as a draft if you must push work in progress. A test that starts
+  reading a documentation file must add that file to the exceptions in the
+  `changes` script, or a docs-only PR skips it.
 
 ## Codegen & spec
 

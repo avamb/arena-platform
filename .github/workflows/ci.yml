@@ -5,21 +5,137 @@ on:
     branches:
       - master
   pull_request:
+    # ready_for_review: a draft runs nothing (see the changes job), so the
+    # switch to "ready" must start the run. labeled: adding ci:full runs the
+    # whole suite on a PR.
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+  # Run the whole suite on any branch by hand (Actions -> CI -> Run workflow).
+  workflow_dispatch:
 
 # Least-privilege default: every job gets read-only token unless it declares more.
 permissions:
   contents: read
 
+# A push to a PR cancels the run still going for the same PR. Adding any label
+# other than ci:full gets a group of its own, so it never cancels a real run
+# (the changes job below then skips everything).
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event.action == 'labeled' && github.event.label.name != 'ci:full' && format('-label-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 jobs:
+  # ─────────────────────────────────────────────────────────────────
+  # Changes — decides which jobs this run needs (GitHub Actions minutes
+  # are paid since the repository went private on 2026-11-01).
+  #
+  # Full suite: a push to master, a manual run, a PR with the ci:full label.
+  # Otherwise, on a PR, by the files it changes:
+  #   - documentation only (docs/, 0x_*/ folders, ops/hermes/, top-level
+  #     *.md and *.txt): nothing runs;
+  #   - one frontend app: that app's jobs, plus the apps that build from it
+  #     (widget -> tickets page and event center, rich editor -> event center);
+  #   - anything else (backend, go.mod, ops/, deploy/, scripts/, the WordPress
+  #     plugin, workflows, ...): every job, because Go tests read files all
+  #     over the repository and every frontend reads backend files.
+  # On a PR the Go unit tests run without -race and the event center live
+  # twin tests do not run; both run on master and with ci:full.
+  # A draft PR runs nothing.
+  #
+  # A test that starts reading a documentation file must add that file to the
+  # exceptions in the script below, or a docs-only PR will skip it.
+  # ─────────────────────────────────────────────────────────────────
+  changes:
+    name: Changes (which jobs run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.draft == false &&
+       (github.event.action != 'labeled' || github.event.label.name == 'ci:full'))
+    permissions:
+      contents: read
+    outputs:
+      go: ${{ steps.pick.outputs.go }}
+      race: ${{ steps.pick.outputs.race }}
+      admin: ${{ steps.pick.outputs.admin }}
+      ec: ${{ steps.pick.outputs.ec }}
+      ec_live: ${{ steps.pick.outputs.ec_live }}
+      widget: ${{ steps.pick.outputs.widget }}
+      widget_real: ${{ steps.pick.outputs.widget_real }}
+      tickets: ${{ steps.pick.outputs.tickets }}
+      shop: ${{ steps.pick.outputs.shop }}
+      editor: ${{ steps.pick.outputs.editor }}
+      venue: ${{ steps.pick.outputs.venue }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pick the jobs this change needs
+        id: pick
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          FULL_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:full') }}
+        run: |
+          keys="go race admin ec ec_live widget widget_real tickets shop editor venue"
+          emit() { for k in $keys; do echo "$k=${!k}" >> "$GITHUB_OUTPUT"; echo "$k=${!k}"; done; }
+          full() {
+            echo "Full suite: $1"
+            for k in $keys; do printf -v "$k" true; done
+            emit
+            exit 0
+          }
+          for k in $keys; do printf -v "$k" false; done
+
+          if [ "$EVENT_NAME" != "pull_request" ]; then full "$EVENT_NAME"; fi
+          if [ "$FULL_LABEL" = "true" ]; then full "label ci:full"; fi
+          if [ -z "$BASE_SHA" ] || ! git fetch --no-tags --depth=1 origin "$BASE_SHA"; then
+            full "base commit not available"
+          fi
+          if ! files=$(git diff --name-only "$BASE_SHA" HEAD); then full "diff failed"; fi
+
+          echo "Changed files:"
+          echo "$files"
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              # Documentation that tests read: treat like the code that reads it.
+              README.md|docs/ops/bil24_import.md) go=true ;;
+              docs/widget-embed.md) widget=true ;;
+              docs/tasks/sales_page_materials_screens/*|08_architecture/37_web_event_center_ru.md) ec=true ;;
+              # 06_venue_maps_and_seating/ holds fixtures (Palac_Akropolis.svg): not docs.
+              06_*) go=true ;;
+              docs/*|0[0-9]_*/*|ops/hermes/*) ;;
+              */*) case "$f" in
+                     apps/widget/*) widget=true ;;
+                     apps/tickets-page/*) tickets=true ;;
+                     apps/shop-page/*) shop=true ;;
+                     apps/admin-web/*) admin=true ;;
+                     apps/event-center/*) ec=true ;;
+                     apps/rich-editor/*) editor=true ;;
+                     apps/venue-svg-generator/*) venue=true ;;
+                     *) go=true ;;
+                   esac ;;
+              *.md|*.txt) ;;
+              *) go=true ;;
+            esac
+          done <<< "$files"
+
+          if [ "$go" = "true" ]; then
+            # Backend or shared files: every job; race and live tests stay for master.
+            for k in admin ec widget widget_real tickets shop editor venue; do printf -v "$k" true; done
+          fi
+          # Apps that build from another app's sources.
+          if [ "$widget" = "true" ]; then widget_real=true; tickets=true; ec=true; fi
+          if [ "$editor" = "true" ]; then ec=true; fi
+          emit
   # ─────────────────────────────────────────────────────────────────
   # Job 1: Lint — static analysis via golangci-lint
   # ─────────────────────────────────────────────────────────────────
   lint:
     name: Lint
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -43,12 +159,16 @@ jobs:
           version: latest
 
   # ─────────────────────────────────────────────────────────────────
-  # Job 2: Test — unit tests with race detector + coverage
+  # Job 2: Test — unit tests + coverage; with the race detector on master,
+  # on a manual run and with the ci:full label (the race build roughly
+  # doubles the job and hit the 20-minute limit on PRs).
   # ─────────────────────────────────────────────────────────────────
   test:
     name: Unit / Race
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
 
@@ -84,8 +204,12 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Run tests with race detector
-        run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
+      - name: Run tests (race detector on master and ci:full)
+        env:
+          RACE_FLAG: ${{ needs.changes.outputs.race == 'true' && '-race' || '' }}
+        run: |
+          echo "go test flags: ${RACE_FLAG:-no -race}"
+          go test $RACE_FLAG -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
@@ -114,6 +238,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   integration:
     name: Integration (PostgreSQL + Testcontainers)
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -201,6 +327,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   openapi-check:
     name: OpenAPI Check (Go types + TS client drift)
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -257,6 +385,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   admin-build:
     name: Admin (unit / build / container smoke)
+    needs: changes
+    if: needs.changes.outputs.admin == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -351,6 +481,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   tickets-page-build:
     name: Tickets page (unit / build / container smoke)
+    needs: changes
+    if: needs.changes.outputs.tickets == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -413,6 +545,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   shop-page-build:
     name: Shop page (unit / build / container smoke)
+    needs: changes
+    if: needs.changes.outputs.shop == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -480,6 +614,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   rich-editor-build:
     name: Rich editor (unit / build)
+    needs: changes
+    if: needs.changes.outputs.editor == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -519,6 +655,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   event-center-build:
     name: Event center (unit / build / smoke / container smoke)
+    needs: changes
+    if: needs.changes.outputs.ec == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -625,9 +763,15 @@ jobs:
   # organization (plan 8.2: every screen is proven on three roles).
   # apps/event-center/scripts/live-harness.mjs seeds the fixture with
   # arena-e2e-seed, starts arena-api and the Playwright config starts vite.
+  #
+  # Runs on master, on a manual run and on a PR with the ci:full label, not on
+  # every PR push (about 12 paid minutes a run). Add ci:full to a PR that
+  # changes event-center screens, their API or the roles' permissions.
   # ─────────────────────────────────────────────────────────────────
   event-center-live:
     name: Event center (live twin tests, real backend)
+    needs: changes
+    if: needs.changes.outputs.ec_live == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -712,11 +856,8 @@ jobs:
 
   # ─────────────────────────────────────────────────────────────────
   # Venue SVG generator (apps/venue-svg-generator, Python) — pytest +
-  # docker build. Runs only when that folder or this job changes: the
-  # first step compares the change set and every later step is gated on
-  # it, so the job stays green (and a required check stays satisfiable)
-  # on an unrelated PR. A path filter on the whole workflow would
-  # disable every other job, so the filter lives here.
+  # docker build. Runs when the changes job says so: that folder, or any
+  # backend / shared change, or master.
   #
   # Not run in CI (needs private, git-ignored client data, see
   # apps/venue-svg-generator/conftest.py): benchmark_v1 (imports the
@@ -725,6 +866,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   venue-svg-generator:
     name: Venue SVG generator (pytest / docker build)
+    needs: changes
+    if: needs.changes.outputs.venue == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -733,30 +876,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Detect changes in the generator
-        id: changes
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          run=true
-          # Compare against the base only when there is one; a new branch or a
-          # force push has no usable "before" and runs the job.
-          if [ -n "$BASE_SHA" ] && ! echo "$BASE_SHA" | grep -qE '^0+$' && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
-            if git diff --name-only "$BASE_SHA" HEAD | grep -qE '^(apps/venue-svg-generator/|\.github/workflows/ci\.yml$)'; then
-              run=true
-            else
-              run=false
-            fi
-          fi
-          echo "run=$run" >> "$GITHUB_OUTPUT"
-          echo "venue-svg-generator job runs: $run"
 
       - name: Set up Python
-        if: steps.changes.outputs.run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -764,24 +885,19 @@ jobs:
           cache-dependency-path: apps/venue-svg-generator/requirements-dev.txt
 
       - name: Install dependencies
-        if: steps.changes.outputs.run == 'true'
         run: pip install -r apps/venue-svg-generator/requirements-dev.txt
 
       - name: Unit tests (pytest)
-        if: steps.changes.outputs.run == 'true'
         working-directory: apps/venue-svg-generator
         run: python -m pytest -q -rs
 
       - name: Build the Docker image
-        if: steps.changes.outputs.run == 'true'
         run: docker build -t arena_new/arena-venue-gen:ci apps/venue-svg-generator
 
       - name: Image smoke (the CLI starts)
-        if: steps.changes.outputs.run == 'true'
         run: docker run --rm arena_new/arena-venue-gen:ci python -m m1_product --help
 
       - name: Image smoke (the HTTP service answers /healthz)
-        if: steps.changes.outputs.run == 'true'
         run: |
           docker run -d --name venue-gen-smoke -p 18090:8090 arena_new/arena-venue-gen:ci
           for i in $(seq 1 20); do
@@ -805,6 +921,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   widget:
     name: Widget (unit / build / size / mock E2E)
+    needs: changes
+    if: needs.changes.outputs.widget == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -879,6 +997,8 @@ jobs:
   # ─────────────────────────────────────────────────────────────────
   widget-acceptance:
     name: Widget Acceptance (real backend)
+    needs: changes
+    if: needs.changes.outputs.widget_real == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
