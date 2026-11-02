@@ -13,7 +13,7 @@
 
 **Откуда взялось.** Первая тестовая покупка на arenasoldout.com 18.09.2026 (заказ Arena
 1000000905): билет выпущен, письмо дошло, а в MACS билета нет. У организации abhteam не был
-зарегистрирован MACS-подписчик (он был только у «Lampyris (staging)»), и диспетчер
+зарегистрирован MACS-подписчик (он был только у «client-2 (staging)»), и диспетчер
 `macs.Dispatcher` молча пометил `v1.order.paid` обработанным (`getMACSSubscriber` → ошибка →
 `return nil`), без ошибки и без предупреждения в журнале. Повторно событие само не придёт.
 
@@ -85,7 +85,7 @@
 тест Arena на выгрузку изменений с курсора; ручной сценарий в плане тестов arenasoldout
 (`docs/test_plan_ru.md` репозитория arenasoldout).
 
-**Кто делает MACS-часть.** MACS — отдельная система (FastAPI + MongoDB, сервер arena-macs);
+**Кто делает MACS-часть.** MACS — отдельная система (FastAPI + MongoDB, сервер macs-host);
 её исходников в этом репозитории нет. Нужно решение, кто и где дорабатывает MACS.
 
 ---
@@ -137,11 +137,11 @@ API на новом сервере (arena-platform-prod-1) пишет в жур�
 
 ## B-7. Приёмник вебхуков Arena в WordPress не проверяет подпись
 
-`bil24-notification-receiver.php` (одинаковый у Lampyris, vinoandco, arenasoldout): маршрут
+`bil24-notification-receiver.php` (одинаковый у client-2, client-1, arenasoldout): маршрут
 `POST /wp-json/bil24/v1/notification` с `permission_callback => __return_true`, подпись не
 проверяется — любой, зная адрес, может прислать `order.paid`/`order.cancelled`. Arena подписывает
 вебхуки (signing secret выдаётся при регистрации). Сделать проверку HMAC в приёмнике, секрет в
-настройках WP. **Обязательно до перевода боевых Lampyris и Vino&Co.**
+настройках WP. **Обязательно до перевода боевых client-2 и client-1**
 
 ## B-9. Пустой секрет вебхука вместо сгенерированного — ИСПРАВЛЕНО 8f0b53e
 
@@ -152,12 +152,12 @@ left blank», но `HandlePutChannelWPWebhook` и `HandleUpsertMACSWebhook` со
 перерегистрировать все вебхуки (WordPress каждого канала, MACS каждой организации) и внести новые
 секреты на стороне получателей.
 
-## B-8. Помощники ядра продаж живут в необязательном модуле Lampyris
+## B-8. Помощники ядра продаж живут в необязательном модуле client-2
 
 `bil24_is_purchase_page()` / `bil24_context_product_id()` объявлены в
 `bil24-acf-sync/modules/lampyris-events`, а вызываются всем ядром; при
 `bil24_enable_lampyris_events=false` любой сайт падает с 500 (arenasoldout 18.09.2026, ~1 мин).
-Перенести помощники в основной файл плагина (репозиторий lampyrisevents; arenasoldout обходит
+Перенести помощники в основной файл плагина (репозиторий client2-site; arenasoldout обходит
 в `aso-ticketing.php`).
 
 ---
@@ -192,7 +192,7 @@ left blank», но `HandlePutChannelWPWebhook` и `HandleUpsertMACSWebhook` со
 которых переносим сейчас, площадки в разных странах и не пересекаются. Вернуться, когда станет
 актуально.
 
-**Откуда взялось.** Перенос Lampyris из Bil24 (21.09.2026): импорт площадки с ID Bil24, уже
+**Откуда взялось.** Перенос client-2 из Bil24 (21.09.2026): импорт площадки с ID Bil24, уже
 занятым другой организацией, отвечает 409 `import.venue_owned_by_other_org`. По замыслу
 (`08_architecture/00_backend_architecture_brief_ru.md` п. 12) площадки общие; в коде у каждой один
 неизменяемый владелец (`venues.org_id`), сеанс на чужой площадке запрещён
@@ -204,11 +204,11 @@ left blank», но `HandlePutChannelWPWebhook` и `HandleUpsertMACSWebhook` со
 дублей оператором.
 
 **Вернуться, когда** переносим из Bil24 второго организатора с той же площадкой (в выгрузке заказов
-такие есть: Futurum Music Bar — Somewhere Show и Lampyris; залы Торревьехи — Teatro Vega и
-Actorre), либо запускаем маркетплейс arenasoldout.com. Временный обход на случай спешки — раздел 7
+такие есть: Futurum Music Bar — Somewhere Show и client-2; залы Торревьехи — Teatro Vega и
+client-3), либо запускаем маркетплейс arenasoldout.com. Временный обход на случай спешки — раздел 7
 спецификации.
 
 **Хвост от 21.09.2026.** Lucerna Music Bar (ID Bil24 6967) занята организацией
-`lampyris-staging` первым тестовым импортом. Перед прод-импортом мероприятия Lampyris в Lucerna —
+`client2-staging` первым тестовым импортом. Перед прод-импортом мероприятия client-2 в Lucerna —
 освободить ID вручную (раздел 6 спецификации). Staging импортировать только с
 `ops/bil24-export/to-bundle.mjs --venue-offset 900000000`.

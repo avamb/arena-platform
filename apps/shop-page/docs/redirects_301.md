@@ -1,14 +1,14 @@
-# 301 table: einatwinery.com (Shopify) to the arena storefront
+# 301 table: client4.example (Shopify) to the arena storefront
 
 The storefront keeps Shopify's URL shapes, so on the organizer's own domain
 **most old addresses need no redirect at all**: the same path is a real route of
 the new app. This file lists what is identical, what has to be redirected, and
 what has no equivalent yet. Source: the offline export
-(`.local/einatwinery_export/theme_live/hrefs.txt` and the page list) and
+(`.local/client4_export/theme_live/hrefs.txt` and the page list) and
 `collections.json`.
 
 On the platform host the same paths simply sit under `/{org_slug}`
-(`shop.arenasoldout.com/einatwinery/products/two-cats`); the table below is for
+(`shop.arenasoldout.com/client4/products/two-cats`); the table below is for
 the custom domain where the base is empty.
 
 ## Identical (no redirect)
@@ -57,7 +57,7 @@ Product handles (slugs must be imported unchanged):
 ## robots.txt, sitemap.xml and 404
 
 `public/robots.txt` and `public/sitemap.xml` are static files of this app (main
-routes only, host `shop.einatwinery.com`; products come later from the API,
+routes only, host `client4.example`; products come later from the API,
 spec 47 backlog SHOP-B9). `/cart`, `/checkout[/...]` and `/search` carry
 `X-Robots-Tag: noindex`, and any host whose name contains `staging` is noindex
 everywhere. On the organizer's own domain a path whose first segment is not a

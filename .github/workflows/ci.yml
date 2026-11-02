@@ -48,9 +48,7 @@ jobs:
   test:
     name: Unit / Race
     runs-on: ubuntu-latest
-    # The race suite takes 10-17 minutes on a normal runner and over 20 on a
-    # slow one, so 20 cancelled finished-but-slow runs.
-    timeout-minutes: 30
+    timeout-minutes: 20
     permissions:
       contents: read
 

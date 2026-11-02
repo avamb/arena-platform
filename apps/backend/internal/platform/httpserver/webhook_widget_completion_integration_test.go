@@ -33,6 +33,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -304,6 +305,9 @@ func TestWebhookWidgetCompletion_StripeEnvelopeSuccess_CompletesCheckoutAndPaysO
 			"object": map[string]any{
 				"id":     providerPaymentID,
 				"status": "succeeded",
+				// Stripe names what it charged on every payment event (D-01).
+				"amount_received": total,
+				"currency":        strings.ToLower(currency),
 			},
 		},
 	}
@@ -594,7 +598,10 @@ func TestWebhookWidgetCompletion_PaymentAfterExpiry_ParksForManualReview(t *test
 	body, err := json.Marshal(map[string]any{
 		"id":   "evt_whwc_late_" + uuid.New().String()[:12],
 		"type": "payment_intent.succeeded",
-		"data": map[string]any{"object": map[string]any{"id": providerPaymentID, "status": "succeeded"}},
+		"data": map[string]any{"object": map[string]any{
+			"id": providerPaymentID, "status": "succeeded",
+			"amount_received": *cs.Total, "currency": "eur",
+		}},
 	})
 	if err != nil {
 		t.Fatalf("marshal webhook payload: %v", err)
