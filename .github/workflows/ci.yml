@@ -536,6 +536,7 @@ jobs:
           cache-dependency-path: |
             apps/event-center/package-lock.json
             apps/rich-editor/package-lock.json
+            packages/arena-track/package-lock.json
 
       - name: Install dependencies
         run: npm --prefix apps/event-center ci
@@ -547,6 +548,15 @@ jobs:
         run: |
           npm --prefix apps/rich-editor ci
           npm --prefix apps/rich-editor run build
+
+      # The shared analytics tracker (spec 50, packages/arena-track): the event center
+      # imports its TypeScript source through the @arena-track alias, so only its own
+      # type-check and tests need an install of their own.
+      - name: Shared tracker (arena-track) type-check and tests
+        run: |
+          npm --prefix packages/arena-track ci
+          npm --prefix packages/arena-track run type-check
+          npm --prefix packages/arena-track test
 
       - name: Type-check
         run: npm --prefix apps/event-center run type-check

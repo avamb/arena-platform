@@ -10,6 +10,7 @@ import { errorKey } from "@/lib/errors";
 import type { DownloadedFile } from "@/lib/api/http";
 import type { Tone } from "@/lib/orders";
 import { saveBlob } from "@/lib/tgDownload";
+import { useReportUiError } from "@/lib/analytics/hooks";
 
 export function Loading({ label }: { label?: string }) {
   const { t } = useI18n();
@@ -37,6 +38,7 @@ export function ErrorBox({
 }) {
   const { t } = useI18n();
   const scope = useContext(ErrorScope);
+  useReportUiError(error);
   const key = errorKey(error);
   const forbidden = key === "common.error.forbidden";
   return (

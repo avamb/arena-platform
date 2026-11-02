@@ -14,6 +14,8 @@ export const en = {
   "nav.switchOrg": "Switch organization",
   "nav.logout": "Sign out",
   "nav.language": "Language",
+  "analytics.optOut.label": "Help improve the service",
+  "analytics.optOut.hint": "We count screens and steps, never what you type.",
   "nav.main": "Main menu",
 
   "common.loading": "Loading…",

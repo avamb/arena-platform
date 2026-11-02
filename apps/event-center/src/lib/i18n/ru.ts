@@ -14,6 +14,8 @@ export const ru: Record<MessageKey, string> = {
   "nav.switchOrg": "Сменить организацию",
   "nav.logout": "Выйти",
   "nav.language": "Язык",
+  "analytics.optOut.label": "Помогать улучшать сервис",
+  "analytics.optOut.hint": "Мы считаем экраны и шаги, но не то, что вы вводите.",
   "nav.main": "Главное меню",
 
   "common.loading": "Загружаем…",

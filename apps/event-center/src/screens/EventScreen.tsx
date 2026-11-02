@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api/http";
@@ -14,6 +15,7 @@ import { MaterialsSection } from "@/components/materials/MaterialsSection";
 import { posterCapabilities } from "@/lib/posters";
 import { PageStats } from "@/components/PageStats";
 import { useOrg } from "@/screens/OrgLayout";
+import { useFlow } from "@/lib/analytics/hooks";
 import { SalesStateBadge, useEventsList } from "@/screens/EventsScreen";
 
 interface SessionRef {
@@ -76,6 +78,12 @@ export function EventScreen() {
   const canCsv = canSales && canSessions;
   // 2-3: the page statistics need event.read (the route's own gate).
   const canPageStats = access.can("event.read");
+  // Analytics (spec 50): the event_edit flow is the changes made on the event card.
+  const flow = useFlow("event_edit");
+  const canEdit = access.can("event.update") || access.can("event.publish");
+  useEffect(() => {
+    if (canEdit) flow.mark("open");
+  }, [flow, canEdit]);
   const events = useEventsList(orgId);
   const summary = useQuery({
     queryKey: ["eventSummary", orgId, eventId],
@@ -169,6 +177,7 @@ export function EventScreen() {
         status={event.status}
         canPublish={access.can("event.publish")}
         canDelete={access.can("event.delete")}
+        onMoved={(action) => flow.mark(`status_${action}`)}
       />
 
       <EventPoster
@@ -179,6 +188,7 @@ export function EventScreen() {
         posterMediaId={event.poster_media_id ?? null}
         canView={poster.canView}
         canChange={poster.canChange}
+        onSaved={() => flow.mark("poster_saved")}
       />
 
       {/* RT-11: the organizer's own text of the buyer letters. The events list is the route that carries it. */}
@@ -190,6 +200,7 @@ export function EventScreen() {
           note={event.email_note}
           noteFormat={event.email_note_format}
           canEdit
+          onSaved={() => flow.mark("note_saved")}
         />
       )}
 

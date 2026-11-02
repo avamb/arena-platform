@@ -102,6 +102,7 @@ export function EventPoster({
   posterMediaId,
   canView,
   canChange,
+  onSaved,
 }: {
   orgId: string;
   eventId: string;
@@ -109,6 +110,8 @@ export function EventPoster({
   posterMediaId: string | null;
   canView: boolean;
   canChange: boolean;
+  /** Called once after a poster was stored and attached. */
+  onSaved?: () => void;
 }) {
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
@@ -130,6 +133,7 @@ export function EventPoster({
 
   const finish = async () => {
     setWork({ phase: "saved" });
+    onSaved?.();
     picker.clear();
     await queryClient.invalidateQueries({ queryKey: ["events", orgId] });
   };

@@ -5,6 +5,7 @@ import { bindBackButton } from "@/lib/tgEdit";
 import { wasEnteredThroughTelegram } from "@/lib/tgEnter";
 import { useI18n } from "@/lib/i18n";
 import { useFocusOnRouteChange } from "@/lib/routeFocus";
+import { ScreenTracking } from "@/lib/analytics/hooks";
 
 /** The page frame: skip link, then the screen. Headers live in OrgLayout. */
 export function RootLayout() {
@@ -21,6 +22,7 @@ export function RootLayout() {
       <a className="skip-link" href="#main">
         {t("nav.skip")}
       </a>
+      <ScreenTracking />
       <Outlet />
     </>
   );

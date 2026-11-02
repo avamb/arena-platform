@@ -5,6 +5,7 @@ import { useI18n, type MessageKey } from "@/lib/i18n";
 import { Empty, ErrorBox, Loading } from "@/components/ui";
 import { RequireSignIn } from "@/screens/RequireSignIn";
 import { LanguageSelect } from "@/screens/LanguageSelect";
+import { AnalyticsOptOut } from "@/lib/analytics/AnalyticsOptOut";
 
 export function roleKey(role: string): MessageKey {
   if (role === "org_admin" || role === "organizer" || role === "agent") return `role.${role}`;
@@ -76,6 +77,7 @@ export function OrgsScreen() {
           <h1>{t("orgs.title")}</h1>
           <OrgsList />
           <LanguageSelect />
+          <AnalyticsOptOut />
         </div>
       </main>
     </RequireSignIn>

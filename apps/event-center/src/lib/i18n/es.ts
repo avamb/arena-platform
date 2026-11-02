@@ -14,6 +14,8 @@ export const es: Record<MessageKey, string> = {
   "nav.switchOrg": "Cambiar de organización",
   "nav.logout": "Salir",
   "nav.language": "Idioma",
+  "analytics.optOut.label": "Ayudar a mejorar el servicio",
+  "analytics.optOut.hint": "Contamos pantallas y pasos, nunca lo que escribes.",
   "nav.main": "Menú principal",
 
   "common.loading": "Cargando…",
