@@ -1484,6 +1484,85 @@ components:
           items:
             $ref: "#/components/schemas/BotInvitationPdfNotice"
 
+    GuestListSubscription:
+      type: object
+      required: [enabled, channel]
+      description: The caller's automatic guest list setting.
+      properties:
+        enabled:
+          type: boolean
+          description: True when the caller receives the guest list of every session automatically.
+        channel:
+          type: string
+          description: How the list reaches the caller - `telegram` (private chat with the event center bot), `email` (not linked to the bot) or `none` (neither; nothing can be sent).
+
+    GuestListSubscriptionRequest:
+      type: object
+      required: [enabled]
+      description: Body of PUT .../guest-list-subscription.
+      properties:
+        enabled:
+          type: boolean
+          description: True turns the automatic guest list on, false turns it off.
+
+    BotGuestListDelivery:
+      type: object
+      required: [id, org_id, session_id, slot, telegram_user_id, event_name, session_start_at, session_timezone]
+      description: One automatic guest list the bot has to send.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The delivery, to report back with `.../finish`.
+        org_id:
+          type: string
+          format: uuid
+          description: The organization of the session.
+        session_id:
+          type: string
+          format: uuid
+          description: The session whose guest list to send.
+        slot:
+          type: string
+          description: The moment - `h24` (24 hours before the start), `h3` (3 hours before) or `doors` (doors open).
+        telegram_user_id:
+          type: integer
+          format: int64
+          description: The private chat (the person's Telegram id) to send the file to.
+        event_name:
+          type: string
+          description: The event's name, for the caption.
+        session_start_at:
+          type: string
+          format: date-time
+          description: The session's start (RFC 3339).
+        session_timezone:
+          type: string
+          description: The venue's IANA zone, `UTC` when unknown.
+
+    BotGuestListDeliveriesResponse:
+      type: object
+      required: [deliveries]
+      description: Answer of POST /v1/bot/guest-list-deliveries/claim.
+      properties:
+        deliveries:
+          type: array
+          description: The lists taken for this call.
+          items:
+            $ref: "#/components/schemas/BotGuestListDelivery"
+
+    BotGuestListFinishRequest:
+      type: object
+      required: [outcome]
+      description: Body of POST /v1/bot/guest-list-deliveries/{id}/finish.
+      properties:
+        outcome:
+          type: string
+          description: "`sent`, `failed` (may be taken again) or `skipped` (closed without a send)."
+        reason:
+          type: string
+          description: A short code (`[a-z0-9_]`, up to 40 characters) of why it failed or was skipped; never data of the file.
+
     AuthLogoutRequest:
       type: object
       required: [refresh_token]
@@ -28983,6 +29062,94 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/bot/guest-list-deliveries/claim:
+    post:
+      operationId: claimBotGuestListDeliveries
+      summary: Automatic guest lists the bot must send now
+      description: |
+        Called by the bot PROCESS under `BOT_SERVICE_TOKEN`. Returns up to 20
+        guest lists whose moment came (24 hours, 3 hours before the start,
+        doors open) for members linked to the bot, and takes each for 10
+        minutes; a list not reported back with `.../finish` may be taken
+        again, three times at most, and never more than 2 hours after its
+        moment. The bot fetches `guest-list.csv` AS the member, sends it to
+        their private chat and reports the outcome. The answer carries no
+        data of the file.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The lists to send now
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotGuestListDeliveriesResponse"
+        "401":
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Service token not configured or database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/bot/guest-list-deliveries/{id}/finish:
+    post:
+      operationId: finishBotGuestListDelivery
+      summary: Report how one automatic guest list ended
+      description: |
+        Called by the bot PROCESS under `BOT_SERVICE_TOKEN` for a delivery it
+        claimed. `sent` closes it; `failed` lets it be taken again later;
+        `skipped` closes it without a send (no rights any more, no tickets,
+        the person blocked the bot). A delivery already sent is a 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the delivery (from the claim)
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotGuestListFinishRequest"
+      responses:
+        "204":
+          description: Recorded
+        "400":
+          description: Bad id, or outcome / reason not allowed (`bot.invalid_guest_list_outcome`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No open delivery with this id (`bot.guest_list_delivery_not_found`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Service token not configured or database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
 
   # ─────────────────────────────────────────────────────────────────────────
   # Admin Organizations CRUD (feature #233)
@@ -55242,6 +55409,214 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Export queries unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv:
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdGuestListCsv
+      summary: Guest list of a session as a CSV file
+      description: |
+        One row per ACTIVE ticket of the session (cancelled, revoked and
+        transferred tickets are left out), sorted by the guest's name:
+        guest (the name on the ticket, else the buyer's), category, seat,
+        ticket number, barcode, VIP (`yes` / `no`), entered (`yes` / `no`),
+        entry time (venue's zone), order number, e-mail, phone and
+        invitation (`yes` / `no`). Same csvexport rules, locale selection and
+        50 000-row cap as the sales file. The same file is sent automatically
+        to the members who turned the guest list on
+        (`PUT .../guest-list-subscription`).
+
+        Requires `order.read` AND `session.read`; a session of another
+        organization is a 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+        - name: locale
+          in: query
+          required: false
+          description: Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+          schema: { type: string }
+      responses:
+        "200":
+          description: |
+            The CSV attachment, `Content-Disposition: attachment;
+            filename="guests_<event slug or id>_<YYYY-MM-DD of the session>.csv"`.
+          content:
+            text/csv:
+              schema:
+                type: string
+                description: One line per active ticket of the session.
+        "400":
+          description: org_id or session_id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `order.read` or `session.read`, or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: More than 50 000 active tickets (`export.too_many_rows`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`export.internal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Export queries unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/guest-list-subscription:
+    get:
+      operationId: getV1OrganizationsOrgIdGuestListSubscription
+      summary: Whether the caller receives guest lists automatically
+      description: |
+        The CALLING member's setting. When it is on, the guest list of every
+        session of the organization is sent to them 24 hours before the
+        start, 3 hours before it and at doors open (the start when no doors
+        time is set): to their private chat with the event center bot, or by
+        e-mail when they are not linked to the bot. Only owners and managers
+        get files. Requires `order.read`; an organization API key is refused
+        (403 `guest_list.api_key_forbidden`).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The caller's setting.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestListSubscription"
+        "400":
+          description: org_id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a member with `order.read`, or an organization API key (`guest_list.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`export.internal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      operationId: putV1OrganizationsOrgIdGuestListSubscription
+      summary: Turn the automatic guest list on or off for the caller
+      description: |
+        Turns the caller's automatic guest list on or off. A repeat of the
+        current value changes nothing. Turning it off does not stop a list
+        whose moment has already come. Requires `order.read`; an organization
+        API key is refused (403 `guest_list.api_key_forbidden`).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuestListSubscriptionRequest"
+      responses:
+        "200":
+          description: The caller's setting after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestListSubscription"
+        "400":
+          description: Body has no boolean `enabled` or carries another field (`guest_list.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a member with `order.read`, or an organization API key (`guest_list.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`export.internal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable (`dependency.database_unavailable`).
           content:
             application/json:
               schema:

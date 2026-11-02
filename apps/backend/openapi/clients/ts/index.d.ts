@@ -1641,6 +1641,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/bot/guest-list-deliveries/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Automatic guest lists the bot must send now
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN`. Returns up to 20
+         *     guest lists whose moment came (24 hours, 3 hours before the start,
+         *     doors open) for members linked to the bot, and takes each for 10
+         *     minutes; a list not reported back with `.../finish` may be taken
+         *     again, three times at most, and never more than 2 hours after its
+         *     moment. The bot fetches `guest-list.csv` AS the member, sends it to
+         *     their private chat and reports the outcome. The answer carries no
+         *     data of the file.
+         */
+        post: operations["claimBotGuestListDeliveries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/guest-list-deliveries/{id}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report how one automatic guest list ended
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN` for a delivery it
+         *     claimed. `sent` closes it; `failed` lets it be taken again later;
+         *     `skipped` closes it without a send (no rights any more, no tickets,
+         *     the person blocked the bot). A delivery already sent is a 404.
+         */
+        post: operations["finishBotGuestListDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/users/{user_id}": {
         parameters: {
             query?: never;
@@ -9125,6 +9175,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Guest list of a session as a CSV file
+         * @description One row per ACTIVE ticket of the session (cancelled, revoked and
+         *     transferred tickets are left out), sorted by the guest's name:
+         *     guest (the name on the ticket, else the buyer's), category, seat,
+         *     ticket number, barcode, VIP (`yes` / `no`), entered (`yes` / `no`),
+         *     entry time (venue's zone), order number, e-mail, phone and
+         *     invitation (`yes` / `no`). Same csvexport rules, locale selection and
+         *     50 000-row cap as the sales file. The same file is sent automatically
+         *     to the members who turned the guest list on
+         *     (`PUT .../guest-list-subscription`).
+         *
+         *     Requires `order.read` AND `session.read`; a session of another
+         *     organization is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdGuestListCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/guest-list-subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the caller receives guest lists automatically
+         * @description The CALLING member's setting. When it is on, the guest list of every
+         *     session of the organization is sent to them 24 hours before the
+         *     start, 3 hours before it and at doors open (the start when no doors
+         *     time is set): to their private chat with the event center bot, or by
+         *     e-mail when they are not linked to the bot. Only owners and managers
+         *     get files. Requires `order.read`; an organization API key is refused
+         *     (403 `guest_list.api_key_forbidden`).
+         */
+        get: operations["getV1OrganizationsOrgIdGuestListSubscription"];
+        /**
+         * Turn the automatic guest list on or off for the caller
+         * @description Turns the caller's automatic guest list on or off. A repeat of the
+         *     current value changes nothing. Turning it off does not stop a list
+         *     whose moment has already come. Requires `order.read`; an organization
+         *     API key is refused (403 `guest_list.api_key_forbidden`).
+         */
+        put: operations["putV1OrganizationsOrgIdGuestListSubscription"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/promo-codes/{promo_code_id}/redemptions.csv": {
         parameters: {
             query?: never;
@@ -12557,6 +12671,64 @@ export interface components {
         BotInvitationPdfNoticesResponse: {
             /** @description Invitations whose PDF is not sent yet; each is handed out once. */
             notices: components["schemas"]["BotInvitationPdfNotice"][];
+        };
+        /** @description The caller's automatic guest list setting. */
+        GuestListSubscription: {
+            /** @description True when the caller receives the guest list of every session automatically. */
+            enabled: boolean;
+            /** @description How the list reaches the caller - `telegram` (private chat with the event center bot), `email` (not linked to the bot) or `none` (neither; nothing can be sent). */
+            channel: string;
+        };
+        /** @description Body of PUT .../guest-list-subscription. */
+        GuestListSubscriptionRequest: {
+            /** @description True turns the automatic guest list on, false turns it off. */
+            enabled: boolean;
+        };
+        /** @description One automatic guest list the bot has to send. */
+        BotGuestListDelivery: {
+            /**
+             * Format: uuid
+             * @description The delivery, to report back with `.../finish`.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The organization of the session.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description The session whose guest list to send.
+             */
+            session_id: string;
+            /** @description The moment - `h24` (24 hours before the start), `h3` (3 hours before) or `doors` (doors open). */
+            slot: string;
+            /**
+             * Format: int64
+             * @description The private chat (the person's Telegram id) to send the file to.
+             */
+            telegram_user_id: number;
+            /** @description The event's name, for the caption. */
+            event_name: string;
+            /**
+             * Format: date-time
+             * @description The session's start (RFC 3339).
+             */
+            session_start_at: string;
+            /** @description The venue's IANA zone, `UTC` when unknown. */
+            session_timezone: string;
+        };
+        /** @description Answer of POST /v1/bot/guest-list-deliveries/claim. */
+        BotGuestListDeliveriesResponse: {
+            /** @description The lists taken for this call. */
+            deliveries: components["schemas"]["BotGuestListDelivery"][];
+        };
+        /** @description Body of POST /v1/bot/guest-list-deliveries/{id}/finish. */
+        BotGuestListFinishRequest: {
+            /** @description `sent`, `failed` (may be taken again) or `skipped` (closed without a send). */
+            outcome: string;
+            /** @description A short code (`[a-z0-9_]`, up to 40 characters) of why it failed or was skipped; never data of the file. */
+            reason?: string;
         };
         AuthLogoutRequest: {
             /**
@@ -36608,6 +36780,105 @@ export interface operations {
             };
             /** @description Missing or wrong service token */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    claimBotGuestListDeliveries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lists to send now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotGuestListDeliveriesResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    finishBotGuestListDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the delivery (from the claim) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotGuestListFinishRequest"];
+            };
+        };
+        responses: {
+            /** @description Recorded */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad id, or outcome / reason not allowed (`bot.invalid_guest_list_outcome`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No open delivery with this id (`bot.guest_list_delivery_not_found`) */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -63728,6 +63999,240 @@ export interface operations {
                 };
             };
             /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdGuestListCsv: {
+        parameters: {
+            query?: {
+                /** @description Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The CSV attachment, `Content-Disposition: attachment;
+             *     filename="guests_<event slug or id>_<YYYY-MM-DD of the session>.csv"`.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description org_id or session_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `order.read` or `session.read`, or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description More than 50 000 active tickets (`export.too_many_rows`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdGuestListSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's setting. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestListSubscription"];
+                };
+            };
+            /** @description org_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not a member with `order.read`, or an organization API key (`guest_list.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putV1OrganizationsOrgIdGuestListSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuestListSubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description The caller's setting after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestListSubscription"];
+                };
+            };
+            /** @description Body has no boolean `enabled` or carries another field (`guest_list.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not a member with `order.read`, or an organization API key (`guest_list.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable (`dependency.database_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;

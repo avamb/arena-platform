@@ -423,6 +423,7 @@ var orgIsolationAuditedSafe = map[string]string{
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/sales.csv":            "hexport",
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/summary":              "horders",
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/summary.csv":          "horders",
+	"GET /v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv":       "hexport",
 	"POST /v1/organizations/{org_id}/orders/{id}/cancel":                        "horders",
 	"POST /v1/organizations/{org_id}/orders/{order_id}/resend-tickets":          "horders",
 	"GET /v1/organizations/{org_id}/orders/{order_id}/consents":                 "horders.HandleConsents (GetOrderByID(order, path org), then the consents by (path org, the order's checkout session); covered by TestCheckoutConsent_OrderConsentsStayInsideTheOrganization)",

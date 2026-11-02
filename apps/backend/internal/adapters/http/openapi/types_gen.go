@@ -4485,6 +4485,48 @@ type BindSessionSeatingResponse struct {
 	} `json:"session"`
 }
 
+// BotGuestListDeliveriesResponse Answer of POST /v1/bot/guest-list-deliveries/claim.
+type BotGuestListDeliveriesResponse struct {
+	// Deliveries The lists taken for this call.
+	Deliveries []BotGuestListDelivery `json:"deliveries"`
+}
+
+// BotGuestListDelivery One automatic guest list the bot has to send.
+type BotGuestListDelivery struct {
+	// EventName The event's name, for the caption.
+	EventName string `json:"event_name"`
+
+	// Id The delivery, to report back with `.../finish`.
+	Id openapi_types.UUID `json:"id"`
+
+	// OrgId The organization of the session.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// SessionId The session whose guest list to send.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// SessionStartAt The session's start (RFC 3339).
+	SessionStartAt time.Time `json:"session_start_at"`
+
+	// SessionTimezone The venue's IANA zone, `UTC` when unknown.
+	SessionTimezone string `json:"session_timezone"`
+
+	// Slot The moment - `h24` (24 hours before the start), `h3` (3 hours before) or `doors` (doors open).
+	Slot string `json:"slot"`
+
+	// TelegramUserId The private chat (the person's Telegram id) to send the file to.
+	TelegramUserId int64 `json:"telegram_user_id"`
+}
+
+// BotGuestListFinishRequest Body of POST /v1/bot/guest-list-deliveries/{id}/finish.
+type BotGuestListFinishRequest struct {
+	// Outcome `sent`, `failed` (may be taken again) or `skipped` (closed without a send).
+	Outcome string `json:"outcome"`
+
+	// Reason A short code (`[a-z0-9_]`, up to 40 characters) of why it failed or was skipped; never data of the file.
+	Reason *string `json:"reason,omitempty"`
+}
+
 // BotInvitation A bot invitation as the API reports it, never the code.
 type BotInvitation struct {
 	// Channel The channel the invitation was sent through, `telegram` or `web`. A `web` invitation is recorded as accepted at once and cannot be resent.
@@ -8369,6 +8411,21 @@ type GrantMembershipRequest struct {
 
 // GrantMembershipRequestRole Named role to grant, scoped to the organization in the path.
 type GrantMembershipRequestRole string
+
+// GuestListSubscription The caller's automatic guest list setting.
+type GuestListSubscription struct {
+	// Channel How the list reaches the caller - `telegram` (private chat with the event center bot), `email` (not linked to the bot) or `none` (neither; nothing can be sent).
+	Channel string `json:"channel"`
+
+	// Enabled True when the caller receives the guest list of every session automatically.
+	Enabled bool `json:"enabled"`
+}
+
+// GuestListSubscriptionRequest Body of PUT .../guest-list-subscription.
+type GuestListSubscriptionRequest struct {
+	// Enabled True turns the automatic guest list on, false turns it off.
+	Enabled bool `json:"enabled"`
+}
 
 // HealthzResponse defines model for HealthzResponse.
 type HealthzResponse struct {
@@ -21396,6 +21453,12 @@ type GetV1OrganizationsOrgIdSessionsSessionIdChangeImpactParams struct {
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdSessionsSessionIdGuestListCsvParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdGuestListCsv.
+type GetV1OrganizationsOrgIdSessionsSessionIdGuestListCsvParams struct {
+	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
 // CreateInvitationBatchParams defines parameters for CreateInvitationBatch.
 type CreateInvitationBatchParams struct {
 	// DryRun true validates the file and writes nothing (answers the report, 200). Default false.
@@ -21900,6 +21963,9 @@ type StripeBillingWebhookJSONRequestBody StripeBillingWebhookJSONBody
 // CreateTariffJSONRequestBody defines body for CreateTariff for application/json ContentType.
 type CreateTariffJSONRequestBody CreateTariffJSONBody
 
+// FinishBotGuestListDeliveryJSONRequestBody defines body for FinishBotGuestListDelivery for application/json ContentType.
+type FinishBotGuestListDeliveryJSONRequestBody = BotGuestListFinishRequest
+
 // AcceptBotInvitationJSONRequestBody defines body for AcceptBotInvitation for application/json ContentType.
 type AcceptBotInvitationJSONRequestBody = BotInvitationAcceptRequest
 
@@ -22133,6 +22199,9 @@ type CreateExternalAllocationJSONRequestBody CreateExternalAllocationJSONBody
 
 // UpdateExternalAllocationJSONRequestBody defines body for UpdateExternalAllocation for application/json ContentType.
 type UpdateExternalAllocationJSONRequestBody UpdateExternalAllocationJSONBody
+
+// PutV1OrganizationsOrgIdGuestListSubscriptionJSONRequestBody defines body for PutV1OrganizationsOrgIdGuestListSubscription for application/json ContentType.
+type PutV1OrganizationsOrgIdGuestListSubscriptionJSONRequestBody = GuestListSubscriptionRequest
 
 // ImportBil24SessionJSONRequestBody defines body for ImportBil24Session for application/json ContentType.
 type ImportBil24SessionJSONRequestBody = ImportBil24SessionRequest
