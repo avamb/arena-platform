@@ -32,7 +32,6 @@ import (
 	"context"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -67,7 +66,7 @@ func (d *Draft) adoptEditorDescription(ev openapi.EventItem) bool {
 	d.Event.Description, d.Event.DescriptionFormat = text, fm
 	d.Loaded.Event.Description, d.Loaded.Event.DescriptionFormat = text, fm
 	if sameOtherParts(ev, d.Loaded.Event) {
-		stamp := ev.UpdatedAt.UTC().Format(time.RFC3339Nano)
+		stamp := editStamp(ev.UpdatedAt)
 		d.Event.UpdatedAt, d.Loaded.Event.UpdatedAt = stamp, stamp
 	}
 	d.refreshChanged()

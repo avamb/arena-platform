@@ -71,7 +71,11 @@ func newConflictFixture(t *testing.T) *conflictFixture {
 			_, _ = io.WriteString(w, `{"error":{"code":"internal","message":"x"}}`)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(openapi.EventEnvelope{Event: f.ev})
+		// GET /v1/events/{id} prints updated_at to the second (hcatalog
+		// formats it with time.RFC3339), whatever the column holds.
+		ev := f.ev
+		ev.UpdatedAt = ev.UpdatedAt.UTC().Truncate(time.Second)
+		_ = json.NewEncoder(w).Encode(openapi.EventEnvelope{Event: ev})
 	}))
 	t.Cleanup(arena.Close)
 	tgSrv := httptest.NewServer(http.HandlerFunc(f.stub.serve))
@@ -361,7 +365,8 @@ func partlySavedFixture(t *testing.T) (*conflictFixture, time.Time) {
 	f.r.press("st:same", stSConfirm)
 	f.r.press("e:home", stEditMenu)
 	f.r.press("publish", stPreview)
-	written := f.ev.UpdatedAt.Add(5 * time.Second)
+	// The import answers its mark to the microsecond, unlike the GET.
+	written := f.ev.UpdatedAt.Add(5*time.Second + 123456*time.Microsecond)
 	io := &stampSave{stamp: written, failAt: 2}
 	out := f.r.w.Save(context.Background(), io, f.r.ws, f.d, uuid.NewString())
 	if out.Done || io.calls != 2 {
@@ -381,7 +386,7 @@ func strPtrConflict(s string) *string { return &s }
 // save may go on.
 func TestConflict_OwnPartialSaveIsNotAConflict(t *testing.T) {
 	f, written := partlySavedFixture(t)
-	if want := written.UTC().Format(time.RFC3339Nano); f.d.Event.UpdatedAt != want || f.d.Loaded.Event.UpdatedAt != want {
+	if want := written.UTC().Truncate(time.Second).Format(time.RFC3339); f.d.Event.UpdatedAt != want || f.d.Loaded.Event.UpdatedAt != want {
 		t.Fatalf("the draft kept the old mark: %q / %q, want %q", f.d.Event.UpdatedAt, f.d.Loaded.Event.UpdatedAt, want)
 	}
 
@@ -429,7 +434,7 @@ func TestRecordSavedStamp_NoMarkKeepsTheOldOne(t *testing.T) {
 	}
 	at := time.Date(2026, 11, 2, 10, 0, 0, 123456000, time.FixedZone("x", 3600))
 	d.recordSavedStamp(&at)
-	if want := "2026-11-02T09:00:00.123456Z"; d.Event.UpdatedAt != want || d.Loaded.Event.UpdatedAt != want {
+	if want := "2026-11-02T09:00:00Z"; d.Event.UpdatedAt != want || d.Loaded.Event.UpdatedAt != want {
 		t.Fatalf("got %q / %q, want %q", d.Event.UpdatedAt, d.Loaded.Event.UpdatedAt, want)
 	}
 	c := &Draft{Mode: ModeCreate}

@@ -1739,7 +1739,13 @@ entries short and factual.
   `SetEventImportMetadata` took the row lock) and `Wizard.Save` takes it as
   the draft's new mark (`recordSavedStamp`): after a save that stopped half
   way, «Retry» and the preview no longer report the bot's own write, while an
-  edit made after it still differs. Never "fix" this by re-reading the event
+  edit made after it still differs. The import answers the mark to the
+  microsecond and the GET to the second, so every mark the draft stores or
+  compares goes through `editStamp` / `sameEditStamp` (UTC, cut to the
+  second); a raw `RFC3339Nano` comparison made the first version of this fix
+  report a conflict after EVERY partial save
+  (`TestBotE2E_WizardRetryAfterAPartialSave` drives it through the real
+  router; a fake that prints both marks alike cannot see it). Never "fix" this by re-reading the event
   after a save (that would adopt a foreign edit) or by skipping the check once
   `Saved.EventID` is set.
 - **`cmd/arena-bot` (package `internal/platform/eventbot`) is the fourth

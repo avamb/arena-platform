@@ -60,7 +60,7 @@ func (b *Bot) checkEditedElsewhere(ctx context.Context, ws WizSession, d *Draft)
 			slog.String("event_id", eventID.String()), slog.String("error", routeOnly(err)))
 		return openapi.EventItem{}, editCheckFailed
 	}
-	if ev.UpdatedAt.UTC().Format(time.RFC3339Nano) != d.Event.UpdatedAt {
+	if !sameEditStamp(ev.UpdatedAt, d.Event.UpdatedAt) {
 		return ev, editChangedElsewhere
 	}
 	return ev, editUnchanged
@@ -222,9 +222,28 @@ func (d *Draft) recordSavedStamp(t *time.Time) {
 	if d.Mode != ModeEdit || t == nil || t.IsZero() {
 		return
 	}
-	stamp := t.UTC().Format(time.RFC3339Nano)
+	stamp := editStamp(*t)
 	d.Event.UpdatedAt = stamp
 	if d.Loaded != nil {
 		d.Loaded.Event.UpdatedAt = stamp
 	}
+}
+
+// editStamp is the form an edit draft keeps an event's updated_at in: UTC,
+// whole seconds. GET /v1/events/{id} prints updated_at to the second while the
+// import answers it to the microsecond, so every mark is cut to the second
+// before it is stored or compared; a change inside the same second as the
+// mark stays invisible, as it always was.
+func editStamp(t time.Time) string {
+	return t.UTC().Truncate(time.Second).Format(time.RFC3339)
+}
+
+// sameEditStamp reports whether the event's updated_at is the draft's mark, at
+// the precision of editStamp. A mark the draft cannot read is never the same.
+func sameEditStamp(t time.Time, mark string) bool {
+	m, err := time.Parse(time.RFC3339Nano, mark)
+	if err != nil {
+		return false
+	}
+	return t.UTC().Truncate(time.Second).Equal(m.UTC().Truncate(time.Second))
 }
