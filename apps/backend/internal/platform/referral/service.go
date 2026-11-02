@@ -1,0 +1,130 @@
+package referral
+
+import (
+	"context"
+	"errors"
+	"log/slog"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
+)
+
+// ErrNotWired is what a Notifier that has no channel yet answers; the sweep
+// treats it as "not delivered, try again later" without logging an error.
+var ErrNotWired = errors.New("referral: notifier is not wired")
+
+// Notifier tells the organizer about a friend who got the money back or opened
+// a dispute after the cashback had been paid (spec 52 section 5.2). A nil
+// error means it was delivered; the sweep then never sends it again.
+type Notifier interface {
+	FriendReversed(ctx context.Context, reward gen.ReferralRewardRow) error
+}
+
+// NopNotifier is the notifier until the Telegram and e-mail one is wired
+// (the next step): it delivers nothing and says so.
+type NopNotifier struct{}
+
+// FriendReversed implements Notifier.
+func (NopNotifier) FriendReversed(context.Context, gen.ReferralRewardRow) error { return ErrNotWired }
+
+// Service pays and sweeps rewards. It is built by arena-worker.
+type Service struct {
+	pool     *pgxpool.Pool
+	engine   *refunds.Engine
+	notifier Notifier
+	logger   *slog.Logger
+	now      func() time.Time
+}
+
+// Options wires a Service. Notifier, Logger and Now are optional.
+type Options struct {
+	Pool     *pgxpool.Pool
+	Engine   *refunds.Engine
+	Notifier Notifier
+	Logger   *slog.Logger
+	Now      func() time.Time
+}
+
+// NewService builds a Service.
+func NewService(o Options) *Service {
+	s := &Service{pool: o.Pool, engine: o.Engine, notifier: o.Notifier, logger: o.Logger, now: o.Now}
+	if s.notifier == nil {
+		s.notifier = NopNotifier{}
+	}
+	if s.logger == nil {
+		s.logger = slog.Default()
+	}
+	if s.now == nil {
+		s.now = time.Now
+	}
+	return s
+}
+
+// outcome is a decision that ends a reward without a refund, returned from
+// inside the refund engine's transaction (BatchInput.Prepare), which it rolls
+// back. retry means "not yet": the job runs again later.
+type outcome struct {
+	state  string
+	reason string
+	retry  bool
+}
+
+func (o *outcome) Error() string {
+	if o.retry {
+		return "referral: retry later: " + o.reason
+	}
+	return "referral: reward ends " + o.state + ": " + o.reason
+}
+
+// refundView is the part of a refund the reward's state is judged by.
+type refundView struct {
+	State          string
+	FailureCode    string
+	Amount         int64
+	HasProviderRef bool
+}
+
+// resultOf judges a reward by its refunds (pure). Pending work wins: the
+// reward is 'sent' while any refund is still on its way. A reward whose
+// refunds all failed is not_possible with the provider's code (owner
+// decision R-RF5: no other card is tried, the money stays with the organizer).
+// A mix of money returned and refused keeps what was returned and says so in
+// the reason; amount is always the money returned or on its way.
+func resultOf(refs []refundView) (state, reason string, amount int64) {
+	var pending, bad bool
+	var badCode string
+	for _, r := range refs {
+		switch r.State {
+		case refunds.StateSucceeded:
+			amount += r.Amount
+		case refunds.StateRequested, refunds.StateApproved, refunds.StateProviderPending:
+			amount += r.Amount
+			pending = true
+		default: // failed, rejected, manual_review
+			bad = true
+			if badCode == "" {
+				badCode = r.FailureCode
+				if badCode == "" {
+					if r.State == refunds.StateManualReview {
+						badCode = "manual_review"
+					} else {
+						badCode = "provider_declined"
+					}
+				}
+			}
+		}
+	}
+	switch {
+	case pending:
+		return StateSent, "", amount
+	case bad && amount == 0:
+		return StateNotPossible, badCode, 0
+	case bad:
+		return StatePaid, "partial", amount
+	default:
+		return StatePaid, "", amount
+	}
+}

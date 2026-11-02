@@ -355,6 +355,11 @@ func TestCollect_OtherKinds(t *testing.T) {
 	f.must(`UPDATE tickets SET status = 'cancelled', cancelled_at = $2, refund_id = $3 WHERE id = $1`, tickets[0], now.Add(-4*time.Hour), refundID)
 	// Ticket 1: cancelled with no refund.
 	f.must(`UPDATE tickets SET status = 'revoked', cancelled_at = $2 WHERE id = $1`, tickets[1], now.Add(-3*time.Hour))
+	// A referral cashback (spec 52) is a succeeded refund too, but not a refund
+	// of the ticket: the source skips it.
+	f.must(`INSERT INTO refunds (id, org_id, amount, currency, state, settlement, order_id, ticket_id, cancel_ticket, origin, settled_at, succeeded_at)
+	        VALUES ($1, $2, 300, 'EUR', 'succeeded', 'external', $3, $4, false, 'referral_cashback', $5, $5)`,
+		uuid.New(), f.orgID, orderID, tickets[1], now.Add(-3*time.Hour))
 
 	// An invitation an operator issued: no order.
 	issuanceID := uuid.New()
@@ -376,7 +381,7 @@ func TestCollect_OtherKinds(t *testing.T) {
 	c := f.collector(since)
 	pass(t, c)
 	if got := f.events("ticket_refunded"); len(got) != 1 || got[0].SubjectID != refundID {
-		t.Errorf("ticket_refunded = %+v, want exactly the refund", got)
+		t.Errorf("ticket_refunded = %+v, want exactly the refund (the referral cashback is not one)", got)
 	}
 	cancelled := f.events("ticket_cancelled")
 	if len(cancelled) != 1 || cancelled[0].SubjectID != tickets[1] {
