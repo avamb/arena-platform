@@ -355,6 +355,9 @@ var orgIsolationAuditedSafe = map[string]string{
 	// id it returned. TestPageStats_OrganizerReadStaysInsideTheOrganization.
 	"GET /v1/organizations/{org_id}/events/{event_id}/page-stats":     "hpagestats",
 	"GET /v1/organizations/{org_id}/events/{event_id}/page-stats.csv": "hpagestats",
+	// hsalesfunnel (spec 50 A7): GetEventPageStatsHeader is keyed by (event, org)
+	// and answers the route's own 404 for an event of another organization.
+	"GET /v1/organizations/{org_id}/events/{event_id}/funnel": "hsalesfunnel",
 	// himports.HandleEventBundleRead (task 3-2): GetEventRaw, then the event's
 	// organization must equal the path organization (404 event.not_found).
 	// TestEventBundleRead_OrganizationBoundary drives a foreign, unknown and

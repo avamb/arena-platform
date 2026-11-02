@@ -5,7 +5,7 @@ import { applyDocumentChrome, consumeCheckoutTokenFromURL, eventIDWithOpenChecko
 import { ApiError, fetchHostedPage, fetchPromoterPage } from './lib/api.ts';
 import { renderSellerFooter } from './lib/seller.ts';
 import { contactFallbackURL, openContactFromHash, renderContactFooter } from './lib/contact.ts';
-import { trackPageView, trackPartnerClick, trackVideoPlay } from './lib/track.ts';
+import { trackFunnelView, trackPageView, trackPartnerClick, trackVideoPlay } from './lib/track.ts';
 
 /** Resolved at build time by Vite from the VITE_API_BASE_URL build arg
  * (see Dockerfile / .env). Empty string falls back to same-origin relative
@@ -136,6 +136,8 @@ async function main(): Promise<void> {
       // Coming back from the payment page is not a new view.
       if (!resumingCheckout) {
         trackPageView(trackCtx);
+        // Buyer funnel (spec 50 A7): the first step; the widget below sends the rest.
+        trackFunnelView(trackCtx);
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {

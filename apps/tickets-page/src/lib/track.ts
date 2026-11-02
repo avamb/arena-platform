@@ -75,6 +75,82 @@ export function sendTrack(ctx: TrackContext, kind: TrackKind, fetchImpl: typeof 
   }
 }
 
+/**
+ * The buyer funnel's first step (spec 50, stage A7): the event was shown. The
+ * same anonymous, cookie-less, storage-less beacon as above, to
+ * POST /v1/public/funnel, naming the event by its address. Two surfaces send it
+ * here, each once per thing actually looked at:
+ *   - "hosted_page": the event page itself, when it is shown;
+ *   - "tickets_page": a card of a promoter page, when the card scrolls into view
+ *     (see observeOnce): the page mounts a widget per card, so a widget that
+ *     merely loaded proves nothing.
+ * The widget inside either carries funnel="..." and sends the later steps
+ * (session_open, seats_chosen) itself under the surface "widget".
+ */
+export type FunnelSurface = 'hosted_page' | 'tickets_page';
+
+export function funnelViewBody(
+  ctx: Pick<TrackContext, 'slug' | 'eventSlug' | 'search'>,
+  surface: FunnelSurface = 'hosted_page',
+): string {
+  return JSON.stringify({
+    page: { slug: ctx.slug, event_slug: ctx.eventSlug },
+    step: 'view',
+    surface,
+    ...utmFromSearch(ctx.search),
+  });
+}
+
+/** The funnel beacon URL. */
+export function funnelURL(ctx: Pick<TrackContext, 'apiBase'>): string {
+  return `${ctx.apiBase.replace(/\/+$/, '')}/v1/public/funnel`;
+}
+
+/** Sends the funnel's `view` step. Silent on any failure, like every beacon here. */
+export function trackFunnelView(
+  ctx: TrackContext,
+  surface: FunnelSurface = 'hosted_page',
+  fetchImpl: typeof fetch = fetch,
+): void {
+  try {
+    void fetchImpl(funnelURL(ctx), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: funnelViewBody(ctx, surface),
+      keepalive: true,
+      credentials: 'omit',
+      mode: 'cors',
+    }).catch(() => {
+      /* counting is best effort */
+    });
+  } catch {
+    /* an old browser without fetch, a blocked request: nothing to do */
+  }
+}
+
+/**
+ * Calls `fn` once, when `el` first enters the viewport. Without
+ * IntersectionObserver (a very old browser) it calls `fn` at once: counting a
+ * card as seen is the better error than never counting.
+ */
+export function observeOnce(
+  el: Element,
+  fn: () => void,
+  Observer: typeof IntersectionObserver | undefined = typeof IntersectionObserver === 'undefined' ? undefined : IntersectionObserver,
+): void {
+  if (Observer === undefined) {
+    fn();
+    return;
+  }
+  const io = new Observer((entries) => {
+    if (entries.some((e) => e.isIntersecting)) {
+      io.disconnect();
+      fn();
+    }
+  });
+  io.observe(el);
+}
+
 /** The event page was shown. Called once from main.ts. */
 export function trackPageView(ctx: TrackContext): void {
   sendTrack(ctx, 'page_view');

@@ -58,6 +58,7 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		WithCheckoutConsent(s.platformTermsURL(), s.contactFormPrivacyURL()).
 		WithLegalTerms(s.legalTermsAPIBase()).
 		WithMetrics(s.typedMetrics).
+		WithFunnelDeduper(&s.funnelDedupe).
 		WithPromoAttempts(s.promoAttemptRecorder()).
 		WithSaleSubscriptions(s.saleSubscriptionService(), s.saleSubscriptionSalt())
 }
@@ -176,6 +177,11 @@ func (s *Server) handlePublicPromoterPage(w http.ResponseWriter, r *http.Request
 // handlePublicPageTrack counts one hit of the page statistics beacon (HP-2a).
 func (s *Server) handlePublicPageTrack(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandlePublicPageTrack(w, r)
+}
+
+// handlePublicFunnel counts one step of the buyer funnel (spec 50 A7).
+func (s *Server) handlePublicFunnel(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandlePublicFunnel(w, r)
 }
 
 // ─── public feed checkout handler shim ────────────────────────────────────────

@@ -5,7 +5,7 @@
  */
 import { ApiError, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
-import type { PageStatsResponse } from "@/lib/api/types";
+import type { PageStatsResponse, SalesFunnelResponse } from "@/lib/api/types";
 import type {
   BillingAccountInvoice,
   BillingAccountInvoiceList,
@@ -986,6 +986,24 @@ export function setTicketVip(orgId: string, ticketId: string, vip: boolean): Pro
 // (the last 30 days, ending today in the venue's zone).
 export function fetchPageStats(orgId: string, eventId: string): Promise<PageStatsResponse> {
   return call<PageStatsResponse>({ route: API.eventPageStats, params: { org_id: orgId, event_id: eventId } });
+}
+
+// A7: the sales funnel of an event. Without a window the API answers the last
+// 30 days ending today in the venue's zone; a session limits it to that date.
+export function fetchEventFunnel(
+  orgId: string,
+  eventId: string,
+  window: { from?: string; to?: string; sessionId?: string } = {},
+): Promise<SalesFunnelResponse> {
+  return call<SalesFunnelResponse>({
+    route: API.eventFunnel,
+    params: { org_id: orgId, event_id: eventId },
+    query: {
+      from: window.from === "" ? undefined : window.from,
+      to: window.to === "" ? undefined : window.to,
+      session_id: window.sessionId === "" ? undefined : window.sessionId,
+    },
+  });
 }
 
 export function downloadPageStatsCsv(orgId: string, eventId: string, locale: string): Promise<DownloadedFile> {
