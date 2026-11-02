@@ -165,6 +165,9 @@ func newStubStripe(t *testing.T) *stubStripe {
 		}
 		s.sessions = append(s.sessions, form)
 		id := "cs_test_" + strings.ReplaceAll(uuid.New().String(), "-", "")[:20]
+		amount, _ := strconv.ParseInt(form.Get("line_items[0][price_data][unit_amount]"), 10, 64)
+		qty, _ := strconv.ParseInt(form.Get("line_items[0][quantity]"), 10, 64)
+		stubSessionCharges.Store(id, stubCharge{amount: amount * qty, currency: form.Get("line_items[0][price_data][currency]")})
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintf(w, `{"id":%q,"url":"https://checkout.stripe.test/c/pay/%s","payment_intent":null,"expires_at":%d}`,
 			id, id, time.Now().Add(31*time.Minute).Unix())
@@ -485,19 +488,32 @@ type hostedStartResponse struct {
 
 // sessionCompletedEvent builds a genuine Stripe checkout.session.completed
 // envelope for the given cs_ id.
+// stubCharge is what a stub Stripe Checkout Session was created to charge.
+type stubCharge struct {
+	amount   int64
+	currency string
+}
+
+// stubSessionCharges maps every cs_… the stub Stripe created to its charge,
+// so a test's checkout.session.completed names what Stripe would have
+// charged (amount_total and currency, which the server checks, D-01).
+var stubSessionCharges sync.Map
+
 func sessionCompletedEvent(sessionID, paymentIntentID, paymentStatus string) []byte {
+	object := map[string]any{
+		"id":             sessionID,
+		"object":         "checkout.session",
+		"payment_status": paymentStatus,
+		"status":         "complete",
+		"payment_intent": paymentIntentID,
+	}
+	if c, ok := stubSessionCharges.Load(sessionID); ok {
+		object["amount_total"], object["currency"] = c.(stubCharge).amount, c.(stubCharge).currency
+	}
 	raw, _ := json.Marshal(map[string]any{
 		"id":   "evt_hoco_" + uuid.New().String()[:12],
 		"type": "checkout.session.completed",
-		"data": map[string]any{
-			"object": map[string]any{
-				"id":             sessionID,
-				"object":         "checkout.session",
-				"payment_status": paymentStatus,
-				"status":         "complete",
-				"payment_intent": paymentIntentID,
-			},
-		},
+		"data": map[string]any{"object": object},
 	})
 	return raw
 }

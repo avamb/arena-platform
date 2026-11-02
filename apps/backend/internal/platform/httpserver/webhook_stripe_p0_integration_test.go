@@ -181,3 +181,99 @@ func TestStripeWebhookP0_PaidAmountMismatchIsParked(t *testing.T) {
 		t.Errorf("issue jobs = %d for an underpaid event; want 0", fl.IssueJobs)
 	}
 }
+
+// stripePaidEvent is a paid Stripe event of the given type for the payment
+// arena knows as providerID, naming amount and currency when amount >= 0.
+func stripePaidEvent(eventType, providerID string, amount int64, currency string) []byte {
+	object := map[string]any{"id": providerID, "currency": currency}
+	switch eventType {
+	case "checkout.session.completed":
+		object["object"], object["payment_status"], object["status"] = "checkout.session", "paid", "complete"
+		object["payment_intent"] = "pi_p0d01_" + uuid.NewString()[:8]
+		if amount >= 0 {
+			object["amount_total"] = amount
+		}
+	default:
+		object["object"], object["status"] = "payment_intent", "succeeded"
+		if amount >= 0 {
+			object["amount_received"] = amount
+		}
+	}
+	if currency == "" {
+		delete(object, "currency")
+	}
+	raw, _ := json.Marshal(map[string]any{
+		"id": "evt_p0d01_" + uuid.NewString()[:12], "type": eventType,
+		"data": map[string]any{"object": object},
+	})
+	return raw
+}
+
+// TestStripeWebhookP0_PaidEventMustNameWhatWasCharged — PAY-05 / Stripe, the
+// cases the review of PR #346 asked for (finding 4 and test item 5): both
+// event types, both routes, another currency, and an event that names no
+// amount at all. Every disagreement parks the payment in manual_review with
+// no ticket; an event that names the right amount pays.
+func TestStripeWebhookP0_PaidEventMustNameWhatWasCharged(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f := newHostedOrgFixture(t, ctx, pool, "p0d01")
+	defer f.cleanup()
+	srv := buildHostedCheckoutServer(t, pool, newStubStripe(t).baseURL())
+	q := gen.New(pool)
+	const legacy = "/v1/payment-intents/webhook"
+	// Every case holds two places of its own.
+	if _, err := q.InsertGAUnits(ctx, f.sessionID, "ga|t1", 5, &f.tierID, 20); err != nil {
+		t.Fatalf("more places: %v", err)
+	}
+
+	cases := []struct {
+		name, eventType, route, currency string
+		delta                            int64 // added to the total; -1 << 40 = no amount
+		want                             string
+	}{
+		{"session, other currency", "checkout.session.completed", "config", "usd", 0, "manual_review"},
+		{"session, underpaid, legacy route", "checkout.session.completed", legacy, "eur", -100, "manual_review"},
+		{"session, no amount", "checkout.session.completed", "config", "eur", -1 << 40, "manual_review"},
+		{"session, no amount, legacy route", "checkout.session.completed", legacy, "eur", -1 << 40, "manual_review"},
+		{"payment_intent, underpaid", "payment_intent.succeeded", "config", "eur", -100, "manual_review"},
+		{"payment_intent, no amount", "payment_intent.succeeded", "config", "eur", -1 << 40, "manual_review"},
+		{"payment_intent, no currency", "payment_intent.succeeded", "config", "", 0, "manual_review"},
+		{"payment_intent, the total", "payment_intent.succeeded", "config", "eur", 0, "succeeded"},
+		{"session, the total, legacy route", "checkout.session.completed", legacy, "EUR", 0, "succeeded"},
+	}
+	for _, tc := range cases {
+		csID, total, providerID := startHostedCheckout(t, ctx, srv, f)
+		amount := total + tc.delta
+		if tc.delta == -1<<40 {
+			amount = -1
+		}
+		path := tc.route
+		if path == "config" {
+			path = f.configWebhookPath()
+		}
+		code, body := postSignedWebhookTo(t, srv, path, stripePaidEvent(tc.eventType, providerID, amount, tc.currency), f.webhookSecret)
+		if code != http.StatusOK || !processed(t, body) {
+			t.Errorf("%s: webhook = %d processed=%v; body: %s", tc.name, code, processed(t, body), body)
+			continue
+		}
+		pi, err := q.GetPaymentIntentByProviderID(ctx, providerID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if pi.State != tc.want {
+			t.Errorf("%s: intent = %q, want %q", tc.name, pi.State, tc.want)
+		}
+		fl := fulfilmentOf(t, ctx, pool, csID, providerID)
+		if tc.want == "manual_review" {
+			if pi.FailureCode == nil || *pi.FailureCode != "paid_amount_mismatch" {
+				t.Errorf("%s: failure code = %v, want paid_amount_mismatch", tc.name, pi.FailureCode)
+			}
+			if cs, _ := q.GetCheckoutSessionByID(ctx, csID); cs.State == "completed" || fl.IssueJobs != 0 {
+				t.Errorf("%s: checkout %q with %d issue jobs; want neither completed nor issued", tc.name, cs.State, fl.IssueJobs)
+			}
+		} else if ord, _ := q.GetOrderByCheckoutSession(ctx, csID); fl.IssueJobs != 1 || ord.Status != "paid" {
+			t.Errorf("%s: issue jobs %d, order %q; want 1 and paid", tc.name, fl.IssueJobs, ord.Status)
+		}
+	}
+}

@@ -683,6 +683,10 @@ type webhookPaymentIntentRequest struct {
 	// event names no amount (the flat mock shape, a non-payment event).
 	PaidAmountMinor *int64 `json:"-"`
 	PaidCurrency    string `json:"-"`
+	// StripeEnvelope is set when the body was a Stripe event envelope, which
+	// always names what was charged on a payment event: a paid one that
+	// names no amount is not trusted (D-01). The flat mock shape has none.
+	StripeEnvelope bool `json:"-"`
 }
 
 // providerChargeRef returns the pi_… this event carries, or nil when it
@@ -778,6 +782,7 @@ func parseWebhookPaymentIntentRequest(body []byte) (webhookPaymentIntentRequest,
 		PaymentStatus:     env.Data.Object.PaymentStatus,
 		HostedPaymentID:   env.Data.Object.PaymentIntent,
 		PaidCurrency:      env.Data.Object.Currency,
+		StripeEnvelope:    true,
 	}
 	switch {
 	case env.Data.Object.AmountTotal != nil:
@@ -1042,6 +1047,10 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 		if route.ExpectedProvider == "" {
 			// A Stripe event on its config route: the module normalizes
 			// the kind, the envelope still names what was charged (D-01).
+			// Its signature was checked with a Stripe secret, and Stripe
+			// always sends an envelope: the amount is required whatever
+			// the body's shape.
+			req.StripeEnvelope = true
 			if env, err := parseWebhookPaymentIntentRequest(body); err == nil {
 				req.PaidAmountMinor, req.PaidCurrency = env.PaidAmountMinor, env.PaidCurrency
 			}
@@ -1215,13 +1224,17 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 	// A paid event must name the amount arena asked for
 	// (payment_amount_guard.go). A disagreement parks the payment for a
 	// human instead of shipping tickets. A module's event is checked on its
-	// config route; a Stripe envelope is checked whenever it names the
-	// charged amount, which Stripe does on every payment event.
+	// config route. A Stripe event is checked on both routes, and one that
+	// names no amount is a disagreement too: Stripe states amount_total or
+	// amount_received on every payment event. Only the flat mock shape on
+	// the legacy route carries no amount and is not checked.
 	if targetState == "succeeded" {
 		why := ""
 		switch {
 		case route.Event != nil && route.ExpectedProvider != "":
 			why = paidAmountMismatch(*route.Event, pi.Amount, pi.Currency)
+		case route.ExpectedProvider == "" && req.StripeEnvelope && req.PaidAmountMinor == nil:
+			why = "the provider reports a payment without an amount"
 		case route.ExpectedProvider == "" && req.PaidAmountMinor != nil:
 			why = paidAmountMismatch(payments.NormalizedEvent{
 				AmountMinor: *req.PaidAmountMinor,
