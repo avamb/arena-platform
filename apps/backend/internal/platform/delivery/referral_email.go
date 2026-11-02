@@ -14,7 +14,8 @@
 //
 // Rules it keeps:
 //
-//   - one cashback letter per reward: referral_rewards.letter_sent_at is
+//   - one cashback letter per reward, plus at most one correction:
+//     referral_rewards.letter_sent_at (correction_sent_at for a correction) is
 //     claimed before the send and given back when the send fails, so a
 //     redelivered job never mails twice and a failed one is retried;
 //   - the letter is sent only while the reward still is in the state the job
@@ -106,10 +107,25 @@ func (h *referralCashbackEmail) handle(ctx context.Context, payload []byte) erro
 	if rw.Reason != nil {
 		reason = *rw.Reason
 	}
-	if want, ok := referral.LetterKindFor(rw.State, reason); !ok || want != p.Kind {
+	providerCode := ""
+	if rw.ProviderCode != nil {
+		providerCode = *rw.ProviderCode
+	}
+	if want, ok := referral.LetterKindFor(rw.State, reason, providerCode); !ok || want != p.Kind {
 		return nil // the reward moved on: nothing true to say
 	}
-	if rw.LetterSentAt != nil || (rw.ReferrerOrderID == nil && rw.ReferrerShopOrderID == nil) {
+	if rw.ReferrerOrderID == nil && rw.ReferrerShopOrderID == nil {
+		return nil
+	}
+	// The one letter of a reward, or its one correction (the referrer was told
+	// the money went back and it did not stay back).
+	column := "letter_sent_at"
+	if p.Correction {
+		column = "correction_sent_at"
+		if rw.LetterSentAt == nil || rw.CorrectionSentAt != nil || p.Kind != referral.LetterUnavailable {
+			return nil
+		}
+	} else if rw.LetterSentAt != nil {
 		return nil
 	}
 	if h.opts.Sender == nil || email.IsDevOnly(h.opts.Sender) {
@@ -117,9 +133,9 @@ func (h *referralCashbackEmail) handle(ctx context.Context, payload []byte) erro
 		return nil
 	}
 
-	// Claim the one letter of this reward.
-	tag, err := h.opts.DB.Exec(ctx, `UPDATE referral_rewards SET letter_sent_at = now()
-		WHERE id = $1 AND letter_sent_at IS NULL`, rw.ID)
+	// Claim the letter. column is one of two fixed names, never input.
+	tag, err := h.opts.DB.Exec(ctx, `UPDATE referral_rewards SET `+column+` = now()
+		WHERE id = $1 AND `+column+` IS NULL`, rw.ID)
 	if err != nil {
 		return fmt.Errorf("delivery: claim referral letter: %w", err)
 	}
@@ -132,7 +148,7 @@ func (h *referralCashbackEmail) handle(ctx context.Context, payload []byte) erro
 		return nil // the order is gone: nobody to write to
 	}
 	if err != nil {
-		h.release(ctx, rw.ID)
+		h.release(ctx, rw.ID, column)
 		return fmt.Errorf("delivery: read the referrer's order of reward %s: %w", rw.ID, err)
 	}
 	if recipient.Email == "" {
@@ -142,11 +158,11 @@ func (h *referralCashbackEmail) handle(ctx context.Context, payload []byte) erro
 
 	msg, letter, err := h.buildMessage(ctx, rw, recipient, p.Kind)
 	if err != nil {
-		h.release(ctx, rw.ID)
+		h.release(ctx, rw.ID, column)
 		return err
 	}
 	if sendErr := sendRecorded(ctx, h.opts.Sender, h.opts.DB, h.logger, letter, msg, nil); sendErr != nil {
-		h.release(ctx, rw.ID)
+		h.release(ctx, rw.ID, column)
 		h.logger.Warn("delivery: referral cashback e-mail send failed; worker will retry",
 			slog.String("reward_id", rw.ID.String()), slog.String("kind", p.Kind))
 		return fmt.Errorf("delivery: send referral cashback e-mail for reward %s: %w", rw.ID, sendErr)
@@ -174,10 +190,10 @@ func (h *referralCashbackEmail) loadRecipient(ctx context.Context, rw gen.Referr
 }
 
 // release gives the claim back so the retry can take it.
-func (h *referralCashbackEmail) release(ctx context.Context, id uuid.UUID) {
+func (h *referralCashbackEmail) release(ctx context.Context, id uuid.UUID, column string) {
 	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	if _, err := h.opts.DB.Exec(rctx, `UPDATE referral_rewards SET letter_sent_at = NULL WHERE id = $1`, id); err != nil {
+	if _, err := h.opts.DB.Exec(rctx, `UPDATE referral_rewards SET `+column+` = NULL WHERE id = $1`, id); err != nil {
 		h.logger.Warn("delivery: could not release the referral letter claim", slog.String("error", err.Error()))
 	}
 }

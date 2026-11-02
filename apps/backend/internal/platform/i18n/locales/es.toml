@@ -4930,7 +4930,7 @@ other = "Un amigo que usó el código <b>{{.Code}}</b> recuperó su dinero del p
 other = "Un amigo que usó el código <b>{{.Code}}</b> abrió una disputa por el pedido {{.Number}}. El cashback de {{.Amount}} ya se pagó a quien lo invitó y no se puede recuperar."
 
 ["salesnotify.referral.code_paused"]
-other = "El código <b>{{.Code}}</b> está en pausa. Puedes volver a activarlo en el centro de eventos."
+other = "El código <b>{{.Code}}</b> está detenido: no dará nuevos descuentos. Los pagos ya realizados se mantienen."
 
 ["bot.rfp.btn"]
 other = "🤝 Trae a un amigo"
@@ -4999,7 +4999,7 @@ other = "El proveedor de pago del canal solo devuelve pagos completos."
 other = "ℹ️ El evento aún no está en una página con pago con tarjeta. El programa empezará a funcionar cuando lo esté."
 
 ["bot.rfp.warn_some_channels_unsupported"]
-other = "ℹ️ Algunos canales de venta no pueden pagar cashback. Se paga solo por los canales que pueden."
+other = "ℹ️ Algunos canales de venta no pueden pagar cashback. Los códigos de los amigos se dan solo a quien pagó con un proveedor que puede devolver una parte del pago."
 
 ["bot.rfp.on_btn"]
 other = "Activar"

@@ -12,6 +12,7 @@
 package httpserver
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -117,6 +118,22 @@ func TestPublicFeedPromoAvailable_FollowsTheOrganizationsCodes(t *testing.T) {
 	}
 	f.insertPromo(t, ctx, "PAUSED", "percent", 10, ", status", ", 'paused'")
 	want("only a deleted and a paused code", false)
+
+	// A friend's personal "Refer a friend" code is not an open promo: the field
+	// is not offered for it (the ?promo= link opens it by itself).
+	reset()
+	programID := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO referral_programs (id, org_id, scope, event_id, friend_discount_pct, cashback_pct,
+	        cashback_cap_pct, terms_accepted_at) VALUES ($1, $2, 'event', $3, 10, 10, 100, now())`, programID, f.orgID, f.eventID); err != nil {
+		t.Fatalf("insert referral programme: %v", err)
+	}
+	defer func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM promo_codes WHERE org_id = $1`, f.orgID)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM referral_programs WHERE id = $1`, programID)
+	}()
+	f.insertPromo(t, ctx, "ANNA-7K2P", "percent", 10, ", origin, referral_program_id", ", 'referral', $6::uuid", programID.String())
+	want("only a friend's personal code", false)
+	reset()
 
 	// One active code is enough, even beside dead ones.
 	f.insertPromo(t, ctx, "LIVE", "percent", 10, ", max_uses, valid_until", ", 5, now() + interval '1 day'")

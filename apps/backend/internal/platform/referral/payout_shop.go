@@ -201,7 +201,7 @@ func (s *Service) settleShopRefund(ctx context.Context, rw gen.ReferralRewardRow
 
 // applyShopRefund writes the reward's state from its one refund.
 func (s *Service) applyShopRefund(ctx context.Context, rw gen.ReferralRewardRow, r refunds.Refund, from []string) error {
-	view := refundView{State: r.State, Amount: r.Amount, HasProviderRef: r.ProviderRefundID != nil}
+	view := refundView{State: r.State, Amount: r.Amount, HasProviderRef: r.ProviderRefundID != nil, Attempted: r.ProviderAttempts > 0}
 	if r.FailureCode != nil {
 		view.FailureCode = *r.FailureCode
 	}

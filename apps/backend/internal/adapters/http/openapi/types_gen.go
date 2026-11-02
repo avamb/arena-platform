@@ -17899,6 +17899,9 @@ type ShopPublicSettings struct {
 	// ReferralActive True while the shop runs a "Refer a friend" programme; the checkout then offers a promo-code field. An older server leaves it out, read that as false.
 	ReferralActive *bool `json:"referral_active,omitempty"`
 
+	// ReferralFriendDiscountPct The programme's discount for a friend, in percent, present only while `referral_active` is true. The checkout page previews the discount a friend's code takes off the goods (that percent of the goods total, delivery excluded, rounded down in minor units); the payment page shows the final amount and the server decides.
+	ReferralFriendDiscountPct *int32 `json:"referral_friend_discount_pct,omitempty"`
+
 	// ShippingFeeMinor Flat delivery fee, minor units.
 	ShippingFeeMinor int64 `json:"shipping_fee_minor"`
 

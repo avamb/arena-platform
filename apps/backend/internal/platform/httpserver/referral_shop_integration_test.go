@@ -110,6 +110,10 @@ func TestReferralShop_ProgrammeCodeDiscountAndCashback(t *testing.T) {
 	if !catalogActive() {
 		t.Fatal("referral_active is false while the programme is active")
 	}
+	// The checkout previews the friend's discount with the programme's percent.
+	if _, cat, _ := f.do(http.MethodGet, "/v1/public/shop/"+f.orgASlug, "", ""); cat["settings"].(map[string]any)["referral_friend_discount_pct"] != float64(10) {
+		t.Fatalf("referral_friend_discount_pct = %v; want 10 while the programme is active", cat["settings"].(map[string]any)["referral_friend_discount_pct"])
+	}
 	// Another organization's owner has no access to this shop's programme.
 	if code, body, _ := f.do(http.MethodGet, programPath, f.ownerB, ""); code != http.StatusForbidden {
 		t.Fatalf("foreign owner GET programme = %d %v; want 403", code, body)
@@ -251,6 +255,9 @@ func TestReferralShop_ProgrammeCodeDiscountAndCashback(t *testing.T) {
 	}
 	if catalogActive() {
 		t.Fatal("referral_active is true while the programme is paused")
+	}
+	if _, cat, _ := f.do(http.MethodGet, "/v1/public/shop/"+f.orgASlug, "", ""); cat["settings"].(map[string]any)["referral_friend_discount_pct"] != nil {
+		t.Fatal("referral_friend_discount_pct is answered while the programme is paused")
 	}
 	email2, phone2 := randomShopContact()
 	if code, body := f.buy(variant, 1, email2, phone2, personal); code != http.StatusUnprocessableEntity || shopErrCode(body) != "promo.not_active" {

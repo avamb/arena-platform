@@ -24953,6 +24953,10 @@ components:
         referral_active:
           type: boolean
           description: True while the shop runs a "Refer a friend" programme; the checkout then offers a promo-code field. An older server leaves it out, read that as false.
+        referral_friend_discount_pct:
+          type: integer
+          format: int32
+          description: The programme's discount for a friend, in percent, present only while `referral_active` is true. The checkout page previews the discount a friend's code takes off the goods (that percent of the goods total, delivery excluded, rounded down in minor units); the payment page shows the final amount and the server decides.
 
     ShopPublicOrg:
       type: object

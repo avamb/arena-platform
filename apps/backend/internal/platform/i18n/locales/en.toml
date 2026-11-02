@@ -5099,7 +5099,7 @@ other = "A friend who used code <b>{{.Code}}</b> got money back for order {{.Num
 other = "A friend who used code <b>{{.Code}}</b> opened a dispute on order {{.Number}}. The cashback of {{.Amount}} has already been paid to the referrer and cannot be taken back."
 
 ["salesnotify.referral.code_paused"]
-other = "The code <b>{{.Code}}</b> is on pause. You can switch it on again in the event center."
+other = "The code <b>{{.Code}}</b> is stopped: it gives no new discounts. Payouts already made stay as they are."
 
 ["bot.rfp.btn"]
 other = "🤝 Refer a friend"
@@ -5168,7 +5168,7 @@ other = "The payment provider of the channel returns whole payments only."
 other = "ℹ️ The event is not on a page with card payments yet. The programme starts to work when it is."
 
 ["bot.rfp.warn_some_channels_unsupported"]
-other = "ℹ️ Some sales channels of the event cannot pay cashback. Cashback is paid only through the channels that can."
+other = "ℹ️ Some sales channels of the event cannot pay cashback. Friend codes go only to buyers who paid through a provider that can return part of a payment."
 
 ["bot.rfp.on_btn"]
 other = "Turn on"

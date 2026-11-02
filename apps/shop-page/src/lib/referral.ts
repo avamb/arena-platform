@@ -61,3 +61,18 @@ export interface ReferralShare {
   /** The storefront link to hand out; null when the shop's address is not known. */
   share_url: string | null;
 }
+
+/** A programme percent from the wire: a whole number from 1 to 100, else 0 (no preview). */
+export function cleanPct(raw: unknown): number {
+  return typeof raw === 'number' && Number.isInteger(raw) && raw >= 1 && raw <= 100 ? raw : 0;
+}
+
+/**
+ * What a friend's code would take off the goods, worked out the way the server does it: the
+ * programme's percent of the goods total (delivery never), rounded down in minor units. A
+ * preview only - the payment page shows the final amount, and the server decides.
+ */
+export function referralDiscountMinor(subtotalMinor: number, pct: number, code: string): number {
+  if (cleanPromo(code) === '' || !(subtotalMinor > 0) || !(pct > 0)) return 0;
+  return Math.floor((subtotalMinor * Math.min(pct, 100)) / 100);
+}

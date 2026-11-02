@@ -9,7 +9,7 @@ import type { DownloadLink, OrderStatus } from '../lib/api';
 import { sized } from '../lib/cdn';
 import { esc } from '../lib/html';
 import { itemsLabel, MSG, REF, resumeOrderText, T } from '../lib/i18n';
-import type { ReferralShare } from '../lib/referral';
+import { referralDiscountMinor, type ReferralShare } from '../lib/referral';
 import type { StatusPhase } from '../lib/poll';
 import { cartSrcset, icon, money, optionPairs, ratioOf, url, type Ctx } from './common';
 
@@ -170,17 +170,31 @@ function addressBlock(ctx: Ctx, st: CheckoutViewState, label: string, shipping: 
  * Phone width (under 768 px): the order on one folded line above the form, "Ваш заказ · 2 товара · 580.00 NIS",
  * opened by a tap. The full block below the form is hidden there by CSS, so the buyer sees what they pay for before the button.
  */
-function mobileSummary(ctx: Ctx, lines: CartLine[], subtotal: number, shipping: number, total: number, ships: boolean, label: string): string {
+function mobileSummary(ctx: Ctx, lines: CartLine[], subtotal: number, shipping: number, total: number, ships: boolean, label: string, discount: number): string {
   const units = lines.reduce((n, l) => n + l.qty, 0);
   return `<details class="shop-checkout__mobile-summary" id="checkout-mobile-summary">
-    <summary><span>Ваш заказ · ${itemsLabel(units)} · ${esc(money(ctx, total))}</span></summary>
+    <summary><span>Ваш заказ · ${itemsLabel(units)} · <span data-ref-total>${esc(money(ctx, total - discount))}</span></span></summary>
     <ul class="shop-checkout__lines list-unstyled" role="list">${lines.map((l) => summaryRow(ctx, l)).join('')}</ul>
     <dl class="shop-checkout__totals">
       <div><dt>Товары</dt><dd>${esc(money(ctx, subtotal))}</dd></div>
       ${ships ? `<div><dt>${label}</dt><dd>${esc(money(ctx, shipping))}</dd></div>` : ''}
-      <div class="shop-checkout__total"><dt>Итого</dt><dd>${esc(money(ctx, total))}</dd></div>
-    </dl>
+      ${discountRow(ctx, discount)}
+      <div class="shop-checkout__total"><dt>Итого</dt><dd data-ref-total>${esc(money(ctx, total - discount))}</dd></div>
+    </dl>${discountNote(discount)}
   </details>`;
+}
+
+/**
+ * The friend's code in the order summary: the programme's percent of the goods, worked out the way the server does
+ * (referralDiscountMinor). It is a preview - the payment page shows the final amount. The row is always in the markup
+ * (hidden at zero), so typing a code can show it without drawing the page again (main.ts, updateCodeDiscount).
+ */
+function discountRow(ctx: Ctx, discount: number): string {
+  return `<div class="shop-checkout__discount" data-ref-discount-row${discount > 0 ? '' : ' hidden'}><dt>${REF.discountLabel}</dt><dd>−<span data-ref-discount>${esc(money(ctx, discount))}</span></dd></div>`;
+}
+
+function discountNote(discount: number): string {
+  return `<p class="shop-checkout__hint caption" data-ref-discount-note${discount > 0 ? '' : ' hidden'}>${REF.discountNote}</p>`;
 }
 
 export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState): string {
@@ -204,7 +218,9 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
   }
   const subtotal = subtotalMinor(lines);
   const shipping = shippingMinor(s, lines);
+  const discount = referralDiscountMinor(subtotal, s.referral_active ? s.referral_friend_discount_pct ?? 0 : 0, st.values.promo ?? '');
   const total = totalMinor(s, lines);
+  const payable = total - discount;
   const minAge = s.age_gate_min_age ?? 0;
   const ships = needsShipping(lines);
   const e = st.errors;
@@ -214,7 +230,7 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
     <h1 class="title title--primary">Оформление заказа</h1>
     <a href="${esc(url(ctx, '/cart'))}" class="underlined-link">Вернуться в корзину</a>
   </div>
-  ${mobileSummary(ctx, lines, subtotal, shipping, total, ships, label)}
+  ${mobileSummary(ctx, lines, subtotal, shipping, total, ships, label, discount)}
   <div class="shop-checkout__grid">
     <form id="checkout-form" class="shop-checkout__form" method="post" action="${esc(url(ctx, '/checkout'))}" novalidate>
       <h2 class="shop-checkout__heading h3">Контактные данные</h2>
@@ -238,7 +254,7 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
         st.resume
           ? ''
           : `<button type="submit" class="button button--full-width shop-checkout__pay" id="checkout-pay"${st.submitting ? ' disabled' : ''}>
-        Оплатить ${esc(money(ctx, total))}
+        Оплатить <span data-ref-total>${esc(money(ctx, payable))}</span>
       </button>`
       }
     </form>
@@ -248,8 +264,9 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
       <dl class="shop-checkout__totals">
         <div><dt>Товары</dt><dd>${esc(money(ctx, subtotal))}</dd></div>
         ${ships ? `<div><dt>${label}</dt><dd>${esc(money(ctx, shipping))}</dd></div>` : ''}
-        <div class="shop-checkout__total"><dt>Итого</dt><dd>${esc(money(ctx, total))}</dd></div>
-      </dl>
+        ${discountRow(ctx, discount)}
+        <div class="shop-checkout__total"><dt>Итого</dt><dd data-ref-total>${esc(money(ctx, payable))}</dd></div>
+      </dl>${discountNote(discount)}
     </aside>
   </div>
 </div></div>`;

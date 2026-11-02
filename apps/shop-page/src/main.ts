@@ -39,6 +39,7 @@ import {
   resolveLines,
   saveCart,
   setQty,
+  subtotalMinor,
   totalMinor,
   variantLimit,
   variantLimitById,
@@ -53,7 +54,7 @@ import {
 } from './lib/cart';
 import { captchaToken, mountCaptcha, resetCaptcha, unmountCaptcha } from './lib/captcha';
 import { checkoutErrorMessage, isNotFound, isTransient } from './lib/errors';
-import { capturePromo, forgetPromo, storedPromo, type ReferralShare } from './lib/referral';
+import { capturePromo, forgetPromo, referralDiscountMinor, storedPromo, type ReferralShare } from './lib/referral';
 import { MSG, REF, T } from './lib/i18n';
 import { isShopHost } from './lib/links';
 import { formatMoney } from './lib/money';
@@ -66,7 +67,7 @@ import { EINAT_THEME } from './lib/theme';
 import { cartView, notificationProduct } from './views/cart';
 import { collectionView, homeView } from './views/catalog';
 import { checkoutView, EMPTY_FORM, hasDigitalLines, statusView, type CheckoutViewState, type DownloadsState, type ResumeOffer } from './views/checkout';
-import { priceBlock, type Ctx } from './views/common';
+import { money, priceBlock, type Ctx } from './views/common';
 import { cartBubble, layout } from './views/layout';
 import { buyButtonHtml, productView } from './views/product';
 import { notFoundView, pageView, platformHomeView, policyView, searchView, unreachableView } from './views/static';
@@ -912,9 +913,32 @@ function onChange(e: Event): void {
 
 function onInput(e: Event): void {
   const el = e.target as HTMLInputElement;
+  if (el.id === 'Checkout-promo') updateCodeDiscount(el.value);
   if (el.matches('.search__input')) {
     el.closest('form')?.querySelector('.reset__button')?.classList.toggle('hidden', el.value === '');
   }
+}
+
+/**
+ * A friend's code typed into the checkout: show what it would take off, worked out like the server does,
+ * without drawing the page again (a redraw would take the focus out of the field). A preview only.
+ */
+function updateCodeDiscount(code: string): void {
+  const s = state as State;
+  const ctx = ctxOf(s);
+  const lines = resolveLines(s.cart, s.shop.products);
+  const settings = s.shop.settings;
+  const subtotal = subtotalMinor(lines);
+  const discount = referralDiscountMinor(subtotal, settings.referral_active ? settings.referral_friend_discount_pct ?? 0 : 0, code);
+  document.querySelectorAll<HTMLElement>('[data-ref-discount-row], [data-ref-discount-note]').forEach((n) => {
+    n.hidden = discount <= 0;
+  });
+  document.querySelectorAll<HTMLElement>('[data-ref-discount]').forEach((n) => {
+    n.textContent = money(ctx, discount);
+  });
+  document.querySelectorAll<HTMLElement>('[data-ref-total]').forEach((n) => {
+    n.textContent = money(ctx, totalMinor(settings, lines) - discount);
+  });
 }
 
 function onFocusIn(e: FocusEvent): void {

@@ -359,6 +359,14 @@ func (e *referralEnv) addOrder(status string, total int64, email, phone string, 
 			e.t.Fatalf("addOrder %.50q: %v", s.sql, err)
 		}
 	}
+	// A paid order was paid through a payment arena took: the code is issued
+	// only for a provider that can return a part of it (a stripe one here).
+	if status == "paid" || status == "partially_refunded" {
+		ref := "pi_rf_" + uuid.NewString()
+		if _, err := e.q.InsertPaymentIntent(ctx, &cs, f.orgID, "stripe", &ref, total, "EUR", "succeeded", nil, nil); err != nil {
+			e.t.Fatalf("addOrder payment intent: %v", err)
+		}
+	}
 	var token string
 	if err := e.pool.QueryRow(ctx, `SELECT checkout_token FROM checkout_sessions WHERE id = $1`, cs).Scan(&token); err != nil || token == "" {
 		e.t.Fatalf("checkout token: %q %v", token, err)
@@ -584,4 +592,47 @@ func TestReferralRoutes_PublicCodeRewardsSummaryAndRefundWarning(t *testing.T) {
 		t.Fatalf("foreign refund options = %d, want 404", st)
 	}
 
+}
+
+// The buyer's page asks for the code of an order that cannot carry one with
+// the one 404 it uses for "no code": an event with no live date, and a payment
+// through a provider that cannot return a part of itself (the cashback is
+// exactly that). Neither is a server fault.
+func TestReferralRoutes_PublicCodeIsANotFoundNotAFaultWhenTheOrderCannotCarryOne(t *testing.T) {
+	e, cleanup := newReferralEnv(t)
+	defer e.f.cleanup()
+	defer cleanup()
+	f := e.f
+	path := e.programPath(f.orgID, f.eventID)
+
+	_, token := e.addOrder("paid", 5000, f.buyerMail, "", nil, 0)
+	st, m, _ := e.do(http.MethodPut, path, e.owner, `{"friend_discount_pct":10,"cashback_pct":20,"max_friends":5,"accept_terms":true}`)
+	e.want(st, m, http.StatusCreated, "", "start the programme")
+	codePath := "/v1/public/checkout/" + token + "/referral"
+
+	// No live date: nothing a code could apply to.
+	e.mustExec(`UPDATE sessions SET status = 'cancelled' WHERE id = $1`, f.sessionID)
+	st, m, _ = e.do(http.MethodGet, codePath, "", "")
+	e.want(st, m, http.StatusNotFound, "referral.not_available", "event with no live date")
+	e.mustExec(`UPDATE sessions SET status = 'scheduled' WHERE id = $1`, f.sessionID)
+
+	// A provider that cannot return a part of a payment.
+	e.mustExec(`UPDATE payment_intents SET provider = 'flitt' WHERE org_id = $1`, f.orgID)
+	st, m, _ = e.do(http.MethodGet, codePath, "", "")
+	e.want(st, m, http.StatusNotFound, "referral.not_available", "payment through a provider without a partial refund")
+	if n := rowCount(t, e.pool, `SELECT count(*) FROM promo_codes WHERE org_id = $1 AND origin = 'referral'`, f.orgID); n != 0 {
+		t.Fatalf("%d personal codes were made for an order that cannot carry one", n)
+	}
+
+	// With a provider that can, the same order gets its code.
+	e.mustExec(`UPDATE payment_intents SET provider = 'stripe' WHERE org_id = $1`, f.orgID)
+	st, m, _ = e.do(http.MethodGet, codePath, "", "")
+	e.want(st, m, http.StatusOK, "", "stripe payment")
+}
+
+func (e *referralEnv) mustExec(sql string, args ...any) {
+	e.t.Helper()
+	if _, err := e.pool.Exec(context.Background(), sql, args...); err != nil {
+		e.t.Fatalf("exec %.60q: %v", sql, err)
+	}
 }

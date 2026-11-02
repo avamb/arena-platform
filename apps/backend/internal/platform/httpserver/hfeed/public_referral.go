@@ -159,7 +159,7 @@ func (h *Handler) HandleGetPublicReferral(w http.ResponseWriter, r *http.Request
 	}
 	code, _, err := referral.IssueCode(ctx, h.checkoutQueries.DB(), ord.ID)
 	switch {
-	case errors.Is(err, referral.ErrNoProgram), errors.Is(err, referral.ErrNotEligible), errors.Is(err, referral.ErrOrderNotFound):
+	case errors.Is(err, referral.ErrNoProgram), errors.Is(err, referral.ErrNoSessions), errors.Is(err, referral.ErrNotEligible), errors.Is(err, referral.ErrOrderNotFound):
 		notAvailable(w, r)
 		return
 	case err != nil:

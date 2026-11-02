@@ -83,3 +83,16 @@ func TestFormatReferralReversal_FactsPauseLineAndNoContacts(t *testing.T) {
 		}
 	}
 }
+
+// A pause is final (no route switches a code on again), so no language may
+// promise that the organizer can switch it back on.
+func TestReferralCodePausedPromisesNoReturn(t *testing.T) {
+	for _, tc := range []struct{ loc, forbidden string }{
+		{"en", "again"}, {"ru", "снова"}, {"es", "volver a activar"}, {"cs", "Znovu"}, {"he", "שוב"},
+	} {
+		got := say(tc.loc, "salesnotify.referral.code_paused", map[string]any{"Code": "ANA-7K2P"})
+		if strings.Contains(got, tc.forbidden) {
+			t.Errorf("%s: %q promises the code can be switched on again: %q", tc.loc, tc.forbidden, got)
+		}
+	}
+}

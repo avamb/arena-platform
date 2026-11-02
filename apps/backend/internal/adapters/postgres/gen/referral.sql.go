@@ -242,18 +242,21 @@ type ReferralRewardRow struct {
 	FriendReversal      *string    `json:"friend_reversal"`
 	ReversalNotifiedAt  *time.Time `json:"reversal_notified_at"`
 	LetterSentAt        *time.Time `json:"letter_sent_at"`
-	Attempts            int32      `json:"attempts"`
-	NextAttemptAt       *time.Time `json:"next_attempt_at"`
-	RefundID            *uuid.UUID `json:"refund_id"`
-	RefundBatchID       *uuid.UUID `json:"refund_batch_id"`
-	CreatedAt           time.Time  `json:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at"`
+	// CorrectionSentAt: the referrer was told the money went back and later
+	// got the one correction letter (migration 0195).
+	CorrectionSentAt *time.Time `json:"correction_sent_at"`
+	Attempts         int32      `json:"attempts"`
+	NextAttemptAt    *time.Time `json:"next_attempt_at"`
+	RefundID         *uuid.UUID `json:"refund_id"`
+	RefundBatchID    *uuid.UUID `json:"refund_batch_id"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 // ReferralRewardColumns is the SELECT list ScanReferralRewardRow reads.
 const ReferralRewardColumns = `id, org_id, program_id, promo_code_id, referrer_order_id, referrer_shop_order_id,
        friend_order_id, friend_shop_order_id, amount_minor, currency, cashback_pct, cap_pct, state, reason,
-       provider_code, friend_reversal, reversal_notified_at, letter_sent_at, attempts, next_attempt_at, refund_id,
+       provider_code, friend_reversal, reversal_notified_at, letter_sent_at, correction_sent_at, attempts, next_attempt_at, refund_id,
        refund_batch_id, created_at, updated_at`
 
 // ScanReferralRewardRow scans a row selected with ReferralRewardColumns.
@@ -263,7 +266,7 @@ func ScanReferralRewardRow(row interface {
 	var r ReferralRewardRow
 	err := row.Scan(&r.ID, &r.OrgID, &r.ProgramID, &r.PromoCodeID, &r.ReferrerOrderID, &r.ReferrerShopOrderID,
 		&r.FriendOrderID, &r.FriendShopOrderID, &r.AmountMinor, &r.Currency, &r.CashbackPct, &r.CapPct, &r.State,
-		&r.Reason, &r.ProviderCode, &r.FriendReversal, &r.ReversalNotifiedAt, &r.LetterSentAt, &r.Attempts, &r.NextAttemptAt,
+		&r.Reason, &r.ProviderCode, &r.FriendReversal, &r.ReversalNotifiedAt, &r.LetterSentAt, &r.CorrectionSentAt, &r.Attempts, &r.NextAttemptAt,
 		&r.RefundID, &r.RefundBatchID, &r.CreatedAt, &r.UpdatedAt)
 	return r, err
 }

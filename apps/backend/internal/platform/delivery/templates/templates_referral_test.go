@@ -208,3 +208,27 @@ func TestReferralReversalOrganizer_RTLLocaleIsRightToLeft(t *testing.T) {
 		}
 	}
 }
+
+// A pause is final: no language of the organizer letter promises the code can
+// be switched on again.
+func TestReferralReversalOrganizer_PauseIsFinalInEveryLocale(t *testing.T) {
+	r, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	forbidden := map[string][]string{
+		"en": {"again"}, "ru": {"снова"}, "es": {"volver a activar"}, "cs": {"Znovu"},
+		"de": {"wieder aktivieren"}, "fr": {"réactiver"}, "he": {"שוב"},
+	}
+	for _, loc := range SupportedLocales {
+		out, err := r.Render(TemplateKindReferralReversalOrganizer, loc, referralOrganizerData(ReferralReversalRefunded, true))
+		if err != nil {
+			t.Fatalf("%s: %v", loc, err)
+		}
+		for _, bad := range forbidden[loc] {
+			if strings.Contains(out.HTMLBody, bad) || strings.Contains(out.TextBody, bad) {
+				t.Errorf("%s: the letter promises the code can be switched on again (%q)", loc, bad)
+			}
+		}
+	}
+}

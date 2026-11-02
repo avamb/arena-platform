@@ -298,4 +298,4 @@ other = "Kamarád s kódem <b>{{.Code}}</b> dostal zpět peníze za objednávku 
 other = "Kamarád s kódem <b>{{.Code}}</b> zahájil spor u objednávky č. {{.Number}}. Cashback {{.Amount}} už byl vyplacen tomu, kdo kamaráda přivedl, a nelze jej vzít zpět."
 
 ["salesnotify.referral.code_paused"]
-other = "Kód <b>{{.Code}}</b> je pozastaven. Znovu ho zapnete v event centru."
+other = "Kód <b>{{.Code}}</b> je zastaven: nové slevy už nedá. Již vyplacené odměny zůstávají."

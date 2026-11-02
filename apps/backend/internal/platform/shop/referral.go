@@ -34,11 +34,23 @@ type ReferralShare struct {
 // ReferralActive says whether the organization's shop has a live programme now.
 // A failed read counts as "no": the catalog never fails over a promotion.
 func (s *Service) ReferralActive(ctx context.Context, orgID uuid.UUID) bool {
+	active, _ := s.ReferralProgram(ctx, orgID)
+	return active
+}
+
+// ReferralProgram says whether the shop has a live programme now and, if so,
+// the friend's discount in percent. The checkout page uses the percent to
+// preview the discount a friend's code takes off; the server still prices the
+// order. A failed read counts as "no programme".
+func (s *Service) ReferralProgram(ctx context.Context, orgID uuid.UUID) (active bool, friendDiscountPct int) {
 	if s.ready() != nil {
-		return false
+		return false, 0
 	}
-	_, err := s.q.GetActiveReferralProgramForShop(ctx, orgID, time.Now())
-	return err == nil
+	p, err := s.q.GetActiveReferralProgramForShop(ctx, orgID, time.Now())
+	if err != nil {
+		return false, 0
+	}
+	return true, int(p.FriendDiscountPct)
 }
 
 // ReferralForOrder issues (once) and returns the personal code of the paid shop

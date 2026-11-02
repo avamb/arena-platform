@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 const catalog = {
   org: { slug: 'einatwinery', name: 'Einat Winery', shop_domain: null },
-  settings: { currency: 'ILS', shipping_fee_minor: 5000, country_iso2: 'IL', max_line_qty: 24, contact_email: 'shop@x.test', referral_active: true },
+  settings: { currency: 'ILS', shipping_fee_minor: 5000, country_iso2: 'IL', max_line_qty: 24, contact_email: 'shop@x.test', referral_active: true, referral_friend_discount_pct: 10 },
   products: [
     {
       slug: 'a',
@@ -96,6 +96,27 @@ describe('Refer a friend on the storefront', () => {
     await go('/einatwinery/checkout');
     await until(() => document.getElementById('checkout-form') !== null, 'the checkout form');
     expect((document.getElementById('Checkout-promo') as HTMLInputElement | null)?.value).toBe('ANNA-7K2Q');
+  });
+
+  it('the order summary previews what the code takes off and follows the field while the buyer types', async () => {
+    const hidden = (): boolean => (document.querySelector('[data-ref-discount-row]') as HTMLElement).hidden;
+    const pay = (): string => document.getElementById('checkout-pay')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    // 3000 for the goods and 5000 delivery: the code takes 300 off the goods only.
+    expect(hidden()).toBe(false);
+    expect(document.querySelector('[data-ref-discount]')?.textContent).toContain('3.00');
+    expect(document.querySelector('[data-ref-discount-note]')?.textContent).toContain('окончательная сумма');
+    expect(pay()).toContain('77.00');
+    const field = document.getElementById('Checkout-promo') as HTMLInputElement;
+    const type = (v: string): void => {
+      field.value = v;
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    type('');
+    expect(hidden()).toBe(true);
+    expect(pay()).toContain('80.00');
+    type('ANNA-7K2Q');
+    expect(hidden()).toBe(false);
+    expect(pay()).toContain('77.00');
   });
 
   it('a code the shop refuses is told under its field, the rest of the form stays, and the cart is not touched', async () => {

@@ -34,6 +34,10 @@ type publicSettingsJSON struct {
 	// ReferralActive is true while the shop runs a "Refer a friend" programme:
 	// the checkout then shows its promo-code field (spec 52 section 3.5).
 	ReferralActive bool `json:"referral_active"`
+	// ReferralFriendDiscountPct is the programme's discount for a friend, in
+	// percent, only while the programme is active. The checkout previews the
+	// discount with it; the order is priced by the server.
+	ReferralFriendDiscountPct int `json:"referral_friend_discount_pct,omitempty"`
 }
 
 // publicOrgJSON names the shop's organization.
@@ -79,6 +83,7 @@ func (h *Handler) HandlePublicCatalog(w http.ResponseWriter, r *http.Request) {
 		links = append(links, pageLinkJSON{Slug: p.Slug, Title: p.Title})
 	}
 	st := sf.Settings
+	referralActive, referralPct := h.o.Service.ReferralProgram(r.Context(), sf.Org.ID)
 	cacheable(w)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"org": publicOrgJSON{Slug: sf.Org.Slug, Name: sf.Org.Name, ShopDomain: st.ShopDomain},
@@ -86,7 +91,7 @@ func (h *Handler) HandlePublicCatalog(w http.ResponseWriter, r *http.Request) {
 			Currency: st.Currency, ShippingFeeMinor: st.ShippingFeeMinor, ShippingLabel: st.ShippingLabel,
 			CountryISO2: st.CountryISO2, AgeGateMinAge: st.AgeGateMinAge, AnnouncementText: st.AnnouncementText,
 			ContactEmail: st.ContactEmail, MaxLineQty: st.MaxLineQty, CaptchaSiteKey: h.captchaSiteKey(),
-			ReferralActive: h.o.Service.ReferralActive(r.Context(), sf.Org.ID),
+			ReferralActive: referralActive, ReferralFriendDiscountPct: referralPct,
 		},
 		"products": products,
 		"pages":    links,

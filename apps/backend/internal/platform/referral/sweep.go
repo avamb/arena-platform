@@ -55,7 +55,7 @@ type SweepReport struct {
 //  3. a friend who got the money back (the order is refunded) or opened a
 //     dispute, after the cashback was paid, is recorded on the reward
 //     (friend_reversal) and the organizer is told through the Notifier;
-//  4. a code with two such friends is paused (the organizer can switch it on),
+//  4. a code with two such friends is paused for good (no route switches a code on),
 //     and a code whose referrer order is refunded or cancelled is deactivated.
 func (s *Service) Sweep(ctx context.Context) (SweepReport, error) {
 	var rep SweepReport
@@ -232,8 +232,8 @@ func (s *Service) notifyReversals(ctx context.Context) (int, error) {
 }
 
 // pauseReversedCodes pauses a code with pauseAfterReversals friends who took
-// the money back (spec 52 section 5.2 item 3). 'paused' is the status the
-// organizer can switch on again.
+// the money back (spec 52 section 5.2 item 3). The pause is final: no route
+// switches a code on again.
 func (s *Service) pauseReversedCodes(ctx context.Context) (int, error) {
 	tag, err := s.pool.Exec(ctx, `UPDATE promo_codes pc SET status = 'paused', updated_at = now()
 		WHERE pc.origin = 'referral' AND pc.status = 'active'

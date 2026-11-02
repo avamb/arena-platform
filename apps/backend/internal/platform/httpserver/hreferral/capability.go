@@ -91,7 +91,7 @@ func judge(reg *domain.Registry, source string, channels []gen.ReferralChannel) 
 	}
 	if out.Supported && someBad {
 		warnings = append(warnings, warningJSON{warnSomeUnsupported,
-			"Some channels of this event cannot pay the cashback; friend codes work on the other channels only."})
+			"Some channels of this event cannot pay the cashback. Friend codes are given only to buyers who paid through a provider that can return part of a payment."})
 	}
 	return out, warnings
 }
@@ -160,7 +160,7 @@ func (h *Handler) shopCapability(ctx context.Context, orgID uuid.UUID) (capabili
 		case warnNoChannel:
 			warnings[i].Message = "The shop takes no card payments yet; the programme works once a payment channel is set up."
 		case warnSomeUnsupported:
-			warnings[i].Message = "Some payment channels of the organization cannot pay the cashback; friend codes work on the shop's own channel only."
+			warnings[i].Message = "Some payment channels of the organization cannot pay the cashback. Friend codes are given only to buyers who paid through a provider that can return part of a payment."
 		}
 	}
 	return out, warnings, nil

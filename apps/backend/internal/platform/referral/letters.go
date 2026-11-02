@@ -5,9 +5,12 @@ package referral
 //
 //   - referral.cashback_email {reward_id, kind} writes to the referrer. It is
 //     queued, in the transaction that changes the reward's state, when the
-//     cashback is paid ("sent") or when it was owed and could not be returned
-//     to the card ("unavailable"). The handler lives in package delivery and
-//     sends once per reward (referral_rewards.letter_sent_at).
+//     cashback is paid ("sent") or when it was owed and the provider refused to
+//     return it to the card ("unavailable"). The handler lives in package
+//     delivery and sends once per reward (referral_rewards.letter_sent_at). A
+//     reward that was announced as paid and later turns into a final refusal
+//     gets ONE more "unavailable" letter, a correction (Correction in the
+//     payload, referral_rewards.correction_sent_at).
 //   - referral.reversal_email {reward_id} writes to the organization's owners
 //     when a friend took the money back after the cashback was paid. It is
 //     queued by the OrganizerNotifier (referralnotify/notify.go).
@@ -37,6 +40,9 @@ const (
 type CashbackEmailPayload struct {
 	RewardID string `json:"reward_id"`
 	Kind     string `json:"kind"`
+	// Correction: the referrer was already told the money went back; this
+	// letter takes that back. Sent once (referral_rewards.correction_sent_at).
+	Correction bool `json:"correction,omitempty"`
 }
 
 // ReversalEmailPayload is the payload of JobTypeReversalEmail.
@@ -46,40 +52,33 @@ type ReversalEmailPayload struct {
 
 const letterMaxAttempts = 5
 
-// noLetterReasons are the reasons of a 'not_possible' reward that get NO
-// letter to the referrer:
-//
-//   - currency_mismatch: the friend paid in another currency than the referrer,
-//     the cashback was never calculated for them;
-//   - shop_not_supported: legacy, a shop reward written before the shop could
-//     pay a cashback;
-//   - manual_review: not final, the sweep reads the refund back and the reward
-//     may still become paid.
-//
-// Every other reason of 'not_possible' means a cashback that WAS owed and that
-// the provider, the card or a refusal of the refund engine kept from the
-// referrer: provider_declined and the provider's own failure codes,
-// provider_not_supported, seller_site_order, partial_not_supported,
-// no_refundable_ticket, and the other refund.* codes.
-var noLetterReasons = map[string]bool{
-	"currency_mismatch":  true,
-	"shop_not_supported": true,
-	"manual_review":      true,
-	"no_order":           true,
-}
+// ReasonProviderDeclined is the reward reason when a refund the provider
+// really received failed without a code of its own.
+const ReasonProviderDeclined = "provider_declined"
 
-// LetterKindFor says which letter a reward that reaches state with reason
-// gets, if any. Only 'paid' (the money went back, fully or in part) and
-// 'not_possible' (see noLetterReasons) write to the referrer.
-func LetterKindFor(state, reason string) (string, bool) {
+// LetterKindFor says which letter a reward that reaches state with reason gets,
+// if any. Only 'paid' (the money went back, fully or in part) and one kind of
+// 'not_possible' write to the referrer.
+//
+// The "could not be returned" letter is sent from an explicit rule, never "every
+// reason except these": it goes out only when the refund really reached the
+// provider and the provider refused it. That is, the reason is
+// ReasonProviderDeclined, or it is the provider's own failure code
+// (providerCode, which resultOf sets to the reason in that case). Every reason
+// the platform itself decided without asking the provider gets NO letter: no
+// ticket to take the money from, nothing to refund, the payment not succeeded,
+// no payment, the order not found, an unsupported provider, another currency,
+// a refund waiting for a person (manual_review), another event, the friends
+// limit, a self-referral, the refund engine's own refusals (refund.*), and
+// any reason added later.
+func LetterKindFor(state, reason, providerCode string) (string, bool) {
 	switch state {
 	case StatePaid:
 		return LetterSent, true
 	case StateNotPossible:
-		if noLetterReasons[reason] {
-			return "", false
+		if reason == ReasonProviderDeclined || (providerCode != "" && reason == providerCode) {
+			return LetterUnavailable, true
 		}
-		return LetterUnavailable, true
 	}
 	return "", false
 }

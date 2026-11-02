@@ -214,7 +214,7 @@ describe('the block on a paid order', () => {
 
   it('puts the two percentages into the offer', () => {
     expect(referralText(getReferralStrings('en'), CODE)).toBe(
-      'Your friend gets 10% off with your code, and 5% of their purchase comes back to your card.',
+      'Your friend gets 10% off with your code, and up to 5% of their purchase comes back to your card.',
     );
     expect(referralText(getReferralStrings('ru'), CODE)).toContain('10%');
     expect(referralText(getReferralStrings('ru'), CODE)).toContain('5%');
@@ -237,6 +237,14 @@ describe('the words of the block', () => {
       expect(holes(REFERRAL_I18N[l]!.text), `${l}.text`).toBe('{cashback},{discount}');
       expect(holes(REFERRAL_I18N[l]!.share_text), `${l}.share_text`).toBe('{code},{discount}');
     }
+  });
+
+  it('promises the cashback as "up to", because the cap can cut it', () => {
+    const upTo: Record<string, string> = {
+      en: 'up to {cashback}%', ru: 'до {cashback}%', cs: 'až {cashback} %', he: 'עד {cashback}%',
+      es: 'hasta el {cashback}%', de: 'bis zu {cashback}%', fr: "jusqu'à {cashback} %",
+    };
+    for (const l of LOCALES) expect(REFERRAL_I18N[l]!.text, l).toContain(upTo[l]!);
   });
 
   it('is looked up by language subtag with an English fallback', () => {

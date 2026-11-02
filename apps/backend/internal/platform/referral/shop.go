@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
@@ -67,6 +68,13 @@ func issueShopCode(ctx context.Context, db gen.DBTX, shopOrderID uuid.UUID, now 
 	}
 	if err != nil {
 		return Code{}, false, err
+	}
+	// The cashback is a partial refund of this order's payment: a provider that
+	// cannot do it cannot carry a code.
+	if can, err := shopOrderCanCarryCode(ctx, db, ord.PaymentIntentID); err != nil {
+		return Code{}, false, err
+	} else if !can {
+		return Code{}, false, ErrNotEligible
 	}
 	var maxUses *int32
 	if program.MaxFriends != nil {
@@ -242,6 +250,13 @@ func RecordFriendShopOrderTx(ctx context.Context, tx pgx.Tx, ord gen.ShopOrderRo
 	if err != nil {
 		return fmt.Errorf("referral: self-referral check: %w", err)
 	}
+	// A referrer whose payment cannot return a part of itself is owed nothing
+	// that can be paid (a code issued before the rule, or a changed module).
+	provider, found, err := providerOfShopPayment(ctx, tx, referrer.PaymentIntentID)
+	if err != nil {
+		return fmt.Errorf("referral: referrer payment: %w", err)
+	}
+	unsupported := found && !CanPartialRefund(paymodules.Registry(), provider)
 	switch {
 	case self:
 		p.State, p.Reason = StateCancelled, "self_referral"
@@ -249,6 +264,8 @@ func RecordFriendShopOrderTx(ctx context.Context, tx pgx.Tx, ord gen.ShopOrderRo
 		p.State, p.Reason = StateCapped, "max_friends"
 	case ord.Currency != referrer.Currency:
 		p.State, p.Reason = StateNotPossible, "currency_mismatch"
+	case unsupported:
+		p.State, p.Reason = StateNotPossible, ReasonProviderUnsupported
 	default:
 		base := ord.Subtotal - ord.Discount
 		amount := CashbackAmount(base, int(cashbackPct))

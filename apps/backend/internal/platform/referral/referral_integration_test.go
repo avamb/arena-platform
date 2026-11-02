@@ -40,7 +40,7 @@ type fakeModule struct {
 }
 
 func (m *fakeModule) Descriptor() payments.Descriptor {
-	return payments.Descriptor{Name: "referfake", Title: "Fake", Capabilities: payments.Capabilities{
+	return payments.Descriptor{Name: "stripe", Title: "Fake", Capabilities: payments.Capabilities{
 		Refund: true, PartialRefund: true}}
 }
 
@@ -67,7 +67,7 @@ func (m *fakeModule) callCount() int {
 type fakeSource struct{ m *fakeModule }
 
 func (s fakeSource) Descriptor(p string) (payments.Descriptor, bool) {
-	if p == "referfake" {
+	if p == "stripe" {
 		return s.m.Descriptor(), true
 	}
 	return payments.Descriptor{}, false
@@ -187,7 +187,7 @@ func newFixture(t *testing.T, friendPct, cashbackPct, capPct int) *fixture {
 			f.referrerOrder, i, f.tier, tk)
 	}
 	ref := "pi_refer_" + uuid.NewString()
-	pi, err := q.InsertPaymentIntent(ctx, &cs, f.org, "referfake", &ref, 5000, "EUR", "succeeded", nil, nil)
+	pi, err := q.InsertPaymentIntent(ctx, &cs, f.org, "stripe", &ref, 5000, "EUR", "succeeded", nil, nil)
 	if err != nil {
 		t.Fatalf("payment intent: %v", err)
 	}

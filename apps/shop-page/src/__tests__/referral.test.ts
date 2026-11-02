@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildCheckoutRequest, resolveLines } from '../lib/cart';
 import { ERR, REF } from '../lib/i18n';
-import { capturePromo, cleanPromo, forgetPromo, storedPromo } from '../lib/referral';
+import { capturePromo, cleanPct, cleanPromo, forgetPromo, referralDiscountMinor, storedPromo } from '../lib/referral';
 import { checkoutView, EMPTY_FORM, referralBlock } from '../views/checkout';
 import type { Ctx } from '../views/common';
 
@@ -30,6 +30,27 @@ describe('the code of a link', () => {
     expect(capturePromo('shop-a', '?promo=%3Cb%3E')).toBe('ANNA-7K2Q');
     forgetPromo('shop-a');
     expect(storedPromo('shop-a')).toBe('');
+  });
+});
+
+describe('the discount preview', () => {
+  it('is the programme percent of the goods, rounded down, like the server', () => {
+    expect(referralDiscountMinor(3000, 10, 'ANNA-7K2Q')).toBe(300);
+    expect(referralDiscountMinor(1999, 10, 'ANNA-7K2Q')).toBe(199); // 199.9 -> 199
+    expect(referralDiscountMinor(1, 10, 'ANNA-7K2Q')).toBe(0);
+    expect(referralDiscountMinor(3000, 150, 'ANNA-7K2Q')).toBe(3000); // capped at 100 %, as the server does
+  });
+
+  it('is nothing without a usable code, a programme percent or goods', () => {
+    expect(referralDiscountMinor(3000, 10, '')).toBe(0);
+    expect(referralDiscountMinor(3000, 10, '<b>')).toBe(0);
+    expect(referralDiscountMinor(3000, 0, 'ANNA-7K2Q')).toBe(0);
+    expect(referralDiscountMinor(0, 10, 'ANNA-7K2Q')).toBe(0);
+  });
+
+  it('reads the percent from the wire only when it is a whole number from 1 to 100', () => {
+    expect(cleanPct(10)).toBe(10);
+    for (const bad of [0, -5, 101, 10.5, '10', null, undefined]) expect(cleanPct(bad)).toBe(0);
   });
 });
 
@@ -68,6 +89,34 @@ describe('the views', () => {
     expect(html).toContain('href="https://shop.test/?promo=ANNA-7K2Q&amp;utm_source=referral"');
     // An address that is not http(s) is never drawn as a link.
     expect(referralBlock({ code: 'X-1', friend_discount_pct: 10, cashback_pct: 5, share_url: 'javascript:alert(1)' })).not.toContain('href="javascript');
+  });
+
+  it('the invitation promises the cashback as "up to"', () => {
+    expect(REF.inviteText(10, 5)).toContain('вернётся до 5%');
+  });
+
+  it('shows the discount a code of a friend takes off, with the words that the payment page is final', () => {
+    const product = {
+      kind: 'physical', slug: 'a', title: 'A', body_html: '', images: [], options: [], related_slugs: [],
+      variants: [{ id: 'a1', title: 'Default Title', price_minor: 3000, in_stock: true, available: 3, option1: null, option2: null, option3: null }],
+    };
+    const c = ctx(true);
+    const withCart = {
+      ...c, shop: { ...c.shop, settings: { ...c.shop.settings, shipping_fee_minor: 500, referral_friend_discount_pct: 10 }, products: [product] },
+      cart: [{ variant_id: 'a1', qty: 1 }],
+    } as unknown as Ctx;
+    const ls = resolveLines(withCart.cart, withCart.shop.products);
+    const withCode = checkoutView(withCart, ls, { values: { ...EMPTY_FORM, promo: 'ANNA-7K2Q' }, errors: {} });
+    expect(withCode).toContain(REF.discountLabel);
+    expect(withCode).toContain(REF.discountNote);
+    expect(withCode).toContain('data-ref-discount-row>');
+    expect(withCode).not.toMatch(/data-ref-discount-row hidden/);
+    // 300 off the goods (delivery is never discounted): 3000 + 500 - 300 = 3200 to pay.
+    expect(withCode).toContain('32.00');
+    // No code: the row is in the markup but hidden, and the total is the plain one.
+    const noCode = checkoutView(withCart, ls, { values: { ...EMPTY_FORM }, errors: {} });
+    expect(noCode).toMatch(/data-ref-discount-row hidden/);
+    expect(noCode).toContain('35.00');
   });
 
   it('the promo field is drawn only for a shop with a programme or a code that came with the link', () => {

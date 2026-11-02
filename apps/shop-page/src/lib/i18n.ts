@@ -109,9 +109,11 @@ export const REF = {
   promoLabel: 'Код друга',
   promoPlaceholder: 'Код друга',
   promoHint: 'Скидку по коду покажет страница оплаты.',
+  discountLabel: 'Скидка по коду',
+  discountNote: 'Скидка по коду; окончательная сумма — на странице оплаты.',
   inviteTitle: 'Пригласите друга',
   inviteText: (friendPct: number, cashbackPct: number): string =>
-    `Отправьте другу свой код: он получит скидку ${friendPct}% на заказ, а вам вернётся ${cashbackPct}% от его оплаты на карту, которой вы платили.`,
+    `Отправьте другу свой код: он получит скидку ${friendPct}% на заказ, а вам вернётся до ${cashbackPct}% от его оплаты на карту, которой вы платили.`,
   codeLabel: 'Ваш код',
   linkLabel: 'Ссылка для друга',
   copyCode: 'Скопировать код',

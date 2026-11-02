@@ -11,7 +11,7 @@
   <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
   <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">{{if eq .Referral.Reversal "disputed"}}A friend opened a dispute{{else}}A friend got money back{{end}}</h1>
   <p style="margin:0 0 12px 0;">{{if eq .Referral.Reversal "disputed"}}A friend who used code <strong>{{.Referral.Code}}</strong> opened a dispute on order {{.Referral.Order}}. The cashback of {{.Referral.Amount}} has already been paid to the referrer and cannot be taken back.{{else}}A friend who used code <strong>{{.Referral.Code}}</strong> got money back for order {{.Referral.Order}}. The cashback of {{.Referral.Amount}} has already been paid to the referrer and cannot be taken back.{{end}}</p>
-  {{if .Referral.CodePaused}}<p style="margin:0 0 12px 0;">The code <strong>{{.Referral.Code}}</strong> is on pause. You can switch it on again in the event center.</p>{{end}}
+  {{if .Referral.CodePaused}}<p style="margin:0 0 12px 0;">The code <strong>{{.Referral.Code}}</strong> is stopped: it gives no new discounts. Payouts already made stay as they are.</p>{{end}}
   </td></tr>
   <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — automated message</td></tr>
 </table>
@@ -25,7 +25,7 @@
 
 {{if eq .Referral.Reversal "disputed"}}A friend who used code {{.Referral.Code}} opened a dispute on order {{.Referral.Order}}. The cashback of {{.Referral.Amount}} has already been paid to the referrer and cannot be taken back.{{else}}A friend who used code {{.Referral.Code}} got money back for order {{.Referral.Order}}. The cashback of {{.Referral.Amount}} has already been paid to the referrer and cannot be taken back.{{end}}
 {{if .Referral.CodePaused}}
-The code {{.Referral.Code}} is on pause. You can switch it on again in the event center.
+The code {{.Referral.Code}} is stopped: it gives no new discounts. Payouts already made stay as they are.
 {{end}}
 Arena Platform — automated message
 {{end}}

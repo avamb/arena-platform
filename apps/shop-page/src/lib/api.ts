@@ -21,7 +21,7 @@
  * variant ids and quantities).
  */
 
-import type { ReferralShare } from './referral';
+import { cleanPct, type ReferralShare } from './referral';
 
 export const API_BASE: string = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '');
 
@@ -47,6 +47,8 @@ export interface ShopSettings {
   shop_domain?: string | null;
   /** True while the shop runs a "Refer a friend" programme: the checkout offers a promo-code field. */
   referral_active?: boolean;
+  /** The programme's discount for a friend, in percent (0 or absent without a programme). A preview only: the server prices the order. */
+  referral_friend_discount_pct?: number;
 }
 
 export interface ShopImage {
@@ -240,6 +242,7 @@ interface WireSettings {
   max_line_qty?: number;
   captcha_site_key?: string | null;
   referral_active?: boolean;
+  referral_friend_discount_pct?: number;
 }
 interface WireCatalog {
   org?: { slug: string; name: string; shop_domain?: string | null; captcha_site_key?: string | null };
@@ -408,6 +411,7 @@ export function normalizeCatalog(c: WireCatalog): ShopData {
       captcha_site_key: s.captcha_site_key || c.captcha_site_key || c.org?.captcha_site_key || null,
       shop_domain: c.org?.shop_domain || null,
       referral_active: s.referral_active === true,
+      referral_friend_discount_pct: s.referral_active === true ? cleanPct(s.referral_friend_discount_pct) : 0,
     },
     products: (c.products ?? []).map(normalizeProduct),
     pages: links.filter((p) => !isPolicySlug(p.slug)),

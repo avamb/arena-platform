@@ -210,6 +210,7 @@ SELECT
         WHERE p.org_id     = sc.org_id
           AND p.deleted_at IS NULL
           AND p.status     = 'active'
+          AND p.origin     = 'manual'
           AND (p.valid_from  IS NULL OR p.valid_from  <= now())
           AND (p.valid_until IS NULL OR p.valid_until >  now())
           AND (p.max_uses IS NULL

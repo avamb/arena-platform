@@ -262,35 +262,54 @@ type stateChange struct {
 // setState changes a reward that is in one of the from states. It reports
 // whether a row changed.
 //
-// A reward that reaches 'paid', or 'not_possible' for a reason the referrer
-// should hear about (LetterKindFor), queues the referrer's letter in the same
-// transaction: the letter exists exactly when the state does.
+// A reward that reaches 'paid', or 'not_possible' because the provider refused
+// the refund (LetterKindFor), queues the referrer's letter in the same
+// transaction: the letter exists exactly when the state does. A reward the
+// referrer was already told was paid, which later ends in such a refusal (the
+// provider cancelled the refund after accepting it, or an operator closed it as
+// not returned), queues ONE correction letter, marked by correction_sent_at.
+// While the refund waits for a person (manual_review) nothing is sent.
 func (s *Service) setState(ctx context.Context, id uuid.UUID, from []string, c stateChange) (bool, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return false, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var reason string
-	var hasReferrerOrder, letterSent bool
+	var reason, providerCode string
+	var hasReferrerOrder, letterSent, correctionSent bool
 	err = tx.QueryRow(ctx, `UPDATE referral_rewards
 		SET state = $3, reason = COALESCE(NULLIF($4, ''), reason),
 		    amount_minor = COALESCE($5, amount_minor), refund_id = COALESCE($6, refund_id),
 		    refund_batch_id = COALESCE($7, refund_batch_id), next_attempt_at = NULL, updated_at = now(),
 		    provider_code = CASE WHEN $8::text IS NULL THEN provider_code ELSE NULLIF($8::text, '') END
 		WHERE id = $1 AND state = ANY($2)
-		RETURNING COALESCE(reason, ''), (referrer_order_id IS NOT NULL OR referrer_shop_order_id IS NOT NULL), letter_sent_at IS NOT NULL`,
-		id, from, c.State, c.Reason, c.Amount, c.RefundID, c.BatchID, c.ProviderCode).Scan(&reason, &hasReferrerOrder, &letterSent)
+		RETURNING COALESCE(reason, ''), COALESCE(provider_code, ''),
+		          (referrer_order_id IS NOT NULL OR referrer_shop_order_id IS NOT NULL),
+		          letter_sent_at IS NOT NULL, correction_sent_at IS NOT NULL`,
+		id, from, c.State, c.Reason, c.Amount, c.RefundID, c.BatchID, c.ProviderCode).
+		Scan(&reason, &providerCode, &hasReferrerOrder, &letterSent, &correctionSent)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	if kind, ok := LetterKindFor(c.State, reason); ok && hasReferrerOrder && !letterSent {
-		if _, err := worker.EnqueueInTx(ctx, tx, JobTypeCashbackEmail,
-			CashbackEmailPayload{RewardID: id.String(), Kind: kind}, letterMaxAttempts); err != nil {
-			return false, fmt.Errorf("referral: enqueue cashback letter: %w", err)
+	if kind, ok := LetterKindFor(c.State, reason, providerCode); ok && hasReferrerOrder {
+		payload := CashbackEmailPayload{RewardID: id.String(), Kind: kind}
+		switch {
+		case !letterSent:
+			// the first letter
+		case kind == LetterUnavailable && !correctionSent:
+			// The referrer was told the money went back (the only earlier
+			// letter a reward can have): correct it, once.
+			payload.Correction = true
+		default:
+			ok = false
+		}
+		if ok {
+			if _, err := worker.EnqueueInTx(ctx, tx, JobTypeCashbackEmail, payload, letterMaxAttempts); err != nil {
+				return false, fmt.Errorf("referral: enqueue cashback letter: %w", err)
+			}
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -328,7 +347,7 @@ func (s *Service) applyRefunds(ctx context.Context, rw gen.ReferralRewardRow, ba
 	}
 	views := make([]refundView, len(refs))
 	for i, r := range refs {
-		views[i] = refundView{State: r.State, Amount: r.Amount, HasProviderRef: r.ProviderRefundID != nil}
+		views[i] = refundView{State: r.State, Amount: r.Amount, HasProviderRef: r.ProviderRefundID != nil, Attempted: r.ProviderAttempts > 0}
 		if r.FailureCode != nil {
 			views[i].FailureCode = *r.FailureCode
 		}

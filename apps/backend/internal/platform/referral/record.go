@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
@@ -130,6 +131,11 @@ func RecordFriendOrderTx(ctx context.Context, tx pgx.Tx, ord gen.OrderRow) error
 	if err != nil {
 		return fmt.Errorf("referral: self-referral check: %w", err)
 	}
+	provider, found, err := providerOfOrder(ctx, tx, referrer.ID)
+	if err != nil {
+		return fmt.Errorf("referral: referrer payment: %w", err)
+	}
+	unsupported := found && !CanPartialRefund(paymodules.Registry(), provider)
 	switch {
 	case program.EventID != nil && *program.EventID != ord.EventID:
 		// The code belongs to one event's programme; a cart of another event
@@ -141,6 +147,11 @@ func RecordFriendOrderTx(ctx context.Context, tx pgx.Tx, ord gen.OrderRow) error
 		p.State, p.Reason = StateCapped, "max_friends"
 	case ord.Currency != referrer.Currency:
 		p.State, p.Reason = StateNotPossible, "currency_mismatch"
+	case unsupported:
+		// The referrer's payment cannot return a part of itself (a code issued
+		// before the rule, or a module that changed). No letter: nothing was
+		// ever promised that could be paid.
+		p.State, p.Reason = StateNotPossible, ReasonProviderUnsupported
 	default:
 		amount := CashbackAmount(ord.Total, int(cashbackPct))
 		cashback, err := q.SumReferrerLiveRewards(ctx, referrer.ID)

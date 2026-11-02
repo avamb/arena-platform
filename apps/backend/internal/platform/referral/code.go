@@ -54,8 +54,8 @@ type Code struct {
 // IssueCode returns the personal code of a paid order, creating it on the
 // first call. created tells whether this call made it. It is idempotent: a
 // repeat (or a race) returns the code the order already has. The order must be
-// paid (or partly refunded) with money (total above zero) and not come from a
-// selling site; its event needs an active programme in its period, else
+// paid (or partly refunded) with money (total above zero), through a provider
+// that can return a part of a payment, and not come from a selling site; its event needs an active programme in its period, else
 // ErrNoProgram, or ErrNoSessions when the event has no live date. A code issued earlier is returned whatever the programme's
 // status is now.
 //
@@ -95,6 +95,13 @@ func issueCode(ctx context.Context, db gen.DBTX, orderID uuid.UUID, now time.Tim
 	}
 	if len(sessions) == 0 {
 		return Code{}, false, ErrNoSessions
+	}
+	// The cashback is a partial refund of this order's payment: a provider that
+	// cannot do it cannot carry a code.
+	if can, err := orderCanCarryCode(ctx, db, orderID); err != nil {
+		return Code{}, false, err
+	} else if !can {
+		return Code{}, false, ErrNotEligible
 	}
 	var maxUses *int32
 	if program.MaxFriends != nil {

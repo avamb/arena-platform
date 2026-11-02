@@ -85,7 +85,15 @@ type refundView struct {
 	FailureCode    string
 	Amount         int64
 	HasProviderRef bool
+	// Attempted: the refund really went to the provider (an attempt was made or
+	// the provider answered). A refund that failed before that was refused by
+	// the platform, not by the provider.
+	Attempted bool
 }
+
+// reasonRefundNotSent is the reward reason when a refund failed without ever
+// reaching the provider.
+const reasonRefundNotSent = "refund_not_sent"
 
 // reasonManualReview is the reward reason while a refund waits for a person
 // (the refund engine parked it in manual_review). It is NOT final: the sweep
@@ -122,10 +130,15 @@ func resultOf(refs []refundView) (state, reason, providerCode string, amount int
 		default: // failed, rejected
 			bad = true
 			if badCode == "" {
-				badProvider = r.FailureCode
-				badCode = r.FailureCode
-				if badCode == "" {
-					badCode = "provider_declined"
+				switch {
+				case !r.Attempted && !r.HasProviderRef:
+					// The provider never saw it: no code of the provider's.
+					badCode = reasonRefundNotSent
+				case r.FailureCode == "":
+					badCode = ReasonProviderDeclined
+				default:
+					badProvider = r.FailureCode
+					badCode = r.FailureCode
 				}
 			}
 		}

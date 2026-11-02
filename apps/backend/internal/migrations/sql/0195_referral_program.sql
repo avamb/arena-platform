@@ -119,6 +119,9 @@ CREATE TABLE referral_rewards (
     friend_reversal        text        CHECK (friend_reversal IN ('refunded', 'partially_refunded', 'disputed')),
     reversal_notified_at   timestamptz,
     letter_sent_at         timestamptz,
+    -- The referrer was told the money went back, and it did not stay back: the
+    -- one correction letter.
+    correction_sent_at     timestamptz,
     attempts               integer     NOT NULL DEFAULT 0,
     next_attempt_at        timestamptz,
     refund_id              uuid        REFERENCES refunds(id),

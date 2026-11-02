@@ -12,7 +12,7 @@
 export interface ReferralStrings {
   /** Heading of the block. */
   title: string;
-  /** The offer. {discount} = percent off for the friend, {cashback} = percent back to the buyer. */
+  /** The offer. {discount} = percent off for the friend, {cashback} = the most ("up to") that comes back to the buyer, in percent. */
   text: string;
   /** Label above the big code. */
   code_label: string;
@@ -33,7 +33,7 @@ export interface ReferralStrings {
 export const REFERRAL_I18N: Record<string, ReferralStrings> = {
   en: {
     title: 'Invite a friend',
-    text: 'Your friend gets {discount}% off with your code, and {cashback}% of their purchase comes back to your card.',
+    text: 'Your friend gets {discount}% off with your code, and up to {cashback}% of their purchase comes back to your card.',
     code_label: 'Your code',
     copy_link: 'Copy link',
     copy_code: 'Copy code',
@@ -44,7 +44,7 @@ export const REFERRAL_I18N: Record<string, ReferralStrings> = {
   },
   ru: {
     title: 'Пригласите друга',
-    text: 'Друг получит скидку {discount}% по вашему коду, а вам вернётся {cashback}% от его покупки на карту.',
+    text: 'Друг получит скидку {discount}% по вашему коду, а вам вернётся до {cashback}% от его покупки на карту.',
     code_label: 'Ваш код',
     copy_link: 'Скопировать ссылку',
     copy_code: 'Скопировать код',
@@ -55,7 +55,7 @@ export const REFERRAL_I18N: Record<string, ReferralStrings> = {
   },
   cs: {
     title: 'Pozvěte přítele',
-    text: 'Váš přítel získá slevu {discount} % s vaším kódem a {cashback} % z jeho nákupu se vám vrátí na kartu.',
+    text: 'Váš přítel získá slevu {discount} % s vaším kódem a až {cashback} % z jeho nákupu se vám vrátí na kartu.',
     code_label: 'Váš kód',
     copy_link: 'Kopírovat odkaz',
     copy_code: 'Kopírovat kód',
@@ -66,7 +66,7 @@ export const REFERRAL_I18N: Record<string, ReferralStrings> = {
   },
   he: {
     title: 'הזמינו חבר',
-    text: 'החבר שלכם מקבל {discount}% הנחה עם הקוד שלכם, ו-{cashback}% מהרכישה שלו יחזרו לכרטיס שלכם.',
+    text: 'החבר שלכם מקבל {discount}% הנחה עם הקוד שלכם, ועד {cashback}% מהרכישה שלו יחזרו לכרטיס שלכם.',
     code_label: 'הקוד שלכם',
     copy_link: 'העתקת קישור',
     copy_code: 'העתקת קוד',
@@ -77,7 +77,7 @@ export const REFERRAL_I18N: Record<string, ReferralStrings> = {
   },
   es: {
     title: 'Invita a un amigo',
-    text: 'Tu amigo recibe un {discount}% de descuento con tu código y el {cashback}% de su compra vuelve a tu tarjeta.',
+    text: 'Tu amigo recibe un {discount}% de descuento con tu código y hasta el {cashback}% de su compra vuelve a tu tarjeta.',
     code_label: 'Tu código',
     copy_link: 'Copiar enlace',
     copy_code: 'Copiar código',
@@ -88,7 +88,7 @@ export const REFERRAL_I18N: Record<string, ReferralStrings> = {
   },
   de: {
     title: 'Freund einladen',
-    text: 'Ihr Freund erhält {discount}% Rabatt mit Ihrem Code, und {cashback}% seines Einkaufs gehen auf Ihre Karte zurück.',
+    text: 'Ihr Freund erhält {discount}% Rabatt mit Ihrem Code, und bis zu {cashback}% seines Einkaufs gehen auf Ihre Karte zurück.',
     code_label: 'Ihr Code',
     copy_link: 'Link kopieren',
     copy_code: 'Code kopieren',
@@ -99,7 +99,7 @@ export const REFERRAL_I18N: Record<string, ReferralStrings> = {
   },
   fr: {
     title: 'Invitez un ami',
-    text: 'Votre ami obtient {discount} % de réduction avec votre code, et {cashback} % de son achat reviennent sur votre carte.',
+    text: 'Votre ami obtient {discount} % de réduction avec votre code, et jusqu\'à {cashback} % de son achat reviennent sur votre carte.',
     code_label: 'Votre code',
     copy_link: 'Copier le lien',
     copy_code: 'Copier le code',
