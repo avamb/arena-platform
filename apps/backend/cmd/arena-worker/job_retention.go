@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/jobretention"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/marketing"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
@@ -21,8 +22,14 @@ func registerJobRetentionHandler(reg *worker.Registry, pool *pgxpool.Pool, logge
 		Store:     jobretention.NewPGStore(pool),
 		Scheduler: jobretention.NewPGScheduler(pool),
 		Logger:    logger,
-		// promo_code_attempts older than 90 days (migration 0166).
+		// promo_code_attempts older than 90 days (migration 0166), and the
+		// marketing consents whose evidence is no longer kept (spec 51-1, В-7).
 		Extra: func(ctx context.Context, now time.Time) (string, int64, error) {
+			if n, err := marketing.Purge(ctx, pool, now); err != nil {
+				logger.Warn("worker jobs cleanup: marketing consent purge failed", "error", err.Error())
+			} else if n > 0 {
+				logger.Info("worker jobs cleanup: marketing consents purged", "deleted", n)
+			}
 			n, err := promoattempts.Purge(ctx, pool, now)
 			return "promo_code_attempts", n, err
 		},
