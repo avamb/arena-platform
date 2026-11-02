@@ -20,8 +20,10 @@
 -- makes a second pass a no-op, so a list is never sent twice). channel says
 -- how it goes: 'telegram' rows are claimed by the bot process
 -- (POST /v1/bot/guest-list-deliveries/claim, a 10-minute lease) which fetches
--- the CSV as that person and reports back; 'email' rows are mailed by the
--- worker itself.
+-- the CSV as that person and reports back; 'email' rows, and 'telegram' rows
+-- of a person no longer linked to the bot, are mailed by the worker itself.
+-- attempts is also the claim token a report must name. Rows are deleted 90
+-- days after their moment.
 
 -- +goose Up
 
@@ -55,7 +57,10 @@ CREATE TABLE guest_list_deliveries (
 
 CREATE INDEX guest_list_deliveries_open_idx
     ON guest_list_deliveries (channel, due_at)
-    WHERE sent_at IS NULL;
+    WHERE sent_at IS NULL AND attempts < 3;
+
+-- worker_jobs.cleanup deletes rows whose moment is older than 90 days.
+CREATE INDEX guest_list_deliveries_due_idx ON guest_list_deliveries (due_at);
 
 COMMENT ON TABLE guest_list_deliveries IS
     'One automatic guest list per session, moment and person; the unique key keeps a list from being sent twice.';

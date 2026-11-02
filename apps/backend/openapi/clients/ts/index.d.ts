@@ -1680,9 +1680,12 @@ export interface paths {
         /**
          * Report how one automatic guest list ended
          * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN` for a delivery it
-         *     claimed. `sent` closes it; `failed` lets it be taken again later;
-         *     `skipped` closes it without a send (no rights any more, no tickets,
-         *     the person blocked the bot). A delivery already sent is a 404.
+         *     claimed. `attempt` must be the claim's own: a report of an older
+         *     claim is a 404 and changes nothing. `sent` closes it; `failed` lets
+         *     it be taken again when its 10-minute lease is over; `skipped` closes
+         *     it without a send (no rights any more, no tickets); `email` moves it
+         *     to the e-mail channel (the person blocked the bot). A delivery
+         *     already sent is a 404.
          */
         post: operations["finishBotGuestListDelivery"];
         delete?: never;
@@ -9051,7 +9054,8 @@ export interface paths {
          *     refused with 413 before any byte is sent.
          *
          *     Requires `order.read` AND `session.read`; a session of another
-         *     organization is a 404.
+         *     organization is a 404. The file holds buyers' contacts, so an
+         *     organization API key is refused (403 `guest_list.api_key_forbidden`).
          */
         get: operations["getV1OrganizationsOrgIdSessionsSessionIdSalesCsv"];
         put?: never;
@@ -9227,9 +9231,11 @@ export interface paths {
         /**
          * Turn the automatic guest list on or off for the caller
          * @description Turns the caller's automatic guest list on or off. A repeat of the
-         *     current value changes nothing. Turning it off does not stop a list
-         *     whose moment has already come. Requires `order.read`; an organization
-         *     API key is refused (403 `guest_list.api_key_forbidden`).
+         *     current value changes nothing. Turning it off also stops a list
+         *     whose moment has come but which was not sent yet. Requires
+         *     `order.read`; an organization API key is refused (403
+         *     `guest_list.api_key_forbidden`), and only owners and managers may
+         *     turn it on (403 `guest_list.role_not_eligible`).
          */
         put: operations["putV1OrganizationsOrgIdGuestListSubscription"];
         post?: never;
@@ -12678,6 +12684,8 @@ export interface components {
             enabled: boolean;
             /** @description How the list reaches the caller - `telegram` (private chat with the event center bot), `email` (not linked to the bot) or `none` (neither; nothing can be sent). */
             channel: string;
+            /** @description False for a role that never receives the list (only owners and managers do); such a caller cannot turn it on. */
+            eligible: boolean;
         };
         /** @description Body of PUT .../guest-list-subscription. */
         GuestListSubscriptionRequest: {
@@ -12704,6 +12712,11 @@ export interface components {
             /** @description The moment - `h24` (24 hours before the start), `h3` (3 hours before) or `doors` (doors open). */
             slot: string;
             /**
+             * Format: int32
+             * @description The claim's token, to send back with `.../finish`.
+             */
+            attempt: number;
+            /**
              * Format: int64
              * @description The private chat (the person's Telegram id) to send the file to.
              */
@@ -12725,7 +12738,12 @@ export interface components {
         };
         /** @description Body of POST /v1/bot/guest-list-deliveries/{id}/finish. */
         BotGuestListFinishRequest: {
-            /** @description `sent`, `failed` (may be taken again) or `skipped` (closed without a send). */
+            /**
+             * Format: int32
+             * @description The `attempt` of the claim that is reported.
+             */
+            attempt: number;
+            /** @description `sent`, `failed` (may be taken again after the lease), `skipped` (closed without a send) or `email` (send it by e-mail instead). */
             outcome: string;
             /** @description A short code (`[a-z0-9_]`, up to 40 characters) of why it failed or was skipped; never data of the file. */
             reason?: string;
@@ -36877,7 +36895,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description No open delivery with this id (`bot.guest_list_delivery_not_found`) */
+            /** @description No open delivery with this id and attempt (`bot.guest_list_delivery_not_found`) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -63601,7 +63619,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor lacks `order.read` or `session.read`, or is not a member of the organization. */
+            /** @description Actor lacks `order.read` or `session.read`, is not a member of the organization, or is an organization API key (`guest_list.api_key_forbidden`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -64214,7 +64232,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Not a member with `order.read`, or an organization API key (`guest_list.api_key_forbidden`). */
+            /** @description Not a member with `order.read`, an organization API key (`guest_list.api_key_forbidden`), or turning it on for a role that never receives the list (`guest_list.role_not_eligible`). */
             403: {
                 headers: {
                     [name: string]: unknown;

@@ -4493,6 +4493,9 @@ type BotGuestListDeliveriesResponse struct {
 
 // BotGuestListDelivery One automatic guest list the bot has to send.
 type BotGuestListDelivery struct {
+	// Attempt The claim's token, to send back with `.../finish`.
+	Attempt int32 `json:"attempt"`
+
 	// EventName The event's name, for the caption.
 	EventName string `json:"event_name"`
 
@@ -4520,7 +4523,10 @@ type BotGuestListDelivery struct {
 
 // BotGuestListFinishRequest Body of POST /v1/bot/guest-list-deliveries/{id}/finish.
 type BotGuestListFinishRequest struct {
-	// Outcome `sent`, `failed` (may be taken again) or `skipped` (closed without a send).
+	// Attempt The `attempt` of the claim that is reported.
+	Attempt int32 `json:"attempt"`
+
+	// Outcome `sent`, `failed` (may be taken again after the lease), `skipped` (closed without a send) or `email` (send it by e-mail instead).
 	Outcome string `json:"outcome"`
 
 	// Reason A short code (`[a-z0-9_]`, up to 40 characters) of why it failed or was skipped; never data of the file.
@@ -8416,6 +8422,9 @@ type GrantMembershipRequestRole string
 type GuestListSubscription struct {
 	// Channel How the list reaches the caller - `telegram` (private chat with the event center bot), `email` (not linked to the bot) or `none` (neither; nothing can be sent).
 	Channel string `json:"channel"`
+
+	// Eligible False for a role that never receives the list (only owners and managers do); such a caller cannot turn it on.
+	Eligible bool `json:"eligible"`
 
 	// Enabled True when the caller receives the guest list of every session automatically.
 	Enabled bool `json:"enabled"`

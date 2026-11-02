@@ -210,6 +210,7 @@ export const ru: Record<MessageKey, string> = {
   "guestList.viaEmail": "Вы не подключили бота ивент-центра. Список придёт на вашу почту.",
   "guestList.viaNone": "У вас нет ни бота, ни почты в профиле. Список не сможет прийти. Подключите бота ивент-центра.",
   "guestList.saving": "Сохраняем…",
+  "guestList.notEligible": "Список гостей приходит сам только владельцам и менеджерам организации. Скачать его можно кнопкой на странице сеанса.",
   "session.orders": "Заказы сеанса",
   "session.tickets": "Билеты: действуют {active}, вошли {used}, отменены {cancelled}",
   "session.money": "Деньги",

@@ -38,6 +38,7 @@ type GuestListDelivery struct {
 	OrgID           uuid.UUID `json:"org_id"`
 	SessionID       uuid.UUID `json:"session_id"`
 	Slot            string    `json:"slot"`
+	Attempt         int32     `json:"attempt"`
 	TelegramUserID  int64     `json:"telegram_user_id"`
 	EventName       string    `json:"event_name"`
 	SessionStartAt  time.Time `json:"session_start_at"`
@@ -46,8 +47,9 @@ type GuestListDelivery struct {
 
 // GuestListSubscription is one member's automatic guest list setting.
 type GuestListSubscription struct {
-	Enabled bool   `json:"enabled"`
-	Channel string `json:"channel"`
+	Enabled  bool   `json:"enabled"`
+	Channel  string `json:"channel"`
+	Eligible bool   `json:"eligible"`
 }
 
 // Outcomes reported back for a delivery.
@@ -55,7 +57,13 @@ const (
 	guestListSent    = "sent"
 	guestListFailed  = "failed"
 	guestListSkipped = "skipped"
+	guestListToEmail = "email"
 )
+
+// guestListFinishRetries is how often a lost report is tried again before the
+// bot gives up on it; a report never made lets the row be taken again after
+// its 10-minute lease, so the person would get the same list twice.
+var guestListFinishRetries = []time.Duration{time.Second, 3 * time.Second, 10 * time.Second}
 
 // SessionGuestListCSV downloads the guest list of a session.
 func (c *ArenaClient) SessionGuestListCSV(ctx context.Context, jwt string, orgID, sessionID uuid.UUID, locale string) (CSVFile, error) {
@@ -87,10 +95,11 @@ func (c *ArenaClient) ClaimGuestListDeliveries(ctx context.Context) ([]GuestList
 	return out.Deliveries, err
 }
 
-// FinishGuestListDelivery reports how a taken delivery ended. reason is a
-// short code, never data from the file.
-func (c *ArenaClient) FinishGuestListDelivery(ctx context.Context, id uuid.UUID, outcome, reason string) error {
-	body := map[string]any{"outcome": outcome}
+// FinishGuestListDelivery reports how a taken delivery ended. attempt is the
+// claim's token (GuestListDelivery.Attempt). reason is a short code, never
+// data from the file.
+func (c *ArenaClient) FinishGuestListDelivery(ctx context.Context, id uuid.UUID, attempt int32, outcome, reason string) error {
+	body := map[string]any{"attempt": attempt, "outcome": outcome}
 	if reason != "" {
 		body["reason"] = reason
 	}
@@ -232,9 +241,29 @@ func (b *Bot) guestListAnnounce(ctx context.Context) {
 	}
 	for _, d := range ds {
 		outcome, reason := b.deliverGuestList(ctx, d)
-		if err := b.arena.FinishGuestListDelivery(ctx, d.ID, outcome, reason); err != nil {
-			b.logger.Warn("eventbot: guest list finish failed", slog.String("delivery_id", d.ID.String()), slog.String("error", err.Error()))
+		b.finishGuestList(ctx, d, outcome, reason)
+	}
+}
+
+// finishGuestList reports one delivery, trying again a few times when the API
+// does not answer. A 404 means the row was taken again meanwhile or closed: a
+// retry cannot help.
+func (b *Bot) finishGuestList(ctx context.Context, d GuestListDelivery, outcome, reason string) {
+	var err error
+	for i := 0; ; i++ {
+		err = b.arena.FinishGuestListDelivery(ctx, d.ID, d.Attempt, outcome, reason)
+		if err == nil || IsAPIError(err, http.StatusNotFound) || IsAPIError(err, http.StatusBadRequest) ||
+			i >= len(guestListFinishRetries) {
+			break
 		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(guestListFinishRetries[i]):
+		}
+	}
+	if err != nil {
+		b.logger.Warn("eventbot: guest list finish failed", slog.String("delivery_id", d.ID.String()), slog.String("error", err.Error()))
 	}
 }
 
@@ -269,7 +298,8 @@ func (b *Bot) deliverGuestList(ctx context.Context, d GuestListDelivery) (outcom
 	if err := b.sendGuestListDocument(ctx, d.TelegramUserID, file, caption); err != nil {
 		b.logger.Warn("eventbot: guest list send failed", slog.String("delivery_id", d.ID.String()), slog.String("error", err.Error()))
 		if errors.Is(err, tgbot.ErrorForbidden) {
-			return guestListSkipped, "bot_blocked"
+			// The person blocked the bot: the list goes by e-mail.
+			return guestListToEmail, "bot_blocked"
 		}
 		return guestListFailed, "send_failed"
 	}

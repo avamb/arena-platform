@@ -5,6 +5,7 @@ package gen
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -116,26 +117,67 @@ func (q *Queries) ListGuestListRows(ctx context.Context, sessionID, orgID uuid.U
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Who may receive a list
+// ─────────────────────────────────────────────────────────────────────────────
+
+// guestListReceiverSQL is the ONE rule of who may receive the automatic list
+// of a session: a live account (not deactivated, not anonymized) that still
+// has the setting on and is an owner or a manager (membership roles org_admin
+// and organizer, active) of an organization that is not archived. The worker
+// writes a delivery only for such a person, and both claims ask again at send
+// time, so a role, an account or an organization lost after the row was
+// written stops the send. org, user are the SQL expressions of the ids.
+func guestListReceiverSQL(org, user string) string {
+	return `EXISTS (SELECT 1 FROM users ru
+                WHERE ru.id = ` + user + ` AND ru.deactivated_at IS NULL AND ru.anonymized_at IS NULL)
+  AND  EXISTS (SELECT 1 FROM organizations ro WHERE ro.id = ` + org + ` AND ro.deleted_at IS NULL)
+  AND  EXISTS (SELECT 1 FROM guest_list_subscriptions rs
+                WHERE rs.org_id = ` + org + ` AND rs.user_id = ` + user + `)
+  AND  EXISTS (SELECT 1 FROM memberships rm
+                WHERE rm.org_id = ` + org + ` AND rm.user_id = ` + user + `
+                  AND rm.status = 'active' AND rm.role IN ('org_admin', 'organizer'))`
+}
+
+// guestListSessionLiveSQL: the session is live, not cancelled, and its event
+// is a published event of that organization.
+func guestListSessionLiveSQL(org, session string) string {
+	return `EXISTS (SELECT 1 FROM sessions ls JOIN events le ON le.id = ls.event_id
+                WHERE ls.id = ` + session + ` AND ls.deleted_at IS NULL AND ls.status <> 'cancelled'
+                  AND le.org_id = ` + org + ` AND le.deleted_at IS NULL AND le.status = 'published')`
+}
+
+// guestListSlotDueSQL is the moment of a slot of session s.
+const guestListSlotDueSQL = `CASE %s
+       WHEN 'h24' THEN s.start_at - interval '24 hours'
+       WHEN 'h3'  THEN s.start_at - interval '3 hours'
+       ELSE COALESCE(s.doors_open_at, s.start_at) END`
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Subscriptions
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getGuestListSubscription = `-- name: GetGuestListSubscription :one
 SELECT EXISTS (SELECT 1 FROM guest_list_subscriptions WHERE org_id = $1 AND user_id = $2),
        EXISTS (SELECT 1 FROM bot_telegram_links WHERE user_id = $2 AND revoked_at IS NULL),
-       COALESCE((SELECT btrim(email) <> '' FROM users WHERE id = $2), false)`
+       COALESCE((SELECT btrim(email) <> '' FROM users WHERE id = $2), false),
+       EXISTS (SELECT 1 FROM memberships
+               WHERE org_id = $1 AND user_id = $2 AND status = 'active'
+                 AND role IN ('org_admin', 'organizer'))`
 
 // GuestListSubscriptionRow says whether a member receives the guest lists
-// automatically and how they would reach them.
+// automatically, how they would reach them and whether their role may get
+// them at all (owners and managers only).
 type GuestListSubscriptionRow struct {
 	Enabled        bool `json:"enabled"`
 	TelegramLinked bool `json:"telegram_linked"`
 	HasEmail       bool `json:"has_email"`
+	Eligible       bool `json:"eligible"`
 }
 
 // GetGuestListSubscription reads one member's guest list subscription.
 func (q *Queries) GetGuestListSubscription(ctx context.Context, orgID, userID uuid.UUID) (GuestListSubscriptionRow, error) {
 	var i GuestListSubscriptionRow
-	err := q.db.QueryRow(ctx, getGuestListSubscription, orgID, userID).Scan(&i.Enabled, &i.TelegramLinked, &i.HasEmail)
+	err := q.db.QueryRow(ctx, getGuestListSubscription, orgID, userID).Scan(&i.Enabled, &i.TelegramLinked, &i.HasEmail, &i.Eligible)
 	return i, err
 }
 
@@ -153,8 +195,9 @@ func (q *Queries) InsertGuestListSubscription(ctx context.Context, orgID, userID
 const deleteGuestListSubscription = `-- name: DeleteGuestListSubscription :exec
 DELETE FROM guest_list_subscriptions WHERE org_id = $1 AND user_id = $2`
 
-// DeleteGuestListSubscription turns the automatic guest list off. Lists
-// already written for a moment that has come are still delivered.
+// DeleteGuestListSubscription turns the automatic guest list off. A list
+// already written but not yet sent is not sent any more: the claims ask for
+// the setting again.
 func (q *Queries) DeleteGuestListSubscription(ctx context.Context, orgID, userID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteGuestListSubscription, orgID, userID)
 	return err
@@ -164,19 +207,24 @@ func (q *Queries) DeleteGuestListSubscription(ctx context.Context, orgID, userID
 // Deliveries
 // ─────────────────────────────────────────────────────────────────────────────
 
+// sqlf puts one SQL expression in the place of the %s of a fragment.
+func sqlf(fragment, expr string) string { return strings.Replace(fragment, "%s", expr, 1) }
+
 // GuestListGrace is how late a moment may still be acted on: a worker that
 // was down longer sends nothing for that moment, the next one comes.
 const GuestListGrace = 30 * time.Minute
 
-const scheduleGuestListDeliveries = `-- name: ScheduleGuestListDeliveries :execrows
+// guestListLiveLink: the person has a live link to the event center bot.
+const guestListLiveLink = `EXISTS (SELECT 1 FROM bot_telegram_links bl
+                         WHERE bl.user_id = %s AND bl.revoked_at IS NULL)`
+
+var scheduleGuestListDeliveries = `-- name: ScheduleGuestListDeliveries :execrows
 INSERT INTO guest_list_deliveries (org_id, session_id, user_id, slot, channel, due_at)
 SELECT gs.org_id, s.id, gs.user_id, sl.slot,
-       CASE WHEN EXISTS (SELECT 1 FROM bot_telegram_links bl
-                         WHERE bl.user_id = gs.user_id AND bl.revoked_at IS NULL)
-            THEN 'telegram' ELSE 'email' END,
+       CASE WHEN ` + sqlf(guestListLiveLink, "gs.user_id") + ` THEN 'telegram' ELSE 'email' END,
        sl.due
 FROM   guest_list_subscriptions gs
-JOIN   users    u ON u.id = gs.user_id AND u.deactivated_at IS NULL AND u.anonymized_at IS NULL
+JOIN   users    u ON u.id = gs.user_id
 JOIN   events   e ON e.org_id = gs.org_id AND e.deleted_at IS NULL AND e.status = 'published'
 JOIN   sessions s ON s.event_id = e.id AND s.deleted_at IS NULL AND s.status <> 'cancelled'
                AND s.start_at >= $1::timestamptz - $2::interval
@@ -188,19 +236,29 @@ CROSS  JOIN LATERAL (VALUES
 WHERE  sl.due <= $1::timestamptz
   AND  sl.due >  $1::timestamptz - $2::interval
   AND  sl.due >= gs.created_at - $2::interval
-  AND  EXISTS (SELECT 1 FROM memberships m
-               WHERE m.org_id = gs.org_id AND m.user_id = gs.user_id
-                 AND m.status = 'active' AND m.role IN ('org_admin', 'organizer'))
+  -- Doors at the very moment of the 3-hour or 24-hour list: that list is the
+  -- same file, so the doors one is not sent a second time.
+  AND  NOT (sl.slot = 'doors' AND sl.due IN (s.start_at - interval '3 hours', s.start_at - interval '24 hours'))
+  AND  ` + guestListReceiverSQL("gs.org_id", "gs.user_id") + `
   AND  EXISTS (SELECT 1 FROM tickets t WHERE t.session_id = s.id AND t.status = 'active')
-  AND  (btrim(u.email) <> '' OR EXISTS (SELECT 1 FROM bot_telegram_links bl
-                                        WHERE bl.user_id = gs.user_id AND bl.revoked_at IS NULL))
-ON CONFLICT ON CONSTRAINT guest_list_deliveries_once DO NOTHING`
+  AND  (btrim(u.email) <> '' OR ` + sqlf(guestListLiveLink, "gs.user_id") + `)
+ON CONFLICT ON CONSTRAINT guest_list_deliveries_once DO UPDATE
+SET    due_at     = EXCLUDED.due_at,
+       channel    = EXCLUDED.channel,
+       attempts   = 0,
+       claimed_at = NULL,
+       last_error = NULL
+-- A session moved after its row was written gets the row back for its new
+-- moment, as long as nothing was sent for that slot.
+WHERE  guest_list_deliveries.sent_at IS NULL
+  AND  guest_list_deliveries.due_at <> EXCLUDED.due_at`
 
 // ScheduleGuestListDeliveries writes one delivery for every subscriber of
 // every session whose moment (24 h, 3 h before the start, doors open) came
 // within grace before now. The unique key keeps a second pass from writing a
-// moment again, so a list is never sent twice. Only owners and managers with
-// an active membership, a published event, a live session and at least one
+// moment again, so a list is never sent twice; a session moved before its
+// list went out gets the row back for its new moment. Only receivers of
+// guestListReceiverSQL, a published event, a live session and at least one
 // active ticket get a row.
 func (q *Queries) ScheduleGuestListDeliveries(ctx context.Context, now time.Time, grace time.Duration) (int64, error) {
 	tag, err := q.db.Exec(ctx, scheduleGuestListDeliveries, now, grace)
@@ -210,13 +268,16 @@ func (q *Queries) ScheduleGuestListDeliveries(ctx context.Context, now time.Time
 	return tag.RowsAffected(), nil
 }
 
-// GuestListDelivery is one automatic guest list to send.
+// GuestListDelivery is one automatic guest list to send. Attempt is the claim
+// token: the finish must name it, so a late report of an older claim cannot
+// close or reopen a newer one.
 type GuestListDelivery struct {
 	ID              uuid.UUID `json:"id"`
 	OrgID           uuid.UUID `json:"org_id"`
 	SessionID       uuid.UUID `json:"session_id"`
 	UserID          uuid.UUID `json:"user_id"`
 	Slot            string    `json:"slot"`
+	Attempt         int32     `json:"attempt"`
 	TelegramUserID  int64     `json:"telegram_user_id"`
 	Email           string    `json:"email"`
 	Locale          string    `json:"locale"`
@@ -226,11 +287,16 @@ type GuestListDelivery struct {
 }
 
 // guestListClaimable: not sent, not given up, not taken in the last 10
-// minutes, and not so late the list is useless (2 hours after its moment).
-const guestListClaimable = `d.sent_at IS NULL
+// minutes, not so late the list is useless (2 hours after its moment), still
+// at the moment its session has now (a session moved later waits for the new
+// moment), and the person and the session still qualify.
+var guestListClaimable = `d.sent_at IS NULL
       AND  d.attempts < 3
       AND  (d.claimed_at IS NULL OR d.claimed_at < now() - interval '10 minutes')
-      AND  d.due_at > now() - interval '2 hours'`
+      AND  d.due_at > now() - interval '2 hours'
+      AND  d.due_at = (SELECT ` + sqlf(guestListSlotDueSQL, "d.slot") + ` FROM sessions s WHERE s.id = d.session_id)
+      AND  ` + guestListReceiverSQL("d.org_id", "d.user_id") + `
+      AND  ` + guestListSessionLiveSQL("d.org_id", "d.session_id")
 
 const guestListClaimTail = `
 ), marked AS (
@@ -238,9 +304,9 @@ const guestListClaimTail = `
     SET    claimed_at = now(), attempts = d.attempts + 1
     FROM   picked p
     WHERE  d.id = p.id
-    RETURNING d.id
+    RETURNING d.id, d.attempts
 )
-SELECT p.id, p.org_id, p.session_id, p.user_id, p.slot, p.tg, p.email, p.locale,
+SELECT p.id, p.org_id, p.session_id, p.user_id, p.slot, m.attempts, p.tg, p.email, p.locale,
        e.name, s.start_at, COALESCE(v.timezone, 'UTC')
 FROM   picked p
 JOIN   marked m ON m.id = p.id
@@ -249,7 +315,7 @@ JOIN   events   e ON e.id = s.event_id
 LEFT   JOIN venues v ON v.id = s.venue_id
 ORDER  BY p.due_at, p.id`
 
-const claimGuestListTelegramDeliveries = `-- name: ClaimGuestListTelegramDeliveries :many
+var claimGuestListTelegramDeliveries = `-- name: ClaimGuestListTelegramDeliveries :many
 WITH picked AS (
     SELECT d.id, d.org_id, d.session_id, d.user_id, d.slot, d.due_at,
            l.telegram_user_id AS tg, ''::text AS email, l.locale
@@ -273,13 +339,15 @@ func (q *Queries) ClaimGuestListTelegramDeliveries(ctx context.Context, limit in
 	return q.claimGuestList(ctx, claimGuestListTelegramDeliveries, limit)
 }
 
-const claimGuestListEmailDeliveries = `-- name: ClaimGuestListEmailDeliveries :many
+// The e-mail claim also takes a 'telegram' row whose person is no longer
+// linked to the bot: e-mail is the fallback for people without Telegram.
+var claimGuestListEmailDeliveries = `-- name: ClaimGuestListEmailDeliveries :many
 WITH picked AS (
     SELECT d.id, d.org_id, d.session_id, d.user_id, d.slot, d.due_at,
            0::bigint AS tg, btrim(u.email) AS email, COALESCE(u.preferred_locale, 'en') AS locale
     FROM   guest_list_deliveries d
     JOIN   users u ON u.id = d.user_id
-    WHERE  d.channel = 'email'
+    WHERE  (d.channel = 'email' OR NOT ` + sqlf(guestListLiveLink, "d.user_id") + `)
       AND  btrim(u.email) <> ''
       AND  ` + guestListClaimable + `
     ORDER  BY d.due_at, d.id
@@ -301,7 +369,7 @@ func (q *Queries) claimGuestList(ctx context.Context, sql string, limit int32) (
 	var out []GuestListDelivery
 	for rows.Next() {
 		var d GuestListDelivery
-		if err := rows.Scan(&d.ID, &d.OrgID, &d.SessionID, &d.UserID, &d.Slot, &d.TelegramUserID,
+		if err := rows.Scan(&d.ID, &d.OrgID, &d.SessionID, &d.UserID, &d.Slot, &d.Attempt, &d.TelegramUserID,
 			&d.Email, &d.Locale, &d.EventName, &d.SessionStartAt, &d.SessionTimezone); err != nil {
 			return nil, err
 		}
@@ -310,29 +378,57 @@ func (q *Queries) claimGuestList(ctx context.Context, sql string, limit int32) (
 	return out, rows.Err()
 }
 
+// A failed attempt keeps its claim time, so the row is taken again only when
+// the 10-minute lease is over. A send the provider may have delivered after
+// all (a timeout) is therefore not repeated at once. 'email' moves the row to
+// the e-mail channel (the person blocked the bot) and frees it.
 const finishGuestListDelivery = `-- name: FinishGuestListDelivery :execrows
 UPDATE guest_list_deliveries
 SET    sent_at    = CASE WHEN $2 = 'sent' THEN now() ELSE sent_at END,
        last_error = CASE WHEN $2 = 'sent' THEN NULL ELSE $3 END,
-       claimed_at = CASE WHEN $2 = 'failed' THEN NULL ELSE claimed_at END,
+       claimed_at = CASE WHEN $2 = 'email' THEN NULL ELSE claimed_at END,
+       channel    = CASE WHEN $2 = 'email' THEN 'email' ELSE channel END,
        attempts   = CASE WHEN $2 = 'skipped' THEN 99 ELSE attempts END
-WHERE  id = $1 AND sent_at IS NULL`
+WHERE  id = $1 AND sent_at IS NULL AND attempts = $4`
 
 // Outcomes of FinishGuestListDelivery.
 const (
 	// GuestListSent: the list reached the person.
 	GuestListSent = "sent"
-	// GuestListFailed: a passing failure; the row may be taken again.
+	// GuestListFailed: a passing failure; the row may be taken again when its
+	// lease is over.
 	GuestListFailed = "failed"
 	// GuestListSkipped: it will never work (no rights any more, nothing to
 	// send); the row is closed without a send.
 	GuestListSkipped = "skipped"
+	// GuestListToEmail: Telegram refuses this person for good (they blocked
+	// the bot); the row goes to the e-mail channel instead.
+	GuestListToEmail = "email"
 )
 
-// FinishGuestListDelivery records how a taken delivery ended. reason is a
-// short code, never data from the file. A row already sent is not touched.
-func (q *Queries) FinishGuestListDelivery(ctx context.Context, id uuid.UUID, outcome string, reason *string) (int64, error) {
-	tag, err := q.db.Exec(ctx, finishGuestListDelivery, id, outcome, reason)
+// FinishGuestListDelivery records how a taken delivery ended. attempt is the
+// claim token GuestListDelivery.Attempt: a report of an older claim changes
+// nothing and answers 0 rows. reason is a short code, never data from the
+// file. A row already sent is not touched.
+func (q *Queries) FinishGuestListDelivery(ctx context.Context, id uuid.UUID, attempt int32, outcome string, reason *string) (int64, error) {
+	tag, err := q.db.Exec(ctx, finishGuestListDelivery, id, outcome, reason, attempt)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
+const purgeGuestListDeliveries = `-- name: PurgeGuestListDeliveries :execrows
+DELETE FROM guest_list_deliveries
+WHERE  id IN (SELECT id FROM guest_list_deliveries
+              WHERE due_at < $1::timestamptz - interval '90 days'
+              ORDER BY due_at LIMIT 5000)`
+
+// PurgeGuestListDeliveries deletes delivery rows whose moment is more than 90
+// days before now, 5000 at a time (worker_jobs.cleanup runs it hourly). The
+// rows only keep a list from going twice, which a past session cannot need.
+func (q *Queries) PurgeGuestListDeliveries(ctx context.Context, now time.Time) (int64, error) {
+	tag, err := q.db.Exec(ctx, purgeGuestListDeliveries, now)
 	if err != nil {
 		return 0, err
 	}

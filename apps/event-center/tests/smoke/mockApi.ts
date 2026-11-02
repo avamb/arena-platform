@@ -360,7 +360,7 @@ export async function mockApi(
       });
     }
     if (rest === "/guest-list-subscription" && m === "GET") {
-      return json(route, 200, { enabled: false, channel: "telegram" });
+      return json(route, 200, { enabled: false, channel: "telegram", eligible: true });
     }
     if (rest === "/orders/search" && m === "POST") {
       if (url.search !== "") {

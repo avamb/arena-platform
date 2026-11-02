@@ -210,6 +210,7 @@ export const en = {
   "guestList.viaEmail": "You have not connected the event center bot. The list comes to your e-mail.",
   "guestList.viaNone": "Your profile has neither the bot nor an e-mail. The list cannot reach you. Connect the event center bot.",
   "guestList.saving": "Saving…",
+  "guestList.notEligible": "Only the owners and managers of the organization receive the guest list automatically. You can still download it with the button on the session page.",
   "session.orders": "Orders of this session",
   "session.tickets": "Tickets: {active} valid, {used} used, {cancelled} canceled",
   "session.money": "Money",

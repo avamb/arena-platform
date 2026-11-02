@@ -52,6 +52,7 @@ func (h *Handler) HandleClaimGuestListDeliveries(w http.ResponseWriter, r *http.
 			"org_id":           d.OrgID.String(),
 			"session_id":       d.SessionID.String(),
 			"slot":             d.Slot,
+			"attempt":          d.Attempt,
 			"telegram_user_id": d.TelegramUserID,
 			"event_name":       d.EventName,
 			"session_start_at": d.SessionStartAt.UTC().Format(time.RFC3339),
@@ -63,7 +64,9 @@ func (h *Handler) HandleClaimGuestListDeliveries(w http.ResponseWriter, r *http.
 
 // HandleFinishGuestListDelivery serves
 // POST /v1/bot/guest-list-deliveries/{id}/finish with
-// {"outcome": "sent"|"failed"|"skipped", "reason": "<short code>"}.
+// {"attempt": <from the claim>, "outcome": "sent"|"failed"|"skipped"|"email",
+// "reason": "<short code>"}. A report naming an older claim than the row has
+// now answers 404 and changes nothing.
 func (h *Handler) HandleFinishGuestListDelivery(w http.ResponseWriter, r *http.Request) {
 	if h.queries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
@@ -75,23 +78,25 @@ func (h *Handler) HandleFinishGuestListDelivery(w http.ResponseWriter, r *http.R
 		return
 	}
 	var body struct {
+		Attempt int32  `json:"attempt"`
 		Outcome string `json:"outcome"`
 		Reason  string `json:"reason"`
 	}
 	dec := json.NewDecoder(io.LimitReader(r.Body, 4096))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&body); err != nil ||
-		(body.Outcome != gen.GuestListSent && body.Outcome != gen.GuestListFailed && body.Outcome != gen.GuestListSkipped) ||
+	if err := dec.Decode(&body); err != nil || body.Attempt < 1 ||
+		(body.Outcome != gen.GuestListSent && body.Outcome != gen.GuestListFailed &&
+			body.Outcome != gen.GuestListSkipped && body.Outcome != gen.GuestListToEmail) ||
 		(body.Reason != "" && !guestListReason.MatchString(body.Reason)) {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-			"bot.invalid_guest_list_outcome", "outcome must be sent, failed or skipped; reason a short code", r))
+			"bot.invalid_guest_list_outcome", "attempt must name the claim; outcome must be sent, failed, skipped or email; reason a short code", r))
 		return
 	}
 	var reason *string
 	if body.Reason != "" {
 		reason = &body.Reason
 	}
-	n, err := h.queries.FinishGuestListDelivery(r.Context(), id, body.Outcome, reason)
+	n, err := h.queries.FinishGuestListDelivery(r.Context(), id, body.Attempt, body.Outcome, reason)
 	if err != nil {
 		h.logger.Error("hbot: finish guest list delivery failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
@@ -100,7 +105,7 @@ func (h *Handler) HandleFinishGuestListDelivery(w http.ResponseWriter, r *http.R
 	}
 	if n == 0 {
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-			"bot.guest_list_delivery_not_found", "no open guest list delivery with this id", r))
+			"bot.guest_list_delivery_not_found", "no open guest list delivery with this id and attempt", r))
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

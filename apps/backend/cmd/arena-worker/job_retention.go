@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/jobretention"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
@@ -21,10 +22,15 @@ func registerJobRetentionHandler(reg *worker.Registry, pool *pgxpool.Pool, logge
 		Store:     jobretention.NewPGStore(pool),
 		Scheduler: jobretention.NewPGScheduler(pool),
 		Logger:    logger,
-		// promo_code_attempts older than 90 days (migration 0166).
+		// promo_code_attempts older than 90 days (migration 0166) and guest
+		// list deliveries whose moment is older than 90 days (migration 0188).
 		Extra: func(ctx context.Context, now time.Time) (string, int64, error) {
 			n, err := promoattempts.Purge(ctx, pool, now)
-			return "promo_code_attempts", n, err
+			if err != nil {
+				return "promo_code_attempts", n, err
+			}
+			m, err := gen.New(pool).PurgeGuestListDeliveries(ctx, now)
+			return "promo_code_attempts+guest_list_deliveries", n + m, err
 		},
 	}))
 }

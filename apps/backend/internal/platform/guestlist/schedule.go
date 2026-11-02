@@ -95,12 +95,8 @@ func ScheduleInitialJob(ctx context.Context, pool *pgxpool.Pool) error {
 func NewHandler(o Options) func(ctx context.Context, payload []byte) error {
 	s := NewScheduler(o)
 	return func(ctx context.Context, _ []byte) error {
-		if _, err := s.pool.Exec(ctx, `
-			INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
-			SELECT $1, '{}', 3, 'pending', $2
-			WHERE NOT EXISTS (SELECT 1 FROM worker_jobs WHERE job_type = $1 AND status = 'pending')`,
-			JobType, time.Now().Add(s.interval)); err != nil {
-			return fmt.Errorf("guestlist: schedule next run: %w", err)
+		if err := scheduleNext(ctx, s.pool, time.Now().Add(s.interval)); err != nil {
+			return err
 		}
 		written, mailed, err := s.RunOnce(ctx, time.Now().UTC())
 		if err != nil {
@@ -111,6 +107,31 @@ func NewHandler(o Options) func(ctx context.Context, payload []byte) error {
 		}
 		return nil
 	}
+}
+
+// scheduleNext queues the next run unless one is pending. The advisory lock
+// serializes two runs that would otherwise both see no pending row under READ
+// COMMITTED and fork a second chain.
+func scheduleNext(ctx context.Context, pool *pgxpool.Pool, at time.Time) error {
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("guestlist: schedule next run: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1))`, JobType); err != nil {
+		return fmt.Errorf("guestlist: schedule next run: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
+		SELECT $1, '{}', 3, 'pending', $2
+		WHERE NOT EXISTS (SELECT 1 FROM worker_jobs WHERE job_type = $1 AND status = 'pending')`,
+		JobType, at); err != nil {
+		return fmt.Errorf("guestlist: schedule next run: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("guestlist: schedule next run: %w", err)
+	}
+	return nil
 }
 
 // RunOnce is one pass: write the deliveries whose moment came, then mail the
@@ -143,7 +164,7 @@ func (s *Scheduler) mail(ctx context.Context, q *gen.Queries) (int, error) {
 		if reason != "" {
 			r = &reason
 		}
-		if _, ferr := q.FinishGuestListDelivery(ctx, d.ID, outcome, r); ferr != nil {
+		if _, ferr := q.FinishGuestListDelivery(ctx, d.ID, d.Attempt, outcome, r); ferr != nil {
 			return sent, ferr
 		}
 		if outcome == gen.GuestListSent {

@@ -210,6 +210,7 @@ export const es: Record<MessageKey, string> = {
   "guestList.viaEmail": "No has conectado el bot del centro de eventos. La lista llega a tu correo.",
   "guestList.viaNone": "Tu perfil no tiene ni el bot ni un correo. La lista no puede llegarte. Conecta el bot del centro de eventos.",
   "guestList.saving": "Guardando…",
+  "guestList.notEligible": "La lista de invitados solo llega sola a los propietarios y gestores de la organización. Puedes descargarla con el botón de la página de la sesión.",
   "session.orders": "Pedidos de esta sesión",
   "session.tickets": "Entradas: {active} válidas, {used} usadas, {cancelled} canceladas",
   "session.money": "Dinero",

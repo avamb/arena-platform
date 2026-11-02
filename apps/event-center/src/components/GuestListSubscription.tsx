@@ -8,7 +8,8 @@
  * (`guest_list.go`, `gl:on` / `gl:off`).
  *
  * The box is shown to people who may read sales (`order.read`); the server
- * sends files only to owners and managers.
+ * sends files only to owners and managers, and says so with `eligible`: anyone
+ * else sees why and gets no toggle.
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -56,7 +57,13 @@ export function GuestListSubscription({ orgId }: { orgId: string }) {
       <p className="muted">{t("guestList.explain")}</p>
       {sub.isPending && <Loading />}
       {sub.error !== null && <ErrorNotice error={sub.error} testId="guest-list-load-error" />}
-      {sub.data !== undefined && (
+      {sub.data !== undefined && !sub.data.eligible && (
+        <p className="muted" data-testid="guest-list-not-eligible">
+          {t("guestList.notEligible")}
+        </p>
+      )}
+      {/* A person whose role no longer gets the list may still turn it off. */}
+      {sub.data !== undefined && (sub.data.eligible || sub.data.enabled) && (
         <>
           <label className="check">
             <input

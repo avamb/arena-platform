@@ -129,7 +129,7 @@ func TestGuestList_FileSubscriptionScheduleAndBotRoutes(t *testing.T) {
 
 	// The subscription of the calling member.
 	sub := orgPath + "/guest-list-subscription"
-	if got := f.subscription(t, http.MethodGet, sub, manager, ""); got.Enabled || got.Channel != "email" {
+	if got := f.subscription(t, http.MethodGet, sub, manager, ""); got.Enabled || got.Channel != "email" || !got.Eligible {
 		t.Errorf("initial subscription = %+v, want off by e-mail", got)
 	}
 	if got := f.subscription(t, http.MethodPut, sub, manager, `{"enabled":true}`); !got.Enabled {
@@ -237,13 +237,42 @@ func TestGuestList_BotClaimAndFinish(t *testing.T) {
 		return w.Code
 	}
 	id := ds[0]["id"].(string)
-	if c := finish(id, `{"outcome":"done"}`); c != http.StatusBadRequest {
+	if ds[0]["attempt"] != float64(1) {
+		t.Fatalf("first claim's attempt = %v, want 1", ds[0]["attempt"])
+	}
+	if c := finish(id, `{"attempt":1,"outcome":"done"}`); c != http.StatusBadRequest {
 		t.Errorf("bad outcome: %d, want 400", c)
 	}
-	if c := finish(id, `{"outcome":"sent"}`); c != http.StatusNoContent {
+	if c := finish(id, `{"outcome":"sent"}`); c != http.StatusBadRequest {
+		t.Errorf("finish without the attempt: %d, want 400", c)
+	}
+	// A report of another claim than the row's current one changes nothing.
+	if c := finish(id, `{"attempt":2,"outcome":"sent"}`); c != http.StatusNotFound {
+		t.Errorf("finish of a claim that never was: %d, want 404", c)
+	}
+	// A failure keeps the lease: the row is not handed out again at once.
+	if c := finish(id, `{"attempt":1,"outcome":"failed","reason":"send_failed"}`); c != http.StatusNoContent {
+		t.Errorf("finish failed: %d, want 204", c)
+	}
+	if _, again := claim(guestListServiceToken); len(again) != 0 {
+		t.Errorf("a failed delivery was handed out again inside its lease: %v", again)
+	}
+	// Lease over: the second claim is attempt 2, and the late report of the
+	// first claim is refused.
+	if _, err := f.q.DB().Exec(ctx, `UPDATE guest_list_deliveries SET claimed_at = now() - interval '11 minutes' WHERE id = $1`, id); err != nil {
+		t.Fatal(err)
+	}
+	_, ds = claim(guestListServiceToken)
+	if len(ds) != 1 || ds[0]["attempt"] != float64(2) {
+		t.Fatalf("claim after the lease: %v, want attempt 2", ds)
+	}
+	if c := finish(id, `{"attempt":1,"outcome":"sent"}`); c != http.StatusNotFound {
+		t.Errorf("late report of the first claim: %d, want 404", c)
+	}
+	if c := finish(id, `{"attempt":2,"outcome":"sent"}`); c != http.StatusNoContent {
 		t.Errorf("finish: %d, want 204", c)
 	}
-	if c := finish(id, `{"outcome":"sent"}`); c != http.StatusNotFound {
+	if c := finish(id, `{"attempt":2,"outcome":"sent"}`); c != http.StatusNotFound {
 		t.Errorf("second finish: %d, want 404", c)
 	}
 }
@@ -275,8 +304,9 @@ func (f *ec07Fixture) rawStatus(t *testing.T, method, path, bearer, body string)
 }
 
 type glSubscription struct {
-	Enabled bool   `json:"enabled"`
-	Channel string `json:"channel"`
+	Enabled  bool   `json:"enabled"`
+	Channel  string `json:"channel"`
+	Eligible bool   `json:"eligible"`
 }
 
 func (f *ec07Fixture) subscription(t *testing.T, method, path, bearer, body string) glSubscription {

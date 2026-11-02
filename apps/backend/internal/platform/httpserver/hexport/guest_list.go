@@ -41,6 +41,13 @@ func (h *Handler) HandleSessionGuestList(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
+	// The file names buyers and their contacts, like the per-date ticket list:
+	// a person reads it, an organization API key does not.
+	if actor, ok := auth.ActorFromContext(r.Context()); ok && actor.IsService() {
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
+			"guest_list.api_key_forbidden", "the guest list holds buyers' contacts and is not served to an API key", r))
+		return
+	}
 	ctx := r.Context()
 	header, err := h.queries.GetExportSessionHeader(ctx, sessionID, orgID)
 	if isNoRows(err) {
@@ -74,10 +81,12 @@ func (h *Handler) HandleSessionGuestList(w http.ResponseWriter, r *http.Request)
 // GuestListSubscription is the answer of the subscription routes. channel
 // says how the automatic list reaches the person: "telegram" (their private
 // chat with the bot), "email" (no bot link) or "none" (neither: nothing can
-// be sent).
+// be sent). eligible is false for a role that never receives the list (only
+// owners and managers do); such a person cannot turn it on.
 type GuestListSubscription struct {
-	Enabled bool   `json:"enabled"`
-	Channel string `json:"channel"`
+	Enabled  bool   `json:"enabled"`
+	Channel  string `json:"channel"`
+	Eligible bool   `json:"eligible"`
 }
 
 // callerUser is the member a subscription belongs to. An API key has no
@@ -140,6 +149,16 @@ func (h *Handler) HandlePutGuestListSubscription(w http.ResponseWriter, r *http.
 	}
 	var err error
 	if *body.Enabled {
+		row, gerr := h.queries.GetGuestListSubscription(r.Context(), orgID, userID)
+		if gerr != nil {
+			h.internal(w, r, "subscription", gerr)
+			return
+		}
+		if !row.Eligible {
+			httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
+				"guest_list.role_not_eligible", "only the owners and managers of the organization receive the guest list", r))
+			return
+		}
 		err = h.queries.InsertGuestListSubscription(r.Context(), orgID, userID)
 	} else {
 		err = h.queries.DeleteGuestListSubscription(r.Context(), orgID, userID)
@@ -164,5 +183,5 @@ func (h *Handler) writeSubscription(w http.ResponseWriter, r *http.Request, orgI
 	case row.HasEmail:
 		channel = "email"
 	}
-	httputil.WriteJSON(w, http.StatusOK, GuestListSubscription{Enabled: row.Enabled, Channel: channel})
+	httputil.WriteJSON(w, http.StatusOK, GuestListSubscription{Enabled: row.Enabled, Channel: channel, Eligible: row.Eligible})
 }
