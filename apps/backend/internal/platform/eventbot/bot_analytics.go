@@ -42,13 +42,10 @@ const (
 	analyticsWhoMax = 20000
 )
 
-// analyticsQueries is the slice of gen.Queries tracking reads; unit tests put
-// a fake behind it.
+// analyticsQueries is the one read tracking makes (who is this account, cached);
+// unit tests put a fake behind it.
 type analyticsQueries interface {
 	GetBotTelegramLink(ctx context.Context, telegramUserID int64) (gen.BotTelegramLinkRow, error)
-	GetBotDraft(ctx context.Context, telegramUserID int64, orgID uuid.UUID) (gen.BotDraftRow, error)
-	ListBotDialogKindsByRecency(ctx context.Context, telegramUserID int64) ([]string, error)
-	GetBotDialog(ctx context.Context, telegramUserID int64, kind string) (gen.BotDialogRow, error)
 }
 
 // whoEntry is who a Telegram account is, as analytics identifies them.
@@ -66,8 +63,9 @@ type botAnalytics struct {
 	q      analyticsQueries
 	now    func() time.Time
 
-	mu  sync.Mutex
-	who map[int64]whoEntry
+	mu    sync.Mutex
+	who   map[int64]whoEntry
+	steps map[int64]*stepState
 }
 
 // newBotAnalytics returns nil (every method a no-op) when there is no sink.
@@ -85,6 +83,7 @@ func newBotAnalytics(sink analytics.Tracker, signingSecret string, q analyticsQu
 		q:      q,
 		now:    time.Now,
 		who:    map[int64]whoEntry{},
+		steps:  map[int64]*stepState{},
 	}
 }
 
@@ -181,6 +180,9 @@ func updateKind(u *models.Update) (kind, prefix string) {
 			prefix, _, _ = strings.Cut(strings.TrimPrefix(text, "/"), " ")
 			prefix, _, _ = strings.Cut(prefix, "@")
 			prefix = strings.ToLower(prefix)
+			if !botCommands[prefix] {
+				prefix = "other"
+			}
 		} else {
 			kind = "message"
 		}
@@ -193,46 +195,148 @@ func updateKind(u *models.Update) (kind, prefix string) {
 	return kind, prefix
 }
 
-// update records bot_update for an admitted update, with the step the person
-// is on when it arrives. It runs inside the sender's lane, before the handler.
-func (a *botAnalytics) update(ctx context.Context, u *models.Update, from *models.User) {
+// botCommands are the commands the bot registers (publishCommands). Any other
+// "/word" a person types is stored as prefix "other": a typed "/john.smith"
+// must not put a name into the table.
+var botCommands = map[string]bool{
+	"start": true, "menu": true, "events": true, "new": true,
+	"team": true, "org": true, "lang": true, "help": true,
+}
+
+// begin snapshots an admitted update and its step (from memory, no database)
+// and returns the function that records bot_update. The caller runs it AFTER
+// the handler, so the identity lookup on a cache miss never delays the reply.
+func (a *botAnalytics) begin(u *models.Update, from *models.User) func(ctx context.Context) {
+	noop := func(context.Context) {}
 	if a == nil || from == nil {
-		return
+		return noop
 	}
 	kind, prefix := updateKind(u)
 	if kind == "" {
-		return
+		return noop
 	}
 	props := map[string]any{"kind": kind}
 	if prefix != "" {
 		props["prefix"] = prefix
 	}
-	if step := a.currentStep(ctx, from.ID); step != "" {
+	if step := a.stepOf(from.ID); step != "" {
 		props["step"] = step
 	}
-	a.track(ctx, from.ID, nil, "bot_update", props)
+	tg := from.ID
+	return func(ctx context.Context) { a.track(ctx, tg, nil, "bot_update", props) }
 }
 
-// currentStep is the step the account is on: the most recent live dialog as
-// "<kind>:<step>" (the team invite, sessions, the organizer application, ...),
-// else the open wizard draft's step, else "".
-func (a *botAnalytics) currentStep(ctx context.Context, tg int64) string {
-	if a.q == nil {
+// stepNote is a step and when it was noted.
+type stepNote struct {
+	step string
+	at   time.Time
+}
+
+// stepState is what is remembered about where one account is: its open wizard
+// draft and its latest dialog.
+type stepState struct {
+	draft      stepNote
+	dialog     stepNote
+	dialogKind string
+}
+
+// noteDraft remembers the step of the account's wizard draft.
+func (a *botAnalytics) noteDraft(tg int64, step string) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.stateLocked(tg).draft = stepNote{step: step, at: a.now()}
+}
+
+// clearDraft forgets the draft step: the draft was deleted.
+func (a *botAnalytics) clearDraft(tg int64) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if st, ok := a.steps[tg]; ok {
+		st.draft = stepNote{}
+	}
+}
+
+// noteDialog remembers the latest dialog as "<kind>:<step>".
+func (a *botAnalytics) noteDialog(tg int64, kind, step string) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	st := a.stateLocked(tg)
+	st.dialog = stepNote{step: kind + ":" + step, at: a.now()}
+	st.dialogKind = kind
+}
+
+// clearDialog forgets the dialog when it is the one noted last.
+func (a *botAnalytics) clearDialog(tg int64, kind string) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if st, ok := a.steps[tg]; ok && st.dialogKind == kind {
+		st.dialog, st.dialogKind = stepNote{}, ""
+	}
+}
+
+func (a *botAnalytics) stateLocked(tg int64) *stepState {
+	if st, ok := a.steps[tg]; ok {
+		return st
+	}
+	if len(a.steps) >= analyticsWhoMax {
+		a.steps = map[int64]*stepState{}
+	}
+	st := &stepState{}
+	a.steps[tg] = st
+	return st
+}
+
+// stepOf is the step the account is on, "" when unknown: the latest dialog
+// while it can still be live (dialogTTL), else the wizard draft (draftKeepFor).
+// It is kept in memory by the writers of dialogs and drafts, so it costs no
+// database read; a restart forgets it until the next answer.
+func (a *botAnalytics) stepOf(tg int64) string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	st, ok := a.steps[tg]
+	if !ok {
 		return ""
 	}
-	qctx, cancel := context.WithTimeout(ctx, analyticsLookupTimeout)
-	defer cancel()
-	if kinds, err := a.q.ListBotDialogKindsByRecency(qctx, tg); err == nil && len(kinds) > 0 {
-		if row, err := a.q.GetBotDialog(qctx, tg, kinds[0]); err == nil && a.now().Before(row.ExpiresAt) {
-			return kinds[0] + ":" + row.Step
-		}
+	now := a.now()
+	if st.dialog.step != "" && now.Sub(st.dialog.at) < dialogTTL {
+		return st.dialog.step
 	}
-	who := a.identify(ctx, tg)
-	if who.org == nil {
-		return ""
-	}
-	if row, err := a.q.GetBotDraft(qctx, tg, *who.org); err == nil {
-		return row.Step
+	if st.draft.step != "" && now.Sub(st.draft.at) < draftKeepFor {
+		return st.draft.step
 	}
 	return ""
+}
+
+// stepDialogs notes every dialog write in the analytics step memory.
+type stepDialogs struct {
+	DialogStore
+	an *botAnalytics
+}
+
+func (s stepDialogs) Save(ctx context.Context, tg int64, orgID *uuid.UUID, kind, step string, state any, ttl time.Duration) error {
+	err := s.DialogStore.Save(ctx, tg, orgID, kind, step, state, ttl)
+	if err == nil {
+		s.an.noteDialog(tg, kind, step)
+	}
+	return err
+}
+
+func (s stepDialogs) Delete(ctx context.Context, tg int64, kind string) error {
+	err := s.DialogStore.Delete(ctx, tg, kind)
+	if err == nil {
+		s.an.clearDialog(tg, kind)
+	}
+	return err
 }

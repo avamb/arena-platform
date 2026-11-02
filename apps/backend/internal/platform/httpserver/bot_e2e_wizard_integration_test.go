@@ -543,7 +543,7 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 		{"wizard_step", map[string]any{"from": "edit_menu", "to": "ev_name", "mode": "edit"}},
 		{"wizard_input_error", map[string]any{"step": "ev_name", "reason": "name_invalid"}},
 		{"wizard_input_error", map[string]any{"step": "s_date", "reason": "date_unparsed"}},
-		{"wizard_exit", map[string]any{"how": "cancel"}},
+
 		{"wizard_exit", map[string]any{"how": "keep"}},
 		{"wizard_exit", map[string]any{"how": "drop"}},
 		{"wizard_exit", map[string]any{"how": "done", "step": "summary"}},
@@ -552,8 +552,11 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 			t.Errorf("no %s event with %v", want.name, want.props)
 		}
 	}
-	if n := len(botAnalyticsNamed(rows, "wizard_exit")); n < 6 {
-		t.Errorf("wizard_exit events = %d, want the cancels, a keep, a drop and three saves", n)
+	if botAnalyticsHas(rows, "wizard_exit", map[string]any{"how": "cancel"}) {
+		t.Error("opening the cancel screen must not be recorded as leaving the wizard")
+	}
+	if n := len(botAnalyticsNamed(rows, "wizard_exit")); n < 5 {
+		t.Errorf("wizard_exit events = %d, want a keep, a drop and three saves", n)
 	}
 	// Nothing the manager typed or the event holds is stored.
 	assertNoneContain(t, rows, eventName, venueName, renamed, "Vabaduse", "Черновик", strings.Repeat("Ы", 20), "32.13.2099", "15.12.2099", "27,50")

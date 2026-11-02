@@ -262,6 +262,9 @@ func (b *Bot) sweepDrafts(ctx context.Context, now time.Time) {
 	if b.an != nil {
 		s.track = func(ctx context.Context, row gen.BotDraftReminderRow, event string, props map[string]any) {
 			org := row.OrgID
+			if event == "wizard_exit" {
+				b.an.clearDraft(row.TelegramUserID)
+			}
 			b.an.track(ctx, row.TelegramUserID, &org, event, props)
 		}
 	}

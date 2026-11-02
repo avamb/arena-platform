@@ -283,6 +283,9 @@ func New(opts Options) (*Bot, error) {
 		menuKB:         newMenuShown(),
 	}
 	b.an = newBotAnalytics(opts.Analytics, opts.Minter.secret, opts.Queries)
+	if b.an != nil {
+		b.dialogs = stepDialogs{DialogStore: b.dialogs, an: b.an}
+	}
 	b.sessions = newSessionDialogs(b.dialogs)
 	b.onb = newOnbDialogs(b.dialogs)
 	b.serial = newUserSerial(logger)
@@ -435,7 +438,10 @@ func (b *Bot) handleUpdate(ctx context.Context, _ *tgbot.Bot, u *models.Update) 
 			b.refuse(tctx, u, from, first)
 			return
 		}
-		b.an.update(tctx, u, from)
+		// bot_update is written after the handler, so analytics never delays
+		// the answer (the step it carries was noted before).
+		record := b.an.begin(u, from)
+		defer record(tctx)
 		b.route(tctx, u)
 	})
 	if err != nil {

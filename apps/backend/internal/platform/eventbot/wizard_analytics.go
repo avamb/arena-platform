@@ -68,6 +68,9 @@ func (d *Draft) reject(key, note string) string {
 	return note
 }
 
+// maxStepSeconds is the longest step time the dictionary stores (one day).
+const maxStepSeconds = 86400
+
 // wizardTurn is the state of a draft before one answer is applied.
 type wizardTurn struct {
 	step  string // the step the answer was given on
@@ -119,16 +122,15 @@ func (b *Bot) trackWizard(ctx context.Context, tg int64, orgID uuid.UUID, turn w
 	props := map[string]any{"from": turn.step, "to": d.Step, "mode": turn.mode}
 	if turn.since > 0 {
 		if secs := now.Unix() - turn.since; secs >= 0 {
-			props["seconds"] = float64(secs) // the dictionary reads numbers as JSON decodes them
+			// The dictionary drops more than a day, so a draft left overnight
+			// still reports its step time.
+			props["seconds"] = min(secs, maxStepSeconds)
 		}
 	}
 	d.StepSince = now.Unix()
 	b.an.track(ctx, tg, &orgID, "wizard_step", props)
-	if d.Step == stCancel {
-		// The person pressed Cancel: the confirmation screen decides whether
-		// the draft is kept or dropped (the two events above).
-		b.an.track(ctx, tg, &orgID, "wizard_exit", map[string]any{"step": turn.step, "how": "cancel"})
-	}
+	// Opening the cancel screen is not leaving: a person who presses
+	// "continue" stays. The exits are keep, drop, done and expired only.
 }
 
 // trackPosterRefusal records a poster the bot refused before the wizard saw it

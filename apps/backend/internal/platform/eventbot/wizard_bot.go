@@ -84,6 +84,7 @@ func (b *Bot) storeDraft(ctx context.Context, tgID int64, ws WizSession, d *Draf
 	if err != nil {
 		return "", err
 	}
+	b.an.noteDraft(tgID, d.Step)
 	return row.ID.String(), nil
 }
 
@@ -480,6 +481,7 @@ func (b *Bot) wizardApply(ctx context.Context, chatID int64, editMsgID *int, fro
 	if err != nil {
 		if errors.Is(err, ErrCancelled) {
 			_ = b.queries.DeleteBotDraft(ctx, from.ID, ws.OrgID)
+			b.an.clearDraft(from.ID)
 			b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.wz.cancelled", nil), nil)
 			b.showHome(ctx, chatID, nil, from, "")
 			return
@@ -597,6 +599,7 @@ func (b *Bot) wizardSave(ctx context.Context, chatID int64, editMsgID *int, from
 		return
 	}
 	_ = b.queries.DeleteBotDraft(ctx, from.ID, ws.OrgID)
+	b.an.clearDraft(from.ID)
 	b.an.track(ctx, from.ID, &ws.OrgID, "wizard_exit", map[string]any{"step": d.Step, "how": "done"})
 	if raw, err := json.Marshal(RememberDefaults(ws.Defaults, d)); err == nil {
 		_ = b.queries.UpdateBotTelegramLinkDefaults(ctx, from.ID, raw)

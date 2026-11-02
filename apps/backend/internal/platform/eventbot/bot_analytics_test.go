@@ -49,10 +49,8 @@ func (s *memSink) named(name string) []analytics.Event {
 
 // fakeAnalyticsDB answers the reads tracking makes.
 type fakeAnalyticsDB struct {
-	links   map[int64]gen.BotTelegramLinkRow
-	drafts  map[int64]string // telegram id -> wizard step
-	dialogs map[int64]gen.BotDialogRow
-	reads   int
+	links map[int64]gen.BotTelegramLinkRow
+	reads int
 }
 
 func (f *fakeAnalyticsDB) GetBotTelegramLink(_ context.Context, tg int64) (gen.BotTelegramLinkRow, error) {
@@ -61,27 +59,6 @@ func (f *fakeAnalyticsDB) GetBotTelegramLink(_ context.Context, tg int64) (gen.B
 		return l, nil
 	}
 	return gen.BotTelegramLinkRow{}, pgx.ErrNoRows
-}
-
-func (f *fakeAnalyticsDB) GetBotDraft(_ context.Context, tg int64, _ uuid.UUID) (gen.BotDraftRow, error) {
-	if step, ok := f.drafts[tg]; ok {
-		return gen.BotDraftRow{Step: step}, nil
-	}
-	return gen.BotDraftRow{}, pgx.ErrNoRows
-}
-
-func (f *fakeAnalyticsDB) ListBotDialogKindsByRecency(_ context.Context, tg int64) ([]string, error) {
-	if d, ok := f.dialogs[tg]; ok {
-		return []string{d.Kind}, nil
-	}
-	return nil, nil
-}
-
-func (f *fakeAnalyticsDB) GetBotDialog(_ context.Context, tg int64, _ string) (gen.BotDialogRow, error) {
-	if d, ok := f.dialogs[tg]; ok {
-		return d, nil
-	}
-	return gen.BotDialogRow{}, pgx.ErrNoRows
 }
 
 var analyticsTestNow = time.Date(2026, 11, 2, 10, 0, 0, 0, time.UTC)
@@ -102,7 +79,11 @@ func TestBotAnalytics_NilIsANoOp(t *testing.T) {
 	}
 	var a *botAnalytics
 	a.track(context.Background(), 1, nil, "bot_update", map[string]any{"kind": "message"})
-	a.update(context.Background(), &models.Update{}, &models.User{ID: 1})
+	a.begin(&models.Update{}, &models.User{ID: 1})(context.Background())
+	a.noteDraft(1, "x")
+	a.clearDraft(1)
+	a.noteDialog(1, "team", "email")
+	a.clearDialog(1, "team")
 	b := &Bot{}
 	b.trackWizard(context.Background(), 1, uuid.New(), wizardTurn{}, NewDraft(), ErrCancelled)
 	b.trackPosterRefusal(context.Background(), 1, uuid.New(), NewDraft(), "poster_too_small")
@@ -197,6 +178,8 @@ func TestUpdateKind(t *testing.T) {
 		{cb("event:" + uuid.NewString() + ":1"), "callback", "event"},
 		{cb("weird data with spaces"), "callback", ""},
 		{msg("/start inv_secretcode"), "command", "start"},
+		{msg("/john.smith"), "command", "other"},
+		{msg("/Анна"), "command", "other"},
 		{msg("/Menu@ArenaBot"), "command", "menu"},
 		{msg("Бот-концерт secret title"), "message", ""},
 		{&models.Update{}, "", ""},
@@ -209,41 +192,79 @@ func TestUpdateKind(t *testing.T) {
 	}
 }
 
-func TestBotAnalytics_CurrentStepFromDialogThenDraft(t *testing.T) {
-	org := uuid.New()
-	db := &fakeAnalyticsDB{
-		links:   map[int64]gen.BotTelegramLinkRow{1: {UserID: uuid.New(), CurrentOrgID: &org}, 2: {UserID: uuid.New(), CurrentOrgID: &org}},
-		drafts:  map[int64]string{1: stSDate, 2: stSDate},
-		dialogs: map[int64]gen.BotDialogRow{2: {Kind: "team", Step: "email", ExpiresAt: analyticsTestNow.Add(time.Minute)}},
-	}
-	a, _ := newTestAnalytics(db)
-	ctx := context.Background()
-	if got := a.currentStep(ctx, 1); got != stSDate {
+func TestBotAnalytics_StepFromMemoryDialogThenDraft(t *testing.T) {
+	a, _ := newTestAnalytics(&fakeAnalyticsDB{})
+	now := analyticsTestNow
+	a.now = func() time.Time { return now }
+	a.noteDraft(1, stSDate)
+	a.noteDraft(2, stSDate)
+	a.noteDialog(2, "team", "email")
+	if got := a.stepOf(1); got != stSDate {
 		t.Fatalf("draft step = %q", got)
 	}
-	if got := a.currentStep(ctx, 2); got != "team:email" {
+	if got := a.stepOf(2); got != "team:email" {
 		t.Fatalf("dialog step = %q", got)
 	}
-	db.dialogs[2] = gen.BotDialogRow{Kind: "team", Step: "email", ExpiresAt: analyticsTestNow.Add(-time.Minute)}
-	if got := a.currentStep(ctx, 2); got != stSDate {
+	// A dialog older than its time-to-live falls back to the draft.
+	now = analyticsTestNow.Add(dialogTTL + time.Minute)
+	if got := a.stepOf(2); got != stSDate {
 		t.Fatalf("expired dialog must fall back to the draft, got %q", got)
 	}
-	if got := a.currentStep(ctx, 3); got != "" {
+	now = analyticsTestNow
+	a.clearDialog(2, "other") // another kind: the noted dialog stays
+	if got := a.stepOf(2); got != "team:email" {
+		t.Fatalf("clearing another kind removed the dialog: %q", got)
+	}
+	a.clearDialog(2, "team")
+	if got := a.stepOf(2); got != stSDate {
+		t.Fatalf("after the dialog ended = %q", got)
+	}
+	a.clearDraft(2)
+	if got := a.stepOf(2); got != "" {
+		t.Fatalf("after the draft was deleted = %q", got)
+	}
+	if got := a.stepOf(3); got != "" {
 		t.Fatalf("unknown account step = %q", got)
+	}
+	// The draft is forgotten after the sweep's seven days.
+	now = analyticsTestNow
+	a.noteDraft(4, stSDate)
+	now = analyticsTestNow.Add(draftKeepFor + time.Hour)
+	if got := a.stepOf(4); got != "" {
+		t.Fatalf("a draft past its keep time still reports a step: %q", got)
 	}
 }
 
-// handleUpdate records bot_update inside the sender's turn, before the route.
+// The dialog store wrapper notes saves and deletes.
+func TestStepDialogs_NoteSaveAndDelete(t *testing.T) {
+	a, _ := newTestAnalytics(&fakeAnalyticsDB{})
+	store := stepDialogs{DialogStore: newMemDialogStore(&testClock{t: analyticsTestNow}), an: a}
+	ctx := context.Background()
+	if err := store.Save(ctx, 9, nil, "team", "role", struct{}{}, dialogTTL); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.stepOf(9); got != "team:role" {
+		t.Fatalf("after Save = %q", got)
+	}
+	if err := store.Delete(ctx, 9, "team"); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.stepOf(9); got != "" {
+		t.Fatalf("after Delete = %q", got)
+	}
+}
+
+// handleUpdate records bot_update inside the sender's turn, after the route.
 func TestBot_HandleUpdateTracksBotUpdate(t *testing.T) {
 	org := uuid.New()
 	db := &fakeAnalyticsDB{
-		links:  map[int64]gen.BotTelegramLinkRow{42: {UserID: uuid.New(), CurrentOrgID: &org}},
-		drafts: map[int64]string{42: stVName},
+		links: map[int64]gen.BotTelegramLinkRow{42: {UserID: uuid.New(), CurrentOrgID: &org}},
 	}
 	stub := newStubBotAPI(t)
 	b := newStubbedBot(t, stub)
 	var sink *memSink
 	b.an, sink = newTestAnalytics(db)
+	b.an.noteDraft(42, stVName)
 
 	routed := make(chan struct{}, 4)
 	b.route = func(_ context.Context, _ *models.Update) { routed <- struct{}{} }
@@ -262,6 +283,11 @@ func TestBot_HandleUpdateTracksBotUpdate(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatal("update not routed")
 		}
+	}
+	// bot_update is written after the handler returned.
+	deadline := time.Now().Add(5 * time.Second)
+	for len(sink.named("bot_update")) < 3 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
 	}
 	evs := sink.named("bot_update")
 	if len(evs) != 3 {
@@ -358,7 +384,7 @@ func TestWizardAnalytics_StepsSecondsErrorsAndExits(t *testing.T) {
 	}
 	steps := sink.named("wizard_step")
 	if len(steps) != 1 || steps[0].Props["from"] != stEvName || steps[0].Props["to"] != stEvAge ||
-		steps[0].Props["seconds"] != float64(8) || steps[0].Props["mode"] != ModeCreate {
+		steps[0].Props["seconds"] != int64(8) || steps[0].Props["mode"] != ModeCreate {
 		t.Fatalf("steps = %+v", steps)
 	}
 	if r.d.StepSince != clock.Unix() {
@@ -401,7 +427,7 @@ func TestWizardAnalytics_StepsSecondsErrorsAndExits(t *testing.T) {
 	for _, e := range sink.named("wizard_exit") {
 		exits = append(exits, e.Props["how"].(string)+"@"+e.Props["step"].(string))
 	}
-	if got := strings.Join(exits, ","); got != "cancel@ev_age,keep@ev_age,cancel@ev_age,drop@ev_age" {
+	if got := strings.Join(exits, ","); got != "keep@ev_age,drop@ev_age" {
 		t.Fatalf("exits = %s", got)
 	}
 
@@ -499,5 +525,26 @@ func TestDraftSweep_TracksReminderAndExpiry(t *testing.T) {
 	raw, _ := json.Marshal(sink.all())
 	if strings.Contains(string(raw), "Тайное") {
 		t.Fatalf("event name leaked: %s", raw)
+	}
+}
+
+// A draft left for days still reports its step time, cut to the one day the
+// dictionary stores.
+func TestWizardAnalytics_SecondsClampedToADay(t *testing.T) {
+	b := &Bot{}
+	var sink *memSink
+	b.an, sink = newTestAnalytics(&fakeAnalyticsDB{})
+	r := newWizardRun(t, &fakeRefs{})
+	r.d.StepSince = analyticsTestNow.Add(-72 * time.Hour).Unix()
+	turn := newWizardTurn(r.d)
+	_, err := r.w.Apply(context.Background(), r.ws, r.d, WizInput{Text: "Концерт"})
+	b.trackWizard(context.Background(), 7, r.ws.OrgID, turn, r.d, err)
+	steps := sink.named("wizard_step")
+	if len(steps) != 1 {
+		t.Fatalf("steps = %d", len(steps))
+	}
+	clean, _ := analytics.Sanitize(analytics.SurfaceBot, "wizard_step", steps[0].Props, true)
+	if clean["seconds"] != 86400 {
+		t.Fatalf("seconds after the dictionary = %v (raw %v)", clean["seconds"], steps[0].Props["seconds"])
 	}
 }
