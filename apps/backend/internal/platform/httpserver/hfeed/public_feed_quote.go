@@ -49,6 +49,9 @@ type PublicFeedCheckoutQuoteRequest struct {
 	PromoCode *string        `json:"promo_code"`
 	Seats     []string       `json:"seats,omitempty"`
 	GaItems   []PublicGAItem `json:"ga_items,omitempty"`
+	// MarketingConsent is the buyer's tick on the organizer's mailings
+	// (spec 51-1); ticked, it may earn the organizer's reward code.
+	MarketingConsent *PublicMarketingConsent `json:"marketing_consent,omitempty"`
 }
 
 // PublicFeedCheckoutQuoteResponse is the 200 body.
@@ -57,6 +60,9 @@ type PublicFeedCheckoutQuoteResponse struct {
 	// PromoApplied is true when a promo_code was supplied and its discount is
 	// part of Pricing.
 	PromoApplied bool `json:"promo_applied"`
+	// MarketingDiscountApplied is true when the cart's discount is the reward
+	// for the marketing consent (it then won over any typed code).
+	MarketingDiscountApplied bool `json:"marketing_discount_applied"`
 }
 
 // HandlePublicFeedCheckoutQuote serves
@@ -280,10 +286,20 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 		h.refusePromo(w, r, promoAttempt, "checkout.promo_lookup_failed")
 		return
 	}
+	mk, ok := h.marketingFor(ctx, w, r, checkCtx.OrgID, req.MarketingConsent)
+	if !ok {
+		return
+	}
+	if mk.typedRewardRefused(promoRow) {
+		pj.record(ctx, promoRow, promoNotApplicable)
+		h.refusePromo(w, r, promoAttempt, promoNotApplicable)
+		return
+	}
+	tierLines := hcheckout.TierLinesForSession(lines, sessionID.String(), currency)
+	var typedID *uuid.UUID
 	if promoRow != nil {
 		var errCode string
-		discount, _, errCode = h.applyPromoDiscount(ctx, h.promoQueries, promoRow,
-			hcheckout.TierLinesForSession(lines, sessionID.String(), currency), "")
+		discount, typedID, errCode = h.applyPromoDiscount(ctx, h.promoQueries, promoRow, tierLines, "")
 		pj.record(ctx, promoRow, errCode)
 		if errCode != "" {
 			h.refusePromoFor(w, r, promoAttempt, errCode, promoRow, h.promoQueries)
@@ -294,10 +310,21 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 		// worked when the price did not move.
 		promoApplied = discount > 0
 	}
+	// The marketing reward competes with the typed code (the larger wins).
+	// No e-mail here, so its one-use-per-buyer cap is checked at start.
+	discount, _, rewardWon, block := h.pickDiscount(ctx, h.promoQueries, mk, tierLines, "", discount, typedID)
+	if block != "" {
+		writeMarketingBlock(w, r, block)
+		return
+	}
+	if rewardWon {
+		promoApplied = false
+	}
 
 	bd := hcheckout.ComputePricingLines(lines, discount, currency, pricingRules)
 	httputil.WriteJSON(w, http.StatusOK, PublicFeedCheckoutQuoteResponse{
-		Pricing:      bd,
-		PromoApplied: promoApplied,
+		Pricing:                  bd,
+		PromoApplied:             promoApplied,
+		MarketingDiscountApplied: rewardWon && discount > 0,
 	})
 }

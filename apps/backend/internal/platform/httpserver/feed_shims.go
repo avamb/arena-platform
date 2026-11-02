@@ -200,6 +200,10 @@ func (s *Server) handlePublicTicketPDF(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandleGetPublicTicketPDF(w, r)
 }
 
+func (s *Server) handleCheckoutResume(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandleCheckoutResume(w, r)
+}
+
 func (s *Server) handlePublicPaymentReturn(w http.ResponseWriter, r *http.Request) {
 	s.feedHandler().HandlePaymentReturn(w, r)
 }

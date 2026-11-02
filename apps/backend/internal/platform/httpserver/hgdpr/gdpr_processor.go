@@ -39,6 +39,7 @@ package hgdpr
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -46,6 +47,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/marketing"
 )
 
 // GDPRProcessor handles background processing of pending data_subject_requests.
@@ -246,6 +248,17 @@ func (p *GDPRProcessor) processDelete(ctx context.Context, req gen.DataSubjectRe
 	if erased > 0 {
 		p.logger.Info("gdpr_processor: shop order personal data erased",
 			slog.String("user_id", req.UserID.String()), slog.Int64("orders", erased))
+	}
+	// Marketing consents given at checkout (spec 51-1) are keyed by address,
+	// not by user: withdraw them and blank the address and the click data
+	// while the address is still known. The journal rows stay as evidence.
+	var addr string
+	if err := p.queries.DB().QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, req.UserID).Scan(&addr); err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("processDelete: read address for marketing consents: %w", err)
+		}
+	} else if err := marketing.ForgetEmailTx(ctx, p.queries.DB(), addr, time.Now().UTC()); err != nil {
+		return fmt.Errorf("processDelete: forget marketing consents: %w", err)
 	}
 	// AnonymizeUser replaces PII with placeholder values and sets anonymized_at.
 	if err := p.queries.AnonymizeUser(ctx, req.UserID); err != nil {
