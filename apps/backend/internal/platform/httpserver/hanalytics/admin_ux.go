@@ -1,6 +1,6 @@
 package hanalytics
 
-// admin.go — the read-only UX dashboards of the admin console (spec 50
+// admin_ux.go — the read-only UX dashboards of the admin console (spec 50
 // section 10, stage A8):
 //
 //	GET /v1/admin/analytics/flows
@@ -26,8 +26,8 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
-// AdminOptions are the dependencies of an AdminHandler.
-type AdminOptions struct {
+// UXOptions are the dependencies of an UXHandler.
+type UXOptions struct {
 	// DB nil makes every route answer 503.
 	DB     analytics.Querier
 	Logger *slog.Logger
@@ -35,31 +35,31 @@ type AdminOptions struct {
 	Now func() time.Time
 }
 
-// AdminHandler serves the dashboard routes.
-type AdminHandler struct {
+// UXHandler serves the dashboard routes.
+type UXHandler struct {
 	db  analytics.Querier
 	log *slog.Logger
 	now func() time.Time
 }
 
-// NewAdmin builds an AdminHandler.
-func NewAdmin(o AdminOptions) *AdminHandler {
+// NewUX builds an UXHandler.
+func NewUX(o UXOptions) *UXHandler {
 	if o.Logger == nil {
 		o.Logger = slog.Default()
 	}
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	return &AdminHandler{db: o.DB, log: o.Logger, now: o.Now}
+	return &UXHandler{db: o.DB, log: o.Logger, now: o.Now}
 }
 
-func (h *AdminHandler) fail(w http.ResponseWriter, r *http.Request, what string, err error) {
+func (h *UXHandler) fail(w http.ResponseWriter, r *http.Request, what string, err error) {
 	h.log.Error("analytics admin: "+what, "error", err.Error())
-	httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
-		"dependency.database_unavailable", "The analytics data could not be read.", r))
+	httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		"analytics.read_failed", "The analytics data could not be read.", r))
 }
 
-func (h *AdminHandler) ready(w http.ResponseWriter, r *http.Request) bool {
+func (h *UXHandler) ready(w http.ResponseWriter, r *http.Request) bool {
 	if h.db == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"dependency.database_unavailable", "The analytics data could not be read.", r))
@@ -70,7 +70,7 @@ func (h *AdminHandler) ready(w http.ResponseWriter, r *http.Request) bool {
 }
 
 // query reads the shared surface/from/to parameters.
-func (h *AdminHandler) query(w http.ResponseWriter, r *http.Request) (surface string, p analytics.Period, ok bool) {
+func (h *UXHandler) query(w http.ResponseWriter, r *http.Request) (surface string, p analytics.Period, ok bool) {
 	q := r.URL.Query()
 	surface = q.Get("surface")
 	if err := analytics.CheckSurface(surface); err != nil {
@@ -81,7 +81,7 @@ func (h *AdminHandler) query(w http.ResponseWriter, r *http.Request) (surface st
 	p, err := analytics.ParsePeriod(q.Get("from"), q.Get("to"), h.now())
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-			"analytics.invalid_period", "from and to must be dates (YYYY-MM-DD), from not after to, at most 366 days.", r))
+			"analytics.invalid_period", "from and to must be dates (YYYY-MM-DD), from not after to, at most 180 days.", r))
 		return "", p, false
 	}
 	return surface, p, true
@@ -126,7 +126,7 @@ func numbers(s analytics.FlowStep) flowNumbers {
 }
 
 // HandleFlows serves GET /v1/admin/analytics/flows.
-func (h *AdminHandler) HandleFlows(w http.ResponseWriter, r *http.Request) {
+func (h *UXHandler) HandleFlows(w http.ResponseWriter, r *http.Request) {
 	if !h.ready(w, r) {
 		return
 	}
@@ -176,7 +176,7 @@ type errorsResponse struct {
 }
 
 // HandleErrors serves GET /v1/admin/analytics/errors.
-func (h *AdminHandler) HandleErrors(w http.ResponseWriter, r *http.Request) {
+func (h *UXHandler) HandleErrors(w http.ResponseWriter, r *http.Request) {
 	if !h.ready(w, r) {
 		return
 	}
@@ -244,7 +244,7 @@ type timelineResponse struct {
 }
 
 // HandleTimeline serves GET /v1/admin/analytics/people/{person_id}/timeline.
-func (h *AdminHandler) HandleTimeline(w http.ResponseWriter, r *http.Request) {
+func (h *UXHandler) HandleTimeline(w http.ResponseWriter, r *http.Request) {
 	if !h.ready(w, r) {
 		return
 	}
@@ -259,7 +259,7 @@ func (h *AdminHandler) HandleTimeline(w http.ResponseWriter, r *http.Request) {
 		n, err := strconv.Atoi(s)
 		if err != nil || n < 1 {
 			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-				"analytics.invalid_limit", "limit must be a positive integer.", r))
+				"analytics.invalid_limit", "limit must be between 1 and 200.", r))
 			return
 		}
 		limit = n
@@ -269,6 +269,10 @@ func (h *AdminHandler) HandleTimeline(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, analytics.ErrPersonNotFound):
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 			"analytics.person_not_found", "No such person.", r))
+		return
+	case errors.Is(err, analytics.ErrInvalidLimit):
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
+			"analytics.invalid_limit", "limit must be between 1 and 200.", r))
 		return
 	case errors.Is(err, analytics.ErrInvalidCursor):
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(

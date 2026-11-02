@@ -33,7 +33,7 @@ export const analyticsRu: Readonly<Record<string, string>> = {
   "analytics.filter.to": "По",
   "analytics.filter.apply": "Показать",
   "analytics.filter.invalid":
-    "Даты должны быть в формате ГГГГ-ММ-ДД, «с» не позже «по», не больше 366 дней.",
+    "Даты должны быть в формате ГГГГ-ММ-ДД, «с» не позже «по», не больше 180 дней.",
   "analytics.zoneNote":
     "Дни считаются по UTC. Время на этой странице — Europe/Madrid.",
   "analytics.compare":
@@ -124,7 +124,7 @@ export const analyticsEn: Readonly<Record<string, string>> = {
   "analytics.filter.to": "To",
   "analytics.filter.apply": "Show",
   "analytics.filter.invalid":
-    "Dates must be YYYY-MM-DD, \"from\" not after \"to\", at most 366 days.",
+    "Dates must be YYYY-MM-DD, \"from\" not after \"to\", at most 180 days.",
   "analytics.zoneNote":
     "Days are UTC days. Times on this page are in Europe/Madrid.",
   "analytics.compare":

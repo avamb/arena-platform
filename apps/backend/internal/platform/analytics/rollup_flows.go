@@ -61,8 +61,8 @@ type flowAcc struct {
 // screen under FlowScreens when there is none.
 //
 // Bot: wizard_step enters its `to` step and carries the seconds spent on its
-// `from` step; wizard_input_error books an error on its step; every
-// wizard_exit except how=done books a left_here on its step.
+// `from` step; wizard_input_error books an error on its step; a
+// wizard_exit with how=drop or how=expired books a left_here on its step.
 func ComputeFlowDaily(evs []FlowEv) []FlowRow {
 	sorted := append([]FlowEv(nil), evs...)
 	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].At.Before(sorted[j].At) })
@@ -129,7 +129,10 @@ func ComputeFlowDaily(evs []FlowEv) []FlowRow {
 				get(e.At, e.Surface, FlowWizard, step).errors++
 			}
 		case "wizard_exit":
-			if step := str(e, "step"); step != "" && str(e, "how") != "done" {
+			// Only a draft thrown away or left to expire is a drop-off: "keep"
+			// (saved for later), "cancel" (the confirm screen) and "done" are not.
+			how, step := str(e, "how"), str(e, "step")
+			if step != "" && (how == "drop" || how == "expired") {
 				get(e.At, e.Surface, FlowWizard, step).left++
 			}
 		}

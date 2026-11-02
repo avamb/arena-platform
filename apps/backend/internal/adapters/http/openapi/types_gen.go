@@ -1339,6 +1339,18 @@ type AdminUserNameResponse struct {
 	UserId openapi_types.UUID `json:"user_id"`
 }
 
+// AnalyticsArticleRead A blog article the person read (engaged for at least 30 seconds and scrolled at least 75 percent).
+type AnalyticsArticleRead struct {
+	// At When the person last read it.
+	At time.Time `json:"at"`
+
+	// Path Site path of the article without the language prefix.
+	Path string `json:"path"`
+
+	// Seconds Engaged seconds in that visit.
+	Seconds int `json:"seconds"`
+}
+
 // AnalyticsBatchRequest Body of POST /v1/t and POST /v1/me/t, the product analytics receivers
 // (spec 50, section 4.2). Unknown fields are ignored: a client cannot name
 // its own user, surface or time of storage.
@@ -1364,6 +1376,29 @@ type AnalyticsBatchRequest struct {
 	// characters of `A-Za-z0-9_-`. It identifies an anonymous visitor
 	// (one without `aid`) and is ignored by POST /v1/me/t.
 	Pv *string `json:"pv,omitempty"`
+}
+
+// AnalyticsContactCode The code of one CRM contact.
+type AnalyticsContactCode struct {
+	// Code The 10-character `cid` code to append to links to the website.
+	Code string `json:"code"`
+
+	// TwentyPersonId The CRM person id the code belongs to, as sent.
+	TwentyPersonId string `json:"twenty_person_id"`
+}
+
+// AnalyticsContactCodesRequest Body of POST /v1/admin/analytics/contact-codes.
+type AnalyticsContactCodesRequest struct {
+	// TwentyPersonIds Ids of the CRM (Twenty) people to issue codes for: 1 to 500 distinct
+	// ids, each 1 to 64 characters of letters, digits and `_ . : -`.
+	// Repeated ids are answered once.
+	TwentyPersonIds []string `json:"twenty_person_ids"`
+}
+
+// AnalyticsContactCodesResponse Answer of POST /v1/admin/analytics/contact-codes.
+type AnalyticsContactCodesResponse struct {
+	// Codes One entry per distinct id, in the order the ids were sent.
+	Codes []AnalyticsContactCode `json:"codes"`
 }
 
 // AnalyticsErrorItem One repeating error or rage-click place.
@@ -1543,6 +1578,81 @@ type AnalyticsPersonTimeline struct {
 	UserId *openapi_types.UUID `json:"user_id"`
 }
 
+// AnalyticsProfile One person's profile as the CRM sync needs it (spec 50, section 9).
+// Built hourly by the analytics rollup; the e-mail is looked up while the
+// request is served.
+type AnalyticsProfile struct {
+	// ActivityExplanation One line that explains the index, for example `article x1 = 3.0 + visit x2 = 1.8 (half-life 14 days)`.
+	ActivityExplanation string `json:"activity_explanation"`
+
+	// ActivityScore The activity index (visits, articles, price page, e-mail clicks, application steps, halved every 14 days).
+	ActivityScore int `json:"activity_score"`
+
+	// Articles Articles read, newest first, at most 20.
+	Articles []AnalyticsArticleRead `json:"articles"`
+
+	// ChangedAt When the profile last changed; the client keeps the greatest as its next `changed_since`.
+	ChangedAt time.Time `json:"changed_at"`
+
+	// Email The person's address from their user or organizer application; null when none is known.
+	Email *string `json:"email"`
+
+	// EngagedMinutes30d Engaged minutes in the last 30 UTC days.
+	EngagedMinutes30d int `json:"engaged_minutes_30d"`
+
+	// FirstSource Short text of the first touch for a CRM field (`email / outreach`, `google`); empty when none.
+	FirstSource string `json:"first_source"`
+
+	// FirstTouch How the person first reached us.
+	FirstTouch AnalyticsTouch `json:"first_touch"`
+
+	// Gmv30d Currency code to minor units sold in the last 30 days; empty when nothing sold.
+	Gmv30d map[string]int64 `json:"gmv_30d"`
+
+	// LastSeenAt Time of the person's latest recorded event; null when there is none.
+	LastSeenAt *time.Time `json:"last_seen_at"`
+
+	// LastSource Short text of the last touch for a CRM field; empty when none.
+	LastSource string `json:"last_source"`
+
+	// LastTouch How the person last reached us.
+	LastTouch AnalyticsTouch `json:"last_touch"`
+
+	// MayCreateContact True when the CRM sync may create a contact for this person if none is found (organizer application or an existing CRM contact); false for an account-only user.
+	MayCreateContact bool `json:"may_create_contact"`
+
+	// Milestones Milestones reached, name to time: `application_started`,
+	// `application_submitted`, `application_approved`,
+	// `application_rejected`, `org_created`, `payment_connected`,
+	// `first_event_created`, `first_event_published`, `first_sale`,
+	// `sales_100`, `member_invited`. A key is present only once reached.
+	Milestones map[string]time.Time `json:"milestones"`
+
+	// PersonId The person in the analytics schema.
+	PersonId openapi_types.UUID `json:"person_id"`
+
+	// Stage `lead`, `applicant`, `organizer` or `selling`.
+	Stage string `json:"stage"`
+
+	// TimelineUrl Link to the person's timeline in the admin console (`/analytics/people/<person_id>`); null when the console address is not configured.
+	TimelineUrl *string `json:"timeline_url"`
+
+	// TwentyPersonId The CRM person id; null until the person is tied to a CRM contact.
+	TwentyPersonId *string `json:"twenty_person_id"`
+
+	// Visits30d Visits (sessions) in the last 30 UTC days.
+	Visits30d int `json:"visits_30d"`
+}
+
+// AnalyticsProfilesResponse One page of changed profiles.
+type AnalyticsProfilesResponse struct {
+	// NextCursor Cursor to send as `after` for the next page. Always present; on an empty page it is the cursor the caller sent.
+	NextCursor string `json:"next_cursor"`
+
+	// Profiles Profiles ordered by `changed_at`, then `person_id`.
+	Profiles []AnalyticsProfile `json:"profiles"`
+}
+
 // AnalyticsTimelineEvent One raw event of a person.
 type AnalyticsTimelineEvent struct {
 	// At Server time of the event.
@@ -1610,6 +1720,28 @@ type AnalyticsTimelineSession struct {
 
 	// Surface `site`, `event_center` or `bot`.
 	Surface string `json:"surface"`
+}
+
+// AnalyticsTouch Where a visit came from. Every field is left out when unknown; an empty
+// object means the person has no touch yet.
+type AnalyticsTouch struct {
+	// At When the touch happened.
+	At *time.Time `json:"at,omitempty"`
+
+	// Campaign The `utm_campaign` of the visit.
+	Campaign *string `json:"campaign,omitempty"`
+
+	// Kind How the touch was recognised: `email_click`, `utm`, `organic` or `referral`.
+	Kind *string `json:"kind,omitempty"`
+
+	// Medium `email`, a `utm_medium`, `organic` or `referral`.
+	Medium *string `json:"medium,omitempty"`
+
+	// RefHost Host the visitor came from.
+	RefHost *string `json:"ref_host,omitempty"`
+
+	// Source `email`, a `utm_source`, a search engine, `direct` or a referrer host.
+	Source *string `json:"source,omitempty"`
 }
 
 // ApiKeyItem A single organization API key row. Never includes the secret or
@@ -20351,6 +20483,12 @@ type PostBil24CommandJSONBody struct {
 	union json.RawMessage
 }
 
+// PostV1AdminAnalyticsContactCodesParams defines parameters for PostV1AdminAnalyticsContactCodes.
+type PostV1AdminAnalyticsContactCodesParams struct {
+	// XAdminReason Human-readable business reason for the call (recorded in the audit log).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // GetAdminAnalyticsErrorsParams defines parameters for GetAdminAnalyticsErrors.
 type GetAdminAnalyticsErrorsParams struct {
 	// Surface Only this surface - `bot`, `event_center` or `site`. Empty or absent means all.
@@ -20359,7 +20497,7 @@ type GetAdminAnalyticsErrorsParams struct {
 	// From First day of the period, YYYY-MM-DD (UTC). Default is six days before `to`.
 	From *string `form:"from,omitempty" json:"from,omitempty"`
 
-	// To Last day of the period, YYYY-MM-DD (UTC). Default is today. At most 366 days after `from`.
+	// To Last day of the period, YYYY-MM-DD (UTC). Default is today. At most 180 days after `from`.
 	To *string `form:"to,omitempty" json:"to,omitempty"`
 }
 
@@ -20371,17 +20509,29 @@ type GetAdminAnalyticsFlowsParams struct {
 	// From First day of the period, YYYY-MM-DD (UTC). Default is six days before `to`.
 	From *string `form:"from,omitempty" json:"from,omitempty"`
 
-	// To Last day of the period, YYYY-MM-DD (UTC). Default is today. At most 366 days after `from`.
+	// To Last day of the period, YYYY-MM-DD (UTC). Default is today. At most 180 days after `from`.
 	To *string `form:"to,omitempty" json:"to,omitempty"`
 }
 
 // GetAdminAnalyticsPersonTimelineParams defines parameters for GetAdminAnalyticsPersonTimeline.
 type GetAdminAnalyticsPersonTimelineParams struct {
-	// Limit Events per page, 1 to 200. Default 50.
+	// Limit Events per page, 1 to 200. Default 50. A value outside the range is refused with 400 `analytics.invalid_limit`.
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Cursor The `next_cursor` of the previous page. Absent for the first page.
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// GetV1AdminAnalyticsProfilesParams defines parameters for GetV1AdminAnalyticsProfiles.
+type GetV1AdminAnalyticsProfilesParams struct {
+	// ChangedSince RFC 3339 time. Only profiles changed at or after it are returned (a lower bound for a client without a cursor); absent means all.
+	ChangedSince *time.Time `form:"changed_since,omitempty" json:"changed_since,omitempty"`
+
+	// Limit Page size, 1 to 200 (default 100).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// After Opaque cursor, the `next_cursor` of the previous page; the page starts strictly after it.
+	After *string `form:"after,omitempty" json:"after,omitempty"`
 }
 
 // GetV1AdminBillingAccountsParams defines parameters for GetV1AdminBillingAccounts.
@@ -21988,6 +22138,24 @@ type GetScannerSnapshotParams struct {
 	PerPage *int `form:"per_page,omitempty" json:"per_page,omitempty"`
 }
 
+// PostV1ServiceAnalyticsContactCodesParams defines parameters for PostV1ServiceAnalyticsContactCodes.
+type PostV1ServiceAnalyticsContactCodesParams struct {
+	// XAdminReason Human-readable business reason for the call (recorded in the audit log).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// GetV1ServiceAnalyticsProfilesParams defines parameters for GetV1ServiceAnalyticsProfiles.
+type GetV1ServiceAnalyticsProfilesParams struct {
+	// ChangedSince RFC 3339 time. Only profiles changed at or after it are returned (a lower bound for a client without a cursor); absent means all.
+	ChangedSince *time.Time `form:"changed_since,omitempty" json:"changed_since,omitempty"`
+
+	// Limit Page size, 1 to 200 (default 100).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// After Opaque cursor, the `next_cursor` of the previous page; the page starts strictly after it.
+	After *string `form:"after,omitempty" json:"after,omitempty"`
+}
+
 // StripeConnectCallbackParams defines parameters for StripeConnectCallback.
 type StripeConnectCallbackParams struct {
 	// Code OAuth authorization code returned by Stripe.
@@ -22049,6 +22217,9 @@ type UpdateWebhookSubscriberJSONBody struct {
 
 // PostBil24CommandJSONRequestBody defines body for PostBil24Command for application/json ContentType.
 type PostBil24CommandJSONRequestBody PostBil24CommandJSONBody
+
+// PostV1AdminAnalyticsContactCodesJSONRequestBody defines body for PostV1AdminAnalyticsContactCodes for application/json ContentType.
+type PostV1AdminAnalyticsContactCodesJSONRequestBody = AnalyticsContactCodesRequest
 
 // PostV1AdminBillingAccountInvoicesJSONRequestBody defines body for PostV1AdminBillingAccountInvoices for application/json ContentType.
 type PostV1AdminBillingAccountInvoicesJSONRequestBody = BillingCreateUsageInvoiceRequest
@@ -22664,6 +22835,9 @@ type ForkSeatingPlanJSONRequestBody = ForkSeatingPlanRequest
 
 // CreateSeatingPlanVersionJSONRequestBody defines body for CreateSeatingPlanVersion for application/json ContentType.
 type CreateSeatingPlanVersionJSONRequestBody = CreateSeatingPlanVersionRequest
+
+// PostV1ServiceAnalyticsContactCodesJSONRequestBody defines body for PostV1ServiceAnalyticsContactCodes for application/json ContentType.
+type PostV1ServiceAnalyticsContactCodesJSONRequestBody = AnalyticsContactCodesRequest
 
 // ReplaceSessionMediaJSONRequestBody defines body for ReplaceSessionMedia for application/json ContentType.
 type ReplaceSessionMediaJSONRequestBody = SessionMediaReplaceRequest

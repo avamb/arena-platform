@@ -29,12 +29,21 @@
 -- key that contains the partition key, both of which PostgreSQL 17 (the
 -- version of the stand, CI and production) supports.
 --
--- Partitions are named events_yYYYYmMM. This migration creates the current
--- month and the next three (UTC month boundaries); the worker job
--- analytics.partitions keeps three months ahead from then on. A row whose
--- `at` falls outside every partition makes the whole COPY batch fail, so the
--- job must keep running (the writer counts a failed flush in
--- arena_analytics_flush_failed_total).
+-- Partitions are named events_yYYYYmMM. This migration creates the PREVIOUS
+-- month (a batch sent just after midnight on the 1st carries events a little
+-- older than the month), the current one and the next three (UTC month
+-- boundaries); the worker job analytics.partitions keeps the previous month
+-- and three months ahead from then on.
+--
+-- events_default is a safety net only: a row whose `at` falls outside every
+-- monthly partition would otherwise make the whole COPY batch fail and lose
+-- up to 500 events. The receivers clamp `at` into [now - 24 h, now], so
+-- nothing should ever land there. The maintenance job moves nothing out of it
+-- and does not drop it. Attention: PostgreSQL refuses to create a monthly
+-- partition while the default one holds rows of that month, so if rows ever
+-- do land there, move them (INSERT ... SELECT into the parent after
+-- detaching, or DELETE them) before the missing partition is created. The
+-- writer counts a failed flush in arena_analytics_flush_failed_total.
 
 -- +goose Up
 
@@ -67,7 +76,7 @@ DECLARE
     first date := date_trunc('month', now() AT TIME ZONE 'UTC')::date;
     i     int;
 BEGIN
-    FOR i IN 0..3 LOOP
+    FOR i IN -1..3 LOOP
         m := (first + make_interval(months => i))::date;
         EXECUTE format(
             'CREATE TABLE IF NOT EXISTS analytics.%I PARTITION OF analytics.events FOR VALUES FROM (%L) TO (%L)',
@@ -78,6 +87,8 @@ BEGIN
 END
 $$;
 -- +goose StatementEnd
+
+CREATE TABLE analytics.events_default PARTITION OF analytics.events DEFAULT;
 
 CREATE TABLE analytics.people (
     id               uuid PRIMARY KEY,

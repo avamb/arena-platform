@@ -107,6 +107,7 @@ type roleSecret struct {
 // (section 2.6), keep the two in step.
 var roleSecrets = []roleSecret{
 	{"JWT_SIGNING_SECRET", []Role{RoleAPI, RoleBot}, func(c *Config) string { return c.JWTSecretStub }},
+	{"ANALYTICS_TG_HASH_SECRET", []Role{RoleWorker, RoleBot}, func(c *Config) string { return c.AnalyticsTGHashSecret }},
 	{"STRIPE_WEBHOOK_SECRET", []Role{RoleAPI}, func(c *Config) string { return c.StripeWebhookSecret }},
 	{"ALLPAY_WEBHOOK_SECRET", []Role{RoleAPI}, func(c *Config) string { return c.AllPayWebhookSecret }},
 	{"BREVO_WEBHOOK_TOKEN", []Role{RoleAPI}, func(c *Config) string { return c.BrevoWebhookToken }},
@@ -119,6 +120,7 @@ var roleSecrets = []roleSecret{
 	{"MEDIA_S3_ACCESS_KEY_ID", []Role{RoleAPI, RoleWorker}, func(c *Config) string { return c.MediaS3AccessKeyID }},
 	{"MEDIA_S3_SECRET_ACCESS_KEY", []Role{RoleAPI, RoleWorker}, func(c *Config) string { return c.MediaS3SecretAccessKey }},
 	{"BOT_SERVICE_TOKEN", []Role{RoleAPI, RoleBot}, func(c *Config) string { return c.BotServiceToken }},
+	{"ANALYTICS_SYNC_TOKEN", []Role{RoleAPI}, func(c *Config) string { return c.AnalyticsSyncToken }},
 	{"TELEGRAM_MINIAPP_SECRET_KEY", []Role{RoleAPI}, func(c *Config) string { return c.TelegramMiniappSecretKey }},
 	{"BILLING_STRIPE_SECRET_KEY", []Role{RoleAPI}, func(c *Config) string { return c.BillingStripeSecretKey }},
 	{"BILLING_STRIPE_WEBHOOK_SECRET", []Role{RoleAPI}, func(c *Config) string { return c.BillingStripeWebhookSecret }},

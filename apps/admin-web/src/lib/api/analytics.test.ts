@@ -23,12 +23,14 @@ describe("period helpers", () => {
     expect(presetRange(1, now)).toEqual({ from: "2026-11-02", to: "2026-11-02" });
   });
 
-  it("isValidRange demands dates, an ordered pair and at most 366 days", () => {
+  it("isValidRange demands dates, an ordered pair and at most 180 days", () => {
     expect(isValidRange("2026-10-01", "2026-10-31")).toBe(true);
     expect(isValidRange("2026-10-31", "2026-10-01")).toBe(false);
     expect(isValidRange("2026-1-1", "2026-10-01")).toBe(false);
     expect(isValidRange("2026-13-01", "2026-13-02")).toBe(false);
     expect(isValidRange("2024-01-01", "2026-01-01")).toBe(false);
+    expect(isValidRange("2026-05-01", "2026-10-27")).toBe(true);
+    expect(isValidRange("2026-05-01", "2026-10-28")).toBe(false);
   });
 
   it("buildQuery leaves the surface out when it is empty", () => {

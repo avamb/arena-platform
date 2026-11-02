@@ -325,6 +325,12 @@ type Metrics struct {
 	// database down). Metric name: arena_analytics_flush_failed_total.
 	AnalyticsFlushFailedTotal prometheus.Counter
 
+	// AnalyticsRollupFailedTotal counts failures of the hourly
+	// analytics.rollup job: one per person that could not be recomputed and
+	// one per run that failed as a whole. Metric name:
+	// arena_analytics_rollup_failed_total.
+	AnalyticsRollupFailedTotal prometheus.Counter
+
 	// IdempotencyCleanupDeletedTotal counts idempotency_keys rows deleted by
 	// the scheduled maintenance job (job_type='idempotency.cleanup'). Each
 	// cleanup run adds the number of rows purged. A rising value confirms the
@@ -551,6 +557,13 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 			Help:      "Total product-analytics events lost because the batched write to analytics.events failed.",
 		}),
 
+		AnalyticsRollupFailedTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: MetricsNamespace,
+			Subsystem: "analytics",
+			Name:      "rollup_failed_total",
+			Help:      "Total failures of the hourly analytics rollup (a person that could not be recomputed or a failed run).",
+		}),
+
 		ShortLinkTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: MetricsNamespace,
@@ -605,6 +618,7 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 		m.PageTrackTotal,
 		m.AnalyticsDroppedTotal,
 		m.AnalyticsFlushFailedTotal,
+		m.AnalyticsRollupFailedTotal,
 		m.ShortLinkTotal,
 		m.TelegramMiniappLoginTotal,
 	} {

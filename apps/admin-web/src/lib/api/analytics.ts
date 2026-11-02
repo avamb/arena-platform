@@ -143,7 +143,7 @@ export function isValidRange(from: string, to: string): boolean {
   const a = Date.parse(`${from}T00:00:00Z`);
   const b = Date.parse(`${to}T00:00:00Z`);
   if (Number.isNaN(a) || Number.isNaN(b)) return false;
-  return a <= b && (b - a) / 86_400_000 < 366;
+  return a <= b && (b - a) / 86_400_000 < 180;
 }
 
 /** The query string of the flows and errors routes. */

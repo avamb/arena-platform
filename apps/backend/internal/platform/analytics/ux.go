@@ -21,18 +21,14 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Querier is the part of a pgx pool or transaction the read side needs.
-type Querier interface {
-	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
-	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
-}
-
 // Limits of the dashboards.
 const (
 	// DefaultPeriodDays is the period of a request that names none.
 	DefaultPeriodDays = 7
-	// MaxPeriodDays caps a requested period (the raw events live 13 months).
-	MaxPeriodDays = 366
+	// MaxPeriodDays caps a requested period at half a year, so the previous
+	// period of equal length still lies inside the 13 months the raw events
+	// are kept.
+	MaxPeriodDays = 180
 	// MaxErrorRows caps the rows of the errors list.
 	MaxErrorRows = 100
 	// DefaultTimelineLimit and MaxTimelineLimit bound one page of events.
@@ -65,6 +61,9 @@ var ErrInvalidSurface = errors.New("analytics: invalid surface")
 
 // ErrPersonNotFound is returned by LoadTimeline for an unknown person.
 var ErrPersonNotFound = errors.New("analytics: person not found")
+
+// ErrInvalidLimit is returned by LoadTimeline for a limit outside 1..MaxTimelineLimit.
+var ErrInvalidLimit = errors.New("analytics: invalid limit")
 
 // ErrInvalidCursor is returned by LoadTimeline for a cursor it did not issue.
 var ErrInvalidCursor = errors.New("analytics: invalid cursor")
@@ -365,14 +364,15 @@ func DecodeCursor(c string) (time.Time, int64, error) {
 // score explained, the newest sessions (first page only) and one page of
 // events, newest first. Events are those written under any of the person's
 // identifiers, suspect ones excluded, like the rollup reads them. cursor is
-// the NextCursor of the previous page ("" for the first). limit is clamped to
-// 1..MaxTimelineLimit (DefaultTimelineLimit when not positive).
+// the NextCursor of the previous page ("" for the first). limit 0 means
+// DefaultTimelineLimit; a negative one or one above MaxTimelineLimit is
+// ErrInvalidLimit.
 func LoadTimeline(ctx context.Context, q Querier, personID uuid.UUID, cursor string, limit int, now time.Time) (*Timeline, error) {
-	if limit <= 0 {
+	if limit == 0 {
 		limit = DefaultTimelineLimit
 	}
-	if limit > MaxTimelineLimit {
-		limit = MaxTimelineLimit
+	if limit < 0 || limit > MaxTimelineLimit {
+		return nil, ErrInvalidLimit
 	}
 	var curAt *time.Time
 	var curID *int64
@@ -468,24 +468,10 @@ SELECT stage, last_seen_at, visits_30d, engaged_minutes_30d, articles, milestone
 	if err != nil {
 		return nil, fmt.Errorf("analytics: read profile: %w", err)
 	}
-	evs, _, err := loadPersonEvents(ctx, q, personID)
+	expl, err := ExplainProfile(ctx, q, personID, now, DefaultScoreWeights)
 	if err != nil {
 		return nil, err
 	}
-	sessions := SplitSessions(evs)
-	items := SessionScoreItems(sessions, ArticleReads(sessions))
-	var ms map[string]any
-	_ = json.Unmarshal(p.Milestones, &ms)
-	for key, kind := range map[string]string{
-		MsApplicationStarted:   ScoreApplicationStarted,
-		MsApplicationSubmitted: ScoreApplicationSubmitted,
-	} {
-		if s, ok := ms[key].(string); ok {
-			if at, err := time.Parse(time.RFC3339, s); err == nil {
-				items = append(items, ScoreItem{Kind: kind, At: at})
-			}
-		}
-	}
-	p.ScoreExplanation = ExplainScore(items, now, DefaultScoreWeights)
+	p.ScoreExplanation = expl
 	return &p, nil
 }

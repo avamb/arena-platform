@@ -12,26 +12,31 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/analytics"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/opsalert"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
-func registerAnalyticsHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier opsalert.Notifier, logger *slog.Logger) {
+func registerAnalyticsHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, metrics *observability.Metrics, notifier opsalert.Notifier, logger *slog.Logger) {
 	reg.Register(analytics.PartitionsJobType, analytics.NewPartitionsHandler(analytics.PartitionsOptions{
 		DB:        pool,
 		Scheduler: analytics.NewPGPartitionsScheduler(pool),
 		Logger:    logger,
 	}))
 	// analytics.rollup (stage A5) reads raw events and the business tables and
-	// writes only the analytics schema. TelegramSecret is JWT_SIGNING_SECRET:
-	// without it in the worker's environment the bot-onboarding join (tg and
-	// e-mail) is skipped, everything else runs.
+	// writes only the analytics schema. TGHashSecret is ANALYTICS_TG_HASH_SECRET
+	// (the same value as on arena-bot): without it the bot-onboarding join (tg
+	// and e-mail) is skipped, everything else runs.
+	if cfg.AnalyticsTGHashSecret == "" {
+		logger.Warn("ANALYTICS_TG_HASH_SECRET is not set: the analytics rollup skips the Telegram join")
+	}
 	reg.Register(analytics.RollupJobType, analytics.NewRollupHandler(analytics.RollupHandlerOptions{
 		Rollup: analytics.NewRollup(analytics.RollupOptions{
-			Pool: pool, TelegramSecret: cfg.JWTSecretStub, Logger: logger,
+			Pool: pool, TGHashSecret: cfg.AnalyticsTGHashSecret, Logger: logger,
 		}),
 		Scheduler: analytics.NewPGRollupScheduler(pool),
 		Logger:    logger,
+		Failures:  metrics.AnalyticsRollupFailedTotal,
 	}))
 	// analytics.ux_digest (stage A8): Mondays 09:00 Madrid, through the ops
 	// Telegram path. Unset OPS_TELEGRAM_* degrades to a log line.

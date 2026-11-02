@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func mustDay(s string) time.Time {
@@ -31,11 +32,14 @@ func TestParsePeriod(t *testing.T) {
 	if !p.End().Equal(mustDay("2026-11-03")) {
 		t.Errorf("end = %v", p.End())
 	}
+	if p, err := ParsePeriod("2026-05-01", "2026-10-27", now); err != nil || p.Days() != 180 {
+		t.Errorf("180 days must be accepted: %+v %v", p, err)
+	}
 	p, err = ParsePeriod("2026-10-01", "2026-10-31", now)
 	if err != nil || p.Days() != 31 {
 		t.Fatalf("explicit = %+v, %v", p, err)
 	}
-	for _, bad := range [][2]string{{"2026-11-02", "2026-11-01"}, {"x", ""}, {"", "2026-13-01"}, {"2024-01-01", "2026-01-01"}} {
+	for _, bad := range [][2]string{{"2026-11-02", "2026-11-01"}, {"x", ""}, {"", "2026-13-01"}, {"2024-01-01", "2026-01-01"}, {"2026-05-01", "2026-10-28"}} {
 		if _, err := ParsePeriod(bad[0], bad[1], now); !errors.Is(err, ErrInvalidPeriod) {
 			t.Errorf("ParsePeriod(%q,%q) = %v, want ErrInvalidPeriod", bad[0], bad[1], err)
 		}
@@ -232,6 +236,9 @@ type uxFailingDB struct{}
 
 func (uxFailingDB) Query(context.Context, string, ...any) (pgx.Rows, error) {
 	return nil, errors.New("db down")
+}
+func (uxFailingDB) Exec(context.Context, string, ...any) (pgconn.CommandTag, error) {
+	return pgconn.CommandTag{}, errors.New("db down")
 }
 func (uxFailingDB) QueryRow(context.Context, string, ...any) pgx.Row { return nil }
 

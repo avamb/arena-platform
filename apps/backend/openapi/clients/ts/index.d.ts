@@ -902,6 +902,167 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/analytics/contact-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - issue contact codes for CRM contacts (product analytics)
+         * @description Returns one `cid` code per CRM person id (spec 50, section 3). The
+         *     mailing workflow asks for the codes just before it sends and appends
+         *     `?cid=<code>` to every link to our website, so a click can be tied to
+         *     the contact. A contact that already has a code gets the same one back,
+         *     so every mailing to it carries one stable code. New codes are 10
+         *     characters of `abcdefghjkmnpqrstuvwxyz23456789`.
+         *
+         *     At most 500 ids per call; the answer holds one entry per distinct id, in
+         *     the order sent. Requires JWT, `superadmin.read` and `X-Admin-Reason`.
+         *     The call is audited (`v1.admin.analytics.contact_codes.issue`) on the
+         *     transaction that issues the codes; without a durable audit writer
+         *     nothing is changed and the answer is 503.
+         */
+        post: operations["postV1AdminAnalyticsContactCodes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/analytics/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - profiles that changed since a point in time (product analytics)
+         * @description The feed the CRM sync pulls (spec 50, section 9): one entry per person
+         *     whose profile was rebuilt with a different result, oldest change first.
+         *     Only profiles changed at or before the start of the last FINISHED
+         *     rollup run are served, so a profile that is still being committed never
+         *     appears half-done and a client that keeps its cursor cannot miss one.
+         *     The e-mail address is resolved when the request is served, from the
+         *     person's user or organizer application, and is never stored in the
+         *     analytics schema; a person with no known address is still listed (the
+         *     CRM sync skips it unless it has a `twenty_person_id`).
+         *
+         *     Pages are keyset pages on (`changed_at`, `person_id`), exclusive: send
+         *     the `next_cursor` of a page as `after` to get the page that follows. It
+         *     is ALWAYS present; on an empty page it is the cursor the caller sent, so
+         *     a client simply stores it. Without `after` (and `changed_since`) the
+         *     listing starts at the beginning.
+         *
+         *     `may_create_contact` tells whether the sync may CREATE a CRM contact
+         *     for the person when none is found: only a person with an organizer
+         *     application, or one already tied to a CRM contact. An account-only user
+         *     (an invited manager) can have an existing card updated, never a new
+         *     one.
+         *
+         *     `activity_explanation` is built from the stored profile and sessions;
+         *     visits to the price page are not stored per visit, so their share shows
+         *     as `price page and other`.
+         *
+         *     Requires JWT and `superadmin.read`.
+         */
+        get: operations["getV1AdminAnalyticsProfiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/service/analytics/contact-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Service - issue contact codes for CRM contacts (n8n sync)
+         * @description Returns one `cid` code per CRM person id (spec 50, section 3). The
+         *     mailing workflow asks for the codes just before it sends and appends
+         *     `?cid=<code>` to every link to our website, so a click can be tied to
+         *     the contact. A contact that already has a code gets the same one back,
+         *     so every mailing to it carries one stable code. New codes are 10
+         *     characters of `abcdefghjkmnpqrstuvwxyz23456789`.
+         *
+         *     At most 500 ids per call; the answer holds one entry per distinct id, in
+         *     the order sent. Called by the n8n CRM sync with `Authorization: Bearer <ANALYTICS_SYNC_TOKEN>`,
+         *     not by a person (the same call for a human superadmin is
+         *     `POST /v1/admin/analytics/contact-codes`). Needs `X-Admin-Reason`. While
+         *     `ANALYTICS_SYNC_TOKEN` is unset the route answers 503.
+         *     The call is audited (`v1.admin.analytics.contact_codes.issue`, actor type
+         *     `service`, `metadata.actor_label` `n8n_crm_sync`) on the
+         *     transaction that issues the codes; without a durable audit writer
+         *     nothing is changed and the answer is 503.
+         */
+        post: operations["postV1ServiceAnalyticsContactCodes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/service/analytics/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Service - changed profiles for the CRM sync (n8n)
+         * @description The feed the CRM sync pulls (spec 50, section 9): one entry per person
+         *     whose profile was rebuilt with a different result, oldest change first.
+         *     Only profiles changed at or before the start of the last FINISHED
+         *     rollup run are served, so a profile that is still being committed never
+         *     appears half-done and a client that keeps its cursor cannot miss one.
+         *     The e-mail address is resolved when the request is served, from the
+         *     person's user or organizer application, and is never stored in the
+         *     analytics schema; a person with no known address is still listed (the
+         *     CRM sync skips it unless it has a `twenty_person_id`).
+         *
+         *     Pages are keyset pages on (`changed_at`, `person_id`), exclusive: send
+         *     the `next_cursor` of a page as `after` to get the page that follows. It
+         *     is ALWAYS present; on an empty page it is the cursor the caller sent, so
+         *     a client simply stores it. Without `after` (and `changed_since`) the
+         *     listing starts at the beginning.
+         *
+         *     `may_create_contact` tells whether the sync may CREATE a CRM contact
+         *     for the person when none is found: only a person with an organizer
+         *     application, or one already tied to a CRM contact. An account-only user
+         *     (an invited manager) can have an existing card updated, never a new
+         *     one.
+         *
+         *     `activity_explanation` is built from the stored profile and sessions;
+         *     visits to the price page are not stored per visit, so their share shows
+         *     as `price page and other`.
+         *
+         *     Called by the n8n CRM sync with `Authorization: Bearer <ANALYTICS_SYNC_TOKEN>`;
+         *     the same listing for a human superadmin is
+         *     `GET /v1/admin/analytics/profiles`. While `ANALYTICS_SYNC_TOKEN` is unset the
+         *     route answers 503.
+         */
+        get: operations["getV1ServiceAnalyticsProfiles"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/analytics/flows": {
         parameters: {
             query?: never;
@@ -19223,6 +19384,134 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** @description Body of POST /v1/admin/analytics/contact-codes. */
+        AnalyticsContactCodesRequest: {
+            /**
+             * @description Ids of the CRM (Twenty) people to issue codes for: 1 to 500 distinct
+             *     ids, each 1 to 64 characters of letters, digits and `_ . : -`.
+             *     Repeated ids are answered once.
+             */
+            twenty_person_ids: string[];
+        };
+        /** @description The code of one CRM contact. */
+        AnalyticsContactCode: {
+            /** @description The CRM person id the code belongs to, as sent. */
+            twenty_person_id: string;
+            /**
+             * @description The 10-character `cid` code to append to links to the website.
+             * @example x7k2qpm3ab
+             */
+            code: string;
+        };
+        /** @description Answer of POST /v1/admin/analytics/contact-codes. */
+        AnalyticsContactCodesResponse: {
+            /** @description One entry per distinct id, in the order the ids were sent. */
+            codes: components["schemas"]["AnalyticsContactCode"][];
+        };
+        /**
+         * @description Where a visit came from. Every field is left out when unknown; an empty
+         *     object means the person has no touch yet.
+         */
+        AnalyticsTouch: {
+            /** @description `email`, a `utm_source`, a search engine, `direct` or a referrer host. */
+            source?: string;
+            /** @description `email`, a `utm_medium`, `organic` or `referral`. */
+            medium?: string;
+            /** @description The `utm_campaign` of the visit. */
+            campaign?: string;
+            /** @description Host the visitor came from. */
+            ref_host?: string;
+            /** @description How the touch was recognised: `email_click`, `utm`, `organic` or `referral`. */
+            kind?: string;
+            /**
+             * Format: date-time
+             * @description When the touch happened.
+             */
+            at?: string;
+        };
+        /** @description A blog article the person read (engaged for at least 30 seconds and scrolled at least 75 percent). */
+        AnalyticsArticleRead: {
+            /** @description Site path of the article without the language prefix. */
+            path: string;
+            /**
+             * Format: date-time
+             * @description When the person last read it.
+             */
+            at: string;
+            /** @description Engaged seconds in that visit. */
+            seconds: number;
+        };
+        /**
+         * @description One person's profile as the CRM sync needs it (spec 50, section 9).
+         *     Built hourly by the analytics rollup; the e-mail is looked up while the
+         *     request is served.
+         */
+        AnalyticsProfile: {
+            /**
+             * Format: uuid
+             * @description The person in the analytics schema.
+             */
+            person_id: string;
+            /** @description The CRM person id; null until the person is tied to a CRM contact. */
+            twenty_person_id: string | null;
+            /** @description The person's address from their user or organizer application; null when none is known. */
+            email: string | null;
+            /** @description True when the CRM sync may create a contact for this person if none is found (organizer application or an existing CRM contact); false for an account-only user. */
+            may_create_contact: boolean;
+            /** @description `lead`, `applicant`, `organizer` or `selling`. */
+            stage: string;
+            /** @description How the person first reached us. */
+            first_touch: components["schemas"]["AnalyticsTouch"];
+            /** @description How the person last reached us. */
+            last_touch: components["schemas"]["AnalyticsTouch"];
+            /** @description Short text of the first touch for a CRM field (`email / outreach`, `google`); empty when none. */
+            first_source: string;
+            /** @description Short text of the last touch for a CRM field; empty when none. */
+            last_source: string;
+            /**
+             * Format: date-time
+             * @description Time of the person's latest recorded event; null when there is none.
+             */
+            last_seen_at: string | null;
+            /** @description Visits (sessions) in the last 30 UTC days. */
+            visits_30d: number;
+            /** @description Engaged minutes in the last 30 UTC days. */
+            engaged_minutes_30d: number;
+            /** @description Articles read, newest first, at most 20. */
+            articles: components["schemas"]["AnalyticsArticleRead"][];
+            /**
+             * @description Milestones reached, name to time: `application_started`,
+             *     `application_submitted`, `application_approved`,
+             *     `application_rejected`, `org_created`, `payment_connected`,
+             *     `first_event_created`, `first_event_published`, `first_sale`,
+             *     `sales_100`, `member_invited`. A key is present only once reached.
+             */
+            milestones: {
+                [key: string]: string;
+            };
+            /** @description Currency code to minor units sold in the last 30 days; empty when nothing sold. */
+            gmv_30d: {
+                [key: string]: number;
+            };
+            /** @description The activity index (visits, articles, price page, e-mail clicks, application steps, halved every 14 days). */
+            activity_score: number;
+            /** @description One line that explains the index, for example `article x1 = 3.0 + visit x2 = 1.8 (half-life 14 days)`. */
+            activity_explanation: string;
+            /** @description Link to the person's timeline in the admin console (`/analytics/people/<person_id>`); null when the console address is not configured. */
+            timeline_url: string | null;
+            /**
+             * Format: date-time
+             * @description When the profile last changed; the client keeps the greatest as its next `changed_since`.
+             */
+            changed_at: string;
+        };
+        /** @description One page of changed profiles. */
+        AnalyticsProfilesResponse: {
+            /** @description Profiles ordered by `changed_at`, then `person_id`. */
+            profiles: components["schemas"]["AnalyticsProfile"][];
+            /** @description Cursor to send as `after` for the next page. Always present; on an empty page it is the cursor the caller sent. */
+            next_cursor: string;
+        };
         /** @description The numbers of one flow step over one period. */
         AnalyticsFlowNumbers: {
             /** @description How many times the step was entered. */
@@ -34595,6 +34884,258 @@ export interface operations {
             };
         };
     };
+    postV1AdminAnalyticsContactCodes: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the call (recorded in the audit log). */
+                "X-Admin-Reason": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnalyticsContactCodesRequest"];
+            };
+        };
+        responses: {
+            /** @description One code per contact. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsContactCodesResponse"];
+                };
+            };
+            /** @description The body is not a readable JSON object (`analytics.invalid_body`) or X-Admin-Reason is missing (`superadmin.missing_reason`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold superadmin.read. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The list is empty, longer than 500, or holds an id that is not 1 to 64 characters of letters, digits and `_ . : -` (`analytics.invalid_twenty_person_ids`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or durable audit log unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AdminAnalyticsProfiles: {
+        parameters: {
+            query?: {
+                /** @description RFC 3339 time. Only profiles changed at or after it are returned (a lower bound for a client without a cursor); absent means all. */
+                changed_since?: string;
+                /** @description Page size, 1 to 200 (default 100). */
+                limit?: number;
+                /** @description Opaque cursor, the `next_cursor` of the previous page; the page starts strictly after it. */
+                after?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of changed profiles. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsProfilesResponse"];
+                };
+            };
+            /** @description Unreadable `changed_since` (`analytics.invalid_changed_since`), `limit` (`analytics.invalid_limit`) or `after` (`analytics.invalid_cursor`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold superadmin.read. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1ServiceAnalyticsContactCodes: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for the call (recorded in the audit log). */
+                "X-Admin-Reason": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnalyticsContactCodesRequest"];
+            };
+        };
+        responses: {
+            /** @description One code per contact. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsContactCodesResponse"];
+                };
+            };
+            /** @description The body is not a readable JSON object (`analytics.invalid_body`) or X-Admin-Reason is missing (`superadmin.missing_reason`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or wrong service token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The list is empty, longer than 500, or holds an id that is not 1 to 64 characters of letters, digits and `_ . : -` (`analytics.invalid_twenty_person_ids`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The service token is not configured (`analytics.sync_not_configured`), the database or the durable audit log is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1ServiceAnalyticsProfiles: {
+        parameters: {
+            query?: {
+                /** @description RFC 3339 time. Only profiles changed at or after it are returned (a lower bound for a client without a cursor); absent means all. */
+                changed_since?: string;
+                /** @description Page size, 1 to 200 (default 100). */
+                limit?: number;
+                /** @description Opaque cursor, the `next_cursor` of the previous page; the page starts strictly after it. */
+                after?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of changed profiles. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsProfilesResponse"];
+                };
+            };
+            /** @description Unreadable `changed_since` (`analytics.invalid_changed_since`), `limit` (`analytics.invalid_limit`) or `after` (`analytics.invalid_cursor`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or wrong service token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The service token is not configured (`analytics.sync_not_configured`) or the database is unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getAdminAnalyticsFlows: {
         parameters: {
             query?: {
@@ -34602,7 +35143,7 @@ export interface operations {
                 surface?: string;
                 /** @description First day of the period, YYYY-MM-DD (UTC). Default is six days before `to`. */
                 from?: string;
-                /** @description Last day of the period, YYYY-MM-DD (UTC). Default is today. At most 366 days after `from`. */
+                /** @description Last day of the period, YYYY-MM-DD (UTC). Default is today. At most 180 days after `from`. */
                 to?: string;
             };
             header?: never;
@@ -34623,7 +35164,7 @@ export interface operations {
             /**
              * @description `analytics.invalid_surface` - surface is not one of the three;
              *     `analytics.invalid_period` - from or to is not a date, from is after to,
-             *     or the period is longer than 366 days.
+             *     or the period is longer than 180 days.
              */
             400: {
                 headers: {
@@ -34644,6 +35185,15 @@ export interface operations {
             };
             /** @description Insufficient permission (`superadmin.read`). */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The analytics data could not be read (`analytics.read_failed`). */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -34669,7 +35219,7 @@ export interface operations {
                 surface?: string;
                 /** @description First day of the period, YYYY-MM-DD (UTC). Default is six days before `to`. */
                 from?: string;
-                /** @description Last day of the period, YYYY-MM-DD (UTC). Default is today. At most 366 days after `from`. */
+                /** @description Last day of the period, YYYY-MM-DD (UTC). Default is today. At most 180 days after `from`. */
                 to?: string;
             };
             header?: never;
@@ -34690,7 +35240,7 @@ export interface operations {
             /**
              * @description `analytics.invalid_surface` - surface is not one of the three;
              *     `analytics.invalid_period` - from or to is not a date, from is after to,
-             *     or the period is longer than 366 days.
+             *     or the period is longer than 180 days.
              */
             400: {
                 headers: {
@@ -34718,6 +35268,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description The analytics data could not be read (`analytics.read_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description The database is unavailable (`dependency.database_unavailable`). */
             503: {
                 headers: {
@@ -34732,7 +35291,7 @@ export interface operations {
     getAdminAnalyticsPersonTimeline: {
         parameters: {
             query?: {
-                /** @description Events per page, 1 to 200. Default 50. */
+                /** @description Events per page, 1 to 200. Default 50. A value outside the range is refused with 400 `analytics.invalid_limit`. */
                 limit?: number;
                 /** @description The `next_cursor` of the previous page. Absent for the first page. */
                 cursor?: string;
@@ -34757,7 +35316,7 @@ export interface operations {
             };
             /**
              * @description `analytics.invalid_person_id` - not a UUID; `analytics.invalid_limit` -
-             *     not a positive integer; `analytics.invalid_cursor` - not a cursor this
+             *     not an integer from 1 to 200; `analytics.invalid_cursor` - not a cursor this
              *     route issued.
              */
             400: {
@@ -34788,6 +35347,15 @@ export interface operations {
             };
             /** @description No such person (`analytics.person_not_found`). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The analytics data could not be read (`analytics.read_failed`). */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

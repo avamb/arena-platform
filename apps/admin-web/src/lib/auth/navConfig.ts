@@ -401,7 +401,8 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     scopeKinds: ["global", "platform"],
     purpose:
       "Billing: incoming bank payments. Match a payment the bank feed could not match to an invoice, ignore it with a reason, or import a statement by hand. Requires billing.admin and a platform superadmin; every change asks for a reason and is audited.",
-  },  {
+  },
+  {
     id: "analytics_flows",
     label: "Analytics: flows",
     to: "/analytics/flows",

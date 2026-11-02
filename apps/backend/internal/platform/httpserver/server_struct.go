@@ -90,8 +90,10 @@ type Server struct {
 	publicationQueries    *gen.Queries
 	publicFeedQueries     *gen.Queries
 	publicFeedRL          *publicFeedRateLimiter
-	shortLinks            *hgo.Handler           // GET /go/{code}, one per process (mount_go.go)
-	analytics             *analytics.Writer      // product analytics buffer, one per process (mount_analytics.go)
+	shortLinks            *hgo.Handler      // GET /go/{code}, one per process (mount_go.go)
+	analytics             *analytics.Writer // product analytics buffer, one per process, built on first use (mount_analytics.go)
+	analyticsMu           sync.Mutex        // guards analytics and analyticsClosed
+	analyticsClosed       bool
 	brevoWebhookRL        *publicFeedRateLimiter // per-IP limit of the Brevo delivery-status webhook
 	sessionQueries        *gen.Queries
 	gdprQueries           *gen.Queries

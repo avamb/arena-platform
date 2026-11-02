@@ -17,11 +17,11 @@ func (s *Server) mountAnalyticsUXRoutes(r chi.Router) {
 	}
 	// Without a database the routes still exist and answer 503; a nil pool
 	// must not be wrapped into a non-nil interface.
-	opts := hanalytics.AdminOptions{Logger: s.logger}
+	opts := hanalytics.UXOptions{Logger: s.logger}
 	if s.pgxPool != nil {
 		opts.DB = s.pgxPool
 	}
-	h := hanalytics.NewAdmin(opts)
+	h := hanalytics.NewUX(opts)
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "superadmin.read", "analytics")
 		pr.Get("/admin/analytics/flows", h.HandleFlows)

@@ -319,6 +319,8 @@ func TestAnalyticsUX_FlowsErrorsTimelineAndDigest(t *testing.T) {
 		e.expect(t, 404, "GET", "/v1/admin/analytics/people/"+uuid.NewString()+"/timeline", super, "", "")
 		e.expect(t, 400, "GET", "/v1/admin/analytics/people/nope/timeline", super, "", "")
 		e.expect(t, 400, "GET", path+"?cursor=garbage", super, "", "")
+		e.expect(t, 400, "GET", path+"?limit=201", super, "", "")
+		e.expect(t, 400, "GET", "/v1/admin/analytics/flows?from=2026-01-01&to=2026-11-01", super, "", "")
 	})
 
 	t.Run("only a platform superadmin reads", func(t *testing.T) {
