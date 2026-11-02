@@ -32,6 +32,8 @@ type Effective struct {
 	Amount int64
 	// NextChangeAt is when the price next changes, if known.
 	NextChangeAt *time.Time
+	// NextAmount is the price from NextChangeAt on (nil without a change).
+	NextAmount *int64
 	// Scheduled is true when a window (not the base price) produced Amount.
 	Scheduled bool
 }
@@ -65,11 +67,16 @@ func ForTiers(ctx context.Context, q WindowLister, tiers []gen.TicketTierRow, at
 		}
 		ws := byTier[t.ID]
 		amount, next := pricing.Resolve(t.PriceAmount, ws, at)
-		out[t.ID] = Effective{
+		eff := Effective{
 			Amount:       amount,
 			NextChangeAt: next,
 			Scheduled:    containsAt(ws, at),
 		}
+		if next != nil {
+			nextAmount, _ := pricing.Resolve(t.PriceAmount, ws, *next)
+			eff.NextAmount = &nextAmount
+		}
+		out[t.ID] = eff
 	}
 	return out, nil
 }

@@ -90,15 +90,16 @@ func (q *Queries) ListSmartPriceRulesBySession(ctx context.Context, sessionID, o
 	return out, rows.Err()
 }
 
-const listActiveSmartPriceRulesForSession = `-- name: ListActiveSmartPriceRulesForSession :many
+const listSmartPriceRulesForSession = `-- name: ListSmartPriceRulesForSession :many
 SELECT ` + smartPriceRuleColumns + `
 FROM   smart_price_rules
-WHERE  session_id = $1 AND status = 'active'`
+WHERE  session_id = $1`
 
-// ListActiveSmartPriceRulesForSession is the buyer feed's read: which chains
-// of the session a preset drives (one card per chain, the head's name).
-func (q *Queries) ListActiveSmartPriceRulesForSession(ctx context.Context, sessionID uuid.UUID) ([]SmartPriceRuleRow, error) {
-	rows, err := q.db.Query(ctx, listActiveSmartPriceRulesForSession, sessionID)
+// ListSmartPriceRulesForSession is the buyer feed's read: which chains of the
+// session a preset made (one card per chain, the head's name), whatever the
+// preset's status — a stopped preset's steps still carry generated names.
+func (q *Queries) ListSmartPriceRulesForSession(ctx context.Context, sessionID uuid.UUID) ([]SmartPriceRuleRow, error) {
+	rows, err := q.db.Query(ctx, listSmartPriceRulesForSession, sessionID)
 	if err != nil {
 		return nil, err
 	}
