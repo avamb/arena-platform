@@ -246,7 +246,7 @@ func TestBot_HandleUpdateTracksBotUpdate(t *testing.T) {
 	b.an, sink = newTestAnalytics(db)
 
 	routed := make(chan struct{}, 4)
-	b.route = func(ctx context.Context, u *models.Update) { routed <- struct{}{} }
+	b.route = func(_ context.Context, _ *models.Update) { routed <- struct{}{} }
 	secretTitle := "Моё секретное название"
 	updates := []*models.Update{
 		{Message: &models.Message{Text: secretTitle, Chat: models.Chat{ID: 42, Type: "private"}, From: &models.User{ID: 42}}},
