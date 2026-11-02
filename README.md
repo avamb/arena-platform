@@ -1,6 +1,6 @@
 # arena_new
 
-[![CI](https://github.com/abhteam/arena_new/actions/workflows/ci.yml/badge.svg)](https://github.com/abhteam/arena_new/actions/workflows/ci.yml)
+[![CI](https://github.com/avamb/arena-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/avamb/arena-platform/actions/workflows/ci.yml)
 
 Production-grade backend for a multi-tenant ticketing platform — the successor
 to the legacy Bil24 / TixGear ecosystem.
@@ -491,4 +491,17 @@ auto-restart.
 
 ## License
 
-Proprietary. © ABH Team. All rights reserved.
+Arena is free software under the GNU Affero General Public License v3.0
+([LICENSE](LICENSE)): you may use, change and share it, and if you run a
+changed version as a network service you must offer its source to the users of
+that service.
+
+Parts with their own licenses keep them:
+
+- `apps/wp-plugin/` — GPL-2.0-or-later, like every WordPress plugin;
+- `apps/backend/internal/platform/delivery/pdf/fonts/` — the DejaVu fonts
+  (Bitstream Vera license, `LICENSE-DejaVu.txt`);
+- `apps/backend/internal/platform/geotz/` — city data from GeoNames, CC BY 4.0
+  (`NOTICE`).
+
+Security problems: please report them privately, see [SECURITY.md](SECURITY.md).

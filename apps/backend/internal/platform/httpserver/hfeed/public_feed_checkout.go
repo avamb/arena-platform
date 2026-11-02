@@ -1370,6 +1370,43 @@ func (h *Handler) confirmPublicCheckout(
 		}
 	}
 
+	// The code's max_uses is taken here, under a lock per code that lasts
+	// until this transaction commits the order (P0-1 defect D-02): the
+	// pre-transaction check counts recorded redemptions only, and those are
+	// written at payment, so two buyers starting at once both got the
+	// discount. A code used up meanwhile refuses the cart and releases its
+	// hold at once, so the buyer can try again at the list price.
+	if promoCodeID != nil {
+		refusal, err := hcheckout.ReservePromoUseTx(ctx, txq, hcheckout.PromoUse{
+			PromoCodeID: *promoCodeID, OrgID: checkCtx.OrgID,
+			SessionID: &checkCtx.SessionID, ReservationID: &reservationID,
+			BuyerEmail: buyer.Email,
+		})
+		if err != nil {
+			h.logger.Error("public_feed_checkout: reserve promo code use failed",
+				slog.String("checkout_session_id", cs.ID.String()),
+				slog.String("error", err.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"checkout.confirm_failed", "We could not confirm the checkout. Try again in a minute.", r,
+			))
+			return
+		}
+		if refusal != "" {
+			// The hold row is locked by this transaction (SetHoldExpiryTx),
+			// so it ends before the release starts.
+			_ = tx.Rollback(ctx)
+			if _, relErr := hcheckout.ReleaseHold(ctx, h.pool, h.reservationQueries, reservationID); relErr != nil {
+				h.logger.Warn("public_feed_checkout: release hold after a refused promo code failed",
+					slog.String("reservation_id", reservationID.String()),
+					slog.String("error", relErr.Error()),
+				)
+			}
+			writePublicPromoError(w, r, refusal)
+			return
+		}
+	}
+
 	cs, err = txq.ConfirmCheckoutSession(
 		ctx, cs.ID,
 		bd.Subtotal, bd.Discount, bd.PlatformFee, bd.ProviderFee, bd.Tax, bd.Total,

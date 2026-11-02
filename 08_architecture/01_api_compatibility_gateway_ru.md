@@ -4,7 +4,7 @@ Updated: 2026-06-21
 
 ## Goal
 
-Existing integrations must be able to switch from the old Bil24 endpoint to the new platform endpoint with minimal or no business-logic changes. WordPress/Vino&Co is the main reference case: the domain and credentials may change, but the command flow and expected response structures should remain compatible.
+Existing integrations must be able to switch from the old Bil24 endpoint to the new platform endpoint with minimal or no business-logic changes. WordPress/client-1 is the main reference case: the domain and credentials may change, but the command flow and expected response structures should remain compatible.
 
 The new platform core remains independent. Compatibility is implemented as a gateway/facade layer.
 
@@ -168,10 +168,10 @@ The exact public URL can differ by domain, but the request body contract must re
 ## Open Questions — answered by wave 1 (2026-09-04, spec `18_bil24_compat_wave1_specification_ru.md`)
 
 These were genuinely open when this doc was written (2026-06-21). Wave 1 read the actual
-PHP plugin source (`lampyrisevents`, `vinoandco-prod-rebuild`) and 420 real orders / 819
+PHP plugin source (`client2-site`, `client1-site`) and 420 real orders / 819
 real tickets, and closed all five:
 
-1. **Which exact Bil24 commands are used by Vino&Co today?** Fifteen, enumerated in
+1. **Which exact Bil24 commands are used by client-1 today?** Fifteen, enumerated in
    `apps/backend/tests/compat/bil24/BEHAVIOR_DIFFERENCES.md` (command inventory): `GET_ALL_ACTIONS`,
    `GET_SEAT_LIST`, `CREATE_USER`, `RESERVATION` (4 request sub-shapes), `GET_CART`,
    `ADD_PROMO_CODES`, `CHECK_KDP`, `CREATE_ORDER_EXT`, `GET_ORDER_INFO`, `PAY_ORDER`,

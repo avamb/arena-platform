@@ -20,11 +20,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
 )
 
@@ -66,6 +68,24 @@ func (h *Handler) confirmAndCreateOrder(
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	txq := gen.New(tx)
+
+	// The code's max_uses is taken with the order, under the code's lock
+	// (P0-1 defect D-02), as on the widget and the gateway. This API knows
+	// no buyer identity on the order, so the per-customer limit stays with
+	// the completion check (completeCheckoutWithPromoTx, by user).
+	if promoCodeID != nil {
+		refusal, err := ReservePromoUseTx(ctx, txq, PromoUse{
+			PromoCodeID: *promoCodeID, OrgID: reservation.OrgID,
+			SessionID: &reservation.SessionID, ReservationID: &reservation.ID,
+			CustomerID: buyer.CustomerID, BuyerEmail: derefStr(buyer.Email),
+		})
+		if err != nil {
+			return gen.CheckoutSessionRow{}, err
+		}
+		if refusal != "" {
+			return gen.CheckoutSessionRow{}, &PromoRefusalError{Code: refusal}
+		}
+	}
 
 	cs, err := txq.ConfirmCheckoutSession(ctx, id,
 		bd.Subtotal, bd.Discount, bd.PlatformFee, bd.ProviderFee, bd.Tax, bd.Total,
@@ -120,3 +140,31 @@ func (h *Handler) confirmAndCreateOrder(
 // isCheckoutStateConflict reports whether the error means "the session was not
 // in 'created'", which every confirm branch answers with a 409.
 func isCheckoutStateConflict(err error) bool { return errors.Is(err, pgx.ErrNoRows) }
+
+// PromoRefusalError is a promo code that had no use left for this order when
+// the order was written. Code is PromoErrExhausted or PromoErrPerCustomerLimit.
+type PromoRefusalError struct{ Code string }
+
+func (e *PromoRefusalError) Error() string { return "promo code refused: " + e.Code }
+
+// writePromoRefusal answers a PromoRefusalError with the same 409 the
+// pre-transaction check (applyPromoCode) gives, and reports whether err was one.
+func writePromoRefusal(w http.ResponseWriter, r *http.Request, err error) bool {
+	var refusal *PromoRefusalError
+	if !errors.As(err, &refusal) {
+		return false
+	}
+	msg := "this promo code has reached its maximum number of uses"
+	if refusal.Code == PromoErrPerCustomerLimit {
+		msg = "you have already used this promo code the maximum number of times"
+	}
+	httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(refusal.Code, msg, r))
+	return true
+}
+
+func derefStr(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
