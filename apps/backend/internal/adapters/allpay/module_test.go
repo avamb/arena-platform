@@ -109,7 +109,7 @@ func TestAllPayModule_Chargebacks(t *testing.T) {
 		t.Errorf("chargeback = %q/%q", ev.Kind, ev.Type)
 	}
 	cb["type"] = "chargeback_revert"
-	if ev := normalized(t, cb); ev.Kind != payments.EventUnknown || ev.Type != EventTypeChargebackRevert {
+	if ev := normalized(t, cb); ev.Kind != payments.EventDisputeUpdated || ev.Type != EventTypeChargebackRevert || ev.Dispute == nil {
 		t.Errorf("chargeback_revert = %q/%q", ev.Kind, ev.Type)
 	}
 }
