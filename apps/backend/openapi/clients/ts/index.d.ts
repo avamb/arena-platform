@@ -1833,6 +1833,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/billing/white-label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - list white label periods
+         * @description Lists the white label periods of brands (an organization, or one of its promoters): the days the platform badge is hidden. Requires JWT, billing.admin and a platform superadmin.
+         */
+        get: operations["getV1AdminBillingWhiteLabel"];
+        put?: never;
+        /**
+         * Admin - turn white label on for a brand
+         * @description Turns white label on for a brand from starts_on (today or later, UTC) to ends_on (open when absent). The brand is the organization (promoter_id absent: its events without a promoter and its shop) or one of its promoters. Two periods of one brand never share a day. The job billing.white_label charges every completed month in arrears, prorated by days, at the price list's monthly rate or at monthly_price_minor. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row.
+         */
+        post: operations["postV1AdminBillingWhiteLabel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/white-label/{id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - end a white label period
+         * @description Sets the last day of a white label period. It is yesterday or later (yesterday ends white label now), earlier than the current end, and not earlier than the day before the period starts. A period is never deleted and its end never moves later. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row.
+         */
+        post: operations["postV1AdminBillingWhiteLabelEnd"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/billing/accounts": {
         parameters: {
             query?: never;
@@ -6525,6 +6569,9 @@ export interface paths {
          *         covered by the right of withdrawal. False for every other
          *         country (Israel included, which has its own cancellation
          *         regime) and when the country is unknown.
+         *       * `white_label` — boolean. True when the event's brand (its
+         *         promoter, else the organization) has white label today; the
+         *         widget then hides its "Tickets: Arena Sold Out" badge.
          *       * `consent` — `PublicCheckoutConsentBlock` (P2): whether the
          *         buyer must tick "I accept the sale terms (seller: <legal name>)
          *         and the privacy policy" before paying, the seller's legal name
@@ -8229,6 +8276,26 @@ export interface paths {
          * @description Get billing usage summary for an organization.
          */
         get: operations["getOrgBillingUsage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/billing/white-label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * White label periods of an organization
+         * @description Lists the organization's white label periods (its own brand and its promoters) with the monthly price that applies: the period's individual price, else the price list's for the organization's billing account. Read-only: only a platform superadmin turns white label on or off. Requires JWT and billing.read in the organization (the owner).
+         */
+        get: operations["getOrgBillingWhiteLabel"];
         put?: never;
         post?: never;
         delete?: never;
@@ -30245,6 +30312,172 @@ export interface components {
              */
             effective_to: string;
         };
+        /** @description A white label period of a brand: from starts_on to ends_on (UTC calendar days, both inclusive) the platform badge is hidden on the brand's widget, letters and shop, and the brand pays the monthly white label price. */
+        BillingWhiteLabelPeriod: {
+            /**
+             * Format: uuid
+             * @description Id of the period.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The organization.
+             */
+            org_id: string;
+            /** @description Name of the organization. Present in the list only. */
+            org_name?: string;
+            /**
+             * Format: uuid
+             * @description The promoter whose events the period covers; null for the organization itself (its events without a promoter, and its shop).
+             */
+            promoter_id: string | null;
+            /** @description Name of the promoter. Present in the list only. */
+            promoter_name?: string | null;
+            /**
+             * Format: date
+             * @description First day of white label (UTC).
+             */
+            starts_on: string;
+            /**
+             * Format: date
+             * @description Last day of white label (UTC), null while it is open.
+             */
+            ends_on: string | null;
+            /**
+             * Format: int64
+             * @description Individual monthly price in minor units of the organization's billing account currency; null means the price list, 0 is free.
+             */
+            monthly_price_minor: number | null;
+            /** @description The X-Admin-Reason the period was created with. */
+            reason: string;
+            /**
+             * Format: date-time
+             * @description When the period was created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the end was last set, null when never.
+             */
+            ended_at: string | null;
+            /**
+             * @description State today (UTC): scheduled, in_force or ended.
+             * @example in_force
+             */
+            status: string;
+        };
+        /** @description White label periods, by organization and brand. */
+        BillingWhiteLabelList: {
+            /** @description The periods. */
+            items: components["schemas"]["BillingWhiteLabelPeriod"][];
+        };
+        /** @description Body of POST /v1/admin/billing/white-label. */
+        BillingCreateWhiteLabelRequest: {
+            /**
+             * Format: uuid
+             * @description The organization.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description A promoter of the organization; absent or null turns white label on for the organization itself.
+             */
+            promoter_id?: string | null;
+            /**
+             * Format: date
+             * @description First day, today (UTC) or later.
+             */
+            starts_on: string;
+            /**
+             * Format: date
+             * @description Last day, on or after starts_on; absent or null keeps the period open.
+             */
+            ends_on?: string | null;
+            /**
+             * Format: int64
+             * @description Individual monthly price in minor units of the organization's billing account currency; absent means the price list, 0 is free.
+             */
+            monthly_price_minor?: number | null;
+        };
+        /** @description Body of POST /v1/admin/billing/white-label/{id}/end. */
+        BillingEndWhiteLabelRequest: {
+            /**
+             * Format: date
+             * @description New last day. Yesterday (UTC) or later, earlier than the current end.
+             */
+            ends_on: string;
+        };
+        /** @description A white label period of the organization as its owner sees it. */
+        OrgWhiteLabelPeriod: {
+            /**
+             * Format: uuid
+             * @description Id of the period.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The organization.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description The promoter whose events the period covers; null for the organization itself.
+             */
+            promoter_id: string | null;
+            /** @description Name of the promoter, null for the organization itself. */
+            promoter_name: string | null;
+            /** @description The brand's name, the promoter's or the organization's. */
+            brand_name: string;
+            /**
+             * Format: date
+             * @description First day of white label (UTC).
+             */
+            starts_on: string;
+            /**
+             * Format: date
+             * @description Last day of white label (UTC), null while it is open.
+             */
+            ends_on: string | null;
+            /**
+             * Format: int64
+             * @description Individual monthly price, null when the price list applies.
+             */
+            monthly_price_minor: number | null;
+            /**
+             * Format: int64
+             * @description The monthly price that applies, in minor units of currency; null when it cannot be read.
+             */
+            effective_monthly_minor: number | null;
+            /** @description Currency of the organization's billing account, empty when it cannot be read. */
+            currency: string;
+            /**
+             * Format: date-time
+             * @description When the period was created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the end was last set, null when never.
+             */
+            ended_at: string | null;
+            /**
+             * @description State today (UTC): scheduled, in_force or ended.
+             * @example in_force
+             */
+            status: string;
+        };
+        /** @description The organization's white label periods and the price list's monthly price. */
+        OrgWhiteLabelList: {
+            /** @description The periods, by brand, newest first. */
+            items: components["schemas"]["OrgWhiteLabelPeriod"][];
+            /** @description Currency of the organization's billing account, empty when it cannot be read. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description The price list's monthly white label price, null when the account or the rule is missing.
+             */
+            price_list_monthly_minor: number | null;
+        };
         /** @description One charge. A reversal has reversal_of set and a negative amount, and carries the time of the event it reverses. */
         BillingChargeItem: {
             /**
@@ -32092,6 +32325,8 @@ export interface components {
             max_line_qty?: number;
             /** @description Cloudflare Turnstile site key the checkout form renders its widget with; the widget's token goes to checkout as `captcha_token`. Absent while the shop's checkout has no captcha. */
             captcha_site_key?: string;
+            /** @description True when the organization has white label today; the storefront then hides its "on the Arena Sold Out platform" footer. */
+            white_label?: boolean;
         };
         /** @description The organization behind a storefront. */
         ShopPublicOrg: {
@@ -37366,6 +37601,221 @@ export interface operations {
                 };
             };
             /** @description The end is not in the future or not after the start */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AdminBillingWhiteLabel: {
+        parameters: {
+            query?: {
+                /** @description Only periods of this organization. */
+                org_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The periods. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingWhiteLabelList"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description org_id is not a UUID */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingWhiteLabel: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log and on the period. */
+                "X-Admin-Reason": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingCreateWhiteLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description The new period. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingWhiteLabelPeriod"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of the expected shape */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization or promoter not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The brand already has white label on some of these days */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A field is not valid, or starts_on is in the past */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingWhiteLabelEnd: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log and on the period. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the period. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingEndWhiteLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description The period with its new end. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingWhiteLabelPeriod"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of the expected shape */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Period not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The period already ends on or before that day */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description ends_on is not a date, is before yesterday, or is not earlier than the current end */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -60407,6 +60857,47 @@ export interface operations {
             };
             /** @description Database unavailable. */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getOrgBillingWhiteLabel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The periods. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgWhiteLabelList"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller is not a member of the organization or lacks billing.read there. */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

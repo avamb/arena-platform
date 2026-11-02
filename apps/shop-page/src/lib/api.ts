@@ -42,6 +42,8 @@ export interface ShopSettings {
   captcha_site_key?: string | null;
   /** The shop's own domain (custom domain), when it has one. */
   shop_domain?: string | null;
+  /** True when the organization has white label today: the footer leaves out the platform line. */
+  white_label?: boolean;
 }
 
 export interface ShopImage {
@@ -230,6 +232,7 @@ interface WireSettings {
   shop_name?: string;
   max_line_qty?: number;
   captcha_site_key?: string | null;
+  white_label?: boolean;
 }
 interface WireCatalog {
   org?: { slug: string; name: string; shop_domain?: string | null; captcha_site_key?: string | null };
@@ -396,6 +399,7 @@ export function normalizeCatalog(c: WireCatalog): ShopData {
       max_line_qty: s.max_line_qty && s.max_line_qty > 0 ? s.max_line_qty : DEFAULT_MAX_LINE_QTY,
       captcha_site_key: s.captcha_site_key || c.captcha_site_key || c.org?.captcha_site_key || null,
       shop_domain: c.org?.shop_domain || null,
+      white_label: s.white_label === true,
     },
     products: (c.products ?? []).map(normalizeProduct),
     pages: links.filter((p) => !isPolicySlug(p.slug)),

@@ -35,6 +35,11 @@ type Message struct {
 	// From optionally overrides the configured platform sender. It is used only
 	// for an organizer identity that has already been verified by Brevo.
 	From string
+	// FromName optionally names the sender in the From header ("Brand
+	// <address>"); the address and the SMTP envelope stay as they are. A
+	// white label brand (spec 08_architecture/52) sends under its own name
+	// instead of the platform's.
+	FromName string
 	// To is the recipient email address (envelope and header).
 	To string
 	// Subject is the email subject line (UTF-8; will be Q-encoded in headers).
@@ -370,6 +375,7 @@ var _ ReceiptSender = (*SMTPSender)(nil)
 // of text/plain + text/html, or text/html alone) followed by the attachments.
 // Without attachments → single text/html part (simpler, sufficient for tickets).
 func buildMIMEMessage(from string, msg Message) ([]byte, error) {
+	from = HeaderFrom(from, msg.FromName)
 	if msg.ReplyTo != "" {
 		if _, err := mail.ParseAddress(msg.ReplyTo); err != nil {
 			return nil, fmt.Errorf("buildMIMEMessage: invalid Reply-To address: %w", err)
@@ -546,4 +552,20 @@ func encodeHeaderText(v string) string {
 	// prefix the first line would already exceed 78: start the value on its
 	// own continuation line as well.
 	return "\r\n " + strings.ReplaceAll(encoded, "?= =?", "?=\r\n =?")
+}
+
+// HeaderFrom is the From header value: from as it is, or, with a name, the
+// bare address of from under that name (RFC 2047-encoded when it is not
+// ASCII). A name with line breaks is dropped rather than written into a
+// header.
+func HeaderFrom(from, name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" || strings.ContainsAny(name, "\r\n") {
+		return from
+	}
+	addr := from
+	if parsed, err := mail.ParseAddress(from); err == nil {
+		addr = parsed.Address
+	}
+	return (&mail.Address{Name: name, Address: addr}).String()
 }

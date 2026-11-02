@@ -32,7 +32,8 @@ const (
 
 var (
 	// ErrRuleNotImplemented: the rule type is known but this slice does not
-	// compute it (volume_above_baseline, subscription, generator_run). Rate
+	// compute it (volume_above_baseline, generator_run, and subscription for
+	// any event kind but white_label_month). Rate
 	// refuses an event whose line carries such a rule rather than charging
 	// it by another rule.
 	ErrRuleNotImplemented = errors.New("billing: rule type not implemented")
@@ -79,6 +80,13 @@ type CreditPackRule struct {
 	Currency             string
 }
 
+// SubscriptionRule is subscription for the event kind white_label_month: a
+// monthly amount, prorated by days by Rate (spec 08_architecture/52).
+type SubscriptionRule struct {
+	MonthlyMinor int64
+	Currency     string
+}
+
 // FixedPerEvent is fixed_per_event: a flat amount per published event.
 type FixedPerEvent struct {
 	AmountMinor int64
@@ -86,8 +94,9 @@ type FixedPerEvent struct {
 }
 
 // Rule is one parsed price_list_rules row. Exactly one of the typed params
-// pointers is set, matching Type; the three types without a calculation
-// (volume_above_baseline, subscription, generator_run) set none.
+// pointers is set, matching Type; the types without a calculation
+// (volume_above_baseline, generator_run, and subscription for any event kind
+// but white_label_month) set none.
 type Rule struct {
 	ID           uuid.UUID
 	Type         RuleType
@@ -103,14 +112,17 @@ type Rule struct {
 	LowPriceFormula *LowPriceFormula
 	Pack            *CreditPackRule
 	PerEvent        *FixedPerEvent
+	Subscription    *SubscriptionRule
 	RawParams       json.RawMessage
 }
 
 // Implemented reports whether Rate can compute this rule type.
 func (r Rule) Implemented() bool {
 	switch r.Type {
-	case RuleVolumeAboveBaseline, RuleSubscription, RuleGeneratorRun:
+	case RuleVolumeAboveBaseline, RuleGeneratorRun:
 		return false
+	case RuleSubscription:
+		return r.EventKind == string(KindWhiteLabelMonth)
 	}
 	return true
 }
@@ -224,15 +236,34 @@ func ParseRule(row gen.PriceListRuleRow, priceListCurrency string) (Rule, error)
 			return bad(err)
 		}
 		r.PerEvent = &FixedPerEvent{AmountMinor: *p.AmountMinor, Currency: priceListCurrency}
-	case RuleVolumeAboveBaseline, RuleSubscription, RuleGeneratorRun:
-		// Recognized, not computed in this slice: the params must still be
-		// a JSON object so a broken row is noticed now.
-		var obj map[string]json.RawMessage
-		if err := json.Unmarshal(row.Params, &obj); err != nil || obj == nil {
-			return bad(errors.New("params are not a JSON object"))
+	case RuleSubscription:
+		if r.EventKind != string(KindWhiteLabelMonth) {
+			return parseUncomputed(row, r, bad)
 		}
+		var p struct {
+			MonthlyMinor *int64 `json:"monthly_minor"`
+		}
+		if err := decodeStrict(row.Params, &p); err != nil {
+			return bad(err)
+		}
+		if err := requireAmounts(map[string]*int64{"monthly_minor": p.MonthlyMinor}); err != nil {
+			return bad(err)
+		}
+		r.Subscription = &SubscriptionRule{MonthlyMinor: *p.MonthlyMinor, Currency: priceListCurrency}
+	case RuleVolumeAboveBaseline, RuleGeneratorRun:
+		return parseUncomputed(row, r, bad)
 	default:
 		return Rule{}, fmt.Errorf("%w: rule %s has unknown type %q", ErrBadRule, row.ID, row.RuleType)
+	}
+	return r, nil
+}
+
+// parseUncomputed accepts a rule type that is recognized but not computed:
+// the params must still be a JSON object so a broken row is noticed now.
+func parseUncomputed(row gen.PriceListRuleRow, r Rule, bad func(error) (Rule, error)) (Rule, error) {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(row.Params, &obj); err != nil || obj == nil {
+		return bad(errors.New("params are not a JSON object"))
 	}
 	return r, nil
 }

@@ -415,6 +415,7 @@ func (h *shopEmail) buildMessage(ctx context.Context, o gen.ShopOrderRow, kind s
 		HolderName:     strings.TrimSpace(o.BuyerName),
 		Branding:       branding,
 		Shop:           buildShopOrderData(o, items, statusURL(g, h.opts.ShopBaseURL, o.OrderToken)),
+		WhiteLabel:     whiteLabelForOrg(ctx, whiteLabelQueries(h.q), h.logger, o.OrgID),
 	}
 	if refund != nil {
 		data.Shop.RefundAmount = shop.FormatMinor(refund.Amount, o.Currency)
@@ -430,5 +431,7 @@ func (h *shopEmail) buildMessage(ctx context.Context, o gen.ShopOrderRow, kind s
 	if err != nil {
 		return email.Message{}, fmt.Errorf("delivery: render shop e-mail: %w", err)
 	}
-	return ticketEmailMessage(p, o.BuyerEmail, out.Subject, out.HTMLBody, out.TextBody), nil
+	msg := ticketEmailMessage(p, o.BuyerEmail, out.Subject, out.HTMLBody, out.TextBody)
+	applyWhiteLabelSender(&msg, data.WhiteLabel, p.OrgName)
+	return msg, nil
 }

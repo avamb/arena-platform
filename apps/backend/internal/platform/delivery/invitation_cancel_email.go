@@ -194,6 +194,7 @@ func (h *invitationCancelEmail) buildMessage(
 		SessionStart:   formatSessionForEmail(first.SessionStart, first.SessionTZ),
 		VenueName:      joinNonEmpty(", ", first.VenueName, first.VenueCity),
 		Branding:       branding,
+		WhiteLabel:     whiteLabelForEvent(ctx, whiteLabelResolver(h.opts.DB), h.logger, eventID),
 		Change: templates.ChangeData{
 			Invitation:     true,
 			ContactName:    contactName,
@@ -210,5 +211,7 @@ func (h *invitationCancelEmail) buildMessage(
 		return email.Message{}, fmt.Errorf("delivery: render invitation cancel e-mail: %w", err)
 	}
 	first.OrgContactEmail, first.ContactFormURL = contactEmail, contactForm
-	return ticketEmailMessage(first, to, out.Subject, out.HTMLBody, out.TextBody), nil
+	msg := ticketEmailMessage(first, to, out.Subject, out.HTMLBody, out.TextBody)
+	applyWhiteLabelSender(&msg, data.WhiteLabel, brandSenderName(first))
+	return msg, nil
 }

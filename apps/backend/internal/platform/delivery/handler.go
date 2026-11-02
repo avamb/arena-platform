@@ -581,6 +581,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		}
 
 		withdrawalNotice := withdrawalNoticeFor(ctx, opts, logger, ticketID, kind, complimentaryOrder)
+		whiteLabel := whiteLabelForTicket(ctx, whiteLabelQueries(opts.DeliveryJobQueries), logger, ticketID.String())
 
 		var htmlBody, textBody, subject string
 		if renderer != nil {
@@ -601,6 +602,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				Payment:        payment,
 
 				WithdrawalNotice: withdrawalNotice,
+				WhiteLabel:       whiteLabel,
 				EventNote:        ticketEventNote(kind, p.EventEmailNote, p.EventEmailNoteFormat),
 			})
 			if rErr != nil {
@@ -622,6 +624,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		}
 
 		msg := ticketEmailMessage(p, recipientEmail, subject, htmlBody, textBody)
+		applyWhiteLabelSender(&msg, whiteLabel, brandSenderName(p))
 		attachmentBytes := 0
 		for _, m := range members {
 			if len(m.pdf) == 0 {

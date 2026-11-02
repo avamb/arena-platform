@@ -470,6 +470,9 @@ func toEngineEvent(ev gen.BillableEventRow) billing.Event {
 		out.PricingClass = *ev.PricingClass
 	}
 	out.Bulk = billing.BulkFromAttributes(ev.Attributes)
+	if out.Kind == billing.KindWhiteLabelMonth {
+		billing.WhiteLabelFromAttributes(ev.Attributes, &out)
+	}
 	return out
 }
 

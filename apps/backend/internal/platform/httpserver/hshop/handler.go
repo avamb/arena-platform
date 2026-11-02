@@ -59,6 +59,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/whitelabel"
 )
 
 // maxBodyBytes bounds a JSON body; a product description or page may be long.
@@ -111,6 +112,10 @@ type Options struct {
 	// live unpaid orders per address counts it); the server passes the JWT
 	// secret, like the other tables that keep an address hash.
 	IPSalt string
+	// WhiteLabel tells whether the organization has white label today (spec
+	// 08_architecture/52); the storefront then hides its "on the Arena Sold
+	// Out platform" footer. Nil means never.
+	WhiteLabel *whitelabel.Resolver
 }
 
 // CaptchaVerifier checks a Cloudflare Turnstile response token

@@ -175,6 +175,14 @@ describe('layout', () => {
     expect(popup?.getAttribute('dir')).toBe('rtl');
     expect(popup?.querySelector('.section-text')?.getAttribute('dir')).toBe('ltr');
   });
+  it('white label (spec 52): the footer platform line is shown by default and hidden only under white label', () => {
+    const shown = dom(layout(ctx(), ''));
+    expect(shown.querySelector('.footer__copyright')?.textContent).toContain('Arena Sold Out');
+    const wl = { ...shop, settings: { ...shop.settings, white_label: true } };
+    const hidden = dom(layout({ ...ctx(), shop: wl }, ''));
+    expect(hidden.querySelector('.footer__copyright')?.textContent).not.toContain('Arena Sold Out');
+    expect(hidden.querySelector('.footer__copyright a')).not.toBeNull();
+  });
   it('omits the age gate when the shop has none', () => {
     const noGate = { ...shop, settings: { ...shop.settings, age_gate_min_age: 0 } };
     const doc = dom(layout({ ...ctx(), shop: noGate }, ''));

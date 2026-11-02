@@ -119,8 +119,9 @@ func TestFoundation_StandardPriceListIsFoundFrom2026(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(rules) != 4 {
-				t.Fatalf("%s: %d rules, want 4", cur, len(rules))
+			// Four rules from 0157 plus the white label subscription (0186).
+			if len(rules) != 5 {
+				t.Fatalf("%s: %d rules, want 5", cur, len(rules))
 			}
 			for _, r := range rules {
 				if r.RuleType == "low_price_formula" && (r.SaleCurrency == nil || *r.SaleCurrency != cur) {
@@ -132,6 +133,7 @@ func TestFoundation_StandardPriceListIsFoundFrom2026(t *testing.T) {
 				"fixed_per_ticket":          `{"unseated_minor":59,"seated_minor":109}`,
 				"credit_pack":               `{"seated_surcharge_minor":35}`,
 				"percent_of_price_with_cap": `{"pct_bp":200,"cap_minor":300}`,
+				"subscription":              `{"monthly_minor":4500}`,
 			}
 			for _, r := range rules {
 				var got, want map[string]any

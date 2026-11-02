@@ -33,6 +33,8 @@ var billingAdminWriteRoutes = map[string]string{
 	"POST /v1/admin/billing/bank-transactions":                         hbilling.AuditBankTransferImport,
 	"POST /v1/admin/billing/bank-transactions/{transaction_id}/match":  hbilling.AuditBankTransferMatch,
 	"POST /v1/admin/billing/bank-transactions/{transaction_id}/ignore": hbilling.AuditBankTransferIgnore,
+	"POST /v1/admin/billing/white-label":                               hbilling.AuditWhiteLabelCreate,
+	"POST /v1/admin/billing/white-label/{id}/end":                      hbilling.AuditWhiteLabelEnd,
 }
 
 func TestBillingAdmin_EveryWriteRouteHasAnAuditAction(t *testing.T) {

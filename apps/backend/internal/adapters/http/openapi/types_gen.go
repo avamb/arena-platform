@@ -3862,6 +3862,24 @@ type BillingCreateUsageInvoiceRequest struct {
 	Period string `json:"period"`
 }
 
+// BillingCreateWhiteLabelRequest Body of POST /v1/admin/billing/white-label.
+type BillingCreateWhiteLabelRequest struct {
+	// EndsOn Last day, on or after starts_on; absent or null keeps the period open.
+	EndsOn *openapi_types.Date `json:"ends_on"`
+
+	// MonthlyPriceMinor Individual monthly price in minor units of the organization's billing account currency; absent means the price list, 0 is free.
+	MonthlyPriceMinor *int64 `json:"monthly_price_minor"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PromoterId A promoter of the organization; absent or null turns white label on for the organization itself.
+	PromoterId *openapi_types.UUID `json:"promoter_id"`
+
+	// StartsOn First day, today (UTC) or later.
+	StartsOn openapi_types.Date `json:"starts_on"`
+}
+
 // BillingCreditLot A credit lot that still holds something.
 type BillingCreditLot struct {
 	// Currency Currency of the money fields.
@@ -3908,6 +3926,12 @@ type BillingCurrentRate struct {
 
 	// UnseatedRateMinor Price of one unseated ticket in minor units of the account currency.
 	UnseatedRateMinor *int64 `json:"unseated_rate_minor"`
+}
+
+// BillingEndWhiteLabelRequest Body of POST /v1/admin/billing/white-label/{id}/end.
+type BillingEndWhiteLabelRequest struct {
+	// EndsOn New last day. Yesterday (UTC) or later, earlier than the current end.
+	EndsOn openapi_types.Date `json:"ends_on"`
 }
 
 // BillingEventSummary What the platform charged for one event of the organization.
@@ -4415,6 +4439,51 @@ type BillingUsageInvoiceResult struct {
 type BillingVoidInvoiceRequest struct {
 	// Reason Why the invoice is voided, 1 to 500 characters.
 	Reason string `json:"reason"`
+}
+
+// BillingWhiteLabelList White label periods, by organization and brand.
+type BillingWhiteLabelList struct {
+	// Items The periods.
+	Items []BillingWhiteLabelPeriod `json:"items"`
+}
+
+// BillingWhiteLabelPeriod A white label period of a brand: from starts_on to ends_on (UTC calendar days, both inclusive) the platform badge is hidden on the brand's widget, letters and shop, and the brand pays the monthly white label price.
+type BillingWhiteLabelPeriod struct {
+	// CreatedAt When the period was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EndedAt When the end was last set, null when never.
+	EndedAt *time.Time `json:"ended_at"`
+
+	// EndsOn Last day of white label (UTC), null while it is open.
+	EndsOn *openapi_types.Date `json:"ends_on"`
+
+	// Id Id of the period.
+	Id openapi_types.UUID `json:"id"`
+
+	// MonthlyPriceMinor Individual monthly price in minor units of the organization's billing account currency; null means the price list, 0 is free.
+	MonthlyPriceMinor *int64 `json:"monthly_price_minor"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Name of the organization. Present in the list only.
+	OrgName *string `json:"org_name,omitempty"`
+
+	// PromoterId The promoter whose events the period covers; null for the organization itself (its events without a promoter, and its shop).
+	PromoterId *openapi_types.UUID `json:"promoter_id"`
+
+	// PromoterName Name of the promoter. Present in the list only.
+	PromoterName *string `json:"promoter_name"`
+
+	// Reason The X-Admin-Reason the period was created with.
+	Reason string `json:"reason"`
+
+	// StartsOn First day of white label (UTC).
+	StartsOn openapi_types.Date `json:"starts_on"`
+
+	// Status State today (UTC): scheduled, in_force or ended.
+	Status string `json:"status"`
 }
 
 // BindSessionSeatingRequest Request body for the seating-bind endpoint. Assigns the given
@@ -12156,6 +12225,60 @@ type OrgMeResponse struct {
 	Roles []string `json:"roles"`
 }
 
+// OrgWhiteLabelList The organization's white label periods and the price list's monthly price.
+type OrgWhiteLabelList struct {
+	// Currency Currency of the organization's billing account, empty when it cannot be read.
+	Currency string `json:"currency"`
+
+	// Items The periods, by brand, newest first.
+	Items []OrgWhiteLabelPeriod `json:"items"`
+
+	// PriceListMonthlyMinor The price list's monthly white label price, null when the account or the rule is missing.
+	PriceListMonthlyMinor *int64 `json:"price_list_monthly_minor"`
+}
+
+// OrgWhiteLabelPeriod A white label period of the organization as its owner sees it.
+type OrgWhiteLabelPeriod struct {
+	// BrandName The brand's name, the promoter's or the organization's.
+	BrandName string `json:"brand_name"`
+
+	// CreatedAt When the period was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency Currency of the organization's billing account, empty when it cannot be read.
+	Currency string `json:"currency"`
+
+	// EffectiveMonthlyMinor The monthly price that applies, in minor units of currency; null when it cannot be read.
+	EffectiveMonthlyMinor *int64 `json:"effective_monthly_minor"`
+
+	// EndedAt When the end was last set, null when never.
+	EndedAt *time.Time `json:"ended_at"`
+
+	// EndsOn Last day of white label (UTC), null while it is open.
+	EndsOn *openapi_types.Date `json:"ends_on"`
+
+	// Id Id of the period.
+	Id openapi_types.UUID `json:"id"`
+
+	// MonthlyPriceMinor Individual monthly price, null when the price list applies.
+	MonthlyPriceMinor *int64 `json:"monthly_price_minor"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PromoterId The promoter whose events the period covers; null for the organization itself.
+	PromoterId *openapi_types.UUID `json:"promoter_id"`
+
+	// PromoterName Name of the promoter, null for the organization itself.
+	PromoterName *string `json:"promoter_name"`
+
+	// StartsOn First day of white label (UTC).
+	StartsOn openapi_types.Date `json:"starts_on"`
+
+	// Status State today (UTC): scheduled, in_force or ended.
+	Status string `json:"status"`
+}
+
 // OrganizationItem A single active organization (primary tenant boundary).
 // Includes legal & contact attributes added in migration
 // 0049_organizations_legal_fields (Wave O / feature #253). All
@@ -17627,6 +17750,9 @@ type ShopPublicSettings struct {
 
 	// ShippingLabel How the delivery is called.
 	ShippingLabel string `json:"shipping_label"`
+
+	// WhiteLabel True when the organization has white label today; the storefront then hides its "on the Arena Sold Out platform" footer.
+	WhiteLabel *bool `json:"white_label,omitempty"`
 }
 
 // ShopPublicVariant A variant on the storefront.
@@ -20201,6 +20327,24 @@ type PostV1AdminBillingRateOverrideCloseParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// GetV1AdminBillingWhiteLabelParams defines parameters for GetV1AdminBillingWhiteLabel.
+type GetV1AdminBillingWhiteLabelParams struct {
+	// OrgId Only periods of this organization.
+	OrgId *openapi_types.UUID `form:"org_id,omitempty" json:"org_id,omitempty"`
+}
+
+// PostV1AdminBillingWhiteLabelParams defines parameters for PostV1AdminBillingWhiteLabel.
+type PostV1AdminBillingWhiteLabelParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log and on the period.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminBillingWhiteLabelEndParams defines parameters for PostV1AdminBillingWhiteLabelEnd.
+type PostV1AdminBillingWhiteLabelEndParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log and on the period.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // PostV1AdminCustomerImportsParams defines parameters for PostV1AdminCustomerImports.
 type PostV1AdminCustomerImportsParams struct {
 	// XAdminReason Human-readable business reason for the admin write (audit trail).
@@ -21776,6 +21920,12 @@ type PostV1AdminBillingRateOverridesJSONRequestBody = BillingCreateRateOverrideR
 
 // PostV1AdminBillingRateOverrideCloseJSONRequestBody defines body for PostV1AdminBillingRateOverrideClose for application/json ContentType.
 type PostV1AdminBillingRateOverrideCloseJSONRequestBody = BillingCloseRateOverrideRequest
+
+// PostV1AdminBillingWhiteLabelJSONRequestBody defines body for PostV1AdminBillingWhiteLabel for application/json ContentType.
+type PostV1AdminBillingWhiteLabelJSONRequestBody = BillingCreateWhiteLabelRequest
+
+// PostV1AdminBillingWhiteLabelEndJSONRequestBody defines body for PostV1AdminBillingWhiteLabelEnd for application/json ContentType.
+type PostV1AdminBillingWhiteLabelEndJSONRequestBody = BillingEndWhiteLabelRequest
 
 // PostV1AdminCustomerImportsJSONRequestBody defines body for PostV1AdminCustomerImports for application/json ContentType.
 type PostV1AdminCustomerImportsJSONRequestBody = CreateCustomerImportRequest

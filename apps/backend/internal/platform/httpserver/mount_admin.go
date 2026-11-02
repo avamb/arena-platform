@@ -39,6 +39,7 @@ func (s *Server) mountBillingRoutes(r chi.Router) {
 		pr.Get("/organizations/{org_id}/billing/invoices", s.handleListOrgInvoices)
 		pr.Get("/organizations/{org_id}/billing/charges", s.handleListOrgCharges)
 		pr.Get("/organizations/{org_id}/billing/events/{event_id}/summary", s.handleGetEventBillingSummary)
+		pr.Get("/organizations/{org_id}/billing/white-label", s.handleGetOrgWhiteLabel)
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "billing.admin", "billing")
@@ -111,6 +112,9 @@ func (s *Server) mountBillingAdminRoutes(r chi.Router) {
 		pr.Delete("/admin/billing/rate-overrides/{id}", func(w http.ResponseWriter, r *http.Request) { h().HandleDeleteRateOverride(w, r) })
 		pr.Get("/admin/billing/accounts", func(w http.ResponseWriter, r *http.Request) { h().HandleListAccounts(w, r) })
 		pr.Post("/admin/billing/accounts/{account_id}/terms", func(w http.ResponseWriter, r *http.Request) { h().HandleCreateAccountTerms(w, r) })
+		pr.Get("/admin/billing/white-label", func(w http.ResponseWriter, r *http.Request) { h().HandleListWhiteLabel(w, r) })
+		pr.Post("/admin/billing/white-label", func(w http.ResponseWriter, r *http.Request) { h().HandleCreateWhiteLabel(w, r) })
+		pr.Post("/admin/billing/white-label/{id}/end", func(w http.ResponseWriter, r *http.Request) { h().HandleEndWhiteLabel(w, r) })
 	})
 }
 

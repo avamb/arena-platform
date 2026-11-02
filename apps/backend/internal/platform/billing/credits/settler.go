@@ -76,6 +76,11 @@ func (s *Settler) Settle(ctx context.Context, q *gen.Queries, ev gen.BillableEve
 	if ch.AmountMinor <= 0 || ch.ReversalOf != nil {
 		return nil
 	}
+	// Credit packs pay for tickets, never for a white label month (spec
+	// 08_architecture/52): it always goes on the invoice.
+	if ch.RuleType == string(billing.RuleSubscription) {
+		return nil
+	}
 	if err := q.LockBillingAccount(ctx, ch.AccountID); err != nil {
 		return fmt.Errorf("credits: lock account %s: %w", ch.AccountID, err)
 	}

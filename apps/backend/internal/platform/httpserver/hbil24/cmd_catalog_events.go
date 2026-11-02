@@ -59,6 +59,9 @@ type catalogAction struct {
 	// "text"), set by handleBil24GetAllActions from one batched read. Empty
 	// reads as "text".
 	descriptionFormat string
+	// whiteLabel is true when the action's brand has white label today
+	// (spec 08_architecture/52).
+	whiteLabel bool
 }
 
 // loadActionEvents builds the whole actionEventList subtree for orgID, keyed
