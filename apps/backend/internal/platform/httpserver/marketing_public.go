@@ -179,6 +179,7 @@ func writeMarketingPage(w http.ResponseWriter, locale, state, orgName, action st
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
+	//nolint:gosec // G705 false positive: lang comes from the marketingPageTexts allowlist and every other value is escaped above
 	_, _ = fmt.Fprintf(w, `<!DOCTYPE html><html lang="%s" dir="%s"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>%s</title>`+
 		`<style>body{font-family:Arial,Helvetica,sans-serif;background:#f2f4f5;color:#22333D;margin:0;padding:48px 16px}main{max-width:480px;margin:0 auto;background:#fff;border-radius:8px;padding:28px}button{background:#4f46e5;color:#fff;border:0;border-radius:6px;padding:12px 22px;font-size:15px;cursor:pointer}</style>`+
 		`</head><body><main><h1>%s</h1>%s</main></body></html>`, lang, dir, html.EscapeString(t[0]), html.EscapeString(t[0]), body)
