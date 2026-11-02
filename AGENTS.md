@@ -1727,7 +1727,13 @@ entries short and factual.
   (`now() + interval '1 minute'`), never a plain `now()`: on a fast runner
   the whole edit flow fits in one second and `TestBotE2E_WizardCreatesAnEvent`
   failed three times in a row on CI (2026-09-29) while passing in earlier,
-  slower runs.
+  slower runs. Since 2026-11-02 the check runs when the preview of «Publish
+  changes» is DRAWN (`wizardRender` -> `renderCheckedPreview`,
+  `eventbot/wizard_conflict.go`, naming what changed through
+  `elsewhereChanges`) and again when the save starts (`saveGate`); a failed
+  read never saves (retry / save anyway), on the preview it is only a note.
+  So an e2e that moves `updated_at` before «Publish changes» sees the
+  warning on the `wz:publish` press, not only after `wz:publish:go`.
 - **`cmd/arena-bot` (package `internal/platform/eventbot`) is the fourth
   binary of the image and polls Telegram with `github.com/go-telegram/bot`;
   handlers of DIFFERENT accounts run concurrently, one account's updates run

@@ -14,7 +14,8 @@ package eventbot
 //     differs from the loaded one (Draft.bundleDescription), and a press on the
 //     button leaves both untouched. The sync below keeps that true after a save
 //     and also brings the screens up to the saved text.
-//  2. The «changed elsewhere» check (wizardSave compares updated_at) blocking
+//  2. The «changed elsewhere» check (wizard_conflict.go compares updated_at
+//     when the preview opens and when the save starts) blocking
 //     the organizer because of their OWN save. The sync takes the new
 //     updated_at, but only when the saved description is the one thing that
 //     differs from what was loaded (name, age, promoter, poster as loaded);
@@ -85,6 +86,10 @@ func editorSyncData(d *Draft, data string) bool {
 		return true
 	case data == "e:home":
 		return d.Step == stXDescription
+	case data == "resume":
+		// The preview checks for a change made elsewhere when it is drawn: a
+		// save in the mini app must be adopted first, or it reads as one.
+		return d.Step == stPreview
 	}
 	return false
 }
