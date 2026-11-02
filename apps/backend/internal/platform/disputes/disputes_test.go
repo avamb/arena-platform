@@ -233,3 +233,18 @@ func TestSettingsThreshold(t *testing.T) {
 		t.Error("a disabled rule advises nothing")
 	}
 }
+
+// A label longer than its column wraps onto its own lines, so the row is as
+// tall as the label and the value never sits under the label's text.
+func TestReportKV_LongLabelWraps(t *testing.T) {
+	r := newReport("t", labelsFor("en"), 0, "")
+	y0 := r.doc.GetY()
+	r.kv([][2]string{{"Short", "1"}})
+	short := r.doc.GetY() - y0
+	y1 := r.doc.GetY()
+	r.kv([][2]string{{labelsFor("en").get("prior_orders"), "2"}})
+	long := r.doc.GetY() - y1
+	if long < 2*short {
+		t.Fatalf("a long label should take at least two lines: short row %.1f, long row %.1f", short, long)
+	}
+}

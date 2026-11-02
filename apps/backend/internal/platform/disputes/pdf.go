@@ -154,15 +154,24 @@ func (r *report) kv(rows [][2]string) bool {
 		}
 		r.doc.SetFont(pdfFamily, "", bodySize)
 		lines := r.doc.SplitText(row[1], contentW-labelW)
-		h := float64(len(lines)) * lineH
+		// A long label wraps inside its column instead of running into the
+		// value (staging run 2026-11-02: "Earlier undisputed orders...").
+		r.doc.SetFont(pdfFamily, "B", bodySize)
+		labels := r.doc.SplitText(row[0], labelW-8)
+		n := len(lines)
+		if len(labels) > n {
+			n = len(labels)
+		}
+		h := float64(n) * lineH
 		if !r.room(h) {
 			r.truncated(len(rows) - i)
 			return false
 		}
 		y := r.doc.GetY()
-		r.doc.SetFont(pdfFamily, "B", bodySize)
-		r.doc.SetXY(marginX, y)
-		r.doc.CellFormat(labelW, lineH, row[0], "", 0, "L", false, 0, "")
+		for j, ln := range labels {
+			r.doc.SetXY(marginX, y+float64(j)*lineH)
+			r.doc.CellFormat(labelW, lineH, ln, "", 0, "L", false, 0, "")
+		}
 		r.doc.SetFont(pdfFamily, "", bodySize)
 		for j, ln := range lines {
 			r.doc.SetXY(marginX+labelW, y+float64(j)*lineH)
