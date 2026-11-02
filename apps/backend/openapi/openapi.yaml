@@ -9022,6 +9022,205 @@ components:
             name, a text typed by a person or an id of an entity here.
           additionalProperties: true
 
+    AnalyticsContactCodesRequest:
+      type: object
+      required: [twenty_person_ids]
+      additionalProperties: false
+      description: Body of POST /v1/admin/analytics/contact-codes.
+      properties:
+        twenty_person_ids:
+          type: array
+          minItems: 1
+          maxItems: 500
+          description: |
+            Ids of the CRM (Twenty) people to issue codes for: 1 to 500 distinct
+            ids, each 1 to 64 characters of letters, digits and `_ . : -`.
+            Repeated ids are answered once.
+          items:
+            type: string
+            description: A CRM person id.
+
+    AnalyticsContactCode:
+      type: object
+      required: [twenty_person_id, code]
+      description: The code of one CRM contact.
+      properties:
+        twenty_person_id:
+          type: string
+          description: The CRM person id the code belongs to, as sent.
+        code:
+          type: string
+          description: The 10-character `cid` code to append to links to the website.
+          example: "x7k2qpm3ab"
+
+    AnalyticsContactCodesResponse:
+      type: object
+      required: [codes]
+      description: Answer of POST /v1/admin/analytics/contact-codes.
+      properties:
+        codes:
+          type: array
+          description: One entry per distinct id, in the order the ids were sent.
+          items:
+            $ref: "#/components/schemas/AnalyticsContactCode"
+
+    AnalyticsTouch:
+      type: object
+      description: |
+        Where a visit came from. Every field is left out when unknown; an empty
+        object means the person has no touch yet.
+      properties:
+        source:
+          type: string
+          description: "`email`, a `utm_source`, a search engine, `direct` or a referrer host."
+        medium:
+          type: string
+          description: "`email`, a `utm_medium`, `organic` or `referral`."
+        campaign:
+          type: string
+          description: The `utm_campaign` of the visit.
+        ref_host:
+          type: string
+          description: Host the visitor came from.
+        kind:
+          type: string
+          description: "How the touch was recognised: `email_click`, `utm`, `organic` or `referral`."
+        at:
+          type: string
+          format: date-time
+          description: When the touch happened.
+
+    AnalyticsArticleRead:
+      type: object
+      required: [path, at, seconds]
+      description: A blog article the person read (engaged for at least 30 seconds and scrolled at least 75 percent).
+      properties:
+        path:
+          type: string
+          description: Site path of the article without the language prefix.
+        at:
+          type: string
+          format: date-time
+          description: When the person last read it.
+        seconds:
+          type: integer
+          description: Engaged seconds in that visit.
+
+    AnalyticsProfile:
+      type: object
+      required:
+        - person_id
+        - twenty_person_id
+        - email
+        - stage
+        - first_touch
+        - last_touch
+        - first_source
+        - last_source
+        - last_seen_at
+        - visits_30d
+        - engaged_minutes_30d
+        - articles
+        - milestones
+        - gmv_30d
+        - activity_score
+        - activity_explanation
+        - timeline_url
+        - changed_at
+      description: |
+        One person's profile as the CRM sync needs it (spec 50, section 9).
+        Built hourly by the analytics rollup; the e-mail is looked up while the
+        request is served.
+      properties:
+        person_id:
+          type: string
+          format: uuid
+          description: The person in the analytics schema.
+        twenty_person_id:
+          type: [string, "null"]
+          description: The CRM person id; null until the person is tied to a CRM contact.
+        email:
+          type: [string, "null"]
+          description: The person's address from their user or organizer application; null when none is known.
+        stage:
+          type: string
+          description: "`lead`, `applicant`, `organizer` or `selling`."
+        first_touch:
+          allOf:
+            - $ref: "#/components/schemas/AnalyticsTouch"
+          description: How the person first reached us.
+        last_touch:
+          allOf:
+            - $ref: "#/components/schemas/AnalyticsTouch"
+          description: How the person last reached us.
+        first_source:
+          type: string
+          description: Short text of the first touch for a CRM field (`email / outreach`, `google`); empty when none.
+        last_source:
+          type: string
+          description: Short text of the last touch for a CRM field; empty when none.
+        last_seen_at:
+          type: [string, "null"]
+          format: date-time
+          description: Time of the person's latest recorded event; null when there is none.
+        visits_30d:
+          type: integer
+          description: Visits (sessions) in the last 30 UTC days.
+        engaged_minutes_30d:
+          type: integer
+          description: Engaged minutes in the last 30 UTC days.
+        articles:
+          type: array
+          description: Articles read, newest first, at most 20.
+          items:
+            $ref: "#/components/schemas/AnalyticsArticleRead"
+        milestones:
+          type: object
+          description: |
+            Milestones reached, name to time: `application_started`,
+            `application_submitted`, `application_approved`,
+            `application_rejected`, `org_created`, `payment_connected`,
+            `first_event_created`, `first_event_published`, `first_sale`,
+            `sales_100`, `member_invited`. A key is present only once reached.
+          additionalProperties:
+            type: string
+            format: date-time
+            description: When the milestone was reached.
+        gmv_30d:
+          type: object
+          description: Currency code to minor units sold in the last 30 days; empty when nothing sold.
+          additionalProperties:
+            type: integer
+            format: int64
+            description: Minor units sold in that currency.
+        activity_score:
+          type: integer
+          description: The activity index (visits, articles, price page, e-mail clicks, application steps, halved every 14 days).
+        activity_explanation:
+          type: string
+          description: One line that explains the index, for example `article x1 = 3.0 + visit x2 = 1.8 (half-life 14 days)`.
+        timeline_url:
+          type: [string, "null"]
+          description: Link to the person's timeline in the admin console (`/analytics/people/<person_id>`); null when the console address is not configured.
+        changed_at:
+          type: string
+          format: date-time
+          description: When the profile last changed; the client keeps the greatest as its next `changed_since`.
+
+    AnalyticsProfilesResponse:
+      type: object
+      required: [profiles, next_cursor]
+      description: One page of changed profiles.
+      properties:
+        profiles:
+          type: array
+          description: Profiles ordered by `changed_at`, then `person_id`.
+          items:
+            $ref: "#/components/schemas/AnalyticsProfile"
+        next_cursor:
+          type: [string, "null"]
+          description: Send as `after` to get the next page; null on the last page.
+
     PageTrackRequest:
       type: object
       required: [kind]
@@ -26772,6 +26971,152 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "401":
           description: Missing or invalid JWT Authorization header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/analytics/contact-codes:
+    post:
+      operationId: postV1AdminAnalyticsContactCodes
+      summary: Admin - issue contact codes for CRM contacts (product analytics)
+      description: |
+        Returns one `cid` code per CRM person id (spec 50, section 3). The
+        mailing workflow asks for the codes just before it sends and appends
+        `?cid=<code>` to every link to our website, so a click can be tied to
+        the contact. A contact that already has a code gets the same one back,
+        so every mailing to it carries one stable code. New codes are 10
+        characters of `abcdefghjkmnpqrstuvwxyz23456789`.
+
+        At most 500 ids per call; the answer holds one entry per distinct id, in
+        the order sent. Requires JWT, `superadmin.read` and `X-Admin-Reason`.
+        The call is audited (`v1.admin.analytics.contact_codes.issue`) on the
+        transaction that issues the codes; without a durable audit writer
+        nothing is changed and the answer is 503.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the call (recorded in the audit log).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyticsContactCodesRequest"
+      responses:
+        "200":
+          description: One code per contact.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsContactCodesResponse"
+        "400":
+          description: The body is not a readable JSON object (`analytics.invalid_body`) or X-Admin-Reason is missing (`superadmin.missing_reason`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold superadmin.read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: 'The list is empty, longer than 500, or holds an id that is not 1 to 64 characters of letters, digits and `_ . : -` (`analytics.invalid_twenty_person_ids`).'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database or durable audit log unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/analytics/profiles:
+    get:
+      operationId: getV1AdminAnalyticsProfiles
+      summary: Admin - profiles that changed since a point in time (product analytics)
+      description: |
+        The feed the CRM sync pulls (spec 50, section 9): one entry per person
+        whose profile was rebuilt with a different result since `changed_since`
+        (inclusive), oldest change first. The e-mail address is resolved when
+        the request is served, from the person's user or organizer application,
+        and is never stored in the analytics schema; a person with no known
+        address is still listed (the CRM sync skips it unless it has a
+        `twenty_person_id`).
+
+        Pages are keyset pages: send the `next_cursor` of a page as `after`
+        together with the same `changed_since` to get the next one; `null`
+        means the last page. A client keeps the greatest `changed_at` it has
+        seen as its next `changed_since`. Because the bound is inclusive the
+        same profile can come twice, so a client must write idempotently.
+
+        Requires JWT and `superadmin.read`.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: changed_since
+          in: query
+          description: RFC 3339 time. Only profiles changed at or after it are returned; absent means all.
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          description: Page size, 1 to 200 (default 100).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: after
+          in: query
+          description: Opaque cursor, the `next_cursor` of the previous page.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of changed profiles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsProfilesResponse"
+        "400":
+          description: Unreadable `changed_since` (`analytics.invalid_changed_since`), `limit` (`analytics.invalid_limit`) or `after` (`analytics.invalid_cursor`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold superadmin.read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
           content:
             application/json:
               schema:

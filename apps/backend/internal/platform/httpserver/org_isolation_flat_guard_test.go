@@ -203,6 +203,8 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/admin/geo/cities", flatPlatform, "superadmin or platform permission"},
 	{"POST", "/v1/admin/geo/countries", flatPlatform, "superadmin or platform permission"},
 	{"POST", "/v1/admin/impersonate", flatPlatform, "superadmin or platform permission"},
+	{"POST", "/v1/admin/analytics/contact-codes", flatPlatform, "superadmin.read + X-Admin-Reason, audited; CRM contact codes are platform-wide (hanalytics.AdminHandler)"},
+	{"GET", "/v1/admin/analytics/profiles", flatPlatform, "superadmin.read; platform-wide profiles for the CRM sync (hanalytics.AdminHandler)"},
 	// /v1/admin/billing/*  (flatPlatform): billing.admin AND a platform superadmin
 	{"GET", "/v1/admin/billing/accounts", flatPlatform, "billing.admin and platform superadmin"},
 	{"POST", "/v1/admin/billing/accounts/{account_id}/terms", flatPlatform, "billing.admin and platform superadmin"},

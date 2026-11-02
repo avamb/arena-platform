@@ -213,9 +213,14 @@ UPDATE analytics.profiles
 	return true, err
 }
 
+// Querier is the part of a pool or a transaction that runs a query.
+type Querier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
 // loadPersonEvents reads every non-suspect event of the person through their
 // identities, oldest first, and the time of the latest one.
-func loadPersonEvents(ctx context.Context, tx pgx.Tx, personID uuid.UUID) ([]Ev, time.Time, error) {
+func loadPersonEvents(ctx context.Context, tx Querier, personID uuid.UUID) ([]Ev, time.Time, error) {
 	rows, err := tx.Query(ctx, `
 SELECT e.at, e.surface, e.name, e.props
   FROM analytics.identities i

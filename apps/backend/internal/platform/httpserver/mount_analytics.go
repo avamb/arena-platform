@@ -76,4 +76,27 @@ func (s *Server) mountAnalyticsRoutes(r chi.Router) {
 		pr.Use(auth.Middleware(s.authProvider(), auth.MiddlewareOptions{Logger: s.logger}))
 		pr.Post("/me/t", h.HandleMe)
 	})
+	s.mountAnalyticsAdminRoutes(r)
+}
+
+// mountAnalyticsAdminRoutes mounts the CRM side (spec 50 section 9): contact
+// codes for the mailing and the changed profiles for the n8n sync. Both are
+// superadmin-only (superadmin.read); issuing codes also needs X-Admin-Reason
+// and is audited on its own transaction.
+func (s *Server) mountAnalyticsAdminRoutes(r chi.Router) {
+	// Always mounted: without a database the handler answers 503, so the
+	// routes stay part of the documented contract (the drift test builds a
+	// server with no pool).
+	base := ""
+	if s.cfg != nil {
+		base = s.cfg.AppPublicURL
+	}
+	h := hanalytics.NewAdmin(hanalytics.AdminOptions{
+		Pool: s.pgxPool, Audit: s.audit, TimelineBaseURL: base, Logger: s.logger,
+	})
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "superadmin.read", "analytics")
+		pr.Post("/admin/analytics/contact-codes", h.HandleContactCodes)
+		pr.Get("/admin/analytics/profiles", h.HandleProfiles)
+	})
 }
