@@ -141,6 +141,7 @@ api service's internal address) as the linked user, so it needs the API's
 |---|---|---|
 | `EVENTS_TELEGRAM_BOT_TOKEN` | bot | the bot's token (secret) |
 | `EVENTS_TELEGRAM_BOT_USERNAME` | api, worker, bot | `ArenaEventsCentrBot` — the deep links in invitation e-mails |
+| `ANALYTICS_TG_HASH_SECRET` | worker, bot | the SAME random secret (secret) on both: the key of the hash that stands for a Telegram id in product analytics. Unset: the bot writes no `tg` analytics events and the rollup skips the Telegram join, each logs one warning at start |
 | `BOT_SERVICE_TOKEN` | api, bot | shared random secret of `POST /v1/bot/invitations/accept`; the route answers 503 while unset |
 | `TELEGRAM_MINIAPP_SECRET_KEY` | api | the DERIVED key Telegram signs Mini App launch data with (64 hex characters, never the bot token): `POST /v1/auth/telegram-miniapp` answers 503 while unset. How to make it: below the table |
 | `BOT_ARENA_API_URL` | bot | `http://<api service>:8080` |
@@ -353,6 +354,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `MEDIA_SIGNING_SECRET` (same value on api and worker) | ✅ with a media backend | ✅ with a media backend | — | — |
 | `MEDIA_VARIANT_WORKERS` (1..8, default 1: how many resized copies of a picture, `GET /v1/media-files/{id}?w=`, one process renders at once. A render of a 20 MP photo peaks at ~230 MB, so keep 1 unless the container has memory to spare; the `media.render_variants` job in the worker uses the same limit) | ● | ● | — | — |
 | `BOT_SERVICE_TOKEN` | ● | — | ● | — |
+| `ANALYTICS_TG_HASH_SECRET` (same value on worker and bot) | — | ● | ● | — |
 | `TELEGRAM_MINIAPP_SECRET_KEY` | ● | — | — | — |
 | `EVENTS_TELEGRAM_BOT_USERNAME` | ● | ● | — | — |
 | `METRICS_BEARER_TOKEN` | ● | ● | ● | — |

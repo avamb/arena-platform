@@ -534,6 +534,14 @@ type Config struct {
 	// be able to speak as the bot. Empty leaves the route answering 503. How
 	// to derive it: deploy/DOKPLOY.md section 2.6.
 	TelegramMiniappSecretKey string `env:"TELEGRAM_MINIAPP_SECRET_KEY" required:"false" default:""`
+	// AnalyticsTGHashSecret is the key of analytics.TGHasher, the keyed hash
+	// that stands for a Telegram id in product analytics (spec 50 section 3).
+	// arena-bot and arena-worker MUST hold the same value; empty disables the
+	// "tg" identifier (the bot writes no tg events, the rollup skips the
+	// Telegram join) and each binary warns once at start. Deliberately not
+	// JWT_SIGNING_SECRET: the worker never receives that one, and a key shared
+	// with token signing should not also be an analytics hashing key.
+	AnalyticsTGHashSecret string `env:"ANALYTICS_TG_HASH_SECRET" required:"false" default:""`
 	// BotSelfOnboardingEnabled (read by arena-bot) lets a stranger who opens
 	// the event-center bot apply for an organization instead of being told
 	// to ask for an invitation. It needs ONBOARDING_ENABLED and
@@ -870,6 +878,7 @@ func LoadFor(role Role) (*Config, error) {
 		EventsTelegramBotToken:      getenv("EVENTS_TELEGRAM_BOT_TOKEN", ""),
 		EventsTelegramBotUsername:   getenv("EVENTS_TELEGRAM_BOT_USERNAME", ""),
 		BotServiceToken:             getenv("BOT_SERVICE_TOKEN", ""),
+		AnalyticsTGHashSecret:       getenv("ANALYTICS_TG_HASH_SECRET", ""),
 		TelegramMiniappSecretKey:    strings.TrimSpace(getenv("TELEGRAM_MINIAPP_SECRET_KEY", "")),
 		BillingStripeSecretKey:      getenv("BILLING_STRIPE_SECRET_KEY", ""),
 		BillingStripeWebhookSecret:  getenv("BILLING_STRIPE_WEBHOOK_SECRET", ""),

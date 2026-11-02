@@ -3,6 +3,7 @@ package analytics
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -26,6 +27,42 @@ type linkResult struct {
 	personID uuid.UUID
 	created  bool
 	merged   int
+	// changed: the person is new, was merged, or got a new identity, so its
+	// sessions and profile must be recomputed.
+	changed bool
+}
+
+// errMergeConflict is returned, before anything is written, when a link would
+// put two different users or two different CRM contacts into one person.
+var errMergeConflict = errors.New("analytics: link would join two different users or CRM contacts")
+
+// attributeConflict reports why req cannot be applied to the people found:
+// more than one distinct user id, or more than one distinct CRM contact,
+// among them and the request. It returns "" when the link is safe.
+func attributeConflict(found []personRow, req linkReq) string {
+	users := map[uuid.UUID]bool{}
+	twenties := map[string]bool{}
+	for _, p := range found {
+		if p.userID != nil {
+			users[*p.userID] = true
+		}
+		if p.twenty != nil {
+			twenties[*p.twenty] = true
+		}
+	}
+	if req.userID != nil {
+		users[*req.userID] = true
+	}
+	if req.twentyID != "" {
+		twenties[req.twentyID] = true
+	}
+	switch {
+	case len(users) > 1:
+		return fmt.Sprintf("%d distinct user ids", len(users))
+	case len(twenties) > 1:
+		return fmt.Sprintf("%d distinct CRM contacts", len(twenties))
+	}
+	return ""
 }
 
 type personRow struct {
@@ -114,6 +151,10 @@ SELECT p.id, p.twenty_person_id, p.user_id, p.first_touch, p.last_touch, p.creat
 		return linkResult{}, err
 	}
 
+	if why := attributeConflict(found, req); why != "" {
+		return linkResult{}, fmt.Errorf("%w: %s (people %d, first identity %s)", errMergeConflict, why, len(found), req.idents[0].kind)
+	}
+
 	res := linkResult{}
 	at := req.at
 	if at.IsZero() {
@@ -127,6 +168,7 @@ SELECT p.id, p.twenty_person_id, p.user_id, p.first_touch, p.last_touch, p.creat
 			return linkResult{}, fmt.Errorf("analytics: create person: %w", err)
 		}
 		res.created = true
+		res.changed = true
 	} else {
 		target = found[0]
 	}
@@ -159,6 +201,7 @@ SELECT p.id, p.twenty_person_id, p.user_id, p.first_touch, p.last_touch, p.creat
 			return linkResult{}, fmt.Errorf("analytics: delete merged person: %w", err)
 		}
 		res.merged++
+		res.changed = true
 	}
 	if twenty == nil && req.twentyID != "" {
 		t := req.twentyID
@@ -181,12 +224,21 @@ UPDATE analytics.people
 		return linkResult{}, fmt.Errorf("analytics: update person: %w", err)
 	}
 	for _, id := range req.idents {
-		if _, err := tx.Exec(ctx, `
+		var inserted bool
+		err := tx.QueryRow(ctx, `
 INSERT INTO analytics.identities (kind, value, person_id, seen_at)
 VALUES ($1, $2, $3, $4)
 ON CONFLICT (kind, value) DO UPDATE SET seen_at = EXCLUDED.seen_at
- WHERE analytics.identities.seen_at < EXCLUDED.seen_at`, id.kind, id.value, target.id, at); err != nil {
+ WHERE analytics.identities.seen_at < EXCLUDED.seen_at
+RETURNING (xmax = 0)`, id.kind, id.value, target.id, at).Scan(&inserted)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue // already known and not newer
+		}
+		if err != nil {
 			return linkResult{}, fmt.Errorf("analytics: record identity: %w", err)
+		}
+		if inserted {
+			res.changed = true
 		}
 	}
 	return res, nil

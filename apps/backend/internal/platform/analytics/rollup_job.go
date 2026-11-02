@@ -40,6 +40,11 @@ func ErasePerson(ctx context.Context, db interface {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Wait for a running rollup (and keep it out) until this transaction ends,
+	// so a concurrent join cannot restore what is deleted below.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, RollupLockKey); err != nil {
+		return res, fmt.Errorf("analytics: erase lock: %w", err)
+	}
 	pid := personID.String()
 	rows, err := tx.Query(ctx, `SELECT kind, value FROM analytics.identities WHERE person_id = $1::uuid`, pid)
 	if err != nil {
@@ -109,11 +114,15 @@ func NewPGRollupScheduler(pool *pgxpool.Pool) *PGRollupScheduler {
 	return &PGRollupScheduler{pool: pool}
 }
 
-// ScheduleNext inserts a pending job due at `at`.
+// ScheduleNext inserts a pending job due at `at`, unless one is already
+// pending (the running job itself is claimed), so a retry or a restart never
+// forks a second chain of runs.
 func (s *PGRollupScheduler) ScheduleNext(ctx context.Context, at time.Time) error {
 	if _, err := s.pool.Exec(ctx, `
 INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
-VALUES ($1, '{}', 3, 'pending', $2)`, RollupJobType, at); err != nil {
+SELECT $1, '{}', 3, 'pending', $2
+WHERE  NOT EXISTS (SELECT 1 FROM worker_jobs WHERE job_type = $1 AND status = 'pending')`,
+		RollupJobType, at); err != nil {
 		return fmt.Errorf("analytics: schedule next rollup: %w", err)
 	}
 	return nil
@@ -125,13 +134,18 @@ type RollupHandlerOptions struct {
 	Scheduler RollupScheduler
 	Logger    *slog.Logger
 	Interval  time.Duration
+	// Failures counts a failed run and every person that could not be
+	// recomputed (arena_analytics_rollup_failed_total); nil is fine.
+	Failures Counter
 	// Now nil means time.Now.
 	Now func() time.Time
 }
 
-// NewRollupHandler returns the handler of RollupJobType. Like the partitions
-// job it queues the next run even when this run fails, so one bad
-// hour cannot stop the cadence; the failure is returned afterwards.
+// NewRollupHandler returns the handler of RollupJobType. The next run is
+// queued first, and the handler returns nil even when the run failed: the
+// failure is logged and counted and the next run retries it, so a worker retry
+// never forks a second chain (the scheduler also refuses to queue a run while
+// one is queued). Only a failure to queue the next run is returned.
 func NewRollupHandler(o RollupHandlerOptions) func(ctx context.Context, payload []byte) error {
 	if o.Logger == nil {
 		o.Logger = slog.Default()
@@ -142,39 +156,48 @@ func NewRollupHandler(o RollupHandlerOptions) func(ctx context.Context, payload 
 	if o.Now == nil {
 		o.Now = time.Now
 	}
+	fail := func(n float64) {
+		if o.Failures != nil {
+			o.Failures.Add(n)
+		}
+	}
 	return func(ctx context.Context, _ []byte) error {
-		res, err := o.Rollup.Run(ctx)
 		if o.Scheduler != nil {
-			if serr := o.Scheduler.ScheduleNext(ctx, o.Now().Add(o.Interval)); serr != nil && err == nil {
-				err = serr
+			if err := o.Scheduler.ScheduleNext(ctx, o.Now().Add(o.Interval)); err != nil {
+				o.Logger.Error("analytics rollup: next run not scheduled", "error", err.Error())
+				return err
 			}
 		}
-		if err != nil {
-			return err
+		res, err := o.Rollup.Run(ctx)
+		switch {
+		case err != nil:
+			fail(1)
+			o.Logger.Error("analytics rollup failed, retrying at the next run", "error", err.Error())
+		case res.Skipped:
+			o.Logger.Info("analytics rollup skipped: another run holds the lock")
+		default:
+			if res.PersonFailures > 0 {
+				fail(float64(res.PersonFailures))
+			}
+			o.Logger.Info("analytics rollup complete",
+				"people", res.People, "recomputed", res.Recomputed, "full_pass", res.FullPass,
+				"created", res.PeopleCreated, "merged", res.PeopleMerged, "merge_conflicts", res.MergeConflicts,
+				"person_failures", res.PersonFailures, "sessions_written", res.SessionsWritten,
+				"profiles_changed", res.ProfilesChanged, "flow_rows", res.FlowRows)
 		}
-		o.Logger.Info("analytics rollup complete",
-			"people", res.People, "created", res.PeopleCreated, "merged", res.PeopleMerged,
-			"sessions_written", res.SessionsWritten, "profiles_changed", res.ProfilesChanged,
-			"flow_rows", res.FlowRows)
 		return nil
 	}
 }
 
 // ScheduleRollupJob enqueues the first run at arena-worker startup unless one
-// is already pending or claimed. Every later run is self-scheduled.
+// is already pending or claimed, in ONE statement, so two workers starting
+// together cannot both insert. Every later run is self-scheduled.
 func ScheduleRollupJob(ctx context.Context, pool *pgxpool.Pool) error {
-	var cnt int64
-	if err := pool.QueryRow(ctx,
-		`SELECT count(*) FROM worker_jobs WHERE job_type = $1 AND status IN ('pending', 'claimed')`,
-		RollupJobType).Scan(&cnt); err != nil {
-		return fmt.Errorf("analytics: check initial rollup job: %w", err)
-	}
-	if cnt > 0 {
-		return nil
-	}
-	if _, err := pool.Exec(ctx,
-		`INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
-		 VALUES ($1, '{}', 3, 'pending', now())`, RollupJobType); err != nil {
+	if _, err := pool.Exec(ctx, `
+INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
+SELECT $1, '{}', 3, 'pending', now()
+WHERE  NOT EXISTS (SELECT 1 FROM worker_jobs WHERE job_type = $1 AND status IN ('pending', 'claimed'))`,
+		RollupJobType); err != nil {
 		return fmt.Errorf("analytics: enqueue initial rollup job: %w", err)
 	}
 	return nil

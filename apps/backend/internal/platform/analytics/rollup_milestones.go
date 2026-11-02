@@ -14,8 +14,9 @@ import (
 // It is READ-ONLY on them (spec 50 section 1, decision 3): nothing in a money
 // or onboarding path writes analytics, and nothing here writes back.
 //
-// The person's applications are the ones whose e-mail hashes to one of their
-// email_sha256 identities. Their organizations are the organizations an
+// The person's applications are the ones whose CONFIRMED e-mail hashes to
+// one of their email_sha256 identities (starting an application is public, so
+// an unconfirmed one proves nothing about its address). Their organizations are the organizations an
 // approved application created plus those where the user is an active owner
 // (membership role org_admin). A manager invited later is not an owner, so a
 // sale of the organization is not credited to them.
@@ -46,7 +47,7 @@ SELECT min(created_at), min(submitted_at),
        min(reviewed_at) FILTER (WHERE status = 'rejected'),
        COALESCE(array_agg(org_id::text) FILTER (WHERE status = 'approved' AND org_id IS NOT NULL), '{}'::text[])
   FROM onboarding_applications
- WHERE purged_at IS NULL
+ WHERE purged_at IS NULL AND email_confirmed_at IS NOT NULL
    AND encode(sha256(convert_to(applicant_email, 'UTF8')), 'hex') = ANY($1)`, hashes).
 			Scan(&started, &submitted, &approved, &rejected, &appOrgs)
 		if err != nil {

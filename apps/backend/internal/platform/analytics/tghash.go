@@ -7,26 +7,21 @@ import (
 	"strconv"
 )
 
-// tgKeyLabel derives the hashing key from the platform's signing secret, so
-// the hash needs no new environment variable and a key leak elsewhere does
-// not unmask Telegram ids.
-const tgKeyLabel = "arena-analytics-tg"
-
 // TGHasher turns a Telegram user id into the identifier analytics stores for
 // a person who is not (yet) a linked platform user (spec 50 section 3):
 //
-//	key  = HMAC-SHA256(JWT_SIGNING_SECRET, "arena-analytics-tg")
-//	hash = hex(HMAC-SHA256(key, "tg:" + id))
+//	hash = hex(HMAC-SHA256(ANALYTICS_TG_HASH_SECRET, "tg:" + id))
 //
 // The raw Telegram id is never stored. The same function lets the rollup glue
 // a "tg" identity to an e-mail or a user when the person later links.
 type TGHasher struct{ key []byte }
 
-// NewTGHasher derives the key from the signing secret.
-func NewTGHasher(signingSecret string) *TGHasher {
-	m := hmac.New(sha256.New, []byte(signingSecret))
-	m.Write([]byte(tgKeyLabel))
-	return &TGHasher{key: m.Sum(nil)}
+// NewTGHasher keys the hash with the dedicated ANALYTICS_TG_HASH_SECRET
+// (the same value on arena-bot and arena-worker). It is deliberately not the
+// JWT signing secret: the worker never receives that one, and a key that also
+// signs tokens should not be an analytics hashing key.
+func NewTGHasher(secret string) *TGHasher {
+	return &TGHasher{key: []byte(secret)}
 }
 
 // Hash returns the 64-hex-character identifier of a Telegram id.

@@ -48,12 +48,18 @@ type Execer interface {
 
 // ForgetEmail deletes the e-mail identity of an address. onboarding.sweep
 // and the operator's purge call it when they erase an application's personal
-// data, on the same transaction (spec 50 section 11). Nothing else of the
+// data, on the same transaction (spec 50 section 11); q must be a transaction
+// (it takes a transaction-level advisory lock, the rollup's). Nothing else of the
 // person is touched: the visitor id and the history stay, only the link to
 // the address is cut.
 func ForgetEmail(ctx context.Context, q Execer, email string) error {
 	if strings.TrimSpace(email) == "" {
 		return nil
+	}
+	// Wait for a running rollup (and keep it out) until the caller's
+	// transaction ends: a join in flight must not put the hash back.
+	if _, err := q.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, RollupLockKey); err != nil {
+		return err
 	}
 	_, err := q.Exec(ctx,
 		`DELETE FROM analytics.identities WHERE kind = $1 AND value = $2`,
