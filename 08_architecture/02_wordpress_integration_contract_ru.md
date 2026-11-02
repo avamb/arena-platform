@@ -4,7 +4,7 @@
 
 ## Решение
 
-Для наших WordPress-сайтов основной путь миграции - новый нативный WordPress-плагин под новую платформу. Текущая интеграция Vino&Co на WordPress/WooCommerce/Bil24 используется как рабочий эталон поведения, edge cases и операционного опыта, но не как целевая архитектура.
+Для наших WordPress-сайтов основной путь миграции - новый нативный WordPress-плагин под новую платформу. Текущая интеграция client-1 на WordPress/WooCommerce/Bil24 используется как рабочий эталон поведения, edge cases и операционного опыта, но не как целевая архитектура.
 
 Bil24-compatible API остается полезным слоем для партнерской совместимости, rollback и внешних клиентов, которых нельзя быстро перевести. Для двух текущих сайтов, которые мы контролируем, основной путь - чистый новый плагин.
 
@@ -374,9 +374,9 @@ WooCommerce можно поддержать позже как compatibility modu
 
 Даже в WooCommerce mode платформа остается source of truth для inventory, order totals, payments и tickets.
 
-## Миграция текущей Vino&Co-интеграции
+## Миграция текущей client-1-интеграции
 
-Текущий Vino&Co проект используется как reference behavior:
+Текущий client-1 проект используется как reference behavior:
 
 - catalog sync behavior
 - отображение сеансов и ticket categories
@@ -466,6 +466,6 @@ POST /v1/tickets/{ticket_id}/cancel
 1. Первый вариант checkout: hosted checkout, embedded checkout или оба сразу?
 2. Нужны ли двум нашим сайтам WooCommerce order mirrors после миграции, или хватит отчетности платформы?
 3. Страницы мероприятий делаем через WordPress custom posts или некоторым сайтам достаточно embedded widget?
-4. Какие поля из текущих Vino&Co event pages нужно сохранить как editorial content?
-5. Какой второй подключенный сайт и совпадают ли у него checkout/reporting requirements с Vino&Co?
+4. Какие поля из текущих client-1 event pages нужно сохранить как editorial content?
+5. Какой второй подключенный сайт и совпадают ли у него checkout/reporting requirements с client-1?
 6. Какой payment provider включаем первым в платформенном payment layer?

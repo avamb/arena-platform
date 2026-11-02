@@ -1213,7 +1213,7 @@ The merchandise shop (spec `08_architecture/47_merch_shop_module_ru.md`) is a
 static app served by nginx, built from `apps/shop-page/Dockerfile` with the
 **repository root** as build context. It lives either on the platform host
 (`shop.arenasoldout.com/{org_slug}`, stand `shop-staging.arenasoldout.com`) or on
-the organizer's own domain (`shop.einatwinery.com`). The step-by-step release of one
+the organizer's own domain (`client4.example`). The step-by-step release of one
 organizer (DNS, opening the shop, payment channel, Telegram, 301) is in
 `docs/ops/shop_release_checklist_ru.md`.
 
@@ -1223,7 +1223,7 @@ organizer (DNS, opening the shop, payment channel, Telegram, 301) is in
 | Build arg | `VITE_API_BASE_URL` (origin of `arena-api`, no trailing slash; baked into the bundle and the CSP) |
 | Runtime | `nginx:1.27-alpine`, non-root, port `8080` |
 | Health endpoint | `GET /health` returns `200 ok` |
-| Static files | `public/robots.txt`, `public/sitemap.xml` (host `shop.einatwinery.com`: change both for another organizer) |
+| Static files | `public/robots.txt`, `public/sitemap.xml` (host `client4.example`: change both for another organizer) |
 | Unknown paths | 404 with the `index.html` body on an organizer's own domain; 301 for old Shopify addresses |
 
 ### 16.1 Variables

@@ -41,7 +41,7 @@ func TestPublic(t *testing.T) {
 	cases := map[string]bool{
 		"8.8.8.8":                true,
 		"2606:4700:4700::1111":   true,
-		"178.105.217.195":        true,
+		"9.9.9.9":                true,
 		"172.15.255.255":         true,
 		"172.32.0.1":             true,
 		"100.128.0.1":            true,

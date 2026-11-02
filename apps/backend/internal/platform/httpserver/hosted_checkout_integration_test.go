@@ -165,6 +165,9 @@ func newStubStripe(t *testing.T) *stubStripe {
 		}
 		s.sessions = append(s.sessions, form)
 		id := "cs_test_" + strings.ReplaceAll(uuid.New().String(), "-", "")[:20]
+		amount, _ := strconv.ParseInt(form.Get("line_items[0][price_data][unit_amount]"), 10, 64)
+		qty, _ := strconv.ParseInt(form.Get("line_items[0][quantity]"), 10, 64)
+		stubSessionCharges.Store(id, stubCharge{amount: amount * qty, currency: form.Get("line_items[0][price_data][currency]")})
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = fmt.Fprintf(w, `{"id":%q,"url":"https://checkout.stripe.test/c/pay/%s","payment_intent":null,"expires_at":%d}`,
 			id, id, time.Now().Add(31*time.Minute).Unix())
@@ -370,6 +373,8 @@ func newHostedOrgFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	return f
 }
 
+// cleanup sweeps every session of the fixture's event, so a test may add
+// sessions of its own (the per-buyer promo race uses a second date).
 func (f *hostedOrgFixture) cleanup() {
 	ctx := context.Background()
 	stmts := []struct {
@@ -378,15 +383,15 @@ func (f *hostedOrgFixture) cleanup() {
 	}{
 		{`UPDATE order_items SET ticket_id = NULL
 		   WHERE order_id IN (SELECT id FROM orders WHERE org_id = $1)`, f.orgID},
-		{`UPDATE tickets SET order_id = NULL WHERE session_id = $1`, f.sessionID},
-		{`DELETE FROM barcodes WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`, f.sessionID},
-		{`DELETE FROM delivery_jobs WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`, f.sessionID},
-		{`DELETE FROM ticket_credentials WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`, f.sessionID},
+		{`UPDATE tickets SET order_id = NULL WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1)`, f.eventID},
+		{`DELETE FROM barcodes WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1))`, f.eventID},
+		{`DELETE FROM delivery_jobs WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1))`, f.eventID},
+		{`DELETE FROM ticket_credentials WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1))`, f.eventID},
 		// ticket.deliver jobs are keyed by payload->>'ticket_id', so they must
 		// go BEFORE the tickets they name or nothing can find them again.
 		{`DELETE FROM worker_jobs WHERE payload->>'ticket_id' IN
-		   (SELECT id::text FROM tickets WHERE session_id = $1)`, f.sessionID},
-		{`DELETE FROM tickets WHERE session_id = $1`, f.sessionID},
+		   (SELECT id::text FROM tickets WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1))`, f.eventID},
+		{`DELETE FROM tickets WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1)`, f.eventID},
 		{`DELETE FROM outbox_events WHERE aggregate_id IN (SELECT id::text FROM orders WHERE org_id = $1)`, f.orgID},
 		{`DELETE FROM order_events WHERE order_id IN (SELECT id FROM orders WHERE org_id = $1)`, f.orgID},
 		{`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE org_id = $1)`, f.orgID},
@@ -402,21 +407,21 @@ func (f *hostedOrgFixture) cleanup() {
 		{`DELETE FROM worker_jobs WHERE payload->>'checkout_session_id' IN
 		   (SELECT id::text FROM checkout_sessions WHERE org_id = $1)`, f.orgID},
 		{`DELETE FROM worker_jobs WHERE payload->>'reservation_id' IN
-		   (SELECT id::text FROM reservations WHERE session_id = $1)`, f.sessionID},
+		   (SELECT id::text FROM reservations WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1))`, f.eventID},
 		// P2: a buyer consent references its checkout session.
 		{`DELETE FROM checkout_consents WHERE org_id = $1`, f.orgID},
 		// P3a: the terms renderings a consent names (they reference the org).
 		{`DELETE FROM legal_renderings WHERE org_id = $1`, f.orgID},
 		{`DELETE FROM checkout_sessions WHERE org_id = $1`, f.orgID},
-		{`DELETE FROM reservation_ga_items WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`, f.sessionID},
-		{`DELETE FROM reservation_seats WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`, f.sessionID},
-		{`DELETE FROM session_seats WHERE session_id = $1`, f.sessionID},
-		{`DELETE FROM reservations WHERE session_id = $1`, f.sessionID},
-		{`DELETE FROM inventory_ledger WHERE session_id = $1`, f.sessionID},
-		{`DELETE FROM ticket_tiers WHERE session_id = $1`, f.sessionID},
+		{`DELETE FROM reservation_ga_items WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1))`, f.eventID},
+		{`DELETE FROM reservation_seats WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1))`, f.eventID},
+		{`DELETE FROM session_seats WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1)`, f.eventID},
+		{`DELETE FROM reservations WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1)`, f.eventID},
+		{`DELETE FROM inventory_ledger WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1)`, f.eventID},
+		{`DELETE FROM ticket_tiers WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1)`, f.eventID},
 		{`DELETE FROM event_publications WHERE event_id = $1`, f.eventID},
 		{`DELETE FROM agent_feed_tokens WHERE id = $1`, f.tokenID},
-		{`DELETE FROM sessions WHERE id = $1`, f.sessionID},
+		{`DELETE FROM sessions WHERE event_id = $1`, f.eventID},
 		{`DELETE FROM payment_provider_configs WHERE org_id = $1`, f.orgID},
 		{`DELETE FROM sales_channels WHERE id = $1`, f.channelID},
 		{`DELETE FROM events WHERE id = $1`, f.eventID},
@@ -483,19 +488,32 @@ type hostedStartResponse struct {
 
 // sessionCompletedEvent builds a genuine Stripe checkout.session.completed
 // envelope for the given cs_ id.
+// stubCharge is what a stub Stripe Checkout Session was created to charge.
+type stubCharge struct {
+	amount   int64
+	currency string
+}
+
+// stubSessionCharges maps every cs_… the stub Stripe created to its charge,
+// so a test's checkout.session.completed names what Stripe would have
+// charged (amount_total and currency, which the server checks, D-01).
+var stubSessionCharges sync.Map
+
 func sessionCompletedEvent(sessionID, paymentIntentID, paymentStatus string) []byte {
+	object := map[string]any{
+		"id":             sessionID,
+		"object":         "checkout.session",
+		"payment_status": paymentStatus,
+		"status":         "complete",
+		"payment_intent": paymentIntentID,
+	}
+	if c, ok := stubSessionCharges.Load(sessionID); ok {
+		object["amount_total"], object["currency"] = c.(stubCharge).amount, c.(stubCharge).currency
+	}
 	raw, _ := json.Marshal(map[string]any{
 		"id":   "evt_hoco_" + uuid.New().String()[:12],
 		"type": "checkout.session.completed",
-		"data": map[string]any{
-			"object": map[string]any{
-				"id":             sessionID,
-				"object":         "checkout.session",
-				"payment_status": paymentStatus,
-				"status":         "complete",
-				"payment_intent": paymentIntentID,
-			},
-		},
+		"data": map[string]any{"object": object},
 	})
 	return raw
 }

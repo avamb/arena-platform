@@ -23,10 +23,14 @@
  *      The second points the Stripe adapter at the stub and is refused
  *      outright under APP_ENV=production.
  *   4. arena-seed + seed-palac-e2e.sql applied to the DB
+ *   5. A FRESH database per run: the seats these tests take are single use,
+ *      and the full-purchase test sells J20/J21 for good. That test also
+ *      posts a signed Stripe webhook straight to ARENA_API_URL.
  *
  * Run with: npx playwright test --config playwright.config.real.ts
  */
 
+import { createHmac, randomBytes } from 'node:crypto';
 import { test, expect, type Browser, type Page, type BrowserContext } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
@@ -45,6 +49,72 @@ const TIER_GALERIE = 'fe000007-0000-7000-8000-000000000006';
 // redirect_url / payment_url comes back on this origin.
 const STRIPE_STUB_ORIGIN =
   process.env['STRIPE_STUB_ORIGIN'] ?? 'http://localhost:12111';
+
+// arena-api itself, for the provider's webhook. The test process plays Stripe
+// here, so the event goes straight to the backend, not through the page proxy.
+const ARENA_API_URL = (process.env['ARENA_API_URL'] ?? 'http://localhost:8080').replace(/\/+$/, '');
+
+// OrgA's Stripe config and its webhook signing secret. The per-config webhook
+// route verifies the signature only against THAT row's secret. Two rows can
+// hold the role: seed-palac-e2e.sql section 12 inserts its own, but only when
+// arena-seed has not already given OrgA a test-mode Stripe config (the partial
+// unique index makes the insert a no-op), and the CI job runs arena-seed
+// first. The test tries them in this order; 404 means "no such config".
+const STRIPE_WEBHOOK_CONFIGS: ReadonlyArray<{ id: string; secret: string }> = [
+  { id: 'fe000007-0000-7000-8000-00000000000c', secret: 'whsec_test_e2e_stub' },          // seed-palac-e2e.sql §12
+  { id: 'fe000006-0000-7000-8000-000000000001', secret: 'whsec_TEST_ORGA_DO_NOT_USE' },   // arena-seed PaymentCfgAStripe
+];
+
+// Seats only the full-purchase test buys. Every other test of this file and
+// of palac-promo-real.e2e.ts stays out of row J, and a seated purchase leaves
+// the Galérie count alone, which the promo test compares before and after.
+const PURCHASE_SEATS = ['J20', 'J21'] as const;
+
+/**
+ * Deliver a signed Stripe `checkout.session.completed` (paid) for `csId` to
+ * arena-api's per-config webhook route, the way Stripe would after the buyer
+ * paid on the hosted page. The signature is Stripe's scheme:
+ * `Stripe-Signature: t=<unix>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">`.
+ * Like real Stripe the event names what was charged: arena parks a paid
+ * event without an amount, or with another one, for a human.
+ */
+async function deliverPaidCheckoutWebhook(
+  csId: string,
+  charged: { total: number; currency: string },
+): Promise<{ status: number; body: Record<string, unknown>; configId: string }> {
+  const raw = JSON.stringify({
+    id: 'evt_test_' + randomBytes(12).toString('hex'),
+    object: 'event',
+    type: 'checkout.session.completed',
+    data: {
+      object: {
+        id: csId,
+        object: 'checkout.session',
+        payment_status: 'paid',
+        status: 'complete',
+        payment_intent: 'pi_test_' + randomBytes(12).toString('hex'),
+        amount_total: charged.total,
+        currency: charged.currency.toLowerCase(),
+      },
+    },
+  });
+  let last: { status: number; body: Record<string, unknown>; configId: string } | null = null;
+  for (const cfg of STRIPE_WEBHOOK_CONFIGS) {
+    const t = Math.floor(Date.now() / 1000);
+    const v1 = createHmac('sha256', cfg.secret).update(`${t}.${raw}`).digest('hex');
+    const res = await fetch(`${ARENA_API_URL}/v1/payment-intents/webhook/${cfg.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Stripe-Signature': `t=${t},v1=${v1}` },
+      body: raw,
+    });
+    const text = await res.text();
+    let body: Record<string, unknown> = {};
+    try { body = JSON.parse(text) as Record<string, unknown>; } catch { body = { raw: text }; }
+    last = { status: res.status, body, configId: cfg.id };
+    if (res.status !== 404) return last;
+  }
+  return last!;
+}
 
 // ─── Helper: wait for the SVG seat map to appear ─────────────────────────────
 
@@ -613,13 +683,130 @@ test.describe('4 — Checkout start contract (real backend)', () => {
     ).toBe(true);
   });
 
-  test('full Stripe purchase — skipped without STRIPE_TEST_KEY', async ({ page }) => {
-    if (!process.env['STRIPE_TEST_KEY']) {
-      test.skip();
-      return;
+  test('full purchase through the widget UI: seats, buyer form, hosted page, signed webhook, paid', async ({
+    page,
+  }) => {
+    /**
+     * PAY-01, the browser cycle. Everything a buyer does goes through the
+     * widget's own UI; only the payment provider is the stub, and the test
+     * process plays Stripe's webhook with a properly signed event.
+     *
+     * No arena-worker runs in this job, so tickets are not issued and no
+     * letter goes out (both covered by Go tests). The seats still become
+     * `sold` here: the webhook converts the reservation inline
+     * (hcheckout/payment_intents.go), the queued convert job only repeats it.
+     */
+    test.setTimeout(90_000);
+    const widget = page.locator('#widget-hybrid-en');
+
+    // 1. Pick two seats on the map (a real click on the SVG circle).
+    const before = await page.request.get(`/v1/event-sessions/${SESSION_ID}/seat-status`);
+    const beforeSeats = ((await before.json()) as { seats: Record<string, string> }).seats;
+    for (const key of PURCHASE_SEATS) {
+      expect(
+        beforeSeats[key] ?? 'available',
+        `${key} must be free before the purchase (recreate the database between runs)`,
+      ).toBe('available');
     }
-    // Full Stripe purchase flow would go here when STRIPE_TEST_KEY is set.
-    await page.goto(DEMO_PAGE);
+    for (const key of PURCHASE_SEATS) {
+      await widget.locator(`circle[data-seat-key="${key}"]`).click();
+    }
+    await expect(widget.locator('.mini-cart-btn')).toHaveAttribute('aria-label', /\(2 items\)/);
+
+    // 2. Open the cart and go on to the buyer form.
+    await widget.locator('.mini-cart-btn').click();
+    const sheet = widget.locator('.sheet');
+    await expect(sheet).toBeVisible();
+    await sheet.locator('.cta-btn').click();
+
+    // The widget leaves for the payment page the moment checkout/start
+    // answers, which drops the response body: read it on the way through. A
+    // pass-through, the request still reaches the real backend unchanged.
+    let startStatus = 0;
+    let startBody: Record<string, unknown> = {};
+    let started: {
+      checkout_token?: string;
+      redirect_url?: string;
+      pricing?: { total: number; currency: string };
+    } = {};
+    await page.route('**/checkout/start', async (route) => {
+      const real = await route.fetch();
+      startStatus = real.status();
+      startBody = route.request().postDataJSON() as Record<string, unknown>;
+      started = (await real.json()) as typeof started;
+      await route.fulfill({ response: real });
+    });
+
+    const form = sheet.locator('form');
+    await expect(form).toBeVisible();
+    for (const input of await form.locator('input').all()) {
+      const type = (await input.getAttribute('type')) ?? 'text';
+      if (type === 'email') await input.fill('purchase-e2e@arena-e2e.test');
+      else if (type === 'tel') await input.fill('+420777000222');
+      else if (type === 'text') await input.fill('Purchase E2E Buyer');
+      else if (type === 'checkbox') await input.check();
+    }
+
+    // 3. Pay: the browser is sent to the provider's hosted page.
+    await sheet.locator('button[type="submit"]').click();
+    await page.waitForURL(
+      (u) => u.origin === STRIPE_STUB_ORIGIN && u.pathname.startsWith('/pay/cs_'),
+      { timeout: 20_000 },
+    );
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+    expect(startStatus, 'checkout/start through the UI').toBe(201);
+    expect(startBody).toMatchObject({ session_id: SESSION_ID });
+    expect([...((startBody['seats'] as string[] | undefined) ?? [])].sort()).toEqual([...PURCHASE_SEATS]);
+    const token = started.checkout_token ?? '';
+    expect(token, 'checkout_token from checkout/start').not.toBe('');
+
+    const csId = new URL(page.url()).pathname.slice('/pay/'.length);
+    expect(csId).toMatch(/^cs_[A-Za-z0-9_]+$/);
+    expect(started.redirect_url, 'the page the widget went to is the one start answered').toBe(page.url());
+    // The stub knows the session arena created, so arena really asked for it.
+    await expect(page.getByTestId('session-known')).toHaveText('known');
+
+    // Not paid yet: the checkout is still waiting and the seats are held.
+    const pending = await page.request.get(`${ARENA_API_URL}/v1/public/checkout/${token}`);
+    expect(pending.status()).toBe(200);
+    expect(((await pending.json()) as { status: string }).status).toBe('pending');
+    const held = await page.request.get(`${ARENA_API_URL}/v1/event-sessions/${SESSION_ID}/seat-status`);
+    const heldSeats = ((await held.json()) as { seats: Record<string, string> }).seats;
+    for (const key of PURCHASE_SEATS) {
+      expect(heldSeats[key], `${key} before payment`).toBe('held');
+    }
+
+    // 4. Stripe tells arena the buyer paid what checkout/start priced.
+    const charged = started.pricing;
+    expect(charged?.total, 'pricing.total from checkout/start').toBeGreaterThan(0);
+    const hook = await deliverPaidCheckoutWebhook(csId, charged!);
+    expect(hook.status, `webhook answer ${JSON.stringify(hook.body)} (config ${hook.configId})`).toBe(200);
+    expect(hook.body['processed'], `webhook body ${JSON.stringify(hook.body)}`).toBe(true);
+
+    // A second delivery of the same payment changes nothing (terminal intent).
+    const replay = await deliverPaidCheckoutWebhook(csId, charged!);
+    expect(replay.status).toBe(200);
+    expect(replay.body['processed']).toBe(false);
+
+    // 5. The buyer comes back to the page arena gave the provider as the
+    //    success URL: the widget's own page with ?checkout_token=….
+    await page.goto(`${DEMO_PAGE}?checkout_token=${encodeURIComponent(token)}`);
+    const status = widget.locator('.order-status');
+    await expect(status).toHaveAttribute('data-status', 'paid', { timeout: 20_000 });
+    await expect(status.locator('.status-paid .status-title')).toHaveText('Payment successful!');
+
+    const paid = await page.request.get(`/v1/public/checkout/${token}`);
+    expect(paid.status()).toBe(200);
+    const paidBody = (await paid.json()) as { status: string; total?: number; currency?: string };
+    expect(paidBody.status).toBe('paid');
+
+    // 6. The bought seats are sold, no longer merely held.
+    const after = await page.request.get(`/v1/event-sessions/${SESSION_ID}/seat-status`);
+    expect(after.status()).toBe(200);
+    const afterSeats = ((await after.json()) as { seats: Record<string, string> }).seats;
+    for (const key of PURCHASE_SEATS) {
+      expect(afterSeats[key], `${key} after payment`).toBe('sold');
+    }
   });
 });
 
