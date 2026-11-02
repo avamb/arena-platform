@@ -57,14 +57,17 @@ func (e *Engine) finish(ctx, stop context.Context, r Refund, pay Payment) bool {
 	cancelled, ok := e.cancelTickets(ctx, stop, r, pay)
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), settleWriteTimeout)
 	defer cancel()
-	if !e.projectOrder(wctx, r, pay) {
+	// A referral cashback (spec 52) moves money back without refunding a
+	// ticket: the order keeps its status and no site hears "refunded".
+	cashback := r.Origin == OriginReferralCashback
+	if !cashback && !e.projectOrder(wctx, r, pay) {
 		ok = false
 	}
 	// v1.ticket.refunded only once every due cancellation went through:
 	// otherwise the repair publishes it when it finishes the cancellation,
 	// so a site never hears "refunded" for a ticket that still admits, and
 	// never hears it twice.
-	if ok && r.State == StateSucceeded && !e.publish(wctx, r, pay, cancelled) {
+	if ok && !cashback && r.State == StateSucceeded && !e.publish(wctx, r, pay, cancelled) {
 		ok = false
 	}
 	if ok {

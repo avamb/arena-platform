@@ -589,6 +589,18 @@ func TestPayout_PartialMoneyOnlyRefund_TicketsStayValid_ScannedAllowed(t *testin
 			t.Errorf("ticket %d is %s; the cashback must not cancel it", i, st)
 		}
 	}
+	// A cashback is not a ticket refund: the referrer's order stays paid and
+	// the refund is settled without the order projection or a publish.
+	var orderStatus string
+	var settled bool
+	if err := f.pool.QueryRow(context.Background(), `SELECT o.status, r.settled_at IS NOT NULL
+		FROM referral_rewards w JOIN refunds r ON r.id = w.refund_id JOIN orders o ON o.id = w.referrer_order_id
+		WHERE w.id = $1`, rw.ID).Scan(&orderStatus, &settled); err != nil {
+		t.Fatal(err)
+	}
+	if orderStatus != "paid" || !settled {
+		t.Fatalf("referrer order %s, refund settled %v; want paid and settled", orderStatus, settled)
+	}
 	if n := f.count(t, `SELECT count(*) FROM worker_jobs WHERE job_type = 'refund.buyer_email' AND payload->>'batch_id' IN
 		(SELECT id::text FROM refund_batches WHERE org_id = $1)`, f.org); n != 0 {
 		t.Errorf("%d buyer letters queued; the cashback has its own letter", n)
