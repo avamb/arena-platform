@@ -43,8 +43,8 @@ type stubStripeDisputes struct {
 func newStubStripeDisputes(t *testing.T, pi string) *stubStripeDisputes {
 	t.Helper()
 	s := &stubStripeDisputes{
-		disputeID: "dp_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16],
-		chargeID:  "ch_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16],
+		disputeID:     "dp_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16],
+		chargeID:      "ch_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16],
 		paymentIntent: pi, status: "needs_response",
 		dueBy: time.Now().Add(9 * 24 * time.Hour).Unix(),
 	}
