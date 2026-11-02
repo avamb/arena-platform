@@ -33,6 +33,7 @@ import { canManageReferral, canViewReferral } from "@/lib/referral";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import {
   SHOP_LIMITS,
+  browserZone,
   channelWarning,
   checkSettings,
   currencyState,
@@ -465,7 +466,7 @@ export function ShopSettingsScreen() {
       {settings.data !== undefined && <SettingsPage key="settings" settings={settings.data} />}
       {/* Spec 52: "Refer a friend" for the shop. The route's own gate for looking is promo.read. */}
       {canViewReferral(access.can) && (
-        <ReferralSection key={`referral:${orgId}:shop`} orgId={orgId} target={{ kind: "shop" }} canManage={canManageReferral(access.can)} />
+        <ReferralSection key={`referral:${orgId}:shop`} orgId={orgId} target={{ kind: "shop" }} canManage={canManageReferral(access.can)} timezone={browserZone()} />
       )}
     </section>
   );
