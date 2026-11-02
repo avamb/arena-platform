@@ -223,7 +223,7 @@ internal projection to un-skip that test.
 | `-2` | invalid request | unknown command, missing/malformed field, JSON parse failure |
 | `-3` | not found | id outside the channel's catalog/org scope (non-user-facing case) |
 | `-4` | access denied | bad/missing `fid`/`token` |
-| `-5` | not implemented | legacy widget-only commands (`AUTH`, `GET_ORDERS`, …) — never called by Lampyris/Vino&Co |
+| `-5` | not implemented | legacy widget-only commands (`AUTH`, `GET_ORDERS`, …) — never called by client-2/client-1 |
 | `-99` | internal error | panic-recovery |
 
 `description` is localized from the request `locale` (`ru-RU`→`ru`, `en-GB`→`en`,

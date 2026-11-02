@@ -67,6 +67,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
 )
 
 // HandlePublicCheckoutRecover serves
@@ -582,13 +583,58 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 	for _, l := range lines {
 		subtotal += l.UnitPrice * int64(l.Quantity)
 	}
+	// The order this checkout wrote, read on this transaction: a recovered
+	// hold takes over its use of the code (below) and, while it is still
+	// open, its reservation and money (step 11).
+	csTxQ := h.checkoutQueries.WithTx(tx)
+	openOrder, orderErr := csTxQ.GetOrderByCheckoutSession(ctx, cs.ID)
+	switch {
+	case errors.Is(orderErr, pgx.ErrNoRows):
+	case orderErr != nil:
+		h.logger.Error("public_checkout_recover: order lookup failed",
+			slog.String("checkout_session_id", cs.ID.String()),
+			slog.String("error", orderErr.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"checkout.lookup_failed", "We could not load this checkout. Try again in a minute.", r,
+		))
+		return
+	}
+	hasOrder := orderErr == nil
+
 	var discount int64
 	promoCodeID := (*uuid.UUID)(nil)
 	if cs.PromoCodeID != nil && h.promoQueries != nil {
-		if promo, perr := h.promoQueries.GetPromoCodeByID(ctx, *cs.PromoCodeID, cs.OrgID); perr == nil {
+		if promo, perr := h.promoQueries.WithTx(tx).GetPromoCodeByID(ctx, *cs.PromoCodeID, cs.OrgID); perr == nil {
 			// AB-45b: tier-restricted codes apply to eligible lines only —
 			// same helper as confirm / public checkout (pass-7 review).
-			if d, errCode := hcheckout.ValidatePromoForLines(promo, hcheckout.TierLinesForSession(lines, newRes.SessionID.String(), currency), time.Now().UTC()); errCode == "" {
+			d, errCode := hcheckout.ValidatePromoForLines(promo, hcheckout.TierLinesForSession(lines, newRes.SessionID.String(), currency), time.Now().UTC())
+			if errCode == "" {
+				// The limits are taken under the code's lock, as when the
+				// order was first written (P0-1 defect D-02): this checkout's
+				// own use ended with its hold, so a code used up meanwhile
+				// is dropped like any other code that no longer applies.
+				use := hcheckout.PromoUse{
+					PromoCodeID: promo.ID, OrgID: cs.OrgID,
+					SessionID: &newRes.SessionID, ReservationID: &newRes.ID,
+				}
+				if hasOrder {
+					use.CustomerID, use.BuyerEmail = openOrder.CustomerID, derefString(openOrder.BuyerEmail)
+				}
+				refusal, rerr := hcheckout.ReservePromoUseTx(ctx, csTxQ, use)
+				if rerr != nil {
+					h.logger.Error("public_checkout_recover: reserve promo code use failed",
+						slog.String("checkout_session_id", cs.ID.String()),
+						slog.String("error", rerr.Error()),
+					)
+					httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+						"checkout.confirm_failed", "We could not confirm the checkout. Try again in a minute.", r,
+					))
+					return
+				}
+				errCode = refusal
+			}
+			if errCode == "" {
 				discount = d
 				promoCodeID = cs.PromoCodeID
 			} else {
@@ -617,15 +663,10 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"reservation.commit_failed", "We could not hold the tickets. Try again in a minute.", r,
-		))
-		return
-	}
-
 	// ── 10. Reset checkout session to point to the new reservation ────────────
-	updatedCS, err := h.checkoutQueries.UpdateCheckoutSessionReservationAndReset(
+	// Steps 10-11 run on the hold's transaction, so the code's lock taken
+	// above lasts until the order carries the recovered use.
+	updatedCS, err := csTxQ.UpdateCheckoutSessionReservationAndReset(
 		ctx, cs.ID, newRes.ID,
 	)
 	if err != nil {
@@ -640,7 +681,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 	}
 
 	// ── 11. Re-confirm with the FRESH pricing-pipeline snapshot ───────────────
-	updatedCS, err = h.checkoutQueries.ConfirmCheckoutSession(
+	updatedCS, err = csTxQ.ConfirmCheckoutSession(
 		ctx, updatedCS.ID,
 		bd.Subtotal, bd.Discount, bd.PlatformFee, bd.ProviderFee, bd.Tax, bd.Total,
 		bd.Currency, promoCodeID,
@@ -652,6 +693,48 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 		)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"checkout.confirm_failed", "We could not confirm the checkout. Try again in a minute.", r,
+		))
+		return
+	}
+
+	// An order still waiting for its payment follows the checkout onto the
+	// new hold: its reservation, expiry, money and code. Without this the
+	// recovered use of the code sat on an order whose hold had ended, so no
+	// later checkout counted it, and the paid order kept the old discount.
+	// A legacy GA hold has no lines to re-price the order from.
+	if hasOrder && openOrder.Status == ordering.StatusPendingPayment && !legacyGA {
+		tierPrices := make(map[uuid.UUID]int64, len(lines))
+		for _, l := range lines {
+			if id, perr := uuid.Parse(l.TierID); perr == nil {
+				tierPrices[id] = l.UnitPrice
+			}
+		}
+		if _, err := ordering.UpdateOrderFromCheckout(ctx, csTxQ, ordering.UpdateInput{
+			OrderID: openOrder.ID,
+			OrgID:   openOrder.OrgID,
+			CreateInput: ordering.CreateInput{
+				CheckoutSessionID: cs.ID,
+				EventID:           openOrder.EventID,
+				Actor:             ordering.ActorSystem,
+				ExternalRef:       openOrder.ExternalRef,
+				ChargePercentBP:   openOrder.ChargePercentBP,
+				TierUnitPrices:    tierPrices,
+			},
+		}); err != nil {
+			h.logger.Error("public_checkout_recover: update order failed",
+				slog.String("order_id", openOrder.ID.String()),
+				slog.String("error", err.Error()),
+			)
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"checkout.update_failed", "We could not update the checkout. Try again in a minute.", r,
+			))
+			return
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"reservation.commit_failed", "We could not hold the tickets. Try again in a minute.", r,
 		))
 		return
 	}

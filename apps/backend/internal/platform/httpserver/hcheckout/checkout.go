@@ -575,6 +575,9 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 
 		cs, err := h.confirmAndCreateOrder(ctx, id, reservation, bd, promoCodeID, seatTierPrices, orderBuyer{})
 		if err != nil {
+			if writePromoRefusal(w, r, err) {
+				return
+			}
 			if isCheckoutStateConflict(err) {
 				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 					"checkout.invalid_transition", "checkout session is not in 'created' state", r,
@@ -646,6 +649,9 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 
 		cs, err := h.confirmAndCreateOrder(ctx, id, reservation, bd, promoCodeID, nil, orderBuyer{})
 		if err != nil {
+			if writePromoRefusal(w, r, err) {
+				return
+			}
 			if isCheckoutStateConflict(err) {
 				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 					"checkout.invalid_transition", "checkout session is not in 'created' state", r,
@@ -764,6 +770,9 @@ func (h *Handler) HandleConfirmCheckout(w http.ResponseWriter, r *http.Request) 
 	cs, err := h.confirmAndCreateOrder(ctx, id, reservation, bd, promoCodeID,
 		map[uuid.UUID]int64{tierID: unitPrice}, orderBuyer{})
 	if err != nil {
+		if writePromoRefusal(w, r, err) {
+			return
+		}
 		if isCheckoutStateConflict(err) {
 			httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 				"checkout.invalid_transition",

@@ -281,7 +281,7 @@ revenue:[{currency, amount_minor}]}]` — группировка оплачен�
 с предвыбранной целью. Строка в `parity/matrix.ts`, близнец-тест в `tests/smoke` («создать ссылку → редирект ведёт
 на страницу мероприятия → скан посчитан»).
 
-### 5.4 Сайты на протоколе Bil24 (внешние репозитории lampyrisevents, vinoandco)
+### 5.4 Сайты на протоколе Bil24 (внешние репозитории client2-site, client-1)
 
 Общий фрагмент `arena-attribution.php` (mu-plugin или часть `bil24-*` плагина): на любой странице читает `ref` и
 `utm_*` из query, пишет cookie `arena_attr` (JSON §3, 7 дней, `SameSite=Lax`, без личных данных), при повторном
@@ -338,7 +338,7 @@ revenue:[{currency, amount_minor}]}]` — группировка оплачен�
 
 | ID | Задача | Класс | Зависит | Приёмка | Стоп |
 |---|---|---|---|---|---|
-| QL-10 | `arena-attribution.php` §5.4 в репозиториях lampyrisevents и vinoandco (ветки, staging-1) | M sonnet | QL-6 | на staging: заход по `go.<стенд>/<code>` → cookie → заказ через CREATE_ORDER_EXT привязан к ссылке в базе стенда; cookie без личных данных | ST-7 (деплой на прод) |
+| QL-10 | `arena-attribution.php` §5.4 в репозиториях client2-site и client-1 (ветки, staging-1) | M sonnet | QL-6 | на staging: заход по `go.<стенд>/<code>` → cookie → заказ через CREATE_ORDER_EXT привязан к ссылке в базе стенда; cookie без личных данных | ST-7 (деплой на прод) |
 | QL-11 | Экран «Ссылки и QR» в ивент-центре сайта (WP admin): список, создание на product→action/сеанс, своя страница как `url`, картинка через `/qr`, ключ организации канала | M sonnet | QL-10 | ручной прогон на staging по чек-листу в журнале | ST-7 |
 
 ### 6.5 Этап 5 «Печать и веб» (после этапов 2–3)
@@ -353,7 +353,7 @@ revenue:[{currency, amount_minor}]}]` — группировка оплачен�
 | ID | Задача | Класс | Зависит | Приёмка | Стоп |
 |---|---|---|---|---|---|
 | QL-14 | Конфиг: `SHORT_LINK_BASE_URL` (default `https://go.arenasoldout.com`), `SHORT_LINK_FALLBACK_URL` (default `APP_PUBLIC_URL`-витрина), `config.Validate` требует https в production; документ `docs/ops/sales_links_ru.md` (как завести хост, как перенацелить, как читать `sales_link_hits`) | S sonnet | QL-3 | юнит-тест конфига; документ | — |
-| QL-15 | **Шаг владельца/ops**: DNS `go.arenasoldout.com` (Cloudflare, proxied) → origin arena-prod; Traefik-роутер `Host(go.arenasoldout.com)` → сервис arena-api с middleware `addPrefix: /go`; то же на стенде (`go-staging.arenasoldout.com`); проверка `curl -I https://go.arenasoldout.com/<code>` → 302 | ST-7 + R haiku (чек-лист) | QL-3 на проде | факт в журнал; Cloudflare НЕ кэширует (`no-store` + правило bypass для хоста) | ST-7 |
+| QL-15 | **Шаг владельца/ops**: DNS `go.arenasoldout.com` (Cloudflare, proxied) → origin prod-host; Traefik-роутер `Host(go.arenasoldout.com)` → сервис arena-api с middleware `addPrefix: /go`; то же на стенде (`go-staging.arenasoldout.com`); проверка `curl -I https://go.arenasoldout.com/<code>` → 302 | ST-7 + R haiku (чек-лист) | QL-3 на проде | факт в журнал; Cloudflare НЕ кэширует (`no-store` + правило bypass для хоста) | ST-7 |
 
 ## 7. Кастомные домены организаторов и QR — анализ для решения владельца
 
@@ -403,7 +403,7 @@ revenue:[{currency, amount_minor}]}]` — группировка оплачен�
 3. После QL-4: QL-7 (виджет) ∥ QL-8/QL-9 (бот) ∥ QL-12 (веб). 4. QL-14 с QL-3; QL-15 — просьба владельцу сразу после
 слияния QL-3 на master (можно раньше: хост с 302 на fallback не вредит). 5. Выкат на стенд → ABH TEAM печатает тестовый
 QR и покупает → проверка `sales_link_hits`, `orders.sales_link_id`, `summary.sources`. 6. QL-10/QL-11 на staging-1,
-затем ST-7 на прод Lampyris и Vino. 7. QL-13 — последним.
+затем ST-7 на прод client-2 и client-1. 7. QL-13 — последним.
 
 Что оркестратор проверяет перед «готово» — 40 §7, плюс: `go vet` чистый на новых пакетах; `gofmt -l` по файлам с
 тегом integration; `TestSnakeCase_*`, `TestOpenAPIDocs_*`, `TestErrorResponses_*`, парность 532, голова миграций;
