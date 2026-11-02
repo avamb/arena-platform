@@ -177,7 +177,10 @@ func rfc3339Ptr(t *time.Time) *string {
 }
 
 // subscribersFor runs the shared checks of both subscriber routes.
-func (s *Server) subscribersFor(w http.ResponseWriter, r *http.Request, limit int) ([]marketing.Subscriber, int, bool) {
+// subscribersFor reads the first page of the list. paged takes limit and
+// offset from the query (the JSON list); the CSV export reads every row
+// itself and ignores them.
+func (s *Server) subscribersFor(w http.ResponseWriter, r *http.Request, limit int, paged bool) ([]marketing.Subscriber, int, bool) {
 	if a, ok := auth.ActorFromContext(r.Context()); ok && a.IsService() {
 		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
 			"marketing.api_key_forbidden", "An API key cannot read the subscribers. A member of the organization reads them signed in.", r))
@@ -197,9 +200,12 @@ func (s *Server) subscribersFor(w http.ResponseWriter, r *http.Request, limit in
 			"marketing.invalid_status", "Send status as confirmed, pending, withdrawn or all.", r))
 		return nil, 0, false
 	}
-	offset, _ := strconv.Atoi(q.Get("offset"))
-	if l, err := strconv.Atoi(q.Get("limit")); err == nil && l > 0 && l <= limit {
-		limit = l
+	offset := 0
+	if paged {
+		offset, _ = strconv.Atoi(q.Get("offset"))
+		if l, err := strconv.Atoi(q.Get("limit")); err == nil && l > 0 && l <= limit {
+			limit = l
+		}
 	}
 	subs, total, err := marketing.List(r.Context(), s.pgxPool, orgID, marketing.ListFilter{Status: status, Limit: limit, Offset: offset})
 	if err != nil {
@@ -216,7 +222,7 @@ func (s *Server) withdrawURL(token string) string {
 }
 
 func (s *Server) handleListMarketingSubscribers(w http.ResponseWriter, r *http.Request) {
-	subs, total, ok := s.subscribersFor(w, r, 100)
+	subs, total, ok := s.subscribersFor(w, r, 100, true)
 	if !ok {
 		return
 	}
@@ -239,11 +245,26 @@ var subscriberCSVHeader = map[string][]string{
 	"es": {"Correo", "Nombre", "Idioma", "Estado", "Consentimiento", "Confirmado", "Enlace para dejar de recibir correos"},
 }
 
+// subscriberExportMaxRows is the platform's CSV ceiling (csvexport): above
+// it the export is refused before the first byte rather than cut silently.
+const subscriberExportMaxRows = 50000
+
+// subscriberExportBatch is how many rows one query of the export reads.
+const subscriberExportBatch = 1000
+
 func (s *Server) handleExportMarketingSubscribers(w http.ResponseWriter, r *http.Request) {
-	subs, _, ok := s.subscribersFor(w, r, 1000)
+	subs, total, ok := s.subscribersFor(w, r, subscriberExportBatch, false)
 	if !ok {
 		return
 	}
+	if total > subscriberExportMaxRows {
+		httputil.WriteJSON(w, http.StatusRequestEntityTooLarge, httputil.ErrorEnvelopeWithDetails(
+			"export.too_many_rows", "The list is too long for one file. Choose one status at a time.", r,
+			map[string]any{"rows": total, "max_rows": subscriberExportMaxRows}))
+		return
+	}
+	orgID, _ := uuid.Parse(chi.URLParam(r, "org_id"))
+	status := r.URL.Query().Get("status")
 	header, found := subscriberCSVHeader[csvexport.LocaleFromRequest(r)]
 	if !found {
 		header = subscriberCSVHeader["en"]
@@ -255,11 +276,30 @@ func (s *Server) handleExportMarketingSubscribers(w http.ResponseWriter, r *http
 	if err := cw.WriteHeader(header); err != nil {
 		return
 	}
-	for _, m := range subs {
-		if err := cw.WriteRow(csvexport.Text(m.Email), csvexport.Text(m.Name), csvexport.Text(m.Locale),
-			csvexport.Text(m.Status), csvexport.DateTime(m.GrantedAt, time.UTC), csvexport.DateTimePtr(m.ConfirmedAt, time.UTC),
-			csvexport.Text(s.withdrawURL(m.UnsubscribeToken))); err != nil {
+	// Every row, in batches: the first batch came with the count, the next
+	// ones follow until a short batch. Once a byte is sent a failure can only
+	// cut the connection (the csvexport rule).
+	for offset := 0; ; {
+		for _, m := range subs {
+			if err := cw.WriteRow(csvexport.Text(m.Email), csvexport.Text(m.Name), csvexport.Text(m.Locale),
+				csvexport.Text(m.Status), csvexport.DateTime(m.GrantedAt, time.UTC), csvexport.DateTimePtr(m.ConfirmedAt, time.UTC),
+				csvexport.Text(s.withdrawURL(m.UnsubscribeToken))); err != nil {
+				return
+			}
+		}
+		if len(subs) < subscriberExportBatch {
+			break
+		}
+		if err := cw.Flush(); err != nil {
 			return
+		}
+		offset += len(subs)
+		var err error
+		subs, _, err = marketing.List(r.Context(), s.pgxPool, orgID,
+			marketing.ListFilter{Status: status, Limit: subscriberExportBatch, Offset: offset})
+		if err != nil {
+			s.logger.Error("marketing subscribers: export batch failed", "error", err.Error())
+			panic(http.ErrAbortHandler)
 		}
 	}
 	_ = cw.Flush()

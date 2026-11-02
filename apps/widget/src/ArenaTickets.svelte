@@ -38,7 +38,7 @@
   import { pausedSalesState } from './lib/saleSubscribe.js';
   import { buildTierColorMap } from './lib/seatmap-render.js';
   import { consentErrorMessage, consentPayload, forceConsent } from './lib/consent.js';
-  import { MARKETING_DISCOUNT_USED_CODE, marketingErrorMessage, marketingPayload } from './lib/marketing.js';
+  import { isMarketingRewardRefusal, marketingErrorMessage, marketingPayload } from './lib/marketing.js';
   import { captureAttribution, type AttributionPayload } from './lib/attribution.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
@@ -763,7 +763,7 @@
         // regular price with the next press (the tick is still recorded).
         conflictKeys = new Set();
         checkoutError = marketingErrorMessage(err.code, normLocale);
-        if (err.code === MARKETING_DISCOUNT_USED_CODE) marketingDiscountUsedFor = selectedSession?.id ?? null;
+        if (isMarketingRewardRefusal(err.code)) marketingDiscountUsedFor = selectedSession?.id ?? null;
       } else if (err instanceof ApiError && cartLimitMessage(err.code, normLocale) !== null) {
         // The platform refused the size of the cart: say so in the buyer's language.
         conflictKeys = new Set();

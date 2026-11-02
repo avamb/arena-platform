@@ -21,6 +21,8 @@ export interface MarketingStrings {
   reminder: string;
   /** 422 marketing.discount_used: the reward is not given twice. */
   discount_used: string;
+  /** 422 marketing.discount_unavailable: the reward's uses are all taken. */
+  discount_unavailable: string;
   /** 422 marketing.consent_outdated: the page shows an old text. */
   outdated: string;
 }
@@ -33,6 +35,7 @@ export const MARKETING_I18N: Record<string, MarketingStrings> = {
     note: 'We will ask you to confirm by e-mail. You can stop the mailings at any time.',
     reminder: 'If the payment is not finished, we will remind you once by e-mail.',
     discount_used: 'This e-mail address has already received the subscriber discount. Press the pay button again to pay the regular price.',
+    discount_unavailable: 'The subscriber discount has run out. Press the pay button again to pay the regular price.',
     outdated: 'The page is out of date. Please reload it and try again.',
   },
   ru: {
@@ -42,6 +45,7 @@ export const MARKETING_I18N: Record<string, MarketingStrings> = {
     note: 'Мы попросим подтвердить адрес по e-mail. От рассылки можно отказаться в любой момент.',
     reminder: 'Если оплата не завершится, мы один раз напомним о заказе по e-mail.',
     discount_used: 'Этот адрес уже получал скидку для подписчиков. Нажмите кнопку оплаты ещё раз, чтобы оплатить по обычной цене.',
+    discount_unavailable: 'Скидка для подписчиков закончилась. Нажмите кнопку оплаты ещё раз, чтобы оплатить по обычной цене.',
     outdated: 'Страница устарела. Обновите её и попробуйте ещё раз.',
   },
   cs: {
@@ -51,6 +55,7 @@ export const MARKETING_I18N: Record<string, MarketingStrings> = {
     note: 'Adresu vás požádáme potvrdit e-mailem. Zasílání můžete kdykoli ukončit.',
     reminder: 'Pokud platbu nedokončíte, jednou vám ji připomeneme e-mailem.',
     discount_used: 'Tato e-mailová adresa už slevu pro odběratele získala. Stiskněte tlačítko platby znovu a zaplaťte běžnou cenu.',
+    discount_unavailable: 'Sleva pro odběratele je vyčerpaná. Stiskněte tlačítko platby znovu a zaplaťte běžnou cenu.',
     outdated: 'Stránka je zastaralá. Načtěte ji prosím znovu a zkuste to ještě jednou.',
   },
   he: {
@@ -60,6 +65,7 @@ export const MARKETING_I18N: Record<string, MarketingStrings> = {
     note: 'נבקש לאשר את הכתובת במייל. אפשר להפסיק את הדיוור בכל עת.',
     reminder: 'אם התשלום לא יושלם, נזכיר לכם פעם אחת במייל.',
     discount_used: 'כתובת המייל הזו כבר קיבלה את הנחת המנויים. לחצו שוב על כפתור התשלום כדי לשלם במחיר הרגיל.',
+    discount_unavailable: 'הנחת המנויים אזלה. לחצו שוב על כפתור התשלום כדי לשלם במחיר הרגיל.',
     outdated: 'הדף אינו מעודכן. רעננו אותו ונסו שוב.',
   },
   es: {
@@ -69,6 +75,7 @@ export const MARKETING_I18N: Record<string, MarketingStrings> = {
     note: 'Te pediremos que confirmes tu correo. Puedes dejar de recibir los envíos cuando quieras.',
     reminder: 'Si el pago no se completa, te lo recordaremos una vez por correo.',
     discount_used: 'Este correo ya recibió el descuento para suscriptores. Pulsa de nuevo el botón de pago para pagar el precio normal.',
+    discount_unavailable: 'El descuento para suscriptores se ha agotado. Pulsa de nuevo el botón de pago para pagar el precio normal.',
     outdated: 'La página está desactualizada. Vuelve a cargarla e inténtalo de nuevo.',
   },
   de: {
@@ -78,6 +85,7 @@ export const MARKETING_I18N: Record<string, MarketingStrings> = {
     note: 'Wir bitten Sie, Ihre Adresse per E-Mail zu bestätigen. Sie können die Mailings jederzeit beenden.',
     reminder: 'Wenn die Zahlung nicht abgeschlossen wird, erinnern wir Sie einmal per E-Mail.',
     discount_used: 'Diese E-Mail-Adresse hat den Abonnentenrabatt bereits erhalten. Drücken Sie erneut auf Bezahlen, um den regulären Preis zu zahlen.',
+    discount_unavailable: 'Der Abonnentenrabatt ist aufgebraucht. Drücken Sie erneut auf Bezahlen, um den regulären Preis zu zahlen.',
     outdated: 'Die Seite ist veraltet. Bitte laden Sie sie neu und versuchen Sie es noch einmal.',
   },
   fr: {
@@ -87,6 +95,7 @@ export const MARKETING_I18N: Record<string, MarketingStrings> = {
     note: 'Nous vous demanderons de confirmer votre adresse par e-mail. Vous pouvez arrêter les envois à tout moment.',
     reminder: "Si le paiement n'est pas terminé, nous vous le rappellerons une fois par e-mail.",
     discount_used: 'Cette adresse a déjà reçu la réduction abonnés. Appuyez de nouveau sur le bouton de paiement pour payer le prix normal.',
+    discount_unavailable: 'La réduction abonnés est épuisée. Appuyez de nouveau sur le bouton de paiement pour payer le prix normal.',
     outdated: "La page n'est plus à jour. Rechargez-la et réessayez.",
   },
 };

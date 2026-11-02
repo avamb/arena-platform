@@ -21697,6 +21697,12 @@ type ListPublicFeedEventsParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// GetPublicMarketingConfirmPageParams defines parameters for GetPublicMarketingConfirmPage.
+type GetPublicMarketingConfirmPageParams struct {
+	// Token The one-time token from the letter.
+	Token string `form:"token" json:"token"`
+}
+
 // ConfirmPublicMarketingConsentParams defines parameters for ConfirmPublicMarketingConsent.
 type ConfirmPublicMarketingConsentParams struct {
 	// Token The one-time token from the letter.

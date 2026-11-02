@@ -123,7 +123,7 @@ func NewCartReminderHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 		}
 		if skip != "" {
 			logger.Info("delivery: cart reminder skipped", slog.String("order_id", orderID.String()), slog.String("reason", skip))
-			return cartreminder.Mark(ctx, opts.DB, orderID, skip, now)
+			return cartreminder.Skip(ctx, opts.DB, orderID, skip)
 		}
 		r, err := opts.renderer()
 		if err != nil {
@@ -160,10 +160,27 @@ func NewCartReminderHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 			TemplateVersion: templateVersion(r, templates.TemplateKindCheckoutReminder, locale),
 		}
 		msg := email.Message{To: o.BuyerEmail, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}
-		if err := sendRecorded(ctx, opts.Sender, opts.DB, logger, letter, msg, nil); err != nil {
+		// The reminder is taken before it is sent, so a retry or a second
+		// claim of this job never sends it twice (the letter says it is the
+		// only one). A refused send gives it back for the retry.
+		// Postgres keeps microseconds, so the claim time is cut to them: Release
+		// finds its own claim by it.
+		claimAt := now.Truncate(time.Microsecond)
+		claimed, err := cartreminder.Claim(ctx, opts.DB, orderID, claimAt)
+		if err != nil {
 			return err
 		}
-		return cartreminder.Mark(ctx, opts.DB, orderID, "", now)
+		if !claimed {
+			return nil
+		}
+		if err := sendRecorded(ctx, opts.Sender, opts.DB, logger, letter, msg, nil); err != nil {
+			if relErr := cartreminder.Release(context.WithoutCancel(ctx), opts.DB, orderID, claimAt); relErr != nil {
+				logger.Warn("delivery: cart reminder claim not released",
+					slog.String("order_id", orderID.String()), slog.String("error", relErr.Error()))
+			}
+			return err
+		}
+		return nil
 	}
 }
 

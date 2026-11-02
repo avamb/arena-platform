@@ -18,8 +18,10 @@ package hfeed
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -66,6 +68,10 @@ type marketingState struct {
 	orgName  string
 	accepted bool // ticked, current text, and the organization offers it
 	reward   bool // the reward may be applied
+	// orgID and sessionID scope the reward's use count like the order's own
+	// count (hcheckout.ReservePromoUseTx).
+	orgID     uuid.UUID
+	sessionID uuid.UUID
 }
 
 // loadMarketing reads the organization's offer once per request, on the
@@ -124,9 +130,9 @@ func marketingBlockFor(offer marketing.Offer, orgName string) publicMarketingBlo
 
 // marketingFor checks the tick of a request. It answers false after writing
 // 422 marketing.consent_outdated for a tick on an older text.
-func (h *Handler) marketingFor(ctx context.Context, w http.ResponseWriter, r *http.Request, orgID uuid.UUID, in *PublicMarketingConsent) (marketingState, bool) {
+func (h *Handler) marketingFor(ctx context.Context, w http.ResponseWriter, r *http.Request, orgID, sessionID uuid.UUID, in *PublicMarketingConsent) (marketingState, bool) {
 	offer, name := h.loadMarketing(ctx, orgID)
-	st := marketingState{offer: offer, orgName: name}
+	st := marketingState{offer: offer, orgName: name, orgID: orgID, sessionID: sessionID}
 	if in == nil || !in.Accepted || !offer.Enabled {
 		return st, true // ignored: nothing of the buyer is stored for it
 	}
@@ -142,6 +148,18 @@ func (h *Handler) marketingFor(ctx context.Context, w http.ResponseWriter, r *ht
 	return st, true
 }
 
+// dropUnmailable takes the tick back when the buyer's address is one the
+// order accepts but a mailing list cannot use: the consent would otherwise
+// fail inside the confirmation transaction and cost the sale.
+func (st *marketingState) dropUnmailable(email string) {
+	if !st.accepted {
+		return
+	}
+	if _, err := marketing.NormalizeEmail(email); err != nil {
+		st.accepted, st.reward = false, false
+	}
+}
+
 // typedRewardRefused reports whether the buyer typed the reward code without
 // the tick: it is refused as a code that does not apply.
 func (st marketingState) typedRewardRefused(typed *gen.PromoCodeRow) bool {
@@ -152,6 +170,12 @@ func (st marketingState) typedRewardRefused(typed *gen.PromoCodeRow) bool {
 // validated: typedD/typedID) and answers the cart's one discount, whether the
 // reward won, and a blocking code: "marketing.discount_used" when the reward
 // would win but the buyer has used it already (only knowable with an e-mail).
+//
+// The reward's caps are counted the way the order transaction counts them
+// (hcheckout.ReservePromoUseTx): recorded redemptions plus orders that were
+// paid or still hold their places. A reward whose max_uses is taken is simply
+// not applied, so the quote and the start agree and a ticked buyer is never
+// refused for a discount nobody can have.
 func (h *Handler) pickDiscount(ctx context.Context, q *gen.Queries, st marketingState, lines []hcheckout.TierLine,
 	email string, typedD int64, typedID *uuid.UUID) (int64, *uuid.UUID, bool, string) {
 	if !st.accepted || !st.reward {
@@ -164,32 +188,49 @@ func (h *Handler) pickDiscount(ctx context.Context, q *gen.Queries, st marketing
 	if errCode != "" || d <= typedD {
 		return typedD, typedID, false, ""
 	}
-	if email != "" {
-		var limits hcheckout.PromoLimitQuerier
-		if q != nil {
-			limits = q
+	if q != nil {
+		email = strings.TrimSpace(email)
+		sessionID := st.sessionID
+		uses, err := q.CountPromoCodeUsesInFlight(ctx, st.offer.Code.ID, st.orgID, nil, &sessionID, nil, email)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return typedD, typedID, false, "" // no longer the organization's code
 		}
-		limitErr, err := hcheckout.CheckPromoLimits(ctx, limits, *st.offer.Code, nil, email)
 		if err != nil {
 			h.logger.Error("public_feed: reward usage count failed", slog.String("error", err.Error()))
 			return typedD, typedID, false, "checkout.promo_lookup_failed"
 		}
-		if limitErr == hcheckout.PromoErrPerCustomerLimit {
-			return typedD, typedID, false, "marketing.discount_used"
-		}
-		if limitErr != "" {
+		if uses.MaxUses != nil && uses.Used >= *uses.MaxUses {
 			return typedD, typedID, false, ""
+		}
+		if email != "" && uses.MaxUsesPerCustomer != nil && uses.Mine >= *uses.MaxUsesPerCustomer {
+			return typedD, typedID, false, "marketing.discount_used"
 		}
 	}
 	id := st.offer.Code.ID
 	return d, &id, true, ""
 }
 
+// rewardRefusal turns the order transaction's refusal of the reward code
+// (a use taken between the check and the order) into the tick's own answer,
+// which the widget handles by asking again without the reward.
+func rewardRefusal(refusal string) string {
+	if refusal == hcheckout.PromoErrPerCustomerLimit {
+		return "marketing.discount_used"
+	}
+	return "marketing.discount_unavailable"
+}
+
 // writeMarketingBlock answers a blocking verdict of pickDiscount.
 func writeMarketingBlock(w http.ResponseWriter, r *http.Request, code string) {
-	if code == "marketing.discount_used" {
+	switch code {
+	case "marketing.discount_used":
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
 			code, "The discount for the subscription was already used with this e-mail. The subscription still counts.", r,
+		))
+		return
+	case "marketing.discount_unavailable":
+		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelope(
+			code, "The discount for the subscription has run out. Press the pay button again to pay the regular price.", r,
 		))
 		return
 	}

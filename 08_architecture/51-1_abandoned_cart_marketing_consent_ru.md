@@ -259,7 +259,9 @@ consent_promo_code_id, updated_at, updated_by)`, правки — `org.update` (
 - Галочка: пакет `marketing`, `marketing_consent` в `checkout/quote` и `checkout/start`,
   блок `marketing_optin` и флаг `cart_reminder` в сессии ленты, письмо подтверждения
   `marketing.confirm_email` (токен выпускается при отправке, хранится хеш),
-  `GET /v1/public/marketing/confirm`, страница отзыва (GET) и отзыв (POST).
+  страница подтверждения (GET) и подтверждение (POST) по адресу
+  `/v1/public/marketing/confirm`, страница отзыва (GET) и отзыв (POST). GET ничего
+  не меняет: почтовые сканеры сами открывают ссылки из писем.
 - Скидка: код из `org_growth_settings.consent_promo_code_id` (живой, лимит один на
   покупателя). Берётся бо́льшая из введённого кода и кода за подписку. Введённый код за
   подписку без галочки — `promo.not_applicable`. Адрес, уже получивший скидку, — 422

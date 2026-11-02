@@ -261,14 +261,40 @@ func Decide(o Order, now time.Time) string {
 	return ""
 }
 
-// Mark records the outcome of the letter: sent, or the reason it was skipped.
-func Mark(ctx context.Context, db interface {
+// Claim takes the order's one reminder before the letter is sent: it stamps
+// sent_at only when nothing was sent or skipped yet, and answers false when
+// another run already took it. Claiming first makes the reminder "at most
+// once": a worker that dies after the mail server accepted the letter, or a
+// failed write afterwards, can never send it a second time. A send that fails
+// gives the claim back with Release so the retry can send it.
+func Claim(ctx context.Context, db interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
-}, orderID uuid.UUID, skipped string, now time.Time) error {
-	if skipped == "" {
-		_, err := db.Exec(ctx, `UPDATE checkout_reminders SET sent_at = $2 WHERE order_id = $1`, orderID, now)
-		return err
+}, orderID uuid.UUID, now time.Time) (bool, error) {
+	tag, err := db.Exec(ctx, `
+		UPDATE checkout_reminders SET sent_at = $2
+		WHERE  order_id = $1 AND sent_at IS NULL AND skipped_reason IS NULL`, orderID, now)
+	if err != nil {
+		return false, err
 	}
-	_, err := db.Exec(ctx, `UPDATE checkout_reminders SET skipped_reason = $2 WHERE order_id = $1 AND sent_at IS NULL`, orderID, skipped)
+	return tag.RowsAffected() == 1, nil
+}
+
+// Release gives back a claim whose letter the mail server refused.
+func Release(ctx context.Context, db interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}, orderID uuid.UUID, claimedAt time.Time) error {
+	_, err := db.Exec(ctx, `
+		UPDATE checkout_reminders SET sent_at = NULL
+		WHERE  order_id = $1 AND sent_at = $2`, orderID, claimedAt)
+	return err
+}
+
+// Skip records why the order gets no reminder, unless one was already sent.
+func Skip(ctx context.Context, db interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}, orderID uuid.UUID, reason string) error {
+	_, err := db.Exec(ctx, `
+		UPDATE checkout_reminders SET skipped_reason = $2
+		WHERE  order_id = $1 AND sent_at IS NULL AND skipped_reason IS NULL`, orderID, reason)
 	return err
 }

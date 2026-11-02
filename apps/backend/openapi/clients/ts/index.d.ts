@@ -6970,18 +6970,30 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Confirm a marketing consent (double opt-in)
+         * The page that confirms a marketing consent
          * @description The link of the marketing consent confirmation letter (spec 51-1). A
-         *     valid token confirms the address and answers `303` to the page the
-         *     buyer checked out on (else the tickets site) with
-         *     `arena_marketing=confirmed`; an unknown, used or expired token answers
-         *     `303` to the tickets site with `arena_marketing=invalid`. Without a
-         *     configured tickets site the answer is a small HTML page (confirmed) or
-         *     JSON (invalid). No JWT is required.
+         *     valid token answers a small HTML page that names the organization and
+         *     asks with one button; it never confirms by itself, because mail
+         *     scanners open every link of a letter and a scanner's click must not
+         *     stand as the buyer's consent. An unknown, used or expired token
+         *     answers `303` to the tickets site with `arena_marketing=invalid`, or
+         *     JSON without a configured tickets site. No JWT is required.
          */
-        get: operations["confirmPublicMarketingConsent"];
+        get: operations["getPublicMarketingConfirmPage"];
         put?: never;
-        post?: never;
+        /**
+         * Confirm a marketing consent (double opt-in)
+         * @description The button of the confirmation page (spec 51-1). A valid token
+         *     confirms the address, journals the click with its address and
+         *     browser, and answers `303` to the page the buyer checked out on (else
+         *     the tickets site) with `arena_marketing=confirmed`; an unknown, used
+         *     or expired token answers `303` to the tickets site with
+         *     `arena_marketing=invalid`. Without a configured tickets site the
+         *     answer is a small HTML page (confirmed) or JSON (invalid). The form
+         *     posts `multipart/form-data` with an empty body; the token is in the
+         *     query string. No JWT is required.
+         */
+        post: operations["confirmPublicMarketingConsent"];
         delete?: never;
         options?: never;
         head?: never;
@@ -56377,6 +56389,56 @@ export interface operations {
             };
             /** @description `checkout.rate_limited` - too many requests. */
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicMarketingConfirmPage: {
+        parameters: {
+            query: {
+                /** @description The one-time token from the letter. */
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page with the confirm button. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Redirect with `arena_marketing=invalid`. */
+            303: {
+                headers: {
+                    /** @description The tickets site with `arena_marketing=invalid`. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `marketing.link_invalid` - the token is unknown, used or expired and no tickets site is configured. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

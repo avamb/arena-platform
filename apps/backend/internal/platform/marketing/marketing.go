@@ -36,7 +36,7 @@ import (
 
 // TextVersion names the consent text the clients show. A client that sends
 // another version showed an older text and must reload (ErrTextOutdated).
-// Change it together with MARKETING_CONSENT_VERSION in the widget whenever
+// Change it together with MARKETING_TEXT_VERSION in the widget whenever
 // the meaning of the text changes.
 const TextVersion = "marketing-optin-2026-11-02"
 
@@ -348,7 +348,7 @@ func Confirm(ctx context.Context, db TxBeginner, token string, v Visit) (Landing
 		SET    status = 'confirmed', confirmed_at = $2, confirm_token_hash = NULL, updated_at = $2
 		WHERE  confirm_token_hash = $1 AND status = 'pending' AND confirm_sent_at > $3
 		RETURNING id, org_id, page_url, locale, text_version`,
-		HashToken(token), now, now.Add(-TokenTTL)).Scan(&id, &l.OrgID, &l.PageURL, &l.Locale, &version)
+		HashToken(strings.TrimSpace(token)), now, now.Add(-TokenTTL)).Scan(&id, &l.OrgID, &l.PageURL, &l.Locale, &version)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Landing{}, ErrTokenInvalid
 	}
@@ -359,6 +359,30 @@ func Confirm(ctx context.Context, db TxBeginner, token string, v Visit) (Landing
 		return Landing{}, err
 	}
 	return l, tx.Commit(ctx)
+}
+
+// LookupConfirm reads what a live confirmation token names, without changing
+// anything: the link's GET only shows a page with a button, because mail
+// scanners open every link of a letter by themselves and a scanner's click
+// must never stand as the buyer's confirmation. A used, expired or unknown
+// token is ErrTokenInvalid.
+func LookupConfirm(ctx context.Context, db DB, token string, now time.Time) (Landing, error) {
+	if len(strings.TrimSpace(token)) != 64 {
+		return Landing{}, ErrTokenInvalid
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	var l Landing
+	err := db.QueryRow(ctx, `
+		SELECT s.org_id, s.page_url, s.locale, o.name
+		FROM   marketing_subscriptions s JOIN organizations o ON o.id = s.org_id
+		WHERE  s.confirm_token_hash = $1 AND s.status = 'pending' AND s.confirm_sent_at > $2`,
+		HashToken(strings.TrimSpace(token)), now.UTC().Add(-TokenTTL)).Scan(&l.OrgID, &l.PageURL, &l.Locale, &l.OrgName)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Landing{}, ErrTokenInvalid
+	}
+	return l, err
 }
 
 // TxBeginner opens a transaction (a pool).

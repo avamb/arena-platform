@@ -48519,16 +48519,63 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
   /v1/public/marketing/confirm:
     get:
+      operationId: getPublicMarketingConfirmPage
+      summary: The page that confirms a marketing consent
+      description: |
+        The link of the marketing consent confirmation letter (spec 51-1). A
+        valid token answers a small HTML page that names the organization and
+        asks with one button; it never confirms by itself, because mail
+        scanners open every link of a letter and a scanner's click must not
+        stand as the buyer's consent. An unknown, used or expired token
+        answers `303` to the tickets site with `arena_marketing=invalid`, or
+        JSON without a configured tickets site. No JWT is required.
+      tags: [v1, public]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: The one-time token from the letter.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The page with the confirm button.
+          content:
+            text/html:
+              schema:
+                type: string
+        "303":
+          description: Redirect with `arena_marketing=invalid`.
+          headers:
+            Location:
+              description: The tickets site with `arena_marketing=invalid`.
+              schema:
+                type: string
+        "404":
+          description: "`marketing.link_invalid` - the token is unknown, used or expired and no tickets site is configured."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "`dependency.database_unavailable` - the service is not wired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
       operationId: confirmPublicMarketingConsent
       summary: Confirm a marketing consent (double opt-in)
       description: |
-        The link of the marketing consent confirmation letter (spec 51-1). A
-        valid token confirms the address and answers `303` to the page the
-        buyer checked out on (else the tickets site) with
-        `arena_marketing=confirmed`; an unknown, used or expired token answers
-        `303` to the tickets site with `arena_marketing=invalid`. Without a
-        configured tickets site the answer is a small HTML page (confirmed) or
-        JSON (invalid). No JWT is required.
+        The button of the confirmation page (spec 51-1). A valid token
+        confirms the address, journals the click with its address and
+        browser, and answers `303` to the page the buyer checked out on (else
+        the tickets site) with `arena_marketing=confirmed`; an unknown, used
+        or expired token answers `303` to the tickets site with
+        `arena_marketing=invalid`. Without a configured tickets site the
+        answer is a small HTML page (confirmed) or JSON (invalid). The form
+        posts `multipart/form-data` with an empty body; the token is in the
+        query string. No JWT is required.
       tags: [v1, public]
       parameters:
         - name: token
@@ -48813,10 +48860,12 @@ paths:
       operationId: exportOrganizationMarketingSubscribers
       summary: The buyers who agreed to the organization's mailings, as CSV
       description: |
-        The same list as `marketing-subscribers` (up to 1000 rows a file, same
-        `status` filter), as an Excel-friendly CSV with the withdraw link of
-        every address. Column labels follow `?locale=` (en, ru, es). Requires
-        `order.read`; an organization API key is refused.
+        The same list as `marketing-subscribers` (every row of the `status`
+        filter, read in batches), as an Excel-friendly CSV with the withdraw
+        link of every address. A list above 50000 rows is refused with `413`
+        before the first byte, never cut. Column labels follow `?locale=`
+        (en, ru, es). Requires `order.read`; an organization API key is
+        refused.
       tags: [v1]
       security:
         - bearerAuth: []
@@ -48831,16 +48880,6 @@ paths:
           required: false
           description: "`confirmed` (default), `pending`, `withdrawn` or `all`."
           schema: { type: string }
-        - name: limit
-          in: query
-          required: false
-          description: Rows in the file, 1-1000 (default 1000).
-          schema: { type: integer }
-        - name: offset
-          in: query
-          required: false
-          description: Rows to skip.
-          schema: { type: integer }
         - name: locale
           in: query
           required: false
@@ -48867,6 +48906,12 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
           description: Not a member, no `order.read`, or an API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: "`export.too_many_rows` - more than 50000 rows; choose one status at a time."
           content:
             application/json:
               schema:

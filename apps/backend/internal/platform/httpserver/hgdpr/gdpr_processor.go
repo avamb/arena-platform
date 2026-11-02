@@ -257,7 +257,7 @@ func (p *GDPRProcessor) processDelete(ctx context.Context, req gen.DataSubjectRe
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return fmt.Errorf("processDelete: read address for marketing consents: %w", err)
 		}
-	} else if err := marketing.ForgetEmailTx(ctx, p.queries.DB(), addr, time.Now().UTC()); err != nil {
+	} else if err := p.forgetMarketing(ctx, addr); err != nil {
 		return fmt.Errorf("processDelete: forget marketing consents: %w", err)
 	}
 	// AnonymizeUser replaces PII with placeholder values and sets anonymized_at.
@@ -284,4 +284,22 @@ func FormatTimePtr(t *time.Time) any {
 		return nil
 	}
 	return t.UTC().Format(time.RFC3339)
+}
+
+// forgetMarketing runs the marketing erasure in ONE transaction: it renames
+// the subscription and blanks the journal's address and browser together, so
+// a failure leaves both as they were and the retry finds the same rows.
+func (p *GDPRProcessor) forgetMarketing(ctx context.Context, addr string) error {
+	if p.pool == nil {
+		return marketing.ForgetEmailTx(ctx, p.queries.DB(), addr, time.Now().UTC())
+	}
+	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := marketing.ForgetEmailTx(ctx, tx, addr, time.Now().UTC()); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

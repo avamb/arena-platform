@@ -44,6 +44,16 @@ export interface MarketingConsentPayload {
 
 /** The API code of a refused reward: this address already used it. */
 export const MARKETING_DISCOUNT_USED_CODE = 'marketing.discount_used';
+/** The API code of a refused reward: all its uses are taken. */
+export const MARKETING_DISCOUNT_UNAVAILABLE_CODE = 'marketing.discount_unavailable';
+
+/**
+ * Whether the platform refused the tick's reward. The next press then sends
+ * `discount: false`, so the buyer can pay the regular price.
+ */
+export function isMarketingRewardRefusal(code: string | undefined): boolean {
+  return code === MARKETING_DISCOUNT_USED_CODE || code === MARKETING_DISCOUNT_UNAVAILABLE_CODE;
+}
 /** The API code of a tick shown with an older text. */
 export const MARKETING_OUTDATED_CODE = 'marketing.consent_outdated';
 
@@ -64,7 +74,10 @@ export function marketingPayload(
   discountUsed: boolean,
 ): MarketingConsentPayload | undefined {
   if (!ticked || !marketingOffered(m)) return undefined;
-  const version = (m?.text_version ?? '').trim() || MARKETING_TEXT_VERSION;
+  // The version of the text THIS widget shows, never the one the feed names:
+  // an older cached widget must be refused (consent_outdated), not recorded
+  // as having shown a text it never showed.
+  const version = MARKETING_TEXT_VERSION;
   return discountUsed ? { accepted: true, text_version: version, discount: false } : { accepted: true, text_version: version };
 }
 
@@ -95,6 +108,7 @@ export function marketingLabel(m: SessionMarketingOptIn | null | undefined, loca
 export function marketingErrorMessage(code: string | undefined, locale: string): string | null {
   const w = getMarketingStrings(locale);
   if (code === MARKETING_DISCOUNT_USED_CODE) return w.discount_used;
+  if (code === MARKETING_DISCOUNT_UNAVAILABLE_CODE) return w.discount_unavailable;
   if (code === MARKETING_OUTDATED_CODE) return w.outdated;
   return null;
 }

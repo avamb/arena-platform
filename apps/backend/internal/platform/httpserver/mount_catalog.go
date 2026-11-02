@@ -286,7 +286,8 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 	if s.checkoutQueries != nil {
 		r.Get("/public/checkout/{checkout_token}/resume", s.handleCheckoutResume)
 	}
-	r.Get("/public/marketing/confirm", s.handleMarketingConfirm)
+	r.Get("/public/marketing/confirm", s.handleMarketingConfirmPage)
+	r.Post("/public/marketing/confirm", s.handleMarketingConfirm)
 	r.Get("/public/marketing/withdraw", s.handleMarketingWithdrawPage)
 	r.Post("/public/marketing/withdraw", s.handleMarketingWithdraw)
 }

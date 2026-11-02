@@ -286,7 +286,7 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 		h.refusePromo(w, r, promoAttempt, "checkout.promo_lookup_failed")
 		return
 	}
-	mk, ok := h.marketingFor(ctx, w, r, checkCtx.OrgID, req.MarketingConsent)
+	mk, ok := h.marketingFor(ctx, w, r, checkCtx.OrgID, checkCtx.SessionID, req.MarketingConsent)
 	if !ok {
 		return
 	}
@@ -311,7 +311,8 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 		promoApplied = discount > 0
 	}
 	// The marketing reward competes with the typed code (the larger wins).
-	// No e-mail here, so its one-use-per-buyer cap is checked at start.
+	// No e-mail here, so its one-use-per-buyer cap is checked at start; its
+	// max_uses is checked here as at start.
 	discount, _, rewardWon, block := h.pickDiscount(ctx, h.promoQueries, mk, tierLines, "", discount, typedID)
 	if block != "" {
 		writeMarketingBlock(w, r, block)

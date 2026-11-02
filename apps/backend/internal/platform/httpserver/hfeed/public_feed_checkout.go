@@ -508,10 +508,15 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// ── 8b. Marketing consent (spec 51-1) ─────────────────────────────────────
 	// Read on the pool before any transaction. The reward code typed by hand
 	// without the tick is refused like any code that does not fit.
-	mk, mkOK := h.marketingFor(ctx, w, r, checkCtx.OrgID, req.MarketingConsent)
+	mk, mkOK := h.marketingFor(ctx, w, r, checkCtx.OrgID, checkCtx.SessionID, req.MarketingConsent)
 	if !mkOK {
 		return
 	}
+	// An address the order takes but a mailing list cannot (no dot in the
+	// domain, a display name) drops the tick before any hold: the order goes
+	// on at its own price and nothing of the buyer is stored for mailings.
+	// Left to the confirmation transaction it would fail the whole checkout.
+	mk.dropUnmailable(req.HolderEmail)
 	if mk.typedRewardRefused(promoRow) {
 		pj.record(ctx, promoRow, promoNotApplicable)
 		h.refusePromo(w, r, promoAttempt, promoNotApplicable)
@@ -1413,7 +1418,11 @@ func (h *Handler) confirmPublicCheckout(
 					slog.String("error", relErr.Error()),
 				)
 			}
-			writePublicPromoError(w, r, refusal)
+			if growth.rewardWon {
+				writeMarketingBlock(w, r, rewardRefusal(refusal))
+			} else {
+				writePublicPromoError(w, r, refusal)
+			}
 			return
 		}
 	}

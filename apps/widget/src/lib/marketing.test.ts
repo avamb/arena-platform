@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import {
   MARKETING_TEXT_VERSION,
   formatMarketingDiscount,
+  isMarketingRewardRefusal,
   marketingErrorMessage,
   marketingLabel,
   marketingOffered,
@@ -26,6 +27,13 @@ describe('marketing tick', () => {
     expect(marketingPayload(offer, true, true)).toEqual({ accepted: true, text_version: MARKETING_TEXT_VERSION, discount: false });
   });
 
+  it('sends the version of the text it shows, not the one the feed names', () => {
+    // A widget that shows the older text must be refused by the platform,
+    // never recorded as having shown the newer one.
+    const newer = { ...offer, text_version: 'marketing-optin-2099-01-01' };
+    expect(marketingPayload(newer, true, false)).toEqual({ accepted: true, text_version: MARKETING_TEXT_VERSION });
+  });
+
   it('names the discount until it is used up', () => {
     expect(marketingLabel(offer, 'en', false)).toBe('Send me news and offers from Teatro Sur. You get 10 % off this order.');
     expect(marketingLabel(offer, 'en', true)).toBe('Send me news and offers from Teatro Sur.');
@@ -40,7 +48,15 @@ describe('marketing tick', () => {
   it('maps only its own error codes', () => {
     expect(marketingErrorMessage('marketing.discount_used', 'es')).toBe(MARKETING_I18N.es!.discount_used);
     expect(marketingErrorMessage('marketing.consent_outdated', 'de-DE')).toBe(MARKETING_I18N.de!.outdated);
+    expect(marketingErrorMessage('marketing.discount_unavailable', 'ru')).toBe(MARKETING_I18N.ru!.discount_unavailable);
     expect(marketingErrorMessage('promo.not_applicable', 'en')).toBeNull();
+  });
+
+  it('asks again without the reward after either refusal of it', () => {
+    expect(isMarketingRewardRefusal('marketing.discount_used')).toBe(true);
+    expect(isMarketingRewardRefusal('marketing.discount_unavailable')).toBe(true);
+    expect(isMarketingRewardRefusal('marketing.consent_outdated')).toBe(false);
+    expect(isMarketingRewardRefusal(undefined)).toBe(false);
   });
 
   it('carries every key and marker in all seven languages', () => {

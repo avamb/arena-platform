@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -21,6 +22,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/cartreminder"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/marketing"
@@ -29,11 +31,17 @@ import (
 type growthSender struct {
 	mu   sync.Mutex
 	sent []email.Message
+	// failNext makes the next Send fail as a refused relay would.
+	failNext bool
 }
 
 func (s *growthSender) Send(_ context.Context, m email.Message) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.failNext {
+		s.failNext = false
+		return errors.New("relay refused the letter")
+	}
 	s.sent = append(s.sent, m)
 	return nil
 }
@@ -71,6 +79,8 @@ func growthCleanup(t *testing.T, f *hostedOrgFixture) func() {
 			`DELETE FROM org_growth_settings WHERE org_id = $1`,
 			`DELETE FROM promo_code_attempts WHERE org_id = $1`,
 			`DELETE FROM promo_code_redemptions WHERE promo_code_id IN (SELECT id FROM promo_codes WHERE org_id = $1)`,
+			`UPDATE checkout_sessions SET promo_code_id = NULL WHERE org_id = $1`,
+			`UPDATE orders SET promo_code_id = NULL WHERE org_id = $1`,
 			`DELETE FROM promo_codes WHERE org_id = $1`,
 		} {
 			if _, err := f.pool.Exec(ctx, s, f.orgID); err != nil {
@@ -95,6 +105,16 @@ func growthPost(t *testing.T, srv *Server, path string, body any) (int, []byte) 
 
 func growthGet(srv *Server, path string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(http.MethodGet, path, nil)
+	rec := httptest.NewRecorder()
+	srv.router.ServeHTTP(rec, req)
+	return rec
+}
+
+// growthPostForm presses the button of a link's page: an empty
+// multipart/form-data POST, as the page's form sends it.
+func growthPostForm(srv *Server, path string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader("--x--\r\n"))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=x")
 	rec := httptest.NewRecorder()
 	srv.router.ServeHTTP(rec, req)
 	return rec
@@ -173,9 +193,17 @@ func TestCartReminder_SentOnceAndResumeLink(t *testing.T) {
 		t.Fatalf("second sweep = %d, %v: one reminder per order", n, err)
 	}
 
-	sender := &growthSender{}
+	sender := &growthSender{failNext: true}
 	h := delivery.NewCartReminderHandler(delivery.GrowthLetterOptions{Sender: sender, DB: pool, APIBaseURL: growthAPIBase})
 	payload, _ := json.Marshal(cartreminder.JobPayload{OrderID: orderID.String()})
+	// A refused send gives the reminder back, so the worker's retry sends it.
+	if err := h(ctx, payload); err == nil {
+		t.Fatal("a refused send must fail the job so the worker retries it")
+	}
+	var claimed *time.Time
+	if err := pool.QueryRow(ctx, `SELECT sent_at FROM checkout_reminders WHERE order_id = $1`, orderID).Scan(&claimed); err != nil || claimed != nil {
+		t.Fatalf("after a refused send sent_at = %v, %v: the claim was not given back", claimed, err)
+	}
 	if err := h(ctx, payload); err != nil {
 		t.Fatalf("reminder handler: %v", err)
 	}
@@ -194,6 +222,15 @@ func TestCartReminder_SentOnceAndResumeLink(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM email_letters WHERE order_id = $1 AND kind = 'checkout_reminder'`, orderID).
 		Scan(&letters); err != nil || letters != 1 {
 		t.Fatalf("email_letters = %d, %v", letters, err)
+	}
+	// The same job run again while the order is still unpaid (a retry, or a
+	// stale claim taken over) sends nothing: the reminder was taken before
+	// the letter left.
+	if err := h(ctx, payload); err != nil {
+		t.Fatal(err)
+	}
+	if sender.count() != 1 {
+		t.Fatalf("a second run of the job sent %d reminders", sender.count())
 	}
 
 	// While unpaid, the link goes back to the provider's page.
@@ -332,6 +369,28 @@ func TestMarketingConsent_DiscountOnlyWithTheTick(t *testing.T) {
 		t.Fatalf("granted journal rows = %d, %v", grants, err)
 	}
 
+	// A reward whose uses are all held by live unpaid orders is not offered:
+	// the order transaction would refuse it, and a ticked buyer must never be
+	// refused for a discount nobody can have. The first order above still
+	// holds its places and its use of the code.
+	if _, err := pool.Exec(ctx, `UPDATE promo_codes SET max_uses = 1 WHERE id = $1`, codeID); err != nil {
+		t.Fatal(err)
+	}
+	// The fixture has five places; this second buyer needs two more.
+	if _, err := gen.New(pool).InsertGAUnits(ctx, f.sessionID, "ga|t1", 5, &f.tierID, 2); err != nil {
+		t.Fatalf("more places: %v", err)
+	}
+	if code, out := quote(tick); code != http.StatusOK || out["marketing_discount_applied"] != false {
+		t.Fatalf("quote with the reward taken by a live order = %d %v", code, out)
+	}
+	if code, raw := f.startWith(t, srv, "second-"+f.buyerMail, "", tick); code != http.StatusCreated ||
+		!strings.Contains(string(raw), `"marketing_discount_applied":false`) {
+		t.Fatalf("start with the reward taken by a live order = %d %s", code, raw)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE promo_codes SET max_uses = NULL WHERE id = $1`, codeID); err != nil {
+		t.Fatal(err)
+	}
+
 	// The confirmation letter, then the link.
 	sender := &growthSender{}
 	h := delivery.NewMarketingConfirmHandler(delivery.GrowthLetterOptions{Sender: sender, DB: pool, APIBaseURL: growthAPIBase})
@@ -344,7 +403,16 @@ func TestMarketingConsent_DiscountOnlyWithTheTick(t *testing.T) {
 	if m == nil {
 		t.Fatalf("no confirmation link in:\n%s", letter.HTMLBody)
 	}
+	// Confirm: GET only asks (a mail scanner opens every link), POST confirms.
 	rec = growthGet(srv, "/v1/public/marketing/confirm?token="+m[1])
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "<form") {
+		t.Fatalf("confirm page = %d %s", rec.Code, rec.Body.String())
+	}
+	if err := pool.QueryRow(ctx, `SELECT status FROM marketing_subscriptions WHERE id = $1`, subID).Scan(&status); err != nil ||
+		status != marketing.StatusPending {
+		t.Fatalf("a GET confirmed the consent: %q, %v", status, err)
+	}
+	rec = growthPostForm(srv, "/v1/public/marketing/confirm?token="+m[1])
 	if rec.Code != http.StatusSeeOther || !strings.Contains(rec.Header().Get("Location"), "arena_marketing=confirmed") {
 		t.Fatalf("confirm = %d %q", rec.Code, rec.Header().Get("Location"))
 	}
@@ -352,8 +420,12 @@ func TestMarketingConsent_DiscountOnlyWithTheTick(t *testing.T) {
 		status != marketing.StatusConfirmed {
 		t.Fatalf("after confirm status = %q, %v", status, err)
 	}
-	// A used link is not valid twice.
+	// A used link is not valid twice, neither its page nor its button.
 	rec = growthGet(srv, "/v1/public/marketing/confirm?token="+m[1])
+	if !strings.Contains(rec.Header().Get("Location"), "arena_marketing=invalid") {
+		t.Fatalf("second confirm page = %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	rec = growthPostForm(srv, "/v1/public/marketing/confirm?token="+m[1])
 	if !strings.Contains(rec.Header().Get("Location"), "arena_marketing=invalid") {
 		t.Fatalf("second confirm = %d %q", rec.Code, rec.Header().Get("Location"))
 	}

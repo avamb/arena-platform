@@ -2,9 +2,11 @@ package httpserver
 
 // marketing_public.go — the two links of the marketing consent (spec 51-1):
 //
-//   - GET /v1/public/marketing/confirm?token= confirms the address (double
-//     opt-in) and 303s to the page the buyer checked out on, with
-//     arena_marketing=confirmed (or =invalid).
+//   - GET /v1/public/marketing/confirm?token= shows a one-button page; POST
+//     to the same address confirms the address (double opt-in) and 303s to
+//     the page the buyer checked out on, with arena_marketing=confirmed (or
+//     =invalid). A GET never confirms: a mail scanner's click must not stand
+//     as the buyer's consent, with the scanner's address in the journal.
 //   - GET /v1/public/marketing/withdraw?token= shows a one-button page;
 //     POST to the same address withdraws the consent. A GET never withdraws:
 //     mail scanners open every link of a letter by themselves. The form posts
@@ -21,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/marketing"
@@ -31,6 +34,41 @@ func (s *Server) marketingVisit(r *http.Request) marketing.Visit {
 	return marketing.Visit{ClientIP: httputil.TrustedClientIP(r, 0), UserAgent: r.UserAgent()}
 }
 
+// handleMarketingConfirmPage is the GET of the confirmation link: it asks
+// with one button and changes nothing.
+func (s *Server) handleMarketingConfirmPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	if s.pgxPool == nil {
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+			"dependency.database_unavailable", "The service is temporarily unavailable. Try again in a minute.", r))
+		return
+	}
+	token := r.URL.Query().Get("token")
+	l, err := marketing.LookupConfirm(r.Context(), s.pgxPool, token, time.Time{})
+	if err != nil {
+		if !errors.Is(err, marketing.ErrTokenInvalid) {
+			s.logger.Error("marketing: confirm lookup failed", slog.String("error", err.Error()))
+		}
+		s.marketingConfirmInvalid(w, r)
+		return
+	}
+	writeMarketingPage(w, l.Locale, "confirm_ask", l.OrgName, "?token="+url.QueryEscape(strings.TrimSpace(token)))
+}
+
+// marketingConfirmInvalid answers a used, expired or unknown confirmation token.
+func (s *Server) marketingConfirmInvalid(w http.ResponseWriter, r *http.Request) {
+	fallback := strings.TrimRight(strings.TrimSpace(s.cfg.PublicTicketsBaseURL), "/")
+	if fallback == "" {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"marketing.link_invalid", "This link was already used or has expired. Tick the box again on your next order.", r))
+		return
+	}
+	http.Redirect(w, r, marketingLanding(fallback, "invalid"), http.StatusSeeOther) //nolint:gosec // G710: the configured tickets page
+}
+
+// handleMarketingConfirm is the button of the confirmation page: it confirms
+// the address and sends the buyer back to their page.
 func (s *Server) handleMarketingConfirm(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
@@ -45,12 +83,7 @@ func (s *Server) handleMarketingConfirm(w http.ResponseWriter, r *http.Request) 
 		if !errors.Is(err, marketing.ErrTokenInvalid) {
 			s.logger.Error("marketing: confirm failed", slog.String("error", err.Error()))
 		}
-		if fallback == "" {
-			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
-				"marketing.link_invalid", "This link was already used or has expired. Tick the box again on your next order.", r))
-			return
-		}
-		http.Redirect(w, r, marketingLanding(fallback, "invalid"), http.StatusSeeOther) //nolint:gosec // G710: the configured tickets page
+		s.marketingConfirmInvalid(w, r)
 		return
 	}
 	target := salesubscribe.CleanPageURL(l.PageURL)
@@ -117,29 +150,37 @@ func (s *Server) handleMarketingWithdraw(w http.ResponseWriter, r *http.Request)
 }
 
 // marketingPageTexts: title, "ask" text, button, "done" text, "invalid"
-// text, "confirmed" text. %s is the organization.
-var marketingPageTexts = map[string][6]string{
+// text, "confirmed" text, "confirm_ask" text, confirm button. %s is the
+// organization.
+var marketingPageTexts = map[string][8]string{
 	"en": {"Mailings", "Stop the news and offers from %s?", "Stop the mailings",
 		"You will no longer get news and offers from %s. Letters about your orders and tickets still arrive.",
-		"This link is not valid. Copy it from the letter again.", "Thank you! The subscription to %s is confirmed."},
+		"This link is not valid. Copy it from the letter again.", "Thank you! The subscription to %s is confirmed.",
+		"Get news and offers from %s? Press the button to confirm the subscription.", "Confirm the subscription"},
 	"ru": {"Рассылка", "Больше не получать новости и предложения от %s?", "Отказаться от рассылки",
 		"Вы больше не будете получать новости и предложения от %s. Письма о заказах и билеты по-прежнему придут.",
-		"Ссылка не работает. Скопируйте её из письма ещё раз.", "Спасибо! Подписка на %s подтверждена."},
+		"Ссылка не работает. Скопируйте её из письма ещё раз.", "Спасибо! Подписка на %s подтверждена.",
+		"Получать новости и предложения от %s? Нажмите кнопку, чтобы подтвердить подписку.", "Подтвердить подписку"},
 	"es": {"Correos", "¿Dejar de recibir novedades y ofertas de %s?", "Dejar de recibir correos",
 		"Ya no recibirás novedades ni ofertas de %s. Los correos sobre tus pedidos y las entradas seguirán llegando.",
-		"Este enlace no es válido. Cópialo otra vez del correo.", "¡Gracias! Tu suscripción a %s está confirmada."},
+		"Este enlace no es válido. Cópialo otra vez del correo.", "¡Gracias! Tu suscripción a %s está confirmada.",
+		"¿Recibir novedades y ofertas de %s? Pulsa el botón para confirmar la suscripción.", "Confirmar la suscripción"},
 	"cs": {"Novinky", "Už nedostávat novinky a nabídky od %s?", "Ukončit zasílání novinek",
 		"Novinky a nabídky od %s už vám nepřijdou. E-maily o objednávkách a vstupenky dál chodí.",
-		"Tento odkaz neplatí. Zkopírujte ho z e-mailu znovu.", "Děkujeme! Odběr novinek %s je potvrzen."},
+		"Tento odkaz neplatí. Zkopírujte ho z e-mailu znovu.", "Děkujeme! Odběr novinek %s je potvrzen.",
+		"Dostávat novinky a nabídky od %s? Stiskněte tlačítko a potvrďte odběr.", "Potvrdit odběr"},
 	"de": {"Mailings", "Keine Neuigkeiten und Angebote mehr von %s erhalten?", "Mailings beenden",
 		"Sie erhalten keine Neuigkeiten und Angebote mehr von %s. E-Mails zu Bestellungen und Tickets kommen weiterhin.",
-		"Dieser Link ist ungültig. Kopieren Sie ihn noch einmal aus der E-Mail.", "Danke! Ihr Abonnement bei %s ist bestätigt."},
+		"Dieser Link ist ungültig. Kopieren Sie ihn noch einmal aus der E-Mail.", "Danke! Ihr Abonnement bei %s ist bestätigt.",
+		"Neuigkeiten und Angebote von %s erhalten? Drücken Sie die Schaltfläche, um das Abonnement zu bestätigen.", "Abonnement bestätigen"},
 	"fr": {"Envois", "Ne plus recevoir les nouvelles et offres de %s ?", "Arrêter les envois",
 		"Vous ne recevrez plus les nouvelles et offres de %s. Les e-mails sur vos commandes et vos billets continuent d’arriver.",
-		"Ce lien n’est pas valide. Copiez-le à nouveau depuis l’e-mail.", "Merci ! Votre abonnement à %s est confirmé."},
+		"Ce lien n’est pas valide. Copiez-le à nouveau depuis l’e-mail.", "Merci ! Votre abonnement à %s est confirmé.",
+		"Recevoir les nouvelles et offres de %s ? Appuyez sur le bouton pour confirmer l’abonnement.", "Confirmer l’abonnement"},
 	"he": {"דיוור", "להפסיק לקבל עדכונים והצעות מ־%s?", "להפסקת הדיוור",
 		"לא תקבלו יותר עדכונים והצעות מ־%s. מיילים על הזמנות וכרטיסים ימשיכו להגיע.",
-		"הקישור לא תקף. העתיקו אותו שוב מהמייל.", "תודה! ההרשמה ל־%s אושרה."},
+		"הקישור לא תקף. העתיקו אותו שוב מהמייל.", "תודה! ההרשמה ל־%s אושרה.",
+		"לקבל עדכונים והצעות מ־%s? לחצו על הכפתור כדי לאשר את ההרשמה.", "לאישור ההרשמה"},
 }
 
 func marketingPageLang(raw string) string {
@@ -153,8 +194,9 @@ func marketingPageLang(raw string) string {
 	return "en"
 }
 
-// writeMarketingPage renders the small page of the withdraw link. state is
-// "ask", "done", "invalid" or "confirmed"; action is the form's query string.
+// writeMarketingPage renders the small page of the two links. state is
+// "ask", "done", "invalid", "confirmed" or "confirm_ask"; action is the
+// form's query string.
 func writeMarketingPage(w http.ResponseWriter, locale, state, orgName, action string) {
 	lang := marketingPageLang(locale)
 	t := marketingPageTexts[lang]
@@ -164,6 +206,9 @@ func writeMarketingPage(w http.ResponseWriter, locale, state, orgName, action st
 	case "ask":
 		body = fmt.Sprintf(`<p>%s</p><form method="post" enctype="multipart/form-data" action="%s"><button type="submit">%s</button></form>`,
 			fmt.Sprintf(html.EscapeString(t[1]), org), html.EscapeString(action), html.EscapeString(t[2]))
+	case "confirm_ask":
+		body = fmt.Sprintf(`<p>%s</p><form method="post" enctype="multipart/form-data" action="%s"><button type="submit">%s</button></form>`,
+			fmt.Sprintf(html.EscapeString(t[6]), org), html.EscapeString(action), html.EscapeString(t[7]))
 	case "done":
 		body = "<p>" + fmt.Sprintf(html.EscapeString(t[3]), org) + "</p>"
 	case "confirmed":
