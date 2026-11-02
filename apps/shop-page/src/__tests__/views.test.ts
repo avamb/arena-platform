@@ -175,7 +175,7 @@ describe('layout', () => {
     expect(popup?.getAttribute('dir')).toBe('rtl');
     expect(popup?.querySelector('.section-text')?.getAttribute('dir')).toBe('ltr');
   });
-  it('white label (spec 52): the footer platform line is shown by default and hidden only under white label', () => {
+  it('white label (spec 53): the footer platform line is shown by default and hidden only under white label', () => {
     const shown = dom(layout(ctx(), ''));
     expect(shown.querySelector('.footer__copyright')?.textContent).toContain('Arena Sold Out');
     const wl = { ...shop, settings: { ...shop.settings, white_label: true } };

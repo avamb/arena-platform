@@ -12,7 +12,7 @@ import (
 // organization's name.
 const platformLine = "Arena Platform —"
 
-// Spec 08_architecture/52: a buyer letter of a brand with white label leaves
+// Spec 08_architecture/53: a buyer letter of a brand with white label leaves
 // out the line "Arena Platform — …" in both parts; every other letter keeps
 // it. The organizer's own letters (alerts) are not white label and keep it
 // whatever the flag says.

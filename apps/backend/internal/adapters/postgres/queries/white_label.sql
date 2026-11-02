@@ -1,4 +1,4 @@
--- White label periods (migration 0187, spec 08_architecture/52).
+-- White label periods (migration 0187, spec 08_architecture/53).
 -- The hand-maintained wrappers live in gen/white_label.sql.go.
 
 -- name: LockWhiteLabelBrand :exec

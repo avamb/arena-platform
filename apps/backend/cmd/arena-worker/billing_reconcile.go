@@ -70,7 +70,7 @@ func registerBillingReconcileHandler(reg *worker.Registry, pool *pgxpool.Pool, c
 	}))
 
 	// billing.white_label writes one white_label_month event per white label
-	// period and completed month (spec 08_architecture/52). Same switch: the
+	// period and completed month (spec 08_architecture/53). Same switch: the
 	// date X; the rate job prices the events.
 	reg.Register(billingwhitelabel.JobType, billingwhitelabel.NewHandler(billingwhitelabel.HandlerOptions{
 		Charger:   billingwhitelabel.New(gen.New(pool), billingwhitelabel.Options{Since: cfg.BillingCollectSince}),

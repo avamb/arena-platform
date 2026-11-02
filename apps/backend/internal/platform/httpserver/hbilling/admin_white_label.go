@@ -1,7 +1,7 @@
 package hbilling
 
 // admin_white_label.go - white label periods of a brand (spec
-// 08_architecture/52, owner decisions 2026-11-02): a platform superadmin
+// 08_architecture/53, owner decisions 2026-11-02): a platform superadmin
 // turns white label on for an organization (its events without a promoter)
 // or for one of its promoters, from a day to a day. The organizer sees it
 // read-only (GET /v1/organizations/{org_id}/billing/white-label).

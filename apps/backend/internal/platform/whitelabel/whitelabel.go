@@ -1,6 +1,6 @@
 // Package whitelabel answers one question for every surface a buyer sees:
 // does this brand sell without naming Arena Sold Out today? (spec
-// 08_architecture/52, owner decisions 2026-11-02.)
+// 08_architecture/53, owner decisions 2026-11-02.)
 //
 // A brand is the promoter of an event (event_promoters), or the organization
 // itself for an event without a promoter. A brand has white label on a day

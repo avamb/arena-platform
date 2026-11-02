@@ -1,5 +1,5 @@
 /**
- * The "White label" tab of the price screen (spec 08_architecture/52): the
+ * The "White label" tab of the price screen (spec 08_architecture/53): the
  * list of white label periods, a dialog to turn white label on for a brand
  * and a dialog to set the last day of a period. A period is never edited or
  * deleted: it is ended, and a new one is created.

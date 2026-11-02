@@ -1,5 +1,5 @@
 // Package whitelabelcharge writes the billing facts of white label (spec
-// 08_architecture/52): one billable event white_label_month per white label
+// 08_architecture/53): one billable event white_label_month per white label
 // period and completed calendar month (UTC), prorated by days. The rate job
 // (billing.rate) turns it into a charge with the subscription rule of the
 // price list, or the period's individual monthly price.

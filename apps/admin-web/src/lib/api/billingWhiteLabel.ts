@@ -1,6 +1,6 @@
 /**
  * White label periods — the superadmin tab of the price screen (spec
- * 08_architecture/52). Served by hbilling/admin_white_label.go:
+ * 08_architecture/53). Served by hbilling/admin_white_label.go:
  *
  *   GET  /v1/admin/billing/white-label[?org_id=]
  *   POST /v1/admin/billing/white-label

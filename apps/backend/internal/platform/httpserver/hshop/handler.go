@@ -113,7 +113,7 @@ type Options struct {
 	// secret, like the other tables that keep an address hash.
 	IPSalt string
 	// WhiteLabel tells whether the organization has white label today (spec
-	// 08_architecture/52); the storefront then hides its "on the Arena Sold
+	// 08_architecture/53); the storefront then hides its "on the Arena Sold
 	// Out platform" footer. Nil means never.
 	WhiteLabel *whitelabel.Resolver
 }

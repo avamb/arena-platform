@@ -294,7 +294,7 @@ type publicFeedSessionResponse struct {
 	// else, including an unknown country.
 	ShowWithdrawalNotice bool `json:"show_withdrawal_notice"`
 	// WhiteLabel is true when the event's brand (its promoter, else the
-	// organization) has white label today (spec 08_architecture/52): the
+	// organization) has white label today (spec 08_architecture/53): the
 	// widget then hides its "Tickets: Arena Sold Out" badge.
 	WhiteLabel bool `json:"white_label"`
 	// Consent tells the widget whether the buyer must tick "I accept the sale

@@ -11,7 +11,7 @@ import {
 const widgetSource = readFileSync(fileURLToPath(new URL('../ArenaTickets.svelte', import.meta.url)), 'utf8');
 const typesSource = readFileSync(fileURLToPath(new URL('../types.ts', import.meta.url)), 'utf8');
 
-describe('platform badge (white label, spec 52)', () => {
+describe('platform badge (white label, spec 53)', () => {
   it('is shown by default, also when the backend sends no flag', () => {
     expect(showPlatformBadge([{}, {}])).toBe(true);
     expect(showPlatformBadge([])).toBe(true);

@@ -285,7 +285,7 @@ func (h *Handler) showWithdrawalNotice(ctx context.Context, orgID uuid.UUID) boo
 }
 
 // whiteLabelForEvent reports whether the event's brand has white label today
-// (spec 08_architecture/52). A failed lookup answers false (the badge stays)
+// (spec 08_architecture/53). A failed lookup answers false (the badge stays)
 // and is logged: it never fails the page.
 func (h *Handler) whiteLabelForEvent(ctx context.Context, eventID uuid.UUID) bool {
 	if h.publicFeedQueries == nil {

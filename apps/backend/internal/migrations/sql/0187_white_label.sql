@@ -1,5 +1,5 @@
 -- 0187_white_label.sql — white label: selling without naming Arena Sold Out
--- (spec 08_architecture/52, owner decisions 2026-11-02).
+-- (spec 08_architecture/53, owner decisions 2026-11-02).
 --
 -- A brand is the promoter of an event, or the organization itself for an
 -- event without a promoter. white_label_periods says from which day to which

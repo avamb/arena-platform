@@ -81,7 +81,7 @@ type CreditPackRule struct {
 }
 
 // SubscriptionRule is subscription for the event kind white_label_month: a
-// monthly amount, prorated by days by Rate (spec 08_architecture/52).
+// monthly amount, prorated by days by Rate (spec 08_architecture/53).
 type SubscriptionRule struct {
 	MonthlyMinor int64
 	Currency     string

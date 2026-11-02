@@ -1075,7 +1075,7 @@
           />
         {/if}
 
-        <!-- Platform line (spec 52): shown unless the event's brand has
+        <!-- Platform line (spec 53): shown unless the event's brand has
              white label today. -->
         {#if showPlatformBadge(event.sessions, selectedSession)}
           <p class="arena-tickets-platform" data-arena-platform-badge>

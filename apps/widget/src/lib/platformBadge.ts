@@ -1,6 +1,6 @@
 /**
  * platformBadge.ts — the small "Tickets: Arena Sold Out" line under the
- * widget (spec 08_architecture/52, owner decision В-2).
+ * widget (spec 08_architecture/53, owner decision В-2).
  *
  * Every widget shows it, unless the event's brand (its promoter, else the
  * organization) pays for white label: then the feed session says

@@ -77,7 +77,7 @@ func (s *Settler) Settle(ctx context.Context, q *gen.Queries, ev gen.BillableEve
 		return nil
 	}
 	// Credit packs pay for tickets, never for a white label month (spec
-	// 08_architecture/52): it always goes on the invoice.
+	// 08_architecture/53): it always goes on the invoice.
 	if ch.RuleType == string(billing.RuleSubscription) {
 		return nil
 	}

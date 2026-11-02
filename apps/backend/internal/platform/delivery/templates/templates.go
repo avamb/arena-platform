@@ -263,7 +263,7 @@ type Data struct {
 
 	// WhiteLabel hides the "Arena Platform" line of a buyer letter: the
 	// brand of the event (its promoter, else the organization) or of the shop
-	// has white label today (spec 08_architecture/52). The letters to the
+	// has white label today (spec 08_architecture/53). The letters to the
 	// organizer (alerts) never read it.
 	WhiteLabel bool
 

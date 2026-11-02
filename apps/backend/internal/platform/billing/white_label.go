@@ -8,7 +8,7 @@ import (
 )
 
 // WhiteLabelMonth is what a white_label_month billable event carries in its
-// attributes (spec 08_architecture/52): which period and month it charges,
+// attributes (spec 08_architecture/53): which period and month it charges,
 // how many days of the month the period covered, and the period's individual
 // monthly price (nil = the price list; in Currency, the account currency).
 type WhiteLabelMonth struct {

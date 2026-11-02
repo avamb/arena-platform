@@ -37,7 +37,7 @@ type Message struct {
 	From string
 	// FromName optionally names the sender in the From header ("Brand
 	// <address>"); the address and the SMTP envelope stay as they are. A
-	// white label brand (spec 08_architecture/52) sends under its own name
+	// white label brand (spec 08_architecture/53) sends under its own name
 	// instead of the platform's.
 	FromName string
 	// To is the recipient email address (envelope and header).

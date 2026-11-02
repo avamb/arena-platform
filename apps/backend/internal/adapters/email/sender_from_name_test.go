@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// Spec 08_architecture/52: a white label letter names the brand as the
+// Spec 08_architecture/53: a white label letter names the brand as the
 // sender. The address stays the platform's; a name that could inject a
 // header line is dropped.
 func TestHeaderFrom(t *testing.T) {

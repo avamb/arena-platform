@@ -1,7 +1,7 @@
 //go:build integration
 
 // white_label_integration_test.go — white label of a brand (spec
-// 08_architecture/52): the superadmin routes, which events and organizations
+// 08_architecture/53): the superadmin routes, which events and organizations
 // it covers, and the monthly charge from the period to the charge row.
 //
 // Run against a scratch database (AGENTS.md CI-Integration recipe):

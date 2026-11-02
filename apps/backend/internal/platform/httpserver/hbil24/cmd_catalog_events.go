@@ -60,7 +60,7 @@ type catalogAction struct {
 	// reads as "text".
 	descriptionFormat string
 	// whiteLabel is true when the action's brand has white label today
-	// (spec 08_architecture/52).
+	// (spec 08_architecture/53).
 	whiteLabel bool
 }
 

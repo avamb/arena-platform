@@ -201,7 +201,7 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Spec 08_architecture/52: an action whose brand has white label today
+	// Spec 08_architecture/53: an action whose brand has white label today
 	// carries whiteLabel=true, so the site hides its "Tickets: Arena Sold
 	// Out" badge. Best effort: a failed lookup keeps the badge (the field is
 	// left out), it never fails the catalog.
@@ -322,7 +322,7 @@ func (h *Handler) buildActionEntry(
 		"minPrice": money.Major(ae.minPrice),
 		"maxPrice": money.Major(ae.maxPrice),
 	}
-	// Arena extension (spec 08_architecture/52): present only when the
+	// Arena extension (spec 08_architecture/53): present only when the
 	// action's brand has white label today; absent means false.
 	if ae.whiteLabel {
 		action["whiteLabel"] = true

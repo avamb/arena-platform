@@ -22,7 +22,7 @@ const (
 	KindEventPublished      EventKind = "event_published"
 	KindTicketComplimentary EventKind = "ticket_complimentary"
 	// KindWhiteLabelMonth is one calendar month (UTC) of a brand's white
-	// label period (spec 08_architecture/52).
+	// label period (spec 08_architecture/53).
 	KindWhiteLabelMonth EventKind = "white_label_month"
 )
 
@@ -437,7 +437,7 @@ func rateUnseatedAtOrgRate(terms Terms, c Charge) (Charge, error) {
 }
 
 // rateWhiteLabelMonth charges one brand-month of white label, prorated by days
-// (owner decision 2026-11-02, spec 08_architecture/52): floor(monthly ×
+// (owner decision 2026-11-02, spec 08_architecture/53): floor(monthly ×
 // DaysActive / DaysInMonth). A month without a rule for its account currency
 // is an error, never a free month.
 func rateWhiteLabelMonth(terms Terms, ev Event, c Charge) (Charge, error) {
