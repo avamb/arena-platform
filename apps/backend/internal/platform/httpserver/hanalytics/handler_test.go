@@ -350,3 +350,123 @@ func TestSite_FullBufferDoesNotSlowTheRequest(t *testing.T) {
 type adder func(float64)
 
 func (a adder) Add(v float64) { a(v) }
+
+func TestSite_EmailClickDedupedPerCidAndPageView(t *testing.T) {
+	rec := &recorder{}
+	h := New(Options{Tracker: rec, Codes: fakeCodes{"x7k2qpm3ab": true}})
+	send := func(body string) {
+		h.HandleSite(httptest.NewRecorder(), mustReq(body))
+	}
+	noAID := `{"cid":"x7k2qpm3ab","pv":"p_Q9abcdef","events":[{"name":"page_view","props":{"path":"/"}}]}`
+	withAID := `{"aid":"a_7Hk2abcd","cid":"x7k2qpm3ab","pv":"p_Q9abcdef","events":[{"name":"page_view","props":{"path":"/"}}]}`
+	clicks := func() (n, withPair int) {
+		for _, e := range rec.list() {
+			if e.Name == "email_click" {
+				n++
+				if e.Props["aid"] == "a_7Hk2abcd" {
+					withPair++
+				}
+			}
+		}
+		return
+	}
+	send(noAID)
+	send(noAID) // a reload resending the same pair: no second click
+	if n, _ := clicks(); n != 1 {
+		t.Fatalf("clicks after two aid-less sends = %d, want 1", n)
+	}
+	send(withAID) // after consent: the pair is written once
+	send(withAID)
+	if n, pair := clicks(); n != 2 || pair != 1 {
+		t.Fatalf("clicks = %d, with aid = %d, want 2 and 1", n, pair)
+	}
+	// Another page view of the same contact is a new click.
+	send(strings.Replace(noAID, "p_Q9abcdef", "p_Zzzzzzzz", 1))
+	if n, _ := clicks(); n != 3 {
+		t.Errorf("clicks = %d, want 3", n)
+	}
+}
+
+func TestSite_ClientCannotSetEmailClickAID(t *testing.T) {
+	rec := &recorder{}
+	h := New(Options{Tracker: rec, Codes: fakeCodes{"x7k2qpm3ab": true}})
+	h.HandleSite(httptest.NewRecorder(), mustReq(`{"cid":"x7k2qpm3ab","pv":"p_Q9abcdef","events":[
+		{"name":"email_click","props":{"aid":"a_forged00"}},
+		{"name":"page_view","props":{"path":"/","aid":"a_forged00"}}]}`))
+	for _, e := range rec.list() {
+		if e.Name == "email_click" && e.ServerOrigin {
+			if _, has := e.Props["aid"]; has {
+				t.Errorf("aid set without a visitor aid: %v", e.Props)
+			}
+		}
+	}
+	// The client-sent email_click goes through the same dictionary as any
+	// other client event and is dropped there (server-only).
+	if _, ok := analytics.Sanitize(analytics.SurfaceSite, "email_click", map[string]any{"aid": "a_forged00"}, true); ok {
+		t.Error("client email_click accepted by the dictionary")
+	}
+}
+
+func TestBatchTimes_SpreadLimitedToAnHourAndInsideTheDay(t *testing.T) {
+	now := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	got := batchTimes([]batchEvent{
+		{At: "2026-11-01T11:59:00Z"},
+		{At: "2026-11-01T10:30:00Z"}, // 89 minutes older than the newest: no longer trusted
+		{At: "2026-11-01T11:00:00Z"}, // exactly an hour older: kept
+		{At: "2026-11-02T11:00:00Z"}, // 23 h ahead of the server: valid skew, still never in the future
+	}, now)
+	if !got[1].Equal(now) {
+		t.Errorf("event over an hour older than the batch's newest = %v, want server time", got[1])
+	}
+	for i, ts := range got {
+		if ts.After(now) || ts.Before(now.Add(-24*time.Hour)) {
+			t.Errorf("event %d = %v is outside [now-24h, now]", i, ts)
+		}
+	}
+	if !got[3].Equal(now) {
+		t.Errorf("newest = %v, want server time", got[3])
+	}
+}
+
+// flakyCodes fails its first lookups, then knows the code.
+type flakyCodes struct {
+	mu       sync.Mutex
+	failures int
+}
+
+func (f *flakyCodes) ContactCodeExists(context.Context, string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.failures > 0 {
+		f.failures--
+		return false, errors.New("db down")
+	}
+	return true, nil
+}
+
+func TestSite_LookupErrorDoesNotBlockTheClickAndRandomCodesAreNotRemembered(t *testing.T) {
+	rec := &recorder{}
+	h := New(Options{Tracker: rec, Codes: &flakyCodes{failures: 1}})
+	body := `{"cid":"x7k2qpm3ab","pv":"p_Q9abcdef","events":[{"name":"page_view","props":{"path":"/"}}]}`
+	h.HandleSite(httptest.NewRecorder(), mustReq(body))
+	h.HandleSite(httptest.NewRecorder(), mustReq(body))
+	clicks := 0
+	for _, e := range rec.list() {
+		if e.Name == "email_click" {
+			clicks++
+		}
+	}
+	if clicks != 1 {
+		t.Fatalf("clicks = %d: a failed lookup must not block the next send, and the second success is written once", clicks)
+	}
+
+	// Unknown codes are never remembered, whatever their number.
+	h2 := New(Options{Tracker: &recorder{}, Codes: fakeCodes{}, SiteLimit: 100000})
+	for i := 0; i < 500; i++ {
+		b := fmt.Sprintf(`{"cid":"zz%06d","pv":"p_Q9abcdef","events":[{"name":"page_view"}]}`, i)
+		h2.HandleSite(httptest.NewRecorder(), mustReq(b))
+	}
+	if n := len(h2.clickSeen); n != 0 {
+		t.Errorf("%d unknown codes were remembered", n)
+	}
+}

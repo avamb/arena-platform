@@ -62,7 +62,7 @@ func (f *analyticsFixture) flush(t *testing.T) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := f.srv.analytics.Close(ctx); err != nil {
+	if err := f.srv.closeAnalytics(ctx); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
 }
@@ -306,5 +306,52 @@ func TestAnalytics_PartitionMaintenanceOnTheRealTable(t *testing.T) {
 	}
 	if n < 4 {
 		t.Errorf("partitions = %d", n)
+	}
+}
+
+// A client with a wild clock must not be able to fail a COPY: every event of
+// the batch is stored, inside [now - 24 h, now].
+func TestAnalytics_SkewedClientTimesNeverFailTheWrite(t *testing.T) {
+	f := newAnalyticsFixture(t)
+	aid := "a_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:16]
+	cleanupAnalytics(t, f, "aid", aid)
+
+	now := time.Now().UTC()
+	times := []string{
+		now.AddDate(-30, 0, 0).Format(time.RFC3339), // year 1996
+		now.AddDate(30, 0, 0).Format(time.RFC3339),  // year 2056: no partition exists
+		now.Add(-47 * time.Hour).Format(time.RFC3339),
+		now.Add(23 * time.Hour).Format(time.RFC3339),
+		now.Add(-90 * time.Minute).Format(time.RFC3339),
+		"not a time",
+		"",
+	}
+	var evs []string
+	for _, ts := range times {
+		evs = append(evs, `{"name":"page_view","at":"`+ts+`","props":{"path":"/"}}`)
+	}
+	body := `{"aid":"` + aid + `","events":[` + strings.Join(evs, ",") + `]}`
+	if resp := f.post(t, "/v1/t", "", body); resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	// Plus an in-process caller with an absurd time, as the bot will be.
+	f.srv.analyticsWriter().Track(context.Background(), analytics.Event{
+		At: now.AddDate(40, 0, 0), Surface: analytics.SurfaceSite, Name: "page_view",
+		IDKind: analytics.IDKindAID, IDValue: aid, Props: map[string]any{"path": "/"},
+	})
+	f.flush(t)
+
+	got := f.stored(t, "aid", aid)
+	if len(got) != len(times)+1 {
+		t.Fatalf("stored %d of %d events: the COPY was lost", len(got), len(times)+1)
+	}
+	for i, e := range got {
+		if e.At.Before(now.Add(-24*time.Hour-time.Minute)) || e.At.After(time.Now().Add(time.Minute)) {
+			t.Errorf("event %d stored at %v, outside [now-24h, now]", i, e.At)
+		}
+	}
+	var def int
+	if err := f.srv.pgxPool.QueryRow(context.Background(), `SELECT count(*) FROM analytics.events_default`).Scan(&def); err != nil || def != 0 {
+		t.Errorf("rows in the default partition = %d (%v)", def, err)
 	}
 }
