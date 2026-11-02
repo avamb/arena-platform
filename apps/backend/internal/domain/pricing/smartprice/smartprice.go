@@ -169,7 +169,10 @@ func ExpandBySales(p Params, in SalesInput) ([]SalesStep, error) {
 	if in.Base <= 0 {
 		return nil, ErrFreeCategory
 	}
-	every := int32(p.Every)
+	if p.Every > MaxEveryTicket {
+		return nil, ErrNotEnoughPlaces
+	}
+	every := int32(p.Every) //nolint:gosec // G115: Validate and the check above cap it at MaxEveryTicket
 	rest := in.Owned - in.Used
 	if rest <= every {
 		return nil, ErrNotEnoughPlaces

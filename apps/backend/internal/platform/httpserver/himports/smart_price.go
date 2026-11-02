@@ -232,7 +232,7 @@ func smartFail(code, msg string) error { return &smartprice.Error{Code: code, Me
 
 // planSmart applies a preset to a copy of the session's bundle.
 func planSmart(sc smartScope, req SmartPriceRequest, now time.Time) (smartPlan, error) {
-	if err := req.Params.Validate(); err != nil {
+	if err := req.Validate(); err != nil {
 		return smartPlan{}, err
 	}
 	switch {
