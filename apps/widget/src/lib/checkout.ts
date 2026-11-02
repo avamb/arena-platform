@@ -217,6 +217,8 @@ export interface CheckoutQuotePayload {
   seats?: string[];
   ga_items?: PublicGAItem[];
   promo_code?: string;
+  /** The mailing tick (spec 51-1); ticked, it may earn the organizer's reward code. */
+  marketing_consent?: import('./marketing.js').MarketingConsentPayload;
 }
 
 /**
@@ -233,6 +235,10 @@ export interface CheckoutQuoteResponse {
     total: number;
     currency: string;
   };
+  /** True when a promo_code was sent and its discount is in `pricing`. */
+  promo_applied?: boolean;
+  /** True when the discount in `pricing` is the reward for the mailing tick. */
+  marketing_discount_applied?: boolean;
 }
 
 /** Response from POST /v1/public/feeds/{token}/checkout/start. */

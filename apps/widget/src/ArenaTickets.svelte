@@ -30,6 +30,7 @@
   import { buildCheckoutPayload, buildQuotePayload, getCheckoutI18n, parseConflictsFromApiError, conflictKeySet, filterCartWithoutConflicts } from './lib/checkout.js';
   import { cartQuoteKey, promoErrorMessage, isPromoErrorCode } from './lib/promo.js';
   import { createPromoController, initialPromoState, promoPayBlocked } from './lib/promoController.js';
+  import { createMarketingQuoter, initialMarketingQuoteState, type MarketingQuoteState } from './lib/marketingQuote.js';
   import type { PromoState } from './lib/promoController.js';
   import { getPromoStrings } from './lib/promoI18n.js';
   import { MAX_CART_SEATS, cartLimitMessage, seatCapMessage } from './lib/cartLimits.js';
@@ -337,6 +338,42 @@
     void cartKey;
     const lines = cart.lines.length;
     untrack(() => promoCtl.cartChanged(lines));
+  });
+
+  // ── The mailing tick's price (spec 51-1) ───────────────────────────────────
+  //
+  // Ticked, the organizer's reward code may take something off: the pay button
+  // then names the platform's price of the cart WITH the tick. It never blocks
+  // paying; the payment page applies the discount whatever the button said.
+
+  let marketingTicked = $state(false);
+  let marketingQ = $state<MarketingQuoteState>(initialMarketingQuoteState());
+
+  const marketingQuoter = createMarketingQuoter({
+    getCartKey: () => cartKey,
+    getCode: () => promo.code,
+    buildPayload: (code) =>
+      selectedSession ? buildQuotePayload(selectedSession.id, [...selectedSeatKeys], buildGaItems(gaQuantities), code) : null,
+    consent: () =>
+      selectedSession
+        ? marketingPayload(selectedSession.marketing_optin, true, marketingDiscountUsedFor === selectedSession.id)
+        : undefined,
+    quote: (payload, signal) => {
+      if (!normFeedToken) return Promise.reject(new Error('no feed token'));
+      return postCheckoutQuote(normFeedToken, payload, resolvedApiBase, signal);
+    },
+    onChange: (next) => {
+      marketingQ = next;
+    },
+  });
+
+  $effect(() => {
+    // The tick, the cart, the applied code or the used-up discount changed.
+    const ticked = marketingTicked;
+    void cartKey;
+    void promo.code;
+    void marketingDiscountUsedFor;
+    untrack(() => void marketingQuoter.refresh(ticked));
   });
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -1106,6 +1143,9 @@
         consent={forceConsent(selectedSession.consent, consentForcedFor === selectedSession.id)}
         marketing={selectedSession.marketing_optin ?? null}
         marketingDiscountUsed={marketingDiscountUsedFor === selectedSession.id}
+        {marketingTicked}
+        marketingQuote={marketingQ}
+        onMarketingChange={(ticked) => (marketingTicked = ticked)}
         cartReminder={selectedSession.cart_reminder === true}
         locale={normLocale}
         submitting={checkoutSubmitting}

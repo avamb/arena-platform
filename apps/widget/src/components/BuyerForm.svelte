@@ -13,6 +13,7 @@
    *  • All copy localised (en/ru/cs/he)
    */
 
+  import { onDestroy } from 'svelte';
   import {
     validateBuyerForm,
     isBuyerFormValid,
@@ -62,6 +63,8 @@
     marketingDiscountUsed?: boolean;
     /** The organizer sends the one unpaid-order reminder: say so under the e-mail field. */
     cartReminder?: boolean;
+    /** Told whenever the mailing tick changes, so the sheet can price the cart with it. */
+    onMarketingChange?: (ticked: boolean) => void;
     onSubmit: (values: BuyerFormValues) => void;
   }
 
@@ -75,6 +78,7 @@
     marketing = null,
     marketingDiscountUsed = false,
     cartReminder = false,
+    onMarketingChange,
     onSubmit,
   }: Props = $props();
 
@@ -83,6 +87,13 @@
   const marketingWords = $derived(getMarketingStrings(locale));
   const marketingText = $derived(marketingLabel(marketing, locale, marketingDiscountUsed));
   let marketingAccepted = $state(false);
+  // The pay button names the price with the tick's discount: tell the sheet.
+  // The tick is gone once the form is (back to the cart), so say that too.
+  $effect(() => {
+    const ticked = offersMarketing && marketingAccepted;
+    onMarketingChange?.(ticked);
+  });
+  onDestroy(() => onMarketingChange?.(false));
 
   // The checkout consent (P2). The tick lives in this component only: it is
   // never stored, so a buyer who comes back starts unticked.
