@@ -50,6 +50,8 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		"Element": "e",
 		// the sales state of a session (sessions_sales_state.go)
 		"Free": 4, "Sites": 1, "Attempts": 2,
+		// the Refer a friend screens (referral_dialog.go)
+		"Friend": "№1", "Referrer": "№2", "Cashback": 20, "Cap": 100, "Codes": 3, "Friends": 2,
 	}
 	for _, loc := range SupportedLocales {
 		for _, key := range MessageKeys {

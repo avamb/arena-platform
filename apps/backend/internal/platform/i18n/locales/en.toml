@@ -5100,3 +5100,240 @@ other = "A friend who used code <b>{{.Code}}</b> opened a dispute on order {{.Nu
 
 ["salesnotify.referral.code_paused"]
 other = "The code <b>{{.Code}}</b> is on pause. You can switch it on again in the event center."
+
+["bot.rfp.btn"]
+other = "🤝 Refer a friend"
+
+["bot.rfp.events_btn"]
+other = "Events"
+
+["bot.rfp.gone"]
+other = "This screen is out of date. Open the event again and carry on from there."
+
+["bot.rfp.card_head"]
+other = "🤝 <b>Refer a friend</b> · {{.Name}}"
+
+["bot.rfp.none"]
+other = "There is no programme for this event yet.\n\nEvery buyer of the event gets a personal code. A friend who uses it gets a discount. The buyer gets part of the friend's payment back on their card."
+
+["bot.rfp.st_active"]
+other = "🟢 On"
+
+["bot.rfp.st_paused"]
+other = "⏸ Paused. New friends get no discount. Arena adds no new cashback. Cashback for friends who already paid is still paid."
+
+["bot.rfp.st_ended"]
+other = "⏹ Ended. To start again, turn on a new programme."
+
+["bot.rfp.settings"]
+other = "A friend gets {{.Friend}} % off.\nThe buyer who brought them gets {{.Cashback}} % of the friend's payment back on their card. One buyer gets back at most {{.Cap}} % of their own payment.\nFriends per code: {{.Max}}."
+
+["bot.rfp.max_none"]
+other = "no limit"
+
+["bot.rfp.sum"]
+other = "<b>Results</b>\nCodes issued: {{.Codes}}\nFriends who came: {{.Friends}}"
+
+["bot.rfp.sum_none"]
+other = "No discounts or cashback yet."
+
+["bot.rfp.m_discount"]
+other = "Discount given: {{.Amount}}"
+
+["bot.rfp.m_paid"]
+other = "Cashback paid: {{.Amount}}"
+
+["bot.rfp.m_way"]
+other = "Cashback on its way: {{.Amount}}"
+
+["bot.rfp.m_kept"]
+other = "Cashback not paid out: {{.Amount}}"
+
+["bot.rfp.sum_reversals"]
+other = "⚠️ Friends who got their money back after the cashback was paid: {{.Count}}"
+
+["bot.rfp.cap_no"]
+other = "⚠️ Cashback cannot be paid for this event. {{.Why}}\nThe programme needs a sales channel that can return part of a payment to the card. Publish the event on a page with card payments, or write to support."
+
+["bot.rfp.why_seller_site"]
+other = "A WordPress site takes the money there, not Arena."
+
+["bot.rfp.why_provider_unsupported"]
+other = "The payment provider of the channel is not connected to Arena for returns."
+
+["bot.rfp.why_no_partial_refund"]
+other = "The payment provider of the channel returns whole payments only."
+
+["bot.rfp.warn_no_channel"]
+other = "ℹ️ The event is not on a page with card payments yet. The programme starts to work when it is."
+
+["bot.rfp.warn_some_channels_unsupported"]
+other = "ℹ️ Some sales channels of the event cannot pay cashback. Cashback is paid only through the channels that can."
+
+["bot.rfp.on_btn"]
+other = "Turn on"
+
+["bot.rfp.change_btn"]
+other = "Change"
+
+["bot.rfp.pause_btn"]
+other = "⏸ Pause"
+
+["bot.rfp.resume_btn"]
+other = "▶️ Resume"
+
+["bot.rfp.rewards_btn"]
+other = "Cashback list"
+
+["bot.rfp.end_btn"]
+other = "End"
+
+["bot.rfp.paused_done"]
+other = "⏸ Paused."
+
+["bot.rfp.resumed_done"]
+other = "▶️ Back on."
+
+["bot.rfp.ended_done"]
+other = "⏹ Ended."
+
+["bot.rfp.on_done"]
+other = "✅ The programme is on."
+
+["bot.rfp.saved_done"]
+other = "✅ Saved. New values apply to new codes. Codes already issued keep theirs."
+
+["bot.rfp.cancelled"]
+other = "Nothing changed."
+
+["bot.rfp.end_ask"]
+other = "End <b>Refer a friend</b> for {{.Name}}?\n\nThis is final. New friends get no discount. Arena adds no new cashback. Cashback for friends who already paid is still paid. To start again, you turn on a new programme."
+
+["bot.rfp.end_yes_btn"]
+other = "Yes, end it"
+
+["bot.rfp.end_no_btn"]
+other = "No, go back"
+
+["bot.rfp.d_head_new"]
+other = "🤝 <b>Turn on Refer a friend</b> · {{.Name}}"
+
+["bot.rfp.d_head_edit"]
+other = "🤝 <b>Change Refer a friend</b> · {{.Name}}\nNew values apply to new codes. Codes already issued keep theirs."
+
+["bot.rfp.q_friend"]
+other = "How many percent off does a friend get? Type a number from 1 to 100."
+
+["bot.rfp.q_cashback"]
+other = "How many percent of the friend's payment goes back to the buyer who brought them? Type a number from 1 to 100."
+
+["bot.rfp.q_cap"]
+other = "What is the most one buyer can get back, in percent of their own payment? Type a number from 1 to 100, or press 100 %."
+
+["bot.rfp.q_max"]
+other = "How many friends can use one code? Type a number, or press No limit."
+
+["bot.rfp.keep_btn"]
+other = "Keep {{.Value}}"
+
+["bot.rfp.cap100_btn"]
+other = "100 %"
+
+["bot.rfp.nomax_btn"]
+other = "No limit"
+
+["bot.rfp.cancel_btn"]
+other = "Cancel"
+
+["bot.rfp.rules"]
+other = "<b>Check and turn on</b>\n\nA friend gets {{.Friend}} % off. The buyer who brought them gets {{.Cashback}} % of the friend's payment back, at most {{.Cap}} % of their own payment. Friends per code: {{.Max}}.\n\n<b>Rules</b>\n1. The cashback is paid at once, after the friend pays.\n2. If the friend returns the ticket later, the cashback stays paid. It is not taken back.\n3. The fee of the payment provider is not returned.\n4. The money goes back to the card the buyer paid with. If that is not possible, nothing is paid and the money stays with you. Arena tells the buyer to contact you.\n5. Payouts are automatic. To stop new discounts and new cashback, press Pause."
+
+["bot.rfp.edit_confirm"]
+other = "<b>Check and save</b>\n\nA friend gets {{.Friend}} % off. The buyer who brought them gets {{.Cashback}} % of the friend's payment back, at most {{.Cap}} % of their own payment. Friends per code: {{.Max}}.\n\nNew values apply to new codes. Codes already issued keep theirs."
+
+["bot.rfp.go_btn"]
+other = "Understood, turn on"
+
+["bot.rfp.save_btn"]
+other = "Save"
+
+["bot.rfp.err_percent"]
+other = "Type a whole number from 1 to 100."
+
+["bot.rfp.err_friends"]
+other = "Type a whole number, 1 or more. Or press No limit."
+
+["bot.rfp.use_buttons"]
+other = "Please use the buttons."
+
+["bot.rfp.err_provider"]
+other = "The programme cannot start. {{.Why}}\nIt needs a sales channel that can return part of a payment to the card. Publish the event on a page with card payments, or write to support."
+
+["bot.rfp.err_terms"]
+other = "Please read the rules and press the button to turn the programme on."
+
+["bot.rfp.err_value"]
+other = "One value is out of range. Go back, check the percents and try again."
+
+["bot.rfp.err_ended"]
+other = "This programme has ended. Open the card and turn on a new one."
+
+["bot.rfp.f_all"]
+other = "All"
+
+["bot.rfp.rs_due"]
+other = "To be paid"
+
+["bot.rfp.rs_sent"]
+other = "On its way"
+
+["bot.rfp.rs_paid"]
+other = "Paid"
+
+["bot.rfp.rs_capped"]
+other = "Cut by the limit"
+
+["bot.rfp.rs_not_possible"]
+other = "Not paid"
+
+["bot.rfp.rs_failed"]
+other = "Failed"
+
+["bot.rfp.rs_cancelled"]
+other = "Canceled"
+
+["bot.rfp.rw_head"]
+other = "🤝 <b>Cashback</b> · {{.Name}}\nShown: {{.Filter}} · page {{.Page}}"
+
+["bot.rfp.rw_empty"]
+other = "Nothing here yet."
+
+["bot.rfp.rw_row"]
+other = "Friend {{.Friend}} → buyer {{.Referrer}} · <code>{{.Code}}</code>\n{{.Amount}} · {{.State}}"
+
+["bot.rfp.rw_reversal"]
+other = "⚠️ The friend got their money back after the cashback was paid."
+
+["bot.rfp.why_r_cap_reached"]
+other = "This buyer has reached the cashback limit."
+
+["bot.rfp.why_r_self_referral"]
+other = "The buyer used their own code."
+
+["bot.rfp.why_r_currency_mismatch"]
+other = "The friend paid in another currency."
+
+["bot.rfp.why_r_card_unavailable"]
+other = "The card could not take the money back. It stays with you."
+
+["bot.rfp.why_r_friend_refunded"]
+other = "The friend returned the ticket before the cashback was paid."
+
+["bot.rfp.why_r_friend_disputed"]
+other = "The friend opened a dispute."
+
+["bot.rfp.why_r_friend_not_paid"]
+other = "The friend's payment did not go through."
+
+["bot.rfp.why_r_no_refundable_ticket"]
+other = "There is no ticket to return the money for."

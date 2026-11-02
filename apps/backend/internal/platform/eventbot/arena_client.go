@@ -59,6 +59,11 @@ type APIError struct {
 	// TicketID is error.details.ticket_id: the ticket a refusal is about
 	// (refund.ticket_scanned names the scanned one).
 	TicketID string
+	// Field is error.details.field: the field a 422 is about.
+	Field string
+	// Capability is error.details.capability of a refused or missing
+	// referral programme: whether the event's channels can pay the cashback.
+	Capability *openapi.ReferralCapability
 }
 
 func (e *APIError) Error() string {
@@ -133,6 +138,8 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 					Reason       string            `json:"reason"`
 					OwnersNotice string            `json:"owners_notice"`
 					TicketID     string            `json:"ticket_id"`
+					Field        json.RawMessage   `json:"field"`
+					Capability   json.RawMessage   `json:"capability"`
 				} `json:"details"`
 			} `json:"error"`
 		}
@@ -143,6 +150,15 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 			ae.Reason = env.Error.Details.Reason
 			ae.OwnersNotice = env.Error.Details.OwnersNotice
 			ae.TicketID = env.Error.Details.TicketID
+			// Read apart so that a details object of another shape on some
+			// other route can never cost the code and the message above.
+			_ = json.Unmarshal(env.Error.Details.Field, &ae.Field)
+			if len(env.Error.Details.Capability) > 0 {
+				var capab openapi.ReferralCapability
+				if json.Unmarshal(env.Error.Details.Capability, &capab) == nil {
+					ae.Capability = &capab
+				}
+			}
 		}
 		if ae.Code == "" {
 			ae.Code = "http." + http.StatusText(res.StatusCode)

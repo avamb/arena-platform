@@ -270,6 +270,8 @@ var inPlaceToggles = []string{
 	"iv:vip:",  // invitation: the VIP tick of the confirmation
 	"wz:ch:",   // wizard: a sales channel
 	"pm:k:t:",  // promo code: a session
+	"rf:rp:",   // refer a friend: a page of the cashback list
+	"rf:rf:",   // refer a friend: a state chip of the cashback list
 	"onb:ct:",  // application: a consent
 	"onb:m:",   // application: an option of a multiple choice
 }

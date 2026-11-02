@@ -64,6 +64,7 @@ var dialogOwners = map[string]dialogOwner{
 	inviteDialogKind:        {owns: prefixIs("iv"), leave: (*Bot).leaveInvite},
 	promoDialogKind:         {owns: prefixIs("pm"), leave: (*Bot).leavePromo},
 	promoterDialogKind:      {owns: prefixIs("pr"), leave: (*Bot).leavePromoter},
+	referralDialogKind:      {owns: prefixIs("rf"), leave: (*Bot).leaveReferral},
 	categoryDialogKind:      {owns: prefixIs("ct"), leave: (*Bot).leaveCategories},
 	seatLayoutDialogKind:    {owns: prefixIs("sl"), leave: (*Bot).leaveSeatLayout},
 	orgDataDialogKind:       {owns: prefixIs("og"), leave: (*Bot).leaveOrgData},
@@ -87,6 +88,7 @@ var dialogTexts = map[string]dialogTextHandler{
 	inviteDialogKind:        (*Bot).inviteText,
 	promoDialogKind:         (*Bot).promoText,
 	promoterDialogKind:      (*Bot).promoterText,
+	referralDialogKind:      (*Bot).referralText,
 	categoryDialogKind:      (*Bot).categoryText,
 	seatLayoutDialogKind:    (*Bot).seatLayoutText,
 	orgDataDialogKind:       (*Bot).orgDataText,
@@ -139,7 +141,7 @@ func (b *Bot) narrowOrderCancel(ctx context.Context, tg int64, data string) {
 var dialogOwnerOrder = []string{
 	eventsDialogKind, ordersDialogKind, refundDialogKind, scanExcDialogKind,
 	resendDialogKind, evsDialogKind, inviteDialogKind, promoDialogKind,
-	promoterDialogKind, categoryDialogKind, seatLayoutDialogKind, orgDataDialogKind, sesDialogKind,
+	promoterDialogKind, referralDialogKind, categoryDialogKind, seatLayoutDialogKind, orgDataDialogKind, sesDialogKind,
 	materialsDialogKind, teamDialogKind, salesLinkDialogKind, salesLinkListDialogKind, tfDialogKind,
 }
 
