@@ -81,6 +81,31 @@ entries short and factual.
   run here.
 - A test green locally but red in CI is a defect: replicate the CI env
   assumptions before marking a feature passing.
+- **Actions minutes are scarce: verify LOCALLY, push once per finished stage
+  (owner decision 2026-11-02).** The repo is private on the free plan (2000
+  min/month) and one full CI run costs ~85 minutes; on 2026-11-02 frequent
+  draft pushes used the month up and every job stopped with "recent account
+  payments have failed or your spending limit needs to be increased". Run the
+  CI recipe on this host (gofmt, build, vet, golangci-lint, unit, migrations
+  up/down/up + seed on a FRESH database, integration with `-p 1
+  -timeout=25m`, each touched frontend's type-check/test/build, OpenAPI
+  drift), commit locally, and push only when the stage is done. Never push
+  just to "see CI", and never poll a run.
+- **What CI runs (`.github/workflows/ci.yml`, job `changes`):** a push to
+  master and a manual run (`workflow_dispatch`) run everything; a DRAFT pull
+  request runs nothing (CI starts when it is marked ready for review); a
+  ready pull request runs only the jobs whose area it touches — Go jobs
+  unless every changed file is a frontend app, `packages/`, a spec folder
+  (00/02/08/09), `AGENTS.md`/`CLAUDE.md` or `docs/` outside `docs/ops/` and
+  `docs/text_style_standard_ru.md`; each frontend only for its own folder
+  plus what it imports (event center: rich-editor, `apps/widget/src`,
+  `packages/arena-track`, the OpenAPI client; admin: the OpenAPI client;
+  tickets page: the richtext testdata); the live event-center and widget
+  acceptance jobs also on any Go change. A change to `ci.yml` runs all.
+  A skipped job counts as passed for a required check. If a NEW Go test
+  starts reading a file outside `apps/backend`, make sure its folder is not
+  in `GO_SKIP`; if a frontend starts importing another folder, add it to
+  that frontend's pattern.
 
 ## Codegen & spec
 
