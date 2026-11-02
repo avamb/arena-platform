@@ -145,7 +145,13 @@ func (p *ReservationProcessor) expireReservation(ctx context.Context, r gen.Rese
 	// transaction was released when that transaction committed; a concurrent
 	// HandleCancelReservation or ReleaseHold may have already transitioned the
 	// reservation to 'cancelled' in the meantime. (feature #365)
-	current, err := q.GetReservationByID(ctx, r.ID)
+	//
+	// The row is LOCKED, not only read (GetReservationByID used to be enough
+	// for the state check): every other hold mutation takes the reservation
+	// row before the sessions row that releaseReservationSeatsTx bumps, and
+	// this sweep taking them the other way round could deadlock against a
+	// conversion of the same seated hold.
+	current, err := q.LockReservationForUpdate(ctx, r.ID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Reservation deleted mid-flight — treat as already processed.

@@ -393,9 +393,9 @@ func SetHoldExpiryTx(ctx context.Context, txq *gen.Queries, reservationID uuid.U
 // so the late payment attempt and the seat release commit atomically — no
 // manual review, by owner decision.
 //
-// Lock order matches every other hold mutation: releaseReservationSeatsTx
-// bumps sessions.seat_status_version BEFORE releaseHoldCapacityTx touches
-// inventory_ledger.
+// Lock order matches every other hold mutation: the reservation row first,
+// then releaseReservationSeatsTx bumps sessions.seat_status_version, then
+// releaseHoldCapacityTx touches inventory_ledger.
 //
 // Idempotent: a reservation already outside draft/active (already
 // cancelled/converted/expired by a concurrent transition) is left
@@ -404,12 +404,17 @@ func ExpireHoldForOrderTx(ctx context.Context, txq *gen.Queries, reservationID u
 	if txq == nil {
 		return errors.New("hcheckout: ExpireHoldForOrderTx requires queries")
 	}
-	res, err := txq.GetReservationByID(ctx, reservationID)
+	// The reservation row is locked FIRST, as every other hold mutation
+	// does (ReleaseHold, Extend/Shrink/Reacquire, the held→sold conversion):
+	// reading it unlocked and taking the sessions row first let a
+	// conversion of the same seated hold (reservation row, then sessions)
+	// deadlock against this expiry (sessions, then reservation row).
+	res, err := txq.LockReservationForUpdate(ctx, reservationID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
-		return fmt.Errorf("hcheckout: load reservation: %w", err)
+		return fmt.Errorf("hcheckout: lock reservation: %w", err)
 	}
 	if res.State != "draft" && res.State != "active" {
 		return nil

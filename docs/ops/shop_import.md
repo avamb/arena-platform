@@ -40,7 +40,7 @@ Rules that matter:
   anyone adds a product by hand. Defaults (flags): currency from `--currency`,
   shipping fee `50.00` (`--shipping-fee`), country `IL`, age gate 18,
   announcement "Special discount 15% on gift sets", contact e-mail
-  `sales@einatwinery.com`.
+  `sales@client4.example`.
 * **Settings** never open the shop: `enabled` stays false (only a platform
   superadmin switches it on) and `max_line_qty` keeps its default 24.
 * **Descriptions and pages** are first cleaned of Shopify markup (no script,
@@ -86,7 +86,7 @@ Rules that matter:
     organization-scoped `customer_attributes` `marketing_consent_sms` /
     `marketing_consent_whatsapp` (JSON with channel and the import time),
     because `customer_consents` has no channel and a `marketing` row would be
-    read as e-mail consent. Needs a phone number. The Einat Winery export has
+    read as e-mail consent. Needs a phone number. The client-4 export has
     no `yes` in either column.
   * `no` records nothing (the absence of a row is "no"): the export does not
     say whether the person never consented or unsubscribed.
@@ -100,7 +100,7 @@ Rules that matter:
 --pages <dir>         folder of rendered theme html
 --pages-map <json>    file -> slug/title/position (required with --pages);
                       docs/ops/shop_import_pages.einatwinery.json is the one for
-                      the Einat Winery theme export
+                      the client-4 theme export
 --images-dir <dir>    local copies of the pictures (optional)
 --include-drafts      also draft, unlisted and archived products
 --dry-run             report only: no writes, no downloads
@@ -137,10 +137,10 @@ AGENTS.md, DB `arena_shop_l6`, host port 45432 on this machine):
 ```
 DATABASE_URL=<scratch dsn> go run ./apps/backend/cmd/arena-shop-import \
   --org <org uuid> --dry-run \
-  --products   C:/Projects/arena_new/.local/einatwinery_export/admin/products_export_1.csv \
-  --customers  C:/Projects/arena_new/.local/einatwinery_export/admin/customers_export.csv \
-  --orders     "C:/Projects/arena_new/.local/einatwinery_export/admin/orders_export_1 (2).csv" \
-  --pages      C:/Projects/arena_new/.local/einatwinery_export/theme_live/pages \
+  --products   C:/Projects/arena_new/.local/client4_export/admin/products_export_1.csv \
+  --customers  C:/Projects/arena_new/.local/client4_export/admin/customers_export.csv \
+  --orders     "C:/Projects/arena_new/.local/client4_export/admin/orders_export_1 (2).csv" \
+  --pages      C:/Projects/arena_new/.local/client4_export/theme_live/pages \
   --pages-map  docs/ops/shop_import_pages.einatwinery.json
 ```
 
@@ -159,13 +159,13 @@ media volume. Nothing is installed on the server and nothing needs the web.
    If the stand still runs an older tag, deploy a newer one first.
 2. **Export.** Copy the export folder to the server, outside any web root and
    outside the app's directories, read it back only through the container:
-   `scp -r einatwinery_export/admin root@<server>:/root/einat_export` and the
+   `scp -r client4_export/admin root@<server>:/root/client4_export` and the
    theme pages next to it (`.../theme_live/pages` to
-   `/root/einat_export/pages`; the mapping file is in the repo,
+   `/root/client4_export/pages`; the mapping file is in the repo,
    `docs/ops/shop_import_pages.einatwinery.json`, copy it to
-   `/root/einat_export/pages_map.json`). It contains customers' personal data:
-   `chmod -R go-rwx /root/einat_export`, and delete it when the import is done
-   (`rm -rf /root/einat_export /root/api.env`).
+   `/root/client4_export/pages_map.json`). It contains customers' personal data:
+   `chmod -R go-rwx /root/client4_export`, and delete it when the import is done
+   (`rm -rf /root/client4_export /root/api.env`).
 3. **Environment.** Do not retype settings, take the api container's own
    (it passes the same configuration validation the importer runs):
    `docker inspect <api container> --format '{{range .Config.Env}}{{println .}}{{end}}' > /root/api.env; chmod 600 /root/api.env`.
@@ -204,7 +204,7 @@ media volume. Nothing is installed on the server and nothing needs the web.
      --network <compose network> \
      --env-file /root/api.env \
      -v <media volume>:<MEDIA_LOCAL_ROOT> \
-     -v /root/einat_export:/import:ro \
+     -v /root/client4_export:/import:ro \
      ghcr.io/avamb/arena-api:<tag> \
      --org <organization uuid> --dry-run \
      --products /import/products_export_1.csv \
@@ -217,7 +217,7 @@ media volume. Nothing is installed on the server and nothing needs the web.
    the compose network needs outbound internet (a normal compose network
    has it). A real run needs no `--images-dir`. `--include-drafts` brings the
    non-active products as drafts.
-6. **Afterwards**: `rm -rf /root/einat_export /root/api.env`, and the shop
+6. **Afterwards**: `rm -rf /root/client4_export /root/api.env`, and the shop
    stays closed (`shop_settings.enabled=false`) until a platform superadmin
    opens it.
 
@@ -245,7 +245,7 @@ value on the same re-run.
 ### Filling in the size of pictures imported earlier
 
 Pictures imported before the importer recorded sizes (the 68 pictures of
-Einat Winery on the staging stand, 2026-10-28) have no width and height, and
+client-4 on the staging stand, 2026-10-28) have no width and height, and
 a migration cannot add them: the bytes live in the media store, not in the
 database. Run the same products import once more, with the same CSV (and the
 same `--images-dir` if the first run had one), without `--only-new` and
@@ -306,7 +306,7 @@ all 39 products `physical`, option names set on the 9 that have real options
 * Orders are not imported yet (`shop_orders` with source `shopify`). The orders
   file is parsed and its totals are printed so they can be compared with
   Shopify's own report.
-* Pictures inside pages (3 on `events`, 1 on `partners` for Einat Winery) are
+* Pictures inside pages (3 on `events`, 1 on `partners` for client-4) are
   kept by the page sanitizer, but they still load from Shopify. Every `<img>`
   of a stored page or description that is still on Shopify (`cdn.shopify.com`, any `*.shopify.com` or
   `shopifycdn.net` host, or the old domain's `/cdn/` path) is reported as
