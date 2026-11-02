@@ -16,6 +16,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -180,7 +181,9 @@ func TestProviderReceipt_CheckoutAsksStripeAndThePaymentIsArchived(t *testing.T)
 	}
 	piRow := intents[0]
 	chargeRef := "pi_rcpt_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12]
-	if code, body := postSignedWebhook(t, srv, sessionCompletedEvent(*piRow.ProviderPaymentID, chargeRef, "paid"), f.webhookSecret); code != http.StatusOK {
+	// The organizer's own webhook route names the configuration that took
+	// the payment; the receipt is read through it.
+	if code, body := postSignedWebhookTo(t, srv, f.configWebhookPath(), sessionCompletedEvent(*piRow.ProviderPaymentID, chargeRef, "paid"), f.webhookSecret); code != http.StatusOK {
 		t.Fatalf("paid webhook: %d %s", code, body)
 	}
 	var jobs int
@@ -191,6 +194,22 @@ func TestProviderReceipt_CheckoutAsksStripeAndThePaymentIsArchived(t *testing.T)
 	}
 	if jobs != 1 {
 		t.Fatalf("archive jobs = %d; want 1", jobs)
+	}
+	// It runs ArchiveDelay after the payment (Stripe numbers a receipt only
+	// after it has mailed it) and names the configuration that verified it.
+	var delay time.Duration
+	var configID string
+	if err := pool.QueryRow(ctx, `SELECT EXTRACT(EPOCH FROM scheduled_at - now())::bigint * 1000000000,
+		    COALESCE(payload->>'config_id', '')
+		FROM worker_jobs WHERE job_type = $1 AND payload->>'payment_intent_id' = $2`,
+		paymentreceipts.JobType, piRow.ID.String()).Scan(&delay, &configID); err != nil {
+		t.Fatal(err)
+	}
+	if delay < paymentreceipts.ArchiveDelay-time.Minute || delay > paymentreceipts.ArchiveDelay {
+		t.Fatalf("archive job runs in %s; want about %s", delay, paymentreceipts.ArchiveDelay)
+	}
+	if configID != f.configID.String() {
+		t.Fatalf("archive job config_id = %q; want the verifying configuration %s", configID, f.configID)
 	}
 	if err := pool.QueryRow(ctx, `SELECT payload::text::bytea FROM worker_jobs
 		WHERE job_type = $1 AND payload->>'payment_intent_id' = $2`, paymentreceipts.JobType, piRow.ID.String()).Scan(&payload); err != nil {

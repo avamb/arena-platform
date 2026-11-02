@@ -33,8 +33,10 @@ const maxReceiptBytes = 5 << 20
 // FetchReceipt reads the latest charge of the payment and downloads its
 // receipt. paymentRef is a pi_… or a hosted Checkout Session cs_…. A payment
 // without a charge yet, or a charge without a receipt link, is
-// payments.ErrReceiptNotReady. A failed download is not an error: the link
-// and number are returned without File.
+// payments.ErrReceiptNotReady, a payment the account does not know is
+// payments.ErrReceiptNotFound. A failed download answers the link and number
+// without File together with payments.ErrReceiptDownload, so the caller keeps
+// the link and tries the copy again.
 //
 // Implements payments.ReceiptFetcher.
 func (a *Adapter) FetchReceipt(ctx context.Context, paymentRef string) (payments.Receipt, error) {
@@ -56,6 +58,10 @@ func (a *Adapter) FetchReceipt(ctx context.Context, paymentRef string) (payments
 	endpoint := a.cfg.BaseURL + "/payment_intents/" + url.PathEscape(pi) + "?expand[]=latest_charge"
 	rawBody, _, err := a.doRequest(ctx, http.MethodGet, endpoint, nil, "")
 	if err != nil {
+		var apiErr *apiError
+		if errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
+			return payments.Receipt{}, fmt.Errorf("stripe: FetchReceipt: %w: %w", payments.ErrReceiptNotFound, err)
+		}
 		return payments.Receipt{}, fmt.Errorf("stripe: FetchReceipt: %w", err)
 	}
 	var body struct {
@@ -81,8 +87,9 @@ func (a *Adapter) FetchReceipt(ctx context.Context, paymentRef string) (payments
 	}
 	if file, ok := a.download(ctx, charge.ReceiptURL); ok && strings.HasPrefix(file.contentType, "text/html") {
 		rec.File, rec.ContentType = file.body, "text/html; charset=utf-8"
+		return rec, nil
 	}
-	return rec, nil
+	return rec, payments.ErrReceiptDownload
 }
 
 // receiptURLAllowed keeps the download on Stripe's own receipt host over
@@ -96,6 +103,25 @@ func (a *Adapter) receiptURLAllowed(raw string) bool {
 	if u.Scheme == "https" && strings.EqualFold(u.Hostname(), receiptHost) {
 		return true
 	}
+	return a.stubHost(u)
+}
+
+// receiptRedirectAllowed decides one redirect of a receipt download: https
+// to a host of stripe.com, or the stub's host in a test.
+func (a *Adapter) receiptRedirectAllowed(u *url.URL) bool {
+	if u.User != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	if u.Scheme == "https" && (host == "stripe.com" || strings.HasSuffix(host, ".stripe.com")) {
+		return true
+	}
+	return a.stubHost(u)
+}
+
+// stubHost reports whether u is on the stub API host a test pointed the
+// adapter at. Production uses the default base URL, so it is always false.
+func (a *Adapter) stubHost(u *url.URL) bool {
 	if a.cfg.BaseURL == defaultBaseURL {
 		return false
 	}
@@ -120,8 +146,8 @@ type downloaded struct {
 }
 
 // download fetches a public receipt page WITHOUT the API key (the receipt
-// host needs none, and the key must never leave api.stripe.com). Redirects
-// are not followed, so a stray redirect cannot take the request elsewhere.
+// host needs none, and the key must never leave api.stripe.com). At most
+// three redirects are followed, each only to a Stripe host over https.
 func (a *Adapter) download(ctx context.Context, raw string) (downloaded, bool) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 	if err != nil {
@@ -129,8 +155,11 @@ func (a *Adapter) download(ctx context.Context, raw string) (downloaded, bool) {
 	}
 	client := &http.Client{
 		Timeout: a.client.Timeout,
-		CheckRedirect: func(*http.Request, []*http.Request) error {
-			return http.ErrUseLastResponse
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 3 || !a.receiptRedirectAllowed(req.URL) {
+				return http.ErrUseLastResponse
+			}
+			return nil
 		},
 	}
 	resp, err := client.Do(req)

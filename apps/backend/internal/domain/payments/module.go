@@ -529,3 +529,12 @@ type ReceiptFetcher interface {
 
 // ErrReceiptNotReady means the provider has no receipt for the payment yet.
 var ErrReceiptNotReady = errors.New("payments: the provider has no receipt for this payment yet")
+
+// ErrReceiptNotFound means the provider does not know the payment (the
+// configuration asked is not the account that took it). Retrying cannot help.
+var ErrReceiptNotFound = errors.New("payments: the provider does not know this payment")
+
+// ErrReceiptDownload wraps a failed download of a receipt whose link the
+// provider did answer. FetchReceipt then returns the Receipt with URL and
+// Number but no File, so the caller can store the link and try the copy again.
+var ErrReceiptDownload = errors.New("payments: the receipt could not be downloaded")

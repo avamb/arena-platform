@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -122,6 +123,47 @@ func TestReceiptURLAllowed_ProductionHostOnly(t *testing.T) {
 	} {
 		if got := a.receiptURLAllowed(raw); got != want {
 			t.Errorf("receiptURLAllowed(%q) = %v; want %v", raw, got, want)
+		}
+	}
+}
+
+func TestFetchReceipt_FailedDownloadKeepsTheLinkAndAsksForARetry(t *testing.T) {
+	srv, _ := receiptStub(t, true, `{"id":"ch_1","receipt_url":"{BASE}/receipts/payment/gone","receipt_number":"77"}`)
+	a := New(Config{SecretKey: "sk_test_abc", BaseURL: srv.URL + "/v1"})
+	rec, err := a.FetchReceipt(t.Context(), "pi_1")
+	if !errors.Is(err, payments.ErrReceiptDownload) {
+		t.Fatalf("err = %v; want ErrReceiptDownload", err)
+	}
+	if rec.File != nil || rec.Number != "77" || !strings.HasSuffix(rec.URL, "/receipts/payment/gone") {
+		t.Fatalf("receipt = %+v; want the link and number without a file", rec)
+	}
+}
+
+func TestFetchReceipt_UnknownPaymentIsNotFound(t *testing.T) {
+	srv, _ := receiptStub(t, true, `null`)
+	a := New(Config{SecretKey: "sk_test_abc", BaseURL: srv.URL + "/v1"})
+	if _, err := a.FetchReceipt(t.Context(), "pi_unknown"); !errors.Is(err, payments.ErrReceiptNotFound) {
+		t.Fatalf("err = %v; want ErrReceiptNotFound", err)
+	}
+}
+
+func TestReceiptRedirectAllowed_StripeHostsOverHTTPSOnly(t *testing.T) {
+	a := New(Config{SecretKey: "sk_live_x"})
+	for raw, want := range map[string]bool{
+		"https://pay.stripe.com/receipts/x":         true,
+		"https://files.stripe.com/x":                true,
+		"http://files.stripe.com/x":                 false,
+		"https://stripe.com.evil.example/x":         false,
+		"https://evilstripe.com/x":                  false,
+		"https://user@files.stripe.com/x":           false,
+		"https://169.254.169.254/latest/meta-data/": false,
+	} {
+		u, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := a.receiptRedirectAllowed(u); got != want {
+			t.Errorf("receiptRedirectAllowed(%q) = %v; want %v", raw, got, want)
 		}
 	}
 }

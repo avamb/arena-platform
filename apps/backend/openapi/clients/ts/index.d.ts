@@ -54501,6 +54501,19 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description The object is an archived payment provider receipt (owner type
+             *     `payment_receipt`), kept as dispute evidence; it is never deleted
+             *     (`media.receipt_not_deletable`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Media storage backend is not configured. */
             503: {
                 headers: {

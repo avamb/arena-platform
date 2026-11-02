@@ -149,3 +149,20 @@ func (q *Queries) GetOrderPaymentProvider(ctx context.Context, orderID uuid.UUID
 	err := q.db.QueryRow(ctx, getOrderPaymentProvider, orderID).Scan(&provider)
 	return provider, err
 }
+
+const getPaymentReceiptMediaID = `-- name: GetPaymentReceiptMediaID :one
+SELECT id
+FROM media_objects
+WHERE owner_type = 'payment_receipt' AND owner_id = $1 AND org_id = $2
+  AND deleted_at IS NULL
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+// GetPaymentReceiptMediaID answers the live receipt copy an earlier run of
+// the archive job saved for the payment intent; pgx.ErrNoRows when none.
+func (q *Queries) GetPaymentReceiptMediaID(ctx context.Context, paymentIntentID, orgID uuid.UUID) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := q.db.QueryRow(ctx, getPaymentReceiptMediaID, paymentIntentID, orgID).Scan(&id)
+	return id, err
+}

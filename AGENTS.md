@@ -2337,14 +2337,17 @@ entries short and factual.
     - "Off" is not a guarantee: a Stripe account's own dashboard setting "email customers about successful payments" still sends. The screen says so.
     - The seller-profile PATCH now takes any non-empty subset of `contact_form_to_telegram`, `provider_receipt_enabled` and `provider_receipt_forced`. An empty body is 400.
   - **The archive.**
-    - When a payment intent becomes `succeeded`, the webhook transaction queues `payment.receipt_archive` (`paymentreceipts.EnqueueTx`, in a SAVEPOINT, best effort). This happens only for modules with `Capabilities.ProviderReceipt`, which requires `payments.ReceiptFetcher` (the contract test checks it).
-    - arena-worker's handler reads the receipt through the module of the payment's organization and stores it on the payment intent:
+    - When a payment intent becomes `succeeded`, the webhook transaction queues `payment.receipt_archive` (`paymentreceipts.EnqueueTx`, in a SAVEPOINT, best effort). This happens only for modules with `Capabilities.ProviderReceipt`, which requires `payments.ReceiptFetcher` (the contract test checks it). An operator's `POST /v1/payment-intents/{id}/transition` to `succeeded` queues it too, in its own short transaction after the move.
+    - The job runs `paymentreceipts.ArchiveDelay` (15 minutes) after the payment, because Stripe numbers a receipt only after it has mailed it. The payload carries `config_id`, the configuration that verified the webhook (per-config route), and the module is built from it through `refunds.WithProviderConfig`, never from the organization's preferred config.
+    - arena-worker's handler reads the receipt through that module and stores it on the payment intent:
       - `provider_receipt_url`;
-      - `provider_receipt_number`, which may be empty: Stripe numbers a receipt after it mails it;
+      - `provider_receipt_number`, which may still be empty: Stripe numbers a receipt after it mails it;
       - the copy in media, owner type `payment_receipt`, which is not uploadable (it is absent from `AllowedOwnerTypes`);
       - `provider_receipt_archived_at`.
-    - Stripe downloads only an https `pay.stripe.com` address (or the test stub's host), sends no API key, and follows no redirect. It tries the unofficial `/pdf` first and falls back to the HTML page, so the copy may be `text/html`.
-    - A fixture that pays a Stripe checkout must delete `payment.receipt_archive` jobs and `payment_receipt` media objects (see `hostedOrgFixture.cleanup`).
+    - Outcomes of `FetchReceipt`: `payments.ErrReceiptNotReady` retries; `payments.ErrReceiptNotFound` (the account does not know the payment) ends the job without a retry; `payments.ErrReceiptDownload` stores the link and number at once and retries the copy, so a copy that never arrives ends in the dead-letter queue, which the ops watchdog reports. A retry reuses a copy an earlier run already saved (`GetPaymentReceiptMediaID`), so it never leaves an orphan.
+    - Stripe downloads only an https `pay.stripe.com` address (or the test stub's host), sends no API key, and follows at most three redirects, each only to an https host of `stripe.com`. It tries the unofficial `/pdf` first and falls back to the HTML page, so the copy may be `text/html`.
+    - A `payment_receipt` media object is dispute evidence: `DELETE /v1/media/{id}` answers 409 `media.receipt_not_deletable`, and `/v1/media-files/{id}` serves it with `Content-Disposition: attachment`, `Content-Security-Policy: sandbox` and `nosniff`, so a provider's HTML page never runs on the API origin. A presigned S3 URL bypasses that route.
+    - A fixture that pays a Stripe checkout must delete `payment.receipt_archive` jobs and `payment_receipt` media objects (see `hostedOrgFixture.cleanup` and the shop fixture).
   - **The letters.** Every buyer letter (ticket, invitation, change, cancel, refund, all 7 locales) has a footer that names the seller and the provider. The shop letters name the seller only:
     - the seller: "Seller: <organization's legal name, else its name>". The platform's name is never shown as the seller;
     - the provider: `Branding.PaymentProvider`, the module's `Descriptor.Title` of the order's succeeded payment intent, printed as "Payment processed by X". It is resolved at render time by `GetTicketPaymentProvider` / `GetOrderPaymentProvider`. An invitation, a free order and a selling-site order print no provider line.

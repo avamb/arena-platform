@@ -46363,6 +46363,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            The object is an archived payment provider receipt (owner type
+            `payment_receipt`), kept as dispute evidence; it is never deleted
+            (`media.receipt_not_deletable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Media storage backend is not configured.
           content:

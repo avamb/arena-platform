@@ -48,13 +48,13 @@ import (
 
 // queueReceiptArchive queues payment.receipt_archive for a payment that has
 // just succeeded, inside its own SAVEPOINT of the webhook transaction.
-func (h *Handler) queueReceiptArchive(ctx context.Context, tx pgx.Tx, paymentIntentID uuid.UUID, provider string) {
+func (h *Handler) queueReceiptArchive(ctx context.Context, tx pgx.Tx, paymentIntentID uuid.UUID, provider string, configID *uuid.UUID) {
 	if !paymentreceipts.Archivable(provider) {
 		return
 	}
 	sp, err := tx.Begin(ctx)
 	if err == nil {
-		if err = paymentreceipts.EnqueueTx(ctx, sp, paymentIntentID, provider); err != nil {
+		if err = paymentreceipts.EnqueueTx(ctx, sp, paymentIntentID, provider, configID); err != nil {
 			_ = sp.Rollback(ctx)
 		} else {
 			err = sp.Commit(ctx)
@@ -63,6 +63,28 @@ func (h *Handler) queueReceiptArchive(ctx context.Context, tx pgx.Tx, paymentInt
 	if err != nil {
 		h.logger.Warn("webhook: receipt archive not queued",
 			slog.String("payment_intent_id", paymentIntentID.String()),
+			slog.String("error", err.Error()),
+		)
+	}
+}
+
+// queueReceiptArchiveAfterTransition queues the archive of a payment an
+// operator moved to succeeded by hand (POST .../transition): such a payment
+// was usually parked for review, which makes its receipt the most likely
+// evidence of a dispute. It runs in its own short transaction after the
+// transition, best effort.
+func (h *Handler) queueReceiptArchiveAfterTransition(ctx context.Context, from string, updated gen.PaymentIntentRow) {
+	if h.pool == nil || updated.State != "succeeded" || from == "succeeded" || !paymentreceipts.Archivable(updated.Provider) {
+		return
+	}
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err == nil {
+		h.queueReceiptArchive(ctx, tx, updated.ID, updated.Provider, nil)
+		err = tx.Commit(ctx)
+	}
+	if err != nil {
+		h.logger.Warn("payment_intent: receipt archive not queued",
+			slog.String("payment_intent_id", updated.ID.String()),
 			slog.String("error", err.Error()),
 		)
 	}
@@ -659,6 +681,7 @@ func (h *Handler) HandleTransitionPaymentIntent(w http.ResponseWriter, r *http.R
 		slog.String("from", current.State),
 		slog.String("to", updated.State),
 	)
+	h.queueReceiptArchiveAfterTransition(ctx, current.State, updated)
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"payment_intent": paymentIntentFromRow(updated),
@@ -1508,7 +1531,7 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 	// section 2). Best effort behind a SAVEPOINT: a failed enqueue must never
 	// roll back a paid payment, it only leaves the receipt unarchived.
 	if updated.State == "succeeded" && currentState != "succeeded" {
-		h.queueReceiptArchive(ctx, tx, pi.ID, pi.Provider)
+		h.queueReceiptArchive(ctx, tx, pi.ID, pi.Provider, route.ConfigID)
 	}
 
 	// Commit: event row + state change + checkout completion + job enqueue

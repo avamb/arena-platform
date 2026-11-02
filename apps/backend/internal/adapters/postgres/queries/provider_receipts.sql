@@ -67,3 +67,14 @@ SELECT COALESCE((
     ORDER BY pi.created_at DESC
     LIMIT 1
 ), '');
+
+-- name: GetPaymentReceiptMediaID :one
+-- The live copy an earlier run of the archive job already saved for this
+-- payment intent, so a retry reuses it instead of saving a second one.
+-- pgx.ErrNoRows when there is none.
+SELECT id
+FROM media_objects
+WHERE owner_type = 'payment_receipt' AND owner_id = $1 AND org_id = $2
+  AND deleted_at IS NULL
+ORDER BY created_at DESC
+LIMIT 1;
