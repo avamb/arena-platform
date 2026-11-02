@@ -455,6 +455,33 @@ func (q *Queries) ListBotDraftsForReminder(ctx context.Context, idleBefore time.
 	return scanBotDraftReminderRows(rows)
 }
 
+const deleteBotDraftsSuperseded = `-- name: DeleteBotDraftsSuperseded :execrows
+DELETE FROM bot_drafts d
+WHERE  d.mode = 'create'
+  AND  d.updated_at < $1
+  AND  COALESCE(d.saved->>'event_id', '') = ''
+  AND  length(btrim(COALESCE(d.state->'event'->>'name', ''))) >= 4
+  AND  EXISTS (
+         SELECT 1 FROM events e
+         WHERE  e.org_id = d.org_id
+           AND  e.deleted_at IS NULL
+           AND  e.created_at >= d.created_at
+           AND  length(btrim(e.name)) >= 4
+           AND (position(lower(btrim(e.name)) IN lower(btrim(d.state->'event'->>'name'))) > 0
+             OR position(lower(btrim(d.state->'event'->>'name')) IN lower(btrim(e.name))) > 0))`
+
+// DeleteBotDraftsSuperseded deletes the idle create drafts whose event an
+// operator made another way (nothing saved from the draft, a live event of
+// the organization with a matching name appeared after the draft began) and
+// returns how many went. A reminder for such a draft would invite a duplicate.
+func (q *Queries) DeleteBotDraftsSuperseded(ctx context.Context, idleBefore time.Time) (int64, error) {
+	tag, err := q.db.Exec(ctx, deleteBotDraftsSuperseded, idleBefore)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 const markBotDraftReminded = `-- name: MarkBotDraftReminded :exec
 UPDATE bot_drafts
 SET    reminded_at = now()

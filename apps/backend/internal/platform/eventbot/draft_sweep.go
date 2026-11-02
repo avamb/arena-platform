@@ -50,6 +50,7 @@ type draftQueries interface {
 	ListBotDraftsForReminder(ctx context.Context, idleBefore time.Time, limit int32) ([]gen.BotDraftReminderRow, error)
 	MarkBotDraftReminded(ctx context.Context, id uuid.UUID) error
 	DeleteBotDraftsIdleBefore(ctx context.Context, idleBefore time.Time, limit int32) ([]gen.BotDraftReminderRow, error)
+	DeleteBotDraftsSuperseded(ctx context.Context, idleBefore time.Time) (int64, error)
 }
 
 // draftSender delivers one message to a private chat (its id is the Telegram
@@ -132,6 +133,7 @@ type draftSweeper struct {
 // draftSweepResult counts what one pass did, for the log line and the tests.
 type draftSweepResult struct {
 	Deleted     int // drafts removed after draftKeepFor
+	Superseded  int // drafts removed silently because their event exists already
 	Reminded    int // reminders delivered and recorded
 	Unreachable int // reminders recorded without delivery, see errChatUnreachable
 	Failed      int // sends that failed and will be retried next pass
@@ -167,6 +169,16 @@ func (s *draftSweeper) sweep(ctx context.Context, now time.Time) draftSweepResul
 		}
 	}
 
+	// A draft whose event an operator finished by hand is dropped without a
+	// word: "you have not finished it" would be false, and its Save button
+	// would create the event a second time. A stale button of it lands on the
+	// home screen, as for any missing draft.
+	superseded, err := s.q.DeleteBotDraftsSuperseded(ctx, now.Add(-draftReminderAfter))
+	if err != nil {
+		s.warn(ctx, "eventbot: superseded draft cleanup failed", err)
+	}
+	res.Superseded = int(superseded)
+
 	due, err := s.q.ListBotDraftsForReminder(ctx, now.Add(-draftReminderAfter), draftSweepBatch)
 	if err != nil {
 		s.warn(ctx, "eventbot: draft reminder listing failed", err)
@@ -195,9 +207,9 @@ func (s *draftSweeper) sweep(ctx context.Context, now time.Time) draftSweepResul
 		}
 	}
 
-	if res.Deleted+res.Reminded+res.Unreachable+res.Failed > 0 {
+	if res.Deleted+res.Superseded+res.Reminded+res.Unreachable+res.Failed > 0 {
 		s.logger.Info("eventbot: idle drafts swept",
-			slog.Int("deleted", res.Deleted), slog.Int("reminded", res.Reminded),
+			slog.Int("deleted", res.Deleted), slog.Int("superseded", res.Superseded), slog.Int("reminded", res.Reminded),
 			slog.Int("unreachable", res.Unreachable), slog.Int("failed", res.Failed))
 	}
 	return res

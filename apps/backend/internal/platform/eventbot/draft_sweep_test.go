@@ -25,10 +25,12 @@ type memDrafts struct {
 	mu       sync.Mutex
 	rows     []gen.BotDraftReminderRow
 	reminded map[uuid.UUID]bool
+	// supersede marks drafts whose event exists already.
+	supersede map[uuid.UUID]bool
 }
 
 func newMemDrafts(rows ...gen.BotDraftReminderRow) *memDrafts {
-	return &memDrafts{rows: rows, reminded: map[uuid.UUID]bool{}}
+	return &memDrafts{rows: rows, reminded: map[uuid.UUID]bool{}, supersede: map[uuid.UUID]bool{}}
 }
 
 func (m *memDrafts) ListBotDraftsForReminder(_ context.Context, idleBefore time.Time, limit int32) ([]gen.BotDraftReminderRow, error) {
@@ -63,6 +65,24 @@ func (m *memDrafts) DeleteBotDraftsIdleBefore(_ context.Context, idleBefore time
 	}
 	m.rows = kept
 	return gone, nil
+}
+
+// DeleteBotDraftsSuperseded drops the drafts listed in m.supersede (the SQL's
+// "event made another way" test lives in the database, see the live-DB test).
+func (m *memDrafts) DeleteBotDraftsSuperseded(_ context.Context, idleBefore time.Time) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var kept []gen.BotDraftReminderRow
+	var n int64
+	for _, r := range m.rows {
+		if m.supersede[r.ID] && r.UpdatedAt.Before(idleBefore) {
+			n++
+			continue
+		}
+		kept = append(kept, r)
+	}
+	m.rows = kept
+	return n, nil
 }
 
 func (m *memDrafts) isReminded(id uuid.UUID) bool {
@@ -161,6 +181,27 @@ func TestDraftSweep_ReminderSentOnce(t *testing.T) {
 	res = sw.sweep(context.Background(), sweepNow.Add(time.Minute))
 	if res.Reminded != 0 || len(snd.messages()) != 1 {
 		t.Errorf("a reminded draft must not be reminded again: %+v, %d messages", res, len(snd.messages()))
+	}
+}
+
+// A draft whose event an operator made by hand is dropped without a reminder
+// or a goodbye, while a neighbouring draft is still reminded.
+func TestDraftSweep_SupersededDraftGetsNoReminder(t *testing.T) {
+	t.Parallel()
+	done := draftRow(21, "ru", "Спектакль «Обыкновенное чудо»", sweepNow.Add(-25*time.Hour))
+	open := draftRow(22, "ru", "Другой вечер", sweepNow.Add(-25*time.Hour))
+	q := newMemDrafts(done, open)
+	q.supersede[done.ID] = true
+	snd := &fakeSender{}
+	sw := newTestSweeper(t, q, snd)
+
+	res := sw.sweep(context.Background(), sweepNow)
+	if res.Superseded != 1 || res.Reminded != 1 || res.Deleted != 0 {
+		t.Fatalf("pass = %+v, want one superseded and one reminded", res)
+	}
+	msgs := snd.messages()
+	if len(msgs) != 1 || msgs[0].chatID != 22 {
+		t.Fatalf("messages = %+v, only chat 22 may hear anything", msgs)
 	}
 }
 

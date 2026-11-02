@@ -192,6 +192,26 @@ WHERE  d.updated_at < $1
 ORDER  BY d.updated_at
 LIMIT  $2;
 
+-- name: DeleteBotDraftsSuperseded :execrows
+-- Idle "create" drafts whose event was made another way: nothing was saved
+-- from the draft, yet the organization has gained a live event whose name
+-- contains the draft's (or the other way round) since the draft was begun —
+-- an operator finished it by hand. Reminding about it would invite a second
+-- save, which creates a duplicate.
+DELETE FROM bot_drafts d
+WHERE  d.mode = 'create'
+  AND  d.updated_at < $1
+  AND  COALESCE(d.saved->>'event_id', '') = ''
+  AND  length(btrim(COALESCE(d.state->'event'->>'name', ''))) >= 4
+  AND  EXISTS (
+         SELECT 1 FROM events e
+         WHERE  e.org_id = d.org_id
+           AND  e.deleted_at IS NULL
+           AND  e.created_at >= d.created_at
+           AND  length(btrim(e.name)) >= 4
+           AND (position(lower(btrim(e.name)) IN lower(btrim(d.state->'event'->>'name'))) > 0
+             OR position(lower(btrim(d.state->'event'->>'name')) IN lower(btrim(e.name))) > 0));
+
 -- name: MarkBotDraftReminded :exec
 UPDATE bot_drafts
 SET    reminded_at = now()
