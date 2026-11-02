@@ -96,6 +96,7 @@ func newFunnelFixture(t *testing.T) *funnelFixture {
 		bg := context.Background()
 		for _, s := range []string{
 			// the gateway fixture rows, children first
+			`DELETE FROM refunds WHERE org_id = $1`,
 			`DELETE FROM orders WHERE org_id = $1 AND source = 'bil24_gateway'`,
 			`DELETE FROM checkout_sessions WHERE org_id = $1 AND channel_id IN (SELECT id FROM sales_channels WHERE org_id = $1 AND settings ? 'gateway')`,
 			`DELETE FROM reservations WHERE org_id = $1 AND channel_id IN (SELECT id FROM sales_channels WHERE org_id = $1 AND settings ? 'gateway')`,
@@ -188,10 +189,14 @@ type funnelMoneyJSON struct {
 }
 
 type funnelJSON struct {
-	SessionID *string           `json:"session_id"`
-	Steps     []funnelStepJSON  `json:"steps"`
-	Revenue   []funnelMoneyJSON `json:"revenue"`
-	Sources   []struct {
+	SessionID *string `json:"session_id"`
+	Sessions  []struct {
+		ID       string  `json:"id"`
+		Timezone *string `json:"timezone"`
+	} `json:"sessions"`
+	Steps   []funnelStepJSON  `json:"steps"`
+	Revenue []funnelMoneyJSON `json:"revenue"`
+	Sources []struct {
 		UTMSource   string            `json:"utm_source"`
 		UTMCampaign string            `json:"utm_campaign"`
 		Steps       []funnelStepJSON  `json:"steps"`
@@ -313,8 +318,27 @@ func TestSalesFunnel_PaidWidgetPurchaseShowsAllSixSteps(t *testing.T) {
 	if c := fx.widgetBeacon("session_open", &stranger, "", "", funnelBrowserUA); c != http.StatusNoContent {
 		t.Errorf("unknown session = %d; want 204", c)
 	}
-	if c := fx.widgetBeacon("paid", nil, "", "", funnelBrowserUA); c != http.StatusBadRequest {
-		t.Errorf("a server step sent by a browser = %d; want 400", c)
+	// A server step sent by a browser, an unknown surface, and a surface that
+	// does not fit how the event is addressed: all answered 204, none counted.
+	pageCtx := map[string]any{"slug": fx.orgSlug, "event_slug": fx.evSlug}
+	for name, body := range map[string]map[string]any{
+		"server step":             {"feed_token": fx.f.feedToken, "event_id": fx.f.eventID.String(), "step": "paid", "surface": "widget"},
+		"unknown step":            {"feed_token": fx.f.feedToken, "event_id": fx.f.eventID.String(), "step": "nope", "surface": "widget"},
+		"unknown surface":         {"feed_token": fx.f.feedToken, "event_id": fx.f.eventID.String(), "step": "view", "surface": "app"},
+		"token with a page surf.": {"feed_token": fx.f.feedToken, "event_id": fx.f.eventID.String(), "step": "view", "surface": "hosted_page"},
+		"token with tickets surf": {"feed_token": fx.f.feedToken, "event_id": fx.f.eventID.String(), "step": "view", "surface": "tickets_page"},
+		"page with widget surf.":  {"page": pageCtx, "step": "view", "surface": "widget"},
+		"both contexts":           {"feed_token": fx.f.feedToken, "event_id": fx.f.eventID.String(), "page": pageCtx, "step": "view", "surface": "widget"},
+	} {
+		if code, resp := fx.beacon(body, funnelBrowserUA); code != http.StatusNoContent {
+			t.Errorf("%s = %d %s; want 204", name, code, resp)
+		}
+	}
+	// Only an unreadable body is told it is wrong.
+	req := httptest.NewRequest(http.MethodPost, "/v1/public/funnel", strings.NewReader("{nope"))
+	req.Header.Set("Content-Type", "application/json")
+	if rec := httptest.NewRecorder(); func() int { fx.srv.router.ServeHTTP(rec, req); return rec.Code }() != http.StatusBadRequest {
+		t.Error("an unreadable body must be a 400")
 	}
 	if code, _ := fx.beacon(map[string]any{"feed_token": "no-such-token", "event_id": fx.f.eventID.String(), "step": "view", "surface": "widget"}, funnelBrowserUA); code != http.StatusNoContent {
 		t.Errorf("unknown token = %d; want 204", code)
@@ -337,7 +361,16 @@ func TestSalesFunnel_PaidWidgetPurchaseShowsAllSixSteps(t *testing.T) {
 	if linked == nil {
 		t.Fatalf("the checkout did not tie the order to the sales link %s (attribution %s)", fx.linkCode, attr)
 	}
-	fx.startCheckout("funnel-open-"+uuid.NewString()[:8]+"@arena-integration.test", 1, nil)
+	// A buyer who retries checkout/start (the first hold is taken, a second try
+	// takes another) is ONE buyer in the funnel: otherwise the share of the
+	// previous step could pass 100 % through retries alone.
+	retryMail := "funnel-open-" + uuid.NewString()[:8] + "@arena-integration.test"
+	fx.startCheckout(retryMail, 1, nil)
+	fx.startCheckout(retryMail, 1, nil)
+	var orderRows int
+	if err := fx.pool.QueryRow(t.Context(), `SELECT count(*) FROM orders WHERE event_id = $1`, fx.f.eventID).Scan(&orderRows); err != nil || orderRows != 3 {
+		t.Fatalf("orders of the event = %d (%v); want 3: the paid one and two attempts of the retrying buyer", orderRows, err)
+	}
 
 	// ── The read ───────────────────────────────────────────────────────────
 	key := fx.key(fx.f.orgID, "report.read")
@@ -391,6 +424,39 @@ func TestSalesFunnel_PaidWidgetPurchaseShowsAllSixSteps(t *testing.T) {
 	if len(got.SalesLinks) != 1 || got.SalesLinks[0].Code == nil || *got.SalesLinks[0].Code != fx.linkCode ||
 		got.SalesLinks[0].CheckoutStart != 1 || got.SalesLinks[0].Paid != 1 || len(got.SalesLinks[0].Revenue) != 1 {
 		t.Errorf("sales_links = %+v", got.SalesLinks)
+	}
+
+	// The sessions come with the answer, each with the zone of its own venue.
+	if len(got.Sessions) != 1 || got.Sessions[0].ID != sid.String() || got.Sessions[0].Timezone == nil || *got.Sessions[0].Timezone != "Europe/Prague" {
+		t.Errorf("sessions = %+v; want the session with Europe/Prague", got.Sessions)
+	}
+
+	// ── A succeeded refund comes off the revenue, a requested one does not ───
+	grossRevenue := got.Revenue[0].AmountMinor
+	var piID uuid.UUID
+	var orderID uuid.UUID
+	if err := fx.pool.QueryRow(t.Context(), `SELECT pi.id, o.id FROM payment_intents pi JOIN orders o ON o.checkout_session_id = pi.checkout_session_id WHERE pi.checkout_session_id = $1`, paidCS).Scan(&piID, &orderID); err != nil {
+		t.Fatalf("payment intent of the paid order: %v", err)
+	}
+	for _, r := range []struct {
+		state  string
+		amount int64
+	}{{"requested", 700}, {"succeeded", 500}} {
+		if _, err := fx.pool.Exec(t.Context(), `INSERT INTO refunds (payment_intent_id, org_id, order_id, amount, currency, state) VALUES ($1, $2, $3, $4, 'EUR', $5)`,
+			piID, fx.f.orgID, orderID, r.amount, r.state); err != nil {
+			t.Fatalf("refund %s: %v", r.state, err)
+		}
+	}
+	code, raw = fx.read(fx.f.orgID, fx.f.eventID, "", key)
+	if code != http.StatusOK {
+		t.Fatalf("funnel read after the refund = %d: %s", code, raw)
+	}
+	net := decodeFunnel(t, raw)
+	if len(net.Revenue) != 1 || net.Revenue[0].AmountMinor != grossRevenue-500 {
+		t.Errorf("revenue after a 500 refund = %+v; want %d (the requested refund does not count)", net.Revenue, grossRevenue-500)
+	}
+	if len(net.SalesLinks) != 1 || len(net.SalesLinks[0].Revenue) != 1 || net.SalesLinks[0].Revenue[0].AmountMinor != grossRevenue-500 {
+		t.Errorf("sales link revenue = %+v; want it net as well", net.SalesLinks)
 	}
 
 	// ── One session: the view belongs to the event, so it has no count ───────

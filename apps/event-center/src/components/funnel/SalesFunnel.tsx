@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchEventFunnel, listSessions } from "@/lib/api/endpoints";
-import type { SalesFunnelMoney, SalesFunnelStep } from "@/lib/api/types";
+import { fetchEventFunnel } from "@/lib/api/endpoints";
+import type { SalesFunnelMoney, SalesFunnelResponse, SalesFunnelStep } from "@/lib/api/types";
 import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import { FUNNEL_STEPS, formatShare, funnelRows, isEmptyFunnel, lastDays, sourceRows } from "@/lib/salesFunnel";
@@ -19,21 +19,18 @@ import "./funnel.css";
  * apart and start at the chosen seats, instead of showing zeros that look like
  * a failure.
  */
-export function SalesFunnel({ orgId, eventId, canSessions }: { orgId: string; eventId: string; canSessions: boolean }) {
+export function SalesFunnel({ orgId, eventId }: { orgId: string; eventId: string }) {
   const { t, locale } = useI18n();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [sessionId, setSessionId] = useState("");
 
+  // The picker must not empty while the next window loads.
+  const lastSessions = useRef<SalesFunnelResponse["sessions"]>([]);
   const funnel = useQuery({
     queryKey: ["eventFunnel", orgId, eventId, from, to, sessionId],
     queryFn: () => fetchEventFunnel(orgId, eventId, { from, to, sessionId }),
     retry: false,
-  });
-  const sessions = useQuery({
-    queryKey: ["sessions", orgId, eventId],
-    queryFn: () => listSessions(orgId, eventId),
-    enabled: canSessions,
   });
 
   const n = (v: number) => formatNumber(v, locale);
@@ -42,7 +39,8 @@ export function SalesFunnel({ orgId, eventId, canSessions }: { orgId: string; ev
     list.length === 0 ? "—" : list.map((m) => formatMoney(m.amount_minor, m.currency, locale)).join(" + ");
 
   const preset = (days: number) => {
-    const w = lastDays(days, new Date());
+    // The venue's days, not the browser's: the API reads from and to in the venue's zone.
+    const w = lastDays(days, new Date(), funnel.data?.timezone);
     setFrom(w.from);
     setTo(w.to);
   };
@@ -65,6 +63,7 @@ export function SalesFunnel({ orgId, eventId, canSessions }: { orgId: string; ev
   );
 
   const data = funnel.data;
+  if (data !== undefined) lastSessions.current = data.sessions;
   const rows = data === undefined ? [] : sourceRows(data.sources);
 
   return (
@@ -72,19 +71,19 @@ export function SalesFunnel({ orgId, eventId, canSessions }: { orgId: string; ev
       <p className="card-meta">{t("funnel.note")}</p>
 
       <form className="funnel-filters" onSubmit={(e) => e.preventDefault()} data-testid="funnel-filters">
-        {canSessions && (
-          <div>
-            <label htmlFor="funnel-session">{t("funnel.session")}</label>
-            <select id="funnel-session" value={sessionId} onChange={(e) => setSessionId(e.target.value)} data-testid="funnel-session">
-              <option value="">{t("funnel.allSessions")}</option>
-              {(sessions.data?.sessions ?? []).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {formatDateTime(s.start_at, null, locale)}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+        <div>
+          <label htmlFor="funnel-session">{t("funnel.session")}</label>
+          <select id="funnel-session" value={sessionId} onChange={(e) => setSessionId(e.target.value)} data-testid="funnel-session">
+            <option value="">{t("funnel.allSessions")}</option>
+            {/* Each date on the clock of its own venue. The list comes with the answer, so a screen that
+                changes the session keeps showing the list it had. */}
+            {(funnel.data?.sessions ?? lastSessions.current).map((s) => (
+              <option key={s.id} value={s.id}>
+                {formatDateTime(s.start_at, s.timezone, locale)}
+              </option>
+            ))}
+          </select>
+        </div>
         <div>
           <label htmlFor="funnel-from">{t("funnel.from")}</label>
           <input id="funnel-from" type="date" value={from} onChange={(e) => setFrom(e.target.value)} data-testid="funnel-from" />

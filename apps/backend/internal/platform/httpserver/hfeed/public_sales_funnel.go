@@ -5,8 +5,9 @@
 // Body (JSON, at most 2 KiB; the router requires Content-Type: application/json
 // like on every other POST):
 //
-//	{"feed_token": "...", "event_id": "uuid"}          the widget, or
+//	{"feed_token": "...", "event_id": "uuid"}          the widget (surface "widget"), or
 //	{"page": {"slug": "...", "event_slug": "..."}}     a hosted / tickets page
+//	                                                   (surface "hosted_page" or "tickets_page")
 //	+ "session_id": "uuid"                              optional
 //	+ "step": "view" | "session_open" | "seats_chosen"
 //	+ "surface": "widget" | "hosted_page" | "tickets_page"
@@ -32,10 +33,16 @@
 //   - one event keeps at most pagestats.MaxUTMPairsPerDay different utm pairs a
 //     day, further pairs are counted without utm.
 //
-// Answers: 204 counted or deliberately not counted (an unknown event, session
-// or page is answered like a counted one: the beacon tells nothing about which
-// events exist), 400 an unreadable body or an unknown step or surface, 429,
-// 503. Never 502: Cloudflare replaces an origin 502 with its own page.
+// The surface is tied to how the event is addressed: a feed token is the
+// widget on a seller's site ("widget" only), a page address is one of the pages
+// Arena hosts ("hosted_page" or "tickets_page"). A beacon that disagrees with
+// itself is not counted.
+//
+// Answers: 204 counted or deliberately not counted (an unknown step, surface,
+// event, session or page, or a body that disagrees with itself, is answered
+// like a counted one: the beacon tells nothing about why), 400 only an
+// unreadable JSON body, 429, 503. Never 502: Cloudflare replaces an origin 502
+// with its own page.
 package hfeed
 
 import (
@@ -92,7 +99,7 @@ type funnelContext struct {
 func (c funnelContext) byToken() bool { return c.feedToken != "" }
 
 // parseFunnelRequest checks the shape of the body. It reads no database. ok is
-// false for a body the sender got wrong (answered 400).
+// false for a beacon that must not be counted (answered 204 all the same).
 func parseFunnelRequest(req funnelRequest) (ctx funnelContext, step, surface string, ok bool) {
 	step, ok = salesfunnel.ParseStep(req.Step)
 	if !ok {
@@ -105,12 +112,18 @@ func parseFunnelRequest(req funnelRequest) (ctx funnelContext, step, surface str
 	token := strings.TrimSpace(req.FeedToken)
 	switch {
 	case token != "" && req.Page == nil:
+		if surface != salesfunnel.SurfaceWidget {
+			return ctx, "", "", false
+		}
 		id, err := uuid.Parse(strings.TrimSpace(req.EventID))
 		if err != nil || len(token) > salesfunnel.MaxTokenLength {
 			return ctx, "", "", false
 		}
 		ctx.feedToken, ctx.eventID = token, id
 	case token == "" && req.Page != nil && req.EventID == "":
+		if surface == salesfunnel.SurfaceWidget {
+			return ctx, "", "", false
+		}
 		slug := strings.TrimSpace(req.Page.Slug)
 		eventSlug := strings.TrimSpace(req.Page.EventSlug)
 		if slug == "" || eventSlug == "" || len(slug) > salesfunnel.MaxSlugLength || len(eventSlug) > salesfunnel.MaxSlugLength {
@@ -155,7 +168,8 @@ func (h *Handler) HandlePublicFunnel(w http.ResponseWriter, r *http.Request) {
 	}
 	fc, step, surface, ok := parseFunnelRequest(req)
 	if !ok {
-		h.badFunnelBody(w, r)
+		// Not counted, and not told why.
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
@@ -246,7 +260,7 @@ func (h *Handler) HandlePublicFunnel(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) badFunnelBody(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
-		"funnel.invalid_body", "Send a JSON object with a step, a surface and the event.", r,
+		"funnel.invalid_body", "Send a JSON object.", r,
 	))
 }
 

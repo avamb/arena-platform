@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { funnelURL, funnelViewBody, trackFunnelView } from '../lib/track.ts';
+import { funnelURL, funnelViewBody, observeOnce, trackFunnelView } from '../lib/track.ts';
 
 // The hosted page's share of the buyer funnel (spec 50, stage A7): one anonymous
 // `view` beacon naming the event by its address. The widget inside the page
@@ -18,6 +18,11 @@ describe('funnel view beacon', () => {
     });
   });
 
+  it('files a promoter-page card under its own surface', () => {
+    expect(JSON.parse(funnelViewBody(ctx, 'tickets_page')).surface).toBe('tickets_page');
+    expect(JSON.parse(funnelViewBody(ctx)).surface).toBe('hosted_page');
+  });
+
   it('leaves the utm out when the address has none', () => {
     const body = JSON.parse(funnelViewBody({ ...ctx, search: '' }));
     expect(Object.keys(body).sort()).toEqual(['page', 'step', 'surface']);
@@ -30,7 +35,7 @@ describe('funnel view beacon', () => {
 
   it('posts once, without credentials, and survives a failing request', async () => {
     const fetchMock = vi.fn(() => Promise.reject(new Error('offline')));
-    expect(() => trackFunnelView(ctx, fetchMock as unknown as typeof fetch)).not.toThrow();
+    expect(() => trackFunnelView(ctx, 'hosted_page', fetchMock as unknown as typeof fetch)).not.toThrow();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('https://api.example/v1/public/funnel');
@@ -44,6 +49,42 @@ describe('funnel view beacon', () => {
     const throwing = vi.fn(() => {
       throw new Error('blocked');
     });
-    expect(() => trackFunnelView(ctx, throwing as unknown as typeof fetch)).not.toThrow();
+    expect(() => trackFunnelView(ctx, 'hosted_page', throwing as unknown as typeof fetch)).not.toThrow();
+  });
+});
+
+describe('observeOnce', () => {
+  class FakeObserver {
+    static last: FakeObserver;
+    disconnected = false;
+    constructor(private cb: (e: Array<{ isIntersecting: boolean }>) => void) {
+      FakeObserver.last = this;
+    }
+    observe() {}
+    disconnect() {
+      this.disconnected = true;
+    }
+    fire(isIntersecting: boolean) {
+      this.cb([{ isIntersecting }]);
+    }
+  }
+  const asObserver = FakeObserver as unknown as typeof IntersectionObserver;
+
+  it('calls back once, only when the element is in view', () => {
+    const fn = vi.fn();
+    observeOnce(document.createElement('div'), fn, asObserver);
+    expect(fn).not.toHaveBeenCalled();
+    FakeObserver.last.fire(false);
+    expect(fn).not.toHaveBeenCalled();
+    FakeObserver.last.fire(true);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(FakeObserver.last.disconnected).toBe(true);
+  });
+
+  it('counts the card at once where there is no IntersectionObserver', () => {
+    const fn = vi.fn();
+    observeOnce(document.createElement('div'), fn, undefined);
+    // `undefined` falls back to the global; jsdom has none, so it fires.
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });

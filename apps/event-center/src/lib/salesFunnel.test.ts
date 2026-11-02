@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SalesFunnelResponse, SalesFunnelSource, SalesFunnelStep } from "@/lib/api/types";
-import { FUNNEL_STEPS, formatShare, funnelRows, isEmptyFunnel, lastDays, lostPercent, sourceRows, stepCount } from "@/lib/salesFunnel";
+import { FUNNEL_STEPS, dayInZone, formatShare, funnelRows, isEmptyFunnel, lastDays, lostPercent, sourceRows, stepCount } from "@/lib/salesFunnel";
 
 const step = (name: string, count: number | null, share: number | null = null, suspect = 0): SalesFunnelStep => ({
   step: name,
@@ -93,7 +93,22 @@ describe("formatShare", () => {
 
 describe("lastDays", () => {
   it("counts today as the last day of the window", () => {
-    expect(lastDays(7, new Date(2026, 10, 2))).toEqual({ from: "2026-10-27", to: "2026-11-02" });
-    expect(lastDays(1, new Date(2026, 0, 1))).toEqual({ from: "2026-01-01", to: "2026-01-01" });
+    expect(lastDays(7, new Date(2026, 10, 2, 12))).toEqual({ from: "2026-10-27", to: "2026-11-02" });
+    expect(lastDays(1, new Date(2026, 0, 1, 12))).toEqual({ from: "2026-01-01", to: "2026-01-01" });
+  });
+  it("reads today on the venue's clock, not the browser's", () => {
+    // 23:30 UTC on 1 Nov is already 2 Nov in Auckland and still 1 Nov in Madrid.
+    const instant = new Date("2026-11-01T23:30:00Z");
+    expect(dayInZone(instant, "Pacific/Auckland")).toBe("2026-11-02");
+    expect(dayInZone(instant, "Europe/Madrid")).toBe("2026-11-02");
+    expect(dayInZone(new Date("2026-11-01T22:30:00Z"), "Europe/Madrid")).toBe("2026-11-01");
+    expect(lastDays(7, instant, "Pacific/Auckland")).toEqual({ from: "2026-10-27", to: "2026-11-02" });
+    expect(lastDays(30, new Date("2026-03-02T12:00:00Z"), "UTC").from).toBe("2026-02-01");
+  });
+  it("falls back to the browser's day for an empty or unknown zone", () => {
+    const now = new Date(2026, 5, 15, 12);
+    expect(dayInZone(now, null)).toBe("2026-06-15");
+    expect(dayInZone(now, "")).toBe("2026-06-15");
+    expect(dayInZone(now, "Not/AZone")).toBe("2026-06-15");
   });
 });

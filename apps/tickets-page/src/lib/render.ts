@@ -5,6 +5,7 @@ import { hasDescription, plainText, renderDescription, renderRichText } from './
 import { renderSellerBlock } from './seller.ts';
 import { renderContactButton } from './contact.ts';
 import { renderMaterials } from './materials.ts';
+import { observeOnce, trackFunnelView } from './track.ts';
 import type { HostedPageEvent, HostedPageResponse, HostedPromoterPageResponse } from './api.ts';
 
 /** Clears a container's children (avoids innerHTML = '' churn semantics
@@ -296,8 +297,8 @@ export function renderEvent(
   // The page itself draws the gallery, videos, map, other sellers and the
   // photo report below (renderMaterials); the widget must not repeat them.
   widget.setAttribute('materials', 'hidden');
-  // Buyer funnel (spec 50 A7): the page counted the view itself (main.ts), the
-  // widget sends session_open and seats_chosen under the same surface.
+  // Buyer funnel (spec 50 A7): the page counts the view itself (main.ts), the
+  // widget sends session_open and seats_chosen on a buyer action.
   widget.setAttribute('funnel', 'hosted_page');
   widget.setAttribute('locale', toWidgetLocale(locale));
   if (options.apiBase) {
@@ -696,14 +697,23 @@ function mountTicketPicker(
   widget.setAttribute('frame', 'hidden');
   // A catalog/promoter card is only a picker; its event page shows the materials.
   widget.setAttribute('materials', 'hidden');
-  // Buyer funnel (spec 50 A7): a card is the only thing that knows its event was
-  // opened, so the widget counts every step under the promoter page's surface.
+  // Buyer funnel (spec 50 A7): every card of the page mounts a widget on load,
+  // so a widget that merely loaded proves nothing about the buyer. The widget
+  // leaves the `view` to this page, which sends it once, when the card first
+  // scrolls into view (below). Its session_open and seats_chosen need a buyer
+  // action, so the widget still sends those itself.
   widget.setAttribute('funnel', 'tickets_page');
   widget.setAttribute('locale', toWidgetLocale(locale));
   if (options.apiBase) {
     widget.setAttribute('api-base', options.apiBase);
   }
   panel.appendChild(widget);
+  observeOnce(panel, () =>
+    trackFunnelView(
+      { apiBase: options.apiBase, slug: orgSlug, eventSlug: event.slug, search: currentSearch() },
+      'tickets_page',
+    ),
+  );
 }
 
 /** One poster card of the catalog: the artwork, the title, when and where,

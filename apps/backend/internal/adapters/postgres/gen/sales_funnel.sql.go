@@ -141,35 +141,94 @@ func (q *Queries) ListSalesFunnelClientRows(ctx context.Context, eventID uuid.UU
 	return out, rows.Err()
 }
 
-const listFunnelServerRows = `SELECT COALESCE(cs.attribution ->> 'utm_source', '')   AS utm_source,
-       COALESCE(cs.attribution ->> 'utm_campaign', '') AS utm_campaign,
-       o.sales_link_id,
-       sl.code                                         AS sales_link_code,
-       sl.label                                        AS sales_link_label,
-       o.currency::text                                AS currency,
-       count(*)::bigint                                AS started,
-       (count(*) FILTER (WHERE o.status IN ('paid', 'partially_refunded', 'refunded')
-                            OR EXISTS (SELECT 1 FROM payment_intents pi
-                                       WHERE pi.checkout_session_id = o.checkout_session_id)))::bigint AS payment_open,
-       (count(*) FILTER (WHERE o.status IN ('paid', 'partially_refunded', 'refunded')))::bigint       AS paid,
-       COALESCE(sum(o.total) FILTER (WHERE o.status IN ('paid', 'partially_refunded', 'refunded')), 0)::bigint AS revenue
-FROM   orders o
-JOIN   checkout_sessions cs ON cs.id = o.checkout_session_id
-LEFT JOIN sales_links sl ON sl.id = o.sales_link_id
-WHERE  o.event_id = $1 AND o.org_id = $2
-  AND  o.source <> 'complimentary'
-  AND  (o.created_at AT TIME ZONE $5::text)::date BETWEEN $3 AND $4
-  AND  ($6::uuid IS NULL OR o.session_id = $6::uuid)
-  AND  NOT EXISTS (
-           SELECT 1 FROM sales_channels sc
-           WHERE  sc.id = o.channel_id
-             AND  (sc.settings #>> '{gateway,token_hash}' IS NOT NULL
-                   OR sc.settings ->> 'gateway_token_hash' IS NOT NULL)
-       )
+const listEventFunnelSessions = `SELECT s.id, s.start_at, s.status, v.timezone
+FROM      sessions s
+LEFT JOIN venues   v ON v.id = s.venue_id
+WHERE  s.event_id = $1
+  AND  s.deleted_at IS NULL
+ORDER  BY s.start_at, s.id`
+
+// EventFunnelSession is a live session of an event with the IANA zone of its
+// venue (nil when the venue has none on record).
+type EventFunnelSession struct {
+	ID       uuid.UUID
+	StartAt  time.Time
+	Status   string
+	Timezone *string
+}
+
+// ListEventFunnelSessions lists the live sessions of the event in start order.
+func (q *Queries) ListEventFunnelSessions(ctx context.Context, eventID uuid.UUID) ([]EventFunnelSession, error) {
+	rows, err := q.db.Query(ctx, listEventFunnelSessions, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []EventFunnelSession
+	for rows.Next() {
+		var s EventFunnelSession
+		if err := rows.Scan(&s.ID, &s.StartAt, &s.Status, &s.Timezone); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+const listFunnelServerRows = `WITH x AS (
+    SELECT COALESCE(cs.attribution ->> 'utm_source', '')   AS utm_source,
+           COALESCE(cs.attribution ->> 'utm_campaign', '') AS utm_campaign,
+           o.sales_link_id,
+           o.currency::text AS currency,
+           COALESCE(o.customer_id::text, lower(btrim(o.buyer_email)), o.id::text)
+               || '|' || o.session_id::text
+               || '|' || ((o.created_at AT TIME ZONE $5::text)::date)::text AS buyer,
+           (o.status IN ('paid', 'partially_refunded', 'refunded')) AS paid,
+           EXISTS (SELECT 1 FROM payment_intents pi
+                   WHERE pi.checkout_session_id = o.checkout_session_id) AS has_intent,
+           o.total - rf.amount AS net
+    FROM   orders o
+    JOIN   checkout_sessions cs ON cs.id = o.checkout_session_id
+    LEFT JOIN LATERAL (
+        SELECT COALESCE(sum(r.amount), 0)::bigint AS amount
+        FROM  (
+                  SELECT r1.id FROM refunds r1 WHERE r1.order_id = o.id
+                  UNION
+                  SELECT r2.id FROM refunds r2 JOIN tickets t ON t.id = r2.ticket_id WHERE t.order_id = o.id
+                  UNION
+                  SELECT r3.id FROM refunds r3 JOIN payment_intents p3 ON p3.id = r3.payment_intent_id
+                  WHERE  p3.checkout_session_id = o.checkout_session_id
+              ) cand
+        JOIN   refunds r ON r.id = cand.id
+        WHERE  r.state = 'succeeded'
+    ) rf ON true
+    WHERE  o.event_id = $1 AND o.org_id = $2
+      AND  o.source <> 'complimentary'
+      AND  o.created_at >= $3::date - 1 AND o.created_at < $4::date + 2
+      AND  (o.created_at AT TIME ZONE $5::text)::date BETWEEN $3 AND $4
+      AND  ($6::uuid IS NULL OR o.session_id = $6::uuid)
+      AND  NOT EXISTS (
+               SELECT 1 FROM sales_channels sc
+               WHERE  sc.id = o.channel_id
+                 AND  (sc.settings #>> '{gateway,token_hash}' IS NOT NULL
+                       OR sc.settings ->> 'gateway_token_hash' IS NOT NULL)
+           )
+)
+SELECT x.utm_source, x.utm_campaign, x.sales_link_id,
+       sl.code  AS sales_link_code,
+       sl.label AS sales_link_label,
+       x.currency,
+       count(DISTINCT x.buyer)::bigint                                  AS started,
+       (count(DISTINCT x.buyer) FILTER (WHERE x.paid OR x.has_intent))::bigint AS payment_open,
+       (count(DISTINCT x.buyer) FILTER (WHERE x.paid))::bigint          AS paid,
+       COALESCE(sum(x.net) FILTER (WHERE x.paid), 0)::bigint            AS revenue
+FROM   x
+LEFT JOIN sales_links sl ON sl.id = x.sales_link_id
 GROUP BY 1, 2, 3, 4, 5, 6`
 
 // FunnelServerRow is the server-side steps of the orders of one source: a utm
-// pair, a sales link and a currency. Revenue is in minor units.
+// pair, a sales link and a currency. The steps count buyers (a buyer who
+// retried checkout is one), Revenue is in minor units, net of succeeded refunds.
 type FunnelServerRow struct {
 	UTMSource      string
 	UTMCampaign    string
@@ -195,8 +254,8 @@ type FunnelWindow struct {
 	SessionID *uuid.UUID
 }
 
-// ListFunnelServerRows counts started, payment-opened and paid orders of the
-// non-gateway channels of the event.
+// ListFunnelServerRows counts started, payment-opened and paid buyers of the
+// non-gateway channels of the event, per source.
 func (q *Queries) ListFunnelServerRows(ctx context.Context, w FunnelWindow) ([]FunnelServerRow, error) {
 	rows, err := q.db.Query(ctx, listFunnelServerRows, w.EventID, w.OrgID, w.From, w.To, w.Zone, w.SessionID)
 	if err != nil {
@@ -215,6 +274,47 @@ func (q *Queries) ListFunnelServerRows(ctx context.Context, w FunnelWindow) ([]F
 	return out, rows.Err()
 }
 
+const getFunnelServerTotals = `WITH x AS (
+    SELECT COALESCE(o.customer_id::text, lower(btrim(o.buyer_email)), o.id::text)
+               || '|' || o.session_id::text
+               || '|' || ((o.created_at AT TIME ZONE $5::text)::date)::text AS buyer,
+           (o.status IN ('paid', 'partially_refunded', 'refunded')) AS paid,
+           EXISTS (SELECT 1 FROM payment_intents pi
+                   WHERE pi.checkout_session_id = o.checkout_session_id) AS has_intent
+    FROM   orders o
+    WHERE  o.event_id = $1 AND o.org_id = $2
+      AND  o.source <> 'complimentary'
+      AND  o.created_at >= $3::date - 1 AND o.created_at < $4::date + 2
+      AND  (o.created_at AT TIME ZONE $5::text)::date BETWEEN $3 AND $4
+      AND  ($6::uuid IS NULL OR o.session_id = $6::uuid)
+      AND  NOT EXISTS (
+               SELECT 1 FROM sales_channels sc
+               WHERE  sc.id = o.channel_id
+                 AND  (sc.settings #>> '{gateway,token_hash}' IS NOT NULL
+                       OR sc.settings ->> 'gateway_token_hash' IS NOT NULL)
+           )
+)
+SELECT count(DISTINCT buyer)::bigint,
+       (count(DISTINCT buyer) FILTER (WHERE paid OR has_intent))::bigint,
+       (count(DISTINCT buyer) FILTER (WHERE paid))::bigint
+FROM   x`
+
+// FunnelServerTotals are the buyers of the window counted once, whatever the
+// source, link or currency they appear under.
+type FunnelServerTotals struct {
+	Started     int64
+	PaymentOpen int64
+	Paid        int64
+}
+
+// GetFunnelServerTotals counts the distinct buyers of the whole window.
+func (q *Queries) GetFunnelServerTotals(ctx context.Context, w FunnelWindow) (FunnelServerTotals, error) {
+	var t FunnelServerTotals
+	err := q.db.QueryRow(ctx, getFunnelServerTotals, w.EventID, w.OrgID, w.From, w.To, w.Zone, w.SessionID).
+		Scan(&t.Started, &t.PaymentOpen, &t.Paid)
+	return t, err
+}
+
 const countFunnelGatewayCarts = `SELECT count(*)::bigint
 FROM   reservations r
 JOIN   sessions s        ON s.id = r.session_id
@@ -222,6 +322,7 @@ JOIN   sales_channels sc ON sc.id = r.channel_id
 WHERE  s.event_id = $1 AND r.org_id = $2
   AND  (sc.settings #>> '{gateway,token_hash}' IS NOT NULL
         OR sc.settings ->> 'gateway_token_hash' IS NOT NULL)
+  AND  r.created_at >= $3::date - 1 AND r.created_at < $4::date + 2
   AND  (r.created_at AT TIME ZONE $5::text)::date BETWEEN $3 AND $4
   AND  ($6::uuid IS NULL OR r.session_id = $6::uuid)`
 
@@ -236,13 +337,27 @@ func (q *Queries) CountFunnelGatewayCarts(ctx context.Context, w FunnelWindow) (
 const listFunnelGatewayOrders = `SELECT o.currency::text AS currency,
        count(*)::bigint AS started,
        (count(*) FILTER (WHERE o.status IN ('paid', 'partially_refunded', 'refunded')))::bigint AS paid,
-       COALESCE(sum(o.total) FILTER (WHERE o.status IN ('paid', 'partially_refunded', 'refunded')), 0)::bigint AS revenue
+       COALESCE(sum(o.total - rf.amount) FILTER (WHERE o.status IN ('paid', 'partially_refunded', 'refunded')), 0)::bigint AS revenue
 FROM   orders o
 JOIN   sales_channels sc ON sc.id = o.channel_id
+LEFT JOIN LATERAL (
+    SELECT COALESCE(sum(r.amount), 0)::bigint AS amount
+    FROM  (
+              SELECT r1.id FROM refunds r1 WHERE r1.order_id = o.id
+              UNION
+              SELECT r2.id FROM refunds r2 JOIN tickets t ON t.id = r2.ticket_id WHERE t.order_id = o.id
+              UNION
+              SELECT r3.id FROM refunds r3 JOIN payment_intents p3 ON p3.id = r3.payment_intent_id
+              WHERE  p3.checkout_session_id = o.checkout_session_id
+          ) cand
+    JOIN   refunds r ON r.id = cand.id
+    WHERE  r.state = 'succeeded'
+) rf ON true
 WHERE  o.event_id = $1 AND o.org_id = $2
   AND  o.source <> 'complimentary'
   AND  (sc.settings #>> '{gateway,token_hash}' IS NOT NULL
         OR sc.settings ->> 'gateway_token_hash' IS NOT NULL)
+  AND  o.created_at >= $3::date - 1 AND o.created_at < $4::date + 2
   AND  (o.created_at AT TIME ZONE $5::text)::date BETWEEN $3 AND $4
   AND  ($6::uuid IS NULL OR o.session_id = $6::uuid)
 GROUP BY o.currency`

@@ -22,7 +22,7 @@ export function EventFunnelScreen() {
       </p>
       <h1 id="funnel-title">{t("funnel.title")}</h1>
       {access.can("report.read") ? (
-        <SalesFunnel orgId={orgId} eventId={eventId} canSessions={access.can("session.read")} />
+        <SalesFunnel orgId={orgId} eventId={eventId} />
       ) : (
         <p className="notice" data-testid="funnel-no-access">
           {t("funnel.noAccess", { org: orgName })}

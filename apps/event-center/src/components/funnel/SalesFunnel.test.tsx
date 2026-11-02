@@ -11,10 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/api/endpoints", () => ({
   fetchEventFunnel: vi.fn(),
-  listSessions: vi.fn(),
 }));
 
-import { fetchEventFunnel, listSessions } from "@/lib/api/endpoints";
+import { fetchEventFunnel } from "@/lib/api/endpoints";
+import { formatDateTime } from "@/lib/format";
 import type { SalesFunnelResponse, SalesFunnelStep } from "@/lib/api/types";
 import { SalesFunnel } from "@/components/funnel/SalesFunnel";
 import { I18nProvider, type Locale } from "@/lib/i18n";
@@ -40,6 +40,7 @@ function funnel(over: Partial<SalesFunnelResponse> = {}): SalesFunnelResponse {
     from: "2026-10-03",
     to: "2026-11-01",
     timezone: "Europe/Madrid",
+    sessions: [{ id: SESSION, start_at: "2026-12-01T23:30:00Z", status: "scheduled", timezone: "Pacific/Auckland" }],
     steps: [
       step("view", 200, null, 12),
       step("session_open", 100, 0.5),
@@ -63,8 +64,6 @@ function funnel(over: Partial<SalesFunnelResponse> = {}): SalesFunnelResponse {
 
 beforeEach(() => {
   vi.mocked(fetchEventFunnel).mockReset();
-  vi.mocked(listSessions).mockReset();
-  vi.mocked(listSessions).mockResolvedValue({ sessions: [{ id: SESSION, start_at: "2026-12-01T19:00:00Z" }] } as never);
 });
 afterEach(() => {
   while (roots.length > 0) act(() => (roots.pop() as Root).unmount());
@@ -74,7 +73,7 @@ afterEach(() => {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const byId = (el: HTMLElement, id: string) => el.querySelector('[data-testid="' + id + '"]') as HTMLElement;
 
-async function mount(locale: Locale = "en", canSessions = true): Promise<HTMLElement> {
+async function mount(locale: Locale = "en"): Promise<HTMLElement> {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const el = document.createElement("div");
   document.body.appendChild(el);
@@ -84,7 +83,7 @@ async function mount(locale: Locale = "en", canSessions = true): Promise<HTMLEle
     root.render(
       <QueryClientProvider client={client}>
         <I18nProvider locale={locale}>
-          <SalesFunnel orgId={ORG} eventId={EVENT} canSessions={canSessions} />
+          <SalesFunnel orgId={ORG} eventId={EVENT} />
         </I18nProvider>
       </QueryClientProvider>,
     );
@@ -184,11 +183,12 @@ describe("the sales funnel block", () => {
     expect(el.textContent).toContain("A page view belongs to the whole event");
   });
 
-  it("has no session filter without the right to read sessions", async () => {
+  it("names each date on the clock of its own venue", async () => {
     vi.mocked(fetchEventFunnel).mockResolvedValue(funnel());
-    const el = await mount("en", false);
-    expect(byId(el, "funnel-session")).toBeNull();
-    expect(listSessions).not.toHaveBeenCalled();
+    const el = await mount();
+    const option = el.querySelector(`#funnel-session option[value="${SESSION}"]`) as HTMLOptionElement;
+    expect(option.textContent).toBe(formatDateTime("2026-12-01T23:30:00Z", "Pacific/Auckland", "en"));
+    expect(option.textContent).not.toBe(formatDateTime("2026-12-01T23:30:00Z", "UTC", "en"));
   });
 
   it("sets the window from a preset", async () => {
@@ -202,6 +202,8 @@ describe("the sales funnel block", () => {
     const last = vi.mocked(fetchEventFunnel).mock.calls.at(-1)?.[2];
     expect(last?.from).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(last?.to).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // The days are the venue's: the event's zone is Madrid in this answer.
+    expect(last?.to).toBe(new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid" }).format(new Date()));
     expect((byId(el, "funnel-from") as HTMLInputElement).value).toBe(last?.from);
   });
 

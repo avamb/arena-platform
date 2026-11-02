@@ -86,13 +86,30 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-/** A calendar date as the API reads it, from the browser's local day. */
-export function isoDay(d: Date): string {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/**
+ * The calendar day of an instant on the clock of the zone, "YYYY-MM-DD". The
+ * API reads `from` and `to` as days in the VENUE's zone, so "today" must be the
+ * venue's today: a manager in another zone would otherwise get a window that is
+ * a day off around midnight. An empty or unknown zone falls back to the
+ * browser's own day.
+ */
+export function dayInZone(now: Date, tz: string | null | undefined): string {
+  if (tz !== null && tz !== undefined && tz !== "") {
+    try {
+      const parts = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+      const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+      return `${get("year")}-${get("month")}-${get("day")}`;
+    } catch {
+      /* an unknown zone: the browser's day */
+    }
+  }
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
-/** The window "the last n days, today included" by the browser's clock. */
-export function lastDays(n: number, today: Date): { from: string; to: string } {
-  const from = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (n - 1));
-  return { from: isoDay(from), to: isoDay(today) };
+/** The window "the last n days, today included" in the venue's days. */
+export function lastDays(n: number, now: Date, tz?: string | null): { from: string; to: string } {
+  const to = dayInZone(now, tz);
+  const [y, m, d] = to.split("-").map(Number);
+  const from = new Date(Date.UTC(y, m - 1, d - (n - 1)));
+  return { from: `${from.getUTCFullYear()}-${pad(from.getUTCMonth() + 1)}-${pad(from.getUTCDate())}`, to };
 }

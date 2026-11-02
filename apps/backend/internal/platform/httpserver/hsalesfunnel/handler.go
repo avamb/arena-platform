@@ -97,6 +97,16 @@ type SalesLink struct {
 	Revenue       []Money `json:"revenue"`
 }
 
+// SessionRef is a live session of the event for the screen's picker. Timezone
+// is the IANA zone of ITS venue, so a date is read on the clock of the room it
+// takes place in, not of the first session's venue or of the browser.
+type SessionRef struct {
+	ID       string  `json:"id"`
+	StartAt  string  `json:"start_at"`
+	Status   string  `json:"status"`
+	Timezone *string `json:"timezone"`
+}
+
 // Gateway is the funnel of the sites on the Bil24 gateway protocol.
 type Gateway struct {
 	Steps   []Step  `json:"steps"`
@@ -105,16 +115,17 @@ type Gateway struct {
 
 // Response is the answer of GET .../funnel.
 type Response struct {
-	EventID   string      `json:"event_id"`
-	SessionID *string     `json:"session_id"`
-	From      string      `json:"from"`
-	To        string      `json:"to"`
-	Timezone  *string     `json:"timezone"`
-	Steps     []Step      `json:"steps"`
-	Revenue   []Money     `json:"revenue"`
-	Sources   []Source    `json:"sources"`
-	SalesLink []SalesLink `json:"sales_links"`
-	Gateway   *Gateway    `json:"gateway"`
+	EventID   string       `json:"event_id"`
+	SessionID *string      `json:"session_id"`
+	From      string       `json:"from"`
+	To        string       `json:"to"`
+	Timezone  *string      `json:"timezone"`
+	Sessions  []SessionRef `json:"sessions"`
+	Steps     []Step       `json:"steps"`
+	Revenue   []Money      `json:"revenue"`
+	Sources   []Source     `json:"sources"`
+	SalesLink []SalesLink  `json:"sales_links"`
+	Gateway   *Gateway     `json:"gateway"`
 }
 
 // HandleGet serves GET /v1/organizations/{org_id}/events/{event_id}/funnel.
@@ -176,6 +187,16 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, eventID, "server", err)
 		return
 	}
+	totals, err := h.queries.GetFunnelServerTotals(ctx, win)
+	if err != nil {
+		h.fail(w, r, eventID, "server_totals", err)
+		return
+	}
+	sessions, err := h.queries.ListEventFunnelSessions(ctx, eventID)
+	if err != nil {
+		h.fail(w, r, eventID, "sessions", err)
+		return
+	}
 	carts, err := h.queries.CountFunnelGatewayCarts(ctx, win)
 	if err != nil {
 		h.fail(w, r, eventID, "gateway_carts", err)
@@ -188,7 +209,7 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.WriteJSON(w, http.StatusOK, Build(Input{
 		EventID: eventID, SessionID: sessionID, From: from, To: to, Timezone: header.Timezone,
-		Client: client, Server: server, GatewayCarts: carts, GatewayOrders: gwOrders,
+		Client: client, Server: server, ServerTotals: totals, Sessions: sessions, GatewayCarts: carts, GatewayOrders: gwOrders,
 	}))
 }
 
@@ -220,6 +241,8 @@ type Input struct {
 	Timezone      *string
 	Client        []gen.SalesFunnelClientRow
 	Server        []gen.FunnelServerRow
+	ServerTotals  gen.FunnelServerTotals
+	Sessions      []gen.EventFunnelSession
 	GatewayCarts  int64
 	GatewayOrders []gen.FunnelGatewayOrderRow
 }
@@ -265,18 +288,20 @@ func Build(in Input) Response {
 		c.n[i] += r.Hits
 		c.suspect[i] += r.SuspectHits
 	}
+	total.n[3], total.n[4], total.n[5] = in.ServerTotals.Started, in.ServerTotals.PaymentOpen, in.ServerTotals.Paid
 	links := map[uuid.UUID]*SalesLink{}
 	linkRevenue := map[uuid.UUID]map[string]int64{}
 	var linkOrder []uuid.UUID
 	for _, r := range in.Server {
-		add := func(c *counts) {
-			c.n[3] += r.Started
-			c.n[4] += r.PaymentOpen
-			c.n[5] += r.Paid
-			c.revenue[r.Currency] += r.Revenue
-		}
-		add(&total)
-		add(get(r.UTMSource, r.UTMCampaign))
+		// The window's own steps come from ServerTotals (a buyer counted once
+		// however many sources, links and currencies they appear under); only
+		// the money is a sum of the rows.
+		total.revenue[r.Currency] += r.Revenue
+		c := get(r.UTMSource, r.UTMCampaign)
+		c.n[3] += r.Started
+		c.n[4] += r.PaymentOpen
+		c.n[5] += r.Paid
+		c.revenue[r.Currency] += r.Revenue
 		if r.SalesLinkID != nil {
 			l := links[*r.SalesLinkID]
 			if l == nil {
@@ -300,6 +325,12 @@ func Build(in Input) Response {
 		Revenue:   moneyList(total.revenue),
 		Sources:   []Source{},
 		SalesLink: []SalesLink{},
+		Sessions:  []SessionRef{},
+	}
+	for _, s := range in.Sessions {
+		out.Sessions = append(out.Sessions, SessionRef{
+			ID: s.ID.String(), StartAt: s.StartAt.UTC().Format(time.RFC3339), Status: s.Status, Timezone: s.Timezone,
+		})
 	}
 	if in.SessionID != nil {
 		s := in.SessionID.String()

@@ -9099,7 +9099,8 @@ export interface paths {
          *     (counted by the anonymous beacon `POST /v1/public/funnel` of the widget
          *     and the hosted pages), then checkout_start, payment_open and paid
          *     (counted live from the orders). Each step has its count and its share of
-         *     the previous one; paid orders add the revenue per currency. The same
+         *     the previous one; paid orders add the revenue per currency, net of
+         *     succeeded refunds, and the order steps count buyers, not attempts. The same
          *     steps are split by utm pair and, for the orders, by tracked sales link.
          *
          *     Sites that sell through the Bil24 gateway protocol have no client steps;
@@ -9111,7 +9112,8 @@ export interface paths {
          *     counters are a guide for the organizer, not proof for an advertising
          *     account.
          *
-         *     Requires `report.read` (the owner and the manager hold it); an event of
+         *     Requires `report.read` (the owner and the manager hold it). `from` and `to` are
+         *     calendar days in the venue's zone. An event of
          *     another organization (or a deleted one) is a 404.
          */
         get: operations["getV1OrganizationsOrgIdEventsEventIdFunnel"];
@@ -19197,8 +19199,11 @@ export interface components {
         /**
          * @description Body of POST /v1/public/funnel, the buyer funnel beacon (spec 50, stage
          *     A7). Name the event EITHER with `feed_token` and `event_id` (the widget)
-         *     OR with `page` (a hosted page); sending both, or neither, is refused
-         *     with 400 `funnel.invalid_body`. Unknown fields are ignored.
+         *     OR with `page` (a page Arena hosts); sending both, or neither, is not
+         *     counted. The surface follows the addressing: `feed_token` is the
+         *     `widget` surface only, `page` is `hosted_page` or `tickets_page`. A body
+         *     that disagrees with itself is not counted (the answer is still 204).
+         *     Unknown fields are ignored.
          */
         SalesFunnelRequest: {
             /** @description The active feed token the event is published to. Required with `event_id`, absent with `page`. */
@@ -19220,16 +19225,16 @@ export interface components {
             /**
              * @description How far the visitor got: `view` (the event was shown),
              *     `session_open` (a session was opened) or `seats_chosen` (seats or
-             *     tickets were put in the cart). Any other value is refused with 400
-             *     `funnel.invalid_body`.
+             *     tickets were put in the cart). Any other value is not counted.
              * @example session_open
              */
             step: string;
             /**
              * @description Where the visitor was: `widget` (the embedded widget on a seller's
              *     own site), `hosted_page` (the hosted event page) or `tickets_page`
-             *     (the promoter page that lists events). Any other value is refused
-             *     with 400 `funnel.invalid_body`.
+             *     (the promoter page that lists events). `widget` goes with
+             *     `feed_token`, the other two with `page`. Any other value, or one that
+             *     does not fit the addressing, is not counted.
              * @example widget
              */
             surface: string;
@@ -19255,7 +19260,11 @@ export interface components {
             step: string;
             /**
              * Format: int64
-             * @description People who reached the step. Null when the step cannot be read for
+             * @description People who reached the step. The steps counted from the orders count
+             *     buyers, not attempts: a buyer who retries the checkout is one
+             *     (a buyer is the customer or the order's e-mail, per session and
+             *     day in the venue's zone), so a share of the previous step cannot
+             *     pass 1 through retries. Null when the step cannot be read for
              *     this request: `view` when one session is asked for, because a view
              *     belongs to the event, not to a session. Probable bots are not in it.
              */
@@ -19285,6 +19294,23 @@ export interface components {
              */
             amount_minor: number;
         };
+        /** @description A live session of the event with the zone of its venue. */
+        SalesFunnelSession: {
+            /**
+             * Format: uuid
+             * @description The session.
+             */
+            id: string;
+            /**
+             * @description Start of the session, RFC 3339 in UTC.
+             * @example 2026-12-01T19:00:00Z
+             */
+            start_at: string;
+            /** @description The session's status, such as `scheduled` or `cancelled`. */
+            status: string;
+            /** @description IANA zone of the session's venue, null when the venue has none on record. */
+            timezone: string | null;
+        };
         /**
          * @description The funnel of one source, the pair of `utm_source` and `utm_campaign`
          *     the visit carried. The server steps take the pair from the checkout's
@@ -19297,7 +19323,7 @@ export interface components {
             utm_campaign: string;
             /** @description The six steps, in funnel order. */
             steps: components["schemas"]["SalesFunnelStep"][];
-            /** @description The total of the paid orders of this source, per currency. */
+            /** @description The total of the paid orders of this source minus their succeeded refunds, per currency. A currency whose net is 0 is left out. */
             revenue: components["schemas"]["SalesFunnelMoney"][];
         };
         /** @description What the orders that came through one tracked sales link did (spec 43). */
@@ -19321,7 +19347,7 @@ export interface components {
              * @description Orders through the link that were paid.
              */
             paid: number;
-            /** @description The total of the paid orders through the link, per currency. */
+            /** @description The total of the paid orders through the link minus their succeeded refunds, per currency. */
             revenue: components["schemas"]["SalesFunnelMoney"][];
         };
         /**
@@ -19334,7 +19360,7 @@ export interface components {
         SalesFunnelGateway: {
             /** @description Three steps, in order, `seats_chosen`, `checkout_start` and `paid`. */
             steps: components["schemas"]["SalesFunnelStep"][];
-            /** @description The total of the paid orders of these sites, per currency. */
+            /** @description The total of the paid orders of these sites minus their succeeded refunds, per currency. */
             revenue: components["schemas"]["SalesFunnelMoney"][];
         };
         /**
@@ -19361,9 +19387,11 @@ export interface components {
             to: string;
             /** @description IANA zone of the event's venue that decides which day a step belongs to; null (UTC days) while the event has no session. */
             timezone: string | null;
+            /** @description The live sessions of the event, for the session picker, each with the zone of its own venue. */
+            sessions: components["schemas"]["SalesFunnelSession"][];
             /** @description The six steps of the sites that sell through the widget, the hosted pages or the API, in funnel order. */
             steps: components["schemas"]["SalesFunnelStep"][];
-            /** @description The total of the paid orders of those sites, per currency. */
+            /** @description The total of the paid orders of those sites minus their succeeded refunds, per currency. */
             revenue: components["schemas"]["SalesFunnelMoney"][];
             /** @description The funnel by utm pair, the biggest first, at most 50. */
             sources: components["schemas"]["SalesFunnelSource"][];
@@ -55730,14 +55758,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Counted, or deliberately not counted (a duplicate, an unknown event or session). */
+            /** @description Counted, or deliberately not counted (a duplicate, an unknown step, surface, event or session, or a surface that does not fit the addressing). */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description The body is not a JSON object, the step or surface is not allowed, or the event is named wrongly (`funnel.invalid_body`). */
+            /** @description The body is not readable JSON (`funnel.invalid_body`). Anything else wrong with it is answered 204 and not counted, so the route tells nothing about why. */
             400: {
                 headers: {
                     [name: string]: unknown;

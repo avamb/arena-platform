@@ -22,13 +22,22 @@ describe('widget funnel wiring', () => {
     expect(defaults).toContain("funnel = ''");
   });
 
-  it('sends the view when a feed event is shown, and the session when it is on screen at once', () => {
+  it('sends the view when a feed event is shown, and never a session on load', () => {
     const apply = widgetSource.slice(widgetSource.indexOf('function applyFeedEvent'));
     const body = apply.slice(0, apply.indexOf('\n  }\n'));
     expect(body).toContain("sendFunnel('view')");
-    // A single-session event or a deep-linked date shows its seat map at once.
-    expect(body).toMatch(/sessions\.length === 1 \|\| selectedSession\.id === normSessionId/);
-    expect(body).toContain("sendFunnel('session_open', selectedSession.id)");
+    // A session counts as opened only on a buyer action (a promoter page mounts
+    // a widget per card; none of them was looked at).
+    expect(body).not.toContain('session_open');
+  });
+
+  it('sends session_open on the buyer actions that touch a session', () => {
+    for (const fn of ['function onSeatTap', 'function onGaAreaTap', 'function onGaQuantityChange']) {
+      const from = widgetSource.indexOf(fn);
+      expect(from, fn).toBeGreaterThan(-1);
+      expect(widgetSource.slice(from, from + 200), fn).toContain('openedSession();');
+    }
+    expect(widgetSource).toMatch(/function openedSession\(\): void \{\s*if \(selectedSession\) sendFunnel\('session_open', selectedSession\.id\);/);
   });
 
   it('does not send anything for the synthetic single-session event', () => {
@@ -48,7 +57,7 @@ describe('widget funnel wiring', () => {
   it('is built lazily from the props and reads the utm from the stored touch', () => {
     expect(widgetSource).toContain('funnelBeacon ??= createFunnel({');
     expect(widgetSource).toContain('touch: () => attribution');
-    expect(widgetSource).toContain('surface: parseFunnelSurface(funnel)');
+    expect(widgetSource).toContain('viewCountedByHost: parseFunnelHost(funnel)');
   });
 });
 

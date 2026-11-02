@@ -4,7 +4,7 @@
  *   POST /v1/public/funnel
  *   { "feed_token": "...", "event_id": "uuid", "session_id": "uuid",
  *     "step": "view" | "session_open" | "seats_chosen",
- *     "surface": "widget" | "hosted_page" | "tickets_page",
+ *     "surface": "widget",
  *     "utm_source": "...", "utm_campaign": "..." }
  *
  * What it sends and what it does not. The body names the event, the step, the
@@ -14,24 +14,26 @@
  * stores a counter per event and day, never an address or a browser. A failed
  * or blocked beacon is silent: counting must never be able to break a sale.
  *
- * The widget sits in three places and counts a step once per place:
- *   - on a seller's own site        surface "widget" (the default)
- *   - inside the hosted event page  surface "hosted_page": the PAGE already
- *     counted the view, so the widget sends session_open and seats_chosen only
- *   - inside a promoter-page card   surface "tickets_page": the widget is the
- *     only thing that knows the event was opened, so it sends all three
- * The host sets this with the `funnel` attribute of <arena-tickets>.
+ * The widget always files its steps under the surface "widget" (the API ties a
+ * feed token to that surface). Arena's own pages count their own part:
+ *   - the hosted event page sends the `view` itself (surface "hosted_page"),
+ *   - a promoter-page card sends it when the card scrolls into view (surface
+ *     "tickets_page"), because the page mounts a widget per card and a widget
+ *     that merely loaded has not been looked at.
+ * The page says so with the `funnel` attribute of <arena-tickets>, and the
+ * widget then leaves the `view` to the page. A session counts as opened only
+ * on a buyer action, never on load.
  */
 
 export type FunnelStep = 'view' | 'session_open' | 'seats_chosen';
-export type FunnelSurface = 'widget' | 'hosted_page' | 'tickets_page';
-
-const SURFACES: readonly FunnelSurface[] = ['widget', 'hosted_page', 'tickets_page'];
-
-/** The surface named by the `funnel` attribute; anything else is a plain embed. */
-export function parseFunnelSurface(raw: string | null | undefined): FunnelSurface {
+/**
+ * True when the `funnel` attribute says an Arena page around the widget counts
+ * the event's view itself (`hosted_page`, `tickets_page`); anything else is a
+ * plain embed on a seller's own site, which counts its own.
+ */
+export function parseFunnelHost(raw: string | null | undefined): boolean {
   const v = (raw ?? '').trim().toLowerCase();
-  return (SURFACES as readonly string[]).includes(v) ? (v as FunnelSurface) : 'widget';
+  return v === 'hosted_page' || v === 'tickets_page';
 }
 
 /** The sales touch the beacon carries: the two utm values, both optional. */
@@ -44,7 +46,8 @@ export interface FunnelOptions {
   /** API origin, '' for same-origin. */
   apiBase: string;
   feedToken: string;
-  surface: FunnelSurface;
+  /** The page around the widget counts the view, so the widget does not. */
+  viewCountedByHost: boolean;
   /** The sales touch of this visit (the widget's stored attribution), or null. */
   touch: () => FunnelTouch | null;
   fetchImpl?: typeof fetch;
@@ -65,7 +68,7 @@ export function funnelURL(apiBase: string): string {
 
 /** The request body for one step. Empty utm values are left out. */
 export function funnelBody(
-  opts: Pick<FunnelOptions, 'feedToken' | 'surface'>,
+  opts: Pick<FunnelOptions, 'feedToken'>,
   step: FunnelStep,
   eventId: string,
   sessionId: string | undefined,
@@ -75,7 +78,7 @@ export function funnelBody(
     feed_token: opts.feedToken,
     event_id: eventId,
     step,
-    surface: opts.surface,
+    surface: 'widget',
   };
   if (sessionId) body.session_id = sessionId;
   if (touch?.utm_source) body.utm_source = touch.utm_source;
@@ -93,8 +96,8 @@ export function createFunnel(opts: FunnelOptions): Funnel {
       // The synthetic single-session event of a session-only embed has no real
       // event id; a beacon for it would only be refused.
       if (!opts.feedToken || !UUID_RE.test(eventId)) return false;
-      // The hosted page counts the view itself.
-      if (step === 'view' && opts.surface === 'hosted_page') return false;
+      // The page around the widget counts the view itself.
+      if (step === 'view' && opts.viewCountedByHost) return false;
       const key = `${step}|${eventId}|${sessionId ?? ''}`;
       if (sent.has(key)) return false;
       sent.add(key);

@@ -28,6 +28,10 @@ func TestBuild_SixStepsWithShares(t *testing.T) {
 			{Currency: "EUR", Started: 6, PaymentOpen: 5, Paid: 4, Revenue: 9000},
 			{Currency: "CZK", Started: 1, PaymentOpen: 1, Paid: 1, Revenue: 70000},
 		},
+		ServerTotals: gen.FunnelServerTotals{Started: 11, PaymentOpen: 9, Paid: 7},
+		Sessions: []gen.EventFunnelSession{
+			{ID: uuid.New(), StartAt: time.Date(2026, 12, 1, 19, 0, 0, 0, time.UTC), Status: "scheduled", Timezone: strPtr("Europe/Prague")},
+		},
 	})
 	want := []int64{100, 50, 25, 11, 9, 7}
 	if len(out.Steps) != 6 {
@@ -62,6 +66,9 @@ func TestBuild_SixStepsWithShares(t *testing.T) {
 	}
 	if out.Gateway != nil {
 		t.Error("no gateway activity: gateway must be null")
+	}
+	if len(out.Sessions) != 1 || out.Sessions[0].StartAt != "2026-12-01T19:00:00Z" || out.Sessions[0].Timezone == nil || *out.Sessions[0].Timezone != "Europe/Prague" {
+		t.Errorf("sessions = %+v; want the session with the zone of its own venue", out.Sessions)
 	}
 	if out.From != "2026-10-01" || out.To != "2026-10-30" {
 		t.Errorf("window = %s..%s", out.From, out.To)
@@ -132,5 +139,26 @@ func TestZoneName(t *testing.T) {
 	good, bad, empty := "Europe/Prague", "Not/AZone", ""
 	if zoneName(&good) != good || zoneName(&bad) != "UTC" || zoneName(&empty) != "UTC" || zoneName(nil) != "UTC" {
 		t.Error("zoneName must return the venue zone, else UTC")
+	}
+}
+
+func strPtr(s string) *string { return &s }
+
+// A buyer who shows up under two sources, or in two currencies, is one buyer in
+// the window's own steps: they come from the totals, never from summing rows.
+func TestBuild_WindowStepsAreTheTotalsNotTheSumOfRows(t *testing.T) {
+	out := Build(Input{
+		EventID: uuid.New(),
+		Server: []gen.FunnelServerRow{
+			{UTMSource: "ig", Currency: "EUR", Started: 1, PaymentOpen: 1, Paid: 1, Revenue: 1000},
+			{UTMSource: "mail", Currency: "EUR", Started: 1, PaymentOpen: 1, Paid: 0, Revenue: 0},
+		},
+		ServerTotals: gen.FunnelServerTotals{Started: 1, PaymentOpen: 1, Paid: 1},
+	})
+	if *out.Steps[3].Count != 1 || *out.Steps[5].Count != 1 {
+		t.Errorf("window steps = %d/%d; want the one buyer counted once", *out.Steps[3].Count, *out.Steps[5].Count)
+	}
+	if len(out.Sources) != 2 || out.Revenue[0].AmountMinor != 1000 {
+		t.Errorf("sources=%d revenue=%+v", len(out.Sources), out.Revenue)
 	}
 }

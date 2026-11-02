@@ -14528,7 +14528,7 @@ type RevokeMembershipRequestRole string
 // `checkout_start` (orders created) and `paid`. Their share of a step is
 // taken against the step before in this list.
 type SalesFunnelGateway struct {
-	// Revenue The total of the paid orders of these sites, per currency.
+	// Revenue The total of the paid orders of these sites minus their succeeded refunds, per currency.
 	Revenue []SalesFunnelMoney `json:"revenue"`
 
 	// Steps Three steps, in order, `seats_chosen`, `checkout_start` and `paid`.
@@ -14555,8 +14555,11 @@ type SalesFunnelPage struct {
 
 // SalesFunnelRequest Body of POST /v1/public/funnel, the buyer funnel beacon (spec 50, stage
 // A7). Name the event EITHER with `feed_token` and `event_id` (the widget)
-// OR with `page` (a hosted page); sending both, or neither, is refused
-// with 400 `funnel.invalid_body`. Unknown fields are ignored.
+// OR with `page` (a page Arena hosts); sending both, or neither, is not
+// counted. The surface follows the addressing: `feed_token` is the
+// `widget` surface only, `page` is `hosted_page` or `tickets_page`. A body
+// that disagrees with itself is not counted (the answer is still 204).
+// Unknown fields are ignored.
 type SalesFunnelRequest struct {
 	// EventId The event. Required with `feed_token`, absent with `page`.
 	EventId *openapi_types.UUID `json:"event_id,omitempty"`
@@ -14574,14 +14577,14 @@ type SalesFunnelRequest struct {
 
 	// Step How far the visitor got: `view` (the event was shown),
 	// `session_open` (a session was opened) or `seats_chosen` (seats or
-	// tickets were put in the cart). Any other value is refused with 400
-	// `funnel.invalid_body`.
+	// tickets were put in the cart). Any other value is not counted.
 	Step string `json:"step"`
 
 	// Surface Where the visitor was: `widget` (the embedded widget on a seller's
 	// own site), `hosted_page` (the hosted event page) or `tickets_page`
-	// (the promoter page that lists events). Any other value is refused
-	// with 400 `funnel.invalid_body`.
+	// (the promoter page that lists events). `widget` goes with
+	// `feed_token`, the other two with `page`. Any other value, or one that
+	// does not fit the addressing, is not counted.
 	Surface string `json:"surface"`
 
 	// UtmCampaign Optional `utm_campaign` of the page address, cleaned like `utm_source`.
@@ -14608,7 +14611,7 @@ type SalesFunnelResponse struct {
 	// Gateway The sites on the Bil24 gateway protocol; null when the event has no cart or order from them in the window.
 	Gateway *SalesFunnelGateway `json:"gateway"`
 
-	// Revenue The total of the paid orders of those sites, per currency.
+	// Revenue The total of the paid orders of those sites minus their succeeded refunds, per currency.
 	Revenue []SalesFunnelMoney `json:"revenue"`
 
 	// SalesLinks The orders by tracked sales link, the most paid first.
@@ -14616,6 +14619,9 @@ type SalesFunnelResponse struct {
 
 	// SessionId The session the answer is limited to, null for the whole event.
 	SessionId *openapi_types.UUID `json:"session_id"`
+
+	// Sessions The live sessions of the event, for the session picker, each with the zone of its own venue.
+	Sessions []SalesFunnelSession `json:"sessions"`
 
 	// Sources The funnel by utm pair, the biggest first, at most 50.
 	Sources []SalesFunnelSource `json:"sources"`
@@ -14644,18 +14650,33 @@ type SalesFunnelSalesLink struct {
 	// Paid Orders through the link that were paid.
 	Paid int64 `json:"paid"`
 
-	// Revenue The total of the paid orders through the link, per currency.
+	// Revenue The total of the paid orders through the link minus their succeeded refunds, per currency.
 	Revenue []SalesFunnelMoney `json:"revenue"`
 
 	// SalesLinkId The sales link.
 	SalesLinkId openapi_types.UUID `json:"sales_link_id"`
 }
 
+// SalesFunnelSession A live session of the event with the zone of its venue.
+type SalesFunnelSession struct {
+	// Id The session.
+	Id openapi_types.UUID `json:"id"`
+
+	// StartAt Start of the session, RFC 3339 in UTC.
+	StartAt string `json:"start_at"`
+
+	// Status The session's status, such as `scheduled` or `cancelled`.
+	Status string `json:"status"`
+
+	// Timezone IANA zone of the session's venue, null when the venue has none on record.
+	Timezone *string `json:"timezone"`
+}
+
 // SalesFunnelSource The funnel of one source, the pair of `utm_source` and `utm_campaign`
 // the visit carried. The server steps take the pair from the checkout's
 // attribution. Visits that carried no utm are the pair of two empty strings.
 type SalesFunnelSource struct {
-	// Revenue The total of the paid orders of this source, per currency.
+	// Revenue The total of the paid orders of this source minus their succeeded refunds, per currency. A currency whose net is 0 is left out.
 	Revenue []SalesFunnelMoney `json:"revenue"`
 
 	// Steps The six steps, in funnel order.
@@ -14670,7 +14691,11 @@ type SalesFunnelSource struct {
 
 // SalesFunnelStep One step of a sales funnel.
 type SalesFunnelStep struct {
-	// Count People who reached the step. Null when the step cannot be read for
+	// Count People who reached the step. The steps counted from the orders count
+	// buyers, not attempts: a buyer who retries the checkout is one
+	// (a buyer is the customer or the order's e-mail, per session and
+	// day in the venue's zone), so a share of the previous step cannot
+	// pass 1 through retries. Null when the step cannot be read for
 	// this request: `view` when one session is asked for, because a view
 	// belongs to the event, not to a session. Probable bots are not in it.
 	Count *int64 `json:"count"`
