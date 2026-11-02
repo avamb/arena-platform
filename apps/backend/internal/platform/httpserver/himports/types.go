@@ -3,6 +3,8 @@
 package himports
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/bil24compat"
@@ -131,6 +133,11 @@ type ImportSessionResponse struct {
 	// API key's own channel (if any) followed by the request's channelIds.
 	// Never null — an empty array when none happened.
 	Publications []ImportPublication `json:"publications"`
+	// EventUpdatedAt is the event's updated_at as this import left it, read
+	// inside the import transaction. A client that edits the event in several
+	// calls compares it with a later read to tell its own write from somebody
+	// else's edit. Absent from a dry run.
+	EventUpdatedAt *time.Time `json:"event_updated_at,omitempty"`
 }
 
 // ImportPublication reports the channel binding the import performed on the
