@@ -15,6 +15,12 @@ const sr = document.querySelector('arena-tickets')?.shadowRoot;
 // статус заказа: sr.querySelector('[data-testid=order-ref]')
 ```
 
+- После `new_tab()` дождись `document.querySelector('arena-tickets')?.shadowRoot` и появления
+  aria-кнопок, прежде чем нажимать: виджет гидрирует асинхронно, и ранний поиск вернёт
+  `undefined`.
+- После клика «Open cart» или «Continue to payment» снова дождись появления следующей кнопки
+  либо input-полей. Не объединяй переходы без ожидания: Svelte обновляет shadow root между
+  состояниями.
 - `sr.innerText` бывает `undefined` (падение на `.slice`): всегда `(sr.innerText || '')`
   или работай через `querySelectorAll` / `innerHTML`.
 - Категории и их stepper'ы: «Increase/Decrease quantity for <Name>»;
