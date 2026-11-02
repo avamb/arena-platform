@@ -22,6 +22,8 @@
  * for translator handoff later if needed.
  */
 
+import { analyticsEn, analyticsRu } from "./analyticsStrings";
+
 export type LocaleCode = "ru" | "en";
 
 export const SUPPORTED_LOCALES: readonly LocaleCode[] = ["ru", "en"];
@@ -142,6 +144,9 @@ export const ruCatalog: Catalog = {
   // Event description edit form
   "events.descriptionHint":
     "Правка в этом поле убирает ссылки, заголовки и подчёркивание — для полного оформления используйте ивент-центр",
+
+  // Analytics section (spec 50, stage A8)
+  ...analyticsRu,
 };
 
 /** English catalog (fallback / switchable). */
@@ -248,6 +253,9 @@ export const enCatalog: Catalog = {
   // Event description edit form
   "events.descriptionHint":
     "Editing this field removes links, headings and underline. Use the event center for full formatting.",
+
+  // Analytics section (spec 50, stage A8)
+  ...analyticsEn,
 };
 
 export const CATALOGS: Readonly<Record<LocaleCode, Catalog>> = {

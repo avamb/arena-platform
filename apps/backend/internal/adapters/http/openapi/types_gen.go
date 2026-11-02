@@ -1366,6 +1366,53 @@ type AnalyticsBatchRequest struct {
 	Pv *string `json:"pv,omitempty"`
 }
 
+// AnalyticsErrorItem One repeating error or rage-click place.
+type AnalyticsErrorItem struct {
+	// ChangePct Change of `count` against `previous_count` in percent. Null when the previous count is zero.
+	ChangePct *float32 `json:"change_pct"`
+
+	// Count Occurrences in the period.
+	Count int `json:"count"`
+
+	// Key The error code, the reason or the screen, depending on `kind`.
+	Key string `json:"key"`
+
+	// Kind Which event it is: `ui_error` (key is the error code, place the
+	// screen), `wizard_input_error` (key is the reason, place the wizard
+	// step) or `rage_click` (key is the screen, place empty).
+	Kind string `json:"kind"`
+
+	// Place The screen or the step the key happened on, empty for a rage click.
+	Place string `json:"place"`
+
+	// PreviousCount Occurrences in the previous period of equal length.
+	PreviousCount int `json:"previous_count"`
+
+	// Surface Where it happened - `event_center` or `bot`.
+	Surface string `json:"surface"`
+}
+
+// AnalyticsErrorsResponse Answer of the errors dashboard.
+type AnalyticsErrorsResponse struct {
+	// From First day of the period, YYYY-MM-DD (UTC).
+	From string `json:"from"`
+
+	// Items At most 100 rows, most frequent first.
+	Items []AnalyticsErrorItem `json:"items"`
+
+	// PreviousFrom First day of the previous period of equal length.
+	PreviousFrom string `json:"previous_from"`
+
+	// PreviousTo Last day of the previous period.
+	PreviousTo string `json:"previous_to"`
+
+	// Surface The surface filter that was applied, empty for all.
+	Surface string `json:"surface"`
+
+	// To Last day of the period, YYYY-MM-DD (UTC).
+	To string `json:"to"`
+}
+
 // AnalyticsEvent One behaviour event of a batch.
 type AnalyticsEvent struct {
 	// At Client time in RFC 3339. It only keeps the order of the events
@@ -1385,6 +1432,184 @@ type AnalyticsEvent struct {
 	// strings are cut to 200 characters. Never put an e-mail, a phone, a
 	// name, a text typed by a person or an id of an entity here.
 	Props *map[string]interface{} `json:"props,omitempty"`
+}
+
+// AnalyticsFlow One flow of one surface with its steps.
+type AnalyticsFlow struct {
+	// Flow Name of the flow. The bot's wizard is `wizard`.
+	Flow string `json:"flow"`
+
+	// Steps The steps, most entered first.
+	Steps []AnalyticsFlowStep `json:"steps"`
+
+	// Surface Where the flow runs - `bot` or `event_center`.
+	Surface string `json:"surface"`
+}
+
+// AnalyticsFlowNumbers The numbers of one flow step over one period.
+type AnalyticsFlowNumbers struct {
+	// DropOffPct `left_here` as a share of `entered`, in percent with one decimal,
+	// at most 100. Null when nobody entered the step.
+	DropOffPct *float32 `json:"drop_off_pct"`
+
+	// Entered How many times the step was entered.
+	Entered int `json:"entered"`
+
+	// Errors Errors booked on the step.
+	Errors int `json:"errors"`
+
+	// LeftHere How many runs (event center) or exits (bot) stopped at this step.
+	LeftHere int `json:"left_here"`
+
+	// MedianSeconds Median seconds spent on the step (the median of the daily medians). Null when unknown.
+	MedianSeconds *int `json:"median_seconds"`
+}
+
+// AnalyticsFlowStep One step of a flow, with the numbers of the period and of the previous period.
+type AnalyticsFlowStep struct {
+	// DropOffPct Share of `entered` that left here, in percent with one decimal. Null when nobody entered.
+	DropOffPct *float32 `json:"drop_off_pct"`
+
+	// Entered How many times the step was entered in the period.
+	Entered int `json:"entered"`
+
+	// Errors Errors booked on the step in the period.
+	Errors int `json:"errors"`
+
+	// LeftHere How many runs or exits stopped at this step in the period.
+	LeftHere int `json:"left_here"`
+
+	// MedianSeconds Median seconds spent on the step in the period. Null when unknown.
+	MedianSeconds *int `json:"median_seconds"`
+
+	// Previous The same numbers for the previous period of equal length.
+	Previous AnalyticsFlowNumbers `json:"previous"`
+
+	// Step Name of the step as the event center or the bot reports it.
+	Step string `json:"step"`
+}
+
+// AnalyticsFlowsResponse Answer of the flows dashboard.
+type AnalyticsFlowsResponse struct {
+	// Flows The flows, by surface and name.
+	Flows []AnalyticsFlow `json:"flows"`
+
+	// From First day of the period, YYYY-MM-DD (UTC).
+	From string `json:"from"`
+
+	// PreviousFrom First day of the previous period of equal length.
+	PreviousFrom string `json:"previous_from"`
+
+	// PreviousTo Last day of the previous period.
+	PreviousTo string `json:"previous_to"`
+
+	// Surface The surface filter that was applied, empty for all.
+	Surface string `json:"surface"`
+
+	// To Last day of the period, YYYY-MM-DD (UTC).
+	To string `json:"to"`
+}
+
+// AnalyticsPersonTimeline One page of a person's timeline.
+type AnalyticsPersonTimeline struct {
+	// CreatedAt When analytics first saw the person.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Events One page of events, newest first.
+	Events []AnalyticsTimelineEvent `json:"events"`
+
+	// FirstTouch First marketing touch (source, medium, campaign, ref_host, at). Empty when unknown.
+	FirstTouch map[string]interface{} `json:"first_touch"`
+
+	// LastTouch Latest marketing touch, same shape as `first_touch`.
+	LastTouch map[string]interface{} `json:"last_touch"`
+
+	// NextCursor Pass it as `cursor` to get the next, older page. Null on the last page.
+	NextCursor *string `json:"next_cursor"`
+
+	// PersonId Id of the analytics person.
+	PersonId openapi_types.UUID `json:"person_id"`
+
+	// Profile The profile, null until the rollup has written one. Only on the first page.
+	Profile *AnalyticsTimelineProfile `json:"profile"`
+
+	// Sessions The newest sessions (at most 100), newest first. Only on the first page, empty on the others.
+	Sessions []AnalyticsTimelineSession `json:"sessions"`
+
+	// TwentyPersonId The CRM contact this person is linked to, null when none.
+	TwentyPersonId *string `json:"twenty_person_id"`
+
+	// UserId The platform user this person is linked to, null when none.
+	UserId *openapi_types.UUID `json:"user_id"`
+}
+
+// AnalyticsTimelineEvent One raw event of a person.
+type AnalyticsTimelineEvent struct {
+	// At Server time of the event.
+	At time.Time `json:"at"`
+
+	// Name Event name from the dictionary.
+	Name string `json:"name"`
+
+	// Props The properties the dictionary allows for the event.
+	Props map[string]interface{} `json:"props"`
+
+	// Surface `site`, `event_center` or `bot`.
+	Surface string `json:"surface"`
+}
+
+// AnalyticsTimelineProfile The profile the hourly rollup built for a person.
+type AnalyticsTimelineProfile struct {
+	// ActivityScore The activity index stored by the last rollup.
+	ActivityScore int `json:"activity_score"`
+
+	// Articles The latest articles read (path, time, seconds).
+	Articles []map[string]interface{} `json:"articles"`
+
+	// ChangedAt When the profile last changed.
+	ChangedAt time.Time `json:"changed_at"`
+
+	// EngagedMinutes30d Engaged minutes of the last 30 days.
+	EngagedMinutes30d int `json:"engaged_minutes_30d"`
+
+	// LastSeenAt Time of the person's latest event, null when there is none.
+	LastSeenAt *time.Time `json:"last_seen_at"`
+
+	// Milestones Milestone name to the time it happened; `gmv_30d` maps a currency to minor units.
+	Milestones map[string]interface{} `json:"milestones"`
+
+	// ScoreExplanation The one line that explains the index, recomputed now (count and decayed weight of each kind of activity).
+	ScoreExplanation string `json:"score_explanation"`
+
+	// Stage `lead`, `applicant`, `organizer` or `selling`.
+	Stage string `json:"stage"`
+
+	// Visits30d Sessions of the last 30 days.
+	Visits30d int `json:"visits_30d"`
+}
+
+// AnalyticsTimelineSession One session of a person.
+type AnalyticsTimelineSession struct {
+	// EndedAt Last event of the session.
+	EndedAt time.Time `json:"ended_at"`
+
+	// EngagedSeconds Active time in seconds.
+	EngagedSeconds int `json:"engaged_seconds"`
+
+	// Entry Entry path and source of the session (path, source, medium, campaign, ref_host).
+	Entry map[string]interface{} `json:"entry"`
+
+	// Id Session id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Pages Pages or screens viewed.
+	Pages int `json:"pages"`
+
+	// StartedAt First event of the session.
+	StartedAt time.Time `json:"started_at"`
+
+	// Surface `site`, `event_center` or `bot`.
+	Surface string `json:"surface"`
 }
 
 // ApiKeyItem A single organization API key row. Never includes the secret or
@@ -20124,6 +20349,39 @@ type GetBil24SeatingPlanImageParamsType string
 // PostBil24CommandJSONBody defines parameters for PostBil24Command.
 type PostBil24CommandJSONBody struct {
 	union json.RawMessage
+}
+
+// GetAdminAnalyticsErrorsParams defines parameters for GetAdminAnalyticsErrors.
+type GetAdminAnalyticsErrorsParams struct {
+	// Surface Only this surface - `bot`, `event_center` or `site`. Empty or absent means all.
+	Surface *string `form:"surface,omitempty" json:"surface,omitempty"`
+
+	// From First day of the period, YYYY-MM-DD (UTC). Default is six days before `to`.
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day of the period, YYYY-MM-DD (UTC). Default is today. At most 366 days after `from`.
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+}
+
+// GetAdminAnalyticsFlowsParams defines parameters for GetAdminAnalyticsFlows.
+type GetAdminAnalyticsFlowsParams struct {
+	// Surface Only this surface - `bot`, `event_center` or `site`. Empty or absent means all.
+	Surface *string `form:"surface,omitempty" json:"surface,omitempty"`
+
+	// From First day of the period, YYYY-MM-DD (UTC). Default is six days before `to`.
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day of the period, YYYY-MM-DD (UTC). Default is today. At most 366 days after `from`.
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+}
+
+// GetAdminAnalyticsPersonTimelineParams defines parameters for GetAdminAnalyticsPersonTimeline.
+type GetAdminAnalyticsPersonTimelineParams struct {
+	// Limit Events per page, 1 to 200. Default 50.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The `next_cursor` of the previous page. Absent for the first page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
 // GetV1AdminBillingAccountsParams defines parameters for GetV1AdminBillingAccounts.

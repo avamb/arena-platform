@@ -902,6 +902,99 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/analytics/flows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where people leave the flows of the event center and the bot (superadmin)
+         * @description UX dashboard of the platform's own product analytics (spec 50, section
+         *     10). For every flow and step of `analytics.flow_daily` over the period:
+         *     how many entered the step, how many left the flow there, the drop-off
+         *     share, the errors booked on the step and the median seconds spent on
+         *     it (the median of the daily medians), together with the same numbers
+         *     for the previous period of equal length. Requires `superadmin.read`;
+         *     it is read-only and needs no `X-Admin-Reason`.
+         *
+         *     Days are UTC days, both ends inclusive. Without `from` and `to` the
+         *     period is the last seven days up to today. Steps of one flow are
+         *     listed by the number of people who entered them, most first. The bot's
+         *     wizard is the flow `wizard`; errors that happened on a screen outside
+         *     any flow are the pseudo flow `_screens`.
+         */
+        get: operations["getAdminAnalyticsFlows"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/analytics/errors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Most frequent errors and rage clicks of the event center and the bot (superadmin)
+         * @description UX dashboard of the platform's own product analytics (spec 50, section
+         *     10). Counts, over the period and over the previous period of equal
+         *     length, the `ui_error` codes of the event center (with the screen),
+         *     the `wizard_input_error` reasons of the bot (with the wizard step) and
+         *     the `rage_click` events (by screen), most frequent first, at most 100
+         *     rows. Robot traffic (`suspect`) is left out. Requires `superadmin.read`;
+         *     it is read-only and needs no `X-Admin-Reason`.
+         *
+         *     Days are UTC days, both ends inclusive. Without `from` and `to` the
+         *     period is the last seven days up to today.
+         */
+        get: operations["getAdminAnalyticsErrors"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/analytics/people/{person_id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One person's profile, sessions and events (superadmin)
+         * @description The page behind the `arena_timeline_url` of a CRM card (spec 50,
+         *     sections 9 and 10). Returns the person's profile (stage, touches,
+         *     milestones, activity index with the one line that explains it), their
+         *     newest sessions and one page of their raw events, newest first. The
+         *     events are those written under any of the person's identifiers
+         *     (visitor id, contact code, user, Telegram hash); robot traffic is
+         *     left out. The answer carries no e-mail, name or typed text, only
+         *     dictionary event names and their allowed properties.
+         *
+         *     The first page (no `cursor`) also carries the profile and the
+         *     sessions; a page fetched with a `cursor` carries events only.
+         *     Requires `superadmin.read`; it is read-only and needs no
+         *     `X-Admin-Reason`.
+         */
+        get: operations["getAdminAnalyticsPersonTimeline"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me": {
         parameters: {
             query?: never;
@@ -19130,6 +19223,210 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** @description The numbers of one flow step over one period. */
+        AnalyticsFlowNumbers: {
+            /** @description How many times the step was entered. */
+            entered: number;
+            /** @description How many runs (event center) or exits (bot) stopped at this step. */
+            left_here: number;
+            /**
+             * @description `left_here` as a share of `entered`, in percent with one decimal,
+             *     at most 100. Null when nobody entered the step.
+             */
+            drop_off_pct: number | null;
+            /** @description Errors booked on the step. */
+            errors: number;
+            /** @description Median seconds spent on the step (the median of the daily medians). Null when unknown. */
+            median_seconds: number | null;
+        };
+        /** @description One step of a flow, with the numbers of the period and of the previous period. */
+        AnalyticsFlowStep: {
+            /** @description Name of the step as the event center or the bot reports it. */
+            step: string;
+            /** @description How many times the step was entered in the period. */
+            entered: number;
+            /** @description How many runs or exits stopped at this step in the period. */
+            left_here: number;
+            /** @description Share of `entered` that left here, in percent with one decimal. Null when nobody entered. */
+            drop_off_pct: number | null;
+            /** @description Errors booked on the step in the period. */
+            errors: number;
+            /** @description Median seconds spent on the step in the period. Null when unknown. */
+            median_seconds: number | null;
+            /** @description The same numbers for the previous period of equal length. */
+            previous: components["schemas"]["AnalyticsFlowNumbers"];
+        };
+        /** @description One flow of one surface with its steps. */
+        AnalyticsFlow: {
+            /** @description Where the flow runs - `bot` or `event_center`. */
+            surface: string;
+            /** @description Name of the flow. The bot's wizard is `wizard`. */
+            flow: string;
+            /** @description The steps, most entered first. */
+            steps: components["schemas"]["AnalyticsFlowStep"][];
+        };
+        /** @description Answer of the flows dashboard. */
+        AnalyticsFlowsResponse: {
+            /** @description The surface filter that was applied, empty for all. */
+            surface: string;
+            /** @description First day of the period, YYYY-MM-DD (UTC). */
+            from: string;
+            /** @description Last day of the period, YYYY-MM-DD (UTC). */
+            to: string;
+            /** @description First day of the previous period of equal length. */
+            previous_from: string;
+            /** @description Last day of the previous period. */
+            previous_to: string;
+            /** @description The flows, by surface and name. */
+            flows: components["schemas"]["AnalyticsFlow"][];
+        };
+        /** @description One repeating error or rage-click place. */
+        AnalyticsErrorItem: {
+            /**
+             * @description Which event it is: `ui_error` (key is the error code, place the
+             *     screen), `wizard_input_error` (key is the reason, place the wizard
+             *     step) or `rage_click` (key is the screen, place empty).
+             */
+            kind: string;
+            /** @description Where it happened - `event_center` or `bot`. */
+            surface: string;
+            /** @description The error code, the reason or the screen, depending on `kind`. */
+            key: string;
+            /** @description The screen or the step the key happened on, empty for a rage click. */
+            place: string;
+            /** @description Occurrences in the period. */
+            count: number;
+            /** @description Occurrences in the previous period of equal length. */
+            previous_count: number;
+            /** @description Change of `count` against `previous_count` in percent. Null when the previous count is zero. */
+            change_pct: number | null;
+        };
+        /** @description Answer of the errors dashboard. */
+        AnalyticsErrorsResponse: {
+            /** @description The surface filter that was applied, empty for all. */
+            surface: string;
+            /** @description First day of the period, YYYY-MM-DD (UTC). */
+            from: string;
+            /** @description Last day of the period, YYYY-MM-DD (UTC). */
+            to: string;
+            /** @description First day of the previous period of equal length. */
+            previous_from: string;
+            /** @description Last day of the previous period. */
+            previous_to: string;
+            /** @description At most 100 rows, most frequent first. */
+            items: components["schemas"]["AnalyticsErrorItem"][];
+        };
+        /** @description The profile the hourly rollup built for a person. */
+        AnalyticsTimelineProfile: {
+            /** @description `lead`, `applicant`, `organizer` or `selling`. */
+            stage: string;
+            /**
+             * Format: date-time
+             * @description Time of the person's latest event, null when there is none.
+             */
+            last_seen_at: string | null;
+            /** @description Sessions of the last 30 days. */
+            visits_30d: number;
+            /** @description Engaged minutes of the last 30 days. */
+            engaged_minutes_30d: number;
+            /** @description The latest articles read (path, time, seconds). */
+            articles: {
+                [key: string]: unknown;
+            }[];
+            /** @description Milestone name to the time it happened; `gmv_30d` maps a currency to minor units. */
+            milestones: {
+                [key: string]: unknown;
+            };
+            /** @description The activity index stored by the last rollup. */
+            activity_score: number;
+            /** @description The one line that explains the index, recomputed now (count and decayed weight of each kind of activity). */
+            score_explanation: string;
+            /**
+             * Format: date-time
+             * @description When the profile last changed.
+             */
+            changed_at: string;
+        };
+        /** @description One session of a person. */
+        AnalyticsTimelineSession: {
+            /**
+             * Format: uuid
+             * @description Session id.
+             */
+            id: string;
+            /** @description `site`, `event_center` or `bot`. */
+            surface: string;
+            /**
+             * Format: date-time
+             * @description First event of the session.
+             */
+            started_at: string;
+            /**
+             * Format: date-time
+             * @description Last event of the session.
+             */
+            ended_at: string;
+            /** @description Pages or screens viewed. */
+            pages: number;
+            /** @description Active time in seconds. */
+            engaged_seconds: number;
+            /** @description Entry path and source of the session (path, source, medium, campaign, ref_host). */
+            entry: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description One raw event of a person. */
+        AnalyticsTimelineEvent: {
+            /**
+             * Format: date-time
+             * @description Server time of the event.
+             */
+            at: string;
+            /** @description `site`, `event_center` or `bot`. */
+            surface: string;
+            /** @description Event name from the dictionary. */
+            name: string;
+            /** @description The properties the dictionary allows for the event. */
+            props: {
+                [key: string]: unknown;
+            };
+        };
+        /** @description One page of a person's timeline. */
+        AnalyticsPersonTimeline: {
+            /**
+             * Format: uuid
+             * @description Id of the analytics person.
+             */
+            person_id: string;
+            /** @description The CRM contact this person is linked to, null when none. */
+            twenty_person_id: string | null;
+            /**
+             * Format: uuid
+             * @description The platform user this person is linked to, null when none.
+             */
+            user_id: string | null;
+            /** @description First marketing touch (source, medium, campaign, ref_host, at). Empty when unknown. */
+            first_touch: {
+                [key: string]: unknown;
+            };
+            /** @description Latest marketing touch, same shape as `first_touch`. */
+            last_touch: {
+                [key: string]: unknown;
+            };
+            /**
+             * Format: date-time
+             * @description When analytics first saw the person.
+             */
+            created_at: string;
+            /** @description The profile, null until the rollup has written one. Only on the first page. */
+            profile: components["schemas"]["AnalyticsTimelineProfile"] | null;
+            /** @description The newest sessions (at most 100), newest first. Only on the first page, empty on the others. */
+            sessions: components["schemas"]["AnalyticsTimelineSession"][];
+            /** @description One page of events, newest first. */
+            events: components["schemas"]["AnalyticsTimelineEvent"][];
+            /** @description Pass it as `cursor` to get the next, older page. Null on the last page. */
+            next_cursor: string | null;
+        };
         /**
          * @description Body of POST /v1/public/pages/{org_slug}/{event_slug}/track, the hosted
          *     page's statistics beacon (HP-2a). Unknown fields are ignored.
@@ -34289,6 +34586,217 @@ export interface operations {
             };
             /** @description Missing or invalid JWT Authorization header. */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getAdminAnalyticsFlows: {
+        parameters: {
+            query?: {
+                /** @description Only this surface - `bot`, `event_center` or `site`. Empty or absent means all. */
+                surface?: string;
+                /** @description First day of the period, YYYY-MM-DD (UTC). Default is six days before `to`. */
+                from?: string;
+                /** @description Last day of the period, YYYY-MM-DD (UTC). Default is today. At most 366 days after `from`. */
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The flows with the numbers of both periods. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsFlowsResponse"];
+                };
+            };
+            /**
+             * @description `analytics.invalid_surface` - surface is not one of the three;
+             *     `analytics.invalid_period` - from or to is not a date, from is after to,
+             *     or the period is longer than 366 days.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT Authorization header. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`superadmin.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getAdminAnalyticsErrors: {
+        parameters: {
+            query?: {
+                /** @description Only this surface - `bot`, `event_center` or `site`. Empty or absent means all. */
+                surface?: string;
+                /** @description First day of the period, YYYY-MM-DD (UTC). Default is six days before `to`. */
+                from?: string;
+                /** @description Last day of the period, YYYY-MM-DD (UTC). Default is today. At most 366 days after `from`. */
+                to?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The errors with the counts of both periods. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsErrorsResponse"];
+                };
+            };
+            /**
+             * @description `analytics.invalid_surface` - surface is not one of the three;
+             *     `analytics.invalid_period` - from or to is not a date, from is after to,
+             *     or the period is longer than 366 days.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT Authorization header. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`superadmin.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getAdminAnalyticsPersonTimeline: {
+        parameters: {
+            query?: {
+                /** @description Events per page, 1 to 200. Default 50. */
+                limit?: number;
+                /** @description The `next_cursor` of the previous page. Absent for the first page. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Id of the analytics person. */
+                person_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The person's timeline page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsPersonTimeline"];
+                };
+            };
+            /**
+             * @description `analytics.invalid_person_id` - not a UUID; `analytics.invalid_limit` -
+             *     not a positive integer; `analytics.invalid_cursor` - not a cursor this
+             *     route issued.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT Authorization header. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Insufficient permission (`superadmin.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such person (`analytics.person_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

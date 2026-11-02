@@ -12,10 +12,11 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/analytics"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/opsalert"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
-func registerAnalyticsHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) {
+func registerAnalyticsHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier opsalert.Notifier, logger *slog.Logger) {
 	reg.Register(analytics.PartitionsJobType, analytics.NewPartitionsHandler(analytics.PartitionsOptions{
 		DB:        pool,
 		Scheduler: analytics.NewPGPartitionsScheduler(pool),
@@ -32,6 +33,14 @@ func registerAnalyticsHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *co
 		Scheduler: analytics.NewPGRollupScheduler(pool),
 		Logger:    logger,
 	}))
+	// analytics.ux_digest (stage A8): Mondays 09:00 Madrid, through the ops
+	// Telegram path. Unset OPS_TELEGRAM_* degrades to a log line.
+	reg.Register(analytics.UXDigestJobType, analytics.NewUXDigestHandler(analytics.UXDigestHandlerOptions{
+		DB:        pool,
+		Notifier:  notifier,
+		Scheduler: analytics.NewPGUXDigestScheduler(pool),
+		Logger:    logger,
+	}))
 }
 
 func scheduleAnalyticsJobs(ctx context.Context, pool *pgxpool.Pool, logger *slog.Logger) {
@@ -42,5 +51,8 @@ func scheduleAnalyticsJobs(ctx context.Context, pool *pgxpool.Pool, logger *slog
 	}
 	if err := analytics.ScheduleRollupJob(ctx, pool); err != nil {
 		logger.Warn("could not schedule initial analytics rollup job", "error", err.Error())
+	}
+	if err := analytics.ScheduleUXDigestJob(ctx, pool); err != nil {
+		logger.Warn("could not schedule initial analytics ux digest job", "error", err.Error())
 	}
 }

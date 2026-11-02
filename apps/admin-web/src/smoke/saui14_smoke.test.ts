@@ -233,6 +233,8 @@ const ROUTE_REGISTRY: Readonly<
   "/billing/invoices": { routeId: "BillingInvoicesRoute", file: "billingInvoices.tsx" },
   "/billing/payment-fees": { routeId: "BillingPaymentFeesRoute", file: "billingPaymentFees.tsx" },
   "/billing/bank": { routeId: "BillingBankRoute", file: "billingBank.tsx" },
+  "/analytics/flows": { routeId: "AnalyticsFlowsRoute", file: "analyticsFlows.tsx" },
+  "/analytics/errors": { routeId: "AnalyticsErrorsRoute", file: "analyticsErrors.tsx" },
 };
 
 /**
@@ -268,6 +270,11 @@ const NON_NAV_ROUTE_IDS: ReadonlySet<string> = new Set([
   // /onboarding queue. Inherits its gate (onboarding.review) from the
   // backend; the component wraps itself in RequirePermission as well.
   "OnboardingDetailRoute",
+  // Product analytics (spec 50, A8): one person's timeline, reached only by
+  // the link of a CRM card or a dashboard row. The component wraps itself in
+  // RequirePermission with the Flows entry (superadmin.read) and the backend
+  // route needs superadmin.read as well.
+  "AnalyticsPersonRoute",
 ]);
 
 /**

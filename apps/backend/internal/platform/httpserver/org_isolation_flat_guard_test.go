@@ -169,6 +169,9 @@ var flatRouteFamilies = []flatFamily{
 
 	// ── platform operators, service tokens ──────────────────────────────────
 	{"GET", "/v1/admin/tickets", flatPlatform, "superadmin.read"},
+	{"GET", "/v1/admin/analytics/flows", flatPlatform, "superadmin.read; counts of dictionary steps, no organization data (hanalytics.AdminHandler)"},
+	{"GET", "/v1/admin/analytics/errors", flatPlatform, "superadmin.read; counts of dictionary errors, no organization data (hanalytics.AdminHandler)"},
+	{"GET", "/v1/admin/analytics/people/{person_id}/timeline", flatPlatform, "superadmin.read; one analytics person, no organization data (hanalytics.AdminHandler)"},
 	// /v1/admin/tickets/*  (flatRowGuard): htickets.RowOrgAccess
 	{"GET", "/v1/admin/tickets/{id}/delivery", flatRowGuard, "htickets.RowOrgAccess"},
 	{"GET", "/v1/admin/tickets/{id}/scans", flatRowGuard, "htickets.RowOrgAccess"},
