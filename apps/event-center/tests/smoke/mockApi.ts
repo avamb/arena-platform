@@ -359,6 +359,9 @@ export async function mockApi(
         body: "%PDF-1.4\n%mock\n",
       });
     }
+    if (rest === "/guest-list-subscription" && m === "GET") {
+      return json(route, 200, { enabled: false, channel: "telegram" });
+    }
     if (rest === "/orders/search" && m === "POST") {
       if (url.search !== "") {
         return json(route, 400, { error: { code: "orders.query_in_url", message: "query string" } });
