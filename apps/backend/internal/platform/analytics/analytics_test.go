@@ -2,6 +2,7 @@ package analytics
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync"
 	"testing"
@@ -305,7 +306,7 @@ func TestNilWriterIsSafe(t *testing.T) {
 
 func TestPartitionPolicy(t *testing.T) {
 	now := time.Date(2026, 11, 30, 23, 59, 0, 0, time.UTC)
-	want := []string{"events_y2026m11", "events_y2026m12", "events_y2027m01", "events_y2027m02"}
+	want := []string{"events_y2026m10", "events_y2026m11", "events_y2026m12", "events_y2027m01", "events_y2027m02"}
 	var got []string
 	for _, m := range PartitionsWanted(now) {
 		got = append(got, PartitionName(m))
@@ -332,11 +333,11 @@ func TestParsePartitionName(t *testing.T) {
 	}
 }
 
-func TestPartitionsHandler_SchedulesNextEvenOnFailure(t *testing.T) {
+func TestPartitionsHandler_SchedulesNextAndSwallowsMaintenanceFailure(t *testing.T) {
 	sched := &fakeScheduler{}
 	h := NewPartitionsHandler(PartitionsOptions{DB: failingDB{}, Scheduler: sched})
-	if err := h(context.Background(), nil); err == nil {
-		t.Fatal("expected the maintenance failure to be returned")
+	if err := h(context.Background(), nil); err != nil {
+		t.Fatalf("a maintenance failure must not fail the job (a retry would fork the chain): %v", err)
 	}
 	if sched.calls != 1 {
 		t.Errorf("next run scheduled %d times, want 1", sched.calls)
@@ -375,5 +376,80 @@ func TestSanitize_ClickNameIsADeveloperLabel(t *testing.T) {
 	}
 	if got, ok := Sanitize(SurfaceEventCenter, "screen_view", map[string]any{"screen": "/events/:id"}, true); !ok || got["screen"] != "/events/:id" {
 		t.Errorf("screen_view = %v %v", got, ok)
+	}
+}
+
+func TestSanitize_EmailsScrubbedAndIdentifiersRestricted(t *testing.T) {
+	got, _ := Sanitize(SurfaceSite, "page_view", map[string]any{
+		"title":        "Hello anna.k+x@example.com, welcome",
+		"utm_campaign": "mail_bob@corp.example",
+		"path":         "/u/carol%40example.org/profile",
+	}, true)
+	for k, v := range got {
+		if strings.Contains(v.(string), "@") || strings.Contains(v.(string), "example") {
+			t.Errorf("%s = %q still carries an address", k, v)
+		}
+	}
+	if got["title"] != "Hello [redacted], welcome" {
+		t.Errorf("title = %q", got["title"])
+	}
+	cases := []struct {
+		event, surface, prop string
+		value                string
+		keep                 bool
+	}{
+		{"flow_step", SurfaceEventCenter, "flow", "event_create", true},
+		{"flow_step", SurfaceEventCenter, "step", "venue.address", true},
+		{"flow_step", SurfaceEventCenter, "step", "Please enter your name", false},
+		{"flow_step", SurfaceEventCenter, "flow", "a@b.co", false},
+		{"ui_error", SurfaceEventCenter, "code", "event.not_found", true},
+		{"ui_error", SurfaceEventCenter, "code", "Something went wrong!", false},
+		{"screen_view", SurfaceEventCenter, "screen", "/events/:id/edit", true},
+		{"screen_view", SurfaceEventCenter, "screen", "/events/my secret show", false},
+		{"wizard_step", SurfaceBot, "from", "stSDate", true},
+	}
+	for _, c := range cases {
+		out, _ := Sanitize(c.surface, c.event, map[string]any{c.prop: c.value}, true)
+		if _, has := out[c.prop]; has != c.keep {
+			t.Errorf("%s.%s = %q: kept=%v, want %v", c.event, c.prop, c.value, has, c.keep)
+		}
+	}
+}
+
+func TestBuildRow_TimeIsClampedIntoThePartitionWindow(t *testing.T) {
+	now := time.Now()
+	for name, at := range map[string]time.Time{
+		"far past": now.AddDate(-5, 0, 0), "far future": now.AddDate(5, 0, 0), "two days ago": now.Add(-48 * time.Hour),
+	} {
+		ev := pv("abcdefgh")
+		ev.At = at
+		r, ok := buildRow(ev)
+		if !ok {
+			t.Fatal(name, "refused")
+		}
+		if r.at.Before(now.Add(-24*time.Hour-time.Second)) || r.at.After(time.Now().Add(time.Second)) {
+			t.Errorf("%s: stored %v is outside [now-24h, now]", name, r.at)
+		}
+	}
+	ev := pv("abcdefgh")
+	ev.At = now.Add(-3 * time.Hour)
+	if r, _ := buildRow(ev); !r.at.Equal(ev.At.UTC()) {
+		t.Errorf("a plausible time was changed: %v", r.at)
+	}
+}
+
+func TestSanitize_NumbersFromAnyGoNumericType(t *testing.T) {
+	for _, v := range []any{12, int8(12), int16(12), int32(12), int64(12), uint(12), uint8(12), uint16(12),
+		uint32(12), uint64(12), float32(12), 12.0, json.Number("12")} {
+		got, ok := Sanitize(SurfaceBot, "wizard_step", map[string]any{"from": "a", "to": "b", "seconds": v}, false)
+		if !ok || got["seconds"] != 12 {
+			t.Errorf("%T: seconds = %v (ok=%v), want 12", v, got["seconds"], ok)
+		}
+	}
+	for _, v := range []any{12.5, int64(1) << 40, -1, "12", true, nil} {
+		got, _ := Sanitize(SurfaceBot, "wizard_step", map[string]any{"from": "a", "seconds": v}, false)
+		if _, has := got["seconds"]; has {
+			t.Errorf("%T %v kept", v, v)
+		}
 	}
 }
