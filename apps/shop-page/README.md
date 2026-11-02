@@ -1,13 +1,13 @@
 # Arena Sold Out — organizer storefront (shop page)
 
 A static Vite + vanilla TypeScript app that reproduces the Shopify storefront of
-the first client (Einat Winery, Dawn 11, Russian) **one to one** and renders it
+the first client (client-4, Dawn 11, Russian) **one to one** and renders it
 from the platform's public shop API (spec
 `08_architecture/47_merch_shop_module_ru.md`, sections 4 and 5).
 
 - Served at `https://shop.arenasoldout.com/{org_slug}/...` (stand:
   `shop-staging.arenasoldout.com`), or at the organizer's own domain
-  (`einatwinery.com`) with root paths: the app reads `location.host`, asks
+  (`client4.example`) with root paths: the app reads `location.host`, asks
   `GET /v1/public/shop/by-host?host=` and caches the answer for an hour.
 - Dawn is MIT: its CSS (`src/theme/`), its scripts (`public/theme/`, unmodified:
   header drawer, search modal, quantity input, slider, gallery, share) and the
@@ -37,7 +37,7 @@ The 18+ gate (Hebrew text, as on the live site) is remembered in `localStorage`.
 ```
 npm install
 npm run dev:mock                                   # mock API on http://localhost:8787
-VITE_API_BASE_URL=http://localhost:8787 npm run dev   # http://localhost:5173/einatwinery/
+VITE_API_BASE_URL=http://localhost:8787 npm run dev   # http://localhost:5173/client4/
 ```
 
 (PowerShell: `$env:VITE_API_BASE_URL="http://localhost:8787"; npm run dev`.)
@@ -48,7 +48,7 @@ Cancel links) so the whole flow can be walked without the backend. Fixtures in
 `mock/fixtures/` are built from the offline Shopify export:
 
 ```
-npm run fixtures -- C:/Projects/arena_new/.local/einatwinery_export
+npm run fixtures -- C:/Projects/arena_new/.local/client4_export
 ```
 
 Against the real API set `VITE_API_BASE_URL` to its origin (for example
@@ -155,7 +155,7 @@ the model the views use. Read it with `apps/backend/internal/platform/httpserver
 ## Visual check against the live shop
 
 `PLAYWRIGHT_CORE=<path to playwright-core> node scripts/compare-live.mjs [page ...]` (set `VP=mobile` or
-`VP=desktop` for one viewport) shoots www.einatwinery.com and this app (mock API on 8787, vite on 5180) and
+`VP=desktop` for one viewport) shoots www.client4.example and this app (mock API on 8787, vite on 5180) and
 writes `docs/screenshots/<page>-<viewport>-side.png` with the share of differing pixels. Result on
 2026-10-28: nearly every page is 0.0 to 0.4 percent (desktop and 390 px phone). Known remaining
 differences: the empty cart omits the live "log in" prompt (no customer accounts), related-product images

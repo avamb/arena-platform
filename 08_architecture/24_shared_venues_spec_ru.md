@@ -8,8 +8,8 @@
 1. перенос из Bil24 второго организатора, у которого есть площадка с тем же `venueId`, что уже
    импортирована другим. По выгрузке заказов Bil24 (2023–09.2026) 23 площадки из 136 встречаются
    больше чем у одного `actionLegalOwner`; часть — разные написания одного организатора, но есть и
-   настоящие пересечения: Futurum Music Bar, Прага (Somewhere Show и Lampyris); La Octava и
-   Santander 10, Торревьеха (Teatro Vega и Actorre); Espacio Ronda, Мадрид (Viva Ballet и La Cuna);
+   настоящие пересечения: Futurum Music Bar, Прага (Somewhere Show и client-2); La Octava и
+   Santander 10, Торревьеха (Teatro Vega и client-3); Espacio Ronda, Мадрид (Viva Ballet и La Cuna);
 2. запуск маркетплейса arenasoldout.com — одна площадка должна быть одной страницей, а не N дублями;
 3. первый живой случай, когда два организатора Arena работают в одном зале.
 
@@ -38,7 +38,7 @@
 Итог: общее — только чтение. Два организатора в одном зале сегодня — это две записи `venues`;
 через импорт Bil24 второй организатор не проходит вовсе.
 
-Найдено 21.09.2026 при переносе Lampyris: тестовый импорт в организацию `lampyris-staging` занял
+Найдено 21.09.2026 при переносе client-2: тестовый импорт в организацию `client2-staging` занял
 бы Palac Akropolis (`venueId` 10549) и заблокировал прод-импорт. Обход — сдвиг ID площадок для staging
 (`ops/bil24-export/to-bundle.mjs --venue-offset`). Lucerna Music Bar (6967) успела уйти в staging-организацию.
 
@@ -116,7 +116,7 @@
 - Кто сейчас вызывает кросс-организационный `GET /v1/venues` и не утекают ли через него контакты
   площадки (`contact_phone`, `contact_email`) — для `private` они не должны быть видны чужим.
 - Лимиты тарифа, считающие площадки на организацию (если есть в `hbilling`).
-- Что делать с Lucerna Music Bar (`external_bil24_id` 6967), занятой `lampyris-staging`: после п. 3
+- Что делать с Lucerna Music Bar (`external_bil24_id` 6967), занятой `client2-staging`: после п. 3
   проблема исчезает сама; до него — ручная правка `external_bil24_id` и строки `compatids`.
 
 ## 7. Временный обход, если второй перенос придёт раньше волны

@@ -128,3 +128,12 @@ ArenaSupportBot.txt
 # Telegram bot tokens kept next to the repo by the owner - never commit
 /EventsCentrBot.txt
 /ArenaSoldOutSalesBot.txt
+
+# Working notes of coding agents and private material (open source since 2026-11)
+claude-progress*.txt
+claude-progress.archive.md
+COMMIT_MSG_*.txt
+commit_msg_*.txt
+.tmp/
+.autoforge/session-*.md
+.claude/scheduled_tasks.lock

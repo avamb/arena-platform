@@ -1,7 +1,7 @@
 # Bil24-compatible gateway — operations runbook
 
 Covers day-2 operation of the wave-1 compat gateway (`hbil24`/`bil24compat`, mounted at
-`/compat/bil24/*`) for the two owned WordPress sites, Lampyris and Vino&Co. Design authority:
+`/compat/bil24/*`) for the two owned WordPress sites, client-2 and client-1 Design authority:
 `08_architecture/18_bil24_compat_wave1_specification_ru.md`; wire-level differences from real
 legacy Bil24: `apps/backend/tests/compat/bil24/BEHAVIOR_DIFFERENCES.md`.
 
@@ -150,7 +150,7 @@ also invalidates in-flight gateway sessions/reservations for anyone still mid-ch
 new path. Prefer: leave the new channel enabled, just stop pointing the site at it, and
 re-enable once the underlying issue is fixed.
 
-## 7. Stand orgs `lampyris-staging` / `vino-staging`
+## 7. Stand orgs `client2-staging` / `client1-staging`
 
 These slugs are **not** present in `cmd/arena-seed` as of this wave — they are the intended
 naming for the two sites' staging organizations (per
@@ -179,7 +179,7 @@ categories + poster + publication in a single call.
   arena mints a compat id ≥ 1e9; supply one only when editing an existing object (it must already
   be ≥ 1e9 and belong to this organization, otherwise 404 `import.compat_id_unknown`).
 - **Idempotency key**: `externalRef` (mandatory for `source=arena`, e.g.
-  `wp:lampyris-staging:product:4711`), not `actionEventId`. A repeat call with the same
+  `wp:client2-staging:product:4711`), not `actionEventId`. A repeat call with the same
   `externalRef` edits the existing session in place instead of creating a duplicate.
 - **No seats**: `seatList`/`svg` are accepted but not materialised for `source=arena` in this
   wave (warning `import.seating_not_imported`, never a 422) — this is the general-admission-only
@@ -199,7 +199,7 @@ curl -s -X POST "https://staging.example.com/v1/organizations/$ORG_ID/imports/ev
   --data @apps/backend/tests/compat/bil24/testdata/wp/event_bundle/arena_ga_lampyris.json
 ```
 
-That fixture is the exact staging-Lampyris example body from spec §3 (also used by the
+That fixture is the exact staging-client-2 example body from spec §3 (also used by the
 `TestEventBundleFixture_DecodesAndValidates` decode/validation test in
 `apps/backend/tests/compat/bil24/event_bundle_fixture_526_test.go`). A successful call answers
 something like:
@@ -207,7 +207,7 @@ something like:
 ```json
 {
   "event_id": "…", "session_id": "…", "created": true,
-  "external_ref": "wp:lampyris-staging:product:4711",
+  "external_ref": "wp:client-2-staging:product:4711",
   "compat_ids": {
     "action_id": 1000000007, "action_event_id": 1000000008,
     "venue_id": 1000000003, "category_price_ids": [1000000012, 1000000013]
