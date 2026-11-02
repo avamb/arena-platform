@@ -22,6 +22,7 @@
     CheckoutStatusTicketItem,
   } from '../lib/checkout.js';
   import { countdownSeconds, isTwoMinWarning, formatCountdown } from '../lib/cart.js';
+  import ReferralInvite from './ReferralInvite.svelte';
 
   interface Props {
     status: CheckoutStatusResponse;
@@ -44,6 +45,9 @@
      * buyer to the hosted page's own router, which answered "event not
      * found" — the download simply never happened. */
     apiBase?: string;
+    /** The order's checkout token. A paid order uses it to ask for the buyer's
+     * "Refer a friend" code; without it the block is simply not drawn. */
+    checkoutToken?: string | null;
     /** Whether a recovery or resend action is in flight. */
     actionLoading?: boolean;
     /** Error from a recovery or resend action. */
@@ -59,6 +63,7 @@
     onSendAgain,
     onDone,
     apiBase = '',
+    checkoutToken = null,
     actionLoading = false,
     actionError = null,
   }: Props = $props();
@@ -185,6 +190,10 @@
             {/each}
           </ul>
         </div>
+      {/if}
+
+      {#if checkoutToken}
+        <ReferralInvite {checkoutToken} {locale} {apiBase} />
       {/if}
 
       {#if actionError}

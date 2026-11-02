@@ -50,6 +50,10 @@ export interface PromoStrings {
   error_rate_limited: string;
   /** The code is valid but takes nothing off this order. */
   error_no_discount: string;
+  /** The buyer applied their own "Refer a friend" code (promo.own_referral_code). */
+  error_own_referral: string;
+  /** The code exists but its programme is paused or over (promo.not_active). */
+  error_not_active: string;
 }
 
 export const PROMO_I18N: Record<string, PromoStrings> = {
@@ -73,6 +77,8 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     error_empty: 'Type a code first.',
     error_rate_limited: 'Too many attempts. Wait a minute and try again.',
     error_no_discount: 'This code gives no discount on this order.',
+    error_own_referral: 'This is your own code. Share it with friends.',
+    error_not_active: 'This code is not active now. Buy without it.',
   },
   ru: {
     have_code: 'Есть промокод?',
@@ -94,6 +100,8 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     error_empty: 'Сначала введите код.',
     error_rate_limited: 'Слишком много попыток. Подождите минуту и попробуйте снова.',
     error_no_discount: 'Этот код не даёт скидки на этот заказ.',
+    error_own_referral: 'Это ваш собственный код. Поделитесь им с друзьями.',
+    error_not_active: 'Сейчас этот код не действует. Купите билеты без него.',
   },
   cs: {
     have_code: 'Máte slevový kód?',
@@ -115,6 +123,8 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     error_empty: 'Nejdřív zadejte kód.',
     error_rate_limited: 'Příliš mnoho pokusů. Počkejte minutu a zkuste to znovu.',
     error_no_discount: 'Tento kód na tuto objednávku nedává žádnou slevu.',
+    error_own_referral: 'Toto je váš vlastní kód. Sdílejte ho s přáteli.',
+    error_not_active: 'Tento kód teď neplatí. Kupte vstupenky bez něj.',
   },
   he: {
     have_code: 'יש לכם קוד קופון?',
@@ -136,6 +146,8 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     error_empty: 'הזינו קוד קודם.',
     error_rate_limited: 'יותר מדי ניסיונות. המתינו דקה ונסו שוב.',
     error_no_discount: 'הקוד הזה לא נותן הנחה על ההזמנה הזו.',
+    error_own_referral: 'זה הקוד האישי שלכם. שתפו אותו עם חברים.',
+    error_not_active: 'הקוד הזה לא פעיל כרגע. המשיכו בלי קוד.',
   },
   es: {
     have_code: '¿Tienes un código promocional?',
@@ -157,6 +169,8 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     error_empty: 'Escribe primero un código.',
     error_rate_limited: 'Demasiados intentos. Espera un minuto e inténtalo de nuevo.',
     error_no_discount: 'Este código no aplica ningún descuento a este pedido.',
+    error_own_referral: 'Este es tu propio código. Compártelo con tus amigos.',
+    error_not_active: 'Este código no está activo ahora. Compra sin él.',
   },
   de: {
     have_code: 'Haben Sie einen Gutscheincode?',
@@ -178,6 +192,8 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     error_empty: 'Bitte geben Sie zuerst einen Code ein.',
     error_rate_limited: 'Zu viele Versuche. Warten Sie eine Minute und versuchen Sie es erneut.',
     error_no_discount: 'Dieser Code gewährt für diese Bestellung keinen Rabatt.',
+    error_own_referral: 'Das ist Ihr eigener Code. Teilen Sie ihn mit Freunden.',
+    error_not_active: 'Dieser Code ist gerade nicht aktiv. Kaufen Sie ohne ihn.',
   },
   fr: {
     have_code: 'Vous avez un code promo ?',
@@ -199,6 +215,8 @@ export const PROMO_I18N: Record<string, PromoStrings> = {
     error_empty: "Saisissez d'abord un code.",
     error_rate_limited: 'Trop de tentatives. Attendez une minute et réessayez.',
     error_no_discount: "Ce code n'accorde aucune réduction sur cette commande.",
+    error_own_referral: 'Ceci est votre propre code. Partagez-le avec vos amis.',
+    error_not_active: "Ce code n'est pas actif pour le moment. Achetez sans lui.",
   },
 };
 

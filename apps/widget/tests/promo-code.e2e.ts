@@ -10,7 +10,7 @@
  * Prerequisite: `npm run build` must be run before `npm run test:e2e`.
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect, type Locator, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 
 const FEED_TOKEN = 'promo-feed-token';
@@ -603,5 +603,94 @@ test.describe('promo code in the cart sheet', () => {
       return { minus: left(text.data.indexOf('\u2212')), euro: left(text.data.indexOf('€')) };
     });
     expect(pos.minus).toBeLessThan(pos.euro);
+  });
+
+  // "Refer a friend": a friend's link carries ?promo=<code>. The widget puts it
+  // on the first cart by itself; the platform stays the judge.
+  async function pickTwoAndOpenSheet(page: Page, url: string): Promise<Locator> {
+    await page.goto(url);
+    const widget = page.locator('#widget-promo');
+    const plus = widget.getByRole('button', { name: 'Increase quantity for Standard' });
+    await plus.waitFor({ timeout: 15_000 });
+    await plus.click();
+    await plus.click();
+    await widget.locator('.mini-cart-btn').click();
+    const sheet = widget.locator('.sheet');
+    await expect(sheet).toBeVisible();
+    return sheet;
+  }
+
+  test('?promo= applies a friend code to the first cart without typing, even when the organization lists no codes', async ({ page }) => {
+    const seen = await mockPlatform(page, { promoAvailable: false });
+    const sheet = await pickTwoAndOpenSheet(page, '/demo/promo-code.html?promo=ten&utm_source=referral');
+
+    await expect(sheet.locator('.promo-applied-text')).toHaveText('Code TEN applied.');
+    await expect(sheet.locator('.discount-row .fee-value')).toHaveText(amount('−€5'));
+    await expect(sheet.locator('.total-value')).toHaveText(amount('€45.56'));
+    // Applied on the first ticket, then re-quoted when the cart grew to two.
+    expect(seen.quotes.length).toBeGreaterThanOrEqual(1);
+    for (const q of seen.quotes) expect(q).toMatchObject({ session_id: SESSION_ID, promo_code: 'TEN' });
+    expect(seen.quotes[seen.quotes.length - 1]).toMatchObject({ ga_items: [{ tier_id: TIER_ID, quantity: 2 }] });
+  });
+
+  test('?promo= with a code that does not fit leaves the field open with the code and the reason', async ({ page }) => {
+    await mockPlatform(page);
+    const sheet = await pickTwoAndOpenSheet(page, '/demo/promo-code.html?promo=nope');
+
+    await expect(sheet.getByRole('alert')).toHaveText('This code does not work for this order.');
+    await expect(sheet.getByLabel('Promo code')).toHaveValue('NOPE');
+    await expect(sheet.locator('.promo-applied')).toHaveCount(0);
+    await expect(sheet.locator('.total-value')).toHaveText(amount('€50.62'));
+  });
+
+  test('a page without ?promo= asks the platform about nothing', async ({ page }) => {
+    const seen = await mockPlatform(page);
+    await pickTwoAndOpenSheet(page, '/demo/promo-code.html');
+    expect(seen.quotes).toHaveLength(0);
+  });
+
+  // The referrer's side: a paid order shows the personal code, a 404 shows nothing.
+  async function mockPaidOrder(page: Page, referral: { status: number; body: object }): Promise<void> {
+    await mockPlatform(page);
+    await page.route('**/v1/public/checkout/ckout-paid-001', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'paid', checkout_token: 'ckout-paid-001', order_number: 1042, items: [], tickets: [] }),
+      }),
+    );
+    await page.route('**/v1/public/checkout/ckout-paid-001/referral', (route) =>
+      route.fulfill({ status: referral.status, contentType: 'application/json', body: JSON.stringify(referral.body) }),
+    );
+  }
+
+  test('a paid order shows the Invite a friend block with the code and the link to copy', async ({ page }) => {
+    await mockPaidOrder(page, {
+      status: 200,
+      body: {
+        code: 'ANNA-7K2Q',
+        friend_discount_pct: 10,
+        cashback_pct: 5,
+        share_url: 'https://tickets.example.com/org/show?promo=ANNA-7K2Q&utm_source=referral',
+      },
+    });
+    await page.goto('/demo/promo-code.html?checkout_token=ckout-paid-001');
+    const block = page.locator('#widget-promo [data-testid=referral-block]');
+    await expect(block).toBeVisible({ timeout: 15_000 });
+    await expect(block.locator('[data-testid=referral-code]')).toHaveText('ANNA-7K2Q');
+    await expect(block.locator('[data-testid=referral-text]')).toContainText('10%');
+    await expect(block.locator('[data-testid=referral-text]')).toContainText('5%');
+    await expect(block.getByRole('button', { name: 'Copy link' })).toBeVisible();
+  });
+
+  test('a paid order with no friend code shows no block and no error', async ({ page }) => {
+    await mockPaidOrder(page, {
+      status: 404,
+      body: { error: { code: 'referral.not_available', message: 'No friend code for this order.' } },
+    });
+    await page.goto('/demo/promo-code.html?checkout_token=ckout-paid-001');
+    await expect(page.locator('#widget-promo .status-paid')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('#widget-promo [data-testid=referral-block]')).toHaveCount(0);
+    await expect(page.locator('#widget-promo [role=alert]')).toHaveCount(0);
   });
 });

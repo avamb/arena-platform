@@ -144,11 +144,17 @@ export function promoErrorMessage(code: string | undefined, p: PromoStrings): st
     // The shared public-feed limiter answers a burst with its own code.
     case 'feed.rate_limited':
       return p.error_rate_limited;
+    // "Refer a friend": the buyer applied the code of their own order. Said
+    // plainly, because the fix is theirs (share it, buy without it).
+    case 'promo.own_referral_code':
+      return p.error_own_referral;
+    // A programme that is paused or over: the code is real, it just rests.
+    case 'promo.not_active':
+      return p.error_not_active;
     case 'promo.not_applicable':
     // checkout/start still answers with the platform's finer codes; to a buyer
     // they all mean "this code does not work for this order".
     case 'promo.not_found':
-    case 'promo.not_active':
     case 'promo.not_yet_valid':
     case 'promo.expired':
     case 'promo.session_not_applicable':

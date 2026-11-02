@@ -136,7 +136,6 @@ describe('promoErrorMessage', () => {
   it('gives a buyer ONE answer for every finer code checkout/start can still send', () => {
     for (const code of [
       'promo.not_found',
-      'promo.not_active',
       'promo.not_yet_valid',
       'promo.expired',
       'promo.session_not_applicable',

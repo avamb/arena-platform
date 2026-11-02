@@ -52,6 +52,8 @@
     promoAvailable?: boolean;
     /** Start with the field open instead of behind the link. */
     promoExpanded?: boolean;
+    /** A code to put in the field when the sheet opens (the `?promo=` of the page address). */
+    promoPrefill?: string;
     /** A quote request is in flight: the buy button waits for it. */
     promoBusy?: boolean;
     /** Why the last Apply failed, already in the buyer's language. */
@@ -80,7 +82,7 @@
   }
   const {
     cart, buyerFields, locale = 'en', serviceFeePercent = null, showWithdrawalNotice = false, consent = null, submitting = false, submitError = null,
-    promoCode = null, promoQuote = null, cartKey = '', promoAvailable = false, promoExpanded = false, promoBusy = false, promoError = null, promoNote = null,
+    promoCode = null, promoQuote = null, cartKey = '', promoAvailable = false, promoExpanded = false, promoPrefill = '', promoBusy = false, promoError = null, promoNote = null,
     onApplyPromo, onRemovePromo, onContinue,
     conflictKeys, onContinueWithoutConflicts,
     onClose, onRemoveLine, onCheckout,
@@ -104,6 +106,14 @@
     promoPayBlocked({ code: promoCode, quote: promoQuote, busy: promoBusy, error: null, note: null }, cartKey),
   );
   let promoInput = $state('');
+  // Fill the field once, from the page address; the buyer may then change it.
+  let prefilled = false;
+  $effect(() => {
+    if (promoPrefill && !prefilled) {
+      prefilled = true;
+      promoInput = promoPrefill;
+    }
+  });
   // Behind a link until the buyer asks for it; a failed Apply or a code in
   // flight keeps it open so the answer is never hidden.
   let promoOpened = $state(false);
