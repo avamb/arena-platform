@@ -336,6 +336,17 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 		t.Fatalf("tier = %d %s windows=%d", tierPrice, tierCur, windows)
 	}
 
+	// BOT-02: the Event Center shows the manager the same event.
+	var managerID uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT id FROM users WHERE email = $1`, managerEmail).Scan(&managerID); err != nil {
+		t.Fatalf("manager user: %v", err)
+	}
+	assertECSeesTheBotEvent(t, api.URL, f.orgID, managerID, botEventAsEC{
+		EventID: eventID, Name: eventName, Status: evStatus, Age: "16+",
+		StartLocal: "2099-12-15 20:00", VenueTimezone: "Europe/Tallinn", Capacity: 120,
+		PriceMinor: 2500, Currency: "EUR",
+	})
+
 	// The draft is gone, the answers are remembered for next time.
 	if _, err := q.GetBotDraft(ctx, e2eWizardTelegramUser, f.orgID); err == nil {
 		t.Fatal("draft must be deleted after publishing")

@@ -118,6 +118,27 @@ async function noHorizontalScroll(page: Page) {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
 }
 
+// The fixture's date (cmd/arena-e2e-seed/refund_fixture.go).
+const REFUND_EVENT = "fe0000e2-0000-7000-8000-000000008101";
+const REFUND_SESSION = "fe0000e2-0000-7000-8000-000000008102";
+
+interface SummaryMoney {
+  currency: string;
+  paid: number;
+  refunded: number;
+  net: number;
+}
+
+// sessionMoney reads the EUR line of the date's summary, as the date screen does.
+async function sessionMoney(request: APIRequestContext): Promise<SummaryMoney> {
+  const res = await request.get(orgUrl(`/sessions/${REFUND_SESSION}/summary`), { headers: auth("org_admin") });
+  expect(res.status(), "GET session summary").toBe(200);
+  const body = (await res.json()) as { money: SummaryMoney[] };
+  const eur = body.money.find((m) => m.currency === "EUR");
+  expect(eur, "the summary has an EUR line").toBeDefined();
+  return eur as SummaryMoney;
+}
+
 const ticketBox = (page: Page, id: string) => page.locator(`[data-testid="refund-ticket"][data-ticket="${id}"]`);
 
 test.beforeEach(async ({ request }) => {
@@ -130,6 +151,7 @@ test.describe("refund an order (live)", () => {
     const permissions = await permissionsOf(request, "org_admin");
     for (const p of ["refund.create", "refund.read", "refund.approve"]) expect(permissions, p).toContain(p);
     expect(rows(ORDER_OWNER)).toMatchObject({ refunds: 0, active_tickets: 3, status: "paid" });
+    const moneyBefore = await sessionMoney(request);
 
     const calls = trackApi(page);
     await openCard(page, "org_admin", ORDER_OWNER);
@@ -203,12 +225,25 @@ test.describe("refund an order (live)", () => {
     expect(sent[0].key.length, "the provider got an idempotency key").toBeGreaterThan(0);
     expect(calls.filter((c) => c === createPath(ORDER_OWNER))).toHaveLength(1);
 
+    // PAY-12: the date's summary keeps the money taken and subtracts the refund.
+    const moneyAfter = await sessionMoney(request);
+    expect(moneyAfter.paid, "the money taken does not change").toBe(moneyBefore.paid);
+    expect(moneyAfter.refunded - moneyBefore.refunded, "refunded grows by one ticket").toBe(2500);
+    expect(moneyAfter.net, "net = paid - refunded").toBe(moneyAfter.paid - moneyAfter.refunded);
+    expect(moneyAfter.net).toBe(moneyBefore.net - 2500);
+
     // The card shows the new state; the refunded ticket is no longer offered.
     await page.getByTestId("refund-close").click();
     await expect(page.getByText("Partly refunded").first()).toBeVisible();
     await page.getByTestId("refund-open").click();
     await expect(page.getByTestId("refund-ticket")).toHaveCount(1);
     await expect(ticketBox(page, TICKET_1)).toHaveCount(0);
+
+    // The date screen shows the same figures.
+    await page.goto(`/o/${env.org_id}/events/${REFUND_EVENT}/sessions/${REFUND_SESSION}`);
+    const figures = page.getByTestId("sales-figures");
+    await expect(figures).toContainText(/Refunded: [^·]*25[.,]00/);
+    await expect(figures).toContainText(/Net: /);
   });
 
   test("owner: closing the password question sends nothing", async ({ page, request }) => {

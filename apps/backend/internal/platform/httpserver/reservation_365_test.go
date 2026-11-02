@@ -108,10 +108,12 @@ func TestReservation365_Step4_ExpireReservationGuardedTransition(t *testing.T) {
 
 	t.Run("re_reads_state_inside_per_item_tx", func(t *testing.T) {
 		// The TTL worker commits the poll-tx before per-item processing.
-		// expireReservation must re-read the row (GetReservationByID) inside
-		// each per-item transaction to detect state changes.
-		if !strings.Contains(content, "GetReservationByID") {
-			t.Error("reservation_processor.go: expireReservation must call GetReservationByID to re-check state inside per-item tx")
+		// expireReservation must re-read the row inside each per-item
+		// transaction to detect state changes, and lock it while it does
+		// (LockReservationForUpdate): the reservation row comes before the
+		// sessions row in every hold mutation (P0-1).
+		if !strings.Contains(content, "q.LockReservationForUpdate(ctx, r.ID)") {
+			t.Error("reservation_processor.go: expireReservation must lock the reservation (LockReservationForUpdate) to re-check state inside per-item tx")
 		}
 	})
 
