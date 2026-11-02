@@ -299,6 +299,9 @@ func (s *Server) handleExportMarketingSubscribers(w http.ResponseWriter, r *http
 			marketing.ListFilter{Status: status, Limit: subscriberExportBatch, Offset: offset})
 		if err != nil {
 			s.logger.Error("marketing subscribers: export batch failed", "error", err.Error())
+			// allow:panic: net/http's documented way to abort a response whose
+			// status is already committed, so a half-written file is never taken
+			// for a complete one (the same rule as hexport).
 			panic(http.ErrAbortHandler)
 		}
 	}
