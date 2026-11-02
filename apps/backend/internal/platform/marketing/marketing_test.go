@@ -72,9 +72,9 @@ func TestNormalizeEmail(t *testing.T) {
 	}
 }
 
-// The Go sources and statuses must stay inside the CHECKs of migration 0184.
+// The Go sources and statuses must stay inside the CHECKs of migration 0191.
 func TestSourcesAndStatuses_MatchMigrationChecks(t *testing.T) {
-	b, err := os.ReadFile(filepath.Join("..", "..", "migrations", "sql", "0184_cart_reminders_marketing_consent.sql"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "migrations", "sql", "0191_cart_reminders_marketing_consent.sql"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestSourcesAndStatuses_MatchMigrationChecks(t *testing.T) {
 	for _, v := range []string{SourceWidget, SourceConfirmLink, SourceWithdraw, SourceOrganizer, SourceErasure,
 		StatusPending, StatusConfirmed, StatusWithdrawn} {
 		if !strings.Contains(sql, "'"+v+"'") {
-			t.Errorf("migration 0184 does not list %q", v)
+			t.Errorf("migration 0191 does not list %q", v)
 		}
 	}
 }

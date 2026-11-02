@@ -244,7 +244,7 @@ consent_promo_code_id, updated_at, updated_by)`, правки — `org.update` (
 
 ## 10. Как сделано (02.11.2026)
 
-- Миграция 0184: `checkout_sessions.return_url`, `org_growth_settings`,
+- Миграция 0191: `checkout_sessions.return_url`, `org_growth_settings`,
   `checkout_reminders`, `marketing_subscriptions`, `marketing_consents`, вид письма
   `checkout_reminder` в `email_letters`.
 - Напоминание: пакет `cartreminder` (задание `checkout.reminder_sweep` раз в минуту,

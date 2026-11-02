@@ -1,4 +1,4 @@
--- 0184_cart_reminders_marketing_consent.sql — the reminder about an unpaid
+-- 0191_cart_reminders_marketing_consent.sql — the reminder about an unpaid
 -- order and the discount for a marketing consent (spec 51-1, owner decisions
 -- 2026-11-01/02).
 --
