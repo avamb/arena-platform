@@ -34,7 +34,6 @@ const (
 type report struct {
 	doc      *gofpdf.Fpdf
 	maxPages int // 0 = no cap
-	full     bool
 	lbl      labels
 	cut      bool
 }

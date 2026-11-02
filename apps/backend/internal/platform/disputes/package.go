@@ -163,7 +163,7 @@ func renderFile(kind string, d Dispute, f Facts, l labels, maxPages int) (Render
 	case FileReceipt:
 		r = newReport(fmt.Sprintf(l.get("title_receipt"), orderNo), l, maxPages, subtitle)
 		writeSeller(r, f)
-		writeOrder(r, d, f)
+		writeOrder(r, f)
 		writeRefunds(r, f)
 	case FileService:
 		r = newReport(l.get("title_service"), l, maxPages, subtitle)
@@ -183,7 +183,7 @@ func renderFile(kind string, d Dispute, f Facts, l labels, maxPages int) (Render
 		r = newReport(fmt.Sprintf(l.get("title_full"), orderNo), l, 0, subtitle)
 		writeDispute(r, d, f)
 		writeSeller(r, f)
-		writeOrder(r, d, f)
+		writeOrder(r, f)
 		writeEvent(r, f)
 		writeTickets(r, f)
 		writeScans(r, f)
@@ -256,7 +256,7 @@ func writeSeller(r *report, f Facts) {
 	})
 }
 
-func writeOrder(r *report, d Dispute, f Facts) {
+func writeOrder(r *report, f Facts) {
 	if f.Order == nil {
 		r.gap(r.lbl.get("gap_no_order"))
 		return
