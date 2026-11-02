@@ -87,10 +87,19 @@ func bad(w http.ResponseWriter, r *http.Request, code, msg string) {
 // newest first. state filters; limit is 1-200 (default 50); cursor is the
 // next_cursor of the previous page.
 func (h *Handler) HandleListRewards(w http.ResponseWriter, r *http.Request) {
-	orgID, eventID, ok := h.scope(w, r)
-	if !ok {
-		return
+	if t, ok := h.eventTarget(w, r); ok {
+		h.listRewards(w, r, t)
 	}
+}
+
+// HandleShopListRewards serves GET .../shop/referral-rewards.
+func (h *Handler) HandleShopListRewards(w http.ResponseWriter, r *http.Request) {
+	if t, ok := h.shopTarget(w, r); ok {
+		h.listRewards(w, r, t)
+	}
+}
+
+func (h *Handler) listRewards(w http.ResponseWriter, r *http.Request, t target) {
 	q := r.URL.Query()
 	state := q.Get("state")
 	if state != "" && !rewardStates[state] {
@@ -116,7 +125,13 @@ func (h *Handler) HandleListRewards(w http.ResponseWriter, r *http.Request) {
 		}
 		before, beforeID = &t, id
 	}
-	rows, err := h.queries.ListReferralRewardsForEvent(r.Context(), orgID, eventID, state, before, beforeID, int32(limit+1))
+	var rows []gen.ReferralRewardListRow
+	var err error
+	if t.isShop() {
+		rows, err = h.queries.ListReferralRewardsForShop(r.Context(), t.orgID, state, before, beforeID, int32(limit+1))
+	} else {
+		rows, err = h.queries.ListReferralRewardsForEvent(r.Context(), t.orgID, *t.eventID, state, before, beforeID, int32(limit+1))
+	}
 	if err != nil {
 		h.failed(w, r, "rewards list", err)
 		return
@@ -192,22 +207,46 @@ func foldCashback(rows []gen.ReferralMoney) []cashbackJSON {
 // head numbers of the event's programme(s), all of them (an ended programme's
 // figures stay), in the organization's own money.
 func (h *Handler) HandleSummary(w http.ResponseWriter, r *http.Request) {
-	orgID, eventID, ok := h.scope(w, r)
-	if !ok {
-		return
+	if t, ok := h.eventTarget(w, r); ok {
+		h.summary(w, r, t)
 	}
+}
+
+// HandleShopSummary serves GET .../shop/referral-program/summary.
+func (h *Handler) HandleShopSummary(w http.ResponseWriter, r *http.Request) {
+	if t, ok := h.shopTarget(w, r); ok {
+		h.summary(w, r, t)
+	}
+}
+
+func (h *Handler) summary(w http.ResponseWriter, r *http.Request, t target) {
 	ctx := r.Context()
-	counts, err := h.queries.GetReferralSummaryCounts(ctx, orgID, eventID)
+	var counts gen.ReferralSummaryCounts
+	var discounts, cashback []gen.ReferralMoney
+	var err error
+	if t.isShop() {
+		counts, err = h.queries.GetReferralSummaryCountsForShop(ctx, t.orgID)
+	} else {
+		counts, err = h.queries.GetReferralSummaryCounts(ctx, t.orgID, *t.eventID)
+	}
 	if err != nil {
 		h.failed(w, r, "summary counts", err)
 		return
 	}
-	discounts, err := h.queries.ListReferralDiscountTotals(ctx, orgID, eventID)
+	if t.isShop() {
+		discounts, err = h.queries.ListReferralDiscountTotalsForShop(ctx, t.orgID)
+	} else {
+		discounts, err = h.queries.ListReferralDiscountTotals(ctx, t.orgID, *t.eventID)
+	}
 	if err != nil {
 		h.failed(w, r, "summary discounts", err)
 		return
 	}
-	cashback, err := h.queries.ListReferralCashbackTotals(ctx, orgID, eventID)
+	if t.isShop() {
+		cashback, err = h.queries.ListReferralCashbackTotalsForShop(ctx, t.orgID)
+	} else {
+		cashback, err = h.queries.ListReferralCashbackTotals(ctx, t.orgID, *t.eventID)
+	}
 	if err != nil {
 		h.failed(w, r, "summary cashback", err)
 		return
@@ -216,8 +255,13 @@ func (h *Handler) HandleSummary(w http.ResponseWriter, r *http.Request) {
 	for _, d := range discounts {
 		disc = append(disc, moneyJSON{Currency: d.Currency, AmountMinor: d.AmountMinor})
 	}
+	var eventID *string
+	if !t.isShop() {
+		v := t.eventID.String()
+		eventID = &v
+	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"event_id":         eventID.String(),
+		"event_id":         eventID,
 		"codes_issued":     counts.CodesIssued,
 		"friends":          counts.Friends,
 		"friend_reversals": counts.FriendReversals,

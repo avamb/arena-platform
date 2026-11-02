@@ -1,4 +1,8 @@
-package referral
+// Package referralnotify tells an organization about a friend who got the money
+// back after the cashback was paid (spec 52 section 5.2). It is a package of its
+// own because it speaks through salesnotify, which imports the shop, and the
+// shop imports the referral core: the core must not import salesnotify.
+package referralnotify
 
 import (
 	"context"
@@ -9,8 +13,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/referral"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesnotify"
 )
+
+// letterMaxAttempts is how often the owners' letter is tried (the value
+// referral.letterMaxAttempts gives its own letters).
+const letterMaxAttempts = 5
 
 // OrgAnnouncer posts a text to an organization's own sales chats
 // (salesnotify.Dispatcher.AnnounceToOrg).
@@ -44,7 +53,7 @@ func NewOrganizerNotifier(pool *pgxpool.Pool, announcer OrgAnnouncer, logger *sl
 // reward notified. A chat that exists but took nothing is an error, so the
 // sweep tries the chats again on its next pass without a second letter.
 func (n *OrganizerNotifier) FriendReversed(ctx context.Context, rw gen.ReferralRewardRow) error {
-	facts, ok, err := LoadReversalFacts(ctx, n.pool, rw)
+	facts, ok, err := referral.LoadReversalFacts(ctx, n.pool, rw)
 	if err != nil {
 		return fmt.Errorf("referral: reversal facts: %w", err)
 	}
@@ -79,7 +88,7 @@ func (n *OrganizerNotifier) queueLetter(ctx context.Context, rw gen.ReferralRewa
 	_, err := n.pool.Exec(ctx, `INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
 		SELECT $1, jsonb_build_object('reward_id', $2::text), $3, 'pending', now()
 		WHERE NOT EXISTS (SELECT 1 FROM worker_jobs WHERE job_type = $1 AND payload->>'reward_id' = $2::text)`,
-		JobTypeReversalEmail, rw.ID.String(), letterMaxAttempts)
+		referral.JobTypeReversalEmail, rw.ID.String(), letterMaxAttempts)
 	if err != nil {
 		return fmt.Errorf("referral: queue reversal letter: %w", err)
 	}

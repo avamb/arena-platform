@@ -7,6 +7,10 @@
 //	GET  .../referral-program/summary                                            (promo.read)
 //	GET  .../referral-rewards                                                    (promo.read)
 //
+// and the same six for the organization's shop under
+// /v1/organizations/{org_id}/shop/referral-program (spec 52 section 3.5; one
+// live programme per organization, no event).
+//
 // Every route loads the event inside the path organization (another
 // organization's or an unknown event is the route's own 404 event.not_found)
 // and every query is scoped by that organization. Rewards and the summary show
@@ -142,7 +146,8 @@ func fmtTime(t *time.Time) *string {
 // programJSON is a programme as the routes show it.
 type programJSON struct {
 	ID                string  `json:"id"`
-	EventID           string  `json:"event_id"`
+	Scope             string  `json:"scope"`
+	EventID           *string `json:"event_id"`
 	Status            string  `json:"status"`
 	FriendDiscountPct int     `json:"friend_discount_pct"`
 	CashbackPct       int     `json:"cashback_pct"`
@@ -161,12 +166,13 @@ func toProgramJSON(p gen.ReferralProgramRow) programJSON {
 		v := int(*p.MaxFriends)
 		maxFriends = &v
 	}
-	var eventID string
+	var eventID *string
 	if p.EventID != nil {
-		eventID = p.EventID.String()
+		v := p.EventID.String()
+		eventID = &v
 	}
 	return programJSON{
-		ID: p.ID.String(), EventID: eventID, Status: p.Status,
+		ID: p.ID.String(), Scope: p.Scope, EventID: eventID, Status: p.Status,
 		FriendDiscountPct: int(p.FriendDiscountPct), CashbackPct: int(p.CashbackPct), CashbackCapPct: int(p.CashbackCapPct),
 		MaxFriends: maxFriends, StartsAt: fmtTime(p.StartsAt), EndsAt: fmtTime(p.EndsAt),
 		TermsAcceptedAt: p.TermsAcceptedAt.UTC().Format(time.RFC3339),

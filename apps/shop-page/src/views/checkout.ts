@@ -8,7 +8,8 @@ import { MAX_NOTE_LEN, needsShipping, postalHint, subtotalMinor, shippingMinor, 
 import type { DownloadLink, OrderStatus } from '../lib/api';
 import { sized } from '../lib/cdn';
 import { esc } from '../lib/html';
-import { itemsLabel, MSG, resumeOrderText, T } from '../lib/i18n';
+import { itemsLabel, MSG, REF, resumeOrderText, T } from '../lib/i18n';
+import type { ReferralShare } from '../lib/referral';
 import type { StatusPhase } from '../lib/poll';
 import { cartSrcset, icon, money, optionPairs, ratioOf, url, type Ctx } from './common';
 
@@ -22,6 +23,7 @@ export const EMPTY_FORM: CheckoutForm = {
   postal: '',
   note: '',
   consent18: false,
+  promo: '',
 };
 
 function field(
@@ -73,6 +75,20 @@ function noteField(values: CheckoutForm): string {
           >${esc(values.note)}</textarea>
           <label class="field__label" for="Checkout-note">Комментарий к заказу</label>
         </div>`;
+}
+
+/**
+ * The friend's code field. It is drawn only while the shop runs a "Refer a friend" programme, or when
+ * the buyer arrived on a friend's link (the code is then already in it), so a shop without one shows nothing new.
+ */
+function promoField(ctx: Ctx, st: CheckoutViewState): string {
+  const value = st.values.promo ?? '';
+  if (!ctx.shop.settings.referral_active && value === '') return '';
+  const err = st.errors.promo;
+  return `<div class="field shop-checkout__promo${err ? ' field--with-error' : ''}">
+          <input class="field__input" id="Checkout-promo" name="promo" type="text" value="${esc(value)}" maxlength="64" placeholder="${esc(REF.promoPlaceholder)}" autocomplete="off" autocapitalize="characters" spellcheck="false"${err ? ' aria-invalid="true" aria-describedby="Checkout-promo-error"' : ' aria-describedby="Checkout-promo-hint"'}>
+          <label class="field__label" for="Checkout-promo">${esc(REF.promoLabel)}</label>
+        </div>${err ? `<small class="form__message" id="Checkout-promo-error"><span class="visually-hidden">Ошибка</span>${icon('error')}${esc(err)}</small>` : `<small class="shop-checkout__hint caption" id="Checkout-promo-hint">${esc(REF.promoHint)}</small>`}`;
 }
 
 export interface CheckoutViewState {
@@ -206,7 +222,8 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
       ${field('email', 'Адрес электронной почты', st.values, e, { type: 'email', autocomplete: 'email', required: true })}
       ${field('phone', 'Номер телефона', st.values, e, { type: 'tel', autocomplete: 'tel', required: true, inputmode: 'tel' })}
       ${ships ? addressBlock(ctx, st, label, shipping) : ''}
-      ${noteField(st.values)}${
+      ${noteField(st.values)}
+      ${promoField(ctx, st)}${
         minAge > 0
           ? `
       <div class="shop-checkout__consent">
@@ -326,7 +343,28 @@ function downloadsBlock(dl: DownloadsState): string {
   return body ? `<div class="shop-downloads"><h2 class="h3">Ваши файлы</h2>${body}</div>` : '';
 }
 
-export function statusView(ctx: Ctx, st: OrderStatus | 'loading' | 'error', dl?: DownloadsState, phase: StatusPhase = 'late'): string {
+/**
+ * "Пригласите друга" on a paid order: the buyer's own code and the link to hand out. Drawn only when the
+ * server gave a code (a shop without a programme answers 404 and the block never appears).
+ */
+export function referralBlock(ref: ReferralShare | null | undefined): string {
+  if (!ref || !ref.code) return '';
+  const link = ref.share_url && safeHref(ref.share_url) ? ref.share_url : '';
+  return `<div class="shop-referral" data-referral>
+    <h2 class="h3">${REF.inviteTitle}</h2>
+    <p>${esc(REF.inviteText(ref.friend_discount_pct, ref.cashback_pct))}</p>
+    <p class="shop-referral__code"><span class="caption">${REF.codeLabel}</span> <strong data-referral-code>${esc(ref.code)}</strong>
+      <button type="button" class="button button--secondary" data-copy-referral="${esc(ref.code)}">${REF.copyCode}</button></p>${
+        link
+          ? `
+    <p class="shop-referral__link"><span class="caption">${REF.linkLabel}</span> <a href="${esc(link)}" class="link" rel="noopener" data-referral-link>${esc(link)}</a>
+      <button type="button" class="button button--secondary" data-copy-referral="${esc(link)}">${REF.copyLink}</button></p>`
+          : ''
+      }
+  </div>`;
+}
+
+export function statusView(ctx: Ctx, st: OrderStatus | 'loading' | 'error', dl?: DownloadsState, phase: StatusPhase = 'late', ref?: ReferralShare | null): string {
   const all = esc(url(ctx, '/collections/all'));
   const wrap = (title: string, body: string): string => `<div class="template-404 page-width page-margin center shop-status">
   <h1 class="title">${esc(title)}</h1>${body}
@@ -351,7 +389,7 @@ export function statusView(ctx: Ctx, st: OrderStatus | 'loading' | 'error', dl?:
     case 'paid':
       return wrap(
         'Спасибо за заказ!',
-        `<p>Заказ${number} оплачен. Мы отправили подтверждение на вашу почту${hasPhysicalLines(st) ? ' и свяжемся с вами по доставке' : ''}.</p>${dl ? downloadsBlock(dl) : ''}<a href="${all}" class="button">${T.continueShopping}</a>`,
+        `<p>Заказ${number} оплачен. Мы отправили подтверждение на вашу почту${hasPhysicalLines(st) ? ' и свяжемся с вами по доставке' : ''}.</p>${dl ? downloadsBlock(dl) : ''}${referralBlock(ref)}<a href="${all}" class="button">${T.continueShopping}</a>`,
       );
     case 'pending': {
       // The buyer is usually back from the provider before its webhook reaches us: no "go back and pay" for the first minutes.

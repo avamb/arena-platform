@@ -126,6 +126,7 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/public/feeds/{feed_token}/checkout/quote", flatPublic, "feed token or checkout token in the URL"},
 	{"GET", "/v1/public/shop/by-host", flatPublic, "public storefront of an organization slug or host, or the order token in the URL; reads only active catalog rows (hshop)"},
 	{"GET", "/v1/public/shop/checkout/{order_token}", flatPublic, "public storefront of an organization slug or host, or the order token in the URL; reads only active catalog rows (hshop)"},
+	{"GET", "/v1/public/shop/checkout/{order_token}/referral", flatPublic, "the order token in the URL is the buyer's capability; shows the personal code of that one paid order, no buyer data (hshop)"},
 	{"GET", "/v1/public/shop/checkout/{order_token}/downloads", flatPublic, "the order token in the URL is the buyer's capability; lists only the paid order's digital files (hshop)"},
 	{"GET", "/v1/public/shop/checkout/{order_token}/downloads/{item_id}", flatPublic, "the order token in the URL is the buyer's capability; serves one digital line of that paid order, the line is looked up inside the order (hshop)"},
 	{"GET", "/v1/public/shop/pages/{org_slug}", flatPublic, "public storefront of an organization slug or host, or the order token in the URL; reads only active catalog rows (hshop)"},

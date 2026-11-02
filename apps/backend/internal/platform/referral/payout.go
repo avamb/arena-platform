@@ -60,8 +60,11 @@ func (s *Service) Payout(ctx context.Context, rewardID uuid.UUID) error {
 	if rw.State != StateDue {
 		return nil
 	}
+	if rw.ReferrerShopOrderID != nil && rw.FriendShopOrderID != nil {
+		return s.payoutShop(ctx, rw)
+	}
 	if rw.ReferrerOrderID == nil || rw.FriendOrderID == nil {
-		return s.end(ctx, rw.ID, StateNotPossible, "shop_not_supported")
+		return s.end(ctx, rw.ID, StateNotPossible, "no_order")
 	}
 	key := "referral-" + rw.ID.String()
 
@@ -142,7 +145,7 @@ func (s *Service) prepare(rw gen.ReferralRewardRow, referrer gen.ReferralOrderFa
 			return nil, &outcome{reason: "already_handled"}
 		}
 		if cur.FriendOrderID == nil {
-			return nil, &outcome{state: StateNotPossible, reason: "shop_not_supported"}
+			return nil, &outcome{state: StateNotPossible, reason: "no_order"}
 		}
 		var friendStatus string
 		if err := tx.QueryRow(ctx, `SELECT status FROM orders WHERE id = $1`, *cur.FriendOrderID).Scan(&friendStatus); err != nil {
@@ -273,7 +276,7 @@ func (s *Service) setState(ctx context.Context, id uuid.UUID, from []string, c s
 		    amount_minor = COALESCE($5, amount_minor), refund_id = COALESCE($6, refund_id),
 		    refund_batch_id = COALESCE($7, refund_batch_id), next_attempt_at = NULL, updated_at = now()
 		WHERE id = $1 AND state = ANY($2)
-		RETURNING COALESCE(reason, ''), referrer_order_id IS NOT NULL, letter_sent_at IS NOT NULL`,
+		RETURNING COALESCE(reason, ''), (referrer_order_id IS NOT NULL OR referrer_shop_order_id IS NOT NULL), letter_sent_at IS NOT NULL`,
 		id, from, c.State, c.Reason, c.Amount, c.RefundID, c.BatchID).Scan(&reason, &hasReferrerOrder, &letterSent)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil

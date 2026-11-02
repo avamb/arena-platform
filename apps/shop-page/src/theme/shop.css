@@ -237,6 +237,23 @@
   margin-top: 1rem;
 }
 
+/* "Refer a friend": the buyer's own code after a paid order, and the friend's code field at checkout. */
+.shop-referral {
+  margin: 2rem auto;
+  max-width: 50rem;
+}
+.shop-referral__code,
+.shop-referral__link {
+  margin: 1rem 0;
+  overflow-wrap: anywhere;
+}
+.shop-referral .button {
+  margin-left: 0.8rem;
+}
+.shop-checkout__promo {
+  margin-top: 1.6rem;
+}
+
 /* The shop's per-line quantity limit (max_line_qty), announced where the buyer hits it. */
 .cart-notification-product__limit,
 .product-form__quantity .quantity__rules:not(:empty) {

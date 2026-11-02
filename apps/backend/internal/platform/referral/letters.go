@@ -10,7 +10,7 @@ package referral
 //     sends once per reward (referral_rewards.letter_sent_at).
 //   - referral.reversal_email {reward_id} writes to the organization's owners
 //     when a friend took the money back after the cashback was paid. It is
-//     queued by the OrganizerNotifier (notify.go).
+//     queued by the OrganizerNotifier (referralnotify/notify.go).
 
 import (
 	"context"
@@ -51,7 +51,8 @@ const letterMaxAttempts = 5
 //
 //   - currency_mismatch: the friend paid in another currency than the referrer,
 //     the cashback was never calculated for them;
-//   - shop_not_supported: the reward belongs to the shop step, not wired yet;
+//   - shop_not_supported: legacy, a shop reward written before the shop could
+//     pay a cashback;
 //   - manual_review: not final, the sweep reads the refund back and the reward
 //     may still become paid.
 //
@@ -64,6 +65,7 @@ var noLetterReasons = map[string]bool{
 	"currency_mismatch":  true,
 	"shop_not_supported": true,
 	"manual_review":      true,
+	"no_order":           true,
 }
 
 // LetterKindFor says which letter a reward that reaches state with reason
@@ -99,9 +101,24 @@ func (f ReversalFacts) CodePaused() bool {
 	return f.CodeStatus == "paused" || f.ReversalsOnCode >= pauseAfterReversals
 }
 
-// LoadReversalFacts reads the facts for rw. ok is false when the reward has
-// no friend order of tickets (a shop reward): there is nothing to say yet.
+// LoadReversalFacts reads the facts for rw (a ticket order's or a shop order's
+// number). ok is false when the reward has no friend order at all.
 func LoadReversalFacts(ctx context.Context, db gen.DBTX, rw gen.ReferralRewardRow) (f ReversalFacts, ok bool, err error) {
+	if rw.FriendShopOrderID != nil {
+		err = db.QueryRow(ctx, `
+			SELECT o.name, COALESCE(o.default_locale, ''), pc.code, pc.status,
+			       (SELECT count(*) FROM referral_rewards r2
+			         WHERE r2.promo_code_id = pc.id AND r2.friend_reversal IS NOT NULL)::int,
+			       COALESCE(fo.number, 0)
+			FROM   organizations o, promo_codes pc, shop_orders fo
+			WHERE  o.id = $1 AND pc.id = $2 AND fo.id = $3`,
+			rw.OrgID, rw.PromoCodeID, *rw.FriendShopOrderID).
+			Scan(&f.OrgName, &f.OrgLocale, &f.Code, &f.CodeStatus, &f.ReversalsOnCode, &f.FriendOrderNumber)
+		if err != nil {
+			return f, false, err
+		}
+		return f, true, nil
+	}
 	if rw.FriendOrderID == nil {
 		return f, false, nil
 	}

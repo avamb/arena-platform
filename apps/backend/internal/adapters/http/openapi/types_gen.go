@@ -13982,7 +13982,7 @@ type PublicReferralCode struct {
 	// FriendDiscountPct Percent off a friend gets.
 	FriendDiscountPct int `json:"friend_discount_pct"`
 
-	// ShareUrl The event's page with `?promo=<code>&utm_source=referral&utm_medium=friend&utm_campaign=<event slug>`; null when the page address is not known.
+	// ShareUrl The event's page with `?promo=<code>&utm_source=referral&utm_medium=friend&utm_campaign=<event slug>`; for a shop order the storefront with `?promo=<code>&utm_source=referral&utm_medium=friend`. Null when the page address is not known.
 	ShareUrl *string `json:"share_url"`
 }
 
@@ -14230,9 +14230,9 @@ type ReferralMoney struct {
 	Currency string `json:"currency"`
 }
 
-// ReferralProgram The "Refer a friend" programme of one event (spec 52). `status` is
-// `active`, `paused` or `ended`; ended is final. Percentages are whole
-// numbers of percent.
+// ReferralProgram The "Refer a friend" programme of one event or of the organization's
+// shop (spec 52). `status` is `active`, `paused` or `ended`; ended is
+// final. Percentages are whole numbers of percent.
 type ReferralProgram struct {
 	// CashbackCapPct The cashback to one referrer never exceeds this percent of their own payment (minus what already went back to them), 1 to 100.
 	CashbackCapPct int `json:"cashback_cap_pct"`
@@ -14246,8 +14246,8 @@ type ReferralProgram struct {
 	// EndsAt When the programme ends; null for the end of sales.
 	EndsAt *time.Time `json:"ends_at"`
 
-	// EventId The event the programme belongs to.
-	EventId openapi_types.UUID `json:"event_id"`
+	// EventId The event the programme belongs to; null for a shop programme.
+	EventId *openapi_types.UUID `json:"event_id"`
 
 	// FriendDiscountPct Percent off the friend gets, 1 to 100.
 	FriendDiscountPct int `json:"friend_discount_pct"`
@@ -14257,6 +14257,9 @@ type ReferralProgram struct {
 
 	// MaxFriends How many friends one code serves; null for no limit.
 	MaxFriends *int `json:"max_friends"`
+
+	// Scope `event` for an event's programme, `shop` for the organization's shop programme.
+	Scope string `json:"scope"`
 
 	// StartsAt When the programme starts; null for at once.
 	StartsAt *time.Time `json:"starts_at"`
@@ -14365,7 +14368,7 @@ type ReferralRewardList struct {
 	NextCursor *string `json:"next_cursor"`
 }
 
-// ReferralSummary Totals of an event's "Refer a friend" programmes. Money is never added across currencies.
+// ReferralSummary Totals of an event's (or the shop's) "Refer a friend" programmes. Money is never added across currencies.
 type ReferralSummary struct {
 	// Cashback The cashback per currency and state.
 	Cashback []ReferralCashbackTotals `json:"cashback"`
@@ -14376,8 +14379,8 @@ type ReferralSummary struct {
 	// DiscountGiven The discount friends got, per currency.
 	DiscountGiven []ReferralMoney `json:"discount_given"`
 
-	// EventId The event.
-	EventId openapi_types.UUID `json:"event_id"`
+	// EventId The event; null for the shop's totals.
+	EventId *openapi_types.UUID `json:"event_id"`
 
 	// FriendReversals Friends who got their money back or opened a dispute after the cashback was paid.
 	FriendReversals int64 `json:"friend_reversals"`
@@ -17284,6 +17287,9 @@ type ShopCheckoutRequest struct {
 	// Locale Language of the storefront (two letters); the payment page uses it.
 	Locale *string `json:"locale,omitempty"`
 
+	// PromoCode A friend's personal code of the shop's "Refer a friend" programme (any letter case, up to 64 characters). The discount is the programme's percent of the goods total, never of the delivery fee. Refused with 422 `promo.not_applicable`, `promo.own_referral_code`, `promo.not_active` or `promo.exhausted`; leave it out for no code.
+	PromoCode *string `json:"promo_code,omitempty"`
+
 	// ReturnUrl Storefront page the provider sends the buyer back to (an allowed origin), with `checkout_token`.
 	ReturnUrl *string `json:"return_url,omitempty"`
 
@@ -17298,6 +17304,9 @@ type ShopCheckoutResponse struct {
 
 	// DeliveryKind `shipping` when the order holds a physical product, `none` for digital products and services only.
 	DeliveryKind string `json:"delivery_kind"`
+
+	// Discount What a personal code took off the goods, minor units; 0 without a code. The total is subtotal - discount + shipping_fee.
+	Discount int64 `json:"discount"`
 
 	// ExpiresAt Until when the order holds its goods.
 	ExpiresAt *time.Time `json:"expires_at"`
@@ -17331,6 +17340,9 @@ type ShopCheckoutStatus struct {
 
 	// DeliveryKind `shipping` when the order holds a physical product, `none` for digital products and services only.
 	DeliveryKind string `json:"delivery_kind"`
+
+	// Discount What a personal code took off the goods, minor units; 0 without a code.
+	Discount int64 `json:"discount"`
 
 	// ExpiresAt Until when the order holds its goods.
 	ExpiresAt *time.Time `json:"expires_at"`
@@ -17883,6 +17895,9 @@ type ShopPublicSettings struct {
 
 	// MaxLineQty How many units of one variant an order may hold; the quantity picker stops there.
 	MaxLineQty *int32 `json:"max_line_qty,omitempty"`
+
+	// ReferralActive True while the shop runs a "Refer a friend" programme; the checkout then offers a promo-code field. An older server leaves it out, read that as false.
+	ReferralActive *bool `json:"referral_active,omitempty"`
 
 	// ShippingFeeMinor Flat delivery fee, minor units.
 	ShippingFeeMinor int64 `json:"shipping_fee_minor"`
@@ -21784,6 +21799,18 @@ type ListShopProductsParams struct {
 	Status *string `form:"status,omitempty" json:"status,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdShopReferralRewardsParams defines parameters for GetV1OrganizationsOrgIdShopReferralRewards.
+type GetV1OrganizationsOrgIdShopReferralRewardsParams struct {
+	// State Only rewards in this state: due, sent, paid, capped, not_possible, failed or cancelled.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Limit Page size, 1 to 200. Default 50.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The `next_cursor` of the previous page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear.
 type PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody struct {
 	// ConfirmUnattributed The unattributed amount (minor units) the operator was shown. Required when that amount is above zero.
@@ -22533,6 +22560,9 @@ type AddShopProductImageJSONRequestBody = ShopImageAddRequest
 
 // ReplaceShopProductVariantsJSONRequestBody defines body for ReplaceShopProductVariants for application/json ContentType.
 type ReplaceShopProductVariantsJSONRequestBody = ShopVariantsReplaceRequest
+
+// PutV1OrganizationsOrgIdShopReferralProgramJSONRequestBody defines body for PutV1OrganizationsOrgIdShopReferralProgram for application/json ContentType.
+type PutV1OrganizationsOrgIdShopReferralProgramJSONRequestBody = ReferralProgramRequest
 
 // PutShopSettingsJSONRequestBody defines body for PutShopSettings for application/json ContentType.
 type PutShopSettingsJSONRequestBody = ShopSettingsUpdateRequest

@@ -109,7 +109,7 @@ func (h *referralCashbackEmail) handle(ctx context.Context, payload []byte) erro
 	if want, ok := referral.LetterKindFor(rw.State, reason); !ok || want != p.Kind {
 		return nil // the reward moved on: nothing true to say
 	}
-	if rw.LetterSentAt != nil || rw.ReferrerOrderID == nil {
+	if rw.LetterSentAt != nil || (rw.ReferrerOrderID == nil && rw.ReferrerShopOrderID == nil) {
 		return nil
 	}
 	if h.opts.Sender == nil || email.IsDevOnly(h.opts.Sender) {
@@ -127,13 +127,13 @@ func (h *referralCashbackEmail) handle(ctx context.Context, payload []byte) erro
 		return nil // another run owns it, or it is mailed
 	}
 
-	recipient, err := sessionchange.LoadOrderRecipient(ctx, h.opts.DB, *rw.ReferrerOrderID)
+	recipient, err := h.loadRecipient(ctx, rw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil // the order is gone: nobody to write to
 	}
 	if err != nil {
 		h.release(ctx, rw.ID)
-		return fmt.Errorf("delivery: read referrer order %s: %w", rw.ReferrerOrderID, err)
+		return fmt.Errorf("delivery: read the referrer's order of reward %s: %w", rw.ID, err)
 	}
 	if recipient.Email == "" {
 		h.logger.Info("delivery: referral cashback e-mail not sent", slog.String("reason", "no address for the referrer"))
@@ -154,6 +154,23 @@ func (h *referralCashbackEmail) handle(ctx context.Context, payload []byte) erro
 	h.logger.Info("delivery: referral cashback e-mail sent",
 		slog.String("reward_id", rw.ID.String()), slog.String("kind", p.Kind))
 	return nil
+}
+
+// loadRecipient reads who the letter goes to: the buyer of the referrer's ticket
+// order or of the referrer's shop order.
+func (h *referralCashbackEmail) loadRecipient(ctx context.Context, rw gen.ReferralRewardRow) (sessionchange.OrderRecipient, error) {
+	if rw.ReferrerShopOrderID == nil {
+		return sessionchange.LoadOrderRecipient(ctx, h.opts.DB, *rw.ReferrerOrderID)
+	}
+	o, err := gen.New(h.opts.DB).GetShopOrder(ctx, *rw.ReferrerShopOrderID, rw.OrgID)
+	if err != nil {
+		return sessionchange.OrderRecipient{}, err
+	}
+	r := sessionchange.OrderRecipient{Email: o.BuyerEmail, Name: o.BuyerName, OrderID: o.ID, SystemID: o.Number, Status: o.Status}
+	if o.BuyerLocale != nil {
+		r.LocaleHint = *o.BuyerLocale
+	}
+	return r, nil
 }
 
 // release gives the claim back so the retry can take it.
@@ -182,13 +199,24 @@ func (h *referralCashbackEmail) buildMessage(ctx context.Context, rw gen.Referra
 	// the referrer's order: the same resolution, the same contact rule, as
 	// the ticket letters.
 	var first Payload
-	var ticketID uuid.UUID
-	if err := h.opts.DB.QueryRow(ctx, `SELECT ticket_id FROM order_items
-		WHERE order_id = $1 AND ticket_id IS NOT NULL ORDER BY ordinal LIMIT 1`, *rw.ReferrerOrderID).
-		Scan(&ticketID); err == nil {
-		first = h.payloads.ticketPayload(ctx, ticketID, locale)
+	if rw.ReferrerShopOrderID != nil {
+		// A shop order: the organization's own branding and the SHOP's contact
+		// address, the same the shop letters print.
+		p, err := shopLetterPayload(ctx, h.opts.DB, rw.OrgID)
+		if err != nil {
+			return email.Message{}, emailstatus.NewLetter{}, err
+		}
+		p.Locale = locale
+		first = p
 	} else {
-		first = Payload{Locale: locale}
+		var ticketID uuid.UUID
+		if err := h.opts.DB.QueryRow(ctx, `SELECT ticket_id FROM order_items
+			WHERE order_id = $1 AND ticket_id IS NOT NULL ORDER BY ordinal LIMIT 1`, *rw.ReferrerOrderID).
+			Scan(&ticketID); err == nil {
+			first = h.payloads.ticketPayload(ctx, ticketID, locale)
+		} else {
+			first = Payload{Locale: locale}
+		}
 	}
 	branding := resolveBranding(ctx, h.opts.Media, first, h.logger).Branding
 
@@ -220,7 +248,7 @@ func (h *referralCashbackEmail) buildMessage(ctx context.Context, rw gen.Referra
 	// Recorded under its own kind (migration 0195), tied to the referrer's order and
 	// to no refund: it is no refund letter.
 	letter := emailstatus.NewLetter{
-		OrgID: rw.OrgID, OrderID: rw.ReferrerOrderID, Kind: lkind, Recipient: to.Email,
+		OrgID: rw.OrgID, OrderID: rw.ReferrerOrderID, ShopOrderID: rw.ReferrerShopOrderID, Kind: lkind, Recipient: to.Email,
 		TemplateVersion: templateVersion(h.renderer, tkind, locale),
 	}
 	return msg, letter, nil

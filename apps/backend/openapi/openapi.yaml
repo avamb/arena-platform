@@ -3867,19 +3867,22 @@ components:
     ReferralProgram:
       type: object
       description: |
-        The "Refer a friend" programme of one event (spec 52). `status` is
-        `active`, `paused` or `ended`; ended is final. Percentages are whole
-        numbers of percent.
-      required: [id, event_id, status, friend_discount_pct, cashback_pct, cashback_cap_pct, max_friends, starts_at, ends_at, terms_accepted_at, created_at, updated_at]
+        The "Refer a friend" programme of one event or of the organization's
+        shop (spec 52). `status` is `active`, `paused` or `ended`; ended is
+        final. Percentages are whole numbers of percent.
+      required: [id, scope, event_id, status, friend_discount_pct, cashback_pct, cashback_cap_pct, max_friends, starts_at, ends_at, terms_accepted_at, created_at, updated_at]
       properties:
         id:
           type: string
           format: uuid
           description: UUID of the programme.
-        event_id:
+        scope:
           type: string
+          description: "`event` for an event's programme, `shop` for the organization's shop programme."
+        event_id:
+          type: [string, "null"]
           format: uuid
-          description: The event the programme belongs to.
+          description: The event the programme belongs to; null for a shop programme.
         status:
           type: string
           description: "`active`, `paused` or `ended`."
@@ -4150,13 +4153,13 @@ components:
 
     ReferralSummary:
       type: object
-      description: Totals of an event's "Refer a friend" programmes. Money is never added across currencies.
+      description: Totals of an event's (or the shop's) "Refer a friend" programmes. Money is never added across currencies.
       required: [event_id, codes_issued, friends, friend_reversals, discount_given, cashback]
       properties:
         event_id:
-          type: string
+          type: [string, "null"]
           format: uuid
-          description: The event.
+          description: The event; null for the shop's totals.
         codes_issued:
           type: integer
           format: int64
@@ -4196,7 +4199,7 @@ components:
           description: Percent of the friend's payment that goes back to the buyer.
         share_url:
           type: [string, "null"]
-          description: The event's page with `?promo=<code>&utm_source=referral&utm_medium=friend&utm_campaign=<event slug>`; null when the page address is not known.
+          description: The event's page with `?promo=<code>&utm_source=referral&utm_medium=friend&utm_campaign=<event slug>`; for a shop order the storefront with `?promo=<code>&utm_source=referral&utm_medium=friend`. Null when the page address is not known.
 
     OrderReferralCashbackPaid:
       type: object
@@ -24947,6 +24950,9 @@ components:
         captcha_site_key:
           type: string
           description: Cloudflare Turnstile site key the checkout form renders its widget with; the widget's token goes to checkout as `captcha_token`. Absent while the shop's checkout has no captcha.
+        referral_active:
+          type: boolean
+          description: True while the shop runs a "Refer a friend" programme; the checkout then offers a promo-code field. An older server leaves it out, read that as false.
 
     ShopPublicOrg:
       type: object
@@ -25146,11 +25152,14 @@ components:
         captcha_token:
           type: string
           description: The Cloudflare Turnstile response the widget produced; required while the catalog settings publish a `captcha_site_key` (422 `shop.captcha_required` without it, 422 `shop.captcha_failed` when the test did not pass).
+        promo_code:
+          type: string
+          description: A friend's personal code of the shop's "Refer a friend" programme (any letter case, up to 64 characters). The discount is the programme's percent of the goods total, never of the delivery fee. Refused with 422 `promo.not_applicable`, `promo.own_referral_code`, `promo.not_active` or `promo.exhausted`; leave it out for no code.
 
     ShopCheckoutResponse:
       type: object
       description: A placed order and where to pay it.
-      required: [order_token, number, status, payment_url, currency, subtotal, shipping_fee, total, delivery_kind]
+      required: [order_token, number, status, payment_url, currency, subtotal, discount, shipping_fee, total, delivery_kind]
       properties:
         delivery_kind:
           type: string
@@ -25175,6 +25184,10 @@ components:
           type: integer
           format: int64
           description: Sum of the lines, minor units.
+        discount:
+          type: integer
+          format: int64
+          description: What a personal code took off the goods, minor units; 0 without a code. The total is subtotal - discount + shipping_fee.
         shipping_fee:
           type: integer
           format: int64
@@ -25221,7 +25234,7 @@ components:
     ShopCheckoutStatus:
       type: object
       description: Where a storefront order stands.
-      required: [status, number, currency, subtotal, shipping_fee, total, items, payment_url, delivery_kind]
+      required: [status, number, currency, subtotal, discount, shipping_fee, total, items, payment_url, delivery_kind]
       properties:
         delivery_kind:
           type: string
@@ -25246,6 +25259,10 @@ components:
           type: integer
           format: int64
           description: Sum of the lines, minor units.
+        discount:
+          type: integer
+          format: int64
+          description: What a personal code took off the goods, minor units; 0 without a code.
         shipping_fee:
           type: integer
           format: int64
@@ -55851,6 +55868,486 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/shop/referral-program:
+    get:
+      operationId: getV1OrganizationsOrgIdShopReferralProgram
+      summary: The shop's "Refer a friend" programme
+      description: |
+        Returns the live programme of the organization's shop (active or paused), else the
+        latest ended one, together with `capability`: whether the shop's payment channel can pay the cashback (a part of a payment goes back to the
+        referrer's card), and `warnings`. Without a programme the answer is a 404
+        `referral.program_not_found` whose `error.details` carries the same
+        `capability` and `warnings`, so a screen can explain before anything is
+        filled in whether the programme can be started.
+
+        Requires `promo.read`.
+
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The programme with the capability of the shop's payment channel.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReferralProgramResponse"
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `promo.read` in this organization, or is not a member of it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The shop has no programme (`referral.program_not_found`, with the capability in `error.details`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`referral.failed`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      operationId: putV1OrganizationsOrgIdShopReferralProgram
+      summary: Start or change the shop's "Refer a friend" programme
+      description: |
+        Replaces the settings of the shop's live programme (200), or starts a new
+        one when it has none or the last one ended (201); a shop has one live
+        programme at a time. A buyer who paid for a shop order gets a personal code; a friend who uses it gets `friend_discount_pct`
+        off, and the referrer gets `cashback_pct` of what the friend paid back on the
+        card they paid with, at once, capped at `cashback_cap_pct` of the referrer's
+        own payment.
+
+        Changing the percentages affects NEW codes only: a code already issued keeps
+        its discount, and a reward keeps the cashback it was written with. Starting
+        a programme needs `accept_terms: true` (the cashback is paid at once and is
+        not taken back if the friend returns the goods) and a payment channel that can
+        return a part of a payment: otherwise 422 `referral.terms_not_accepted` or
+        `referral.provider_unsupported`.
+
+        Requires `promo.update` and also `refund.create` and `refund.approve` in the
+        organization (the organizer allows the refunds in their own name): the owner
+        and the manager hold them, an agent does not.
+
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReferralProgramRequest"
+      responses:
+        "200":
+          description: The settings of the live programme were replaced.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReferralProgramResponse"
+        "201":
+          description: A new programme was started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReferralProgramResponse"
+        "400":
+          description: A path parameter is not a UUID, or the body is missing or not valid JSON (`referral.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `promo.update`, `refund.create` or `refund.approve` in this organization, or is not a member of it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: A value is out of range (`referral.invalid_value`, the field in `error.details.field`), the terms were not accepted (`referral.terms_not_accepted`), or the shop's payment channel cannot return a part of a payment (`referral.provider_unsupported`, the capability in `error.details`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`referral.failed`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/shop/referral-program/pause:
+    post:
+      operationId: postV1OrganizationsOrgIdShopReferralProgramPause
+      summary: Pause the shop's "Refer a friend" programme
+      description: |
+        Stops NEW friend discounts and rewards. A friend who already paid keeps the
+        reward: it is still paid. Pausing a paused programme is a no-op (200).
+        Requires `promo.update`, `refund.create` and `refund.approve`.
+
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The programme, paused.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReferralProgramResponse"
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `promo.update`, `refund.create` or `refund.approve` in this organization, or is not a member of it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The shop has no programme (`referral.program_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The programme has ended and cannot be paused (`referral.program_ended`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`referral.failed`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/shop/referral-program/resume:
+    post:
+      operationId: postV1OrganizationsOrgIdShopReferralProgramResume
+      summary: Resume the shop's "Refer a friend" programme
+      description: |
+        Makes a paused programme active again. Resuming an active programme is a
+        no-op (200). Requires `promo.update`, `refund.create` and `refund.approve`.
+
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The programme, active.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReferralProgramResponse"
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `promo.update`, `refund.create` or `refund.approve` in this organization, or is not a member of it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The shop has no programme (`referral.program_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The programme has ended and cannot be resumed (`referral.program_ended`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`referral.failed`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/shop/referral-program/end:
+    post:
+      operationId: postV1OrganizationsOrgIdShopReferralProgramEnd
+      summary: End the shop's "Refer a friend" programme
+      description: |
+        Ends the programme for good: no new discounts or rewards, the figures stay.
+        A new programme is started with PUT. Ending an ended programme is a no-op
+        (200). Requires `promo.update`, `refund.create` and `refund.approve`.
+
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The programme, ended.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReferralProgramResponse"
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `promo.update`, `refund.create` or `refund.approve` in this organization, or is not a member of it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The shop has no programme (`referral.program_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`referral.failed`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/shop/referral-program/summary:
+    get:
+      operationId: getV1OrganizationsOrgIdShopReferralProgramSummary
+      summary: Totals of the shop's "Refer a friend" programme
+      description: |
+        Personal codes issued, friends who used one, the discount given and the
+        cashback by state, per currency, over all the programmes the shop has had.
+        Money is never added across currencies. Shows numbers only, never a buyer's
+        e-mail or phone. Requires `promo.read`.
+
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The totals.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReferralSummary"
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `promo.read` in this organization, or is not a member of it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`referral.failed`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/shop/referral-rewards:
+    get:
+      operationId: getV1OrganizationsOrgIdShopReferralRewards
+      summary: The cashback rewards of the shop's "Refer a friend" programme
+      description: |
+        One reward per friend order that used a personal code: the code, the
+        friend's order number and amount, the cashback owed and where it stands,
+        newest first. A buyer's e-mail, phone and name are never part of the answer.
+        Keyset paging: pass the `next_cursor` of a page as `cursor` to get the next
+        one. Requires `promo.read`.
+
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: state
+          in: query
+          required: false
+          description: "Only rewards in this state: due, sent, paid, capped, not_possible, failed or cancelled."
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1 to 200. Default 50.
+          schema: { type: integer, minimum: 1, maximum: 200 }
+        - name: cursor
+          in: query
+          required: false
+          description: The `next_cursor` of the previous page.
+          schema: { type: string }
+      responses:
+        "200":
+          description: A page of rewards.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReferralRewardList"
+        "400":
+          description: A path parameter is not a UUID, or a filter is wrong (`referral.invalid_state`, `referral.invalid_limit`, `referral.invalid_cursor`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `promo.read` in this organization, or is not a member of it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`referral.failed`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/events/{event_id}/page-stats:
     get:
       operationId: getV1OrganizationsOrgIdEventsEventIdPageStats
@@ -62169,6 +62666,61 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/public/shop/checkout/{order_token}/referral:
+    get:
+      operationId: getPublicShopCheckoutReferral
+      summary: The buyer's personal "Refer a friend" code of a shop order
+      description: |
+        For a paid shop order of a shop with a live "Refer a friend" programme,
+        returns the order's personal code (made on the first call, the same code
+        on every later one), the discount a friend gets, the cashback the buyer
+        gets and a link to share: the storefront with `?promo=<code>` and utm
+        parameters. For anything else (not paid, no programme, the programme is
+        paused or over, an unknown token) the answer is the same 404, so the route
+        tells nothing about the order. The answer is private to the buyer.
+
+        No login: the order token is the credential. Rate-limited per address and
+        per token, like the order status route.
+      tags: [v1]
+      security: []
+      parameters:
+        - name: order_token
+          in: path
+          required: true
+          description: The order token checkout answered (64 hex characters).
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The personal code of the order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicReferralCode"
+        "404":
+          description: There is no friend code for this order (`referral.not_available`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`shop.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/public/shop/checkout/{order_token}/downloads:
     get:
       operationId: listPublicShopCheckoutDownloads
@@ -62607,7 +63159,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "422":
-          description: The cart, buyer or address is invalid (`shop.invalid_items`, `shop.invalid_item`, `shop.invalid_buyer`, `shop.invalid_address`, `shop.postal_required`, `shop.invalid_postal`, `shop.text_too_long`, `shop.age_confirmation_required`), the anti-robot test is missing or failed (`shop.captcha_required`, `shop.captcha_failed`), or online payment is not set up (`checkout.payment_not_configured`, `checkout.payment_provider_unsupported`).
+          description: The cart, buyer or address is invalid (`shop.invalid_items`, `shop.invalid_item`, `shop.invalid_buyer`, `shop.invalid_address`, `shop.postal_required`, `shop.invalid_postal`, `shop.text_too_long`, `shop.age_confirmation_required`), the anti-robot test is missing or failed (`shop.captcha_required`, `shop.captcha_failed`), or online payment is not set up (`checkout.payment_not_configured`, `checkout.payment_provider_unsupported`), or the friend's `promo_code` does not apply (`promo.not_applicable`, `promo.own_referral_code`, `promo.not_active`, `promo.exhausted`).
           content:
             application/json:
               schema:

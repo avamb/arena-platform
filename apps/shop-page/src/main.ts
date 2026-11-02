@@ -11,6 +11,7 @@ import {
   createCheckout,
   getDownloads,
   getOrderStatus,
+  getReferral,
   getPage,
   getProduct,
   getShop,
@@ -52,7 +53,8 @@ import {
 } from './lib/cart';
 import { captchaToken, mountCaptcha, resetCaptcha, unmountCaptcha } from './lib/captcha';
 import { checkoutErrorMessage, isNotFound, isTransient } from './lib/errors';
-import { MSG, T } from './lib/i18n';
+import { capturePromo, forgetPromo, storedPromo, type ReferralShare } from './lib/referral';
+import { MSG, REF, T } from './lib/i18n';
 import { isShopHost } from './lib/links';
 import { formatMoney } from './lib/money';
 import { isOwnOrder, nextDelayMs, phaseFor } from './lib/poll';
@@ -85,6 +87,8 @@ let downloads: DownloadsState | undefined;
 /** The cart line whose typed quantity was just cut to the shop's limit: its note is drawn once. */
 let cartLimited: string | null = null;
 let lastStatus: OrderStatus | undefined;
+/** The buyer's own "Refer a friend" code per order token: null = asked and none, absent = not asked yet. */
+const referrals = new Map<string, ReferralShare | null>();
 
 const root = (): HTMLElement => document.getElementById('shop-root') as HTMLElement;
 
@@ -248,6 +252,8 @@ async function renderRoute(route: Route, fresh = false): Promise<void> {
       title = `${T.cart} – ${shopName}`;
       break;
     case 'checkout':
+      // A friend's link leaves its code in this tab: offer it in the promo field unless the buyer typed another.
+      if (!checkoutState.values.promo) checkoutState.values.promo = storedPromo(s.org);
       main = checkoutView(ctx, lines, checkoutState);
       title = `Оформление заказа – ${shopName}`;
       break;
@@ -452,6 +458,8 @@ async function pollStatus(token: string, failures = 0): Promise<void> {
       // A paid order a person is still checking has no files to list yet.
       downloads = st.review_reason ? undefined : await loadDownloads(token, st);
       if (currentRoute().kind !== 'status') return;
+      if (!st.review_reason) await loadReferral(token);
+      if (currentRoute().kind !== 'status') return;
     } else if (own && (st.status === 'expired' || st.status === 'cancelled')) {
       forgetOrderToken(s.org);
     }
@@ -462,8 +470,47 @@ async function pollStatus(token: string, failures = 0): Promise<void> {
   const delay = waiting ? nextDelayMs(elapsed, failures) : null;
   // Out of time with the files still not ready: stop saying "preparing" and offer the refresh button.
   if (waiting && delay === null && downloads?.state === 'waiting') downloads = { state: 'error' };
-  paintStatus(statusView(ctxOf(s), st, downloads, phaseFor(elapsed)));
+  paintStatus(statusView(ctxOf(s), st, downloads, phaseFor(elapsed), st === 'error' ? undefined : referrals.get(token)));
   if (delay !== null) pollTimer = window.setTimeout(() => void pollStatus(token, failures), delay);
+}
+
+/**
+ * The buyer's own code, asked once per order and only while the shop runs a programme (one request,
+ * 404 = no block). A failure leaves the block out: the order page never waits for a promotion.
+ */
+async function loadReferral(token: string): Promise<void> {
+  const s = state as State;
+  if (referrals.has(token) || !s.shop.settings.referral_active) return;
+  try {
+    referrals.set(token, await getReferral(token));
+  } catch {
+    /* asked again on the next paint of this order */
+  }
+}
+
+/** "Скопировать": puts the code or the link on the clipboard and says so on the button. */
+async function copyReferral(btn: HTMLElement): Promise<void> {
+  const text = btn.dataset.copyReferral ?? '';
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // No clipboard permission (an insecure origin, an embedded view): select the text so the buyer can copy it.
+    const target = btn.previousElementSibling as HTMLElement | null;
+    if (target && window.getSelection) {
+      const range = document.createRange();
+      range.selectNodeContents(target);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    }
+    return;
+  }
+  const label = btn.textContent;
+  btn.textContent = REF.copied;
+  window.setTimeout(() => {
+    btn.textContent = label;
+  }, 1500);
 }
 
 /** "Обновить ссылки": the signed URLs live 15 minutes, so ask for new ones. */
@@ -656,6 +703,14 @@ function onClick(e: MouseEvent): void {
     const f = document.getElementById('checkout-form') as HTMLFormElement | null;
     skipResume = true;
     if (f) void submitCheckout(f);
+    return;
+  }
+
+  // Copy the buyer's own "Refer a friend" code or link
+  const copy = target.closest<HTMLElement>('[data-copy-referral]');
+  if (copy) {
+    e.preventDefault();
+    void copyReferral(copy);
     return;
   }
 
@@ -885,6 +940,7 @@ function readCheckoutForm(form: HTMLFormElement): CheckoutForm {
     postal: v('postal'),
     note: v('note'),
     consent18: (form.elements.namedItem('consent18') as HTMLInputElement | null)?.checked ?? false,
+    promo: v('promo').trim(),
   };
 }
 
@@ -979,7 +1035,8 @@ async function submitCheckout(form: HTMLFormElement): Promise<void> {
     } catch {
       /* the return page then finds the token in the query */
     }
-    const expected = totalMinor(s.shop.settings, lines);
+    // A personal code takes its discount off the goods on the server: the payment page shows the discounted sum.
+    const expected = totalMinor(s.shop.settings, lines) - (created.discount_minor ?? 0);
     if (created.payment_url && created.total_minor !== expected) {
       // The prices moved between the catalog and the order: never send the buyer to pay a sum they were not shown.
       const currency = created.currency || s.shop.settings.currency;
@@ -994,6 +1051,8 @@ async function submitCheckout(form: HTMLFormElement): Promise<void> {
       return;
     }
     checkoutState = { values, errors: {} };
+    // The code is spent on this order: the next one starts without it.
+    if (values.promo) forgetPromo(s.org);
     if (created.payment_url) {
       window.location.assign(created.payment_url);
     } else {
@@ -1026,6 +1085,12 @@ async function submitCheckout(form: HTMLFormElement): Promise<void> {
         await refreshCatalog();
       } else if (e.code === 'shop.too_many_pending') {
         resume = await findResumeOffer(s);
+      } else if (e.code.startsWith('promo.')) {
+        // The server's verdict on the friend's code: under the code field, and the rest of the form stays as typed.
+        checkoutState = { values, errors: { promo: message } };
+        await rerender();
+        (document.querySelector('#Checkout-promo') as HTMLElement | null)?.focus();
+        return;
       }
     }
     checkoutState = { values, errors: {}, message, notes, resume };
@@ -1093,6 +1158,8 @@ async function boot(): Promise<void> {
     const stored = loadCart(org);
     const cart = reconcileCart(stored, shop.products, shop.settings.max_line_qty);
     state = { org, base: loc.base, shop, cart: withTitles(cart.items, shop.products) };
+    // A friend's link carries `?promo=CODE`: remember it for the checkout of this tab.
+    capturePromo(org, location.search);
     saveCart(org, state.cart);
     cartNotices.push(...cart.notes);
   } catch (e) {

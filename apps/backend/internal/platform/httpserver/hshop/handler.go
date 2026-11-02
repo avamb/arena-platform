@@ -28,6 +28,7 @@
 //
 //	GET  /v1/public/shop/by-host?host=
 //	GET  /v1/public/shop/checkout/{order_token}
+//	GET  /v1/public/shop/checkout/{order_token}/referral
 //	GET  /v1/public/shop/checkout/{order_token}/downloads
 //	GET  /v1/public/shop/checkout/{order_token}/downloads/{item_id}
 //	GET  /v1/public/shop/pages/{org_slug}
@@ -80,6 +81,10 @@ type Options struct {
 	// to build the absolute link of the download file route; empty uses the
 	// address the request arrived on.
 	APIBaseURL string
+	// ShopBaseURL is SHOP_PUBLIC_BASE_URL, the platform storefront origin a
+	// shop without its own domain is served from; the "Invite a friend" link is
+	// built on it (empty: no link for such a shop).
+	ShopBaseURL string
 	// Payments creates the provider-hosted page; nil refuses paid carts.
 	Payments hfeed.PaymentStarter
 	// Bundle localizes the payment page's purpose line; nil keeps it English.

@@ -20,9 +20,12 @@
 --                     money-only refund of the referrer's own payment, made
 --                     through the refund engine. billing.collect skips it.
 --
--- The shop columns (referrer_shop_order_id, friend_shop_order_id, scope
--- 'shop') exist so the later shop step needs no second migration; nothing
--- writes them yet. No permission is added.
+-- The shop (spec 52 sections 0 R-RF6 and 3.5): a shop programme is scope
+-- 'shop', one live per organization; a personal code of a shop order carries
+-- referrer_shop_order_id and the reward friend_shop_order_id. shop_orders gains
+-- promo_code_id (the code the friend used; the discount is shop_orders.discount
+-- that migration 0172 already has, total = subtotal - discount + shipping).
+-- No permission is added.
 --
 -- Numbered 0195 provisionally: renumber just before the merge (AGENTS.md).
 
@@ -78,6 +81,12 @@ CREATE UNIQUE INDEX promo_codes_referrer_shop_order_uq
     ON promo_codes (referrer_shop_order_id) WHERE referrer_shop_order_id IS NOT NULL;
 CREATE INDEX promo_codes_referral_program_idx
     ON promo_codes (referral_program_id) WHERE referral_program_id IS NOT NULL;
+
+-- The personal code a shop order was bought with (spec 52 section 3.5). Uses of
+-- a code are counted over these rows: a shop has no promo_code_redemptions
+-- (that table points at ticket reservations and orders).
+ALTER TABLE shop_orders ADD COLUMN promo_code_id uuid REFERENCES promo_codes(id);
+CREATE INDEX shop_orders_promo_code_idx ON shop_orders (promo_code_id) WHERE promo_code_id IS NOT NULL;
 
 CREATE TABLE referral_rewards (
     id                     uuid        PRIMARY KEY DEFAULT uuidv7(),
@@ -152,6 +161,9 @@ ALTER TABLE refunds ADD CONSTRAINT refunds_origin_check
     CHECK (origin IN ('arena', 'provider_dashboard'));
 
 DROP TABLE IF EXISTS referral_rewards;
+
+DROP INDEX IF EXISTS shop_orders_promo_code_idx;
+ALTER TABLE shop_orders DROP COLUMN IF EXISTS promo_code_id;
 
 DROP INDEX IF EXISTS promo_codes_referral_program_idx;
 DROP INDEX IF EXISTS promo_codes_referrer_shop_order_uq;

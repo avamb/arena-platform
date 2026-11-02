@@ -59,6 +59,9 @@ type ShopOrderRow struct {
 	// late_payment_no_stock or payment_unconfirmed (migration 0180); nil
 	// otherwise.
 	ReviewReason *string `json:"review_reason"`
+	// PromoCodeID is the personal "Refer a friend" code the order was bought
+	// with (migration 0195); discount holds what it took off the goods.
+	PromoCodeID *uuid.UUID `json:"promo_code_id"`
 }
 
 const shopOrderColumns = `id, org_id, number, order_token, customer_id, status, buyer_name, buyer_email, buyer_phone,
@@ -66,7 +69,7 @@ const shopOrderColumns = `id, org_id, number, order_token, customer_id, status, 
        delivery_note, currency, subtotal, discount, shipping_fee, total, refunded_minor,
        payment_intent_id, provider, buyer_locale, source, external_ref, paid_at, shipped_at,
        cancelled_at, tracking_note, expires_at, metadata, created_at, updated_at,
-       staff_note, staff_note_by, staff_note_at, review_reason`
+       staff_note, staff_note_by, staff_note_at, review_reason, promo_code_id`
 
 func scanShopOrderRow(row interface{ Scan(dest ...any) error }) (ShopOrderRow, error) {
 	var o ShopOrderRow
@@ -76,7 +79,7 @@ func scanShopOrderRow(row interface{ Scan(dest ...any) error }) (ShopOrderRow, e
 		&o.Discount, &o.ShippingFee, &o.Total, &o.RefundedMinor, &o.PaymentIntentID, &o.Provider,
 		&o.BuyerLocale, &o.Source, &o.ExternalRef, &o.PaidAt, &o.ShippedAt, &o.CancelledAt,
 		&o.TrackingNote, &o.ExpiresAt, &o.Metadata, &o.CreatedAt, &o.UpdatedAt,
-		&o.StaffNote, &o.StaffNoteBy, &o.StaffNoteAt, &o.ReviewReason)
+		&o.StaffNote, &o.StaffNoteBy, &o.StaffNoteAt, &o.ReviewReason, &o.PromoCodeID)
 	return o, err
 }
 
@@ -128,6 +131,9 @@ type InsertShopOrderParams struct {
 	// BuyerIPHash is the salted hash of the client key at checkout (the
 	// live-unpaid cap per address counts it); nil = unknown.
 	BuyerIPHash *string
+	// PromoCodeID is the personal code the order was bought with; Discount is
+	// what it took off Subtotal.
+	PromoCodeID *uuid.UUID
 }
 
 const lockShopBuyer = `-- name: LockShopBuyer :exec
@@ -220,8 +226,8 @@ const insertShopOrder = `-- name: InsertShopOrder :one
 INSERT INTO shop_orders (org_id, order_token, status, buyer_name, buyer_email, buyer_phone, ship_name,
                          ship_address1, ship_address2, ship_city, ship_postal, ship_country,
                          delivery_kind, delivery_note, currency, subtotal, discount, shipping_fee, total,
-                         buyer_locale, source, external_ref, expires_at, customer_id, buyer_ip_hash)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
+                         buyer_locale, source, external_ref, expires_at, customer_id, buyer_ip_hash, promo_code_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
 RETURNING ` + shopOrderColumns
 
 // InsertShopOrder creates an order; its number comes from
@@ -239,7 +245,7 @@ func (q *Queries) InsertShopOrder(ctx context.Context, p InsertShopOrderParams) 
 	return scanShopOrderRow(q.db.QueryRow(ctx, insertShopOrder, p.OrgID, p.OrderToken, p.Status, p.BuyerName,
 		p.BuyerEmail, p.BuyerPhone, p.ShipName, p.ShipAddress1, p.ShipAddress2, p.ShipCity, p.ShipPostal,
 		p.ShipCountry, p.DeliveryKind, p.DeliveryNote, p.Currency, p.Subtotal, p.Discount, p.ShippingFee,
-		p.Total, p.BuyerLocale, p.Source, p.ExternalRef, p.ExpiresAt, p.CustomerID, p.BuyerIPHash))
+		p.Total, p.BuyerLocale, p.Source, p.ExternalRef, p.ExpiresAt, p.CustomerID, p.BuyerIPHash, p.PromoCodeID))
 }
 
 // ShopOrderItemRow is one line of an order.
@@ -620,14 +626,18 @@ func (q *Queries) ExpireShopOrders(ctx context.Context, limit int32) ([][2]uuid.
 }
 
 const sumShopPaymentRefunds = `-- name: SumShopPaymentRefunds :one
-SELECT COALESCE(sum(amount) FILTER (WHERE state = 'succeeded'), 0)::bigint,
+SELECT COALESCE(sum(amount) FILTER (WHERE state = 'succeeded' AND origin <> 'referral_cashback'), 0)::bigint,
        COALESCE(sum(amount) FILTER (WHERE state NOT IN ('failed', 'rejected')), 0)::bigint
 FROM   refunds
 WHERE  payment_intent_id = $1`
 
 // SumShopPaymentRefunds sums a payment's refunds: accepted is what went back
 // (succeeded refunds only: a pending one may still fail), live every refund
-// that may still return money (not failed or rejected).
+// that may still return money (not failed or rejected). A "Refer a friend"
+// cashback (origin referral_cashback) is money returned to the referrer's
+// card but not a refund of the goods: it counts in live (the payment cannot
+// give back more than it took) and never in accepted, so it changes neither the
+// order's status nor its refunded amount.
 func (q *Queries) SumShopPaymentRefunds(ctx context.Context, paymentIntentID uuid.UUID) (accepted, live int64, err error) {
 	err = q.db.QueryRow(ctx, sumShopPaymentRefunds, paymentIntentID).Scan(&accepted, &live)
 	return accepted, live, err

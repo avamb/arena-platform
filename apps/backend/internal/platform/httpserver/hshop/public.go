@@ -31,6 +31,9 @@ type publicSettingsJSON struct {
 	// CaptchaSiteKey is the Turnstile site key the checkout form renders its
 	// widget with; absent while the shop's checkout has no captcha.
 	CaptchaSiteKey string `json:"captcha_site_key,omitempty"`
+	// ReferralActive is true while the shop runs a "Refer a friend" programme:
+	// the checkout then shows its promo-code field (spec 52 section 3.5).
+	ReferralActive bool `json:"referral_active"`
 }
 
 // publicOrgJSON names the shop's organization.
@@ -83,6 +86,7 @@ func (h *Handler) HandlePublicCatalog(w http.ResponseWriter, r *http.Request) {
 			Currency: st.Currency, ShippingFeeMinor: st.ShippingFeeMinor, ShippingLabel: st.ShippingLabel,
 			CountryISO2: st.CountryISO2, AgeGateMinAge: st.AgeGateMinAge, AnnouncementText: st.AnnouncementText,
 			ContactEmail: st.ContactEmail, MaxLineQty: st.MaxLineQty, CaptchaSiteKey: h.captchaSiteKey(),
+			ReferralActive: h.o.Service.ReferralActive(r.Context(), sf.Org.ID),
 		},
 		"products": products,
 		"pages":    links,
@@ -201,6 +205,9 @@ type checkoutBody struct {
 	// CaptchaToken is the Turnstile response the widget produced; required
 	// while the shop publishes a captcha_site_key.
 	CaptchaToken string `json:"captcha_token"`
+	// PromoCode is a friend's personal code of the shop's "Refer a friend"
+	// programme (optional; refused 422 promo.* when it does not apply).
+	PromoCode string `json:"promo_code"`
 }
 
 // HandlePublicCheckout serves POST /v1/public/shop/{org_slug}/checkout.
@@ -250,6 +257,7 @@ func (h *Handler) HandlePublicCheckout(w http.ResponseWriter, r *http.Request) {
 		DeliveryNote: b.DeliveryNote,
 		Locale:       b.Locale,
 		AgeConfirmed: b.AgeConfirmed,
+		PromoCode:    b.PromoCode,
 		HoldFor:      h.o.Window + h.o.Grace,
 		PaymentReady: ready,
 		ChannelID:    channelID,
@@ -504,6 +512,7 @@ func checkoutAnswer(o gen.ShopOrderRow, paymentURL string) map[string]any {
 		"payment_url":   paymentURL,
 		"currency":      o.Currency,
 		"subtotal":      o.Subtotal,
+		"discount":      o.Discount,
 		"shipping_fee":  o.ShippingFee,
 		"total":         o.Total,
 		"expires_at":    o.ExpiresAt,
@@ -552,6 +561,7 @@ func (h *Handler) HandlePublicCheckoutStatus(w http.ResponseWriter, r *http.Requ
 		"number":         v.Number,
 		"currency":       v.Currency,
 		"subtotal":       v.Subtotal,
+		"discount":       v.Discount,
 		"shipping_fee":   v.ShippingFee,
 		"total":          v.Total,
 		"items":          toItemsJSON(v.Items),

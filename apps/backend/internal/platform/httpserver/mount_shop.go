@@ -96,6 +96,7 @@ func (s *Server) shopHandler() *hshop.Handler {
 		MediaURL:     s.signedMediaURL,
 		DownloadURL:  s.shopDownloadURL,
 		APIBaseURL:   s.apiPublicURL(),
+		ShopBaseURL:  s.shopPublicBaseURL(),
 		ReturnPolicy: s.checkoutReturnURLPolicy(),
 		Window:       widgetPaymentWindow(s.cfg),
 		Grace:        widgetPaymentGrace(s.cfg),
@@ -155,6 +156,7 @@ func (s *Server) mountShopRoutes(r chi.Router) {
 	// The static segments (by-host, checkout, pages) win over {org_slug}.
 	r.Get("/public/shop/by-host", h.HandleByHost)
 	r.Get("/public/shop/checkout/{order_token}", h.HandlePublicCheckoutStatus)
+	r.Get("/public/shop/checkout/{order_token}/referral", h.HandlePublicCheckoutReferral)
 	r.Get("/public/shop/checkout/{order_token}/downloads", h.HandlePublicCheckoutDownloads)
 	r.Get("/public/shop/checkout/{order_token}/downloads/{item_id}", h.HandlePublicCheckoutDownload)
 	r.Get("/public/shop/pages/{org_slug}", h.HandlePublicPages)
@@ -216,4 +218,12 @@ func (s *Server) mountShopRoutes(r chi.Router) {
 		// it carries the refund permissions and the password check as well.
 		pr.Post(base+"/orders/{order_id}/resolve", s.orgGated(h.HandleResolveOrder))
 	})
+}
+
+// shopPublicBaseURL is SHOP_PUBLIC_BASE_URL ("" without a config).
+func (s *Server) shopPublicBaseURL() string {
+	if s.cfg == nil {
+		return ""
+	}
+	return s.cfg.ShopPublicBaseURL
 }

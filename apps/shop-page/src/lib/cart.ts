@@ -310,6 +310,8 @@ export interface CheckoutForm {
   /** Free-form comment for the seller (sent as delivery_note). */
   note: string;
   consent18: boolean;
+  /** A friend's personal "Refer a friend" code (optional; the server judges it). */
+  promo?: string;
 }
 
 export type FormErrors = Partial<Record<keyof CheckoutForm, string>>;
@@ -385,6 +387,8 @@ export function buildCheckoutRequest(
     age_confirmed: f.consent18,
   };
   if (captchaToken) req.captcha_token = captchaToken;
+  const promo = (f.promo ?? '').trim();
+  if (promo) req.promo_code = promo;
   const note = (f.note ?? '').trim();
   if (note) req.delivery_note = note.slice(0, MAX_NOTE_LEN);
   if (shipping) {

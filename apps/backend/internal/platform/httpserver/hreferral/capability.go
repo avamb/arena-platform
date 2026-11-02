@@ -2,8 +2,10 @@ package hreferral
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	domain "github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
@@ -98,7 +100,7 @@ func judge(reg *domain.Registry, source string, channels []gen.ReferralChannel) 
 // published into win; an event published nowhere is judged by the
 // organization's own storefront channels (the ones publishing would bind it
 // to: a channel with a gateway credential is a WordPress site's and never is).
-func (h *Handler) capability(ctx context.Context, orgID, eventID uuid.UUID) (capabilityJSON, []warningJSON, error) {
+func (h *Handler) eventCapability(ctx context.Context, orgID, eventID uuid.UUID) (capabilityJSON, []warningJSON, error) {
 	channels, err := h.queries.ListReferralEventChannels(ctx, eventID, orgID)
 	if err != nil {
 		return capabilityJSON{}, nil, err
@@ -118,4 +120,48 @@ func (h *Handler) capability(ctx context.Context, orgID, eventID uuid.UUID) (cap
 	}
 	cap, warnings := judge(h.registry, source, channels)
 	return cap, warnings, nil
+}
+
+// capability judges what the target sells through.
+func (h *Handler) capability(ctx context.Context, t target) (capabilityJSON, []warningJSON, error) {
+	if t.isShop() {
+		return h.shopCapability(ctx, t.orgID)
+	}
+	return h.eventCapability(ctx, t.orgID, *t.eventID)
+}
+
+// shopCapability judges the sales channel the shop takes its money through:
+// the one the shop settings name, else (the shop picks the first usable one at
+// checkout) the organization's own non-site channels.
+func (h *Handler) shopCapability(ctx context.Context, orgID uuid.UUID) (capabilityJSON, []warningJSON, error) {
+	source := "shop"
+	var channels []gen.ReferralChannel
+	ch, err := h.queries.GetReferralShopSalesChannel(ctx, orgID)
+	switch {
+	case err == nil:
+		channels = []gen.ReferralChannel{ch}
+	case errors.Is(err, pgx.ErrNoRows):
+		source = "organization"
+		all, lerr := h.queries.ListReferralOrgChannels(ctx, orgID)
+		if lerr != nil {
+			return capabilityJSON{}, nil, lerr
+		}
+		for _, c := range all {
+			if !c.IsSite {
+				channels = append(channels, c)
+			}
+		}
+	default:
+		return capabilityJSON{}, nil, err
+	}
+	out, warnings := judge(h.registry, source, channels)
+	for i := range warnings {
+		switch warnings[i].Code {
+		case warnNoChannel:
+			warnings[i].Message = "The shop takes no card payments yet; the programme works once a payment channel is set up."
+		case warnSomeUnsupported:
+			warnings[i].Message = "Some payment channels of the organization cannot pay the cashback; friend codes work on the shop's own channel only."
+		}
+	}
+	return out, warnings, nil
 }

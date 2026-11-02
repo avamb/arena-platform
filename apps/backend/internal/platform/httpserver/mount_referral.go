@@ -7,7 +7,7 @@ package httpserver
 // 7.1: the owner and the manager hold them, an agent does not). Every route
 // also needs membership of {org_id}, and the handlers load the event inside
 // that organization, so another organization's event is the route's own 404.
-// The buyer's code route is public and lives in mount_catalog.go.
+// The same six routes serve the shop's programme under /shop. The buyer's code route is public and lives in mount_catalog.go.
 
 import (
 	"errors"
@@ -56,11 +56,17 @@ func (s *Server) mountReferralRoutes(r chi.Router) {
 	}
 	h := hreferral.New(s.pgxPool, s.audit, s.logger)
 	const ev = "/organizations/{org_id}/events/{event_id}"
+	// The organization's shop programme (spec 52 section 3.5): no event, the
+	// path organization is the target, with the same rights as an event's.
+	const shop = "/organizations/{org_id}/shop"
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "promo.read", "promo_codes")
 		pr.Get(ev+"/referral-program", s.orgGated(h.HandleGet))
 		pr.Get(ev+"/referral-program/summary", s.orgGated(h.HandleSummary))
 		pr.Get(ev+"/referral-rewards", s.orgGated(h.HandleListRewards))
+		pr.Get(shop+"/referral-program", s.orgGated(h.HandleShopGet))
+		pr.Get(shop+"/referral-program/summary", s.orgGated(h.HandleShopSummary))
+		pr.Get(shop+"/referral-rewards", s.orgGated(h.HandleShopListRewards))
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "promo.update", "promo_codes")
@@ -71,5 +77,9 @@ func (s *Server) mountReferralRoutes(r chi.Router) {
 		pr.Post(ev+"/referral-program/pause", write(h.HandlePause))
 		pr.Post(ev+"/referral-program/resume", write(h.HandleResume))
 		pr.Post(ev+"/referral-program/end", write(h.HandleEnd))
+		pr.Put(shop+"/referral-program", write(h.HandleShopPut))
+		pr.Post(shop+"/referral-program/pause", write(h.HandleShopPause))
+		pr.Post(shop+"/referral-program/resume", write(h.HandleShopResume))
+		pr.Post(shop+"/referral-program/end", write(h.HandleShopEnd))
 	})
 }

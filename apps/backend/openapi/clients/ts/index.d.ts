@@ -9204,6 +9204,165 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/shop/referral-program": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The shop's "Refer a friend" programme
+         * @description Returns the live programme of the organization's shop (active or paused), else the
+         *     latest ended one, together with `capability`: whether the shop's payment channel can pay the cashback (a part of a payment goes back to the
+         *     referrer's card), and `warnings`. Without a programme the answer is a 404
+         *     `referral.program_not_found` whose `error.details` carries the same
+         *     `capability` and `warnings`, so a screen can explain before anything is
+         *     filled in whether the programme can be started.
+         *
+         *     Requires `promo.read`.
+         */
+        get: operations["getV1OrganizationsOrgIdShopReferralProgram"];
+        /**
+         * Start or change the shop's "Refer a friend" programme
+         * @description Replaces the settings of the shop's live programme (200), or starts a new
+         *     one when it has none or the last one ended (201); a shop has one live
+         *     programme at a time. A buyer who paid for a shop order gets a personal code; a friend who uses it gets `friend_discount_pct`
+         *     off, and the referrer gets `cashback_pct` of what the friend paid back on the
+         *     card they paid with, at once, capped at `cashback_cap_pct` of the referrer's
+         *     own payment.
+         *
+         *     Changing the percentages affects NEW codes only: a code already issued keeps
+         *     its discount, and a reward keeps the cashback it was written with. Starting
+         *     a programme needs `accept_terms: true` (the cashback is paid at once and is
+         *     not taken back if the friend returns the goods) and a payment channel that can
+         *     return a part of a payment: otherwise 422 `referral.terms_not_accepted` or
+         *     `referral.provider_unsupported`.
+         *
+         *     Requires `promo.update` and also `refund.create` and `refund.approve` in the
+         *     organization (the organizer allows the refunds in their own name): the owner
+         *     and the manager hold them, an agent does not.
+         */
+        put: operations["putV1OrganizationsOrgIdShopReferralProgram"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/referral-program/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause the shop's "Refer a friend" programme
+         * @description Stops NEW friend discounts and rewards. A friend who already paid keeps the
+         *     reward: it is still paid. Pausing a paused programme is a no-op (200).
+         *     Requires `promo.update`, `refund.create` and `refund.approve`.
+         */
+        post: operations["postV1OrganizationsOrgIdShopReferralProgramPause"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/referral-program/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume the shop's "Refer a friend" programme
+         * @description Makes a paused programme active again. Resuming an active programme is a
+         *     no-op (200). Requires `promo.update`, `refund.create` and `refund.approve`.
+         */
+        post: operations["postV1OrganizationsOrgIdShopReferralProgramResume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/referral-program/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End the shop's "Refer a friend" programme
+         * @description Ends the programme for good: no new discounts or rewards, the figures stay.
+         *     A new programme is started with PUT. Ending an ended programme is a no-op
+         *     (200). Requires `promo.update`, `refund.create` and `refund.approve`.
+         */
+        post: operations["postV1OrganizationsOrgIdShopReferralProgramEnd"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/referral-program/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Totals of the shop's "Refer a friend" programme
+         * @description Personal codes issued, friends who used one, the discount given and the
+         *     cashback by state, per currency, over all the programmes the shop has had.
+         *     Money is never added across currencies. Shows numbers only, never a buyer's
+         *     e-mail or phone. Requires `promo.read`.
+         */
+        get: operations["getV1OrganizationsOrgIdShopReferralProgramSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/referral-rewards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The cashback rewards of the shop's "Refer a friend" programme
+         * @description One reward per friend order that used a personal code: the code, the
+         *     friend's order number and amount, the cashback owed and where it stands,
+         *     newest first. A buyer's e-mail, phone and name are never part of the answer.
+         *     Keyset paging: pass the `next_cursor` of a page as `cursor` to get the next
+         *     one. Requires `promo.read`.
+         */
+        get: operations["getV1OrganizationsOrgIdShopReferralRewards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/events/{event_id}/page-stats": {
         parameters: {
             query?: never;
@@ -11327,6 +11486,35 @@ export interface paths {
          *     token.
          */
         get: operations["getPublicShopCheckoutStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/shop/checkout/{order_token}/referral": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The buyer's personal "Refer a friend" code of a shop order
+         * @description For a paid shop order of a shop with a live "Refer a friend" programme,
+         *     returns the order's personal code (made on the first call, the same code
+         *     on every later one), the discount a friend gets, the cashback the buyer
+         *     gets and a link to share: the storefront with `?promo=<code>` and utm
+         *     parameters. For anything else (not paid, no programme, the programme is
+         *     paused or over, an unknown token) the answer is the same 404, so the route
+         *     tells nothing about the order. The answer is private to the buyer.
+         *
+         *     No login: the order token is the credential. Rate-limited per address and
+         *     per token, like the order status route.
+         */
+        get: operations["getPublicShopCheckoutReferral"];
         put?: never;
         post?: never;
         delete?: never;
@@ -14813,9 +15001,9 @@ export interface components {
             };
         };
         /**
-         * @description The "Refer a friend" programme of one event (spec 52). `status` is
-         *     `active`, `paused` or `ended`; ended is final. Percentages are whole
-         *     numbers of percent.
+         * @description The "Refer a friend" programme of one event or of the organization's
+         *     shop (spec 52). `status` is `active`, `paused` or `ended`; ended is
+         *     final. Percentages are whole numbers of percent.
          */
         ReferralProgram: {
             /**
@@ -14823,11 +15011,13 @@ export interface components {
              * @description UUID of the programme.
              */
             id: string;
+            /** @description `event` for an event's programme, `shop` for the organization's shop programme. */
+            scope: string;
             /**
              * Format: uuid
-             * @description The event the programme belongs to.
+             * @description The event the programme belongs to; null for a shop programme.
              */
-            event_id: string;
+            event_id: string | null;
             /** @description `active`, `paused` or `ended`. */
             status: string;
             /** @description Percent off the friend gets, 1 to 100. */
@@ -15045,13 +15235,13 @@ export interface components {
              */
             cancelled_minor: number;
         };
-        /** @description Totals of an event's "Refer a friend" programmes. Money is never added across currencies. */
+        /** @description Totals of an event's (or the shop's) "Refer a friend" programmes. Money is never added across currencies. */
         ReferralSummary: {
             /**
              * Format: uuid
-             * @description The event.
+             * @description The event; null for the shop's totals.
              */
-            event_id: string;
+            event_id: string | null;
             /**
              * Format: int64
              * @description Personal codes issued.
@@ -15080,7 +15270,7 @@ export interface components {
             friend_discount_pct: number;
             /** @description Percent of the friend's payment that goes back to the buyer. */
             cashback_pct: number;
-            /** @description The event's page with `?promo=<code>&utm_source=referral&utm_medium=friend&utm_campaign=<event slug>`; null when the page address is not known. */
+            /** @description The event's page with `?promo=<code>&utm_source=referral&utm_medium=friend&utm_campaign=<event slug>`; for a shop order the storefront with `?promo=<code>&utm_source=referral&utm_medium=friend`. Null when the page address is not known. */
             share_url: string | null;
         };
         /**
@@ -32573,6 +32763,8 @@ export interface components {
             max_line_qty?: number;
             /** @description Cloudflare Turnstile site key the checkout form renders its widget with; the widget's token goes to checkout as `captcha_token`. Absent while the shop's checkout has no captcha. */
             captcha_site_key?: string;
+            /** @description True while the shop runs a "Refer a friend" programme; the checkout then offers a promo-code field. An older server leaves it out, read that as false. */
+            referral_active?: boolean;
         };
         /** @description The organization behind a storefront. */
         ShopPublicOrg: {
@@ -32697,6 +32889,8 @@ export interface components {
             age_confirmed?: boolean;
             /** @description The Cloudflare Turnstile response the widget produced; required while the catalog settings publish a `captcha_site_key` (422 `shop.captcha_required` without it, 422 `shop.captcha_failed` when the test did not pass). */
             captcha_token?: string;
+            /** @description A friend's personal code of the shop's "Refer a friend" programme (any letter case, up to 64 characters). The discount is the programme's percent of the goods total, never of the delivery fee. Refused with 422 `promo.not_applicable`, `promo.own_referral_code`, `promo.not_active` or `promo.exhausted`; leave it out for no code. */
+            promo_code?: string;
         };
         /** @description A placed order and where to pay it. */
         ShopCheckoutResponse: {
@@ -32720,6 +32914,11 @@ export interface components {
              * @description Sum of the lines, minor units.
              */
             subtotal: number;
+            /**
+             * Format: int64
+             * @description What a personal code took off the goods, minor units; 0 without a code. The total is subtotal - discount + shipping_fee.
+             */
+            discount: number;
             /**
              * Format: int64
              * @description Delivery fee, minor units.
@@ -32777,6 +32976,11 @@ export interface components {
              * @description Sum of the lines, minor units.
              */
             subtotal: number;
+            /**
+             * Format: int64
+             * @description What a personal code took off the goods, minor units; 0 without a code.
+             */
+            discount: number;
             /**
              * Format: int64
              * @description Delivery fee, minor units.
@@ -64517,6 +64721,565 @@ export interface operations {
             };
         };
     };
+    getV1OrganizationsOrgIdShopReferralProgram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The programme with the capability of the shop's payment channel. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralProgramResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `promo.read` in this organization, or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The shop has no programme (`referral.program_not_found`, with the capability in `error.details`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`referral.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putV1OrganizationsOrgIdShopReferralProgram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferralProgramRequest"];
+            };
+        };
+        responses: {
+            /** @description The settings of the live programme were replaced. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralProgramResponse"];
+                };
+            };
+            /** @description A new programme was started. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralProgramResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID, or the body is missing or not valid JSON (`referral.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `promo.update`, `refund.create` or `refund.approve` in this organization, or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A value is out of range (`referral.invalid_value`, the field in `error.details.field`), the terms were not accepted (`referral.terms_not_accepted`), or the shop's payment channel cannot return a part of a payment (`referral.provider_unsupported`, the capability in `error.details`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`referral.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdShopReferralProgramPause: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The programme, paused. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralProgramResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `promo.update`, `refund.create` or `refund.approve` in this organization, or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The shop has no programme (`referral.program_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The programme has ended and cannot be paused (`referral.program_ended`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`referral.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdShopReferralProgramResume: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The programme, active. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralProgramResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `promo.update`, `refund.create` or `refund.approve` in this organization, or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The shop has no programme (`referral.program_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The programme has ended and cannot be resumed (`referral.program_ended`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`referral.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdShopReferralProgramEnd: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The programme, ended. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralProgramResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `promo.update`, `refund.create` or `refund.approve` in this organization, or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The shop has no programme (`referral.program_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`referral.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdShopReferralProgramSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The totals. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralSummary"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `promo.read` in this organization, or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`referral.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdShopReferralRewards: {
+        parameters: {
+            query?: {
+                /** @description Only rewards in this state: due, sent, paid, capped, not_possible, failed or cancelled. */
+                state?: string;
+                /** @description Page size, 1 to 200. Default 50. */
+                limit?: number;
+                /** @description The `next_cursor` of the previous page. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of rewards. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralRewardList"];
+                };
+            };
+            /** @description A path parameter is not a UUID, or a filter is wrong (`referral.invalid_state`, `referral.invalid_limit`, `referral.invalid_cursor`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `promo.read` in this organization, or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`referral.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getV1OrganizationsOrgIdEventsEventIdPageStats: {
         parameters: {
             query?: {
@@ -71357,6 +72120,65 @@ export interface operations {
             };
         };
     };
+    getPublicShopCheckoutReferral: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The order token checkout answered (64 hex characters). */
+                order_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The personal code of the order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicReferralCode"];
+                };
+            };
+            /** @description There is no friend code for this order (`referral.not_available`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests from this address (`shop.rate_limited`); `Retry-After` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     listPublicShopCheckoutDownloads: {
         parameters: {
             query?: never;
@@ -71803,7 +72625,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The cart, buyer or address is invalid (`shop.invalid_items`, `shop.invalid_item`, `shop.invalid_buyer`, `shop.invalid_address`, `shop.postal_required`, `shop.invalid_postal`, `shop.text_too_long`, `shop.age_confirmation_required`), the anti-robot test is missing or failed (`shop.captcha_required`, `shop.captcha_failed`), or online payment is not set up (`checkout.payment_not_configured`, `checkout.payment_provider_unsupported`). */
+            /** @description The cart, buyer or address is invalid (`shop.invalid_items`, `shop.invalid_item`, `shop.invalid_buyer`, `shop.invalid_address`, `shop.postal_required`, `shop.invalid_postal`, `shop.text_too_long`, `shop.age_confirmation_required`), the anti-robot test is missing or failed (`shop.captcha_required`, `shop.captcha_failed`), or online payment is not set up (`checkout.payment_not_configured`, `checkout.payment_provider_unsupported`), or the friend's `promo_code` does not apply (`promo.not_applicable`, `promo.own_referral_code`, `promo.not_active`, `promo.exhausted`). */
             422: {
                 headers: {
                     [name: string]: unknown;

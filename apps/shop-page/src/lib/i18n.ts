@@ -96,8 +96,27 @@ export const ERR = {
   'shop.captcha_required': 'Подтвердите, что вы не робот, и нажмите «Оплатить» ещё раз.',
   'shop.captcha_failed': 'Проверка не пройдена. Попробуйте ещё раз.',
   'shop.captcha_unavailable': 'Не удалось проверить, что вы не робот. Подождите минуту и нажмите «Оплатить» ещё раз.',
+  'promo.not_applicable': 'Такого кода нет в этом магазине. Проверьте, как он написан, или оформите заказ без кода.',
+  'promo.own_referral_code': 'Это ваш собственный код. Отправьте его другу, а себе скидку по нему получить нельзя.',
+  'promo.not_active': 'Этот код сейчас не действует. Оформите заказ без кода или спросите у друга новый.',
+  'promo.exhausted': 'Этим кодом уже воспользовалось максимальное число друзей. Оформите заказ без кода.',
   'shop.not_found': 'Магазин не найден.',
   'shop.order_not_found': 'Заказ не найден.',
+} as const;
+
+/** "Refer a friend": the promo field at checkout and the block on the paid order page. */
+export const REF = {
+  promoLabel: 'Код друга',
+  promoPlaceholder: 'Код друга',
+  promoHint: 'Скидку по коду покажет страница оплаты.',
+  inviteTitle: 'Пригласите друга',
+  inviteText: (friendPct: number, cashbackPct: number): string =>
+    `Отправьте другу свой код: он получит скидку ${friendPct}% на заказ, а вам вернётся ${cashbackPct}% от его оплаты на карту, которой вы платили.`,
+  codeLabel: 'Ваш код',
+  linkLabel: 'Ссылка для друга',
+  copyCode: 'Скопировать код',
+  copyLink: 'Скопировать ссылку',
+  copied: 'Скопировано',
 } as const;
 
 export const MSG = {

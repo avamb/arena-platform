@@ -26,20 +26,29 @@ func (h *Handler) answer(w http.ResponseWriter, r *http.Request, status int, p g
 // the capability in error.details so a screen can say, before the organizer
 // fills anything in, whether the event's channels can pay the cashback.
 func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
-	orgID, eventID, ok := h.scope(w, r)
-	if !ok {
-		return
+	if t, ok := h.eventTarget(w, r); ok {
+		h.get(w, r, t)
 	}
+}
+
+// HandleShopGet serves GET .../shop/referral-program.
+func (h *Handler) HandleShopGet(w http.ResponseWriter, r *http.Request) {
+	if t, ok := h.shopTarget(w, r); ok {
+		h.get(w, r, t)
+	}
+}
+
+func (h *Handler) get(w http.ResponseWriter, r *http.Request, t target) {
 	ctx := r.Context()
-	cap, warnings, err := h.capability(ctx, orgID, eventID)
+	cap, warnings, err := h.capability(ctx, t)
 	if err != nil {
 		h.failed(w, r, "capability", err)
 		return
 	}
-	p, err := h.queries.GetLatestReferralProgramForEvent(ctx, eventID, orgID)
+	p, err := t.latest(ctx, h.queries)
 	if errors.Is(err, pgx.ErrNoRows) {
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelopeWithDetails(
-			"referral.program_not_found", "this event has no friend programme", r,
+			"referral.program_not_found", "this "+t.noun()+" has no friend programme", r,
 			map[string]any{"capability": cap, "warnings": warnings}))
 		return
 	}
@@ -128,10 +137,20 @@ func (h *Handler) parse(w http.ResponseWriter, r *http.Request, b putBody) (sett
 // Starting needs accept_terms: true; the programme's channels must be able to
 // return a part of a payment (decision B-15), else 422 referral.provider_unsupported.
 func (h *Handler) HandlePut(w http.ResponseWriter, r *http.Request) {
-	orgID, eventID, ok := h.scope(w, r)
-	if !ok {
-		return
+	if t, ok := h.eventTarget(w, r); ok {
+		h.put(w, r, t)
 	}
+}
+
+// HandleShopPut serves PUT .../shop/referral-program: the same as HandlePut for
+// the organization's shop (one live programme per organization).
+func (h *Handler) HandleShopPut(w http.ResponseWriter, r *http.Request) {
+	if t, ok := h.shopTarget(w, r); ok {
+		h.put(w, r, t)
+	}
+}
+
+func (h *Handler) put(w http.ResponseWriter, r *http.Request, t target) {
 	var body putBody
 	if !readBody(w, r, &body) {
 		return
@@ -141,7 +160,7 @@ func (h *Handler) HandlePut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	cap, warnings, err := h.capability(ctx, orgID, eventID)
+	cap, warnings, err := h.capability(ctx, t)
 	if err != nil {
 		h.failed(w, r, "capability", err)
 		return
@@ -149,7 +168,7 @@ func (h *Handler) HandlePut(w http.ResponseWriter, r *http.Request) {
 	if !cap.Supported {
 		httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
 			"referral.provider_unsupported",
-			"the payment provider of this event cannot return part of a payment, so the cashback could not be paid; no friend programme can be started on it",
+			"the payment provider of this "+t.noun()+" cannot return part of a payment, so the cashback could not be paid; no friend programme can be started on it",
 			r, map[string]any{"capability": cap}))
 		return
 	}
@@ -161,11 +180,11 @@ func (h *Handler) HandlePut(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := h.queries.WithTx(tx)
-	if err := q.LockReferralProgramEvent(ctx, eventID); err != nil {
+	if err := t.lock(ctx, q); err != nil {
 		h.failed(w, r, "lock", err)
 		return
 	}
-	cur, err := q.GetLatestReferralProgramForEvent(ctx, eventID, orgID)
+	cur, err := t.latest(ctx, q)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		h.failed(w, r, "programme read", err)
 		return
@@ -187,10 +206,7 @@ func (h *Handler) HandlePut(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		status, action = http.StatusCreated, "v1.referral_program.create"
-		row, err = q.InsertReferralProgram(ctx, gen.InsertReferralProgramParams{
-			OrgID: orgID, EventID: eventID, FriendDiscountPct: s.discount, CashbackPct: s.cashback, CashbackCapPct: s.cap,
-			MaxFriends: s.maxFriends, EndsAt: s.endsAt, CreatedBy: actorLabel(ctx), CreatedVia: createdVia(ctx),
-		})
+		row, err = t.insert(ctx, q, s, actorLabel(ctx), createdVia(ctx))
 	}
 	if err != nil {
 		h.failed(w, r, "programme write", err)
@@ -217,10 +233,18 @@ func (h *Handler) HandlePut(w http.ResponseWriter, r *http.Request) {
 
 // transition applies pause, resume or end to the event's live programme.
 func (h *Handler) transition(w http.ResponseWriter, r *http.Request, to, action string) {
-	orgID, eventID, ok := h.scope(w, r)
-	if !ok {
-		return
+	if t, ok := h.eventTarget(w, r); ok {
+		h.transitionOf(w, r, t, to, action)
 	}
+}
+
+func (h *Handler) shopTransition(w http.ResponseWriter, r *http.Request, to, action string) {
+	if t, ok := h.shopTarget(w, r); ok {
+		h.transitionOf(w, r, t, to, action)
+	}
+}
+
+func (h *Handler) transitionOf(w http.ResponseWriter, r *http.Request, t target, to, action string) {
 	ctx := r.Context()
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -229,13 +253,13 @@ func (h *Handler) transition(w http.ResponseWriter, r *http.Request, to, action 
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := h.queries.WithTx(tx)
-	if err := q.LockReferralProgramEvent(ctx, eventID); err != nil {
+	if err := t.lock(ctx, q); err != nil {
 		h.failed(w, r, "lock", err)
 		return
 	}
-	cur, err := q.GetLatestReferralProgramForEvent(ctx, eventID, orgID)
+	cur, err := t.latest(ctx, q)
 	if errors.Is(err, pgx.ErrNoRows) {
-		writeErr(w, r, http.StatusNotFound, "referral.program_not_found", "this event has no friend programme")
+		writeErr(w, r, http.StatusNotFound, "referral.program_not_found", "this "+t.noun()+" has no friend programme")
 		return
 	}
 	if err != nil {
@@ -267,7 +291,7 @@ func (h *Handler) transition(w http.ResponseWriter, r *http.Request, to, action 
 		h.failed(w, r, "commit", err)
 		return
 	}
-	cap, warnings, err := h.capability(ctx, orgID, eventID)
+	cap, warnings, err := h.capability(ctx, t)
 	if err != nil {
 		h.failed(w, r, "capability", err)
 		return
@@ -288,4 +312,19 @@ func (h *Handler) HandleResume(w http.ResponseWriter, r *http.Request) {
 // HandleEnd serves POST .../referral-program/end.
 func (h *Handler) HandleEnd(w http.ResponseWriter, r *http.Request) {
 	h.transition(w, r, StatusEnded, "v1.referral_program.end")
+}
+
+// HandleShopPause serves POST .../shop/referral-program/pause.
+func (h *Handler) HandleShopPause(w http.ResponseWriter, r *http.Request) {
+	h.shopTransition(w, r, StatusPaused, "v1.referral_program.pause")
+}
+
+// HandleShopResume serves POST .../shop/referral-program/resume.
+func (h *Handler) HandleShopResume(w http.ResponseWriter, r *http.Request) {
+	h.shopTransition(w, r, StatusActive, "v1.referral_program.resume")
+}
+
+// HandleShopEnd serves POST .../shop/referral-program/end.
+func (h *Handler) HandleShopEnd(w http.ResponseWriter, r *http.Request) {
+	h.shopTransition(w, r, StatusEnded, "v1.referral_program.end")
 }

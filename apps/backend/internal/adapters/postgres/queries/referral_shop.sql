@@ -1,0 +1,23 @@
+-- referral_shop.sql — "Refer a friend" for the merchandise shop (spec 52,
+-- migration 0195). The Go wrappers live in gen/referral_shop.sql.go
+-- (hand-maintained); the payout and sweep SQL is in internal/platform/referral.
+--
+-- A shop programme is referral_programs.scope = 'shop' (one live per
+-- organization). A personal code of a shop order is a promo_codes row of
+-- origin 'referral' with referrer_shop_order_id; the friend's shop order
+-- carries promo_code_id and its discount in shop_orders.discount. Uses of a code
+-- are counted over shop_orders (a shop has no promo_code_redemptions).
+
+-- name: GetLatestReferralProgramForShop :one
+-- name: GetActiveReferralProgramForShop :one
+-- name: InsertReferralShopProgram :one
+-- name: GetReferralShopOrderFacts :one
+-- name: GetReferralCodeByReferrerShopOrder :one
+-- name: InsertReferralShopPromoCode :one
+-- name: GetReferralShopPromoByCode :one
+-- name: CountShopPromoUses :one
+-- name: CountShopPromoUsesByBuyer :one
+-- name: InsertReferralShopReward :one
+-- name: SumReferrerShopLiveRewards :one
+-- name: ListReferralRewardsForShop :many
+-- name: GetReferralSummaryCountsForShop :one

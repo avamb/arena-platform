@@ -14,6 +14,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/referral"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/referral/referralnotify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesnotify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
@@ -26,14 +27,14 @@ func registerReferralHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *con
 	// The organizer notice (spec 52 section 5.2): the sales chats and a letter
 	// to the owners. Without the sales bot the chats get nothing and the
 	// letter still goes out.
-	var announcer referral.OrgAnnouncer
+	var announcer referralnotify.OrgAnnouncer
 	if notifier != nil {
 		announcer = notifier
 	}
 	svc := referral.NewService(referral.Options{
 		Pool:     pool,
 		Engine:   buildRefundEngine(pool, cfg, metrics, logger),
-		Notifier: referral.NewOrganizerNotifier(pool, announcer, logger),
+		Notifier: referralnotify.NewOrganizerNotifier(pool, announcer, logger),
 		Logger:   logger,
 	})
 	reg.Register(referral.JobTypePayout, referral.NewPayoutHandler(svc))

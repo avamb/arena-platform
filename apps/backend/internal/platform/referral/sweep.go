@@ -92,7 +92,7 @@ func (s *Service) requeueDue(ctx context.Context) (int, error) {
 
 func (s *Service) readBackSent(ctx context.Context) (int, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+gen.ReferralRewardColumns+` FROM referral_rewards
-		WHERE refund_batch_id IS NOT NULL
+		WHERE (refund_batch_id IS NOT NULL OR (refund_id IS NOT NULL AND referrer_shop_order_id IS NOT NULL))
 		  AND (state = 'sent' OR (state = 'not_possible' AND reason = 'manual_review'))
 		ORDER BY updated_at LIMIT $1`, sweepBatch)
 	if err != nil {
@@ -115,8 +115,15 @@ func (s *Service) readBackSent(ctx context.Context) (int, error) {
 	var errs []error
 	for _, rw := range list {
 		before := rw.State
-		if err := s.settleBatch(ctx, rw, *rw.RefundBatchID, []string{rw.State}); err != nil {
-			errs = append(errs, err)
+		var settleErr error
+		if rw.RefundBatchID != nil {
+			settleErr = s.settleBatch(ctx, rw, *rw.RefundBatchID, []string{rw.State})
+		} else {
+			// A shop reward has one refund and no batch.
+			settleErr = s.settleShopRefund(ctx, rw, *rw.RefundID, []string{rw.State})
+		}
+		if settleErr != nil {
+			errs = append(errs, settleErr)
 			continue
 		}
 		now, err := gen.New(s.pool).GetReferralRewardByID(ctx, rw.ID)
@@ -142,6 +149,17 @@ func (s *Service) markReversals(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	n := int(tag.RowsAffected())
+	tag, err = s.pool.Exec(ctx, `UPDATE referral_rewards r
+		SET friend_reversal = CASE o.status WHEN 'refunded' THEN 'refunded' ELSE 'partially_refunded' END,
+		    updated_at = now()
+		FROM shop_orders o
+		WHERE o.id = r.friend_shop_order_id AND r.state IN ('paid', 'sent') AND r.friend_reversal IS NULL
+		  AND r.created_at > now() - $1::interval AND o.status IN ('refunded', 'partially_refunded')`,
+		reversalWindow)
+	if err != nil {
+		return n, err
+	}
+	n += int(tag.RowsAffected())
 	ok, err := disputesTable(ctx, s.pool)
 	if err != nil || !ok {
 		return n, err
@@ -228,7 +246,15 @@ func (s *Service) deactivateDeadCodes(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	return int(tag.RowsAffected()), nil
+	n := int(tag.RowsAffected())
+	tag, err = s.pool.Exec(ctx, `UPDATE promo_codes pc SET status = 'inactive', updated_at = now()
+		FROM shop_orders o
+		WHERE pc.origin = 'referral' AND pc.status IN ('active', 'paused')
+		  AND o.id = pc.referrer_shop_order_id AND o.status IN ('refunded', 'cancelled', 'expired')`)
+	if err != nil {
+		return n, err
+	}
+	return n + int(tag.RowsAffected()), nil
 }
 
 // Scheduler enqueues the next sweep.

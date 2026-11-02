@@ -19,6 +19,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/referral"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/referral/referralnotify"
 )
 
 // captureSender records what would be mailed. It is not a DevOnlySender, so
@@ -251,7 +252,7 @@ func TestLetters_FriendReversalTellsTheOrganizerOnce(t *testing.T) {
 	f.exec(t, `UPDATE organizations SET contact_email = $2 WHERE id = $1`, f.org, contact)
 	ann := &fakeAnnouncer{chats: 1, delivered: 1}
 	svc := referral.NewService(referral.Options{Pool: f.pool, Engine: f.engine,
-		Notifier: referral.NewOrganizerNotifier(f.pool, ann, quietLogger()), Logger: quietLogger()})
+		Notifier: referralnotify.NewOrganizerNotifier(f.pool, ann, quietLogger()), Logger: quietLogger()})
 	code := f.issue(t)
 	friendEmail := "friend-" + f.suffix + "@example.com"
 	friend := f.friend(t, code, 3000, friendEmail)
@@ -319,7 +320,7 @@ func TestLetters_ReversalNoticeIsRetriedWhenNoChatTookIt_WithoutASecondLetter(t 
 	ctx := context.Background()
 	ann := &fakeAnnouncer{chats: 1, delivered: 1, failFirstDelivery: true}
 	svc := referral.NewService(referral.Options{Pool: f.pool, Engine: f.engine,
-		Notifier: referral.NewOrganizerNotifier(f.pool, ann, quietLogger()), Logger: quietLogger()})
+		Notifier: referralnotify.NewOrganizerNotifier(f.pool, ann, quietLogger()), Logger: quietLogger()})
 	code := f.issue(t)
 	friend := f.friend(t, code, 3000, "friend-"+f.suffix+"@example.com")
 	rw := f.rewardOf(t, friend)
@@ -353,7 +354,7 @@ func TestLetters_ReversalWithoutAChatStillSendsTheLetter(t *testing.T) {
 	ctx := context.Background()
 	// No sales bot at all: a nil announcer.
 	svc := referral.NewService(referral.Options{Pool: f.pool, Engine: f.engine,
-		Notifier: referral.NewOrganizerNotifier(f.pool, nil, quietLogger()), Logger: quietLogger()})
+		Notifier: referralnotify.NewOrganizerNotifier(f.pool, nil, quietLogger()), Logger: quietLogger()})
 	code := f.issue(t)
 	friend := f.friend(t, code, 3000, "friend-"+f.suffix+"@example.com")
 	if err := svc.Payout(ctx, f.rewardOf(t, friend).ID); err != nil {
