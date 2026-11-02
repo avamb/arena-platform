@@ -32,6 +32,7 @@
   import {
     afterCheckoutErrorChange,
     checkoutError as makeCheckoutError,
+    promoRefusal,
     promoCodeChange,
     type CheckoutError,
     type CheckoutErrorChange,
@@ -594,6 +595,7 @@
 
   function closeCartSheet(): void {
     cartSheetOpen = false;
+    noteCheckoutChange({ type: 'cart_left' });
   }
 
   function handleRemoveLine(idx: number): void {
@@ -716,11 +718,12 @@
         // cannot know before the e-mail is typed). The code comes off so the
         // total on the sheet is the total the buyer will pay.
         conflictKeys = new Set();
-        // The message goes stale (and away) once the buyer applies a code
-        // again, takes it off or types another e-mail: noteCheckoutChange.
-        checkoutError = makeCheckoutError(
-          'promo',
-          `${promoErrorMessage(err.code, promoStrings)} ${promoStrings.removed}`,
+        // Another e-mail ends the reason but keeps "code removed, price
+        // without the discount" (the form view shows no total); applying a
+        // code again, taking it off or leaving the cart ends it all.
+        checkoutError = promoRefusal(
+          promoErrorMessage(err.code, promoStrings),
+          promoStrings.removed_full_price,
           values.email,
         );
         promoCtl.drop();
