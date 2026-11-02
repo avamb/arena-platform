@@ -4270,7 +4270,7 @@ components:
           description: "Payment module name."
         provider_dispute_id:
           type: [string, "null"]
-          description: "The provider's own dispute id; manual: prefix for one entered by hand."
+          description: "The provider's own dispute id; for a dispute entered by hand, the reference from the provider's letter."
         channel:
           type: string
           description: "api (answered through the provider's API), email (answered by e-mail), manual (entered by the organizer)."

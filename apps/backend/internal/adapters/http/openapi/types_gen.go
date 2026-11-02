@@ -7065,7 +7065,7 @@ type Dispute struct {
 	// Provider Payment module name.
 	Provider string `json:"provider"`
 
-	// ProviderDisputeId The provider's own dispute id; manual: prefix for one entered by hand.
+	// ProviderDisputeId The provider's own dispute id; for a dispute entered by hand, the reference from the provider's letter.
 	ProviderDisputeId *string `json:"provider_dispute_id"`
 
 	// ProviderStatus The provider's last status.

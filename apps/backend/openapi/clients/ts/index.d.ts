@@ -15148,7 +15148,7 @@ export interface components {
             id: string;
             /** @description Payment module name. */
             provider: string;
-            /** @description The provider's own dispute id; manual: prefix for one entered by hand. */
+            /** @description The provider's own dispute id; for a dispute entered by hand, the reference from the provider's letter. */
             provider_dispute_id?: string | null;
             /** @description api (answered through the provider's API), email (answered by e-mail), manual (entered by the organizer). */
             channel: string;

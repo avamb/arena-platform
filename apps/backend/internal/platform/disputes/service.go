@@ -389,7 +389,9 @@ func (s *Service) CreateManual(ctx context.Context, orgID uuid.UUID, in ManualIn
 	}
 	var provID *string
 	if v := strings.TrimSpace(in.ProviderDisputeID); v != "" {
-		v = "manual:" + v
+		// The provider id is unique across the platform; a reference from a
+		// letter is only unique inside one organization.
+		v = "manual:" + orgID.String() + ":" + v
 		provID = &v
 	}
 	settings, err := s.SettingsFor(ctx, orgID)

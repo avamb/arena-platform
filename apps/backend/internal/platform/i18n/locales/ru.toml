@@ -5079,3 +5079,345 @@ other = "Google Карты: {{.Url}}"
 
 ["salesnotify.shop.courier_map_waze"]
 other = "Waze: {{.Url}}"
+
+["bot.dp.btn"]
+other = "⚠️ Споры"
+
+["bot.dp.title"]
+other = "<b>Споры · {{.Filter}}</b> ({{.Count}})"
+
+["bot.dp.open_line"]
+other = "Ждут вашего ответа: {{.Count}}."
+
+["bot.dp.f_open"]
+other = "Нужен ответ"
+
+["bot.dp.f_review"]
+other = "На рассмотрении"
+
+["bot.dp.f_closed"]
+other = "Закрытые"
+
+["bot.dp.empty"]
+other = "Здесь пусто. Все споры разобраны."
+
+["bot.dp.row"]
+other = "{{.Chip}} <b>{{.Order}}</b> · {{.Amount}} · {{.Reason}}{{.Event}}"
+
+["bot.dp.row_due"]
+other = "Ответить до {{.When}}"
+
+["bot.dp.open_btn"]
+other = "Открыть спор {{.Order}}"
+
+["bot.dp.when_madrid"]
+other = "{{.When}} по Мадриду"
+
+["bot.dp.when_venue"]
+other = "{{.When}} по времени площадки ({{.Zone}})"
+
+["bot.dp.reason_fraud"]
+other = "Владелец карты говорит, что не платил"
+
+["bot.dp.reason_not_received"]
+other = "Услуга не получена"
+
+["bot.dp.reason_not_recognized"]
+other = "Платёж не узнан"
+
+["bot.dp.reason_refund"]
+other = "Ожидался возврат"
+
+["bot.dp.reason_quality"]
+other = "Качество услуги"
+
+["bot.dp.reason_duplicate"]
+other = "Списано дважды"
+
+["bot.dp.reason_other"]
+other = "Другая причина"
+
+["bot.dp.state_needs_response"]
+other = "Нужен ваш ответ"
+
+["bot.dp.state_draft_ready"]
+other = "Доказательства собраны, ждём ваш ответ"
+
+["bot.dp.state_submitted"]
+other = "Ответ отправлен"
+
+["bot.dp.state_under_review"]
+other = "На рассмотрении в банке"
+
+["bot.dp.state_accepted"]
+other = "Вы приняли спор"
+
+["bot.dp.state_expired"]
+other = "Срок прошёл, ответа нет"
+
+["bot.dp.state_closed"]
+other = "Закрыт"
+
+["bot.dp.outcome_won"]
+other = "Вы выиграли, сумма остаётся у вас"
+
+["bot.dp.outcome_lost"]
+other = "Вы проиграли, сумма ушла покупателю"
+
+["bot.dp.outcome_accepted"]
+other = "Вы приняли спор, сумма ушла покупателю"
+
+["bot.dp.outcome_withdrawn"]
+other = "Покупатель отозвал спор"
+
+["bot.dp.outcome_expired"]
+other = "Закрыт без ответа"
+
+["bot.dp.card_title"]
+other = "<b>Спор · заказ {{.Order}}</b>"
+
+["bot.dp.card_event"]
+other = "Мероприятие: {{.Event}}"
+
+["bot.dp.card_amount"]
+other = "Сумма: <b>{{.Amount}}</b>"
+
+["bot.dp.card_reason"]
+other = "Причина: {{.Reason}}"
+
+["bot.dp.card_state"]
+other = "Состояние: {{.State}}"
+
+["bot.dp.card_outcome"]
+other = "Итог: {{.State}}"
+
+["bot.dp.card_buyer"]
+other = "Покупатель: {{.Name}}, {{.Email}}"
+
+["bot.dp.card_due"]
+other = "Ответить до: <b>{{.When}}</b>"
+
+["bot.dp.card_due_estimate"]
+other = "Ответить до: <b>{{.When}}</b>. Это оценка: провайдер не назвал дату, поэтому Arena считает 7 дней. Уточните настоящий срок у провайдера."
+
+["bot.dp.card_overdue"]
+other = "⚠️ Срок прошёл. Ответьте сейчас или примите спор."
+
+["bot.dp.card_lowvalue"]
+other = "Совет: сумма меньше вашего порога мелких споров ({{.Amount}}). Спор стоит около 20 € у банка, и эти деньги вернутся только при выигрыше. Принять спор может выйти дешевле."
+
+["bot.dp.card_gaps_head"]
+other = "Чего Arena не нашла для доказательств:"
+
+["bot.dp.card_files_head"]
+other = "Файлы пакета:"
+
+["bot.dp.card_file"]
+other = "• {{.Name}} · {{.Pages}} стр. · {{.Size}}{{.Tag}}"
+
+["bot.dp.file_full_tag"]
+other = "(полная копия для вас, провайдеру не уходит)"
+
+["bot.dp.card_owner_only"]
+other = "Отвечает на спор только владелец организации. Вы можете читать спор и готовить ответ. Попросите владельца отправить ответ."
+
+["bot.dp.no_package"]
+other = "Пакет доказательств ещё не готов. Нажмите «Собрать заново» или откройте спор через минуту."
+
+["bot.dp.gap_no_order"]
+other = "• К спору не привязан заказ."
+
+["bot.dp.gap_no_letters"]
+other = "• Писем покупателю не записано."
+
+["bot.dp.gap_no_opens"]
+other = "• Открытий и переходов по письмам не записано."
+
+["bot.dp.gap_no_access"]
+other = "• Скачиваний и показов билетов не записано."
+
+["bot.dp.gap_access_off"]
+other = "• На момент заказа скачивания билетов ещё не записывались."
+
+["bot.dp.gap_no_scans"]
+other = "• Сканирований на входе не записано."
+
+["bot.dp.gap_no_consent"]
+other = "• Согласие покупателя с условиями по этому заказу не записано."
+
+["bot.dp.gap_no_terms"]
+other = "• Текст условий по этому заказу не сохранён."
+
+["bot.dp.gap_no_refunds"]
+other = "• Возвратов не было."
+
+["bot.dp.gap_reissued"]
+other = "• PDF билета перевыпущен после переноса даты."
+
+["bot.dp.gap_other"]
+other = "• {{.Code}}"
+
+["bot.dp.package_btn"]
+other = "📄 Пакет"
+
+["bot.dp.order_btn"]
+other = "Открыть заказ"
+
+["bot.dp.submit_btn"]
+other = "Отправить ответ"
+
+["bot.dp.accept_btn"]
+other = "Принять спор"
+
+["bot.dp.own_btn"]
+other = "Я ответил сам"
+
+["bot.dp.rebuild_btn"]
+other = "🔄 Собрать заново"
+
+["bot.dp.back_card_btn"]
+other = "К спору"
+
+["bot.dp.back_list_btn"]
+other = "К списку"
+
+["bot.dp.cancel_btn"]
+other = "Отмена"
+
+["bot.dp.submit_yes_btn"]
+other = "Да, отправить ответ"
+
+["bot.dp.accept_yes_btn"]
+other = "Да, принять спор"
+
+["bot.dp.test_win_btn"]
+other = "Тест: выиграть"
+
+["bot.dp.test_lose_btn"]
+other = "Тест: проиграть"
+
+["bot.dp.own_yes_btn"]
+other = "Да, я ответил"
+
+["bot.dp.own_no_btn"]
+other = "Нет, назад"
+
+["bot.dp.file_caption"]
+other = "Спор {{.Order}} · {{.Name}}"
+
+["bot.dp.file_caption_full"]
+other = "Спор {{.Order}} · {{.Name}} · полная копия для вас"
+
+["bot.dp.files_sent"]
+other = "Отправлено файлов: {{.Count}}. Храните их: в них данные покупателя."
+
+["bot.dp.files_failed"]
+other = "Файлы не дошли. В споре ничего не изменилось. Попробуйте через минуту."
+
+["bot.dp.rebuilding"]
+other = "Собираю пакет доказательств…"
+
+["bot.dp.rebuilt"]
+other = "Пакет собран заново."
+
+["bot.dp.rebuilt_draft"]
+other = "Пакет собран заново и сохранён у провайдера как черновик. В банк пока ничего не ушло."
+
+["bot.dp.rebuilt_nodraft"]
+other = "Пакет собран заново. Сохранить его у провайдера не удалось: отправьте ответ отсюда или отправьте файлы сами."
+
+["bot.dp.submit_word"]
+other = "ОТПРАВИТЬ"
+
+["bot.dp.accept_word"]
+other = "ПРИНЯТЬ"
+
+["bot.dp.submit_ask_api"]
+other = "Вы отвечаете на спор {{.Order}} ({{.Amount}}). Arena отправит пакет доказательств в банк один раз, потом ответ нельзя изменить. Чтобы подтвердить, напишите {{.Word}}. Чтобы остановиться, нажмите «Отмена»."
+
+["bot.dp.submit_ask_email"]
+other = "Вы отвечаете на спор {{.Order}} ({{.Amount}}). Arena отправит провайдеру письмо с PDF-файлами, а вам придёт копия. Чтобы подтвердить, напишите {{.Word}}. Чтобы остановиться, нажмите «Отмена»."
+
+["bot.dp.accept_ask"]
+other = "Вы принимаете спор {{.Order}} ({{.Amount}}). Вы перестаёте его оспаривать. Сумма остаётся у покупателя, отменить это нельзя. Чтобы подтвердить, напишите {{.Word}}. Чтобы остановиться, нажмите «Отмена»."
+
+["bot.dp.word_wrong"]
+other = "Текст не совпал, поэтому ничего не отправлено. Напишите {{.Word}} или нажмите «Отмена»."
+
+["bot.dp.submit_final_api"]
+other = "<b>Последняя проверка.</b> Спор {{.Order}}, {{.Amount}}. Кнопка отправит ответ в банк один раз. Потом его нельзя изменить."
+
+["bot.dp.submit_final_email"]
+other = "<b>Последняя проверка.</b> Спор {{.Order}}, {{.Amount}}. Кнопка отправит провайдеру письмо с PDF-файлами, а вам придёт копия."
+
+["bot.dp.accept_final"]
+other = "<b>Последняя проверка.</b> Спор {{.Order}}, {{.Amount}}. Кнопка примет спор. Сумма останется у покупателя, отменить это нельзя."
+
+["bot.dp.stale_btn"]
+other = "Эта кнопка от старого экрана, поэтому ничего не отправлено."
+
+["bot.dp.sending"]
+other = "Отправляю… Это может занять минуту."
+
+["bot.dp.done_submit_api"]
+other = "Готово. Ответ ушёл в банк. Теперь его нельзя изменить. Arena напишет здесь, когда банк решит."
+
+["bot.dp.done_submit_email"]
+other = "Готово. Письмо с PDF-файлами уходит провайдеру. Копия придёт на вашу почту."
+
+["bot.dp.done_accept"]
+other = "Готово. Вы приняли спор. Сумма остаётся у покупателя."
+
+["bot.dp.done_own"]
+other = "Записано. Arena отметила, что вы ответили сами."
+
+["bot.dp.own_ask"]
+other = "Вы уже ответили на спор {{.Order}} сами, вне Arena? Arena только запишет это и ничего не отправит."
+
+["bot.dp.cancelled"]
+other = "Отменено. Ничего не отправлено."
+
+["bot.dp.gone"]
+other = "Это подтверждение уже закрыто, поэтому ничего не отправлено. Откройте спор заново, чтобы продолжить."
+
+["bot.dp.expired"]
+other = "Подтверждение устарело, поэтому ничего не отправлено. Откройте спор заново, чтобы продолжить."
+
+["bot.dp.not_open"]
+other = "Этот спор больше не ждёт ответа. Вот его состояние сейчас."
+
+["bot.dp.private_only"]
+other = "Откройте это в личном чате с ботом: в споре данные покупателя."
+
+["bot.dp.err_forbidden"]
+other = "Отвечает на спор только владелец организации. Попросите владельца сделать это."
+
+["bot.dp.err_already"]
+other = "На этот спор уже ответили, поэтому второй раз ничего не отправлено. Откройте спор и посмотрите состояние."
+
+["bot.dp.err_closed"]
+other = "Провайдер больше не принимает ответ на этот спор. Откройте спор и посмотрите состояние."
+
+["bot.dp.err_no_package"]
+other = "Пакет доказательств не готов, поэтому ничего не отправлено. Нажмите «Собрать заново» и повторите."
+
+["bot.dp.err_key"]
+other = "Платёжный ключ организации не может отвечать на споры. Ответьте в кабинете провайдера и отправьте файлы пакета сами."
+
+["bot.dp.err_recipient"]
+other = "У Arena нет адреса, куда отправить ответ. Впишите адрес провайдера в веб-ивент-центре и повторите."
+
+["bot.dp.err_test_live"]
+other = "Тестовый исход работает только с тестовым платёжным ключом. Ничего не отправлено."
+
+["bot.dp.err_channel"]
+other = "Это действие не подходит к этому спору. Откройте спор и посмотрите, что можно сделать."
+
+["bot.dp.err_unknown"]
+other = "Ясного ответа не пришло. Возможно, ответ уже ушёл. Не нажимайте повторно: откройте спор через минуту и посмотрите состояние."
+
+["bot.dp.err_refused"]
+other = "Arena не смогла это сделать. Ничего не отправлено. Откройте спор и повторите или напишите в поддержку."
+
+["bot.dp.err_unavailable"]
+other = "Arena не смогла сохранить этот шаг, поэтому ничего не отправлено. Попробуйте через минуту."

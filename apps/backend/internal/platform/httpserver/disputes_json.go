@@ -4,6 +4,7 @@ package httpserver
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -64,7 +65,7 @@ func disputeIDStr(id *uuid.UUID) *string {
 
 func toDisputeJSON(d disputes.Dispute, sm disputes.Summary) disputeJSON {
 	j := disputeJSON{
-		ID: d.ID.String(), Provider: d.Provider, ProviderDisputeID: d.ProviderDisputeID, Channel: d.Channel,
+		ID: d.ID.String(), Provider: d.Provider, ProviderDisputeID: shownDisputeRef(d), Channel: d.Channel,
 		OrderID: disputeIDStr(d.OrderID), OrderNumber: sm.OrderNumber, EventName: sm.EventName, VenueTimezone: sm.Timezone,
 		BuyerName: sm.BuyerName, BuyerEmail: sm.BuyerEmail,
 		Amount: d.AmountMinor, Currency: d.Currency, Reason: d.Reason, ReasonGroup: d.ReasonGroup,
@@ -131,4 +132,14 @@ type disputeEventJSON struct {
 	ActorLabel     string          `json:"actor_label"`
 	Payload        json.RawMessage `json:"payload"`
 	CreatedAt      string          `json:"created_at"`
+}
+
+// shownDisputeRef is the provider's reference as a person reads it: a
+// hand-entered one is stored as "manual:<org id>:<reference>".
+func shownDisputeRef(d disputes.Dispute) *string {
+	if d.ProviderDisputeID == nil {
+		return nil
+	}
+	v := strings.TrimPrefix(*d.ProviderDisputeID, "manual:"+d.OrgID.String()+":")
+	return &v
 }
