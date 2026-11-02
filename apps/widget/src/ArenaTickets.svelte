@@ -786,7 +786,7 @@
         // The reward is once per address: say so and let the buyer pay the
         // regular price with the next press (the tick is still recorded).
         conflictKeys = new Set();
-        checkoutError = marketingErrorMessage(err.code, normLocale);
+        checkoutError = makeCheckoutError('other', marketingErrorMessage(err.code, normLocale) ?? '');
         if (isMarketingRewardRefusal(err.code)) marketingDiscountUsedFor = selectedSession?.id ?? null;
       } else if (err instanceof ApiError && cartLimitMessage(err.code, normLocale) !== null) {
         // The platform refused the size of the cart: say so in the buyer's language.
