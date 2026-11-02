@@ -11,7 +11,7 @@
 ## 2. Перед началом
 
 1. PR с этой задачей слит в master, CI master зелёный, образ `ghcr.io/avamb/arena-api:<sha>` опубликован.
-2. Вы вошли в панель Dokploy (`app.andreevmaster.com`) и в Cloudflare (зона `arenasoldout.com`).
+2. Вы вошли в панель Dokploy (`app.site.example`) и в Cloudflare (зона `arenasoldout.com`).
 3. Порядок шагов важен. Адрес для писем (`EVENT_CENTER_PUBLIC_URL`) включается ПОСЛЕДНИМ, когда сайт уже открывается. Иначе организатор получит ссылку на сайт, которого ещё нет.
 
 ## 3. Шаги
@@ -19,7 +19,7 @@
 ### Шаг 1. Запись DNS в Cloudflare
 
 1. Откройте Cloudflare, зону `arenasoldout.com`, раздел DNS.
-2. Откройте запись `tickets` и запишите её тип и значение (адрес сервера arena-prod).
+2. Откройте запись `tickets` и запишите её тип и значение (адрес сервера prod-host).
 3. Нажмите «Add record».
 4. Тип и значение — как у записи `tickets`. Name: `events`. Proxy status: Proxied (оранжевое облако), как у `tickets` и `api`.
 5. Нажмите «Save».
@@ -30,7 +30,7 @@
 2. Откройте приложение `tickets-page` и посмотрите его настройки: сервер, источник, способ сборки. Новое приложение настраивается так же.
 3. Нажмите «Create Service», затем «Application». Название: `event-center`.
 4. Источник: GitHub, репозиторий `avamb/arena-platform`, ветка `master`.
-5. Сервер: тот же, что у `tickets-page` (arena-prod).
+5. Сервер: тот же, что у `tickets-page` (prod-host).
 6. Build Type: Dockerfile. Docker File: `apps/event-center/Dockerfile`. Docker Context Path: `.` (корень репозитория).
 7. Аргумент сборки (поле Build Args / Build-time Arguments, там же, где у `tickets-page`): `VITE_API_BASE_URL=https://api.arenasoldout.com`. Без косой черты в конце. Без этого аргумента сборка остановится с ошибкой: так задумано.
 8. Переменные окружения во время работы не нужны. Секретов у приложения нет.

@@ -2,13 +2,13 @@
 
 Статус: design authority для мини-волны **W1-E** (AutoForge, фичи #523–#527). Реализовано 2026-09-11, head 4c5991a.
 Дата: 2026-09-11. Решение владельца: транспорт создания мероприятий с сайта — вариант C
-(один пакетный идемпотентный эндпоинт), Lampyris первым, staging только.
+(один пакетный идемпотентный эндпоинт), client-2 первым, staging только.
 Дополняет `18_bil24_compat_wave1_specification_ru.md` §13 (далее «спека W1»); при расхождении
 для ветки `source=arena` главенствует этот документ, для `source=bil24` — спека W1 §13.2.
 
 ## 1. Цель и границы
 
-Сайт (`lampyris-ops`, параллельная вкладка «Мероприятия» на staging), а в следующих итерациях
+Сайт (`client2-ops`, параллельная вкладка «Мероприятия» на staging), а в следующих итерациях
 Telegram/WhatsApp-бот и любой другой канал, создаёт в arena мероприятие **без мест** одним
 HTTP-вызовом: событие + сеанс + площадка + категории цен + афиша + публикация. Arena — источник
 истины по учёту; сайт получает мероприятие обратно штатным путём (вебхук `event.created` при
@@ -45,10 +45,10 @@ HTTP-вызовом: событие + сеанс + площадка + катег
 ```json
 {
   "source": "arena",
-  "externalRef": "wp:lampyris-staging:product:4711",
+  "externalRef": "wp:client-2-staging:product:4711",
   "action":      {"actionId": null, "actionName": "…", "fullActionName": "…", "description": "…",
-                  "bigPosterUrl": "https://staging.lampyrisevents.com/wp-content/uploads/….jpg",
-                  "age": "12+", "organizerName": "Lampyris"},
+                  "bigPosterUrl": "https://client2.example/wp-content/uploads/….jpg",
+                  "age": "12+", "organizerName": "client-2"},
   "actionEvent": {"actionEventId": null, "day": "26.10.2026", "time": "19:00", "endTime": "22:00",
                   "currency": "CZK", "sellEndTime": "2026-10-26T18:00:00+01:00",
                   "sellStartTime": "2026-09-15T10:00:00+02:00"},
@@ -138,7 +138,7 @@ snake_case-гардрейла):
   "event_id": "…", "session_id": "…", "tier_ids": {"1000000012": "…"},
   "seating_plan_version_id": null, "seats_materialized": 0,
   "warnings": [], "created": true,
-  "external_ref": "wp:lampyris-staging:product:4711",
+  "external_ref": "wp:client-2-staging:product:4711",
   "compat_ids": {
     "action_id": 1000000007,
     "action_event_id": 1000000008,
@@ -285,9 +285,9 @@ CREATE UNIQUE INDEX session_external_refs_session_uq ON session_external_refs (s
    (существующие тесты).
 
 Фикстура: `apps/backend/tests/compat/bil24/testdata/wp/event_bundle/arena_ga_lampyris.json` — тело
-из §3 (значения staging Lampyris) — используется интеграционными тестами и как контракт для PHP.
+из §3 (значения staging client-2) — используется интеграционными тестами и как контракт для PHP.
 
-## 10. Контракт для сайта (`lampyris-ops`, вне этого репо)
+## 10. Контракт для сайта (`client2-ops`, вне этого репо)
 
 Параллельная вкладка «Мероприятия (arena)» на staging, старая вкладка и импорт из Bil24 не трогаются.
 Настройки: `arena_base_url`, `arena_org_id`, `arena_api_key` (рядом с `bil24_acf_sync`). Форма: название,
