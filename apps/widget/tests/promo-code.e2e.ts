@@ -302,13 +302,76 @@ test.describe('promo code in the cart sheet', () => {
     await sheet.locator('input[type="email"]').fill('buyer@example.com');
     await sheet.locator('button[type="submit"]').click();
 
-    await expect(sheet.locator('.submit-error')).toHaveText('You already used this code. Code removed.');
+    await expect(sheet.locator('.submit-error')).toHaveText('You already used this code. Code removed. The price is without the discount.');
     expect(seen.starts).toHaveLength(1);
 
     // Back in the cart the code is gone and the total is the list total.
     await sheet.locator('.back-btn').click();
     await expect(sheet.locator('.promo-applied')).toHaveCount(0);
     await expect(sheet.locator('.total-value')).toHaveText(amount('€50.62'));
+  });
+
+  // Hermes F-01 (2026-11-01): the refusal stayed on screen after the buyer
+  // typed another e-mail or applied the code again, next to a correct total.
+  // Review of PR #355: the reason may go, but the line that the code came off
+  // and the price is without the discount must stay, because the form view
+  // shows no total and the buyer would otherwise pay the list price unaware.
+  test('a code refused at checkout keeps saying the price is without the discount after the buyer types another e-mail', async ({ page }) => {
+    await mockPlatform(page, {
+      startError: { code: 'promo.per_customer_limit', message: 'You have already used this code the maximum number of times.' },
+    });
+    await openCartWithTwoTickets(page);
+    const sheet = page.locator('#widget-promo .sheet');
+
+    await sheet.getByLabel('Promo code').fill('TEN');
+    await sheet.getByRole('button', { name: 'Apply' }).click();
+    await expect(sheet.locator('.total-value')).toHaveText(amount('€45.56'));
+    await sheet.locator('.cta-btn').click();
+    const email = sheet.locator('input[type="email"]');
+    await email.fill('buyer@example.com');
+    await sheet.locator('button[type="submit"]').click();
+    await expect(sheet.locator('.submit-error')).toHaveText('You already used this code. Code removed. The price is without the discount.');
+
+    await email.fill('another.buyer@example.com');
+    await expect(sheet.locator('.submit-error')).toHaveText('Code removed. The price is without the discount.');
+    // The pay button names the list price, not the discounted one.
+    await expect(sheet.locator('button[type="submit"]')).toContainText('50.62');
+
+    // Back in the cart the note ends with the list total in front of the buyer;
+    // leaving the cart ends it too, so a later visit starts clean.
+    await sheet.locator('.back-btn').click();
+    await expect(sheet.locator('.total-value')).toHaveText(amount('€50.62'));
+    await sheet.locator('.back-btn').click();
+    await expect(sheet).toHaveCount(0);
+    await page.locator('#widget-promo .mini-cart-btn').click();
+    await page.locator('#widget-promo .sheet .cta-btn').click();
+    await expect(page.locator('#widget-promo .sheet .submit-error')).toHaveCount(0);
+  });
+
+  test('a code refused at checkout stops being reported once the buyer applies it again', async ({ page }) => {
+    await mockPlatform(page, {
+      startError: { code: 'promo.per_customer_limit', message: 'You have already used this code the maximum number of times.' },
+    });
+    await openCartWithTwoTickets(page);
+    const sheet = page.locator('#widget-promo .sheet');
+
+    await sheet.getByLabel('Promo code').fill('TEN');
+    await sheet.getByRole('button', { name: 'Apply' }).click();
+    await sheet.locator('.cta-btn').click();
+    await sheet.locator('input[type="email"]').fill('buyer@example.com');
+    await sheet.locator('button[type="submit"]').click();
+    await expect(sheet.locator('.submit-error')).toHaveText('You already used this code. Code removed. The price is without the discount.');
+
+    await sheet.locator('.back-btn').click();
+    const promoButton = sheet.getByRole('button', { name: 'Have a promo code?' });
+    if (await promoButton.count()) await promoButton.click();
+    await sheet.getByLabel('Promo code').fill('TEN');
+    await sheet.getByRole('button', { name: 'Apply' }).click();
+    await expect(sheet.locator('.total-value')).toHaveText(amount('€45.56'));
+
+    await sheet.locator('.cta-btn').click();
+    await expect(sheet.locator('input[type="email"]')).toBeVisible();
+    await expect(sheet.locator('.submit-error')).toHaveCount(0);
   });
 
   test('removing a line under an applied code asks the platform again', async ({ page }) => {
