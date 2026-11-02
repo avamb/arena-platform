@@ -11,7 +11,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// WhiteLabelPeriodRow is one white_label_periods row (migration 0186).
+// WhiteLabelPeriodRow is one white_label_periods row (migration 0187).
 // StartsOn and EndsOn are UTC calendar days, both inclusive; a nil EndsOn has
 // no end. MonthlyPriceMinor is the individual monthly price in the currency
 // of the organization's billing account (nil = the price list).

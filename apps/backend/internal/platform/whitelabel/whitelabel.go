@@ -4,7 +4,7 @@
 //
 // A brand is the promoter of an event (event_promoters), or the organization
 // itself for an event without a promoter. A brand has white label on a day
-// when one of its white_label_periods (migration 0186) covers that UTC
+// when one of its white_label_periods (migration 0187) covers that UTC
 // calendar day. Only a platform superadmin writes periods
 // (/v1/admin/billing/white-label); the job billing.white_label charges them.
 //

@@ -119,7 +119,7 @@ func TestFoundation_StandardPriceListIsFoundFrom2026(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// Four rules from 0157 plus the white label subscription (0186).
+			// Four rules from 0157 plus the white label subscription (0187).
 			if len(rules) != 5 {
 				t.Fatalf("%s: %d rules, want 5", cur, len(rules))
 			}
