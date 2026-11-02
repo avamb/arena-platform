@@ -28141,6 +28141,15 @@ export interface components {
              *     `publication` is its first element.
              */
             publications?: components["schemas"]["ImportPublication"][];
+            /**
+             * Format: date-time
+             * @description The event's `updated_at` as this import left it, read inside the
+             *     import transaction while it still held the event's row lock. A
+             *     client that edits the event in several calls (one date per call)
+             *     compares it with a later read of the event to tell its own write
+             *     from somebody else's edit. Absent from a dry run.
+             */
+            event_updated_at?: string;
         };
         /**
          * @description Fields common to every `/compat/bil24/json` command. `fid` and

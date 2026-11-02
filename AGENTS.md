@@ -1734,6 +1734,14 @@ entries short and factual.
   read never saves (retry / save anyway), on the preview it is only a note.
   So an e2e that moves `updated_at` before «Publish changes» sees the
   warning on the `wz:publish` press, not only after `wz:publish:go`.
+  Each date the edit posts moves `updated_at` itself, so the event-bundle
+  import answers `event_updated_at` (read inside its transaction, after
+  `SetEventImportMetadata` took the row lock) and `Wizard.Save` takes it as
+  the draft's new mark (`recordSavedStamp`): after a save that stopped half
+  way, «Retry» and the preview no longer report the bot's own write, while an
+  edit made after it still differs. Never "fix" this by re-reading the event
+  after a save (that would adopt a foreign edit) or by skipping the check once
+  `Saved.EventID` is set.
 - **`cmd/arena-bot` (package `internal/platform/eventbot`) is the fourth
   binary of the image and polls Telegram with `github.com/go-telegram/bot`;
   handlers of DIFFERENT accounts run concurrently, one account's updates run

@@ -212,3 +212,19 @@ func (b *Bot) saveGate(ctx context.Context, chatID int64, editMsgID *int, ws Wiz
 	}
 	return true
 }
+
+// recordSavedStamp takes the event's updated_at the import answered after one
+// date of an edit was written. That write is the bot's own, so the "changed
+// elsewhere" check compares later reads with it instead of with the mark the
+// draft was loaded with. A server that does not send the mark leaves the old
+// one: the check then errs on the side of asking.
+func (d *Draft) recordSavedStamp(t *time.Time) {
+	if d.Mode != ModeEdit || t == nil || t.IsZero() {
+		return
+	}
+	stamp := t.UTC().Format(time.RFC3339Nano)
+	d.Event.UpdatedAt = stamp
+	if d.Loaded != nil {
+		d.Loaded.Event.UpdatedAt = stamp
+	}
+}
