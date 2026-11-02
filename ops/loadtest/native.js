@@ -207,6 +207,10 @@ function pay(start) {
         payment_status: 'paid',
         status: 'complete',
         payment_intent: piId,
+        // Real Stripe names what it charged, and arena parks a paid event
+        // without it: the amount checkout/start priced.
+        amount_total: start.pricing ? start.pricing.total : undefined,
+        currency: start.pricing ? String(start.pricing.currency).toLowerCase() : undefined,
       },
     },
   });

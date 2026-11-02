@@ -88,9 +88,20 @@ func ConvertReservationInTx(ctx context.Context, q *gen.Queries, reservationID u
 	if q == nil {
 		return nil
 	}
-	reservation, err := q.GetReservationByID(ctx, reservationID)
+	// Lock the reservation row before deciding anything. Duplicate
+	// checkout.convert_reservation jobs (a retry racing the first run, the
+	// inline webhook call racing the worker) used to read the state unlocked,
+	// both see 'active', and both move Quantity from held to sold: the loser
+	// either failed on ConfirmCapacity (held < quantity) or, with another
+	// reservation still holding places on the session, confirmed that other
+	// reservation's places a second time. Under the lock the second copy
+	// waits, then reads 'converted' and returns as an idempotent replay.
+	// Lock order matches the hold mutations (hold_mutation.go): reservation
+	// row, then the sessions row (sellReservationSeatsTx), then
+	// inventory_ledger (ConfirmCapacity).
+	reservation, err := q.LockReservationForUpdate(ctx, reservationID)
 	if err != nil {
-		return fmt.Errorf("convertReservationInTx: get reservation %s: %w", reservationID, err)
+		return fmt.Errorf("convertReservationInTx: lock reservation %s: %w", reservationID, err)
 	}
 	switch reservation.State {
 	case "converted", "expired", "cancelled":
@@ -150,22 +161,25 @@ func (h *Handler) convertReservationTx(ctx context.Context, reservationID uuid.U
 		return nil
 	}
 
-	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return fmt.Errorf("convertReservationTx: begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx) //nolint:errcheck
+	// The conversion takes its locks in the same order as every hold
+	// mutation, so a deadlock should not happen; if one ever does (or a
+	// serialization failure), the whole transaction is retried, as the hold
+	// mutations do (retry.go).
+	return retryOnSerializationFailure(ctx, holdMutationRetryAttempts, func() error {
+		tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+		if err != nil {
+			return fmt.Errorf("convertReservationTx: begin tx: %w", err)
+		}
+		defer tx.Rollback(ctx) //nolint:errcheck
 
-	q := gen.New(tx)
-
-	if err := h.convertReservationInTx(ctx, q, reservationID); err != nil {
-		return err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return fmt.Errorf("convertReservationTx: commit tx for reservation %s: %w", reservationID, err)
-	}
-	return nil
+		if err := h.convertReservationInTx(ctx, gen.New(tx), reservationID); err != nil {
+			return err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("convertReservationTx: commit tx for reservation %s: %w", reservationID, err)
+		}
+		return nil
+	})
 }
 
 // ConvertReservationTx is the exported form of convertReservationTx, for use

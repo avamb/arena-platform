@@ -225,6 +225,9 @@ func runScenario02GAPurchase(t *testing.T, st *harnessState) {
 	// The command's whole purpose is the queue row; delivery_jobs.ticket_id is
 	// ON DELETE CASCADE from tickets, so the harness sweep reclaims these.
 	sc2AssertDeliveryJobs(t, st, orderID, sc2Quantity)
+
+	// ── step 10: the venue's gate scans one ticket (ASY-12, SCAN_TICKET) ───
+	sc2ScanTicketAtTheGate(t, base, st, orderID)
 }
 
 // sc2GetTickets sends GET_TICKETS_BY_ORDER for a concrete order and returns the

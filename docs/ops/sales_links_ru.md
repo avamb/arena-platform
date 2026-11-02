@@ -17,7 +17,7 @@
 
 > Предупреждение. Агенты DNS и Traefik не трогают. Делает владелец или ops. Хост с редиректом на fallback безвреден, его можно заводить до выката QL-4.
 
-1. Cloudflare, зона `arenasoldout.com`: добавить запись `go` типа A (или CNAME на хост arena-prod), режим **Proxied**.
+1. Cloudflare, зона `arenasoldout.com`: добавить запись `go` типа A (или CNAME на хост prod-host), режим **Proxied**.
 2. Cloudflare, Rules, Cache Rules: правило «Bypass cache» для `Hostname equals go.arenasoldout.com`.
    Зачем два слоя: приложение уже отвечает `Cache-Control: no-store`, а правило не даёт будущей настройке зоны закэшировать 302 и потерять счёт.
 3. Traefik (роутер Dokploy для arena-api): добавить роутер по хосту и middleware с префиксом. Форма меток, как в `ops/macs/docker-compose.yml`. Имя сервиса и порт возьмите у роутера `api.arenasoldout.com`.
@@ -44,7 +44,7 @@ curl.exe -I https://go.arenasoldout.com/zzzzzzz
 curl.exe -I https://go.arenasoldout.com/<код>
 ```
 
-7. Проверка закрытого origin. Origin должен принимать 80 и 443 только от Cloudflare (практика `cf-origin-lock`, как на lead-parser). Причина: при `TRUSTED_PROXY_COUNT` больше 0 заголовку `CF-IPCountry` доверяют всегда. Если до origin можно достучаться напрямую, клиент сам выберет страну в отчёте.
+7. Проверка закрытого origin. Origin должен принимать 80 и 443 только от Cloudflare (практика `cf-origin-lock`, как на sites-host). Причина: при `TRUSTED_PROXY_COUNT` больше 0 заголовку `CF-IPCountry` доверяют всегда. Если до origin можно достучаться напрямую, клиент сам выберет страну в отчёте.
 8. Если ответ `404`: проверьте middleware `go-prefix`, без него путь `/<код>` не доходит до маршрута `/go/{code}`. Если сертификат не выпускается: DNS должен смотреть на origin до запроса Let's Encrypt, затем перезапустите контейнер arena-api.
 
 ## 3. Окружение (только arena-api)

@@ -1,4 +1,4 @@
-# Спецификация волны 1: WP-сайты (Lampyris, Vino&Co) на arena через Bil24-совместимый шлюз
+# Спецификация волны 1: WP-сайты (client-2, client-1) на arena через Bil24-совместимый шлюз
 
 Дата: 2026-09-04. Статус: спецификация к реализации (design authority для бэклога
 `09_autoforge/wp_bil24_compat_backlog.md`). Базируется на решениях владельца из
@@ -6,9 +6,9 @@
 (миграции 0001–0089, шлюз `hbil24`/`bil24compat`, MACS `internal/platform/macs`).
 
 Исполняемая спецификация сайта — PHP плагинов `bil24-acf-sync`, `bil24-ticket-mailer`,
-`lampyris-ops`, mu-плагинов `bil24-cart-bridge`, `bil24-notification-receiver`
-(`C:\Projects\lampyrisevents`, `C:\Projects\vinoandco-prod-rebuild`). Реальные тела —
-`vinoandco-prod-rebuild/docs/samples/*.json` (420 заказов, 819 билетов). Все ссылки
+`client2-ops`, mu-плагинов `bil24-cart-bridge`, `bil24-notification-receiver`
+(`C:\Projects\client2-site`, `C:\Projects\client1-site`). Реальные тела —
+`client1-site/docs/samples/*.json` (420 заказов, 819 билетов). Все ссылки
 `file:line` ниже — на эти репозитории и на arena `c689d44`.
 
 Единицы: деньги в БД — bigint в минорных единицах; на проводе Bil24 — числа в мажорных
@@ -233,7 +233,7 @@ INSERT INTO permissions (code, description) VALUES
 
 Нормализация: e-mail — `lower(trim)`, IDN как есть; телефон — E.164 через `libphonenumber`-порт
 (`github.com/nyaruka/phonenumbers`), регион по умолчанию из `venues.country` организации
-(`IL` для Vino, `CZ` для Lampyris), невалидный телефон — не идентичность, а атрибут.
+(`IL` для client-1, `CZ` для client-2), невалидный телефон — не идентичность, а атрибут.
 
 ### 3.3 `0092_orders.sql`
 
@@ -453,7 +453,7 @@ CREATE TABLE customer_import_rows (
 | Код | Смысл | Когда |
 |---|---|---|
 | `0` | OK | всегда, когда операция выполнена, в т. ч. идемпотентные повторы |
-| `1` | сессия шлюза не найдена / истекла | любой `userId`/`sessionId`, не найденный в `gateway_sessions` или с `expires_at < now()`. Сайт после этого пересоздаёт пользователя (`class-bil24-seat-picker.php:757`, `vino-checkout-rest.php:77`) |
+| `1` | сессия шлюза не найдена / истекла | любой `userId`/`sessionId`, не найденный в `gateway_sessions` или с `expires_at < now()`. Сайт после этого пересоздаёт пользователя (`class-bil24-seat-picker.php:757`, `client1-checkout-rest.php:77`) |
 | `101` | бизнес-ошибка, `description` показывается покупателю | место занято, категория распродана, продажи закрыты, промокод невалиден, бронь истекла, событие не найдено в каталоге канала |
 | `-1` | временная ошибка, повторите | ошибки БД/пула, дедлок, таймаут worker'а. **Больше не «неизвестная команда»** |
 | `-2` | неверный запрос | неизвестная команда, отсутствующее/некорректное поле, JSON не разобран |
@@ -511,7 +511,7 @@ CREATE TABLE customer_import_rows (
     "description": "<html как в events.description>",
     "smallPosterUrl": "https://…", "bigPosterUrl": "https://…",
     "minPrice": 350, "maxPrice": 900, "age": "12+",
-    "organizerId": 7, "organizerName": "Lampyris Events s.r.o.",
+    "organizerId": 7, "organizerName": "client-2 Events s.r.o.",
     "firstEventDate": "26.04.2026", "lastEventDate": "27.04.2026",
     "actionEventList": [{
       "actionEventId": 1000000011, "cityId": 1000000002, "venueId": 1000000003,
@@ -942,8 +942,8 @@ Admin-web — секция в карточке канала рядом с §5.4.
 ```json
 {"id": 1000000500, "date": "2026-04-16T14:23:55+02:00", "status": "PAID",
  "user": {"id": 1000000100, "email": "a@b.cz"},
- "agent": {"id": 7, "name": "Lampyris Events s.r.o."},
- "frontend": {"id": 3, "agentId": 7, "name": "https://lampyrisevents.com/", "type": {"id": 8, "name": "Ticketing system"}},
+ "agent": {"id": 7, "name": "client-2 Events s.r.o."},
+ "frontend": {"id": 3, "agentId": 7, "name": "https://client2.example/", "type": {"id": 8, "name": "Ticketing system"}},
  "currency": "CZK", "paymentMethod": {"id": 0, "name": "stripe"}, "longReservation": false,
  "expiration": "…", "processing": "…",
  "sum": 1250, "discount": 0, "charge": 62.5, "totalSum": 1312.5, "ticketQuantity": 2,
@@ -960,7 +960,7 @@ Admin-web — секция в карточке канала рядом с §5.4.
    "barcode": "2100000040218", "barcodeFormat": {"id": 0, "name": "EAN-13"},
    "actionEvent": {"id": 1000000011, "cityId": 1000000002, "cityName": "Praha",
      "venueId": 1000000003, "venueName": "Palác Akropolis",
-     "actionId": 1000000010, "actionName": "…", "actionLegalOwner": "Lampyris Events s.r.o.",
+     "actionId": 1000000010, "actionName": "…", "actionLegalOwner": "client-2 Events s.r.o.",
      "actionLegalOwnerInn": "", "actionKind": {"id": 0, "name": "Events"},
      "currency": "CZK", "showTime": "2026-04-26T19:00:00", "eTickets": true,
      "gateway": {"id": 0, "systemId": 0, "name": "", "systemName": "NONE", "organizerId": null, "organizerName": null}},
@@ -1093,7 +1093,7 @@ Admin-web — секция в карточке канала рядом с §5.4.
   → `uploaded`; `POST …/{id}/dry-run` → job `customer.import` с `mode=dry_run` → отчёт
   `{rows, created, matched, merge_candidates, skipped, by_org:{…}, errors[]}`;
   `POST …/{id}/apply` → тот же job `mode=apply`; `GET …/{id}`, `GET …/{id}/rows?action=`.
-- `mapping` для CSV: `{columns: {email: "Email", phone: "Billing Phone", name: "…", org_rule: {column: "site", map: {"vinoandco.events": "<org_uuid>"}}}, attributes: ["city","tags"]}`;
+- `mapping` для CSV: `{columns: {email: "Email", phone: "Billing Phone", name: "…", org_rule: {column: "site", map: {"client1.example": "<org_uuid>"}}}, attributes: ["city","tags"]}`;
   для `bil24_orders_json` фиксированный маппер (`fullName/phone/email/user.email`,
   `frontend.name` → org по `mapping.frontends`, `actionEvent.actionName` → атрибут
   `interests[]`, `discountReason` → `promo_codes_used[]`, `date` → `first/last_order_at`,
@@ -1195,7 +1195,7 @@ Admin-web — секция в карточке канала рядом с §5.4.
 `categories[].external_id`; `Canonicalize`/`Checksum` учитывают их. Тест — на реальном
 sbt-SVG тестового сеанса (снять интерактивно в W1-0) и на синтетическом.
 
-### 13.4 Контракт для сайта (`lampyris-ops`, вкладка «Мероприятия»)
+### 13.4 Контракт для сайта (`client2-ops`, вкладка «Мероприятия»)
 
 Не в этом репо; фиксируется, чтобы обе стороны сошлись:
 
@@ -1295,7 +1295,7 @@ golden после каждой и проверкой БД-инвариантов
 
 - Новые переменные: `PUBLIC_BASE_URL` (обязательна при `BIL24_COMPAT_ENABLED`), остальное —
   per-channel в БД. `.env.example`, `deploy/` compose и runbook стенда обновляются.
-- Стенд (решение №9): организации `lampyris-staging`, `vino-staging`; каналы с `display_number`
+- Стенд (решение №9): организации `client2-staging`, `client1-staging`; каналы с `display_number`
   → `fid`; `bil24_acf_sync.base_url_prod = https://<api-стенда>/compat/bil24/json`;
   `LOPS_MACS_WEBHOOK_URL` staging-сайтов → MACS-стаб arena. Откат — вернуть URL в опции.
 - OpenAPI: `/compat/bil24/json` (один path, `oneOf` по `command`), `/compat/bil24/image`, все
