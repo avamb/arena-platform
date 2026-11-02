@@ -137,18 +137,77 @@ func (q *Queries) StopSmartPriceRule(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-const overrideSmartPriceRulesForTier = `-- name: OverrideSmartPriceRulesForTier :execrows
+const overrideSmartPriceRulesForTier = `-- name: OverrideSmartPriceRulesForTier :many
 UPDATE smart_price_rules
 SET    status = 'overridden', stopped_at = now(), updated_at = now()
-WHERE  status = 'active' AND (tier_id = $1 OR $1 = ANY(step_tier_ids))`
+WHERE  status = 'active' AND (tier_id = $1 OR $1 = ANY(step_tier_ids))
+RETURNING kind, tier_id, step_tier_ids`
+
+// The price stops rising after a hand edit: the later steps of a chain take
+// the edited price, and a schedule keeps the window in force now, open-ended.
+const endSmartStepPrices = `-- name: EndSmartStepPrices :exec
+UPDATE ticket_tiers SET price_amount = $2, updated_at = now()
+WHERE  id = ANY($1::uuid[]) AND deleted_at IS NULL`
+
+const endSmartFutureWindows = `-- name: EndSmartFutureWindows :exec
+DELETE FROM ticket_tier_prices WHERE tier_id = $1 AND valid_from > now()`
+
+const openSmartCurrentWindow = `-- name: OpenSmartCurrentWindow :exec
+UPDATE ticket_tier_prices SET valid_to = NULL, updated_at = now()
+WHERE  tier_id = $1 AND valid_from <= now() AND valid_to IS NOT NULL AND valid_to > now()`
 
 // OverrideSmartPriceRulesForTier ends the preset a category belongs to after
-// its price was edited by hand (owner decision В-5). Answers how many presets
-// it ended (0 when the category follows none).
-func (q *Queries) OverrideSmartPriceRulesForTier(ctx context.Context, tierID uuid.UUID) (int64, error) {
-	tag, err := q.db.Exec(ctx, overrideSmartPriceRulesForTier, tierID)
+// its price was edited by hand (owner decision В-5: the preset is off for the
+// FUTURE steps). Steps by tickets sold after the edited one take newPrice (0
+// leaves them); a schedule loses its future windows
+// and the window in force now stays open-ended, so nothing rises later.
+// Answers how many presets it ended (0 when the category follows none).
+func (q *Queries) OverrideSmartPriceRulesForTier(ctx context.Context, tierID uuid.UUID, newPrice int64) (int64, error) {
+	type ended struct {
+		kind  string
+		head  uuid.UUID
+		steps []uuid.UUID
+	}
+	rows, err := q.db.Query(ctx, overrideSmartPriceRulesForTier, tierID)
 	if err != nil {
 		return 0, err
 	}
-	return tag.RowsAffected(), nil
+	var out []ended
+	for rows.Next() {
+		var e ended
+		if err := rows.Scan(&e.kind, &e.head, &e.steps); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		out = append(out, e)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	for _, e := range out {
+		if e.kind == "by_sales" {
+			if newPrice <= 0 {
+				continue
+			}
+			chain := append([]uuid.UUID{e.head}, e.steps...)
+			for i, id := range chain {
+				if id == tierID {
+					if later := chain[i+1:]; len(later) > 0 {
+						if _, err := q.db.Exec(ctx, endSmartStepPrices, later, newPrice); err != nil {
+							return 0, err
+						}
+					}
+				}
+			}
+			continue
+		}
+		if _, err := q.db.Exec(ctx, endSmartFutureWindows, e.head); err != nil {
+			return 0, err
+		}
+		if _, err := q.db.Exec(ctx, openSmartCurrentWindow, e.head); err != nil {
+			return 0, err
+		}
+	}
+	return int64(len(out)), nil
 }

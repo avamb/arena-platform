@@ -4916,3 +4916,135 @@ other = "Google Maps: {{.Url}}"
 
 ["salesnotify.shop.courier_map_waze"]
 other = "Waze: {{.Url}}"
+
+["bot.sp.btn"]
+other = "📈 Precio inteligente"
+
+["bot.sp.title"]
+other = "📈 <b>Precio inteligente: {{.Name}}</b>"
+
+["bot.sp.intro"]
+other = "El precio sube solo según tu regla. Quien compra siempre ve el precio que paga ahora. Las entradas vendidas mantienen su precio.\n\nElige cómo sube el precio. Verás los precios antes de guardar nada."
+
+["bot.sp.kind_by_sales_btn"]
+other = "Cada N entradas vendidas"
+
+["bot.sp.kind_by_days_btn"]
+other = "Cada N días"
+
+["bot.sp.kind_last_days_btn"]
+other = "Más caro los últimos días"
+
+["bot.sp.rule_by_sales"]
+other = "+{{.Step}}% cada {{.Every}} entradas vendidas, como máximo +{{.Cap}}%"
+
+["bot.sp.rule_by_days"]
+other = "+{{.Step}}% cada {{.Every}} días, como máximo +{{.Cap}}%"
+
+["bot.sp.rule_last_days"]
+other = "+{{.Step}}% los últimos {{.Every}} días antes de la fecha"
+
+["bot.sp.active"]
+other = "Activado: {{.Rule}}."
+
+["bot.sp.now"]
+other = "Ahora: <b>{{.Price}}</b>, tramo {{.Step}} de {{.Steps}}."
+
+["bot.sp.now_last"]
+other = "Es el último tramo."
+
+["bot.sp.now_left"]
+other = "Después {{.Next}}, cuando se vendan {{.Left}} más."
+
+["bot.sp.now_at"]
+other = "Después {{.Next}} desde {{.When}}."
+
+["bot.sp.stop_btn"]
+other = "⏸ Detener la subida"
+
+["bot.sp.stop_confirm"]
+other = "⏸ <b>{{.Name}}</b>: el precio se queda en {{.Price}} hasta el fin de la venta. Las entradas vendidas mantienen su precio.\n\n¿Detener la subida?"
+
+["bot.sp.stop_yes_btn"]
+other = "✔ Sí, detener"
+
+["bot.sp.stopped"]
+other = "⏸ El precio ya no sube. Se queda como está ahora."
+
+["bot.sp.in_chain"]
+other = "Esta categoría ya se vende por tramos. Para cambiarlos, abre Editar y luego Entradas."
+
+["bot.sp.ended_stopped"]
+other = "El precio inteligente se detuvo el {{.When}}."
+
+["bot.sp.ended_overridden"]
+other = "El precio inteligente se desactivó el {{.When}}: el precio se cambió a mano."
+
+["bot.sp.preview_head"]
+other = "📈 <b>{{.Name}}</b>: {{.Rule}}."
+
+["bot.sp.row_now"]
+other = "ahora: {{.Price}}"
+
+["bot.sp.row_tickets"]
+other = "{{.N}}. {{.Places}} entradas: {{.Price}}"
+
+["bot.sp.row_rest"]
+other = "{{.N}}. el resto, {{.Places}}: {{.Price}}"
+
+["bot.sp.row_from"]
+other = "desde {{.When}}: {{.Price}}"
+
+["bot.sp.preview_note"]
+other = "Cada precio se redondea hacia arriba a una unidad entera. Quien compra ve una categoría con su precio actual y cuántas entradas quedan a ese precio. Todavía no se ha guardado nada."
+
+["bot.sp.enable_btn"]
+other = "✔ Activar"
+
+["bot.sp.nums_btn"]
+other = "✏️ Otros números"
+
+["bot.sp.enabled"]
+other = "📈 El precio inteligente está activado. El precio sube según tu regla."
+
+["bot.sp.q_nums_by_sales"]
+other = "Escribe tres números separados por espacios: la subida por tramo en %, las entradas por tramo y la subida máxima en %.\n\nPor ejemplo: <code>10 50 50</code>"
+
+["bot.sp.q_nums_by_days"]
+other = "Escribe tres números separados por espacios: la subida por tramo en %, los días por tramo y la subida máxima en %.\n\nPor ejemplo: <code>10 7 50</code>"
+
+["bot.sp.q_nums_last_days"]
+other = "Escribe dos números separados por un espacio: la subida en % y cuántos días antes de la fecha empieza.\n\nPor ejemplo: <code>20 3</code>"
+
+["bot.sp.err_nums"]
+other = "No son los números que se piden. Escribe solo números enteros."
+
+["bot.sp.err_input"]
+other = "Estos números no sirven. Revísalos y escríbelos otra vez."
+
+["bot.sp.err_on"]
+other = "El precio inteligente ya está activado o la categoría ya se vende por tramos."
+
+["bot.sp.err_schedule"]
+other = "Esta categoría ya tiene un calendario de precios. Quita sus ventanas de precio futuras en Editar y luego activa el precio inteligente."
+
+["bot.sp.err_places"]
+other = "No hay entradas libres suficientes para esos tramos. Haz el tramo más pequeño o elige la subida por días."
+
+["bot.sp.err_no_room"]
+other = "No queda tiempo para esos tramos antes del fin de la venta. Haz el tramo más corto."
+
+["bot.sp.err_too_late"]
+other = "Es tarde para esta regla: la subida empezaría en el pasado. Elige menos días."
+
+["bot.sp.err_seated"]
+other = "Una categoría con asientos en el plano sube solo por días."
+
+["bot.sp.err_free"]
+other = "El precio inteligente necesita un precio fijo mayor que cero. Pon primero el precio."
+
+["bot.sp.err_off"]
+other = "El precio inteligente ya está desactivado."
+
+["bot.sp.price_warn"]
+other = "📈 Esta categoría sigue el precio inteligente. Un precio puesto a mano lo desactiva: después el precio ya no sube."

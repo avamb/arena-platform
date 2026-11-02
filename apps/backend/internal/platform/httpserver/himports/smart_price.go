@@ -85,16 +85,18 @@ type SmartPriceNow struct {
 
 // SmartPriceRule is one preset of a session.
 type SmartPriceRule struct {
-	ID        uuid.UUID         `json:"id"`
-	TierID    uuid.UUID         `json:"tier_id"`
-	TierName  string            `json:"tier_name"`
-	Kind      string            `json:"kind"`
-	Params    smartprice.Params `json:"params"`
-	BasePrice int64             `json:"base_price"`
-	Currency  string            `json:"currency"`
-	Status    string            `json:"status"`
-	CreatedAt time.Time         `json:"created_at"`
-	StoppedAt *time.Time        `json:"stopped_at"`
+	ID       uuid.UUID `json:"id"`
+	TierID   uuid.UUID `json:"tier_id"`
+	TierName string    `json:"tier_name"`
+	// StepTierIDs are the later steps the preset created (by_sales).
+	StepTierIDs []uuid.UUID       `json:"step_tier_ids"`
+	Kind        string            `json:"kind"`
+	Params      smartprice.Params `json:"params"`
+	BasePrice   int64             `json:"base_price"`
+	Currency    string            `json:"currency"`
+	Status      string            `json:"status"`
+	CreatedAt   time.Time         `json:"created_at"`
+	StoppedAt   *time.Time        `json:"stopped_at"`
 	// Now is filled for an active rule whose categories still exist.
 	Now *SmartPriceNow `json:"now"`
 }
@@ -739,7 +741,11 @@ func smartRules(sc smartScope, now time.Time) []SmartPriceRule {
 	for _, r := range sc.rules {
 		var p smartprice.Params
 		_ = json.Unmarshal(r.Params, &p)
-		item := SmartPriceRule{ID: r.ID, TierID: r.TierID, Kind: r.Kind, Params: p, BasePrice: r.BasePrice,
+		steps := r.StepTierIDs
+		if steps == nil {
+			steps = []uuid.UUID{}
+		}
+		item := SmartPriceRule{ID: r.ID, TierID: r.TierID, StepTierIDs: steps, Kind: r.Kind, Params: p, BasePrice: r.BasePrice,
 			Status: r.Status, CreatedAt: r.CreatedAt, StoppedAt: r.StoppedAt}
 		t, ok := sc.tiers[r.TierID]
 		if ok {

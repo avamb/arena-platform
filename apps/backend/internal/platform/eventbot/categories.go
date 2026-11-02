@@ -91,6 +91,10 @@ type categoryDialog struct {
 	Pending int64 `json:"pending,omitempty"`
 	// Cal is the throwaway draft the wizard's calendar runs on.
 	Cal *Draft `json:"cal,omitempty"`
+	// SmartKind and SmartNums are the smart price preset previewed on screen
+	// (smart_price.go): only they are turned on by its press.
+	SmartKind string    `json:"smart_kind,omitempty"`
+	SmartNums smartNums `json:"smart_nums,omitempty"`
 }
 
 // canCategories reports whether the person may manage categories: the owner,
@@ -415,7 +419,7 @@ func (b *Bot) categoryCallback(ctx context.Context, chatID int64, msgID int, fro
 			return
 		}
 		b.categoryShowCard(ctx, chatID, &msgID, id, jwt, st, st.IDs[i], "")
-	case "v", "op", "cl", "pr", "ps", "qt", "wn", "ws", "we", "wx":
+	case "v", "op", "cl", "pr", "ps", "qt", "wn", "ws", "we", "wx", "sp", "ss", "sd", "sl", "sn", "se", "sx", "sz":
 		tierID, err := uuid.Parse(arg)
 		if err != nil {
 			return
@@ -655,6 +659,9 @@ func (b *Bot) categoryRenderCard(ctx context.Context, chatID int64, editMsgID *i
 	if len(line) > 0 {
 		rows = append(rows, line)
 	}
+	if caps.Price {
+		rows = append(rows, []Button{b.ctBtn(loc, "bot.sp.btn", "sp:"+tid, nil)})
+	}
 	rows = append(rows, []Button{{Label: "« " + b.texts.T(loc, "bot.btn_back", nil), Data: "b"}}, b.ctHomeRow(loc))
 	b.reply(ctx, chatID, editMsgID, clipMessage(note+b.categoryCardText(loc, st, t, all), maxMessageRunes), ctKeyboard(rows))
 }
@@ -725,6 +732,10 @@ func (b *Bot) categoryTierPress(ctx context.Context, chatID int64, msgID *int, i
 			return
 		}
 		b.categoryWindowPress(ctx, chatID, msgID, id, jwt, st, step, kind, t, tiers)
+	default:
+		if isSmartPress(kind) {
+			b.smartPress(ctx, chatID, msgID, id, jwt, st, step, kind, t, tiers)
+		}
 	}
 }
 
@@ -946,7 +957,7 @@ func (b *Bot) categoryText(ctx context.Context, chatID int64, from *models.User,
 		}})
 		return true
 	}
-	if !found || (step != catStepPrice && step != catStepQty && step != catStepWStart && step != catStepWEnd) || st.CardID == nil {
+	if !found || (step != catStepPrice && step != catStepQty && step != catStepWStart && step != catStepWEnd && step != catStepSmartNums) || st.CardID == nil {
 		return false
 	}
 	id, jwt, err := b.resolveIdentity(ctx, from.ID)
@@ -974,6 +985,14 @@ func (b *Bot) categoryText(ctx context.Context, chatID int64, from *models.User,
 	}
 	caps := categoryCapsFor(t, tiers)
 	back := ctKeyboard([][]Button{b.ctCardBack(loc, t.Id)})
+	if step == catStepSmartNums {
+		if st.SmartKind == "" {
+			b.smartScreen(ctx, chatID, edit, id, jwt, st, t, tiers, "")
+			return true
+		}
+		b.smartText(ctx, chatID, edit, id, jwt, st, t, tiers, text)
+		return true
+	}
 	switch step {
 	case catStepPrice:
 		amount, okAmount := parsePromoAmount(text)
@@ -985,9 +1004,14 @@ func (b *Bot) categoryText(ctx context.Context, chatID int64, from *models.User,
 		}
 		st.Pending = amount
 		b.saveCategoryState(ctx, from.ID, st, catStepPriceOK)
-		b.reply(ctx, chatID, edit, b.texts.T(loc, "bot.cat.price_confirm", map[string]any{
+		confirm := b.texts.T(loc, "bot.cat.price_confirm", map[string]any{
 			"Name": Esc(t.Name), "Old": Esc(FormatMoney(categoryPriceNow(t), t.Currency, loc)), "New": Esc(FormatMoney(amount, t.Currency, loc)),
-		}), ctKeyboard([][]Button{
+		})
+		if b.smartFollows(ctx, jwt, st, t.Id) {
+			// A price set by hand turns smart price off (spec 51 section 4.2, decision V-5).
+			confirm += "\n\n" + b.texts.T(loc, "bot.sp.price_warn", nil)
+		}
+		b.reply(ctx, chatID, edit, confirm, ctKeyboard([][]Button{
 			{b.ctBtn(loc, "bot.cat.price_save_btn", "ps:"+t.Id.String(), nil)},
 			b.ctCardBack(loc, t.Id),
 		}))

@@ -18068,6 +18068,9 @@ type SmartPriceRule struct {
 	// Status active, stopped (the organizer froze the price) or overridden (a price was edited by hand).
 	Status string `json:"status"`
 
+	// StepTierIds The later steps the preset created (by_sales). A price edited by hand on any of them, or on tier_id, turns the preset off.
+	StepTierIds []openapi_types.UUID `json:"step_tier_ids"`
+
 	// StoppedAt When the preset was stopped or overridden.
 	StoppedAt *time.Time `json:"stopped_at"`
 

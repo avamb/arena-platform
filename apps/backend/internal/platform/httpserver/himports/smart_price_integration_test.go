@@ -192,7 +192,7 @@ func TestSmartPrice_ByDays_WritesWindowsAndHandEditEndsIt(t *testing.T) {
 	}
 
 	// A price typed by hand ends the preset (owner decision В-5).
-	n, err := gen.New(pool).OverrideSmartPriceRulesForTier(ctx, balcony)
+	n, err := gen.New(pool).OverrideSmartPriceRulesForTier(ctx, balcony, 0)
 	if err != nil || n != 1 {
 		t.Fatalf("override: %d %v", n, err)
 	}
@@ -201,7 +201,16 @@ func TestSmartPrice_ByDays_WritesWindowsAndHandEditEndsIt(t *testing.T) {
 		t.Errorf("after a hand edit: %+v", list.Rules[0])
 	}
 
+	// ...and the price stops rising: the preset's future windows are gone.
+	var future int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM ticket_tier_prices WHERE tier_id=$1 AND valid_from > now()`, balcony).Scan(&future); err != nil || future != 0 {
+		t.Errorf("after a hand edit %d future windows are left (%v), want 0", future, err)
+	}
+
 	// A preset never overwrites future price changes.
+	if _, err := pool.Exec(ctx, `INSERT INTO ticket_tier_prices (tier_id, valid_from, price_amount) VALUES ($1, now() + interval '3 days', 1500)`, balcony); err != nil {
+		t.Fatal(err)
+	}
 	again := f.smartCall(h, http.MethodPost, base, out.SessionID, uuid.Nil, body, (*Handler).HandleSmartPriceEnable)
 	if again.Code != http.StatusConflict {
 		t.Errorf("preset over a schedule: %d %s", again.Code, again.Body.String())

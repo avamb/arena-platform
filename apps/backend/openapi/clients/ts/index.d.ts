@@ -20370,6 +20370,8 @@ export interface components {
              * @description The category the preset was applied to (the first step of a chain).
              */
             tier_id: string;
+            /** @description The later steps the preset created (by_sales). A price edited by hand on any of them, or on tier_id, turns the preset off. */
+            step_tier_ids: string[];
             /** @description The category name. */
             tier_name: string;
             /** @description by_sales, by_days or last_days. */

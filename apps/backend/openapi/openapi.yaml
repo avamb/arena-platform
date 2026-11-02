@@ -10457,7 +10457,7 @@ components:
     SmartPriceRule:
       type: object
       description: One smart price preset of a session.
-      required: [id, tier_id, tier_name, kind, params, base_price, currency, status, created_at]
+      required: [id, tier_id, tier_name, kind, params, base_price, currency, status, created_at, step_tier_ids]
       properties:
         id:
           type: string
@@ -10467,6 +10467,12 @@ components:
           type: string
           format: uuid
           description: The category the preset was applied to (the first step of a chain).
+        step_tier_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: The later steps the preset created (by_sales). A price edited by hand on any of them, or on tier_id, turns the preset off.
         tier_name:
           type: string
           description: The category name.
