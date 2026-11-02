@@ -81,6 +81,7 @@ func issueShopCode(ctx context.Context, db gen.DBTX, shopOrderID uuid.UUID, now 
 		id, inserted, err := q.InsertReferralShopPromoCode(ctx, gen.InsertReferralShopPromoCodeParams{
 			OrgID: ord.OrgID, Code: text, DiscountPct: int64(program.FriendDiscountPct), MaxUses: maxUses,
 			ValidUntil: program.EndsAt, ProgramID: program.ID, ReferrerShopOrderID: shopOrderID,
+			CashbackPct: program.CashbackPct, CapPct: program.CashbackCapPct,
 		})
 		if err != nil {
 			return Code{}, false, err
@@ -226,12 +227,17 @@ func RecordFriendShopOrderTx(ctx context.Context, tx pgx.Tx, ord gen.ShopOrderRo
 	if err != nil {
 		return fmt.Errorf("referral: referrer order lookup: %w", err)
 	}
+	cashbackPct, capPct := codePercents(meta, program)
 	p := gen.InsertReferralShopRewardParams{
 		OrgID: ord.OrgID, ProgramID: program.ID, PromoCodeID: *ord.PromoCodeID,
 		ReferrerShopOrderID: referrer.ID, FriendShopOrderID: ord.ID,
-		Currency: referrer.Currency, CashbackPct: program.CashbackPct, CapPct: program.CashbackCapPct,
+		Currency: referrer.Currency, CashbackPct: cashbackPct, CapPct: capPct,
 	}
 
+	friends, err := lockedFriendCount(ctx, tx, *ord.PromoCodeID)
+	if err != nil {
+		return fmt.Errorf("referral: friend count: %w", err)
+	}
 	self, err := IsSelfReferralShop(ctx, tx, referrer.ID, ord.ID)
 	if err != nil {
 		return fmt.Errorf("referral: self-referral check: %w", err)
@@ -239,11 +245,13 @@ func RecordFriendShopOrderTx(ctx context.Context, tx pgx.Tx, ord gen.ShopOrderRo
 	switch {
 	case self:
 		p.State, p.Reason = StateCancelled, "self_referral"
+	case meta.MaxUses != nil && friends >= int64(*meta.MaxUses):
+		p.State, p.Reason = StateCapped, "max_friends"
 	case ord.Currency != referrer.Currency:
 		p.State, p.Reason = StateNotPossible, "currency_mismatch"
 	default:
 		base := ord.Subtotal - ord.Discount
-		amount := CashbackAmount(base, int(program.CashbackPct))
+		amount := CashbackAmount(base, int(cashbackPct))
 		cashback, err := q.SumReferrerShopLiveRewards(ctx, referrer.ID)
 		if err != nil {
 			return fmt.Errorf("referral: cashback sum: %w", err)
@@ -254,7 +262,7 @@ func RecordFriendShopOrderTx(ctx context.Context, tx pgx.Tx, ord gen.ShopOrderRo
 				return fmt.Errorf("referral: refund sum: %w", err)
 			}
 		}
-		pay, capped := ApplyCap(amount, referrer.Total, cashback, refunded, int(program.CashbackCapPct))
+		pay, capped := ApplyCap(amount, referrer.Total, cashback, refunded, int(capPct))
 		switch {
 		case amount == 0:
 			p.State, p.Reason = StateCapped, "zero_amount"

@@ -154,7 +154,7 @@ func (h *Handler) findPromoCode(ctx context.Context, orgID uuid.UUID, raw string
 		// reverse, is worse than refusing.
 		return nil, errPromoUnavailable
 	}
-	row, err := h.promoQueries.GetPromoCodeByCodeCI(ctx, orgID, code)
+	row, err := h.promoQueries.GetPromoCodeByCodeCIAnyOrigin(ctx, orgID, code)
 	if err != nil {
 		return nil, err
 	}

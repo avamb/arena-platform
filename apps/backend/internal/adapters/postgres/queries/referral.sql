@@ -12,14 +12,16 @@ WHERE scope = 'event' AND event_id = $1 AND status = 'active'
   AND (ends_at IS NULL OR ends_at > $2);
 
 -- name: GetReferralCodeByReferrerOrder :one
-SELECT pc.id, pc.code, pc.referral_program_id, pc.discount_value, p.cashback_pct, pc.status
+SELECT pc.id, pc.code, pc.referral_program_id, pc.discount_value,
+       COALESCE(pc.referral_cashback_pct, p.cashback_pct), pc.status
 FROM promo_codes pc JOIN referral_programs p ON p.id = pc.referral_program_id
 WHERE pc.referrer_order_id = $1;
 
 -- name: InsertReferralPromoCode :one
 INSERT INTO promo_codes (org_id, code, discount_type, discount_value, applies_to_session_ids,
-    max_uses, max_uses_per_customer, valid_until, status, origin, referral_program_id, referrer_order_id)
-VALUES ($1, $2, 'percent', $3, $4, $5, 1, $6, 'active', 'referral', $7, $8)
+    max_uses, max_uses_per_customer, valid_until, status, origin, referral_program_id, referrer_order_id,
+    referral_cashback_pct, referral_cap_pct)
+VALUES ($1, $2, 'percent', $3, $4, $5, 1, $6, 'active', 'referral', $7, $8, $9, $10)
 ON CONFLICT DO NOTHING
 RETURNING id;
 

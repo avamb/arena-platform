@@ -87,15 +87,26 @@ type refundView struct {
 	HasProviderRef bool
 }
 
+// reasonManualReview is the reward reason while a refund waits for a person
+// (the refund engine parked it in manual_review). It is NOT final: the sweep
+// reads the refund back, and when the operator closes it the reward becomes
+// paid or not_possible. The provider's own code behind the parking is kept
+// apart, in referral_rewards.provider_code.
+const reasonManualReview = "manual_review"
+
 // resultOf judges a reward by its refunds (pure). Pending work wins: the
 // reward is 'sent' while any refund is still on its way. A reward whose
 // refunds all failed is not_possible with the provider's code (owner
 // decision R-RF5: no other card is tried, the money stays with the organizer).
-// A mix of money returned and refused keeps what was returned and says so in
-// the reason; amount is always the money returned or on its way.
-func resultOf(refs []refundView) (state, reason string, amount int64) {
-	var pending, bad bool
-	var badCode string
+// A refund parked in manual_review is not a refusal: with nothing returned the
+// reward is not_possible with the fixed reason "manual_review" (no letter, the
+// sweep re-reads it) whatever failure code the engine recorded, and that code
+// goes to providerCode. A mix of money returned and refused keeps what was
+// returned and says so in the reason; amount is always the money returned or
+// on its way.
+func resultOf(refs []refundView) (state, reason, providerCode string, amount int64) {
+	var pending, bad, review bool
+	var badCode, badProvider, reviewProvider string
 	for _, r := range refs {
 		switch r.State {
 		case refunds.StateSucceeded:
@@ -103,28 +114,32 @@ func resultOf(refs []refundView) (state, reason string, amount int64) {
 		case refunds.StateRequested, refunds.StateApproved, refunds.StateProviderPending:
 			amount += r.Amount
 			pending = true
-		default: // failed, rejected, manual_review
+		case refunds.StateManualReview:
+			bad, review = true, true
+			if reviewProvider == "" {
+				reviewProvider = r.FailureCode
+			}
+		default: // failed, rejected
 			bad = true
 			if badCode == "" {
+				badProvider = r.FailureCode
 				badCode = r.FailureCode
 				if badCode == "" {
-					if r.State == refunds.StateManualReview {
-						badCode = "manual_review"
-					} else {
-						badCode = "provider_declined"
-					}
+					badCode = "provider_declined"
 				}
 			}
 		}
 	}
 	switch {
 	case pending:
-		return StateSent, "", amount
+		return StateSent, "", "", amount
+	case bad && amount == 0 && review:
+		return StateNotPossible, reasonManualReview, reviewProvider, 0
 	case bad && amount == 0:
-		return StateNotPossible, badCode, 0
+		return StateNotPossible, badCode, badProvider, 0
 	case bad:
-		return StatePaid, "partial", amount
+		return StatePaid, "partial", "", amount
 	default:
-		return StatePaid, "", amount
+		return StatePaid, "", "", amount
 	}
 }

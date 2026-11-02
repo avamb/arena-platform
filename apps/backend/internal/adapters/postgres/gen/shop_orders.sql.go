@@ -643,6 +643,22 @@ func (q *Queries) SumShopPaymentRefunds(ctx context.Context, paymentIntentID uui
 	return accepted, live, err
 }
 
+const sumShopPaymentCashback = `-- name: SumShopPaymentCashback :one
+SELECT COALESCE(sum(amount), 0)::bigint
+FROM   refunds
+WHERE  payment_intent_id = $1 AND origin = 'referral_cashback' AND state = 'succeeded'`
+
+// SumShopPaymentCashback is the "Refer a friend" cashback that has gone back
+// to the referrer's card from a payment (succeeded refunds of origin
+// referral_cashback only). It never changes an order's status by itself, but
+// it counts when the ordinary refunds plus the cashback have returned the whole
+// payment: the order is then refunded (see shop.refundStatus).
+func (q *Queries) SumShopPaymentCashback(ctx context.Context, paymentIntentID uuid.UUID) (int64, error) {
+	var n int64
+	err := q.db.QueryRow(ctx, sumShopPaymentCashback, paymentIntentID).Scan(&n)
+	return n, err
+}
+
 const getShopRefundByKey = `-- name: GetShopRefundByKey :one
 SELECT id, shop_order_id, amount
 FROM   refunds

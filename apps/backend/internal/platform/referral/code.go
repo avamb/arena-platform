@@ -19,6 +19,10 @@ import (
 var (
 	// ErrNoProgram: the order's event has no active programme in its period.
 	ErrNoProgram = errors.New("referral: no active programme for the event")
+	// ErrNoSessions: the order's event has no live date, so a code would have
+	// nothing to apply to (an empty session list means "every date" to the
+	// checkout, which a personal code must never mean).
+	ErrNoSessions = errors.New("referral: the event has no live session")
 	// ErrNotEligible: the order cannot carry a personal code (not paid with
 	// money, an invitation, an order a selling site took the money for).
 	ErrNotEligible = errors.New("referral: the order is not eligible for a personal code")
@@ -32,8 +36,8 @@ const codeAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 const (
 	maxCodeAttempts = 8
 	prefixLen       = 6
-	suffixLen       = 4
-	plainCodeLen    = 8
+	suffixLen       = 6
+	plainCodeLen    = 10
 )
 
 // Code is a personal code of a referrer's order.
@@ -52,7 +56,7 @@ type Code struct {
 // repeat (or a race) returns the code the order already has. The order must be
 // paid (or partly refunded) with money (total above zero) and not come from a
 // selling site; its event needs an active programme in its period, else
-// ErrNoProgram. A code issued earlier is returned whatever the programme's
+// ErrNoProgram, or ErrNoSessions when the event has no live date. A code issued earlier is returned whatever the programme's
 // status is now.
 //
 // db is a pool or a transaction. Issuing is not part of the payment's
@@ -89,6 +93,9 @@ func issueCode(ctx context.Context, db gen.DBTX, orderID uuid.UUID, now time.Tim
 	if err != nil {
 		return Code{}, false, err
 	}
+	if len(sessions) == 0 {
+		return Code{}, false, ErrNoSessions
+	}
 	var maxUses *int32
 	if program.MaxFriends != nil {
 		v := int32(*program.MaxFriends)
@@ -102,6 +109,7 @@ func issueCode(ctx context.Context, db gen.DBTX, orderID uuid.UUID, now time.Tim
 		id, inserted, err := q.InsertReferralPromoCode(ctx, gen.InsertReferralPromoCodeParams{
 			OrgID: ord.OrgID, Code: text, DiscountPct: int64(program.FriendDiscountPct), SessionIDs: sessions,
 			MaxUses: maxUses, ValidUntil: program.EndsAt, ProgramID: program.ID, ReferrerOrderID: orderID,
+			CashbackPct: program.CashbackPct, CapPct: program.CashbackCapPct,
 		})
 		if err != nil {
 			return Code{}, false, err
@@ -144,9 +152,10 @@ func orderEligible(o gen.ReferralOrderFacts) bool {
 	return o.Total > 0
 }
 
-// generateCode makes "ANNA-7K2Q": a Latin prefix of up to six letters from the
-// buyer's name plus four characters of the code alphabet; without a usable
-// name, eight characters. The random bytes come from rnd.
+// generateCode makes "ANNA-7K2QX9": a Latin prefix of up to six letters from
+// the buyer's name plus six characters of the code alphabet (31^6, about 887
+// million); without a usable name, ten characters. The random bytes come from
+// rnd.
 func generateCode(buyerName string, rnd io.Reader) (string, error) {
 	prefix := namePrefix(buyerName)
 	if prefix == "" {

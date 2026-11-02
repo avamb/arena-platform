@@ -9,7 +9,16 @@
 --                     'referral' (referral_program_id + the referrer's order
 --                     or shop order, unique, so a code is issued once per
 --                     order). Lists of ordinary promo codes show only
---                     origin = 'manual'.
+--                     origin = 'manual'. The code SNAPSHOTS what it promises
+--                     at issue time: discount_value is the friend's percent,
+--                     referral_cashback_pct and referral_cap_pct are the
+--                     referrer's cashback and cap, so a later change of the
+--                     programme never changes a code already handed out (the
+--                     reward copies them from the CODE, not from the
+--                     programme). Only the Bil24-free surfaces take such a
+--                     code: the event page, the widget and the shop; the
+--                     gateway, the REST checkout and promo-validate answer
+--                     it as an unknown code.
 -- referral_rewards    one row per friend order that used a personal code: the
 --                     cashback owed to the referrer and where it stands
 --                     (due, sent, paid, capped, not_possible, failed,
@@ -68,6 +77,8 @@ ALTER TABLE promo_codes
     ADD COLUMN referral_program_id     uuid REFERENCES referral_programs(id),
     ADD COLUMN referrer_order_id       uuid REFERENCES orders(id),
     ADD COLUMN referrer_shop_order_id  uuid REFERENCES shop_orders(id),
+    ADD COLUMN referral_cashback_pct   smallint CHECK (referral_cashback_pct IS NULL OR referral_cashback_pct BETWEEN 1 AND 100),
+    ADD COLUMN referral_cap_pct        smallint CHECK (referral_cap_pct IS NULL OR referral_cap_pct BETWEEN 1 AND 100),
     ADD CONSTRAINT promo_codes_origin_check CHECK (origin IN ('manual', 'referral')),
     ADD CONSTRAINT promo_codes_referral_shape_check CHECK (
         (origin = 'referral') = (referral_program_id IS NOT NULL)
@@ -104,6 +115,7 @@ CREATE TABLE referral_rewards (
     state                  text        NOT NULL CHECK (state IN
         ('due', 'sent', 'paid', 'capped', 'not_possible', 'failed', 'cancelled')),
     reason                 text,
+    provider_code          text,
     friend_reversal        text        CHECK (friend_reversal IN ('refunded', 'partially_refunded', 'disputed')),
     reversal_notified_at   timestamptz,
     letter_sent_at         timestamptz,
@@ -146,6 +158,20 @@ COMMENT ON TABLE referral_rewards IS
 
 -- +goose Down
 
+-- A cashback is a refund of origin referral_cashback. Turning it into an
+-- ordinary refund would put it into every refund report and into the order's
+-- refunded sum, so the migration is refused until the operator has dealt with
+-- those rows (the money has already moved at the provider).
+-- +goose StatementBegin
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM refunds WHERE origin = 'referral_cashback') THEN
+        RAISE EXCEPTION '0195 down refused: refunds of origin referral_cashback exist; they are real money returned to referrers and cannot become ordinary refunds. Keep the programme tables, or remove those rows by hand after exporting them';
+    END IF;
+END
+$$;
+-- +goose StatementEnd
+
 DELETE FROM email_letters WHERE kind IN ('referral_cashback', 'referral_unavailable');
 ALTER TABLE email_letters
     DROP CONSTRAINT IF EXISTS email_letters_kind_check,
@@ -153,9 +179,7 @@ ALTER TABLE email_letters
         CHECK (kind IN ('ticket', 'invitation', 'change', 'cancel', 'refund',
                         'shop_received', 'shop_shipped', 'shop_refunded'));
 
--- A cashback refund cannot exist under the old CHECK: it becomes an ordinary
--- arena refund row (the money has already moved at the provider).
-UPDATE refunds SET origin = 'arena' WHERE origin = 'referral_cashback';
+-- No cashback refund can exist here (refused above), so the old CHECK holds.
 ALTER TABLE refunds DROP CONSTRAINT refunds_origin_check;
 ALTER TABLE refunds ADD CONSTRAINT refunds_origin_check
     CHECK (origin IN ('arena', 'provider_dashboard'));
@@ -171,6 +195,8 @@ DROP INDEX IF EXISTS promo_codes_referrer_order_uq;
 ALTER TABLE promo_codes
     DROP CONSTRAINT IF EXISTS promo_codes_referral_shape_check,
     DROP CONSTRAINT IF EXISTS promo_codes_origin_check,
+    DROP COLUMN IF EXISTS referral_cap_pct,
+    DROP COLUMN IF EXISTS referral_cashback_pct,
     DROP COLUMN IF EXISTS referrer_shop_order_id,
     DROP COLUMN IF EXISTS referrer_order_id,
     DROP COLUMN IF EXISTS referral_program_id,

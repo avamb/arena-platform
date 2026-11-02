@@ -18,21 +18,24 @@ func TestResultOf(t *testing.T) {
 		wantState  string
 		wantReason string
 		wantAmount int64
+		wantCode   string
 	}{
-		{"succeeded", []refundView{{State: refunds.StateSucceeded, Amount: 500}}, StatePaid, "", 500},
-		{"pending with provider id", []refundView{{State: refunds.StateProviderPending, Amount: 500, HasProviderRef: true}}, StateSent, "", 500},
-		{"pending, unknown outcome", []refundView{{State: refunds.StateProviderPending, Amount: 500}}, StateSent, "", 500},
-		{"declined by the provider", []refundView{{State: refunds.StateFailed, Amount: 500, FailureCode: "card_closed"}}, StateNotPossible, "card_closed", 0},
-		{"failed without a code", []refundView{{State: refunds.StateFailed, Amount: 500}}, StateNotPossible, "provider_declined", 0},
-		{"manual review", []refundView{{State: refunds.StateManualReview, Amount: 500}}, StateNotPossible, "manual_review", 0},
-		{"rejected", []refundView{{State: refunds.StateRejected, Amount: 500}}, StateNotPossible, "provider_declined", 0},
-		{"two tickets, both succeeded", []refundView{{State: refunds.StateSucceeded, Amount: 300}, {State: refunds.StateSucceeded, Amount: 200}}, StatePaid, "", 500},
-		{"one succeeded, one declined keeps what was returned", []refundView{{State: refunds.StateSucceeded, Amount: 300}, {State: refunds.StateFailed, Amount: 200, FailureCode: "x"}}, StatePaid, "partial", 300},
-		{"one pending wins over a decline", []refundView{{State: refunds.StateProviderPending, Amount: 300}, {State: refunds.StateFailed, Amount: 200}}, StateSent, "", 300},
+		{"succeeded", []refundView{{State: refunds.StateSucceeded, Amount: 500}}, StatePaid, "", 500, ""},
+		{"pending with provider id", []refundView{{State: refunds.StateProviderPending, Amount: 500, HasProviderRef: true}}, StateSent, "", 500, ""},
+		{"pending, unknown outcome", []refundView{{State: refunds.StateProviderPending, Amount: 500}}, StateSent, "", 500, ""},
+		{"declined by the provider", []refundView{{State: refunds.StateFailed, Amount: 500, FailureCode: "card_closed"}}, StateNotPossible, "card_closed", 0, "card_closed"},
+		{"failed without a code", []refundView{{State: refunds.StateFailed, Amount: 500}}, StateNotPossible, "provider_declined", 0, ""},
+		{"manual review", []refundView{{State: refunds.StateManualReview, Amount: 500}}, StateNotPossible, "manual_review", 0, ""},
+		{"manual review keeps the engine's code apart from the reason", []refundView{{State: refunds.StateManualReview, Amount: 500, FailureCode: "reversed_after_success"}}, StateNotPossible, "manual_review", 0, "reversed_after_success"},
+		{"manual review wins over a decline: it is not final", []refundView{{State: refunds.StateFailed, Amount: 200, FailureCode: "x"}, {State: refunds.StateManualReview, Amount: 300, FailureCode: "budget_exceeded"}}, StateNotPossible, "manual_review", 0, "budget_exceeded"},
+		{"rejected", []refundView{{State: refunds.StateRejected, Amount: 500}}, StateNotPossible, "provider_declined", 0, ""},
+		{"two tickets, both succeeded", []refundView{{State: refunds.StateSucceeded, Amount: 300}, {State: refunds.StateSucceeded, Amount: 200}}, StatePaid, "", 500, ""},
+		{"one succeeded, one declined keeps what was returned", []refundView{{State: refunds.StateSucceeded, Amount: 300}, {State: refunds.StateFailed, Amount: 200, FailureCode: "x"}}, StatePaid, "partial", 300, ""},
+		{"one pending wins over a decline", []refundView{{State: refunds.StateProviderPending, Amount: 300}, {State: refunds.StateFailed, Amount: 200}}, StateSent, "", 300, ""},
 	} {
-		state, reason, amount := resultOf(tc.refs)
-		if state != tc.wantState || reason != tc.wantReason || amount != tc.wantAmount {
-			t.Errorf("%s: resultOf = (%s, %q, %d); want (%s, %q, %d)", tc.name, state, reason, amount, tc.wantState, tc.wantReason, tc.wantAmount)
+		state, reason, code, amount := resultOf(tc.refs)
+		if state != tc.wantState || reason != tc.wantReason || amount != tc.wantAmount || code != tc.wantCode {
+			t.Errorf("%s: resultOf = (%s, %q, %q, %d); want (%s, %q, %q, %d)", tc.name, state, reason, code, amount, tc.wantState, tc.wantReason, tc.wantCode, tc.wantAmount)
 		}
 	}
 }

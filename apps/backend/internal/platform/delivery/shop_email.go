@@ -262,9 +262,11 @@ func (h *shopEmail) loadRefund(ctx context.Context, o gen.ShopOrderRow, id uuid.
 		SELECT r.amount,
 		       (SELECT COALESCE(sum(x.amount), 0)::bigint FROM refunds x
 		         WHERE x.payment_intent_id = r.payment_intent_id AND x.state = 'succeeded'
+		           AND x.origin <> 'referral_cashback'
 		           AND (x.updated_at, x.id) <= (r.updated_at, r.id))
 		  FROM refunds r
-		 WHERE r.id = $1 AND r.payment_intent_id = $2 AND r.state = 'succeeded'`,
+		 WHERE r.id = $1 AND r.payment_intent_id = $2 AND r.state = 'succeeded'
+		   AND r.origin <> 'referral_cashback'`,
 		id, *o.PaymentIntentID).Scan(&r.Amount, &r.Running)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil

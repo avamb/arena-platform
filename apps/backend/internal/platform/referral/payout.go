@@ -250,11 +250,13 @@ func (s *Service) retryLater(ctx context.Context, id uuid.UUID, cause error) err
 // stateChange is the new state of a reward; Amount and the refund links are
 // kept when nil.
 type stateChange struct {
-	State    string
-	Reason   string
-	Amount   *int64
-	RefundID *uuid.UUID
-	BatchID  *uuid.UUID
+	State  string
+	Reason string
+	// ProviderCode: nil keeps the stored code, a pointer to "" clears it.
+	ProviderCode *string
+	Amount       *int64
+	RefundID     *uuid.UUID
+	BatchID      *uuid.UUID
 }
 
 // setState changes a reward that is in one of the from states. It reports
@@ -274,10 +276,11 @@ func (s *Service) setState(ctx context.Context, id uuid.UUID, from []string, c s
 	err = tx.QueryRow(ctx, `UPDATE referral_rewards
 		SET state = $3, reason = COALESCE(NULLIF($4, ''), reason),
 		    amount_minor = COALESCE($5, amount_minor), refund_id = COALESCE($6, refund_id),
-		    refund_batch_id = COALESCE($7, refund_batch_id), next_attempt_at = NULL, updated_at = now()
+		    refund_batch_id = COALESCE($7, refund_batch_id), next_attempt_at = NULL, updated_at = now(),
+		    provider_code = CASE WHEN $8::text IS NULL THEN provider_code ELSE NULLIF($8::text, '') END
 		WHERE id = $1 AND state = ANY($2)
 		RETURNING COALESCE(reason, ''), (referrer_order_id IS NOT NULL OR referrer_shop_order_id IS NOT NULL), letter_sent_at IS NOT NULL`,
-		id, from, c.State, c.Reason, c.Amount, c.RefundID, c.BatchID).Scan(&reason, &hasReferrerOrder, &letterSent)
+		id, from, c.State, c.Reason, c.Amount, c.RefundID, c.BatchID, c.ProviderCode).Scan(&reason, &hasReferrerOrder, &letterSent)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
@@ -330,12 +333,12 @@ func (s *Service) applyRefunds(ctx context.Context, rw gen.ReferralRewardRow, ba
 			views[i].FailureCode = *r.FailureCode
 		}
 	}
-	state, reason, amount := resultOf(views)
-	if state == rw.State && (reason == "" || (rw.Reason != nil && *rw.Reason == reason)) && rw.RefundBatchID != nil {
+	state, reason, providerCode, amount := resultOf(views)
+	if unchanged(rw, state, reason, providerCode) && rw.RefundBatchID != nil {
 		return nil // nothing new
 	}
 	first := refs[0].ID
-	c := stateChange{State: state, Reason: reason, Amount: &amount, RefundID: &first, BatchID: &batchID}
+	c := stateChange{State: state, Reason: reason, ProviderCode: &providerCode, Amount: &amount, RefundID: &first, BatchID: &batchID}
 	if state == StateNotPossible {
 		// Nothing was returned, but the cashback stays owed on the row: the
 		// organizer's report shows what was not paid. The cap sums count only
@@ -344,6 +347,17 @@ func (s *Service) applyRefunds(ctx context.Context, rw gen.ReferralRewardRow, ba
 	}
 	_, err := s.setState(ctx, rw.ID, from, c)
 	return err
+}
+
+// unchanged reports whether a reward already says what its refunds now say.
+func unchanged(rw gen.ReferralRewardRow, state, reason, providerCode string) bool {
+	if state != rw.State {
+		return false
+	}
+	if reason != "" && (rw.Reason == nil || *rw.Reason != reason) {
+		return false
+	}
+	return providerCode == "" || (rw.ProviderCode != nil && *rw.ProviderCode == providerCode)
 }
 
 // findBatch returns the refund batch created under key, if any.

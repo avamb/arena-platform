@@ -88,12 +88,12 @@ func TestGenerateCode_Format(t *testing.T) {
 	// A fixed byte stream makes the code deterministic: 0,1,2,3 -> A,B,C,D.
 	rnd := func() *bytes.Reader { return bytes.NewReader(bytes.Repeat([]byte{0, 1, 2, 3}, 8)) }
 	for _, tc := range []struct{ name, want string }{
-		{"Anna", "ANNA-ABCD"},
-		{"Анна Петрова", "ANNA-ABCD"},          // Cyrillic is transliterated, first word only
-		{"Aleksandra Romanova", "ALEKSA-ABCD"}, // cut to six letters
-		{"  ", "ABCDABCD"},                     // no name: eight characters
-		{"", "ABCDABCD"},
-		{"12345", "ABCDABCD"}, // no letters survive
+		{"Anna", "ANNA-ABCDAB"},
+		{"Анна Петрова", "ANNA-ABCDAB"},          // Cyrillic is transliterated, first word only
+		{"Aleksandra Romanova", "ALEKSA-ABCDAB"}, // cut to six letters
+		{"  ", "ABCDABCDAB"},                     // no name: ten characters
+		{"", "ABCDABCDAB"},
+		{"12345", "ABCDABCDAB"}, // no letters survive
 	} {
 		got, err := generateCode(tc.name, rnd())
 		if err != nil {

@@ -92,7 +92,7 @@ func LatestSucceededRefundID(ctx context.Context, db interface {
 }, paymentIntentID uuid.UUID) (uuid.UUID, error) {
 	var id uuid.UUID
 	err := db.QueryRow(ctx, `SELECT id FROM refunds
-		WHERE payment_intent_id = $1 AND state = 'succeeded'
+		WHERE payment_intent_id = $1 AND state = 'succeeded' AND origin <> 'referral_cashback'
 		ORDER BY updated_at DESC, id DESC LIMIT 1`, paymentIntentID).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return uuid.Nil, nil

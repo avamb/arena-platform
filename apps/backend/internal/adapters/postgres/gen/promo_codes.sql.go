@@ -203,10 +203,12 @@ func (q *Queries) GetPromoCodeByID(ctx context.Context, id, orgID uuid.UUID) (Pr
 const getPromoCodeByCode = `-- name: GetPromoCodeByCode :one
 SELECT ` + promoCodeColumns + `
 FROM promo_codes
-WHERE org_id = $1 AND code = $2 AND deleted_at IS NULL`
+WHERE org_id = $1 AND code = $2 AND deleted_at IS NULL AND origin = 'manual'`
 
 // GetPromoCodeByCode fetches an active promo code by org_id + code string.
-// Used by the checkout validation endpoint.
+// Used by the checkout validation endpoint. A personal code of the "Refer a
+// friend" programme (origin 'referral') is not found here: it works only on
+// the event page, the widget and the shop.
 // Returns pgx.ErrNoRows when not found or soft-deleted.
 func (q *Queries) GetPromoCodeByCode(ctx context.Context, orgID uuid.UUID, code string) (PromoCodeRow, error) {
 	row := q.db.QueryRow(ctx, getPromoCodeByCode, orgID, code)
@@ -220,8 +222,15 @@ func (q *Queries) GetPromoCodeByCode(ctx context.Context, orgID uuid.UUID, code 
 const getPromoCodeByCodeCI = `-- name: GetPromoCodeByCodeCI :one
 SELECT ` + promoCodeColumns + `
 FROM promo_codes
-WHERE org_id = $1 AND lower(code) = lower($2) AND deleted_at IS NULL
+WHERE org_id = $1 AND lower(code) = lower($2) AND deleted_at IS NULL AND origin = 'manual'
 ORDER BY (code = $2) DESC, created_at, id
+LIMIT 1`
+
+const getPromoCodeByCodeCIAnyOrigin = `-- name: GetPromoCodeByCodeCIAnyOrigin :one
+SELECT ` + promoCodeColumns + `
+FROM promo_codes
+WHERE org_id = $1 AND lower(code) = lower($2) AND deleted_at IS NULL
+ORDER BY (code = $2) DESC, (origin = 'manual') DESC, created_at, id
 LIMIT 1`
 
 // GetPromoCodeByCodeCI fetches an active promo code by org_id + code, matching
@@ -234,9 +243,21 @@ LIMIT 1`
 // (UNIQUE (org_id, code) is case-sensitive): the code typed EXACTLY wins,
 // otherwise the oldest, with the id as the last tie-break.
 //
+// Personal codes of the "Refer a friend" programme (origin 'referral') are NOT
+// found here (the Bil24 gateway answers them as an unknown code); the widget's
+// checkout reads them through GetPromoCodeByCodeCIAnyOrigin.
+//
 // Returns pgx.ErrNoRows when nothing matches or the row is soft-deleted.
 func (q *Queries) GetPromoCodeByCodeCI(ctx context.Context, orgID uuid.UUID, code string) (PromoCodeRow, error) {
 	row := q.db.QueryRow(ctx, getPromoCodeByCodeCI, orgID, code)
+	return scanPromoCodeRow(row)
+}
+
+// GetPromoCodeByCodeCIAnyOrigin is GetPromoCodeByCodeCI for the surfaces where a
+// personal "Refer a friend" code works too (the widget's checkout/quote and
+// checkout/start). A manual code wins over a referral one of the same spelling.
+func (q *Queries) GetPromoCodeByCodeCIAnyOrigin(ctx context.Context, orgID uuid.UUID, code string) (PromoCodeRow, error) {
+	row := q.db.QueryRow(ctx, getPromoCodeByCodeCIAnyOrigin, orgID, code)
 	return scanPromoCodeRow(row)
 }
 

@@ -15264,7 +15264,7 @@ export interface components {
         };
         /** @description A buyer's personal "Refer a friend" code with the link to share. */
         PublicReferralCode: {
-            /** @description The personal code, such as ANNA-7K2Q. */
+            /** @description The personal code, such as ANNA-7K2QX9. */
             code: string;
             /** @description Percent off a friend gets. */
             friend_discount_pct: number;

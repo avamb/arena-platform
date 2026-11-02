@@ -109,23 +109,40 @@ func RecordFriendOrderTx(ctx context.Context, tx pgx.Tx, ord gen.OrderRow) error
 	if err != nil {
 		return fmt.Errorf("referral: referrer order lookup: %w", err)
 	}
+	// What the code promised when it was issued, not what the programme says
+	// today (a code written before the snapshot existed falls back to it).
+	cashbackPct, capPct := codePercents(meta, program)
 	p := gen.InsertReferralRewardParams{
 		OrgID: ord.OrgID, ProgramID: program.ID, PromoCodeID: *ord.PromoCodeID,
 		ReferrerOrderID: referrer.ID, FriendOrderID: ord.ID,
-		Currency: referrer.Currency, CashbackPct: program.CashbackPct, CapPct: program.CashbackCapPct,
+		Currency: referrer.Currency, CashbackPct: cashbackPct, CapPct: capPct,
 	}
 
+	// The code's row is locked first (the payment already locked it for the
+	// redemption, this keeps the order the same on every path), then the
+	// friends it has earned are counted: two payments racing for its last
+	// place cannot both win.
+	friends, err := lockedFriendCount(ctx, tx, *ord.PromoCodeID)
+	if err != nil {
+		return fmt.Errorf("referral: friend count: %w", err)
+	}
 	self, err := IsSelfReferral(ctx, tx, referrer.ID, ord.ID)
 	if err != nil {
 		return fmt.Errorf("referral: self-referral check: %w", err)
 	}
 	switch {
+	case program.EventID != nil && *program.EventID != ord.EventID:
+		// The code belongs to one event's programme; a cart of another event
+		// of the same organization must not earn its cashback.
+		p.State, p.Reason = StateCancelled, "other_event"
 	case self:
 		p.State, p.Reason = StateCancelled, "self_referral"
+	case meta.MaxUses != nil && friends >= int64(*meta.MaxUses):
+		p.State, p.Reason = StateCapped, "max_friends"
 	case ord.Currency != referrer.Currency:
 		p.State, p.Reason = StateNotPossible, "currency_mismatch"
 	default:
-		amount := CashbackAmount(ord.Total, int(program.CashbackPct))
+		amount := CashbackAmount(ord.Total, int(cashbackPct))
 		cashback, err := q.SumReferrerLiveRewards(ctx, referrer.ID)
 		if err != nil {
 			return fmt.Errorf("referral: cashback sum: %w", err)
@@ -134,7 +151,7 @@ func RecordFriendOrderTx(ctx context.Context, tx pgx.Tx, ord gen.OrderRow) error
 		if err != nil {
 			return fmt.Errorf("referral: refund sum: %w", err)
 		}
-		pay, capped := ApplyCap(amount, referrer.Total, cashback, refunded, int(program.CashbackCapPct))
+		pay, capped := ApplyCap(amount, referrer.Total, cashback, refunded, int(capPct))
 		switch {
 		case amount == 0:
 			p.State, p.Reason = StateCapped, "zero_amount"
@@ -158,4 +175,34 @@ func RecordFriendOrderTx(ctx context.Context, tx pgx.Tx, ord gen.OrderRow) error
 		return fmt.Errorf("referral: enqueue payout: %w", err)
 	}
 	return nil
+}
+
+// codePercents are the cashback and cap percentages a personal code carries.
+// A code issued before the snapshot columns existed has none and follows the
+// programme.
+func codePercents(meta gen.ReferralPromoMeta, program gen.ReferralProgramRow) (cashbackPct, capPct int16) {
+	cashbackPct, capPct = program.CashbackPct, program.CashbackCapPct
+	if meta.CashbackPct != nil {
+		cashbackPct = *meta.CashbackPct
+	}
+	if meta.CapPct != nil {
+		capPct = *meta.CapPct
+	}
+	return cashbackPct, capPct
+}
+
+// lockedFriendCount locks the promo code's row (FOR NO KEY UPDATE: it
+// serializes the writers of one code's rewards without blocking the foreign-key
+// checks of orders that merely point at it) and counts the friends the code
+// has already earned a reward for. A reward that was cancelled does not use a
+// place.
+func lockedFriendCount(ctx context.Context, tx pgx.Tx, promoCodeID uuid.UUID) (int64, error) {
+	var locked uuid.UUID
+	if err := tx.QueryRow(ctx, `SELECT id FROM promo_codes WHERE id = $1 FOR NO KEY UPDATE`, promoCodeID).Scan(&locked); err != nil {
+		return 0, err
+	}
+	var n int64
+	err := tx.QueryRow(ctx, `SELECT count(*) FROM referral_rewards WHERE promo_code_id = $1 AND state <> 'cancelled'`,
+		promoCodeID).Scan(&n)
+	return n, err
 }

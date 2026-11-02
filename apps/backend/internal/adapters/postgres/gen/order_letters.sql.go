@@ -54,6 +54,7 @@ SELECT count(*)                                                                 
 FROM   refunds r
 JOIN   refund_batches b ON b.id = r.batch_id
 WHERE  b.order_id = $1
+  AND  r.origin <> 'referral_cashback'
   AND  r.state NOT IN ('failed', 'rejected')`
 
 // OrderRefundLetterRow counts the order's live refunds of refund operations

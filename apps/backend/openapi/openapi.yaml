@@ -4190,7 +4190,7 @@ components:
       properties:
         code:
           type: string
-          description: The personal code, such as ANNA-7K2Q.
+          description: The personal code, such as ANNA-7K2QX9.
         friend_discount_pct:
           type: integer
           description: Percent off a friend gets.

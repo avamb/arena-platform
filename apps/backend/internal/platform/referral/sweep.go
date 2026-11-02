@@ -46,7 +46,12 @@ type SweepReport struct {
 //
 //  1. due rewards older than dueGrace with no live payout job are queued again;
 //  2. sent rewards (and those parked in manual review) are read back from
-//     their refunds: succeeded becomes paid, a refusal becomes not_possible;
+//     their refunds: succeeded becomes paid, a refusal becomes not_possible.
+//     A PAID reward whose refund the provider or an operator later turned
+//     into manual_review (the provider cancelled the refund after accepting
+//     it) or failed goes back to not_possible: manual_review is not final and
+//     sends no letter, a final failure sends the "could not be returned"
+//     letter if the referrer was not told yet;
 //  3. a friend who got the money back (the order is refunded) or opened a
 //     dispute, after the cashback was paid, is recorded on the reward
 //     (friend_reversal) and the organizer is told through the Notifier;
@@ -93,8 +98,12 @@ func (s *Service) requeueDue(ctx context.Context) (int, error) {
 func (s *Service) readBackSent(ctx context.Context) (int, error) {
 	rows, err := s.pool.Query(ctx, `SELECT `+gen.ReferralRewardColumns+` FROM referral_rewards
 		WHERE (refund_batch_id IS NOT NULL OR (refund_id IS NOT NULL AND referrer_shop_order_id IS NOT NULL))
-		  AND (state = 'sent' OR (state = 'not_possible' AND reason = 'manual_review'))
-		ORDER BY updated_at LIMIT $1`, sweepBatch)
+		  AND (state = 'sent' OR (state = 'not_possible' AND reason = 'manual_review')
+		       OR (state = 'paid' AND reason IS DISTINCT FROM 'partial' AND created_at > now() - $2::interval
+		           AND EXISTS (SELECT 1 FROM refunds f
+		                        WHERE (f.batch_id = referral_rewards.refund_batch_id OR f.id = referral_rewards.refund_id)
+		                          AND f.state IN ('manual_review', 'failed', 'rejected'))))
+		ORDER BY updated_at LIMIT $1`, sweepBatch, reversalWindow)
 	if err != nil {
 		return 0, err
 	}

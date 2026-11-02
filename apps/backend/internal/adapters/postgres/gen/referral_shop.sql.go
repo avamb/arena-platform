@@ -137,7 +137,8 @@ func (q *Queries) GetReferralShopOrderFactsByToken(ctx context.Context, token st
 }
 
 const getReferralCodeByReferrerShopOrder = `-- name: GetReferralCodeByReferrerShopOrder :one
-SELECT pc.id, pc.code, pc.referral_program_id, pc.discount_value::smallint, p.cashback_pct, pc.status
+SELECT pc.id, pc.code, pc.referral_program_id, pc.discount_value::smallint,
+       COALESCE(pc.referral_cashback_pct, p.cashback_pct), pc.status
 FROM promo_codes pc
 JOIN referral_programs p ON p.id = pc.referral_program_id
 WHERE pc.referrer_shop_order_id = $1`
@@ -159,8 +160,9 @@ const NoSessionID = "00000000-0000-0000-0000-000000000000"
 
 const insertReferralShopPromoCode = `-- name: InsertReferralShopPromoCode :one
 INSERT INTO promo_codes (org_id, code, discount_type, discount_value, applies_to_session_ids,
-    max_uses, max_uses_per_customer, valid_until, status, origin, referral_program_id, referrer_shop_order_id)
-VALUES ($1, $2, 'percent', $3, ARRAY['` + NoSessionID + `']::uuid[], $4, 1, $5, 'active', 'referral', $6, $7)
+    max_uses, max_uses_per_customer, valid_until, status, origin, referral_program_id, referrer_shop_order_id,
+    referral_cashback_pct, referral_cap_pct)
+VALUES ($1, $2, 'percent', $3, ARRAY['` + NoSessionID + `']::uuid[], $4, 1, $5, 'active', 'referral', $6, $7, $8, $9)
 ON CONFLICT DO NOTHING
 RETURNING id`
 
@@ -174,6 +176,10 @@ type InsertReferralShopPromoCodeParams struct {
 	ValidUntil          *time.Time
 	ProgramID           uuid.UUID
 	ReferrerShopOrderID uuid.UUID
+	// CashbackPct and CapPct: the programme's percentages at issue time, kept
+	// by the code.
+	CashbackPct int16
+	CapPct      int16
 }
 
 // InsertReferralShopPromoCode creates the personal code of a shop order. It
@@ -181,7 +187,8 @@ type InsertReferralShopPromoCodeParams struct {
 // the code text is taken in the organization or the order already has a code.
 func (q *Queries) InsertReferralShopPromoCode(ctx context.Context, p InsertReferralShopPromoCodeParams) (uuid.UUID, bool, error) {
 	rows, err := q.db.Query(ctx, insertReferralShopPromoCode,
-		p.OrgID, p.Code, p.DiscountPct, p.MaxUses, p.ValidUntil, p.ProgramID, p.ReferrerShopOrderID)
+		p.OrgID, p.Code, p.DiscountPct, p.MaxUses, p.ValidUntil, p.ProgramID, p.ReferrerShopOrderID,
+		p.CashbackPct, p.CapPct)
 	if err != nil {
 		return uuid.Nil, false, err
 	}

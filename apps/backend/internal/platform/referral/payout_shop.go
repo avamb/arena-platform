@@ -205,11 +205,11 @@ func (s *Service) applyShopRefund(ctx context.Context, rw gen.ReferralRewardRow,
 	if r.FailureCode != nil {
 		view.FailureCode = *r.FailureCode
 	}
-	state, reason, amount := resultOf([]refundView{view})
-	if state == rw.State && (reason == "" || (rw.Reason != nil && *rw.Reason == reason)) && rw.RefundID != nil {
+	state, reason, providerCode, amount := resultOf([]refundView{view})
+	if unchanged(rw, state, reason, providerCode) && rw.RefundID != nil {
 		return nil // nothing new
 	}
-	c := stateChange{State: state, Reason: reason, Amount: &amount, RefundID: &r.ID}
+	c := stateChange{State: state, Reason: reason, ProviderCode: &providerCode, Amount: &amount, RefundID: &r.ID}
 	if state == StateNotPossible {
 		// Nothing was returned, but the cashback stays owed on the row (see
 		// applyRefunds).

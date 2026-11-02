@@ -26,7 +26,7 @@ SELECT id, org_id, code, discount_type, discount_value, applies_to_tier_ids,
        max_uses, max_uses_per_customer, valid_from, valid_until, min_order_amount,
        status, created_at, updated_at, deleted_at
 FROM promo_codes
-WHERE org_id = $1 AND code = $2 AND deleted_at IS NULL;
+WHERE org_id = $1 AND code = $2 AND deleted_at IS NULL AND origin = 'manual';
 
 -- name: GetPromoCodeByCodeCI :one
 -- Fetch by org_id + code matched case-insensitively (Bil24 gateway, spec §7.6:
@@ -40,8 +40,21 @@ SELECT id, org_id, code, discount_type, discount_value, applies_to_tier_ids,
        max_uses, max_uses_per_customer, valid_from, valid_until, min_order_amount,
        status, created_at, updated_at, deleted_at
 FROM promo_codes
-WHERE org_id = $1 AND lower(code) = lower($2) AND deleted_at IS NULL
+WHERE org_id = $1 AND lower(code) = lower($2) AND deleted_at IS NULL AND origin = 'manual'
 ORDER BY (code = $2) DESC, created_at, id
+LIMIT 1;
+
+-- name: GetPromoCodeByCodeCIAnyOrigin :one
+-- GetPromoCodeByCodeCI for the surfaces where a personal "Refer a friend" code
+-- works too (the widget's checkout/quote and checkout/start). The gateway, the
+-- REST checkout and promo-validate see manual codes only.
+SELECT id, org_id, code, discount_type, discount_value, applies_to_tier_ids,
+       applies_to_session_ids, currency,
+       max_uses, max_uses_per_customer, valid_from, valid_until, min_order_amount,
+       status, created_at, updated_at, deleted_at
+FROM promo_codes
+WHERE org_id = $1 AND lower(code) = lower($2) AND deleted_at IS NULL
+ORDER BY (code = $2) DESC, (origin = 'manual') DESC, created_at, id
 LIMIT 1;
 
 -- name: ListPromoCodesByOrg :many

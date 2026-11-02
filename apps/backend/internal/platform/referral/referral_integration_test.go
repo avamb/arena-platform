@@ -358,7 +358,7 @@ func (f *fixture) ticketStatuses(t *testing.T) []string {
 
 // ─── IssueCode ──────────────────────────────────────────────────────────────
 
-var codeShape = regexp.MustCompile(`^ANNA-[A-HJKMNP-Z2-9]{4}$`)
+var codeShape = regexp.MustCompile(`^ANNA-[A-HJKMNP-Z2-9]{6}$`)
 
 func TestIssueCode_CreatesOnceAndIsIdempotent(t *testing.T) {
 	f := newFixture(t, 10, 10, 100)
@@ -368,7 +368,7 @@ func TestIssueCode_CreatesOnceAndIsIdempotent(t *testing.T) {
 		t.Fatalf("first IssueCode = (%+v, created=%v, %v); want a new code", first, created, err)
 	}
 	if !codeShape.MatchString(first.Code) || first.FriendDiscountPct != 10 || first.CashbackPct != 10 || first.Status != "active" {
-		t.Fatalf("code = %+v; want ANNA-XXXX, 10 %%, 10 %%, active", first)
+		t.Fatalf("code = %+v; want ANNA-XXXXXX, 10 %%, 10 %%, active", first)
 	}
 	again, created, err := referral.IssueCode(ctx, f.pool, f.referrerOrder)
 	if err != nil || created || again.Code != first.Code || again.PromoCodeID != first.PromoCodeID {

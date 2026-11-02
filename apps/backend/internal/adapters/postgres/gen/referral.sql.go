@@ -104,7 +104,8 @@ type ReferralCodeRow struct {
 }
 
 const getReferralCodeByReferrerOrder = `-- name: GetReferralCodeByReferrerOrder :one
-SELECT pc.id, pc.code, pc.referral_program_id, pc.discount_value::smallint, p.cashback_pct, pc.status
+SELECT pc.id, pc.code, pc.referral_program_id, pc.discount_value::smallint,
+       COALESCE(pc.referral_cashback_pct, p.cashback_pct), pc.status
 FROM promo_codes pc
 JOIN referral_programs p ON p.id = pc.referral_program_id
 WHERE pc.referrer_order_id = $1`
@@ -144,8 +145,9 @@ func (q *Queries) ListLiveSessionIDsForEvent(ctx context.Context, eventID uuid.U
 
 const insertReferralPromoCode = `-- name: InsertReferralPromoCode :one
 INSERT INTO promo_codes (org_id, code, discount_type, discount_value, applies_to_session_ids,
-    max_uses, max_uses_per_customer, valid_until, status, origin, referral_program_id, referrer_order_id)
-VALUES ($1, $2, 'percent', $3, $4, $5, 1, $6, 'active', 'referral', $7, $8)
+    max_uses, max_uses_per_customer, valid_until, status, origin, referral_program_id, referrer_order_id,
+    referral_cashback_pct, referral_cap_pct)
+VALUES ($1, $2, 'percent', $3, $4, $5, 1, $6, 'active', 'referral', $7, $8, $9, $10)
 ON CONFLICT DO NOTHING
 RETURNING id`
 
@@ -159,6 +161,10 @@ type InsertReferralPromoCodeParams struct {
 	ValidUntil      *time.Time
 	ProgramID       uuid.UUID
 	ReferrerOrderID uuid.UUID
+	// CashbackPct and CapPct are the programme's percentages at issue time;
+	// the code keeps them, whatever the programme becomes.
+	CashbackPct int16
+	CapPct      int16
 }
 
 // InsertReferralPromoCode creates the personal code of an order. It returns
@@ -171,7 +177,8 @@ func (q *Queries) InsertReferralPromoCode(ctx context.Context, p InsertReferralP
 	}
 	var id uuid.UUID
 	rows, err := q.db.Query(ctx, insertReferralPromoCode,
-		p.OrgID, p.Code, p.DiscountPct, p.SessionIDs, p.MaxUses, p.ValidUntil, p.ProgramID, p.ReferrerOrderID)
+		p.OrgID, p.Code, p.DiscountPct, p.SessionIDs, p.MaxUses, p.ValidUntil, p.ProgramID, p.ReferrerOrderID,
+		p.CashbackPct, p.CapPct)
 	if err != nil {
 		return uuid.Nil, false, err
 	}
@@ -192,10 +199,17 @@ type ReferralPromoMeta struct {
 	ProgramID           *uuid.UUID `json:"referral_program_id"`
 	ReferrerOrderID     *uuid.UUID `json:"referrer_order_id"`
 	ReferrerShopOrderID *uuid.UUID `json:"referrer_shop_order_id"`
+	// CashbackPct and CapPct are what the code promised when it was issued
+	// (nil for a code written before the snapshot existed); MaxUses is the
+	// code's own limit of friends.
+	CashbackPct *int16 `json:"referral_cashback_pct"`
+	CapPct      *int16 `json:"referral_cap_pct"`
+	MaxUses     *int32 `json:"max_uses"`
 }
 
 const getReferralPromoMeta = `-- name: GetReferralPromoMeta :one
-SELECT origin, referral_program_id, referrer_order_id, referrer_shop_order_id
+SELECT origin, referral_program_id, referrer_order_id, referrer_shop_order_id,
+       referral_cashback_pct, referral_cap_pct, max_uses
 FROM promo_codes WHERE id = $1`
 
 // GetReferralPromoMeta reads a promo code's origin and referral links, deleted
@@ -203,7 +217,8 @@ FROM promo_codes WHERE id = $1`
 func (q *Queries) GetReferralPromoMeta(ctx context.Context, promoID uuid.UUID) (ReferralPromoMeta, error) {
 	var m ReferralPromoMeta
 	err := q.db.QueryRow(ctx, getReferralPromoMeta, promoID).Scan(
-		&m.Origin, &m.ProgramID, &m.ReferrerOrderID, &m.ReferrerShopOrderID)
+		&m.Origin, &m.ProgramID, &m.ReferrerOrderID, &m.ReferrerShopOrderID,
+		&m.CashbackPct, &m.CapPct, &m.MaxUses)
 	return m, err
 }
 
@@ -223,6 +238,7 @@ type ReferralRewardRow struct {
 	CapPct              int16      `json:"cap_pct"`
 	State               string     `json:"state"`
 	Reason              *string    `json:"reason"`
+	ProviderCode        *string    `json:"provider_code"`
 	FriendReversal      *string    `json:"friend_reversal"`
 	ReversalNotifiedAt  *time.Time `json:"reversal_notified_at"`
 	LetterSentAt        *time.Time `json:"letter_sent_at"`
@@ -237,7 +253,7 @@ type ReferralRewardRow struct {
 // ReferralRewardColumns is the SELECT list ScanReferralRewardRow reads.
 const ReferralRewardColumns = `id, org_id, program_id, promo_code_id, referrer_order_id, referrer_shop_order_id,
        friend_order_id, friend_shop_order_id, amount_minor, currency, cashback_pct, cap_pct, state, reason,
-       friend_reversal, reversal_notified_at, letter_sent_at, attempts, next_attempt_at, refund_id,
+       provider_code, friend_reversal, reversal_notified_at, letter_sent_at, attempts, next_attempt_at, refund_id,
        refund_batch_id, created_at, updated_at`
 
 // ScanReferralRewardRow scans a row selected with ReferralRewardColumns.
@@ -247,7 +263,7 @@ func ScanReferralRewardRow(row interface {
 	var r ReferralRewardRow
 	err := row.Scan(&r.ID, &r.OrgID, &r.ProgramID, &r.PromoCodeID, &r.ReferrerOrderID, &r.ReferrerShopOrderID,
 		&r.FriendOrderID, &r.FriendShopOrderID, &r.AmountMinor, &r.Currency, &r.CashbackPct, &r.CapPct, &r.State,
-		&r.Reason, &r.FriendReversal, &r.ReversalNotifiedAt, &r.LetterSentAt, &r.Attempts, &r.NextAttemptAt,
+		&r.Reason, &r.ProviderCode, &r.FriendReversal, &r.ReversalNotifiedAt, &r.LetterSentAt, &r.Attempts, &r.NextAttemptAt,
 		&r.RefundID, &r.RefundBatchID, &r.CreatedAt, &r.UpdatedAt)
 	return r, err
 }

@@ -60,7 +60,14 @@ func (e *Engine) finish(ctx, stop context.Context, r Refund, pay Payment) bool {
 	// A referral cashback (spec 52) moves money back without refunding a
 	// ticket: the order keeps its status and no site hears "refunded".
 	cashback := r.Origin == OriginReferralCashback
-	if !cashback && !e.projectOrder(wctx, r, pay) {
+	if cashback {
+		// A shop order is the exception: its status also depends on the
+		// cashback (ordinary refunds + cashback may have returned the whole
+		// payment), so the shop projection runs. A ticket order is left alone.
+		if r.OrderID == nil && pay.CheckoutSessionID == nil && !e.projectPaymentOnly(wctx, r, pay) {
+			ok = false
+		}
+	} else if !e.projectOrder(wctx, r, pay) {
 		ok = false
 	}
 	// v1.ticket.refunded only once every due cancellation went through:

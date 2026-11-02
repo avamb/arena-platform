@@ -13976,7 +13976,7 @@ type PublicReferralCode struct {
 	// CashbackPct Percent of the friend's payment that goes back to the buyer.
 	CashbackPct int `json:"cashback_pct"`
 
-	// Code The personal code, such as ANNA-7K2Q.
+	// Code The personal code, such as ANNA-7K2QX9.
 	Code string `json:"code"`
 
 	// FriendDiscountPct Percent off a friend gets.
