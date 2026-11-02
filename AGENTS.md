@@ -2305,7 +2305,7 @@ entries short and factual.
   - `salesubscribe/subscribe_integration_test.go` (the whole cycle);
   - `httpserver/sale_subscription_public_integration_test.go`;
   - `TestCompatBil24_SubscribeSale`.
-- **"Smart price" is a preset written through the event-bundle import, never a second price engine (spec `08_architecture/51_4_2_smart_price_ru.md`, migration 0186 `smart_price_rules`, owner decisions 2026-11-02).** `internal/domain/pricing/smartprice` is the one pure computation (step prices rounded UP to a whole currency unit, linear from the start price, capped); `himports/smart_price.go` turns a preset into what already exists and posts it through `prepareImport` + the arena executor in one transaction:
+- **"Smart price" is a preset written through the event-bundle import, never a second price engine (spec `08_architecture/51_4_2_smart_price_ru.md`, migration 0190 `smart_price_rules`, owner decisions 2026-11-02).** `internal/domain/pricing/smartprice` is the one pure computation (step prices rounded UP to a whole currency unit, linear from the start price, capped); `himports/smart_price.go` turns a preset into what already exists and posts it through `prepareImport` + the arena executor in one transaction:
   - `by_sales` = a category CHAIN (`nextCategoryIndex` + `sellLimit`), the steps named "Name · 2", "Name · 3"... and the hall keeps its places (the head carries the whole chain, successors start closed with none; `gaquota.RebalanceStep` and `tier.chain_sweep` hand places on as for any chain). A seated category never takes it (422 `smart_price.seated_by_sales`).
   - `by_days` / `last_days` = a `priceSchedule` on the category.
 

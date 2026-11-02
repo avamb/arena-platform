@@ -1,5 +1,5 @@
 // Hand-maintained typed query wrapper; follows sqlc output conventions.
-// source: smart price presets (migration 0186, package smartprice)
+// source: smart price presets (migration 0190, package smartprice)
 
 package gen
 
