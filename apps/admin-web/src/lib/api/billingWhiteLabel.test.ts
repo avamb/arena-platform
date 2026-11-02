@@ -19,12 +19,12 @@ describe("white label request", () => {
 
   it("sends a promoter, a last day and an individual price in minor units", () => {
     const r = buildWhiteLabelRequest(
-      { orgId: ORG, promoterId: PROMOTER, startsOn: "2026-12-01", endsOn: "2027-11-30", monthlyPrice: "45,5" },
+      { orgId: ORG, promoterId: PROMOTER, startsOn: "2026-12-01", endsOn: "2027-11-30", monthlyPrice: "45,5", currency: "eur" },
       NOW,
     );
     expect(r).toEqual({
       ok: true,
-      request: { org_id: ORG, promoter_id: PROMOTER, starts_on: "2026-12-01", ends_on: "2027-11-30", monthly_price_minor: 4550 },
+      request: { org_id: ORG, promoter_id: PROMOTER, starts_on: "2026-12-01", ends_on: "2027-11-30", monthly_price_minor: 4550, currency: "EUR" },
     });
   });
 
@@ -35,11 +35,16 @@ describe("white label request", () => {
 
   it("refuses a past first day, a last day before it and a bad price", () => {
     const r = buildWhiteLabelRequest(
-      { orgId: "x", promoterId: "nope", startsOn: "2026-11-01", endsOn: "2026-10-31", monthlyPrice: "-1" },
+      { orgId: "x", promoterId: "nope", startsOn: "2026-11-01", endsOn: "2026-10-31", monthlyPrice: "-1", currency: "euro" },
       NOW,
     );
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.errors).toHaveLength(5);
+    if (!r.ok) expect(r.errors).toHaveLength(6);
+  });
+
+  it("sends no currency without an individual price", () => {
+    const r = buildWhiteLabelRequest({ ...emptyWhiteLabelForm(), orgId: ORG, startsOn: "2026-11-02", currency: "EUR" }, NOW);
+    expect(r).toEqual({ ok: true, request: { org_id: ORG, starts_on: "2026-11-02" } });
   });
 });
 
@@ -56,5 +61,6 @@ describe("white label list", () => {
     expect(monthlyPriceLabel(null)).toBe("Price list");
     expect(monthlyPriceLabel(0)).toBe("Free");
     expect(monthlyPriceLabel(4500)).toBe("45.00");
+    expect(monthlyPriceLabel(4500, "EUR")).toBe("45.00 EUR");
   });
 });

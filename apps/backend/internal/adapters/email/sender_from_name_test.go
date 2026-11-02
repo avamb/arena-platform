@@ -23,4 +23,9 @@ func TestHeaderFrom(t *testing.T) {
 	if got := HeaderFrom("tickets@arenasoldout.com", "Театр"); !strings.HasPrefix(got, "=?utf-8?") || !strings.HasSuffix(got, "<tickets@arenasoldout.com>") {
 		t.Errorf("non-ASCII name not encoded: %q", got)
 	}
+	// A very long brand name is cut, so the encoded line stays short.
+	long := HeaderFrom("tickets@arenasoldout.com", strings.Repeat("Театр ", 100))
+	if len(long) > 600 || !strings.HasSuffix(long, "<tickets@arenasoldout.com>") {
+		t.Errorf("long name not cut: %d bytes", len(long))
+	}
 }

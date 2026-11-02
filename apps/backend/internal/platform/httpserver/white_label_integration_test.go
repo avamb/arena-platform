@@ -13,6 +13,7 @@ package httpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"testing"
@@ -76,13 +77,23 @@ func newWhiteLabelFixture(t *testing.T) *whiteLabelFixture {
 }
 
 // period inserts a period straight into the table, as one that started in
-// the past (the route only accepts today or later).
+// the past (the route only accepts today or later). An individual price is in
+// EUR, the fixture organization's billing currency.
 func (f *whiteLabelFixture) period(t *testing.T, promoter *uuid.UUID, starts time.Time, ends *time.Time, price *int64) uuid.UUID {
 	t.Helper()
+	return f.periodIn(t, promoter, starts, ends, price, "EUR")
+}
+
+func (f *whiteLabelFixture) periodIn(t *testing.T, promoter *uuid.UUID, starts time.Time, ends *time.Time, price *int64, currency string) uuid.UUID {
+	t.Helper()
+	var cur *string
+	if price != nil {
+		cur = &currency
+	}
 	var id uuid.UUID
 	if err := f.srv.pgxPool.QueryRow(context.Background(), `
-INSERT INTO white_label_periods (org_id, promoter_id, starts_on, ends_on, monthly_price_minor, reason)
-VALUES ($1, $2, $3, $4, $5, 'wl fixture') RETURNING id`, f.orgID, promoter, starts, ends, price).Scan(&id); err != nil {
+INSERT INTO white_label_periods (org_id, promoter_id, starts_on, ends_on, monthly_price_minor, currency, reason)
+VALUES ($1, $2, $3, $4, $5, $6, 'wl fixture') RETURNING id`, f.orgID, promoter, starts, ends, price, cur).Scan(&id); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
 	return id
@@ -114,9 +125,22 @@ func TestWhiteLabel_OnlyASuperadminTurnsItOn(t *testing.T) {
 	if c := billingErrCode(body); c != "billing.white_label_overlap" {
 		t.Errorf("overlap code %q", c)
 	}
-	// The promoter is a brand of its own.
-	f.expect(t, http.StatusCreated, http.MethodPost, "/v1/admin/billing/white-label", f.super, "wl promoter",
-		fmt.Sprintf(`{"org_id":%q,"promoter_id":%q,"starts_on":%q,"monthly_price_minor":0}`, f.orgID, f.promoter, today))
+	// The promoter is a brand of its own. An individual price is stored with
+	// the organization's billing currency; a price meant in another currency
+	// is refused.
+	mismatch := f.expect(t, http.StatusUnprocessableEntity, http.MethodPost, "/v1/admin/billing/white-label", f.super, "wl",
+		fmt.Sprintf(`{"org_id":%q,"promoter_id":%q,"starts_on":%q,"monthly_price_minor":4000,"currency":"USD"}`, f.orgID, f.promoter, today))
+	if c := billingErrCode(mismatch); c != "billing.white_label_currency_mismatch" {
+		t.Errorf("currency mismatch code %q", c)
+	}
+	promoted := f.expect(t, http.StatusCreated, http.MethodPost, "/v1/admin/billing/white-label", f.super, "wl promoter",
+		fmt.Sprintf(`{"org_id":%q,"promoter_id":%q,"starts_on":%q,"monthly_price_minor":0,"currency":"eur"}`, f.orgID, f.promoter, today))
+	if jsonField(t, promoted, "currency") != "EUR" {
+		t.Errorf("individual price currency: %s", promoted)
+	}
+	if jsonField(t, created, "currency") != "" {
+		t.Errorf("a price-list period carries a currency: %s", created)
+	}
 
 	// Ending: yesterday ends it now; a later end is refused afterwards.
 	ended := f.expect(t, http.StatusOK, http.MethodPost, "/v1/admin/billing/white-label/"+id+"/end", f.super, "wl off",
@@ -277,5 +301,83 @@ WHERE be.org_id = $1 AND be.kind = 'white_label_month'`, f.orgID)
 	var nov int
 	if err := f.srv.pgxPool.QueryRow(ctx, `SELECT count(*) FROM billable_events WHERE org_id = $1 AND kind = 'white_label_month' AND occurred_at >= '2026-11-01'`, f.orgID).Scan(&nov); err != nil || nov != 0 {
 		t.Errorf("November events: %d %v", nov, err)
+	}
+}
+
+// A non-zero individual price is charged only in its own currency, and one
+// period that cannot be charged never holds back the others.
+func TestWhiteLabel_PriceInAnotherCurrencyIsNotCharged(t *testing.T) {
+	f := newWhiteLabelFixture(t)
+	ctx := context.Background()
+	f.account(t)
+	usd, free := int64(3000), int64(0)
+	f.periodIn(t, nil, utcDay(2026, 10, 1), nil, &usd, "USD") // the account is EUR
+	f.period(t, &f.promoter, utcDay(2026, 10, 1), nil, &free)
+
+	charger := whitelabelcharge.New(f.q, whitelabelcharge.Options{
+		Since: utcDay(2026, 9, 1), OrgID: &f.orgID,
+		Now: func() time.Time { return time.Date(2026, 11, 2, 9, 0, 0, 0, time.UTC) },
+	})
+	n, err := charger.Run(ctx)
+	if !errors.Is(err, whitelabelcharge.ErrCurrencyChanged) {
+		t.Fatalf("pass error %v, want ErrCurrencyChanged", err)
+	}
+	if n != 1 {
+		t.Fatalf("pass wrote %d events, want 1 (the free promoter month)", n)
+	}
+}
+
+// A brand archived before a month is not charged for it, and an archived
+// promoter is no longer a brand: its events fall back to the organization.
+func TestWhiteLabel_ArchivedBrands(t *testing.T) {
+	f := newWhiteLabelFixture(t)
+	ctx := context.Background()
+	f.account(t)
+	promoterPeriod := f.period(t, &f.promoter, utcDay(2026, 9, 1), nil, nil)
+	orgPeriod := f.period(t, nil, utcDay(2026, 9, 1), nil, nil)
+	if _, err := f.srv.pgxPool.Exec(ctx, `UPDATE org_promoters SET archived_at = '2026-10-10T08:00:00Z' WHERE id = $1`, f.promoter); err != nil {
+		t.Fatal(err)
+	}
+
+	charger := whitelabelcharge.New(f.q, whitelabelcharge.Options{
+		Since: utcDay(2026, 9, 1), OrgID: &f.orgID,
+		Now: func() time.Time { return time.Date(2026, 12, 2, 9, 0, 0, 0, time.UTC) },
+	})
+	if _, err := charger.Run(ctx); err != nil {
+		t.Fatalf("pass: %v", err)
+	}
+	have := map[uuid.UUID]bool{}
+	rows, err := f.srv.pgxPool.Query(ctx, `SELECT subject_id FROM billable_events WHERE org_id = $1 AND kind = 'white_label_month'`, f.orgID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		have[id] = true
+	}
+	rows.Close()
+	for _, m := range []time.Time{utcDay(2026, 9, 1), utcDay(2026, 10, 1), utcDay(2026, 11, 1)} {
+		if !have[whitelabelcharge.SubjectID(orgPeriod, m)] {
+			t.Errorf("organization month %s not charged", m.Format("2006-01"))
+		}
+	}
+	// September and October (archived on 10 October) are charged, November is not.
+	if !have[whitelabelcharge.SubjectID(promoterPeriod, utcDay(2026, 9, 1))] || !have[whitelabelcharge.SubjectID(promoterPeriod, utcDay(2026, 10, 1))] {
+		t.Errorf("promoter months before the archive are missing: %v", have)
+	}
+	if have[whitelabelcharge.SubjectID(promoterPeriod, utcDay(2026, 11, 1))] {
+		t.Error("an archived promoter was charged for the month after its archive")
+	}
+
+	// The archived promoter's event now follows the organization's brand.
+	flags, err := whitelabel.New(gen.New(f.srv.pgxPool)).Events(ctx, []uuid.UUID{f.promoted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !flags[f.promoted] {
+		t.Error("the event of an archived promoter is not covered by the organization's white label")
 	}
 }

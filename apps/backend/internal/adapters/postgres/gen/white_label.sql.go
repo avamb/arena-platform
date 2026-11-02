@@ -13,8 +13,9 @@ import (
 
 // WhiteLabelPeriodRow is one white_label_periods row (migration 0187).
 // StartsOn and EndsOn are UTC calendar days, both inclusive; a nil EndsOn has
-// no end. MonthlyPriceMinor is the individual monthly price in the currency
-// of the organization's billing account (nil = the price list).
+// no end. MonthlyPriceMinor is the individual monthly price (nil = the price
+// list) in Currency, the billing account's currency when the period was made
+// (both nil or both set).
 type WhiteLabelPeriodRow struct {
 	ID                uuid.UUID  `json:"id"`
 	OrgID             uuid.UUID  `json:"org_id"`
@@ -22,6 +23,7 @@ type WhiteLabelPeriodRow struct {
 	StartsOn          time.Time  `json:"starts_on"`
 	EndsOn            *time.Time `json:"ends_on"`
 	MonthlyPriceMinor *int64     `json:"monthly_price_minor"`
+	Currency          *string    `json:"currency"`
 	Reason            string     `json:"reason"`
 	CreatedBy         *uuid.UUID `json:"created_by"`
 	CreatedAt         time.Time  `json:"created_at"`
@@ -30,12 +32,12 @@ type WhiteLabelPeriodRow struct {
 }
 
 const whiteLabelPeriodColumns = `w.id, w.org_id, w.promoter_id, w.starts_on, w.ends_on, w.monthly_price_minor,
-       w.reason, w.created_by, w.created_at, w.ended_by, w.ended_at`
+       w.currency, w.reason, w.created_by, w.created_at, w.ended_by, w.ended_at`
 
 func scanWhiteLabelPeriod(row interface{ Scan(...any) error }, extra ...any) (WhiteLabelPeriodRow, error) {
 	var r WhiteLabelPeriodRow
 	dest := append([]any{&r.ID, &r.OrgID, &r.PromoterID, &r.StartsOn, &r.EndsOn, &r.MonthlyPriceMinor,
-		&r.Reason, &r.CreatedBy, &r.CreatedAt, &r.EndedBy, &r.EndedAt}, extra...)
+		&r.Currency, &r.Reason, &r.CreatedBy, &r.CreatedAt, &r.EndedBy, &r.EndedAt}, extra...)
 	err := row.Scan(dest...)
 	return r, err
 }
@@ -68,8 +70,8 @@ func (q *Queries) CountOverlappingWhiteLabelPeriods(ctx context.Context, orgID u
 }
 
 const insertWhiteLabelPeriod = `-- name: InsertWhiteLabelPeriod :one
-INSERT INTO white_label_periods AS w (org_id, promoter_id, starts_on, ends_on, monthly_price_minor, reason, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO white_label_periods AS w (org_id, promoter_id, starts_on, ends_on, monthly_price_minor, currency, reason, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING ` + whiteLabelPeriodColumns
 
 // InsertWhiteLabelPeriodParams are the columns of a new period.
@@ -79,6 +81,7 @@ type InsertWhiteLabelPeriodParams struct {
 	StartsOn          time.Time
 	EndsOn            *time.Time
 	MonthlyPriceMinor *int64
+	Currency          *string
 	Reason            string
 	CreatedBy         *uuid.UUID
 }
@@ -86,7 +89,7 @@ type InsertWhiteLabelPeriodParams struct {
 // InsertWhiteLabelPeriod writes a new period.
 func (q *Queries) InsertWhiteLabelPeriod(ctx context.Context, p InsertWhiteLabelPeriodParams) (WhiteLabelPeriodRow, error) {
 	return scanWhiteLabelPeriod(q.db.QueryRow(ctx, insertWhiteLabelPeriod,
-		p.OrgID, p.PromoterID, p.StartsOn, p.EndsOn, p.MonthlyPriceMinor, p.Reason, p.CreatedBy))
+		p.OrgID, p.PromoterID, p.StartsOn, p.EndsOn, p.MonthlyPriceMinor, p.Currency, p.Reason, p.CreatedBy))
 }
 
 const getWhiteLabelPeriod = `-- name: GetWhiteLabelPeriod :one
@@ -157,11 +160,18 @@ WHERE  w.starts_on <= $2::date
   AND  (w.ends_on IS NULL OR w.ends_on >= $1::date)
   AND  (w.ends_on IS NULL OR w.ends_on >= w.starts_on)
   AND  ($3::uuid IS NULL OR w.org_id = $3)
+  AND  NOT EXISTS (SELECT 1 FROM organizations o
+                   WHERE o.id = w.org_id AND o.deleted_at < ($1::date)::timestamp AT TIME ZONE 'UTC')
+  AND  NOT EXISTS (SELECT 1 FROM org_promoters p
+                   WHERE p.id = w.promoter_id AND p.archived_at < ($1::date)::timestamp AT TIME ZONE 'UTC')
 ORDER  BY w.id`
 
 // ListWhiteLabelPeriodsForMonth returns the non-empty periods that cover at
 // least one day of [firstDay, lastDay]; orgID narrows to one organization
-// (tests), nil means all.
+// (tests), nil means all. A brand archived before the month (organization
+// deleted, promoter archived) is not charged for it: an open period of a
+// brand that left would otherwise be charged forever. The month of the
+// archive is still charged for its days.
 func (q *Queries) ListWhiteLabelPeriodsForMonth(ctx context.Context, firstDay, lastDay time.Time, orgID *uuid.UUID) ([]WhiteLabelPeriodRow, error) {
 	rows, err := q.db.Query(ctx, listWhiteLabelPeriodsForMonth, firstDay, lastDay, orgID)
 	if err != nil {
@@ -183,16 +193,19 @@ const listWhiteLabelEvents = `-- name: ListWhiteLabelEvents :many
 SELECT e.id
 FROM   events e
 LEFT   JOIN event_promoters ep ON ep.event_id = e.id
+LEFT   JOIN org_promoters op ON op.id = ep.promoter_id AND op.archived_at IS NULL
 WHERE  e.id = ANY($1::uuid[])
   AND  EXISTS (
     SELECT 1 FROM white_label_periods w
     WHERE  w.org_id = e.org_id
-      AND  w.promoter_id IS NOT DISTINCT FROM ep.promoter_id
+      AND  w.promoter_id IS NOT DISTINCT FROM op.id
       AND  w.starts_on <= $2::date
       AND  (w.ends_on IS NULL OR w.ends_on >= $2::date))`
 
 // ListWhiteLabelEvents returns the events among eventIDs whose brand (the
-// event's promoter, else its organization) has white label on day.
+// event's promoter, else its organization) has white label on day. An
+// archived promoter is not a brand: its events fall back to the organization,
+// as their public page addresses do.
 func (q *Queries) ListWhiteLabelEvents(ctx context.Context, eventIDs []uuid.UUID, day time.Time) ([]uuid.UUID, error) {
 	if len(eventIDs) == 0 {
 		return nil, nil

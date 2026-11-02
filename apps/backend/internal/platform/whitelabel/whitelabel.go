@@ -3,16 +3,16 @@
 // 08_architecture/53, owner decisions 2026-11-02.)
 //
 // A brand is the promoter of an event (event_promoters), or the organization
-// itself for an event without a promoter. A brand has white label on a day
+// itself for an event without a promoter or whose promoter is archived. A brand has white label on a day
 // when one of its white_label_periods (migration 0187) covers that UTC
 // calendar day. Only a platform superadmin writes periods
 // (/v1/admin/billing/white-label); the job billing.white_label charges them.
 //
 // What white label hides: the platform badge of the widget, the "Arena
-// Platform" line and sender name of the buyer letters, the PDF producer, the
-// shop footer, and it tells the WordPress sites through GET_ALL_ACTIONS. What
-// it never hides: the hosted page tickets.arenasoldout.com (the page is the
-// platform's), the links to the platform's terms and privacy policy in the
+// Platform" line and sender name of the buyer letters, the shop footer, and
+// it tells the WordPress sites through GET_ALL_ACTIONS. What it never hides:
+// the hosted page tickets.arenasoldout.com (the page is the platform's), the
+// PDF metadata (no brand, never shown), the links to the platform's terms and privacy policy in the
 // checkout consent, and the contact form's data notice (both required by law).
 //
 // Every lookup is best effort for its caller: an error means "no white label"

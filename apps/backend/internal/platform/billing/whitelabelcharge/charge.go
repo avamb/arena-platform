@@ -12,12 +12,18 @@
 //   - the event is idempotent by (white_label_month, uuid of period+month),
 //     so a pass may run any number of times;
 //   - the account is the organization's billing account for its billing
-//     country (legal address, else country), as for a sale without a venue.
+//     country (legal address, else country), as for a sale without a venue;
+//   - a non-zero individual price is charged only in the currency it was
+//     typed in: when the account's currency is another one now, the month is
+//     not written and the pass reports it;
+//   - one broken period never holds back the others: its error is reported
+//     and the pass goes on (the next pass tries it again).
 package whitelabelcharge
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -103,15 +109,23 @@ func (c *Charger) Run(ctx context.Context) (int, error) {
 	}
 	sinceDay := dayOf(c.opts.Since)
 	inserted := 0
+	var errs []error
 	for m := first; m.Before(current); m = m.AddDate(0, 1, 0) {
 		n, err := c.month(ctx, m, sinceDay)
 		inserted += n
 		if err != nil {
-			return inserted, fmt.Errorf("white label month %s: %w", m.Format(monthLayout), err)
+			errs = append(errs, fmt.Errorf("white label month %s: %w", m.Format(monthLayout), err))
+		}
+		if ctx.Err() != nil {
+			break
 		}
 	}
-	return inserted, nil
+	return inserted, errors.Join(errs...)
 }
+
+// ErrCurrencyChanged is reported for a period whose non-zero individual price
+// is in another currency than the organization's billing account now.
+var ErrCurrencyChanged = errors.New("individual white label price is in another currency than the billing account")
 
 func (c *Charger) month(ctx context.Context, month, sinceDay time.Time) (int, error) {
 	last := month.AddDate(0, 1, -1)
@@ -120,47 +134,71 @@ func (c *Charger) month(ctx context.Context, month, sinceDay time.Time) (int, er
 		return 0, err
 	}
 	inserted := 0
+	var errs []error
 	for _, p := range periods {
-		start := p.StartsOn
-		if start.Before(sinceDay) {
-			start = sinceDay
+		if ctx.Err() != nil {
+			return inserted, errors.Join(append(errs, ctx.Err())...)
 		}
-		days := billing.WhiteLabelActiveDays(start, p.EndsOn, month)
-		if days <= 0 {
+		isNew, err := c.charge(ctx, p, month, sinceDay)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("period %s: %w", p.ID, err))
 			continue
-		}
-		country, err := c.store.GetOrgBillingCountry(ctx, p.OrgID)
-		if err != nil {
-			return inserted, fmt.Errorf("billing country of org %s: %w", p.OrgID, err)
-		}
-		acc, err := billing.EnsureAccount(ctx, c.store, p.OrgID, country)
-		if err != nil {
-			return inserted, err
-		}
-		attrs, err := json.Marshal(billing.WhiteLabelMonth{
-			PeriodID: p.ID, PromoterID: p.PromoterID, Month: month.Format(monthLayout),
-			DaysActive: days, DaysInMonth: billing.DaysInMonth(month),
-			MonthlyPriceMinor: p.MonthlyPriceMinor, Currency: acc.Currency,
-		})
-		if err != nil {
-			return inserted, err
-		}
-		_, isNew, err := c.store.InsertBillableEvent(ctx, gen.InsertBillableEventParams{
-			Kind:       string(billing.KindWhiteLabelMonth),
-			SubjectID:  SubjectID(p.ID, month),
-			OccurredAt: billing.WhiteLabelMonthOccurredAt(month),
-			OrgID:      p.OrgID,
-			AccountID:  acc.ID,
-			Attributes: attrs,
-		})
-		if err != nil {
-			return inserted, fmt.Errorf("insert white label month of period %s: %w", p.ID, err)
 		}
 		if isNew {
 			inserted++
 		}
 	}
-	return inserted, nil
+	return inserted, errors.Join(errs...)
+}
+
+// charge writes the event of one period and month and reports whether it was
+// new; a month without active days writes nothing.
+func (c *Charger) charge(ctx context.Context, p gen.WhiteLabelPeriodRow, month, sinceDay time.Time) (bool, error) {
+	start := p.StartsOn
+	if start.Before(sinceDay) {
+		start = sinceDay
+	}
+	days := billing.WhiteLabelActiveDays(start, p.EndsOn, month)
+	if days <= 0 {
+		return false, nil
+	}
+	country, err := c.store.GetOrgBillingCountry(ctx, p.OrgID)
+	if err != nil {
+		return false, fmt.Errorf("billing country of org %s: %w", p.OrgID, err)
+	}
+	acc, err := billing.EnsureAccount(ctx, c.store, p.OrgID, country)
+	if err != nil {
+		return false, err
+	}
+	if p.MonthlyPriceMinor != nil && *p.MonthlyPriceMinor > 0 &&
+		(p.Currency == nil || *p.Currency != acc.Currency) {
+		typed := ""
+		if p.Currency != nil {
+			typed = *p.Currency
+		}
+		return false, fmt.Errorf("%w: price in %q, account %s in %s (end the period and open a new one)",
+			ErrCurrencyChanged, typed, acc.ID, acc.Currency)
+	}
+	attrs, err := json.Marshal(billing.WhiteLabelMonth{
+		PeriodID: p.ID, PromoterID: p.PromoterID, Month: month.Format(monthLayout),
+		DaysActive: days, DaysInMonth: billing.DaysInMonth(month),
+		MonthlyPriceMinor: p.MonthlyPriceMinor, Currency: acc.Currency,
+	})
+	if err != nil {
+		return false, err
+	}
+	_, isNew, err := c.store.InsertBillableEvent(ctx, gen.InsertBillableEventParams{
+		Kind:       string(billing.KindWhiteLabelMonth),
+		SubjectID:  SubjectID(p.ID, month),
+		OccurredAt: billing.WhiteLabelMonthOccurredAt(month),
+		OrgID:      p.OrgID,
+		AccountID:  acc.ID,
+		Attributes: attrs,
+	})
+	if err != nil {
+		return false, fmt.Errorf("insert white label month: %w", err)
+	}
+	return isNew, nil
 }
 
 func dayOf(t time.Time) time.Time {

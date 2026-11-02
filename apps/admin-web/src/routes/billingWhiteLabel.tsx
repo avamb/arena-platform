@@ -142,7 +142,7 @@ export function WhiteLabelPanel({ orgs }: { orgs: readonly OrgChoice[] }): JSX.E
                   <td style={{ padding: "6px 8px" }}>{p.promoter_id ? p.promoter_name ?? p.promoter_id : "The organization itself"}</td>
                   <td style={{ padding: "6px 8px" }}>{p.starts_on}</td>
                   <td style={{ padding: "6px 8px" }}>{p.ends_on ?? "No end"}</td>
-                  <td style={{ padding: "6px 8px" }}>{monthlyPriceLabel(p.monthly_price_minor)}</td>
+                  <td style={{ padding: "6px 8px" }}>{monthlyPriceLabel(p.monthly_price_minor, p.currency)}</td>
                   <td style={{ padding: "6px 8px" }}>{whiteLabelStatusLabel(p.status)}</td>
                   <td style={{ padding: "6px 8px" }}>{p.reason}</td>
                   <td style={{ padding: "6px 8px" }}>
@@ -269,6 +269,16 @@ function WhiteLabelFormBody({
           value={form.monthlyPrice}
           onChange={(e) => onChange({ ...form, monthlyPrice: e.target.value })}
           data-testid="white-label-price"
+        />
+      </label>
+      <label style={labelStyle}>
+        Currency of the price (for example EUR; it must be the organization&apos;s billing currency)
+        <input
+          style={inputStyle}
+          maxLength={3}
+          value={form.currency}
+          onChange={(e) => onChange({ ...form, currency: e.target.value })}
+          data-testid="white-label-currency"
         />
       </label>
     </div>

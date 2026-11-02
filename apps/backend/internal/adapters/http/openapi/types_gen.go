@@ -3864,6 +3864,9 @@ type BillingCreateUsageInvoiceRequest struct {
 
 // BillingCreateWhiteLabelRequest Body of POST /v1/admin/billing/white-label.
 type BillingCreateWhiteLabelRequest struct {
+	// Currency The currency the operator means for monthly_price_minor (ISO 4217). Optional; when given and different from the organization's billing account currency the request answers 422 billing.white_label_currency_mismatch. The stored currency is always the account's.
+	Currency *string `json:"currency"`
+
 	// EndsOn Last day, on or after starts_on; absent or null keeps the period open.
 	EndsOn *openapi_types.Date `json:"ends_on"`
 
@@ -4452,6 +4455,9 @@ type BillingWhiteLabelPeriod struct {
 	// CreatedAt When the period was created.
 	CreatedAt time.Time `json:"created_at"`
 
+	// Currency Currency of the individual price, the organization's billing account currency on the day the period was created; null with the price list. A non-zero individual price is not charged in another currency.
+	Currency *string `json:"currency"`
+
 	// EndedAt When the end was last set, null when never.
 	EndedAt *time.Time `json:"ended_at"`
 
@@ -4461,7 +4467,7 @@ type BillingWhiteLabelPeriod struct {
 	// Id Id of the period.
 	Id openapi_types.UUID `json:"id"`
 
-	// MonthlyPriceMinor Individual monthly price in minor units of the organization's billing account currency; null means the price list, 0 is free.
+	// MonthlyPriceMinor Individual monthly price in minor units of currency; null means the price list, 0 is free.
 	MonthlyPriceMinor *int64 `json:"monthly_price_minor"`
 
 	// OrgId The organization.
@@ -12245,7 +12251,7 @@ type OrgWhiteLabelPeriod struct {
 	// CreatedAt When the period was created.
 	CreatedAt time.Time `json:"created_at"`
 
-	// Currency Currency of the organization's billing account, empty when it cannot be read.
+	// Currency Currency of effective_monthly_minor, the individual price's currency or the organization's billing account currency; empty when it cannot be read.
 	Currency string `json:"currency"`
 
 	// EffectiveMonthlyMinor The monthly price that applies, in minor units of currency; null when it cannot be read.

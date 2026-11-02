@@ -22418,7 +22418,7 @@ components:
 
     BillingWhiteLabelPeriod:
       type: object
-      required: [id, org_id, promoter_id, starts_on, ends_on, monthly_price_minor, reason, created_at, ended_at, status]
+      required: [id, org_id, promoter_id, starts_on, ends_on, monthly_price_minor, currency, reason, created_at, ended_at, status]
       description: "A white label period of a brand: from starts_on to ends_on (UTC calendar days, both inclusive) the platform badge is hidden on the brand's widget, letters and shop, and the brand pays the monthly white label price."
       properties:
         id:
@@ -22450,7 +22450,10 @@ components:
         monthly_price_minor:
           type: [integer, "null"]
           format: int64
-          description: Individual monthly price in minor units of the organization's billing account currency; null means the price list, 0 is free.
+          description: Individual monthly price in minor units of currency; null means the price list, 0 is free.
+        currency:
+          type: [string, "null"]
+          description: Currency of the individual price, the organization's billing account currency on the day the period was created; null with the price list. A non-zero individual price is not charged in another currency.
         reason:
           type: string
           description: The X-Admin-Reason the period was created with.
@@ -22505,6 +22508,9 @@ components:
           format: int64
           minimum: 0
           description: Individual monthly price in minor units of the organization's billing account currency; absent means the price list, 0 is free.
+        currency:
+          type: [string, "null"]
+          description: The currency the operator means for monthly_price_minor (ISO 4217). Optional; when given and different from the organization's billing account currency the request answers 422 billing.white_label_currency_mismatch. The stored currency is always the account's.
 
     BillingEndWhiteLabelRequest:
       type: object
@@ -22558,7 +22564,7 @@ components:
           description: The monthly price that applies, in minor units of currency; null when it cannot be read.
         currency:
           type: string
-          description: Currency of the organization's billing account, empty when it cannot be read.
+          description: Currency of effective_monthly_minor, the individual price's currency or the organization's billing account currency; empty when it cannot be read.
         created_at:
           type: string
           format: date-time

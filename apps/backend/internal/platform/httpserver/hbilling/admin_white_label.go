@@ -12,9 +12,11 @@ package hbilling
 //   - two periods of one brand never share a day;
 //   - a period is ended, never deleted, and its end only moves earlier and
 //     never before yesterday: a day the badge was hidden stays charged;
-//   - monthly_price_minor is an individual price in the currency of the
-//     organization's billing account; absent means the price list, 0 is free
-//     (the existing clients, decision V-7).
+//   - monthly_price_minor is an individual price; absent means the price
+//     list, 0 is free (the existing clients, decision V-7). It is stored with
+//     the currency of the organization's billing account on that day; the
+//     operator may name the currency they mean, and a different one is
+//     refused, so 45 typed as euros is never billed as dollars.
 
 import (
 	"errors"
@@ -45,6 +47,7 @@ type createWhiteLabelBody struct {
 	StartsOn          string  `json:"starts_on"`
 	EndsOn            *string `json:"ends_on"`
 	MonthlyPriceMinor *int64  `json:"monthly_price_minor"`
+	Currency          *string `json:"currency"`
 }
 
 type endWhiteLabelBody struct {
@@ -77,6 +80,7 @@ func whiteLabelJSON(p gen.WhiteLabelPeriodRow, day time.Time) map[string]any {
 		"starts_on":           p.StartsOn.Format(dateLayout),
 		"ends_on":             dateJSON(p.EndsOn),
 		"monthly_price_minor": p.MonthlyPriceMinor,
+		"currency":            p.Currency,
 		"reason":              p.Reason,
 		"created_at":          p.CreatedAt.UTC().Format(time.RFC3339Nano),
 		"ended_at":            timeJSON(p.EndedAt),
@@ -197,6 +201,26 @@ func (h *AdminHandler) HandleCreateWhiteLabel(w http.ResponseWriter, r *http.Req
 		notFound(w, r, "billing.organization_not_found", "this organization does not exist")
 		return
 	}
+	var currency *string
+	if body.MonthlyPriceMinor != nil {
+		country, err := q.GetOrgBillingCountry(ctx, orgID)
+		if err != nil {
+			h.fail(w, r, "billing country", err)
+			return
+		}
+		cur, _, err := billing.RouteCurrency(ctx, q, country)
+		if err != nil {
+			h.fail(w, r, "billing currency", err)
+			return
+		}
+		if body.Currency != nil && strings.TrimSpace(*body.Currency) != "" &&
+			!strings.EqualFold(strings.TrimSpace(*body.Currency), cur) {
+			unprocessable(w, r, "billing.white_label_currency_mismatch",
+				"this organization is billed in "+cur+": type the individual price in "+cur)
+			return
+		}
+		currency = &cur
+	}
 	if promoterID != nil {
 		if _, err := q.GetOrgPromoter(ctx, *promoterID, orgID); errors.Is(err, pgx.ErrNoRows) {
 			notFound(w, r, "billing.promoter_not_found", "this promoter does not belong to the organization")
@@ -228,7 +252,7 @@ func (h *AdminHandler) HandleCreateWhiteLabel(w http.ResponseWriter, r *http.Req
 	}
 	created, err := q.InsertWhiteLabelPeriod(ctx, gen.InsertWhiteLabelPeriodParams{
 		OrgID: orgID, PromoterID: promoterID, StartsOn: startsOn, EndsOn: endsOn,
-		MonthlyPriceMinor: body.MonthlyPriceMinor, Reason: reason, CreatedBy: actorUUID(r),
+		MonthlyPriceMinor: body.MonthlyPriceMinor, Currency: currency, Reason: reason, CreatedBy: actorUUID(r),
 	})
 	if err != nil {
 		h.fail(w, r, "insert white label", err)
@@ -237,6 +261,7 @@ func (h *AdminHandler) HandleCreateWhiteLabel(w http.ResponseWriter, r *http.Req
 	meta := map[string]any{
 		"org_id": orgID.String(), "starts_on": created.StartsOn.Format(dateLayout),
 		"ends_on": dateJSON(created.EndsOn), "monthly_price_minor": created.MonthlyPriceMinor,
+		"currency": created.Currency,
 	}
 	if promoterID != nil {
 		meta["promoter_id"] = promoterID.String()
@@ -380,13 +405,16 @@ func (h *ChargesHandler) HandleOrgWhiteLabel(w http.ResponseWriter, r *http.Requ
 		if x.PromoterName != nil {
 			item["brand_name"] = *x.PromoterName
 		}
-		monthly := listMonthly
+		monthly, cur := listMonthly, currency
 		if x.MonthlyPriceMinor != nil {
 			v := *x.MonthlyPriceMinor
 			monthly = &v
+			if x.Currency != nil {
+				cur = *x.Currency
+			}
 		}
 		item["effective_monthly_minor"] = monthly
-		item["currency"] = currency
+		item["currency"] = cur
 		items = append(items, item)
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "currency": currency,

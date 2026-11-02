@@ -30345,9 +30345,11 @@ export interface components {
             ends_on: string | null;
             /**
              * Format: int64
-             * @description Individual monthly price in minor units of the organization's billing account currency; null means the price list, 0 is free.
+             * @description Individual monthly price in minor units of currency; null means the price list, 0 is free.
              */
             monthly_price_minor: number | null;
+            /** @description Currency of the individual price, the organization's billing account currency on the day the period was created; null with the price list. A non-zero individual price is not charged in another currency. */
+            currency: string | null;
             /** @description The X-Admin-Reason the period was created with. */
             reason: string;
             /**
@@ -30398,6 +30400,8 @@ export interface components {
              * @description Individual monthly price in minor units of the organization's billing account currency; absent means the price list, 0 is free.
              */
             monthly_price_minor?: number | null;
+            /** @description The currency the operator means for monthly_price_minor (ISO 4217). Optional; when given and different from the organization's billing account currency the request answers 422 billing.white_label_currency_mismatch. The stored currency is always the account's. */
+            currency?: string | null;
         };
         /** @description Body of POST /v1/admin/billing/white-label/{id}/end. */
         BillingEndWhiteLabelRequest: {
@@ -30448,7 +30452,7 @@ export interface components {
              * @description The monthly price that applies, in minor units of currency; null when it cannot be read.
              */
             effective_monthly_minor: number | null;
-            /** @description Currency of the organization's billing account, empty when it cannot be read. */
+            /** @description Currency of effective_monthly_minor, the individual price's currency or the organization's billing account currency; empty when it cannot be read. */
             currency: string;
             /**
              * Format: date-time

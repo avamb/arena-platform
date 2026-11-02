@@ -14,14 +14,14 @@ WHERE  w.org_id = $1
   AND  COALESCE(w.ends_on, 'infinity'::date) >= $3::date;
 
 -- name: InsertWhiteLabelPeriod :one
-INSERT INTO white_label_periods AS w (org_id, promoter_id, starts_on, ends_on, monthly_price_minor, reason, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO white_label_periods AS w (org_id, promoter_id, starts_on, ends_on, monthly_price_minor, currency, reason, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING w.id, w.org_id, w.promoter_id, w.starts_on, w.ends_on, w.monthly_price_minor,
-       w.reason, w.created_by, w.created_at, w.ended_by, w.ended_at;
+       w.currency, w.reason, w.created_by, w.created_at, w.ended_by, w.ended_at;
 
 -- name: GetWhiteLabelPeriod :one
 SELECT w.id, w.org_id, w.promoter_id, w.starts_on, w.ends_on, w.monthly_price_minor,
-       w.reason, w.created_by, w.created_at, w.ended_by, w.ended_at
+       w.currency, w.reason, w.created_by, w.created_at, w.ended_by, w.ended_at
 FROM   white_label_periods w
 WHERE  w.id = $1;
 
@@ -31,11 +31,11 @@ SET    ends_on = $2, ended_by = $3, ended_at = now()
 WHERE  w.id = $1
   AND  (w.ends_on IS NULL OR w.ends_on > $2::date)
 RETURNING w.id, w.org_id, w.promoter_id, w.starts_on, w.ends_on, w.monthly_price_minor,
-       w.reason, w.created_by, w.created_at, w.ended_by, w.ended_at;
+       w.currency, w.reason, w.created_by, w.created_at, w.ended_by, w.ended_at;
 
 -- name: ListWhiteLabelPeriods :many
 SELECT w.id, w.org_id, w.promoter_id, w.starts_on, w.ends_on, w.monthly_price_minor,
-       w.reason, w.created_by, w.created_at, w.ended_by, w.ended_at, o.name, p.name
+       w.currency, w.reason, w.created_by, w.created_at, w.ended_by, w.ended_at, o.name, p.name
 FROM   white_label_periods w
 JOIN   organizations o ON o.id = w.org_id
 LEFT   JOIN org_promoters p ON p.id = w.promoter_id
@@ -45,23 +45,28 @@ LIMIT  1000;
 
 -- name: ListWhiteLabelPeriodsForMonth :many
 SELECT w.id, w.org_id, w.promoter_id, w.starts_on, w.ends_on, w.monthly_price_minor,
-       w.reason, w.created_by, w.created_at, w.ended_by, w.ended_at
+       w.currency, w.reason, w.created_by, w.created_at, w.ended_by, w.ended_at
 FROM   white_label_periods w
 WHERE  w.starts_on <= $2::date
   AND  (w.ends_on IS NULL OR w.ends_on >= $1::date)
   AND  (w.ends_on IS NULL OR w.ends_on >= w.starts_on)
   AND  ($3::uuid IS NULL OR w.org_id = $3)
+  AND  NOT EXISTS (SELECT 1 FROM organizations o
+                   WHERE o.id = w.org_id AND o.deleted_at < ($1::date)::timestamp AT TIME ZONE 'UTC')
+  AND  NOT EXISTS (SELECT 1 FROM org_promoters p
+                   WHERE p.id = w.promoter_id AND p.archived_at < ($1::date)::timestamp AT TIME ZONE 'UTC')
 ORDER  BY w.id;
 
 -- name: ListWhiteLabelEvents :many
 SELECT e.id
 FROM   events e
 LEFT   JOIN event_promoters ep ON ep.event_id = e.id
+LEFT   JOIN org_promoters op ON op.id = ep.promoter_id AND op.archived_at IS NULL
 WHERE  e.id = ANY($1::uuid[])
   AND  EXISTS (
     SELECT 1 FROM white_label_periods w
     WHERE  w.org_id = e.org_id
-      AND  w.promoter_id IS NOT DISTINCT FROM ep.promoter_id
+      AND  w.promoter_id IS NOT DISTINCT FROM op.id
       AND  w.starts_on <= $2::date
       AND  (w.ends_on IS NULL OR w.ends_on >= $2::date));
 

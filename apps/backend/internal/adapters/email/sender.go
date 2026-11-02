@@ -554,14 +554,21 @@ func encodeHeaderText(v string) string {
 	return "\r\n " + strings.ReplaceAll(encoded, "?= =?", "?=\r\n =?")
 }
 
+// MaxFromNameRunes caps the display name of the From header.
+const MaxFromNameRunes = 64
+
 // HeaderFrom is the From header value: from as it is, or, with a name, the
 // bare address of from under that name (RFC 2047-encoded when it is not
 // ASCII). A name with line breaks is dropped rather than written into a
-// header.
+// header, and a name longer than MaxFromNameRunes is cut, so the encoded From
+// line stays far below the 998-octet line limit of RFC 5322.
 func HeaderFrom(from, name string) string {
 	name = strings.TrimSpace(name)
 	if name == "" || strings.ContainsAny(name, "\r\n") {
 		return from
+	}
+	if r := []rune(name); len(r) > MaxFromNameRunes {
+		name = strings.TrimSpace(string(r[:MaxFromNameRunes]))
 	}
 	addr := from
 	if parsed, err := mail.ParseAddress(from); err == nil {

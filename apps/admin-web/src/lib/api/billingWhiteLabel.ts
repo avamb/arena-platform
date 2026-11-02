@@ -44,10 +44,17 @@ export interface WhiteLabelForm {
   endsOn: string;
   /** "" = the price list; otherwise major units, e.g. "45" or "0". */
   monthlyPrice: string;
+  /**
+   * The currency the operator means for the price (ISO 4217, e.g. "EUR").
+   * Optional: the server stores the organization's billing currency and
+   * refuses a different one, so a price typed as euros is never billed as
+   * dollars.
+   */
+  currency: string;
 }
 
 export function emptyWhiteLabelForm(): WhiteLabelForm {
-  return { orgId: "", promoterId: "", startsOn: "", endsOn: "", monthlyPrice: "" };
+  return { orgId: "", promoterId: "", startsOn: "", endsOn: "", monthlyPrice: "", currency: "" };
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -73,6 +80,7 @@ export function buildWhiteLabelRequest(form: WhiteLabelForm, now: Date = new Dat
   const startsOn = form.startsOn.trim();
   const endsOn = form.endsOn.trim();
   const price = form.monthlyPrice.trim().replace(",", ".");
+  const currency = form.currency.trim().toUpperCase();
   if (!UUID_RE.test(orgId)) errors.push("Organization: choose an organization.");
   if (promoterId !== "" && !UUID_RE.test(promoterId)) errors.push("Promoter: paste the promoter's id, or leave it empty for the organization itself.");
   if (!DATE_RE.test(startsOn)) errors.push("First day: pick a date.");
@@ -86,11 +94,15 @@ export function buildWhiteLabelRequest(form: WhiteLabelForm, now: Date = new Dat
     if (!/^\d{1,7}(\.\d{1,2})?$/.test(price)) errors.push("Monthly price: type an amount such as 45 or 0, or leave it empty for the price list.");
     else monthly = Math.round(Number(price) * 100);
   }
+  if (currency !== "" && !/^[A-Z]{3}$/.test(currency)) errors.push("Currency: type a code such as EUR or USD, or leave it empty.");
   if (errors.length > 0) return { ok: false, errors };
   const request: CreateWhiteLabelRequest = { org_id: orgId, starts_on: startsOn };
   if (promoterId !== "") request.promoter_id = promoterId;
   if (endsOn !== "") request.ends_on = endsOn;
-  if (monthly !== undefined) request.monthly_price_minor = monthly;
+  if (monthly !== undefined) {
+    request.monthly_price_minor = monthly;
+    if (currency !== "") request.currency = currency;
+  }
   return { ok: true, request };
 }
 
@@ -113,9 +125,10 @@ export function whiteLabelStatusLabel(status: string): string {
   }
 }
 
-/** The monthly price as the operator reads it: "price list", "free" or "45.00". */
-export function monthlyPriceLabel(minor: number | null | undefined): string {
+/** The monthly price as the operator reads it: "price list", "free" or "45.00 EUR". */
+export function monthlyPriceLabel(minor: number | null | undefined, currency?: string | null): string {
   if (minor == null) return "Price list";
   if (minor === 0) return "Free";
-  return (minor / 100).toFixed(2);
+  const amount = (minor / 100).toFixed(2);
+  return currency ? `${amount} ${currency}` : amount;
 }

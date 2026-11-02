@@ -83,7 +83,7 @@ func TestRate_WhiteLabelMonth_IndividualPrice(t *testing.T) {
 	terms := whiteLabelTerms(t, "EUR")
 	zero, cheap := int64(0), int64(3000)
 	c := mustRate(t, terms, wlEvent(30, 30, &zero))
-	if c.AmountMinor != 0 || c.Reason != billing.ReasonOverride || c.RuleType != billing.RuleSubscription {
+	if c.AmountMinor != 0 || c.Reason != billing.ReasonIndividualPrice || c.RuleType != billing.RuleSubscription {
 		t.Errorf("free brand: %d %q %s", c.AmountMinor, c.Reason, c.RuleType)
 	}
 	if c := mustRate(t, terms, wlEvent(15, 30, &cheap)); c.AmountMinor != 1500 {

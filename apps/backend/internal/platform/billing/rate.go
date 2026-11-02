@@ -34,11 +34,15 @@ const (
 
 // Charge.Reason values.
 const (
-	ReasonNone        = ""
-	ReasonFree        = "free"
-	ReasonOverride    = "override"
-	ReasonNoRule      = "no_rule"
-	ReasonJournalOnly = "journal_only"
+	ReasonNone     = ""
+	ReasonFree     = "free"
+	ReasonOverride = "override"
+	// ReasonIndividualPrice marks a white label month charged at the
+	// period's own monthly price, not the price list's (it is not an
+	// org_rate_overrides row).
+	ReasonIndividualPrice = "individual_price"
+	ReasonNoRule          = "no_rule"
+	ReasonJournalOnly     = "journal_only"
 	// ReasonBuyerPays marks a charge equal to the service charge the buyer
 	// paid (fee_mode buyer_pays).
 	ReasonBuyerPays = "buyer_pays"
@@ -454,7 +458,7 @@ func rateWhiteLabelMonth(terms Terms, ev Event, c Charge) (Charge, error) {
 		}
 		monthly = *ev.MonthlyPriceMinor
 		c.RuleType = RuleSubscription
-		c.Reason = ReasonOverride
+		c.Reason = ReasonIndividualPrice
 		c.Inputs["individual_monthly_minor"] = monthly
 	} else {
 		r, ok := terms.rule(lineStandard, string(KindWhiteLabelMonth), RuleSubscription, "")
