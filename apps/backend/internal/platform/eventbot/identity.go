@@ -100,6 +100,7 @@ func (b *Bot) resolveIdentity(ctx context.Context, telegramUserID int64) (*Ident
 	id, remember := buildIdentity(link, memberships, me.Superadmin)
 	if remember != nil {
 		_ = b.queries.SetBotTelegramLinkCurrentOrg(ctx, telegramUserID, remember)
+		b.an.forget(telegramUserID)
 	}
 	return id, jwt, nil
 }

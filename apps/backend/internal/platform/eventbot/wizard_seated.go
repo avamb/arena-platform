@@ -176,7 +176,7 @@ func (w *Wizard) applySeated(loc string, d *Draft, text, data string) (string, e
 		} else {
 			p, ok := ParsePriceMinor(text)
 			if !ok {
-				return t("bot.wz.err_price", nil), nil
+				return d.reject("err_price", t("bot.wz.err_price", nil)), nil
 			}
 			c.PriceMinor = p
 		}
@@ -227,11 +227,11 @@ func (w *Wizard) applySeated(loc string, d *Draft, text, data string) (string, e
 		}
 		name := strings.TrimSpace(text)
 		if name == "" {
-			return t("bot.wz.err_plan_extra_name", nil), nil
+			return d.reject("err_plan_extra_name", t("bot.wz.err_plan_extra_name", nil)), nil
 		}
 		for _, c := range work.Categories {
 			if strings.EqualFold(strings.TrimSpace(c.Name), name) {
-				return t("bot.wz.err_plan_extra_dup", map[string]any{"Name": Esc(name)}), nil
+				return d.reject("err_plan_extra_dup", t("bot.wz.err_plan_extra_dup", map[string]any{"Name": Esc(name)})), nil
 			}
 		}
 		ex.Name = truncate(name, 60)
@@ -245,7 +245,7 @@ func (w *Wizard) applySeated(loc string, d *Draft, text, data string) (string, e
 		}
 		p, ok := ParsePriceMinor(text)
 		if !ok {
-			return t("bot.wz.err_price", nil), nil
+			return d.reject("err_price", t("bot.wz.err_price", nil)), nil
 		}
 		ex.PriceMinor = p
 		d.goTo(stSPlanExtraColor)
