@@ -1,12 +1,15 @@
 // payment_amount_guard.go — a paid event must name the amount and currency
 // arena asked for (PAY-14b, spec 08_architecture/39 §7).
 //
-// Only a provider whose module owns the whole normalization
-// (Capabilities.WebhookConfigRouteOnly: Flitt, AllPay) is checked here: its
-// module reports what the buyer was charged in NormalizedEvent.AmountMinor
-// and Currency. A paid event that disagrees with the payment intent is not
-// trusted with tickets: the intent goes to manual_review (the ops watchdog
-// alerts on it) and the checkout is not completed.
+// A provider whose module owns the whole normalization
+// (Capabilities.WebhookConfigRouteOnly: Flitt, AllPay, PayPlus) reports what
+// the buyer was charged in NormalizedEvent.AmountMinor and Currency. A Stripe
+// event goes through the core envelope parser instead, which reads
+// data.object.amount_total (checkout.session) or amount_received
+// (payment_intent) and the currency into the same check (P0-1 defect D-01).
+// A paid event that disagrees with the payment intent is not trusted with
+// tickets: the intent goes to manual_review (the ops watchdog alerts on it)
+// and the checkout is not completed.
 package hcheckout
 
 import (
