@@ -66,6 +66,8 @@
     /** Told whenever the mailing tick changes, so the sheet can price the cart with it. */
     onMarketingChange?: (ticked: boolean) => void;
     onSubmit: (values: BuyerFormValues) => void;
+    /** Called with the new value whenever the buyer edits the e-mail field. */
+    onEmailChange?: (email: string) => void;
   }
 
   const {
@@ -80,6 +82,7 @@
     cartReminder = false,
     onMarketingChange,
     onSubmit,
+    onEmailChange,
   }: Props = $props();
 
   // Spec 51-1: the mailing tick is never pre-ticked and never required.
@@ -123,6 +126,7 @@
   function onEmailInput(e: Event): void {
     email = (e.target as HTMLInputElement).value;
     emailSuggestion = suggestEmailFix(email);
+    onEmailChange?.(email);
     if (touched) {
       errors = validateBuyerForm({ email, name, phone }, buyerFields, locale as never);
     }
@@ -131,6 +135,7 @@
   function acceptSuggestion(): void {
     email = emailSuggestion ?? email;
     emailSuggestion = null;
+    onEmailChange?.(email);
     if (touched) {
       errors = validateBuyerForm({ email, name, phone }, buyerFields, locale as never);
     }
