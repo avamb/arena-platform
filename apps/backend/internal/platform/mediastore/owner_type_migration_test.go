@@ -122,3 +122,13 @@ func TestAllowedOwnerTypes_SessionPosterIsMigrated(t *testing.T) {
 		)
 	}
 }
+
+func TestOwnerPaymentReceipt_IsMigratedButNotUploadable(t *testing.T) {
+	if _, ok := AllowedOwnerTypes[OwnerPaymentReceipt]; ok {
+		t.Fatal("payment_receipt must not be accepted by POST /v1/media")
+	}
+	filename, upSQL := latestOwnerTypeCheckSQL(t)
+	if !strings.Contains(upSQL, "'"+OwnerPaymentReceipt+"'") {
+		t.Errorf("migration %s does not widen %s to accept %q", filename, ownerTypeConstraintName, OwnerPaymentReceipt)
+	}
+}

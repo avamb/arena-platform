@@ -43,7 +43,30 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/paymentreceipts"
 )
+
+// queueReceiptArchive queues payment.receipt_archive for a payment that has
+// just succeeded, inside its own SAVEPOINT of the webhook transaction.
+func (h *Handler) queueReceiptArchive(ctx context.Context, tx pgx.Tx, paymentIntentID uuid.UUID, provider string) {
+	if !paymentreceipts.Archivable(provider) {
+		return
+	}
+	sp, err := tx.Begin(ctx)
+	if err == nil {
+		if err = paymentreceipts.EnqueueTx(ctx, sp, paymentIntentID, provider); err != nil {
+			_ = sp.Rollback(ctx)
+		} else {
+			err = sp.Commit(ctx)
+		}
+	}
+	if err != nil {
+		h.logger.Warn("webhook: receipt archive not queued",
+			slog.String("payment_intent_id", paymentIntentID.String()),
+			slog.String("error", err.Error()),
+		)
+	}
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // State transition table
@@ -1429,6 +1452,13 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 			))
 			return
 		}
+	}
+
+	// Step 5: queue the archive of the provider's own receipt (spec 51
+	// section 2). Best effort behind a SAVEPOINT: a failed enqueue must never
+	// roll back a paid payment, it only leaves the receipt unarchived.
+	if updated.State == "succeeded" && currentState != "succeeded" {
+		h.queueReceiptArchive(ctx, tx, pi.ID, pi.Provider)
 	}
 
 	// Commit: event row + state change + checkout completion + job enqueue

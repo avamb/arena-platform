@@ -2305,3 +2305,30 @@ entries short and factual.
   - `salesubscribe/subscribe_integration_test.go` (the whole cycle);
   - `httpserver/sale_subscription_public_integration_test.go`;
   - `TestCompatBil24_SubscribeSale`.
+- **The payment provider's own receipt, and the seller in buyer letters (spec 51 section 2, decision R-6, migration 0184).**
+  - **The setting.**
+    - The owner's switch is `organizations.provider_receipt_enabled` (default true). It is written by `PATCH .../seller-profile` with `provider_receipt_enabled`, and shown on the event center's "Organization data" screen.
+    - `provider_receipt_forced` ("always send", in the admin console's Payments tab) is written ONLY by a platform superadmin with `X-Admin-Reason`. Anyone else changing it gets 403 `seller.provider_receipt_forced_superadmin_only`; repeating the stored value is allowed.
+    - The setting is in effect when either flag is on. `hfeed.StripePaymentStarter.receiptEmail` then passes the buyer's e-mail as `HostedCheckoutRequest.ReceiptEmail`. A failed read of the setting also counts as "send".
+    - Each module decides alone what to do with the e-mail:
+      - Stripe sets `payment_intent_data[receipt_email]`;
+      - PayPlus sets `sendEmailApproval`;
+      - AllPay and Flitt ignore it (an AllPay receipt is the merchant's own tax document).
+    - "Off" is not a guarantee: a Stripe account's own dashboard setting "email customers about successful payments" still sends. The screen says so.
+    - The seller-profile PATCH now takes any non-empty subset of `contact_form_to_telegram`, `provider_receipt_enabled` and `provider_receipt_forced`. An empty body is 400.
+  - **The archive.**
+    - When a payment intent becomes `succeeded`, the webhook transaction queues `payment.receipt_archive` (`paymentreceipts.EnqueueTx`, in a SAVEPOINT, best effort). This happens only for modules with `Capabilities.ProviderReceipt`, which requires `payments.ReceiptFetcher` (the contract test checks it).
+    - arena-worker's handler reads the receipt through the module of the payment's organization and stores it on the payment intent:
+      - `provider_receipt_url`;
+      - `provider_receipt_number`, which may be empty: Stripe numbers a receipt after it mails it;
+      - the copy in media, owner type `payment_receipt`, which is not uploadable (it is absent from `AllowedOwnerTypes`);
+      - `provider_receipt_archived_at`.
+    - Stripe downloads only an https `pay.stripe.com` address (or the test stub's host), sends no API key, and follows no redirect. It tries the unofficial `/pdf` first and falls back to the HTML page, so the copy may be `text/html`.
+    - A fixture that pays a Stripe checkout must delete `payment.receipt_archive` jobs and `payment_receipt` media objects (see `hostedOrgFixture.cleanup`).
+  - **The letters.** Every buyer letter (ticket, invitation, change, cancel, refund, all 7 locales) has a footer that names the seller and the provider. The shop letters name the seller only:
+    - the seller: "Seller: <organization's legal name, else its name>". The platform's name is never shown as the seller;
+    - the provider: `Branding.PaymentProvider`, the module's `Descriptor.Title` of the order's succeeded payment intent, printed as "Payment processed by X". It is resolved at render time by `GetTicketPaymentProvider` / `GetOrderPaymentProvider`. An invitation, a free order and a selling-site order print no provider line.
+    - The words are in `templates.sellerFooterWords`. A new buyer template must carry both `.Branding.SellerLabel` and `{{with .Branding.PaymentLine}}`.
+  - **Refund letters.** The refund letter goes out for partial and full batch refunds alike (`TestRefundBuyerEmail_PartialRefundIsMailedWithSellerAndProvider`). These send no letter, as before:
+    - refunds without a batch (the flat routes, the ticket-cancel route);
+    - refunds made in the provider's dashboard.
