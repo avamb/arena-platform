@@ -101,7 +101,7 @@ func ConvertReservationInTx(ctx context.Context, q *gen.Queries, reservationID u
 	// inventory_ledger (ConfirmCapacity).
 	reservation, err := q.LockReservationForUpdate(ctx, reservationID)
 	if err != nil {
-		return fmt.Errorf("convertReservationInTx: get reservation %s: %w", reservationID, err)
+		return fmt.Errorf("convertReservationInTx: lock reservation %s: %w", reservationID, err)
 	}
 	switch reservation.State {
 	case "converted", "expired", "cancelled":

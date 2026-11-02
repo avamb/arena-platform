@@ -609,6 +609,16 @@ entries short and factual.
   would make the plugin loop. Any NEW code opening a transaction that touches BOTH
   `inventory_ledger` and `sessions.seat_status_version` must follow the
   same order and go through (or mirror) `retryOnSerializationFailure`.
+  **When the transaction also writes an existing reservation, its row comes
+  FIRST: reservation row (`LockReservationForUpdate`), then the sessions
+  row, then `inventory_ledger`.** ReleaseHold, Extend/Shrink/Reacquire, the
+  held→sold conversion (`ConvertReservationInTx`) and both expiry paths
+  (`expireReservation`, `ExpireHoldForOrderTx`) take them in that order
+  since P0-1. Until then the expiry paths read the reservation unlocked and
+  bumped the sessions row first, so a conversion and an expiry of one
+  seated hold deadlocked (`TestConvertVsExpiry_SeatedHold_NoDeadlockOneWinner_LiveDB`
+  reproduced 40P01 in 10 of 10 runs). Never decide a reservation's state
+  from an unlocked read when the same transaction then writes it.
 - **On a plan-less GA session a `ga_unit` row's `tier_id` is a sale stamp,
   not ownership.** `AllocateGAUnitsTx` stamps the line tier onto the NULL-tier
   pool units it holds and releases reset them to NULL, so a tier's own rows
