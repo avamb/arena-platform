@@ -37,6 +37,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/txretry"
 )
 
 // SmartPriceRequest is the body of the preview and enable routes.
@@ -118,6 +119,8 @@ type smartScope struct {
 	next     map[uuid.UUID]gen.TierChainRow
 	incoming map[uuid.UUID]bool
 	rules    []gen.SmartPriceRuleRow
+	// fingerprint digests what the plan is built from (gen.SmartSessionFingerprint).
+	fingerprint string
 }
 
 var errSmartSessionNotFound = errors.New("session not found")
@@ -159,6 +162,9 @@ func (h *Handler) loadSmartScope(ctx context.Context, orgID, sessionID uuid.UUID
 		return smartScope{}, errSmartSessionNotFound
 	}
 	if sc.rules, err = q.ListSmartPriceRulesBySession(ctx, sessionID, orgID); err != nil {
+		return smartScope{}, err
+	}
+	if sc.fingerprint, err = q.SmartSessionFingerprint(ctx, sessionID); err != nil {
 		return smartScope{}, err
 	}
 	for _, t := range sc.ss.Tiers {
@@ -267,6 +273,11 @@ func planSmart(sc smartScope, req SmartPriceRequest, now time.Time) (smartPlan, 
 		cat := out.bundle.CategoryList[idx]
 		switch req.Kind {
 		case smartprice.KindBySales:
+			// A running or future price change would sell the head dearer
+			// than the steps after it: the price must only go up.
+			if pastWindows(sc.src.Windows[tierID], now) == nil {
+				return smartPlan{}, smartFail("smart_price.schedule_exists", "the category already has future price changes")
+			}
 			st := sc.ss.Stats[tierID]
 			steps, err := smartprice.ExpandBySales(req.Params, smartprice.SalesInput{
 				Base: t.PriceAmount, Currency: t.Currency, Owned: st.Quantity, Used: st.Sold + st.Held,
@@ -317,6 +328,11 @@ func planSmart(sc smartScope, req SmartPriceRequest, now time.Time) (smartPlan, 
 				pc.CapPrice = ws[0].Price
 			}
 			schedule := *past
+			// The import keeps at most maxImportPriceWindows windows: the
+			// oldest past ones, which no longer price anything, go first.
+			if extra := len(schedule) + len(ws) - maxImportPriceWindows; extra > 0 {
+				schedule = schedule[min(extra, len(schedule)):]
+			}
 			for _, w := range ws {
 				from := w.From
 				pc.Steps = append(pc.Steps, SmartPriceStep{From: &from, Price: w.Price})
@@ -423,8 +439,10 @@ func (h *Handler) writeSmartError(w http.ResponseWriter, r *http.Request, err er
 	if e, ok := smartprice.AsError(err); ok {
 		status := http.StatusUnprocessableEntity
 		switch e.Code {
-		case "smart_price.already_on", "smart_price.category_in_chain", "smart_price.schedule_exists", "smart_price.not_active":
+		case "smart_price.already_on", "smart_price.category_in_chain", "smart_price.schedule_exists", "smart_price.not_active", "smart_price.changed":
 			status = http.StatusConflict
+		case "smart_price.not_found":
+			status = http.StatusNotFound
 		}
 		httputil.WriteJSON(w, status, httputil.ErrorEnvelope(e.Code, e.Message, r))
 		return
@@ -503,11 +521,6 @@ func (h *Handler) HandleSmartPriceEnable(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	plan, err := planSmart(sc, req, h.now())
-	if err != nil {
-		h.writeSmartError(w, r, err)
-		return
-	}
 	params, err := json.Marshal(req.Params)
 	if err != nil {
 		h.writeSmartError(w, r, err)
@@ -515,42 +528,48 @@ func (h *Handler) HandleSmartPriceEnable(w http.ResponseWriter, r *http.Request)
 	}
 	ctx := r.Context()
 	createdBy := actorUUID(ctx)
-	warnings, err := h.runSmartImport(ctx, orgID, plan.bundle, func(q *gen.Queries) error {
-		var stepIDs []uuid.UUID
-		if len(plan.stepNames) > 0 {
-			tiers, err := q.ListTicketTiersBySession(ctx, sessionID)
-			if err != nil {
-				return err
-			}
-			byName := map[string]uuid.UUID{}
-			for _, t := range tiers {
-				byName[t.Name] = t.ID
-			}
-			for _, n := range plan.stepNames {
-				id, ok := byName[n]
-				if !ok {
-					return fmt.Errorf("step category %q was not created", n)
-				}
-				stepIDs = append(stepIDs, id)
-			}
+	warnings, err := h.runSmartImport(ctx, orgID, sessionID, sc, func(sc smartScope) (bil24compat.ImportSessionRequest, func(q *gen.Queries) error, error) {
+		plan, err := planSmart(sc, req, h.now())
+		if err != nil {
+			return bil24compat.ImportSessionRequest{}, nil, err
 		}
-		for _, c := range plan.preview.Categories {
-			ids := stepIDs
-			if req.Kind != smartprice.KindBySales {
-				ids = nil
-			}
-			if _, err := q.InsertSmartPriceRule(ctx, gen.InsertSmartPriceRuleParams{
-				OrgID: orgID, SessionID: sessionID, TierID: c.TierID, Kind: req.Kind,
-				Params: params, BasePrice: c.BasePrice, StepTierIDs: ids, CreatedBy: createdBy,
-			}); err != nil {
-				var pgErr *pgconn.PgError
-				if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-					return smartFail("smart_price.already_on", "the category already follows a smart price")
+		return plan.bundle, func(q *gen.Queries) error {
+			var stepIDs []uuid.UUID
+			if len(plan.stepNames) > 0 {
+				tiers, err := q.ListTicketTiersBySession(ctx, sessionID)
+				if err != nil {
+					return err
 				}
-				return err
+				byName := map[string]uuid.UUID{}
+				for _, t := range tiers {
+					byName[t.Name] = t.ID
+				}
+				for _, n := range plan.stepNames {
+					id, ok := byName[n]
+					if !ok {
+						return fmt.Errorf("step category %q was not created", n)
+					}
+					stepIDs = append(stepIDs, id)
+				}
 			}
-		}
-		return nil
+			for _, c := range plan.preview.Categories {
+				ids := stepIDs
+				if req.Kind != smartprice.KindBySales {
+					ids = nil
+				}
+				if _, err := q.InsertSmartPriceRule(ctx, gen.InsertSmartPriceRuleParams{
+					OrgID: orgID, SessionID: sessionID, TierID: c.TierID, Kind: req.Kind,
+					Params: params, BasePrice: c.BasePrice, StepTierIDs: ids, CreatedBy: createdBy,
+				}); err != nil {
+					var pgErr *pgconn.PgError
+					if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+						return smartFail("smart_price.already_on", "the category already follows a smart price")
+					}
+					return err
+				}
+			}
+			return nil
+		}, nil
 	})
 	if err != nil {
 		h.writeSmartError(w, r, err)
@@ -579,6 +598,34 @@ func (h *Handler) HandleSmartPriceStop(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	var kind string
+	ctx := r.Context()
+	warnings, err := h.runSmartImport(ctx, orgID, sessionID, sc, func(sc smartScope) (bil24compat.ImportSessionRequest, func(q *gen.Queries) error, error) {
+		bundle, rule, err := planSmartStop(sc, ruleID, h.now())
+		if err != nil {
+			return bil24compat.ImportSessionRequest{}, nil, err
+		}
+		kind = rule.Kind
+		return bundle, func(q *gen.Queries) error {
+			if _, err := q.GetActiveSmartPriceRule(ctx, ruleID, orgID); err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					return smartFail("smart_price.not_active", "the smart price is already off")
+				}
+				return err
+			}
+			return q.StopSmartPriceRule(ctx, ruleID)
+		}, nil
+	})
+	if err != nil {
+		h.writeSmartError(w, r, err)
+		return
+	}
+	h.writeSmartAudit(ctx, r, orgID, sessionID, "v1.smart_price.stop", map[string]any{"rule_id": ruleID.String(), "kind": kind})
+	h.answerSmartRules(w, r, orgID, sessionID, warnings)
+}
+
+// planSmartStop builds the bundle that freezes a preset's price.
+func planSmartStop(sc smartScope, ruleID uuid.UUID, now time.Time) (bil24compat.ImportSessionRequest, gen.SmartPriceRuleRow, error) {
 	var rule *gen.SmartPriceRuleRow
 	for i := range sc.rules {
 		if sc.rules[i].ID == ruleID {
@@ -587,15 +634,12 @@ func (h *Handler) HandleSmartPriceStop(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case rule == nil:
-		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("smart_price.not_found", "smart price not found", r))
-		return
+		return bil24compat.ImportSessionRequest{}, gen.SmartPriceRuleRow{}, smartFail("smart_price.not_found", "smart price not found")
 	case rule.Status != "active":
-		h.writeSmartError(w, r, smartFail("smart_price.not_active", "the smart price is already off"))
-		return
+		return bil24compat.ImportSessionRequest{}, gen.SmartPriceRuleRow{}, smartFail("smart_price.not_active", "the smart price is already off")
 	}
 	bundle := sc.bundle
 	bundle.CategoryList = append([]bil24compat.ImportSessionCategory(nil), sc.bundle.CategoryList...)
-	now := h.now()
 	if rule.Kind == smartprice.KindBySales {
 		members := chainMembers(sc, rule.TierID)
 		sell := sellingMember(sc, members)
@@ -619,22 +663,7 @@ func (h *Handler) HandleSmartPriceStop(w http.ResponseWriter, r *http.Request) {
 		}
 		bundle.CategoryList[i].PriceSchedule = &kept
 	}
-	ctx := r.Context()
-	warnings, err := h.runSmartImport(ctx, orgID, bundle, func(q *gen.Queries) error {
-		if _, err := q.GetActiveSmartPriceRule(ctx, ruleID, orgID); err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return smartFail("smart_price.not_active", "the smart price is already off")
-			}
-			return err
-		}
-		return q.StopSmartPriceRule(ctx, ruleID)
-	})
-	if err != nil {
-		h.writeSmartError(w, r, err)
-		return
-	}
-	h.writeSmartAudit(ctx, r, orgID, sessionID, "v1.smart_price.stop", map[string]any{"rule_id": ruleID.String(), "kind": rule.Kind})
-	h.answerSmartRules(w, r, orgID, sessionID, warnings)
+	return bundle, *rule, nil
 }
 
 func (h *Handler) answerSmartRules(w http.ResponseWriter, r *http.Request, orgID, sessionID uuid.UUID, warnings []Warning) {
@@ -648,9 +677,40 @@ func (h *Handler) answerSmartRules(w http.ResponseWriter, r *http.Request, orgID
 	httputil.WriteJSON(w, http.StatusOK, SmartPriceRulesResponse{Rules: smartRules(sc, h.now()), Warnings: warnings})
 }
 
-// runSmartImport posts a bundle through the import's own preparation and
-// executor, runs extra (the rule rows) in the same transaction and commits.
-func (h *Handler) runSmartImport(ctx context.Context, orgID uuid.UUID, req bil24compat.ImportSessionRequest, extra func(q *gen.Queries) error) ([]Warning, error) {
+// smartAttempts bounds how often a smart price write reads the session again
+// after it changed under it (a colleague's edit, a hand-over of places).
+const smartAttempts = 3
+
+// errSmartChanged: the session changed between the read the plan was built
+// from and the write. The write is planned again from a fresh read.
+var errSmartChanged = smartFail("smart_price.changed", "the date's categories changed at the same moment; open the card again and repeat")
+
+// smartBuild plans the bundle and the preset rows from one read of the session.
+type smartBuild func(sc smartScope) (bil24compat.ImportSessionRequest, func(q *gen.Queries) error, error)
+
+// runSmartImport plans from sc and posts the bundle through the import's own
+// preparation and executor, with the preset rows in the same transaction.
+// The transaction first locks the session row and its categories and checks
+// that nothing the plan was built from changed since sc was read; when
+// something did, it reads the session again and plans anew.
+func (h *Handler) runSmartImport(ctx context.Context, orgID, sessionID uuid.UUID, sc smartScope, build smartBuild) ([]Warning, error) {
+	for attempt := 1; ; attempt++ {
+		warnings, err := h.smartImportOnce(ctx, orgID, sessionID, sc, build)
+		retry := errors.Is(err, errSmartChanged) || txretry.IsSerializationFailure(err)
+		if !retry || attempt == smartAttempts {
+			return warnings, err
+		}
+		if sc, err = h.loadSmartScope(ctx, orgID, sessionID); err != nil {
+			return nil, err
+		}
+	}
+}
+
+func (h *Handler) smartImportOnce(ctx context.Context, orgID, sessionID uuid.UUID, sc smartScope, build smartBuild) ([]Warning, error) {
+	req, extra, err := build(sc)
+	if err != nil {
+		return nil, err
+	}
 	warnings := newWarningSink()
 	issues := newIssueSink(importMode{})
 	prep := h.prepareImport(ctx, orgID, req, "", importMode{}, warnings, issues)
@@ -658,6 +718,7 @@ func (h *Handler) runSmartImport(ctx context.Context, orgID uuid.UUID, req bil24
 		return nil, err
 	}
 	plan := prep.plan
+	plan.SmartPriceWrite = true
 	plan.PosterMediaID = h.sideLoadPoster(ctx, orgID, req,
 		h.currentPosterMediaID(ctx, orgID, plan.Source, plan.ExternalRef, req), warnings)
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -666,6 +727,16 @@ func (h *Handler) runSmartImport(ctx context.Context, orgID uuid.UUID, req bil24
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := gen.New(tx)
+	if err := q.LockSmartSession(ctx, sessionID); err != nil {
+		return nil, err
+	}
+	fp, err := q.SmartSessionFingerprint(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if fp != sc.fingerprint {
+		return nil, errSmartChanged
+	}
 	if _, err := h.executorFor(plan.Source)(ctx, q, tx, plan, warnings); err != nil {
 		return nil, err
 	}

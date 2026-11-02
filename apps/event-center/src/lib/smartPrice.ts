@@ -88,12 +88,17 @@ export function parseSmartForm(f: SmartForm): SmartFormResult {
 
 /** The preset a category follows now (it is the first step of a chain), if any. */
 export function activeRuleOf(rules: readonly SmartPriceRule[], tierId: string): SmartPriceRule | undefined {
-  return rules.find((r) => r.tier_id === tierId && r.status === "active");
+  return rules.find((r) => belongsTo(r, tierId) && r.status === "active");
+}
+
+/** A preset drives its category and, by tickets sold, the steps it made. */
+function belongsTo(rule: SmartPriceRule, tierId: string): boolean {
+  return rule.tier_id === tierId || (rule.step_tier_ids ?? []).includes(tierId);
 }
 
 /** The latest preset of the category that ended, to say why the price stopped rising. */
 export function endedRuleOf(rules: readonly SmartPriceRule[], tierId: string): SmartPriceRule | undefined {
-  return rules.find((r) => r.tier_id === tierId && r.status !== "active");
+  return rules.find((r) => belongsTo(r, tierId) && r.status !== "active");
 }
 
 export type SmartEligibility = "ok" | "chain" | "free";

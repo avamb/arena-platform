@@ -60,6 +60,12 @@ describe("rules of a category", () => {
     expect(activeRuleOf(rules, "t3")).toBeUndefined();
   });
 
+  it("finds the preset from a step it made", () => {
+    const rules = [rule({ id: "chain", step_tier_ids: ["s2", "s3"] })];
+    expect(activeRuleOf(rules, "s3")?.id).toBe("chain");
+    expect(activeRuleOf(rules, "s4")).toBeUndefined();
+  });
+
   it("offers a preset only to a fixed paid category outside a chain", () => {
     expect(smartEligibility(tier({}), false)).toBe("ok");
     expect(smartEligibility(tier({}), true)).toBe("chain");

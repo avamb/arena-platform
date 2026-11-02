@@ -889,7 +889,7 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 		if req.PriceAmount != nil && *req.PriceAmount != current.PriceAmount {
 			// A price typed by hand ends the smart price this category
 			// follows: the price stops rising (owner decision В-5, spec 51 §4.2).
-			if _, err := txq.OverrideSmartPriceRulesForTier(ctx, tierID, *req.PriceAmount); err != nil {
+			if _, err := txq.OverrideSmartPriceRulesForTier(ctx, gen.SmartOverride{TierID: tierID}); err != nil {
 				return err
 			}
 		}

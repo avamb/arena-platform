@@ -1316,6 +1316,8 @@ export const es: Record<MessageKey, string> = {
   "apiError.smartPriceSeated.next": "Elige «Cada N días» o «Más caro los últimos días».",
   "apiError.smartPriceFree.title": "El precio inteligente necesita un precio fijo mayor que cero.",
   "apiError.smartPriceFree.next": "Pon primero un precio a la categoría y luego activa el precio inteligente.",
+  "apiError.smartPriceChanged.title": "Alguien cambió las categorías de esta fecha en ese mismo momento.",
+  "apiError.smartPriceChanged.next": "No se guardó nada. Recarga la página y repite.",
   "apiError.smartPriceOff.title": "El precio inteligente ya está desactivado.",
   "apiError.smartPriceOff.next": "Recarga la página para ver el precio actual.",
   "apiError.smartPriceUnsupported.title": "El precio inteligente no está disponible para esta fecha.",

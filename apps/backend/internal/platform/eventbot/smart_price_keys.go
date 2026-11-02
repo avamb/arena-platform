@@ -12,7 +12,7 @@ var smartPriceKeys = []string{
 	"bot.sp.ended_overridden", "bot.sp.preview_head", "bot.sp.row_now", "bot.sp.row_tickets",
 	"bot.sp.row_rest", "bot.sp.row_from", "bot.sp.preview_note", "bot.sp.enable_btn",
 	"bot.sp.nums_btn", "bot.sp.enabled", "bot.sp.q_nums_by_sales", "bot.sp.q_nums_by_days",
-	"bot.sp.q_nums_last_days", "bot.sp.err_nums", "bot.sp.err_input", "bot.sp.err_on",
+	"bot.sp.q_nums_last_days", "bot.sp.err_nums", "bot.sp.err_input", "bot.sp.err_on", "bot.sp.err_changed",
 	"bot.sp.err_schedule", "bot.sp.err_places", "bot.sp.err_no_room", "bot.sp.err_too_late",
 	"bot.sp.err_seated", "bot.sp.err_free", "bot.sp.err_off", "bot.sp.price_warn",
 }

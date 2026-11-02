@@ -5194,6 +5194,9 @@ other = "Arena cannot use these numbers. Check them and type them again."
 ["bot.sp.err_on"]
 other = "Smart price is already on, or the category already sells in steps."
 
+["bot.sp.err_changed"]
+other = "Someone changed this date's categories at the same moment, so nothing was saved. Open the category again and repeat."
+
 ["bot.sp.err_schedule"]
 other = "This category already has a price schedule. Remove its future price windows in Edit, then turn smart price on."
 

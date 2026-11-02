@@ -5025,6 +5025,9 @@ other = "Estos números no sirven. Revísalos y escríbelos otra vez."
 ["bot.sp.err_on"]
 other = "El precio inteligente ya está activado o la categoría ya se vende por tramos."
 
+["bot.sp.err_changed"]
+other = "Alguien cambió las categorías de esta fecha en ese mismo momento, así que no se guardó nada. Vuelve a abrir la categoría y repite."
+
 ["bot.sp.err_schedule"]
 other = "Esta categoría ya tiene un calendario de precios. Quita sus ventanas de precio futuras en Editar y luego activa el precio inteligente."
 

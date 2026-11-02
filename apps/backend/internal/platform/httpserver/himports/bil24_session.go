@@ -175,9 +175,23 @@ type importExecutor func(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan im
 
 func (h *Handler) executorFor(source string) importExecutor {
 	if source == bil24compat.SourceArena {
-		return h.executeArenaImport
+		return h.executeArenaWithSmartGuard
 	}
 	return h.executeImport
+}
+
+// executeArenaWithSmartGuard runs the arena executor and then ends every
+// smart price whose category the import changed by hand (smart_price_guard.go).
+func (h *Handler) executeArenaWithSmartGuard(ctx context.Context, q *gen.Queries, tx pgx.Tx, plan importPlan, warnings *warningSink) (importResult, error) {
+	guard, err := loadSmartPriceGuard(ctx, q, plan)
+	if err != nil {
+		return importResult{}, err
+	}
+	res, err := h.executeArenaImport(ctx, q, tx, plan, warnings)
+	if err != nil || guard == nil {
+		return res, err
+	}
+	return res, guard.apply(ctx, q)
 }
 
 // writeFirstImportError answers the first error of the pre-transaction

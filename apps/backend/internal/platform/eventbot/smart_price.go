@@ -133,6 +133,8 @@ func smartErrKey(err error) string {
 	switch APIErrorCode(err) {
 	case "smart_price.already_on", "smart_price.category_in_chain":
 		return "bot.sp.err_on"
+	case "smart_price.changed":
+		return "bot.sp.err_changed"
 	case "smart_price.schedule_exists":
 		return "bot.sp.err_schedule"
 	case "smart_price.not_enough_places":

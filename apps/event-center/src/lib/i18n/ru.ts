@@ -1316,6 +1316,8 @@ export const ru: Record<MessageKey, string> = {
   "apiError.smartPriceSeated.next": "Выберите «Каждые N дней» или «Дороже в последние дни».",
   "apiError.smartPriceFree.title": "Для умной цены нужна фиксированная цена больше нуля.",
   "apiError.smartPriceFree.next": "Сначала задайте цену категории, затем включите умную цену.",
+  "apiError.smartPriceChanged.title": "В эту же минуту кто-то изменил категории этой даты.",
+  "apiError.smartPriceChanged.next": "Ничего не сохранено. Обновите страницу и повторите.",
   "apiError.smartPriceOff.title": "Умная цена уже выключена.",
   "apiError.smartPriceOff.next": "Обновите страницу, чтобы увидеть текущую цену.",
   "apiError.smartPriceUnsupported.title": "Умная цена недоступна для этой даты.",

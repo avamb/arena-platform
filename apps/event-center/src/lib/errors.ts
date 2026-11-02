@@ -165,6 +165,7 @@ export type ApiErrorStem =
   | "smartPriceSeated"
   | "smartPriceFree"
   | "smartPriceOff"
+  | "smartPriceChanged"
   | "smartPriceUnsupported"
   | "smartPriceInput"
   // B3-3/B4: billing
@@ -236,7 +237,7 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   // 5-4
   "tierPriceInvalid", "tierCapacityInvalid", "tierPriceWindows",
   "smartPriceOn", "smartPriceSchedule", "smartPricePlaces", "smartPriceNoRoom", "smartPriceTooLate", "smartPriceSeated",
-  "smartPriceFree", "smartPriceOff", "smartPriceUnsupported", "smartPriceInput",
+  "smartPriceFree", "smartPriceOff", "smartPriceChanged", "smartPriceUnsupported", "smartPriceInput",
   // B3-3/B4
   "billingCardUnavailable", "billingKeyReused", "billingPackGone", "billingNoAccount", "billingNotCardPayable",
   "billingPayerInvalid", "billingTerms", "billingFxMissing", "billingClosed",
@@ -402,6 +403,8 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "smart_price.seated_by_sales": "smartPriceSeated",
   "smart_price.free_category": "smartPriceFree",
   "smart_price.not_active": "smartPriceOff",
+  "smart_price.not_found": "smartPriceOff",
+  "smart_price.changed": "smartPriceChanged",
   "smart_price.session_unsupported": "smartPriceUnsupported",
   "smart_price.invalid_step": "smartPriceInput",
   "smart_price.invalid_every": "smartPriceInput",

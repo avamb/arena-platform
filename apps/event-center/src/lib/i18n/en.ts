@@ -1316,6 +1316,8 @@ export const en = {
   "apiError.smartPriceSeated.next": "Choose \"Every N days\" or \"Higher in the last days\".",
   "apiError.smartPriceFree.title": "Smart price needs a fixed price above zero.",
   "apiError.smartPriceFree.next": "Set a price for the category first, then turn smart price on.",
+  "apiError.smartPriceChanged.title": "Someone changed this date's categories at the same moment.",
+  "apiError.smartPriceChanged.next": "Nothing was saved. Reload the page and repeat.",
   "apiError.smartPriceOff.title": "Smart price is already off.",
   "apiError.smartPriceOff.next": "Reload the page to see the price now.",
   "apiError.smartPriceUnsupported.title": "Smart price is not available for this date.",
