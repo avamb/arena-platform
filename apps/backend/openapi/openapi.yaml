@@ -21434,6 +21434,9 @@ components:
           additionalProperties:
             type: string
           description: "Optional marketing attribution (source, medium, campaign, term, content, ref)."
+        aid:
+          type: string
+          description: "Optional visitor id of arenasoldout.com (cookie aso_aid, set only after the analytics consent): 8-40 characters of A-Z a-z 0-9 _ -. Anything else is ignored. Product analytics joins the visit with the application through it."
         turnstile_token:
           type: string
           description: "Cloudflare Turnstile response token; verified by the platform."

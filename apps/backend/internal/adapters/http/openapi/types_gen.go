@@ -11068,6 +11068,9 @@ type OnboardingSettingsRequest struct {
 
 // OnboardingStartRequest Body of POST /v1/onboarding/applications: the first step of the form.
 type OnboardingStartRequest struct {
+	// Aid Optional visitor id of arenasoldout.com (cookie aso_aid, set only after the analytics consent): 8-40 characters of A-Z a-z 0-9 _ -. Anything else is ignored. Product analytics joins the visit with the application through it.
+	Aid *string `json:"aid,omitempty"`
+
 	// Email Contact e-mail; a confirmation link is sent to it.
 	Email openapi_types.Email `json:"email"`
 

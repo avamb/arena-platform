@@ -288,7 +288,7 @@ func run() error {
 	registerRefundSweepHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 	registerBillingReconcileHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 	registerJobRetentionHandler(registry, pool.Pool, logger)
-	registerAnalyticsHandlers(registry, pool.Pool, logger)
+	registerAnalyticsHandlers(registry, pool.Pool, cfg, logger)
 
 	// 7b. Idempotency cleanup startup scheduling (feature #48) ---------------
 	// Enqueue an idempotency.cleanup job immediately if none is already

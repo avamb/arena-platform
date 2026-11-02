@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/analytics"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/opsalert"
@@ -131,6 +132,9 @@ type StartInput struct {
 	// IPHash is a salted hash of the client address, "" when unknown.
 	IPHash         string
 	TelegramUserID *int64
+	// AID is the analytics visitor id of the browser (spec 50). An invalid
+	// value is ignored, never an error.
+	AID string
 }
 
 // Started is the result of Start.
@@ -206,12 +210,12 @@ func (s *Service) Start(ctx context.Context, in StartInput) (*Started, error) {
 INSERT INTO onboarding_applications
     (source, applicant_email, applicant_name, applicant_phone, locale, current_step, progress_pct,
      answers, access_token_hash, resume_token_hash, resume_token_expires_at, telegram_user_id,
-     utm, ip_hash, last_activity_at, expires_at)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+     utm, ip_hash, last_activity_at, expires_at, aid)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
 RETURNING `+appColumns,
 		source, email, name, norm.String("phone"), locale, step, pct, answers, accessHash, resumeHash,
 		now.Add(resumeLinkTTL), in.TelegramUserID, utm, nullIfEmpty(in.IPHash), now,
-		now.AddDate(0, 0, set.DraftTTLDays))
+		now.AddDate(0, 0, set.DraftTTLDays), nullIfEmpty(analytics.CleanAID(in.AID)))
 	app, err := scanApplication(row)
 	if err != nil {
 		return nil, fmt.Errorf("onboarding: insert application: %w", err)

@@ -11,13 +11,25 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/analytics"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
-func registerAnalyticsHandlers(reg *worker.Registry, pool *pgxpool.Pool, logger *slog.Logger) {
+func registerAnalyticsHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) {
 	reg.Register(analytics.PartitionsJobType, analytics.NewPartitionsHandler(analytics.PartitionsOptions{
 		DB:        pool,
 		Scheduler: analytics.NewPGPartitionsScheduler(pool),
+		Logger:    logger,
+	}))
+	// analytics.rollup (stage A5) reads raw events and the business tables and
+	// writes only the analytics schema. TelegramSecret is JWT_SIGNING_SECRET:
+	// without it in the worker's environment the bot-onboarding join (tg and
+	// e-mail) is skipped, everything else runs.
+	reg.Register(analytics.RollupJobType, analytics.NewRollupHandler(analytics.RollupHandlerOptions{
+		Rollup: analytics.NewRollup(analytics.RollupOptions{
+			Pool: pool, TelegramSecret: cfg.JWTSecretStub, Logger: logger,
+		}),
+		Scheduler: analytics.NewPGRollupScheduler(pool),
 		Logger:    logger,
 	}))
 }
@@ -27,5 +39,8 @@ func scheduleAnalyticsJobs(ctx context.Context, pool *pgxpool.Pool, logger *slog
 	// delayed first run costs nothing for months.
 	if err := analytics.SchedulePartitionsJob(ctx, pool); err != nil {
 		logger.Warn("could not schedule initial analytics partitions job", "error", err.Error())
+	}
+	if err := analytics.ScheduleRollupJob(ctx, pool); err != nil {
+		logger.Warn("could not schedule initial analytics rollup job", "error", err.Error())
 	}
 }
