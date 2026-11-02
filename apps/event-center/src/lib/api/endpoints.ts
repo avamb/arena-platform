@@ -51,6 +51,13 @@ import type {
   OrganizationItem,
   OrgMeResponse,
   PaymentProviderConfigItem,
+  ReferralCapability,
+  ReferralProgram,
+  ReferralProgramRequest,
+  ReferralProgramResponse,
+  ReferralRewardList,
+  ReferralSummary,
+  ReferralWarning,
   SellerProfile,
   PromoterEnvelope,
   PromoterListEnvelope,
@@ -1225,5 +1232,67 @@ export function suggestSeatLayout(
     route: API.seatLayoutSuggest,
     params: { org_id: orgId, session_id: sessionId },
     body,
+  });
+}
+
+// ─── "Refer a friend" (spec 52) ──────────────────────────────────────────────
+
+/** A programme (or the lack of one) with what the event's channels can do. */
+export interface ReferralState {
+  /** The live programme, else the latest ended one, else null (never started). */
+  program: ReferralProgram | null;
+  capability: ReferralCapability;
+  warnings: ReferralWarning[];
+}
+
+/**
+ * The event's programme. Without one the API answers a 404 `referral.program_not_found` whose
+ * `error.details` carry the capability and the warnings, so the screen can explain before anything
+ * is filled in whether the programme can start; that 404 is a normal answer here, not a failure.
+ */
+export async function fetchReferralProgram(orgId: string, eventId: string): Promise<ReferralState> {
+  try {
+    const r = await call<ReferralProgramResponse>({ route: API.referralProgram, params: { org_id: orgId, event_id: eventId } });
+    return { program: r.program, capability: r.capability, warnings: r.warnings };
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404 && error.code === "referral.program_not_found") {
+      const d = error.details;
+      const capability = d?.capability as ReferralCapability | undefined;
+      if (capability !== undefined) {
+        const warnings = Array.isArray(d?.warnings) ? (d?.warnings as ReferralWarning[]) : [];
+        return { program: null, capability, warnings };
+      }
+    }
+    throw error;
+  }
+}
+
+/** Starts or changes the programme. `accept_terms` only when this call starts one. */
+export function saveReferralProgram(orgId: string, eventId: string, body: ReferralProgramRequest): Promise<ReferralProgramResponse> {
+  return call<ReferralProgramResponse>({ route: API.referralProgramPut, params: { org_id: orgId, event_id: eventId }, body });
+}
+
+export type ReferralAction = "pause" | "resume" | "end";
+
+/** Pause, resume or end the programme. An ended programme stays ended. */
+export function referralAction(orgId: string, eventId: string, action: ReferralAction): Promise<ReferralProgramResponse> {
+  const route = action === "pause" ? API.referralProgramPause : action === "resume" ? API.referralProgramResume : API.referralProgramEnd;
+  return call<ReferralProgramResponse>({ route, params: { org_id: orgId, event_id: eventId } });
+}
+
+export function fetchReferralSummary(orgId: string, eventId: string): Promise<ReferralSummary> {
+  return call<ReferralSummary>({ route: API.referralSummary, params: { org_id: orgId, event_id: eventId } });
+}
+
+/** One page of rewards, newest first. `cursor` is the previous page's `next_cursor`. */
+export function fetchReferralRewards(
+  orgId: string,
+  eventId: string,
+  query: { state?: string; cursor?: string; limit?: number },
+): Promise<ReferralRewardList> {
+  return call<ReferralRewardList>({
+    route: API.referralRewards,
+    params: { org_id: orgId, event_id: eventId },
+    query: { state: query.state, cursor: query.cursor, limit: query.limit },
   });
 }

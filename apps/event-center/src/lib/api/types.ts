@@ -61,6 +61,19 @@ export type PromoCodeEnvelope = S["PromoCodeEnvelope"];
 export type PromoRedemptionItem = S["PromoRedemptionItem"];
 export type PromoRedemptionListResponse = S["PromoRedemptionListResponse"];
 export type CreatePromoCodeRequest = S["CreatePromoCodeRequest"];
+// "Refer a friend" (spec 52): the programme of an event, its totals and rewards.
+export type ReferralProgram = S["ReferralProgram"];
+export type ReferralProgramRequest = S["ReferralProgramRequest"];
+export type ReferralProgramResponse = S["ReferralProgramResponse"];
+export type ReferralCapability = S["ReferralCapability"];
+export type ReferralCapabilityChannel = S["ReferralCapabilityChannel"];
+export type ReferralWarning = S["ReferralWarning"];
+export type ReferralRewardItem = S["ReferralRewardItem"];
+export type ReferralRewardList = S["ReferralRewardList"];
+export type ReferralSummary = S["ReferralSummary"];
+export type ReferralMoney = S["ReferralMoney"];
+export type ReferralCashbackTotals = S["ReferralCashbackTotals"];
+export type OrderReferralCashbackPaid = S["OrderReferralCashbackPaid"];
 // 4-5: the team screen.
 export type BotTeamMember = S["BotTeamMember"];
 export type BotTeamResponse = S["BotTeamResponse"];

@@ -548,6 +548,35 @@ export const PARITY: readonly ParityRow[] = [
     ready: { twin: "live/promo.spec.ts", smoke: "promo.mock.spec.ts" },
     routes: [`POST ${O}/promo-codes`, `PATCH ${O}/promo-codes/{id}`, `DELETE ${O}/promo-codes/{id}`],
   },
+  // ── Приведи друга ───────────────────────────────────────────────────
+  {
+    area: "Приведи друга",
+    fn: "Программа на карточке мероприятия",
+    bot: "в работе (спека 52, раздел 7.1)",
+    web: "R3",
+    routes: [`GET ${O}/events/{event_id}/referral-program`, `PUT ${O}/events/{event_id}/referral-program`],
+    note: "Скидка другу, кэшбэк приводящему, предел кэшбэка, число друзей на код, срок. Перед запуском — правила и галочка (`accept_terms`). Если ни один канал не умеет частичный возврат, форма закрыта с объяснением. Смотреть — `promo.read`, менять — `promo.update` + `refund.create` + `refund.approve`. На возврате заказа друга показана плашка «кэшбэк приводящему уже выплачен».",
+  },
+  {
+    area: "Приведи друга",
+    fn: "Пауза, возобновление, завершение",
+    bot: "в работе (спека 52, раздел 7.1)",
+    web: "R3",
+    routes: [
+      `POST ${O}/events/{event_id}/referral-program/pause`,
+      `POST ${O}/events/{event_id}/referral-program/resume`,
+      `POST ${O}/events/{event_id}/referral-program/end`,
+    ],
+    note: "Пауза и возобновление — одним нажатием, завершение — после вопроса. Завершённую программу включить снова нельзя, запускается новая.",
+  },
+  {
+    area: "Приведи друга",
+    fn: "Итоги и список начислений",
+    bot: "в работе (спека 52, раздел 7.1)",
+    web: "R3",
+    routes: [`GET ${O}/events/{event_id}/referral-program/summary`, `GET ${O}/events/{event_id}/referral-rewards`],
+    note: "Суммы по валютам, никогда в одну. Начисления с фильтром по состоянию и «Показать ещё». Контактов покупателя в ответе нет.",
+  },
   // ── Пригласительные ─────────────────────────────────────────────────
   {
     area: "Пригласительные",

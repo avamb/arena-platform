@@ -202,7 +202,11 @@ export type ApiErrorStem =
   | "shopVariantsChanged"
   | "shopSettingsChanged"
   | "shopCurrencyLocked"
-  | "shopCurrencyUnsupported";
+  | "shopCurrencyUnsupported"
+  // Refer a friend (spec 52)
+  | "referralTerms"
+  | "referralProvider"
+  | "referralNoProgram";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -245,6 +249,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "shopStockChanged", "shopDuplicateSlug", "shopVariantsInvalid", "shopMediaInvalid", "shopNotShippable", "shopNotCancellable", "shopNotRefundable", "shopRefundAmount", "shopCurrency", "shopOperatorOnly",
   "shopNothingToRefund", "shopOutOfStock", "shopOrderChanged", "shopOrderEmailUnavailable", "shopOrderNoBuyerEmail", "shopDuplicateDomain",
   "shopVariantsChanged", "shopSettingsChanged", "shopCurrencyLocked", "shopCurrencyUnsupported",
+  // Refer a friend (spec 52)
+  "referralTerms", "referralProvider", "referralNoProgram",
 ];
 
 /**
@@ -439,6 +445,10 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "shop.settings_changed": "shopSettingsChanged",
   "shop.currency_locked": "shopCurrencyLocked",
   "shop.currency_unsupported": "shopCurrencyUnsupported",
+  // Refer a friend (spec 52)
+  "referral.terms_not_accepted": "referralTerms",
+  "referral.provider_unsupported": "referralProvider",
+  "referral.program_not_found": "referralNoProgram",
   "shop.invalid_refund_amount": "shopRefundAmount",
   "shop.invalid_currency": "shopCurrency",
   "shop.enabled_superadmin_only": "shopOperatorOnly",
