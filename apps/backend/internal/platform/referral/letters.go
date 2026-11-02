@@ -37,10 +37,6 @@ const (
 type CashbackEmailPayload struct {
 	RewardID string `json:"reward_id"`
 	Kind     string `json:"kind"`
-	// AmountMinor is the cashback that was owed when the job was queued. A
-	// refused cashback leaves the reward at 0, so the "could not return"
-	// letter names this amount instead.
-	AmountMinor int64 `json:"amount_minor,omitempty"`
 }
 
 // ReversalEmailPayload is the payload of JobTypeReversalEmail.

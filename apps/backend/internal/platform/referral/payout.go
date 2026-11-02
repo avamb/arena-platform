@@ -266,15 +266,6 @@ func (s *Service) setState(ctx context.Context, id uuid.UUID, from []string, c s
 		return false, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	// The amount owed before the change: a refused cashback ends at 0, and the
-	// letter that says so still names what was owed.
-	var owed int64
-	if err := tx.QueryRow(ctx, `SELECT amount_minor FROM referral_rewards WHERE id = $1 AND state = ANY($2) FOR UPDATE`,
-		id, from).Scan(&owed); errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	} else if err != nil {
-		return false, err
-	}
 	var reason string
 	var hasReferrerOrder, letterSent bool
 	err = tx.QueryRow(ctx, `UPDATE referral_rewards
@@ -292,7 +283,7 @@ func (s *Service) setState(ctx context.Context, id uuid.UUID, from []string, c s
 	}
 	if kind, ok := LetterKindFor(c.State, reason); ok && hasReferrerOrder && !letterSent {
 		if _, err := worker.EnqueueInTx(ctx, tx, JobTypeCashbackEmail,
-			CashbackEmailPayload{RewardID: id.String(), Kind: kind, AmountMinor: owed}, letterMaxAttempts); err != nil {
+			CashbackEmailPayload{RewardID: id.String(), Kind: kind}, letterMaxAttempts); err != nil {
 			return false, fmt.Errorf("referral: enqueue cashback letter: %w", err)
 		}
 	}
@@ -341,9 +332,14 @@ func (s *Service) applyRefunds(ctx context.Context, rw gen.ReferralRewardRow, ba
 		return nil // nothing new
 	}
 	first := refs[0].ID
-	_, err := s.setState(ctx, rw.ID, from, stateChange{
-		State: state, Reason: reason, Amount: &amount, RefundID: &first, BatchID: &batchID,
-	})
+	c := stateChange{State: state, Reason: reason, Amount: &amount, RefundID: &first, BatchID: &batchID}
+	if state == StateNotPossible {
+		// Nothing was returned, but the cashback stays owed on the row: the
+		// organizer's report shows what was not paid. The cap sums count only
+		// due, sent and paid rewards (SumReferrerLiveRewards).
+		c.Amount = nil
+	}
+	_, err := s.setState(ctx, rw.ID, from, c)
 	return err
 }
 

@@ -140,30 +140,16 @@ func (h *referralCashbackEmail) handle(ctx context.Context, payload []byte) erro
 		return nil
 	}
 
-	msg, letter, err := h.buildMessage(ctx, rw, recipient, p)
+	msg, letter, err := h.buildMessage(ctx, rw, recipient, p.Kind)
 	if err != nil {
 		h.release(ctx, rw.ID)
 		return err
 	}
-	var rec emailstatus.DB = h.opts.DB
-	if p.Kind != referral.LetterSent {
-		// email_letters knows no kind for "could not return the cashback"
-		// (a new kind needs a migration): the letter goes out without a
-		// delivery status.
-		rec = nil
-	}
-	if sendErr := sendRecorded(ctx, h.opts.Sender, rec, h.logger, letter, msg, nil); sendErr != nil {
+	if sendErr := sendRecorded(ctx, h.opts.Sender, h.opts.DB, h.logger, letter, msg, nil); sendErr != nil {
 		h.release(ctx, rw.ID)
 		h.logger.Warn("delivery: referral cashback e-mail send failed; worker will retry",
 			slog.String("reward_id", rw.ID.String()), slog.String("kind", p.Kind))
 		return fmt.Errorf("delivery: send referral cashback e-mail for reward %s: %w", rw.ID, sendErr)
-	}
-	if len(letter.RefundIDs) > 0 {
-		// The letter is out; a lost mark only leaves the refund unmarked.
-		if _, err := h.opts.DB.Exec(ctx, `UPDATE refunds SET buyer_notified_at = now()
-			WHERE id = ANY($1) AND buyer_notified_at IS NULL`, letter.RefundIDs); err != nil {
-			h.logger.Warn("delivery: could not mark the cashback refunds as mailed", slog.String("error", err.Error()))
-		}
 	}
 	h.logger.Info("delivery: referral cashback e-mail sent",
 		slog.String("reward_id", rw.ID.String()), slog.String("kind", p.Kind))
@@ -180,12 +166,7 @@ func (h *referralCashbackEmail) release(ctx context.Context, id uuid.UUID) {
 }
 
 // buildMessage renders the letter for the reward and prepares its record.
-func (h *referralCashbackEmail) buildMessage(ctx context.Context, rw gen.ReferralRewardRow, to sessionchange.OrderRecipient, p referral.CashbackEmailPayload) (email.Message, emailstatus.NewLetter, error) {
-	kind := p.Kind
-	amount := rw.AmountMinor
-	if kind == referral.LetterUnavailable && p.AmountMinor > 0 {
-		amount = p.AmountMinor
-	}
+func (h *referralCashbackEmail) buildMessage(ctx context.Context, rw gen.ReferralRewardRow, to sessionchange.OrderRecipient, kind string) (email.Message, emailstatus.NewLetter, error) {
 	var code, orgLocale string
 	if err := h.opts.DB.QueryRow(ctx, `SELECT pc.code, COALESCE(o.default_locale, '')
 		FROM promo_codes pc JOIN organizations o ON o.id = pc.org_id WHERE pc.id = $1`, rw.PromoCodeID).
@@ -222,7 +203,7 @@ func (h *referralCashbackEmail) buildMessage(ctx context.Context, rw gen.Referra
 		Branding:       branding,
 		Referral: &templates.ReferralData{
 			Code:   code,
-			Amount: formatMoney(amount, rw.Currency),
+			Amount: formatMoney(rw.AmountMinor, rw.Currency),
 			Order:  strconv.FormatInt(to.SystemID, 10),
 		},
 	}
@@ -232,28 +213,15 @@ func (h *referralCashbackEmail) buildMessage(ctx context.Context, rw gen.Referra
 	}
 	msg := ticketEmailMessage(first, to.Email, out.Subject, out.HTMLBody, out.TextBody)
 
-	letter := emailstatus.NewLetter{
-		OrgID: rw.OrgID, OrderID: rw.ReferrerOrderID, Kind: emailstatus.KindRefund, Recipient: to.Email,
-		TemplateVersion: templateVersion(h.renderer, tkind, locale),
+	lkind := emailstatus.KindReferralCashback
+	if kind == referral.LetterUnavailable {
+		lkind = emailstatus.KindReferralUnavailable
 	}
-	if kind == referral.LetterSent && rw.RefundBatchID != nil {
-		rows, err := h.opts.DB.Query(ctx, `SELECT id FROM refunds
-			WHERE batch_id = $1 AND state IN ('succeeded', 'provider_pending') ORDER BY created_at, id`, *rw.RefundBatchID)
-		if err != nil {
-			return email.Message{}, emailstatus.NewLetter{}, fmt.Errorf("delivery: read cashback refunds: %w", err)
-		}
-		for rows.Next() {
-			var id uuid.UUID
-			if err := rows.Scan(&id); err != nil {
-				rows.Close()
-				return email.Message{}, emailstatus.NewLetter{}, err
-			}
-			letter.RefundIDs = append(letter.RefundIDs, id)
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return email.Message{}, emailstatus.NewLetter{}, err
-		}
+	// Recorded under its own kind (migration 0195), tied to the referrer's order and
+	// to no refund: it is no refund letter.
+	letter := emailstatus.NewLetter{
+		OrgID: rw.OrgID, OrderID: rw.ReferrerOrderID, Kind: lkind, Recipient: to.Email,
+		TemplateVersion: templateVersion(h.renderer, tkind, locale),
 	}
 	return msg, letter, nil
 }

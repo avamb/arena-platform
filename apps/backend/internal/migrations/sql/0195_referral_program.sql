@@ -123,10 +123,26 @@ ALTER TABLE refunds ADD CONSTRAINT refunds_origin_check
 
 COMMENT ON TABLE referral_programs IS
     'Refer a friend programme of an event or a shop (spec 52): friend discount and referrer cashback, in percent.';
+-- The two letters to the referrer (cashback sent, cashback could not be returned)
+-- are recorded under their own kinds, not as refund letters.
+ALTER TABLE email_letters
+    DROP CONSTRAINT email_letters_kind_check,
+    ADD CONSTRAINT email_letters_kind_check
+        CHECK (kind IN ('ticket', 'invitation', 'change', 'cancel', 'refund',
+                        'shop_received', 'shop_shipped', 'shop_refunded',
+                        'referral_cashback', 'referral_unavailable'));
+
 COMMENT ON TABLE referral_rewards IS
     'Cashback owed to a referrer for one friend order (spec 52); paid by a money-only refund of origin referral_cashback.';
 
 -- +goose Down
+
+DELETE FROM email_letters WHERE kind IN ('referral_cashback', 'referral_unavailable');
+ALTER TABLE email_letters
+    DROP CONSTRAINT IF EXISTS email_letters_kind_check,
+    ADD CONSTRAINT email_letters_kind_check
+        CHECK (kind IN ('ticket', 'invitation', 'change', 'cancel', 'refund',
+                        'shop_received', 'shop_shipped', 'shop_refunded'));
 
 -- A cashback refund cannot exist under the old CHECK: it becomes an ordinary
 -- arena refund row (the money has already moved at the provider).

@@ -666,8 +666,8 @@ func TestPayout_ProviderRefusalIsNotPossible_NoOtherCard(t *testing.T) {
 		t.Fatalf("Payout: %v", err)
 	}
 	rw := f.rewardOf(t, friend)
-	if rw.State != referral.StateNotPossible || rw.Reason != "card_closed" || rw.Amount != 0 {
-		t.Fatalf("reward = %+v; want not_possible card_closed (R-RF5: the money stays with the organizer)", rw)
+	if rw.State != referral.StateNotPossible || rw.Reason != "card_closed" || rw.Amount != 300 {
+		t.Fatalf("reward = %+v; want not_possible card_closed keeping the 300 owed (R-RF5: the money stays with the organizer)", rw)
 	}
 	for i, st := range f.ticketStatuses(t) {
 		if st != "active" {

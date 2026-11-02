@@ -156,12 +156,13 @@ func TestLetters_PaidRewardQueuesTheCashbackLetter_SentOnce(t *testing.T) {
 	if f.count(t, `SELECT count(*) FROM referral_rewards WHERE id = $1 AND letter_sent_at IS NOT NULL`, rw.ID) != 1 {
 		t.Error("letter_sent_at is not set")
 	}
-	// The letter is recorded (dispute evidence) and linked to the refund.
-	if f.count(t, `SELECT count(*) FROM email_letters WHERE org_id = $1 AND kind = 'refund' AND status <> 'sending'`, f.org) != 1 {
-		t.Error("the cashback letter is not recorded as sent")
+	// The letter is recorded (dispute evidence) under its own kind and is tied
+	// to no refund.
+	if f.count(t, `SELECT count(*) FROM email_letters WHERE org_id = $1 AND kind = 'referral_cashback' AND order_id = $2 AND status <> 'sending'`, f.org, f.referrerOrder) != 1 {
+		t.Error("the cashback letter is not recorded under referral_cashback")
 	}
-	if f.count(t, `SELECT count(*) FROM refunds WHERE org_id = $1 AND buyer_notice_letter_id IS NOT NULL AND buyer_notified_at IS NOT NULL`, f.org) != 1 {
-		t.Error("the cashback refund is not linked to its letter")
+	if f.count(t, `SELECT count(*) FROM refunds WHERE org_id = $1 AND (buyer_notice_letter_id IS NOT NULL OR buyer_notified_at IS NOT NULL)`, f.org) != 0 {
+		t.Error("the cashback refund was tied to a refund letter")
 	}
 }
 
@@ -203,9 +204,12 @@ func TestLetters_ProviderRefusalSendsTheCouldNotReturnLetterWithTheOrganizerCont
 	if strings.Count(m.TextBody, contact) < 2 || m.ReplyTo != contact {
 		t.Errorf("the organizer contact is not offered in the body and footer (reply-to %q):\n%s", m.ReplyTo, m.TextBody)
 	}
-	// Not recorded as a buyer letter: email_letters has no kind for it.
-	if f.count(t, `SELECT count(*) FROM email_letters WHERE org_id = $1`, f.org) != 0 {
-		t.Error("the unavailable letter was recorded under a refund kind")
+	// Recorded under its own kind, tied to the order and to no refund.
+	if f.count(t, `SELECT count(*) FROM email_letters WHERE org_id = $1 AND kind = 'referral_unavailable' AND order_id = $2 AND status <> 'sending'`, f.org, f.referrerOrder) != 1 {
+		t.Error("the unavailable letter is not recorded under referral_unavailable")
+	}
+	if f.count(t, `SELECT count(*) FROM referral_rewards WHERE id = $1 AND amount_minor = 300`, rw.ID) != 1 {
+		t.Error("the owed amount was overwritten")
 	}
 	// Once only.
 	if err := f.cashbackHandler(cs)(ctx, []byte(jobs[0])); err != nil {
