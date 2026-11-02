@@ -247,10 +247,12 @@ func (q *Queries) GetPromoCodeByCodeCI(ctx context.Context, orgID uuid.UUID, cod
 const listPromoCodesByOrg = `-- name: ListPromoCodesByOrg :many
 SELECT ` + promoCodeColumns + `
 FROM promo_codes
-WHERE org_id = $1 AND deleted_at IS NULL
+WHERE org_id = $1 AND deleted_at IS NULL AND origin = 'manual'
 ORDER BY created_at DESC`
 
 // ListPromoCodesByOrg returns all active (non-deleted) promo codes for the given org.
+// Personal codes of the "Refer a friend" programme (origin 'referral') are not listed:
+// each of them is one buyer's code, read through the programme's own routes.
 // Ordered by created_at DESC (most recent first).
 func (q *Queries) ListPromoCodesByOrg(ctx context.Context, orgID uuid.UUID) ([]PromoCodeRow, error) {
 	rows, err := q.db.Query(ctx, listPromoCodesByOrg, orgID)
@@ -457,7 +459,7 @@ SELECT p.id                                   AS promo_code_id,
 FROM promo_codes p
 LEFT JOIN promo_code_redemptions r ON r.promo_code_id = p.id
 LEFT JOIN orders o ON o.id = r.order_id
-WHERE p.org_id = $1 AND p.deleted_at IS NULL
+WHERE p.org_id = $1 AND p.deleted_at IS NULL AND p.origin = 'manual'
 GROUP BY p.id`
 
 // ListPromoCodeUsageByOrg returns one usage tally per live promo code of the
@@ -490,6 +492,7 @@ LEFT JOIN orders o         ON o.id = r.order_id
 LEFT JOIN sales_channels c ON c.id = r.channel_id
 WHERE p.org_id = $1
   AND ($2::uuid IS NULL OR r.promo_code_id = $2::uuid)
+  AND ($2::uuid IS NOT NULL OR p.origin = 'manual')
 ORDER BY r.redeemed_at DESC`
 
 // ListPromoCodeRedemptionsByOrg returns the organization's redemptions, newest

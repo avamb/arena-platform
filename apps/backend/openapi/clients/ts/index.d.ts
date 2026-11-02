@@ -6989,6 +6989,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/checkout/{checkout_token}/referral": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The buyer's personal "Refer a friend" code
+         * @description For a paid order whose event has an active "Refer a friend" programme,
+         *     returns the order's personal code (made on the first call, the same
+         *     code on every later one), the discount a friend gets, the cashback the
+         *     buyer gets and a link to share: the event's page with `?promo=<code>`
+         *     and utm parameters. For anything else (not paid yet, no programme, the
+         *     programme is paused or over, an invitation, an order a selling site
+         *     took the money for) the answer is the same 404, so the route tells
+         *     nothing about the order.
+         *
+         *     No JWT is required: the opaque `checkout_token` is the credential.
+         *     Rate-limited by the same per-token and per-IP limiter as the order
+         *     status route.
+         */
+        get: operations["getPublicCheckoutReferral"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/checkout/{checkout_token}/recover": {
         parameters: {
             query?: never;
@@ -9004,6 +9035,167 @@ export interface paths {
          *     organization is a 404.
          */
         get: operations["getV1OrganizationsOrgIdSessionsSessionIdSalesCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/referral-program": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The event's "Refer a friend" programme
+         * @description Returns the live programme of the event (active or paused), else the
+         *     latest ended one, together with `capability`: whether the sales channels of
+         *     the event can pay the cashback (a part of a payment goes back to the
+         *     referrer's card), and `warnings`. Without a programme the answer is a 404
+         *     `referral.program_not_found` whose `error.details` carries the same
+         *     `capability` and `warnings`, so a screen can explain before anything is
+         *     filled in whether the programme can be started.
+         *
+         *     Requires `promo.read`. An event of another organization is a 404
+         *     `event.not_found`.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsEventIdReferralProgram"];
+        /**
+         * Start or change the event's "Refer a friend" programme
+         * @description Replaces the settings of the event's live programme (200), or starts a new
+         *     one when it has none or the last one ended (201). A buyer of the event who
+         *     paid gets a personal code; a friend who uses it gets `friend_discount_pct`
+         *     off, and the referrer gets `cashback_pct` of what the friend paid back on the
+         *     card they paid with, at once, capped at `cashback_cap_pct` of the referrer's
+         *     own payment.
+         *
+         *     Changing the percentages affects NEW codes only: a code already issued keeps
+         *     its discount, and a reward keeps the cashback it was written with. Starting
+         *     a programme needs `accept_terms: true` (the cashback is paid at once and is
+         *     not taken back if the friend returns the ticket) and channels that can
+         *     return a part of a payment: otherwise 422 `referral.terms_not_accepted` or
+         *     `referral.provider_unsupported`.
+         *
+         *     Requires `promo.update` and also `refund.create` and `refund.approve` in the
+         *     organization (the organizer allows the refunds in their own name): the owner
+         *     and the manager hold them, an agent does not.
+         */
+        put: operations["putV1OrganizationsOrgIdEventsEventIdReferralProgram"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/referral-program/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause the event's "Refer a friend" programme
+         * @description Stops NEW friend discounts and rewards. A friend who already paid keeps the
+         *     reward: it is still paid. Pausing a paused programme is a no-op (200).
+         *     Requires `promo.update`, `refund.create` and `refund.approve`.
+         */
+        post: operations["postV1OrganizationsOrgIdEventsEventIdReferralProgramPause"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/referral-program/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume the event's "Refer a friend" programme
+         * @description Makes a paused programme active again. Resuming an active programme is a
+         *     no-op (200). Requires `promo.update`, `refund.create` and `refund.approve`.
+         */
+        post: operations["postV1OrganizationsOrgIdEventsEventIdReferralProgramResume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/referral-program/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End the event's "Refer a friend" programme
+         * @description Ends the programme for good: no new discounts or rewards, the figures stay.
+         *     A new programme is started with PUT. Ending an ended programme is a no-op
+         *     (200). Requires `promo.update`, `refund.create` and `refund.approve`.
+         */
+        post: operations["postV1OrganizationsOrgIdEventsEventIdReferralProgramEnd"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/referral-program/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Totals of the event's "Refer a friend" programme
+         * @description Personal codes issued, friends who used one, the discount given and the
+         *     cashback by state, per currency, over all the programmes the event has had.
+         *     Money is never added across currencies. Shows numbers only, never a buyer's
+         *     e-mail or phone. Requires `promo.read`.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsEventIdReferralProgramSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/referral-rewards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The cashback rewards of the event's "Refer a friend" programme
+         * @description One reward per friend order that used a personal code: the code, the
+         *     friend's order number and amount, the cashback owed and where it stands,
+         *     newest first. A buyer's e-mail, phone and name are never part of the answer.
+         *     Keyset paging: pass the `next_cursor` of a page as `cursor` to get the next
+         *     one. Requires `promo.read`.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsEventIdReferralRewards"];
         put?: never;
         post?: never;
         delete?: never;
@@ -14610,6 +14802,8 @@ export interface components {
             tickets: components["schemas"]["OrderRefundTicketOption"][];
             /** @description Refunds of the order that are not finished or need an operator. */
             active_refunds: components["schemas"]["OrderRefundItem"][];
+            /** @description Present when this order is a friend's and the referrer has been given (or is being given) "Refer a friend" cashback for it; a refund to the friend does not take that money back. */
+            referral_cashback_paid?: components["schemas"]["OrderReferralCashbackPaid"];
             /** @description Present when arena cannot send a refund for this order, with the error code and message the create call would answer. */
             refusal?: {
                 /** @description Error code, such as refund.seller_site_order. */
@@ -14617,6 +14811,293 @@ export interface components {
                 /** @description Human-readable explanation. */
                 message?: string;
             };
+        };
+        /**
+         * @description The "Refer a friend" programme of one event (spec 52). `status` is
+         *     `active`, `paused` or `ended`; ended is final. Percentages are whole
+         *     numbers of percent.
+         */
+        ReferralProgram: {
+            /**
+             * Format: uuid
+             * @description UUID of the programme.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The event the programme belongs to.
+             */
+            event_id: string;
+            /** @description `active`, `paused` or `ended`. */
+            status: string;
+            /** @description Percent off the friend gets, 1 to 100. */
+            friend_discount_pct: number;
+            /** @description Percent of what the friend paid that goes back to the referrer, 1 to 100. */
+            cashback_pct: number;
+            /** @description The cashback to one referrer never exceeds this percent of their own payment (minus what already went back to them), 1 to 100. */
+            cashback_cap_pct: number;
+            /** @description How many friends one code serves; null for no limit. */
+            max_friends: number | null;
+            /**
+             * Format: date-time
+             * @description When the programme starts; null for at once.
+             */
+            starts_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the programme ends; null for the end of sales.
+             */
+            ends_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the organizer accepted the programme's terms.
+             */
+            terms_accepted_at: string;
+            /**
+             * Format: date-time
+             * @description When the programme was created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the programme last changed.
+             */
+            updated_at: string;
+        };
+        /**
+         * @description The full settings of an event's programme (PUT replaces them). An
+         *     absent `max_friends` or `ends_at` means no limit, an absent
+         *     `cashback_cap_pct` means 100.
+         */
+        ReferralProgramRequest: {
+            /** @description Percent off the friend gets. */
+            friend_discount_pct: number;
+            /** @description Percent of what the friend paid that goes back to the referrer. */
+            cashback_pct: number;
+            /** @description Cap of the cashback to one referrer, in percent of their own payment. Default 100. */
+            cashback_cap_pct?: number;
+            /** @description How many friends one code serves; null or absent for no limit. */
+            max_friends?: number | null;
+            /**
+             * Format: date-time
+             * @description When the programme ends; null or absent for the end of sales. Must be in the future.
+             */
+            ends_at?: string | null;
+            /** @description Must be true when this call starts a programme. The organizer accepts that the cashback is paid at once and is not taken back if the friend returns the ticket, and that the payment provider's fee is not returned. */
+            accept_terms?: boolean;
+        };
+        /** @description One sales channel of the event and whether it can pay the cashback. */
+        ReferralCapabilityChannel: {
+            /**
+             * Format: uuid
+             * @description UUID of the sales channel.
+             */
+            channel_id: string;
+            /** @description Payment provider of the channel; empty when none is set. */
+            provider: string;
+            /** @description True when the provider can return part of a payment to the card. */
+            supported: boolean;
+            /** @description When not supported: `seller_site` (a WordPress site takes the money), `provider_unsupported` (no module behind the provider) or `no_partial_refund` (the provider returns whole payments only). */
+            reason?: string;
+        };
+        /** @description Whether the sales channels of an event can pay the "Refer a friend" cashback. */
+        ReferralCapability: {
+            /** @description True when at least one channel can pay the cashback, or the event sells through no channel yet. */
+            supported: boolean;
+            /** @description Which channels were judged: `event` (the ones the event is published into) or `organization` (the event is not published yet). */
+            source: string;
+            /** @description The judged channels. */
+            channels: components["schemas"]["ReferralCapabilityChannel"][];
+        };
+        /** @description A non-blocking note about the programme. */
+        ReferralWarning: {
+            /** @description Stable code, such as `referral.warning.no_channel` or `referral.warning.some_channels_unsupported`. */
+            code: string;
+            /** @description Human-readable explanation. */
+            message: string;
+        };
+        /** @description A programme with the capability of the event's channels. */
+        ReferralProgramResponse: {
+            /** @description The event's programme. */
+            program: components["schemas"]["ReferralProgram"];
+            /** @description Whether the sales channels of the event can pay the cashback. */
+            capability: components["schemas"]["ReferralCapability"];
+            /** @description Non-blocking notes. */
+            warnings: components["schemas"]["ReferralWarning"][];
+        };
+        /**
+         * @description The cashback owed for one friend order. `state` is `due`, `sent`,
+         *     `paid`, `capped`, `not_possible`, `failed` or `cancelled`; `reason`
+         *     says why it ended without money, and `friend_reversal`
+         *     (`refunded`, `partially_refunded`, `disputed`) is set when the friend
+         *     later got their money back after the cashback had left. No buyer
+         *     contact data is part of it.
+         */
+        ReferralRewardItem: {
+            /**
+             * Format: uuid
+             * @description UUID of the reward.
+             */
+            id: string;
+            /** @description The personal code the friend used. */
+            code: string;
+            /**
+             * Format: int64
+             * @description Number of the friend's order (the one the buyer's e-mail and PDF print).
+             */
+            friend_order_number: number | null;
+            /**
+             * Format: int64
+             * @description What the friend paid, in minor units.
+             */
+            friend_amount_minor: number | null;
+            /** @description Currency of the friend's order. */
+            friend_currency: string | null;
+            /**
+             * Format: int64
+             * @description Number of the referrer's order the cashback goes back to.
+             */
+            referrer_order_number: number | null;
+            /**
+             * Format: int64
+             * @description The cashback in minor units.
+             */
+            cashback_minor: number;
+            /** @description Currency of the cashback (the referrer's order). */
+            currency: string;
+            /** @description The percent the cashback was worked out with. */
+            cashback_pct: number;
+            /** @description Where the reward stands, see the schema description. */
+            state: string;
+            /** @description Why the reward ended without money (such as cap_reached, self_referral, currency_mismatch, card_unavailable); null when it did not. */
+            reason: string | null;
+            /** @description `refunded`, `partially_refunded` or `disputed` when the friend got their money back after the cashback was paid; otherwise null. */
+            friend_reversal: string | null;
+            /**
+             * Format: date-time
+             * @description When the reward was written (the friend paid).
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the reward last changed.
+             */
+            updated_at: string;
+        };
+        /** @description A page of rewards, newest first. */
+        ReferralRewardList: {
+            /** @description The rewards of this page. */
+            items: components["schemas"]["ReferralRewardItem"][];
+            /** @description Pass it as `cursor` to get the next page; null on the last page. */
+            next_cursor: string | null;
+        };
+        /** @description A sum of minor units in one currency. */
+        ReferralMoney: {
+            /** @description ISO 4217 currency. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description The sum in minor units.
+             */
+            amount_minor: number;
+        };
+        /**
+         * @description The cashback of one currency by reward state: `due` is promised and not
+         *     yet sent, `sent` is on its way to the card, `paid` is back on it; the
+         *     other states are money that stayed with the organizer.
+         */
+        ReferralCashbackTotals: {
+            /** @description ISO 4217 currency. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Cashback paid, in minor units.
+             */
+            paid_minor: number;
+            /**
+             * Format: int64
+             * @description Cashback sent to the provider and not yet confirmed, in minor units.
+             */
+            sent_minor: number;
+            /**
+             * Format: int64
+             * @description Cashback promised and not yet sent, in minor units.
+             */
+            due_minor: number;
+            /**
+             * Format: int64
+             * @description Cashback that could not be paid (card unavailable, provider declined), in minor units.
+             */
+            not_possible_minor: number;
+            /**
+             * Format: int64
+             * @description Cashback cut off by the cap, in minor units.
+             */
+            capped_minor: number;
+            /**
+             * Format: int64
+             * @description Cashback whose payout failed, in minor units.
+             */
+            failed_minor: number;
+            /**
+             * Format: int64
+             * @description Cashback cancelled (self-invitation, the friend returned the ticket before it was paid), in minor units.
+             */
+            cancelled_minor: number;
+        };
+        /** @description Totals of an event's "Refer a friend" programmes. Money is never added across currencies. */
+        ReferralSummary: {
+            /**
+             * Format: uuid
+             * @description The event.
+             */
+            event_id: string;
+            /**
+             * Format: int64
+             * @description Personal codes issued.
+             */
+            codes_issued: number;
+            /**
+             * Format: int64
+             * @description Friend orders that used a personal code (a self-invitation is not counted).
+             */
+            friends: number;
+            /**
+             * Format: int64
+             * @description Friends who got their money back or opened a dispute after the cashback was paid.
+             */
+            friend_reversals: number;
+            /** @description The discount friends got, per currency. */
+            discount_given: components["schemas"]["ReferralMoney"][];
+            /** @description The cashback per currency and state. */
+            cashback: components["schemas"]["ReferralCashbackTotals"][];
+        };
+        /** @description A buyer's personal "Refer a friend" code with the link to share. */
+        PublicReferralCode: {
+            /** @description The personal code, such as ANNA-7K2Q. */
+            code: string;
+            /** @description Percent off a friend gets. */
+            friend_discount_pct: number;
+            /** @description Percent of the friend's payment that goes back to the buyer. */
+            cashback_pct: number;
+            /** @description The event's page with `?promo=<code>&utm_source=referral&utm_medium=friend&utm_campaign=<event slug>`; null when the page address is not known. */
+            share_url: string | null;
+        };
+        /**
+         * @description Present on an order that is a friend's, when the referrer has been given
+         *     (or is being given) cashback for it. A refund to the friend does not
+         *     take that money back from the referrer.
+         */
+        OrderReferralCashbackPaid: {
+            /**
+             * Format: int64
+             * @description The cashback, in minor units.
+             */
+            amount_minor: number;
+            /** @description Currency of the cashback. */
+            currency: string;
+            /** @description The personal code the friend used. */
+            code: string;
         };
         /** @description One batch of seat changes (task S1c). */
         SeatBatchRequest: {
@@ -56198,6 +56679,65 @@ export interface operations {
             };
         };
     };
+    getPublicCheckoutReferral: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Opaque checkout token (64 lowercase hex characters) minted when the checkout started. */
+                checkout_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The personal code of the order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicReferralCode"];
+                };
+            };
+            /** @description There is no friend code for this order (`referral.not_available`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many requests (`checkout.rate_limited`); `Retry-After` says when to try again. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`referral.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     recoverPublicCheckout: {
         parameters: {
             query?: never;
@@ -63367,6 +63907,606 @@ export interface operations {
                 };
             };
             /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdEventsEventIdReferralProgram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The programme with the capability of the event's channels. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralProgramResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `promo.read` in this organization, or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found or not part of this organization (`event.not_found`), or the event has no programme (`referral.program_not_found`, with the capability in `error.details`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`referral.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putV1OrganizationsOrgIdEventsEventIdReferralProgram: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferralProgramRequest"];
+            };
+        };
+        responses: {
+            /** @description The settings of the live programme were replaced. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralProgramResponse"];
+                };
+            };
+            /** @description A new programme was started. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralProgramResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID, or the body is missing or not valid JSON (`referral.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `promo.update`, `refund.create` or `refund.approve` in this organization, or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found or not part of this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A value is out of range (`referral.invalid_value`, the field in `error.details.field`), the terms were not accepted (`referral.terms_not_accepted`), or the event's channels cannot return a part of a payment (`referral.provider_unsupported`, the capability in `error.details`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`referral.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdEventsEventIdReferralProgramPause: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The programme, paused. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralProgramResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `promo.update`, `refund.create` or `refund.approve` in this organization, or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found (`event.not_found`) or the event has no programme (`referral.program_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The programme has ended and cannot be paused (`referral.program_ended`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`referral.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdEventsEventIdReferralProgramResume: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The programme, active. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralProgramResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `promo.update`, `refund.create` or `refund.approve` in this organization, or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found (`event.not_found`) or the event has no programme (`referral.program_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The programme has ended and cannot be resumed (`referral.program_ended`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`referral.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdEventsEventIdReferralProgramEnd: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The programme, ended. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralProgramResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `promo.update`, `refund.create` or `refund.approve` in this organization, or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found (`event.not_found`) or the event has no programme (`referral.program_not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`referral.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdEventsEventIdReferralProgramSummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The totals. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralSummary"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `promo.read` in this organization, or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found or not part of this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`referral.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdEventsEventIdReferralRewards: {
+        parameters: {
+            query?: {
+                /** @description Only rewards in this state: due, sent, paid, capped, not_possible, failed or cancelled. */
+                state?: string;
+                /** @description Page size, 1 to 200. Default 50. */
+                limit?: number;
+                /** @description The `next_cursor` of the previous page. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of rewards. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferralRewardList"];
+                };
+            };
+            /** @description A path parameter is not a UUID, or a filter is wrong (`referral.invalid_state`, `referral.invalid_limit`, `referral.invalid_cursor`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `promo.read` in this organization, or is not a member of it. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found or not part of this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`referral.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
             503: {
                 headers: {
                     [name: string]: unknown;

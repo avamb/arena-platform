@@ -50,7 +50,7 @@ SELECT id, org_id, code, discount_type, discount_value, applies_to_tier_ids,
        max_uses, max_uses_per_customer, valid_from, valid_until, min_order_amount,
        status, created_at, updated_at, deleted_at
 FROM promo_codes
-WHERE org_id = $1 AND deleted_at IS NULL
+WHERE org_id = $1 AND deleted_at IS NULL AND origin = 'manual'
 ORDER BY created_at DESC;
 
 -- name: UpdatePromoCode :one

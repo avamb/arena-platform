@@ -204,6 +204,11 @@ func (s *Server) handlePublicPaymentReturn(w http.ResponseWriter, r *http.Reques
 	s.feedHandler().HandlePaymentReturn(w, r)
 }
 
+// handlePublicCheckoutReferral serves the buyer's personal friend code.
+func (s *Server) handlePublicCheckoutReferral(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandleGetPublicReferral(w, r)
+}
+
 // ─── hold-expiry recovery handler shim (feature #320 WID-0c) ─────────────────
 
 func (s *Server) handlePublicCheckoutRecover(w http.ResponseWriter, r *http.Request) {

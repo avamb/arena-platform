@@ -182,6 +182,8 @@ func publicPromoError(internal string) (code, message string) {
 		return hcheckout.PromoErrPerCustomerLimit, "You have already used this code the maximum number of times."
 	case "promo.invalid_order_amount":
 		return promoMinimum, "The order is below the minimum amount for this code."
+	case promoOwnReferralCode:
+		return promoOwnReferralCode, "This is your own friend code. Share it with a friend instead."
 	default:
 		return promoNotApplicable, "This code does not apply to this order."
 	}

@@ -537,7 +537,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		// Validate the promo against the platform-computed GA subtotal.
 		gaPromoLines := hcheckout.TierLinesForSession(gaLines, sessionID.String(), cartCurrency(pricedGA, ""))
 		var promoErrCode string
-		gaDiscount, gaPromoCodeID, promoErrCode = h.applyPromoDiscount(ctx, h.promoQueries, promoRow, gaPromoLines, req.HolderEmail)
+		gaDiscount, gaPromoCodeID, promoErrCode = h.applyPromoDiscountFor(ctx, h.promoQueries, promoRow, gaPromoLines, req.HolderEmail, derefOr(buyerPhone))
 		pj.record(ctx, promoRow, promoErrCode)
 		if promoErrCode != "" {
 			h.refusePromoFor(w, r, promoAttempt, promoErrCode, promoRow, h.promoQueries)
@@ -805,7 +805,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		// every line is priced. A rejection rolls back the holds via the
 		// deferred tx.Rollback.
 		promoLines := hcheckout.TierLinesForSession(lines, sessionID.String(), currency)
-		discount, promoCodeID, promoErrCode := h.applyPromoDiscount(ctx, promoQ, promoRow, promoLines, req.HolderEmail)
+		discount, promoCodeID, promoErrCode := h.applyPromoDiscountFor(ctx, promoQ, promoRow, promoLines, req.HolderEmail, derefOr(buyerPhone))
 		pj.record(ctx, promoRow, promoErrCode)
 		if promoErrCode != "" {
 			// Same neutral verdicts as the quote and the general-admission
@@ -1153,12 +1153,33 @@ func (h *Handler) writePricingError(w http.ResponseWriter, r *http.Request, code
 // hold transaction (GA carts), the transaction's own Queries inside it
 // (seated carts, whose subtotal is only known once the seats are locked).
 func (h *Handler) applyPromoDiscount(ctx context.Context, q *gen.Queries, promoRow *gen.PromoCodeRow, lines []hcheckout.TierLine, buyerEmail string) (int64, *uuid.UUID, string) {
+	return h.applyPromoDiscountFor(ctx, q, promoRow, lines, buyerEmail, "")
+}
+
+// applyPromoDiscountFor is applyPromoDiscount for a caller that also knows the
+// buyer's phone. A personal "Refer a friend" code is also judged here: it is
+// refused while its programme is paused or over (promo.not_active) and to the
+// person it was issued to (promo.own_referral_code, spec 52 section 8), judged
+// by the e-mail address and phone the cart names. A quote names no buyer, so it
+// skips the second half.
+func (h *Handler) applyPromoDiscountFor(ctx context.Context, q *gen.Queries, promoRow *gen.PromoCodeRow, lines []hcheckout.TierLine, buyerEmail, buyerPhone string) (int64, *uuid.UUID, string) {
 	if promoRow == nil {
 		return 0, nil, ""
 	}
 	d, errCode := hcheckout.ValidatePromoForLines(*promoRow, lines, time.Now().UTC())
 	if errCode != "" {
 		return 0, nil, errCode
+	}
+	if q != nil {
+		verdict, err := h.referralVerdict(ctx, q, promoRow.ID, buyerEmail, buyerPhone)
+		if err != nil {
+			h.logger.Error("public_feed_checkout: referral code check failed",
+				slog.String("promo_code_id", promoRow.ID.String()), slog.String("error", err.Error()))
+			return 0, nil, "checkout.promo_lookup_failed"
+		}
+		if verdict != "" {
+			return 0, nil, verdict
+		}
 	}
 	// The usage caps, for the buyer this cart names. A counting failure is
 	// logged and the code is refused — a cap the platform cannot verify is
