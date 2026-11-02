@@ -40,11 +40,13 @@ func PartitionName(t time.Time) string {
 }
 
 // PartitionsWanted lists the first instants of the months that must have a
-// partition at now: the current one and PartitionsAhead more.
+// partition at now: the previous month (a batch sent just after midnight on
+// the 1st carries slightly older events), the current one and PartitionsAhead
+// more.
 func PartitionsWanted(now time.Time) []time.Time {
 	first := MonthStart(now)
-	out := make([]time.Time, 0, PartitionsAhead+1)
-	for i := 0; i <= PartitionsAhead; i++ {
+	out := make([]time.Time, 0, PartitionsAhead+2)
+	for i := -1; i <= PartitionsAhead; i++ {
 		out = append(out, first.AddDate(0, i, 0))
 	}
 	return out
@@ -173,9 +175,12 @@ func NewPGPartitionsScheduler(pool *pgxpool.Pool) *PGPartitionsScheduler {
 
 // ScheduleNext inserts a pending job due at `at`.
 func (s *PGPartitionsScheduler) ScheduleNext(ctx context.Context, at time.Time) error {
+	// Not when one is already queued (pending: the running job itself is
+	// claimed), so a retry or a restart never forks a second chain of runs.
 	const q = `
 		INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
-		VALUES ($1, '{}', 3, 'pending', $2)`
+		SELECT $1, '{}', 3, 'pending', $2
+		WHERE  NOT EXISTS (SELECT 1 FROM worker_jobs WHERE job_type = $1 AND status = 'pending')`
 	if _, err := s.pool.Exec(ctx, q, PartitionsJobType, at); err != nil {
 		return fmt.Errorf("analytics: schedule next partition run: %w", err)
 	}
@@ -193,9 +198,10 @@ type PartitionsOptions struct {
 }
 
 // NewPartitionsHandler returns the handler of job_type PartitionsJobType. It
-// has the worker.HandlerFunc signature. It always schedules the next run, even
-// when this one fails, so one bad night cannot stop the maintenance for good:
-// the failure is returned after the next run is queued.
+// has the worker.HandlerFunc signature. The next run is queued first and the
+// handler returns nil even when the maintenance failed: the failure is logged
+// and the next run retries it, so a worker retry never forks a second chain
+// (the scheduler also refuses to queue a run while one is queued).
 func NewPartitionsHandler(o PartitionsOptions) func(ctx context.Context, payload []byte) error {
 	if o.Logger == nil {
 		o.Logger = slog.Default()
@@ -209,12 +215,16 @@ func NewPartitionsHandler(o PartitionsOptions) func(ctx context.Context, payload
 	return func(ctx context.Context, _ []byte) error {
 		created, dropped, err := MaintainPartitions(ctx, o.DB, o.Now())
 		if o.Scheduler != nil {
-			if serr := o.Scheduler.ScheduleNext(ctx, o.Now().Add(o.Interval)); serr != nil && err == nil {
-				err = serr
+			if serr := o.Scheduler.ScheduleNext(ctx, o.Now().Add(o.Interval)); serr != nil {
+				// Only this failure is worth a worker retry: without a queued
+				// next run the chain would end.
+				o.Logger.Error("analytics partitions: next run not scheduled", "error", serr.Error())
+				return serr
 			}
 		}
 		if err != nil {
-			return err
+			o.Logger.Error("analytics partitions: maintenance failed, retrying at the next run", "error", err.Error())
+			return nil
 		}
 		o.Logger.Info("analytics partitions maintained", "created", created, "dropped", dropped)
 		return nil
@@ -235,7 +245,8 @@ func SchedulePartitionsJob(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
-		 VALUES ($1, '{}', 3, 'pending', now())`, PartitionsJobType); err != nil {
+		 SELECT $1, '{}', 3, 'pending', now()
+		 WHERE  NOT EXISTS (SELECT 1 FROM worker_jobs WHERE job_type = $1 AND status IN ('pending', 'claimed'))`, PartitionsJobType); err != nil {
 		return fmt.Errorf("analytics: enqueue initial partitions job: %w", err)
 	}
 	return nil

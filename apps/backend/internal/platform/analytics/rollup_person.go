@@ -83,14 +83,18 @@ func (r *Rollup) processPerson(ctx context.Context, personID uuid.UUID, now time
 		return err
 	}
 
-	evs, lastSeen, err := loadPersonEvents(ctx, tx, personID)
+	evs, err := loadPersonEvents(ctx, tx, personID)
+	if err != nil {
+		return err
+	}
+	lastSeen, err := lastSeenOf(ctx, tx, personID)
 	if err != nil {
 		return err
 	}
 	sessions := SplitSessions(evs)
 	reads := ArticleReads(sessions)
 
-	n, err := syncSessions(ctx, tx, personID, sessions)
+	n, err := syncSessions(ctx, tx, personID, sessions, evs)
 	if err != nil {
 		return err
 	}
@@ -213,44 +217,59 @@ UPDATE analytics.profiles
 	return true, err
 }
 
-// Querier is the part of a pool or a transaction that runs a query.
-type Querier interface {
-	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
-}
-
-// loadPersonEvents reads every non-suspect event of the person through their
-// identities, oldest first, and the time of the latest one.
-func loadPersonEvents(ctx context.Context, tx Querier, personID uuid.UUID) ([]Ev, time.Time, error) {
+// loadPersonEvents reads the non-suspect site and event-center events of the
+// person through their identities, oldest first. Bot events make no sessions
+// and are not loaded.
+func loadPersonEvents(ctx context.Context, tx pgx.Tx, personID uuid.UUID) ([]Ev, error) {
 	rows, err := tx.Query(ctx, `
 SELECT e.at, e.surface, e.name, e.props
   FROM analytics.identities i
   JOIN analytics.events e ON e.id_kind = i.kind AND e.id_value = i.value
  WHERE i.person_id = $1 AND i.kind IN ('aid', 'cid', 'user', 'tg') AND NOT e.suspect
+   AND e.surface IN ('site', 'event_center')
  ORDER BY e.at, e.id`, personID)
 	if err != nil {
-		return nil, time.Time{}, fmt.Errorf("analytics: load person events: %w", err)
+		return nil, fmt.Errorf("analytics: load person events: %w", err)
 	}
 	defer rows.Close()
 	var evs []Ev
-	var last time.Time
 	for rows.Next() {
 		var e Ev
 		var props []byte
 		if err := rows.Scan(&e.At, &e.Surface, &e.Name, &props); err != nil {
-			return nil, time.Time{}, err
+			return nil, err
 		}
 		_ = json.Unmarshal(props, &e.Props)
-		if e.At.After(last) {
-			last = e.At
-		}
 		evs = append(evs, e)
 	}
-	return evs, last, rows.Err()
+	return evs, rows.Err()
+}
+
+// lastSeenOf is the time of the person's latest non-suspect event of any
+// surface (the bot included); zero when there is none.
+func lastSeenOf(ctx context.Context, tx pgx.Tx, personID uuid.UUID) (time.Time, error) {
+	var last *time.Time
+	err := tx.QueryRow(ctx, `
+SELECT max(e.at)
+  FROM analytics.identities i
+  JOIN analytics.events e ON e.id_kind = i.kind AND e.id_value = i.value
+ WHERE i.person_id = $1 AND i.kind IN ('aid', 'cid', 'user', 'tg') AND NOT e.suspect`, personID).Scan(&last)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("analytics: last seen: %w", err)
+	}
+	if last == nil {
+		return time.Time{}, nil
+	}
+	return *last, nil
 }
 
 // syncSessions makes the stored sessions of the person equal the computed
 // ones, touching only rows that differ. It returns the rows written.
-func syncSessions(ctx context.Context, tx pgx.Tx, personID uuid.UUID, sessions []Session) (int, error) {
+//
+// Raw events live 13 months and sessions 25: a stored session that starts
+// before the oldest raw event still kept is the only record of that visit, so
+// it is never deleted (and with no events at all nothing is deleted).
+func syncSessions(ctx context.Context, tx pgx.Tx, personID uuid.UUID, sessions []Session, evs []Ev) (int, error) {
 	rows, err := tx.Query(ctx, `
 SELECT id, surface, started_at, ended_at, pages, engaged_seconds, entry
   FROM analytics.sessions WHERE person_id = $1`, personID)
@@ -292,10 +311,11 @@ ON CONFLICT (id) DO UPDATE SET ended_at = EXCLUDED.ended_at, pages = EXCLUDED.pa
 		written++
 	}
 	var stale []string
-	for id := range stored {
-		if !keep[id] {
-			stale = append(stale, id.String())
+	for id, row := range stored {
+		if keep[id] || len(evs) == 0 || row.started.Before(evs[0].At) {
+			continue
 		}
+		stale = append(stale, id.String())
 	}
 	sort.Strings(stale)
 	if len(stale) > 0 {

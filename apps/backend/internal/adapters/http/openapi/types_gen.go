@@ -1462,6 +1462,9 @@ type AnalyticsProfile struct {
 	// LastTouch How the person last reached us.
 	LastTouch AnalyticsTouch `json:"last_touch"`
 
+	// MayCreateContact True when the CRM sync may create a contact for this person if none is found (organizer application or an existing CRM contact); false for an account-only user.
+	MayCreateContact bool `json:"may_create_contact"`
+
 	// Milestones Milestones reached, name to time: `application_started`,
 	// `application_submitted`, `application_approved`,
 	// `application_rejected`, `org_created`, `payment_connected`,
@@ -1487,8 +1490,8 @@ type AnalyticsProfile struct {
 
 // AnalyticsProfilesResponse One page of changed profiles.
 type AnalyticsProfilesResponse struct {
-	// NextCursor Send as `after` to get the next page; null on the last page.
-	NextCursor *string `json:"next_cursor"`
+	// NextCursor Cursor to send as `after` for the next page. Always present; on an empty page it is the cursor the caller sent.
+	NextCursor string `json:"next_cursor"`
 
 	// Profiles Profiles ordered by `changed_at`, then `person_id`.
 	Profiles []AnalyticsProfile `json:"profiles"`
@@ -20263,13 +20266,13 @@ type PostV1AdminAnalyticsContactCodesParams struct {
 
 // GetV1AdminAnalyticsProfilesParams defines parameters for GetV1AdminAnalyticsProfiles.
 type GetV1AdminAnalyticsProfilesParams struct {
-	// ChangedSince RFC 3339 time. Only profiles changed at or after it are returned; absent means all.
+	// ChangedSince RFC 3339 time. Only profiles changed at or after it are returned (a lower bound for a client without a cursor); absent means all.
 	ChangedSince *time.Time `form:"changed_since,omitempty" json:"changed_since,omitempty"`
 
 	// Limit Page size, 1 to 200 (default 100).
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// After Opaque cursor, the `next_cursor` of the previous page.
+	// After Opaque cursor, the `next_cursor` of the previous page; the page starts strictly after it.
 	After *string `form:"after,omitempty" json:"after,omitempty"`
 }
 
@@ -21877,6 +21880,24 @@ type GetScannerSnapshotParams struct {
 	PerPage *int `form:"per_page,omitempty" json:"per_page,omitempty"`
 }
 
+// PostV1ServiceAnalyticsContactCodesParams defines parameters for PostV1ServiceAnalyticsContactCodes.
+type PostV1ServiceAnalyticsContactCodesParams struct {
+	// XAdminReason Human-readable business reason for the call (recorded in the audit log).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// GetV1ServiceAnalyticsProfilesParams defines parameters for GetV1ServiceAnalyticsProfiles.
+type GetV1ServiceAnalyticsProfilesParams struct {
+	// ChangedSince RFC 3339 time. Only profiles changed at or after it are returned (a lower bound for a client without a cursor); absent means all.
+	ChangedSince *time.Time `form:"changed_since,omitempty" json:"changed_since,omitempty"`
+
+	// Limit Page size, 1 to 200 (default 100).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// After Opaque cursor, the `next_cursor` of the previous page; the page starts strictly after it.
+	After *string `form:"after,omitempty" json:"after,omitempty"`
+}
+
 // StripeConnectCallbackParams defines parameters for StripeConnectCallback.
 type StripeConnectCallbackParams struct {
 	// Code OAuth authorization code returned by Stripe.
@@ -22556,6 +22577,9 @@ type ForkSeatingPlanJSONRequestBody = ForkSeatingPlanRequest
 
 // CreateSeatingPlanVersionJSONRequestBody defines body for CreateSeatingPlanVersion for application/json ContentType.
 type CreateSeatingPlanVersionJSONRequestBody = CreateSeatingPlanVersionRequest
+
+// PostV1ServiceAnalyticsContactCodesJSONRequestBody defines body for PostV1ServiceAnalyticsContactCodes for application/json ContentType.
+type PostV1ServiceAnalyticsContactCodesJSONRequestBody = AnalyticsContactCodesRequest
 
 // ReplaceSessionMediaJSONRequestBody defines body for ReplaceSessionMedia for application/json ContentType.
 type ReplaceSessionMediaJSONRequestBody = SessionMediaReplaceRequest

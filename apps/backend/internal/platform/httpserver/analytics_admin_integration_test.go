@@ -29,6 +29,7 @@ import (
 const (
 	adminTestSecret = "integration-test-secret-32-bytes!!"
 	adminTestBase   = "https://admin.example.test"
+	syncTestToken   = "sync-token-for-integration-0123456789abcdef"
 )
 
 type analyticsAdminFixture struct {
@@ -38,7 +39,17 @@ type analyticsAdminFixture struct {
 
 func newAnalyticsAdminFixture(t *testing.T) *analyticsAdminFixture {
 	t.Helper()
-	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) { c.AppPublicURL = adminTestBase })
+	return newAnalyticsAdminFixtureCfg(t, syncTestToken)
+}
+
+// newAnalyticsAdminFixtureCfg builds the server with the given
+// ANALYTICS_SYNC_TOKEN ("" = not configured).
+func newAnalyticsAdminFixtureCfg(t *testing.T, syncToken string) *analyticsAdminFixture {
+	t.Helper()
+	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) {
+		c.AppPublicURL = adminTestBase
+		c.AnalyticsSyncToken = syncToken
+	})
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)
 	f := &analyticsAdminFixture{analyticsFixture: &analyticsFixture{srv: srv, ts: ts}}
@@ -119,6 +130,7 @@ type adminProfile struct {
 	PersonID            string            `json:"person_id"`
 	TwentyPersonID      *string           `json:"twenty_person_id"`
 	Email               *string           `json:"email"`
+	MayCreateContact    bool              `json:"may_create_contact"`
 	Stage               string            `json:"stage"`
 	FirstSource         string            `json:"first_source"`
 	LastSource          string            `json:"last_source"`
@@ -133,7 +145,30 @@ type adminProfile struct {
 
 type adminProfiles struct {
 	Profiles   []adminProfile `json:"profiles"`
-	NextCursor *string        `json:"next_cursor"`
+	NextCursor string         `json:"next_cursor"`
+}
+
+// setRollupThrough pretends that the last finished rollup run started at t
+// (analytics.state), and puts the previous value back afterwards. Seeded
+// profiles are only served up to it.
+func setRollupThrough(t *testing.T, f *analyticsAdminFixture, through time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	pool := f.srv.pgxPool
+	var old []byte
+	hadOld := pool.QueryRow(ctx, `SELECT value FROM analytics.state WHERE key = 'rollup'`).Scan(&old) == nil
+	raw, _ := json.Marshal(map[string]any{"through": through.UTC().Format(time.RFC3339Nano)})
+	if _, err := pool.Exec(ctx, `INSERT INTO analytics.state (key, value, updated_at) VALUES ('rollup', $1, now())
+		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`, raw); err != nil {
+		t.Fatalf("set rollup state: %v", err)
+	}
+	t.Cleanup(func() {
+		if hadOld {
+			_, _ = pool.Exec(context.Background(), `UPDATE analytics.state SET value = $1 WHERE key = 'rollup'`, old)
+		} else {
+			_, _ = pool.Exec(context.Background(), `DELETE FROM analytics.state WHERE key = 'rollup'`)
+		}
+	})
 }
 
 func (f *analyticsAdminFixture) profiles(t *testing.T, query string) adminProfiles {
@@ -317,31 +352,54 @@ func TestAnalyticsAdmin_ProfilesPaginateFilterAndResolveEmail(t *testing.T) {
 		}
 	}
 
+	// An account-only user (an invited manager): e-mail yes, may_create_contact no.
+	mgr, err := q.InsertUser(ctx, "an-prof-mgr-"+run+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id = $1`, mgr.ID) })
+	setRollupThrough(t, f, base.Add(5*time.Minute))
+
 	// Order: changed_at, then person_id. p2 and p3 share a timestamp.
 	pUser := seedProfile(t, f, "tw-user-"+run, &user.ID, base, nil)
 	pApp := seedProfile(t, f, "", nil, base.Add(1*time.Minute), hashIdentity(appMail))
 	pBare := seedProfile(t, f, "", nil, base.Add(2*time.Minute), nil) // no e-mail, no CRM id: still listed
 	pPurged := seedProfile(t, f, "tw-purged-"+run, nil, base.Add(2*time.Minute), hashIdentity(purgedMail))
 	pLate := seedProfile(t, f, "tw-late-"+run, nil, base.Add(3*time.Minute), nil)
-	want := map[uuid.UUID]bool{pUser: true, pApp: true, pBare: true, pPurged: true, pLate: true}
+	pMgr := seedProfile(t, f, "", &mgr.ID, base.Add(4*time.Minute), nil)
+	// Changed after the last finished run: not served yet.
+	pAhead := seedProfile(t, f, "tw-ahead-"+run, nil, base.Add(6*time.Minute), nil)
+	want := map[uuid.UUID]bool{pUser: true, pApp: true, pBare: true, pPurged: true, pLate: true, pMgr: true}
 
-	// Page through with limit 2: every profile exactly once, ordered.
+	// Page through with limit 2 on the cursor alone: every profile exactly
+	// once, ordered; the cursor is always there, an empty page keeps it.
 	var all []adminProfile
 	cursor := ""
 	for page := 0; page < 10; page++ {
-		qs := "changed_since=" + since + "&limit=2"
+		qs := "limit=2&changed_since=" + since
 		if cursor != "" {
-			qs += "&after=" + cursor
+			qs = "limit=2&after=" + cursor
 		}
 		p := f.profiles(t, qs)
 		if len(p.Profiles) > 2 {
 			t.Fatalf("page of %d with limit 2", len(p.Profiles))
 		}
-		all = append(all, p.Profiles...)
-		if p.NextCursor == nil {
+		if p.NextCursor == "" {
+			t.Fatalf("page %d has no next_cursor", page)
+		}
+		if len(p.Profiles) == 0 {
+			if p.NextCursor != cursor {
+				t.Errorf("an empty page changed the cursor: %q -> %q", cursor, p.NextCursor)
+			}
 			break
 		}
-		cursor = *p.NextCursor
+		all = append(all, p.Profiles...)
+		cursor = p.NextCursor
+	}
+	for _, p := range all {
+		if p.PersonID == pAhead.String() {
+			t.Errorf("a profile changed after the last finished rollup run was served")
+		}
 	}
 	if len(all) != len(want) {
 		t.Fatalf("paged %d profiles, want %d", len(all), len(want))
@@ -371,8 +429,17 @@ func TestAnalyticsAdmin_ProfilesPaginateFilterAndResolveEmail(t *testing.T) {
 	if p := byID[pApp.String()]; p.Email == nil || *p.Email != appMail || p.TwentyPersonID != nil {
 		t.Errorf("application profile = %+v (email resolved from the application)", p)
 	}
-	if p := byID[pBare.String()]; p.Email != nil || p.TwentyPersonID != nil {
+	if p := byID[pBare.String()]; p.Email != nil || p.TwentyPersonID != nil || p.MayCreateContact {
 		t.Errorf("bare profile = %+v", p)
+	}
+	if p := byID[pMgr.String()]; p.Email == nil || *p.Email != mgr.Email || p.MayCreateContact {
+		t.Errorf("an account-only user must show the e-mail but never may_create_contact: %+v", p)
+	}
+	if p := byID[pApp.String()]; !p.MayCreateContact {
+		t.Errorf("a person with an organizer application may get a contact: %+v", p)
+	}
+	if p := byID[pUser.String()]; !p.MayCreateContact {
+		t.Errorf("a person tied to a CRM contact keeps may_create_contact: %+v", p)
 	}
 	if p := byID[pPurged.String()]; p.Email != nil {
 		t.Errorf("a purged application's address came back: %+v", p)
@@ -392,13 +459,13 @@ func TestAnalyticsAdmin_ProfilesPaginateFilterAndResolveEmail(t *testing.T) {
 		t.Errorf("bare explanation = %q", p.ActivityExplanation)
 	}
 
-	// changed_since is inclusive and filters: from +2 minutes only three remain.
+	// changed_since is an inclusive lower bound: from +2 minutes four remain (+2, +2, +3, +4).
 	got := f.profiles(t, "changed_since="+base.Add(2*time.Minute).Format(time.RFC3339))
-	if len(got.Profiles) != 3 || got.NextCursor != nil {
-		t.Errorf("since +2m: %d profiles, cursor %v", len(got.Profiles), got.NextCursor)
+	if len(got.Profiles) != 4 || got.NextCursor == "" {
+		t.Errorf("since +2m: %d profiles, cursor %q", len(got.Profiles), got.NextCursor)
 	}
 	// Past the last change: nothing.
-	if got := f.profiles(t, "changed_since="+base.Add(4*time.Minute).Format(time.RFC3339)); len(got.Profiles) != 0 || got.NextCursor != nil {
+	if got := f.profiles(t, "changed_since="+base.Add(4*time.Minute+time.Second).Format(time.RFC3339)); len(got.Profiles) != 0 || got.NextCursor == "" {
 		t.Errorf("since +4m: %+v", got)
 	}
 
@@ -490,5 +557,68 @@ func TestAnalyticsAdmin_CodeToClickToProfile(t *testing.T) {
 	}
 	if again := find(); again.ChangedAt != p.ChangedAt {
 		t.Errorf("changed_at moved from %s to %s without a change", p.ChangedAt, again.ChangedAt)
+	}
+}
+
+// The n8n sync does not hold a user's token: it calls the two /v1/service
+// routes with ANALYTICS_SYNC_TOKEN. Unset -> 503, wrong -> 401, right -> 200,
+// and the token opens nothing else.
+func TestAnalyticsAdmin_ServiceTokenRoutes(t *testing.T) {
+	const profilesPath = "/v1/service/analytics/profiles"
+	const codesPath = "/v1/service/analytics/contact-codes"
+	run := strings.ToLower(uuid.NewString()[:8])
+	twenty := "tw-svc-" + run
+
+	// Not configured: both routes are closed, even for a request with a token.
+	off := newAnalyticsAdminFixtureCfg(t, "")
+	for _, path := range []string{profilesPath, codesPath} {
+		method := http.MethodGet
+		if path == codesPath {
+			method = http.MethodPost
+		}
+		if code, raw := off.call(t, method, path, syncTestToken, "r", `{"twenty_person_ids":["x"]}`); code != http.StatusServiceUnavailable {
+			t.Errorf("%s with no ANALYTICS_SYNC_TOKEN configured: %d %s, want 503", path, code, raw)
+		}
+	}
+
+	f := newAnalyticsAdminFixture(t)
+	body := `{"twenty_person_ids":["` + twenty + `"]}`
+	t.Cleanup(func() {
+		_, _ = f.srv.pgxPool.Exec(context.Background(), `DELETE FROM analytics.contact_codes WHERE twenty_person_id = $1`, twenty)
+	})
+	for _, tc := range []struct {
+		name, method, path, token, reason, body string
+		want                                    int
+	}{
+		{"profiles no token", http.MethodGet, profilesPath, "", "", "", http.StatusUnauthorized},
+		{"profiles wrong token", http.MethodGet, profilesPath, syncTestToken + "x", "", "", http.StatusUnauthorized},
+		{"profiles a user JWT", http.MethodGet, profilesPath, f.superToken, "", "", http.StatusUnauthorized},
+		{"codes wrong token", http.MethodPost, codesPath, "nope", "r", body, http.StatusUnauthorized},
+		{"codes a user JWT", http.MethodPost, codesPath, f.superToken, "r", body, http.StatusUnauthorized},
+		{"codes right token, no reason", http.MethodPost, codesPath, syncTestToken, "", body, http.StatusBadRequest},
+		{"profiles right token", http.MethodGet, profilesPath, syncTestToken, "", "", http.StatusOK},
+		{"codes right token", http.MethodPost, codesPath, syncTestToken, "integration: service " + run, body, http.StatusOK},
+		// The sync token is no admin credential.
+		{"admin route with the sync token", http.MethodGet, "/v1/admin/analytics/profiles", syncTestToken, "", "", http.StatusUnauthorized},
+		{"another admin route with the sync token", http.MethodGet, "/v1/admin/users", syncTestToken, "r", "", http.StatusUnauthorized},
+	} {
+		if code, raw := f.call(t, tc.method, tc.path, tc.token, tc.reason, tc.body); code != tc.want {
+			t.Errorf("%s: %d %s, want %d", tc.name, code, raw, tc.want)
+		}
+	}
+
+	// The audit row names the service, not a user.
+	var actorType string
+	var actorID *string
+	var label, reason string
+	err := f.srv.pgxPool.QueryRow(context.Background(), `
+SELECT actor_type, actor_id::text, COALESCE(metadata->>'actor_label', ''), COALESCE(metadata->>'reason', '')
+  FROM audit_events WHERE action = 'v1.admin.analytics.contact_codes.issue' AND metadata->>'reason' = $1`,
+		"integration: service "+run).Scan(&actorType, &actorID, &label, &reason)
+	if err != nil {
+		t.Fatalf("audit row: %v", err)
+	}
+	if actorType != "service" || actorID != nil || label != "n8n_crm_sync" {
+		t.Errorf("audit row = %q / %v / %q", actorType, actorID, label)
 	}
 }

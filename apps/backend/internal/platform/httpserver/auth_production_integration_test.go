@@ -121,6 +121,10 @@ func productionIntegrationServerCfg(t *testing.T, mutate func(*config.Config)) (
 		Verifier: verifier,
 	})
 
+	// The product analytics writer starts on the first analytics batch; stop
+	// it with the test so its goroutine does not outlive the pool.
+	t.Cleanup(func() { _ = srv.closeAnalytics(context.Background()) })
+
 	return srv, secret
 }
 

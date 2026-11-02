@@ -19,7 +19,7 @@ func adminReq(t *testing.T, h http.HandlerFunc, method, target, body, reason str
 }
 
 func TestContactCodes_ValidationBeforeAnyDatabaseWork(t *testing.T) {
-	h := NewAdmin(AdminOptions{}) // no pool, no audit: only validation can answer
+	h := NewCRM(CRMOptions{}) // no pool, no audit: only validation can answer
 	cases := []struct {
 		name, body, reason string
 		want               int
@@ -42,7 +42,7 @@ func TestContactCodes_ValidationBeforeAnyDatabaseWork(t *testing.T) {
 }
 
 func TestProfiles_QueryValidation(t *testing.T) {
-	h := NewAdmin(AdminOptions{})
+	h := NewCRM(CRMOptions{})
 	cases := []struct {
 		target string
 		want   int

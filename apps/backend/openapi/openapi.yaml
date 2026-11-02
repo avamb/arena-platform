@@ -9112,6 +9112,7 @@ components:
         - person_id
         - twenty_person_id
         - email
+        - may_create_contact
         - stage
         - first_touch
         - last_touch
@@ -9142,6 +9143,9 @@ components:
         email:
           type: [string, "null"]
           description: The person's address from their user or organizer application; null when none is known.
+        may_create_contact:
+          type: boolean
+          description: True when the CRM sync may create a contact for this person if none is found (organizer application or an existing CRM contact); false for an account-only user.
         stage:
           type: string
           description: "`lead`, `applicant`, `organizer` or `selling`."
@@ -9218,8 +9222,8 @@ components:
           items:
             $ref: "#/components/schemas/AnalyticsProfile"
         next_cursor:
-          type: [string, "null"]
-          description: Send as `after` to get the next page; null on the last page.
+          type: string
+          description: Cursor to send as `after` for the next page. Always present; on an empty page it is the cursor the caller sent.
 
     PageTrackRequest:
       type: object
@@ -27054,18 +27058,30 @@ paths:
       summary: Admin - profiles that changed since a point in time (product analytics)
       description: |
         The feed the CRM sync pulls (spec 50, section 9): one entry per person
-        whose profile was rebuilt with a different result since `changed_since`
-        (inclusive), oldest change first. The e-mail address is resolved when
-        the request is served, from the person's user or organizer application,
-        and is never stored in the analytics schema; a person with no known
-        address is still listed (the CRM sync skips it unless it has a
-        `twenty_person_id`).
+        whose profile was rebuilt with a different result, oldest change first.
+        Only profiles changed at or before the start of the last FINISHED
+        rollup run are served, so a profile that is still being committed never
+        appears half-done and a client that keeps its cursor cannot miss one.
+        The e-mail address is resolved when the request is served, from the
+        person's user or organizer application, and is never stored in the
+        analytics schema; a person with no known address is still listed (the
+        CRM sync skips it unless it has a `twenty_person_id`).
 
-        Pages are keyset pages: send the `next_cursor` of a page as `after`
-        together with the same `changed_since` to get the next one; `null`
-        means the last page. A client keeps the greatest `changed_at` it has
-        seen as its next `changed_since`. Because the bound is inclusive the
-        same profile can come twice, so a client must write idempotently.
+        Pages are keyset pages on (`changed_at`, `person_id`), exclusive: send
+        the `next_cursor` of a page as `after` to get the page that follows. It
+        is ALWAYS present; on an empty page it is the cursor the caller sent, so
+        a client simply stores it. Without `after` (and `changed_since`) the
+        listing starts at the beginning.
+
+        `may_create_contact` tells whether the sync may CREATE a CRM contact
+        for the person when none is found: only a person with an organizer
+        application, or one already tied to a CRM contact. An account-only user
+        (an invited manager) can have an existing card updated, never a new
+        one.
+
+        `activity_explanation` is built from the stored profile and sessions;
+        visits to the price page are not stored per visit, so their share shows
+        as `price page and other`.
 
         Requires JWT and `superadmin.read`.
       tags: [v1, admin]
@@ -27074,7 +27090,7 @@ paths:
       parameters:
         - name: changed_since
           in: query
-          description: RFC 3339 time. Only profiles changed at or after it are returned; absent means all.
+          description: RFC 3339 time. Only profiles changed at or after it are returned (a lower bound for a client without a cursor); absent means all.
           schema:
             type: string
             format: date-time
@@ -27087,7 +27103,7 @@ paths:
             maximum: 200
         - name: after
           in: query
-          description: Opaque cursor, the `next_cursor` of the previous page.
+          description: Opaque cursor, the `next_cursor` of the previous page; the page starts strictly after it.
           schema:
             type: string
       responses:
@@ -27117,6 +27133,159 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/service/analytics/contact-codes:
+    post:
+      operationId: postV1ServiceAnalyticsContactCodes
+      summary: Service - issue contact codes for CRM contacts (n8n sync)
+      description: |
+        Returns one `cid` code per CRM person id (spec 50, section 3). The
+        mailing workflow asks for the codes just before it sends and appends
+        `?cid=<code>` to every link to our website, so a click can be tied to
+        the contact. A contact that already has a code gets the same one back,
+        so every mailing to it carries one stable code. New codes are 10
+        characters of `abcdefghjkmnpqrstuvwxyz23456789`.
+
+        At most 500 ids per call; the answer holds one entry per distinct id, in
+        the order sent. Called by the n8n CRM sync with `Authorization: Bearer <ANALYTICS_SYNC_TOKEN>`,
+        not by a person (the same call for a human superadmin is
+        `POST /v1/admin/analytics/contact-codes`). Needs `X-Admin-Reason`. While
+        `ANALYTICS_SYNC_TOKEN` is unset the route answers 503.
+        The call is audited (`v1.admin.analytics.contact_codes.issue`, actor type
+        `service`, `metadata.actor_label` `n8n_crm_sync`) on the
+        transaction that issues the codes; without a durable audit writer
+        nothing is changed and the answer is 503.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the call (recorded in the audit log).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyticsContactCodesRequest"
+      responses:
+        "200":
+          description: One code per contact.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsContactCodesResponse"
+        "400":
+          description: The body is not a readable JSON object (`analytics.invalid_body`) or X-Admin-Reason is missing (`superadmin.missing_reason`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or wrong service token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: 'The list is empty, longer than 500, or holds an id that is not 1 to 64 characters of letters, digits and `_ . : -` (`analytics.invalid_twenty_person_ids`).'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The service token is not configured (`analytics.sync_not_configured`), the database or the durable audit log is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/service/analytics/profiles:
+    get:
+      operationId: getV1ServiceAnalyticsProfiles
+      summary: Service - changed profiles for the CRM sync (n8n)
+      description: |
+        The feed the CRM sync pulls (spec 50, section 9): one entry per person
+        whose profile was rebuilt with a different result, oldest change first.
+        Only profiles changed at or before the start of the last FINISHED
+        rollup run are served, so a profile that is still being committed never
+        appears half-done and a client that keeps its cursor cannot miss one.
+        The e-mail address is resolved when the request is served, from the
+        person's user or organizer application, and is never stored in the
+        analytics schema; a person with no known address is still listed (the
+        CRM sync skips it unless it has a `twenty_person_id`).
+
+        Pages are keyset pages on (`changed_at`, `person_id`), exclusive: send
+        the `next_cursor` of a page as `after` to get the page that follows. It
+        is ALWAYS present; on an empty page it is the cursor the caller sent, so
+        a client simply stores it. Without `after` (and `changed_since`) the
+        listing starts at the beginning.
+
+        `may_create_contact` tells whether the sync may CREATE a CRM contact
+        for the person when none is found: only a person with an organizer
+        application, or one already tied to a CRM contact. An account-only user
+        (an invited manager) can have an existing card updated, never a new
+        one.
+
+        `activity_explanation` is built from the stored profile and sessions;
+        visits to the price page are not stored per visit, so their share shows
+        as `price page and other`.
+
+        Called by the n8n CRM sync with `Authorization: Bearer <ANALYTICS_SYNC_TOKEN>`;
+        the same listing for a human superadmin is
+        `GET /v1/admin/analytics/profiles`. While `ANALYTICS_SYNC_TOKEN` is unset the
+        route answers 503.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: changed_since
+          in: query
+          description: RFC 3339 time. Only profiles changed at or after it are returned (a lower bound for a client without a cursor); absent means all.
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          description: Page size, 1 to 200 (default 100).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: after
+          in: query
+          description: Opaque cursor, the `next_cursor` of the previous page; the page starts strictly after it.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of changed profiles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsProfilesResponse"
+        "400":
+          description: Unreadable `changed_since` (`analytics.invalid_changed_since`), `limit` (`analytics.invalid_limit`) or `after` (`analytics.invalid_cursor`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or wrong service token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The service token is not configured (`analytics.sync_not_configured`) or the database is unavailable.
           content:
             application/json:
               schema:

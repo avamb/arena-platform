@@ -26,20 +26,24 @@ const rollupStateKey = "rollup"
 
 // rollupOverlap is how far before the previous run the next one looks again.
 // Every step is idempotent, so the overlap only protects against events that
-// became visible late (a writer flush that committed after the run started).
-const rollupOverlap = 2 * time.Hour
+// became visible late (a writer flush that committed after the run started,
+// a client batch whose times were pulled back to the server's up to a day).
+const rollupOverlap = 25 * time.Hour
 
-// rollupLockKey serializes runs (pg_advisory_xact_lock).
-const rollupLockKey = 5_050_001
+// RollupLockKey is the advisory lock that serializes the rollup against
+// everything that erases analytics data (ErasePerson, ForgetEmail): a run
+// holds it (session level) from the first read to the last write, so a
+// concurrent join cannot restore an identity that was just deleted.
+const RollupLockKey = 5_050_001
 
 // RollupOptions configure a Rollup.
 type RollupOptions struct {
 	Pool *pgxpool.Pool
-	// TelegramSecret is JWT_SIGNING_SECRET, the key of TGHasher. Empty means
-	// the bot-onboarding join (tg + e-mail) is skipped.
-	TelegramSecret string
-	Weights        ScoreWeights
-	Logger         *slog.Logger
+	// TGHashSecret is ANALYTICS_TG_HASH_SECRET, the key of TGHasher. Empty
+	// means the bot-onboarding join (tg + e-mail) is skipped.
+	TGHashSecret string
+	Weights      ScoreWeights
+	Logger       *slog.Logger
 	// Now nil means time.Now.
 	Now func() time.Time
 }
@@ -66,8 +70,8 @@ func NewRollup(o RollupOptions) *Rollup {
 		o.Weights = DefaultScoreWeights
 	}
 	r := &Rollup{pool: o.Pool, w: o.Weights, log: o.Logger, now: o.Now}
-	if o.TelegramSecret != "" {
-		r.tg = NewTGHasher(o.TelegramSecret)
+	if o.TGHashSecret != "" {
+		r.tg = NewTGHasher(o.TGHashSecret)
 	}
 	return r
 }
@@ -82,16 +86,60 @@ type RollupResult struct {
 	ProfilesChanged int
 	FlowRows        int
 	PersonFailures  int
+	// MergeConflicts counts links refused because they would have glued two
+	// different users or two different CRM contacts into one person.
+	MergeConflicts int
+	// Recomputed is how many people were recomputed (all of them on a full
+	// pass, otherwise the ones with new events, a join or a business link).
+	Recomputed int
+	FullPass   bool
+	// Skipped is set when another run holds the lock.
+	Skipped bool
 }
 
 type rollupState struct {
 	Through time.Time `json:"through"`
+	// FullDay is the UTC day (YYYY-MM-DD) of the last complete full pass.
+	FullDay string `json:"full_day,omitempty"`
 }
 
 // Run executes one pass. It is idempotent: a second pass over the same data
 // changes nothing (profiles.changed_at included).
+//
+// A run holds a session-level advisory lock on one dedicated connection for
+// its whole length and is skipped (Skipped) when another run, or an erasure
+// that took the same lock, has it. A person that cannot be recomputed is
+// logged and counted and the run goes on; the cursor then stays where it was,
+// so the next run looks at the same window again.
 func (r *Rollup) Run(ctx context.Context) (RollupResult, error) {
 	var res RollupResult
+	conn, err := r.pool.Acquire(ctx)
+	if err != nil {
+		return res, fmt.Errorf("analytics: rollup connection: %w", err)
+	}
+	var got bool
+	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, RollupLockKey).Scan(&got); err != nil {
+		conn.Release()
+		return res, fmt.Errorf("analytics: rollup lock: %w", err)
+	}
+	if !got {
+		conn.Release()
+		res.Skipped = true
+		return res, nil
+	}
+	defer func() {
+		// A lock left on a pooled connection would outlive the run: close the
+		// connection when it cannot be released.
+		uctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		defer cancel()
+		if _, err := conn.Exec(uctx, `SELECT pg_advisory_unlock($1)`, RollupLockKey); err != nil {
+			r.log.Error("analytics rollup: unlock failed, closing the connection", slog.Any("error", err))
+			_ = conn.Hijack().Close(uctx)
+			return
+		}
+		conn.Release()
+	}()
+
 	started := r.now()
 	st, err := r.loadState(ctx)
 	if err != nil {
@@ -101,39 +149,50 @@ func (r *Rollup) Run(ctx context.Context) (RollupResult, error) {
 	if !st.Through.IsZero() {
 		since = st.Through.Add(-rollupOverlap)
 	}
+	today := TruncateDay(started).Format("2006-01-02") // allow:timeformat state key, not a wire timestamp
+	res.FullPass = st.FullDay != today
 
-	if err := r.joinStep(ctx, since, &res); err != nil {
+	dirty := map[uuid.UUID]bool{}
+	if err := r.joinStep(ctx, since, dirty, &res); err != nil {
 		return res, err
 	}
 
-	ids, err := r.listPeople(ctx)
+	ids, err := r.selectPeople(ctx, since, res.FullPass, dirty)
 	if err != nil {
 		return res, err
 	}
-	res.People = len(ids)
-	var firstErr error
+	res.Recomputed = len(ids)
 	for _, id := range ids {
 		if err := r.processPerson(ctx, id, started, &res); err != nil {
 			res.PersonFailures++
-			if firstErr == nil {
-				firstErr = err
-			}
 			r.log.Warn("analytics rollup: person failed", slog.String("person_id", id.String()), slog.Any("error", err))
 		}
 	}
-
+	if res.FullPass {
+		// Sessions are kept 25 months (spec 50 section 6).
+		if _, err := r.pool.Exec(ctx, `DELETE FROM analytics.sessions WHERE started_at < $1`,
+			started.AddDate(0, -SessionRetentionMonths, 0)); err != nil {
+			return res, fmt.Errorf("analytics: session retention: %w", err)
+		}
+	}
 	if err := r.flowStep(ctx, since, &res); err != nil {
 		return res, err
 	}
-	if firstErr != nil {
-		// Do not advance the cursor: the next run looks at the same window.
-		return res, fmt.Errorf("analytics: rollup: %d person(s) failed, first: %w", res.PersonFailures, firstErr)
+	if res.PersonFailures > 0 {
+		return res, nil
 	}
-	if err := r.saveState(ctx, rollupState{Through: started}); err != nil {
+	next := rollupState{Through: started, FullDay: st.FullDay}
+	if res.FullPass {
+		next.FullDay = today
+	}
+	if err := r.saveState(ctx, next); err != nil {
 		return res, err
 	}
 	return res, nil
 }
+
+// SessionRetentionMonths is how long analytics.sessions rows are kept.
+const SessionRetentionMonths = 25
 
 func (r *Rollup) loadState(ctx context.Context) (rollupState, error) {
 	var raw []byte
@@ -161,21 +220,47 @@ ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.up
 	return nil
 }
 
-func (r *Rollup) listPeople(ctx context.Context) ([]uuid.UUID, error) {
-	rows, err := r.pool.Query(ctx, `SELECT id FROM analytics.people ORDER BY created_at, id`)
+// selectPeople picks who is recomputed: everybody on the daily full pass (the
+// decay and the 30-day counters move with the calendar), otherwise the people
+// a join touched, the people with events since the window start and the
+// people tied to the business tables (an e-mail or a user identity: their
+// milestones change without any event).
+func (r *Rollup) selectPeople(ctx context.Context, since time.Time, full bool, dirty map[uuid.UUID]bool) ([]uuid.UUID, error) {
+	var rows pgx.Rows
+	var err error
+	if full {
+		rows, err = r.pool.Query(ctx, `SELECT id FROM analytics.people ORDER BY created_at, id`)
+	} else {
+		rows, err = r.pool.Query(ctx, `
+SELECT i.person_id FROM analytics.events e
+  JOIN analytics.identities i ON i.kind = e.id_kind AND i.value = e.id_value
+ WHERE e.at >= $1 AND e.id_kind IN ('aid', 'cid', 'user', 'tg') AND NOT e.suspect
+UNION
+SELECT person_id FROM analytics.identities WHERE kind IN ('user', 'email_sha256')`, since)
+	}
 	if err != nil {
-		return nil, fmt.Errorf("analytics: list people: %w", err)
+		return nil, fmt.Errorf("analytics: select people: %w", err)
 	}
 	defer rows.Close()
+	seen := map[uuid.UUID]bool{}
 	var ids []uuid.UUID
 	for rows.Next() {
 		var id uuid.UUID
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
+		seen[id] = true
 		ids = append(ids, id)
 	}
-	return ids, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for id := range dirty {
+		if !seen[id] {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
 }
 
 // ─── step 1: joins ─────────────────────────────────────────────────────────
@@ -183,17 +268,19 @@ func (r *Rollup) listPeople(ctx context.Context) ([]uuid.UUID, error) {
 // joinStep gathers the pairs that say two identifiers are one person and
 // applies them in a single transaction (a merge moves identities and deletes
 // the younger person atomically).
-func (r *Rollup) joinStep(ctx context.Context, since time.Time, res *RollupResult) error {
+func (r *Rollup) joinStep(ctx context.Context, since time.Time, dirty map[uuid.UUID]bool, res *RollupResult) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("analytics: begin join tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, rollupLockKey); err != nil {
-		return fmt.Errorf("analytics: rollup lock: %w", err)
-	}
 	apply := func(req linkReq) error {
 		lr, err := linkIdentities(ctx, tx, req)
+		if errors.Is(err, errMergeConflict) {
+			res.MergeConflicts++
+			r.log.Warn("analytics rollup: link refused", slog.Any("reason", err))
+			return nil
+		}
 		if err != nil {
 			return err
 		}
@@ -201,6 +288,9 @@ func (r *Rollup) joinStep(ctx context.Context, since time.Time, res *RollupResul
 			res.PeopleCreated++
 		}
 		res.PeopleMerged += lr.merged
+		if lr.changed {
+			dirty[lr.personID] = true
+		}
 		return nil
 	}
 	if err := r.joinEmailClicks(ctx, tx, since, apply); err != nil {
@@ -256,14 +346,15 @@ SELECT e.id_value, COALESCE(e.props->>'aid', ''), min(e.at), COALESCE(cc.twenty_
 }
 
 // joinApplications links the applicant: aid (site start) and e-mail, the
-// Telegram hash (bot code confirmation) and the user (approval).
+// Telegram hash (bot code confirmation) and the user (approval). Only an
+// application whose e-mail was CONFIRMED counts: POST /v1/onboarding/applications
+// is public, so anybody can start one with somebody else's address and aid.
 func (r *Rollup) joinApplications(ctx context.Context, tx pgx.Tx, apply func(linkReq) error) error {
 	rows, err := tx.Query(ctx, `
 SELECT a.applicant_email, COALESCE(a.aid, ''), a.status, a.telegram_user_id, a.email_confirmed_at,
        a.created_at, a.org_id
   FROM onboarding_applications a
- WHERE a.purged_at IS NULL
-   AND (a.status <> 'draft' OR a.email_confirmed_at IS NOT NULL OR a.aid IS NOT NULL)
+ WHERE a.purged_at IS NULL AND a.email_confirmed_at IS NOT NULL
  ORDER BY a.created_at`)
 	if err != nil {
 		return fmt.Errorf("analytics: read applications: %w", err)
@@ -293,7 +384,7 @@ SELECT a.applicant_email, COALESCE(a.aid, ''), a.status, a.telegram_user_id, a.e
 		if ValidAID(a.aid) {
 			req.idents = append(req.idents, ident{IDKindAID, a.aid})
 		}
-		if a.tg != nil && a.confirmed != nil && r.tg != nil {
+		if a.tg != nil && r.tg != nil {
 			req.idents = append(req.idents, ident{IDKindTG, r.tg.Hash(*a.tg)})
 		}
 		if a.status == "approved" {
@@ -452,7 +543,10 @@ SELECT at, surface, name, id_kind || ':' || id_value, props
 		}
 		if _, err := tx.Exec(ctx, `
 INSERT INTO analytics.flow_daily (day, surface, flow, step, entered, left_here, errors, median_seconds)
-VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8)`,
+VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (day, surface, flow, step) DO UPDATE
+   SET entered = EXCLUDED.entered, left_here = EXCLUDED.left_here, errors = EXCLUDED.errors,
+       median_seconds = EXCLUDED.median_seconds`,
 			row.Day, row.Surface, row.Flow, row.Step, row.Entered, row.LeftHere, row.Errors, med); err != nil {
 			return fmt.Errorf("analytics: write flow_daily: %w", err)
 		}

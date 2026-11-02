@@ -124,3 +124,31 @@ func TestDecodeArticles(t *testing.T) {
 		t.Error("garbage must give nil")
 	}
 }
+
+func TestExplainStored_ListsStoredItemsAndShowsTheRemainder(t *testing.T) {
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	w := DefaultScoreWeights
+	sessions := []storedSession{{Start: now, EmailClick: true}, {Start: now}}
+	articles := []ArticleRead{{Path: "/blog/a", At: now, Seconds: 80}}
+	// visit x2 = 2, email_click = 2, article = 3: stored score 7 is whole.
+	text := explainStored(storedProfile{Score: 7, Articles: articles}, sessions, now, w)
+	for _, part := range []string{"article x1 = 3.0", "visit x2 = 2.0", "email_click x1 = 2.0"} {
+		if !strings.Contains(text, part) {
+			t.Errorf("%q lacks %q", text, part)
+		}
+	}
+	if strings.Contains(text, "price page") {
+		t.Errorf("nothing is missing, but the text says so: %q", text)
+	}
+	// A stored score of 12 means a price-page visit (5) that is not stored per visit.
+	text = explainStored(storedProfile{Score: 12, Articles: articles}, sessions, now, w)
+	if !strings.Contains(text, "price page and other = +5") {
+		t.Errorf("remainder missing: %q", text)
+	}
+	if got := explainStored(storedProfile{Score: 0}, nil, now, w); got != "no activity" {
+		t.Errorf("empty = %q", got)
+	}
+	if got := explainStored(storedProfile{Score: 5}, nil, now, w); got != "price page and other = +5" {
+		t.Errorf("only a remainder = %q", got)
+	}
+}

@@ -37,50 +37,57 @@ const AuditContactCodesIssue = "v1.admin.analytics.contact_codes.issue"
 // maxAdminBody is far above 500 ids of 64 characters.
 const maxAdminBody = 128 * 1024
 
-// AdminOptions are the dependencies of an AdminHandler.
-type AdminOptions struct {
+// CRMOptions are the dependencies of a CRMHandler.
+type CRMOptions struct {
 	Pool  *pgxpool.Pool
 	Audit audit.Writer
 	// TimelineBaseURL is the origin of the admin console (APP_PUBLIC_URL);
 	// empty leaves timeline_url out.
 	TimelineBaseURL string
 	Weights         analytics.ScoreWeights
-	Logger          *slog.Logger
+	// ServiceLabel non-empty makes this the SERVICE instance (routes behind a
+	// static bearer token, no user): audit rows get actor type "service", an
+	// empty actor id and metadata.actor_label = ServiceLabel.
+	ServiceLabel string
+	Logger       *slog.Logger
 	// Now nil means time.Now.
 	Now func() time.Time
 }
 
-// AdminHandler serves the two superadmin routes.
-type AdminHandler struct {
+// CRMHandler serves the two CRM routes: one instance for the superadmin
+// (human) routes under /v1/admin/analytics and one for the service routes
+// under /v1/service/analytics.
+type CRMHandler struct {
 	pool     *pgxpool.Pool
 	audit    audit.Writer
 	timeline string
 	weights  analytics.ScoreWeights
+	service  string
 	log      *slog.Logger
 	now      func() time.Time
 }
 
-// NewAdmin builds the handler. A nil pool makes every route answer 503.
-func NewAdmin(o AdminOptions) *AdminHandler {
+// NewCRM builds the handler. A nil pool makes every route answer 503.
+func NewCRM(o CRMOptions) *CRMHandler {
 	if o.Logger == nil {
 		o.Logger = slog.Default()
 	}
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	return &AdminHandler{
-		pool: o.Pool, audit: o.Audit, log: o.Logger, now: o.Now, weights: o.Weights,
+	return &CRMHandler{
+		pool: o.Pool, audit: o.Audit, log: o.Logger, now: o.Now, weights: o.Weights, service: o.ServiceLabel,
 		timeline: strings.TrimRight(strings.TrimSpace(o.TimelineBaseURL), "/"),
 	}
 }
 
-func (h *AdminHandler) fail(w http.ResponseWriter, r *http.Request, what string, err error) {
+func (h *CRMHandler) fail(w http.ResponseWriter, r *http.Request, what string, err error) {
 	h.log.ErrorContext(r.Context(), "admin analytics: "+what, "error", err, "request_id", logging.RequestID(r.Context()))
 	httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 		"analytics.admin_failed", "the operation failed, please try again", r))
 }
 
-func (h *AdminHandler) unavailable(w http.ResponseWriter, r *http.Request) {
+func (h *CRMHandler) unavailable(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 		"dependency.database_unavailable", "database is not available", r))
 }
@@ -101,7 +108,7 @@ type contactCodesResponse struct {
 }
 
 // HandleContactCodes returns one stable cid code per CRM person id.
-func (h *AdminHandler) HandleContactCodes(w http.ResponseWriter, r *http.Request) {
+func (h *CRMHandler) HandleContactCodes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	reason, ok := httputil.RequireAdminReason(w, r)
 	if !ok {
@@ -163,18 +170,7 @@ func (h *AdminHandler) HandleContactCodes(w http.ResponseWriter, r *http.Request
 		h.fail(w, r, "issue contact codes", err)
 		return
 	}
-	if err := h.audit.WriteTx(r.Context(), tx, audit.Event{
-		OccurredAt:   h.now().UTC(),
-		ActorType:    "user",
-		ActorID:      uuidOrEmpty(actorID(r)),
-		Action:       AuditContactCodesIssue,
-		ResourceType: "analytics_contact_codes",
-		ResourceID:   "contact_codes",
-		RequestID:    logging.RequestID(r.Context()),
-		TraceID:      logging.TraceID(r.Context()),
-		IP:           httputil.ExtractClientIP(r),
-		Metadata:     map[string]any{"reason": reason, "contacts": len(ids)},
-	}); err != nil {
+	if err := h.audit.WriteTx(r.Context(), tx, h.auditEvent(r, reason, len(ids))); err != nil {
 		h.fail(w, r, "audit contact codes", err)
 		return
 	}
@@ -187,6 +183,29 @@ func (h *AdminHandler) HandleContactCodes(w http.ResponseWriter, r *http.Request
 		out.Codes[i] = contactCodeItem{TwentyPersonID: id, Code: codes[i]}
 	}
 	httputil.WriteJSON(w, http.StatusOK, out)
+}
+
+// auditEvent is the audit row of one issuing call. A human superadmin is the
+// actor; the service instance is actor type "service" with no actor id (the
+// column is a uuid) and its label in the metadata.
+func (h *CRMHandler) auditEvent(r *http.Request, reason string, contacts int) audit.Event {
+	ev := audit.Event{
+		OccurredAt:   h.now().UTC(),
+		ActorType:    "user",
+		ActorID:      uuidOrEmpty(actorID(r)),
+		Action:       AuditContactCodesIssue,
+		ResourceType: "analytics_contact_codes",
+		ResourceID:   "contact_codes",
+		RequestID:    logging.RequestID(r.Context()),
+		TraceID:      logging.TraceID(r.Context()),
+		IP:           httputil.ExtractClientIP(r),
+		Metadata:     map[string]any{"reason": reason, "contacts": contacts},
+	}
+	if h.service != "" {
+		ev.ActorType, ev.ActorID = "service", ""
+		ev.Metadata["actor_label"] = h.service
+	}
+	return ev
 }
 
 func actorID(r *http.Request) string {
@@ -223,6 +242,7 @@ type profileView struct {
 	PersonID            string            `json:"person_id"`
 	TwentyPersonID      *string           `json:"twenty_person_id"`
 	Email               *string           `json:"email"`
+	MayCreateContact    bool              `json:"may_create_contact"`
 	Stage               string            `json:"stage"`
 	FirstTouch          touchView         `json:"first_touch"`
 	LastTouch           touchView         `json:"last_touch"`
@@ -242,7 +262,7 @@ type profileView struct {
 
 type profilesResponse struct {
 	Profiles   []profileView `json:"profiles"`
-	NextCursor *string       `json:"next_cursor"`
+	NextCursor string        `json:"next_cursor"`
 }
 
 func rfc3339(t time.Time) string { return t.UTC().Format(time.RFC3339Nano) }
@@ -263,7 +283,7 @@ func strPtr(s string) *string {
 }
 
 // HandleProfiles serves one page of changed profiles.
-func (h *AdminHandler) HandleProfiles(w http.ResponseWriter, r *http.Request) {
+func (h *CRMHandler) HandleProfiles(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	q := analytics.ExportQuery{Now: h.now(), Weights: h.weights}
 	if v := strings.TrimSpace(r.URL.Query().Get("changed_since")); v != "" {
@@ -298,17 +318,18 @@ func (h *AdminHandler) HandleProfiles(w http.ResponseWriter, r *http.Request) {
 		h.unavailable(w, r)
 		return
 	}
-	rows, next, err := analytics.ExportProfiles(r.Context(), h.pool, q)
+	pageOut, err := analytics.ExportProfiles(r.Context(), h.pool, q)
 	if err != nil {
 		h.fail(w, r, "export profiles", err)
 		return
 	}
-	out := profilesResponse{Profiles: make([]profileView, 0, len(rows)), NextCursor: strPtr(next)}
-	for _, p := range rows {
+	out := profilesResponse{Profiles: make([]profileView, 0, len(pageOut.Profiles)), NextCursor: pageOut.NextCursor}
+	for _, p := range pageOut.Profiles {
 		v := profileView{
 			PersonID:            p.PersonID.String(),
 			TwentyPersonID:      strPtr(p.TwentyPersonID),
 			Email:               strPtr(p.Email),
+			MayCreateContact:    p.MayCreateContact,
 			Stage:               p.Stage,
 			FirstTouch:          toTouchView(p.FirstTouch),
 			LastTouch:           toTouchView(p.LastTouch),

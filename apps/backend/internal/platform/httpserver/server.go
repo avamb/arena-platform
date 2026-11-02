@@ -116,7 +116,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	err := s.srv.Shutdown(ctx)
 	// After the listener has drained, so the last requests' events are in the
 	// buffer; a failure to flush never fails the shutdown.
-	if aerr := s.analytics.Close(ctx); aerr != nil {
+	if aerr := s.closeAnalytics(ctx); aerr != nil {
 		s.logger.Warn("analytics: flush at shutdown incomplete", "error", aerr.Error())
 	}
 	s.logger.Info("shutdown complete")

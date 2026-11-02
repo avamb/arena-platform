@@ -226,7 +226,7 @@ func TestAnalyticsRollup_ChainClickToFirstSale(t *testing.T) {
 	seedFirstSale(t, pool, res.OrgID)
 
 	// 3. The rollup.
-	roll := analytics.NewRollup(analytics.RollupOptions{Pool: pool, TelegramSecret: rollupTestSecret})
+	roll := analytics.NewRollup(analytics.RollupOptions{Pool: pool, TGHashSecret: rollupTestSecret})
 	if _, err := roll.Run(ctx); err != nil {
 		t.Fatalf("rollup: %v", err)
 	}
@@ -426,7 +426,7 @@ func TestAnalyticsRollup_TelegramJoinAndPurge(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE onboarding_applications SET telegram_user_id = $2, email_confirmed_at = now() WHERE id = $1`, started.App.ID, tgID); err != nil {
 		t.Fatal(err)
 	}
-	roll := analytics.NewRollup(analytics.RollupOptions{Pool: pool, TelegramSecret: rollupTestSecret})
+	roll := analytics.NewRollup(analytics.RollupOptions{Pool: pool, TGHashSecret: rollupTestSecret})
 	if _, err := roll.Run(ctx); err != nil {
 		t.Fatalf("rollup: %v", err)
 	}

@@ -9,6 +9,7 @@ package httpserver
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -16,6 +17,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/analytics"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hanalytics"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
 // pgContactCodes answers "does this contact code exist" from the database.
@@ -28,10 +30,14 @@ func (p pgContactCodes) ContactCodeExists(ctx context.Context, code string) (boo
 	return ok, err
 }
 
-// analyticsWriter returns the process-wide Writer, or nil without a database
-// (a nil Writer is a safe no-op).
+// analyticsWriter returns the process-wide Writer, built on first use so a
+// server that never receives an analytics batch never starts its flusher
+// goroutine. It is nil without a database or after shutdown (a nil Writer is a
+// safe no-op).
 func (s *Server) analyticsWriter() *analytics.Writer {
-	if s.analytics != nil || s.pgxPool == nil {
+	s.analyticsMu.Lock()
+	defer s.analyticsMu.Unlock()
+	if s.analytics != nil || s.pgxPool == nil || s.analyticsClosed {
 		return s.analytics
 	}
 	o := analytics.Options{DB: s.pgxPool, Logger: s.logger}
@@ -41,6 +47,29 @@ func (s *Server) analyticsWriter() *analytics.Writer {
 	}
 	s.analytics = analytics.NewWriter(o)
 	return s.analytics
+}
+
+// lazyTracker hands events to the Writer, building it at the first one.
+type lazyTracker struct{ s *Server }
+
+func (l lazyTracker) Track(ctx context.Context, ev analytics.Event) {
+	l.s.analyticsWriter().Track(ctx, ev)
+}
+
+// analyticsFlushBudget is how long shutdown waits for the buffered events. It
+// is its own deadline: the shutdown context may already be spent by draining
+// requests, and the events of those last requests are worth a few seconds.
+const analyticsFlushBudget = 5 * time.Second
+
+// closeAnalytics flushes and stops the Writer. Safe when there is none.
+func (s *Server) closeAnalytics(parent context.Context) error {
+	s.analyticsMu.Lock()
+	w := s.analytics
+	s.analyticsClosed = true
+	s.analyticsMu.Unlock()
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(parent), analyticsFlushBudget)
+	defer cancel()
+	return w.Close(ctx)
 }
 
 // analyticsOrgAccess decides whether the signed-in caller may attach orgID to
@@ -60,15 +89,13 @@ func (s *Server) analyticsOrgAccess(ctx context.Context, orgID uuid.UUID) (bool,
 }
 
 func (s *Server) mountAnalyticsRoutes(r chi.Router) {
-	opts := hanalytics.Options{Logger: s.logger, OrgAccess: s.analyticsOrgAccess}
-	if w := s.analyticsWriter(); w != nil {
-		opts.Tracker = w
+	opts := hanalytics.Options{Logger: s.logger, OrgAccess: s.analyticsOrgAccess, Tracker: lazyTracker{s: s}}
+	if s.pgxPool != nil {
 		opts.Codes = pgContactCodes{s: s}
-	} else {
-		opts.Tracker = (*analytics.Writer)(nil)
 	}
 	h := hanalytics.New(opts)
 	r.Post("/t", h.HandleSite)
+	s.mountAnalyticsServiceRoutes(r)
 	if !s.authEnabled() {
 		return
 	}
@@ -79,24 +106,49 @@ func (s *Server) mountAnalyticsRoutes(r chi.Router) {
 	s.mountAnalyticsAdminRoutes(r)
 }
 
-// mountAnalyticsAdminRoutes mounts the CRM side (spec 50 section 9): contact
-// codes for the mailing and the changed profiles for the n8n sync. Both are
-// superadmin-only (superadmin.read); issuing codes also needs X-Admin-Reason
-// and is audited on its own transaction.
-func (s *Server) mountAnalyticsAdminRoutes(r chi.Router) {
-	// Always mounted: without a database the handler answers 503, so the
-	// routes stay part of the documented contract (the drift test builds a
-	// server with no pool).
+// analyticsSyncLabel is the actor label the audit log shows for the CRM sync.
+const analyticsSyncLabel = "n8n_crm_sync"
+
+func (s *Server) crmHandler(service string) *hanalytics.CRMHandler {
 	base := ""
 	if s.cfg != nil {
 		base = s.cfg.AppPublicURL
 	}
-	h := hanalytics.NewAdmin(hanalytics.AdminOptions{
-		Pool: s.pgxPool, Audit: s.audit, TimelineBaseURL: base, Logger: s.logger,
+	return hanalytics.NewCRM(hanalytics.CRMOptions{
+		Pool: s.pgxPool, Audit: s.audit, TimelineBaseURL: base, Logger: s.logger, ServiceLabel: service,
 	})
+}
+
+// mountAnalyticsAdminRoutes mounts the CRM side for a human superadmin (spec
+// 50 section 9): contact codes and the changed profiles. Both need
+// superadmin.read; issuing codes also needs X-Admin-Reason and is audited on
+// its own transaction. Always mounted: without a database the handler
+// answers 503, so the routes stay part of the documented contract (the drift
+// test builds a server with no pool).
+func (s *Server) mountAnalyticsAdminRoutes(r chi.Router) {
+	h := s.crmHandler("")
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "superadmin.read", "analytics")
 		pr.Post("/admin/analytics/contact-codes", h.HandleContactCodes)
 		pr.Get("/admin/analytics/profiles", h.HandleProfiles)
+	})
+}
+
+// mountAnalyticsServiceRoutes mounts the SAME two handlers for the n8n CRM
+// sync under /v1/service/analytics, behind the static bearer ANALYTICS_SYNC_TOKEN
+// instead of a user's JWT (a human token lives 15 minutes and an organization
+// API key can never hold superadmin.*). Only these two routes accept that
+// token, the audit row says actor type "service" / actor_label n8n_crm_sync,
+// and an unset token answers 503, never open.
+func (s *Server) mountAnalyticsServiceRoutes(r chi.Router) {
+	token := ""
+	if s.cfg != nil {
+		token = s.cfg.AnalyticsSyncToken
+	}
+	h := s.crmHandler(analyticsSyncLabel)
+	r.Group(func(sr chi.Router) {
+		sr.Use(httputil.RequireStaticBearer(token, "analytics.sync_not_configured"))
+		sr.Post("/service/analytics/contact-codes", h.HandleContactCodes)
+		sr.Get("/service/analytics/profiles", h.HandleProfiles)
 	})
 }

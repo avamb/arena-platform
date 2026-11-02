@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 var t0 = time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC)
@@ -320,7 +322,7 @@ func TestComputeFlowDaily_RunsSplitOnGapAndBot(t *testing.T) {
 		{At: t0, Surface: SurfaceBot, Name: "wizard_step", Who: "user:9", Props: map[string]any{"from": "", "to": "name", "mode": "create"}},
 		{At: t0.Add(15 * time.Second), Surface: SurfaceBot, Name: "wizard_step", Who: "user:9", Props: map[string]any{"from": "name", "to": "date", "seconds": float64(15)}},
 		{At: t0.Add(20 * time.Second), Surface: SurfaceBot, Name: "wizard_input_error", Who: "user:9", Props: map[string]any{"step": "date", "reason": "date_unparsed"}},
-		{At: t0.Add(30 * time.Second), Surface: SurfaceBot, Name: "wizard_exit", Who: "user:9", Props: map[string]any{"step": "date", "how": "cancel"}},
+		{At: t0.Add(30 * time.Second), Surface: SurfaceBot, Name: "wizard_exit", Who: "user:9", Props: map[string]any{"step": "date", "how": "drop"}},
 		{At: t0.Add(40 * time.Second), Surface: SurfaceBot, Name: "wizard_exit", Who: "user:8", Props: map[string]any{"step": "done", "how": "done"}},
 	}
 	rows := ComputeFlowDaily(evs)
@@ -368,5 +370,45 @@ func TestCleanAID(t *testing.T) {
 		if got := CleanAID(in); got != want {
 			t.Errorf("CleanAID(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestAttributeConflict(t *testing.T) {
+	u1, u2 := uuid.New(), uuid.New()
+	tw1, tw2 := "tw1", "tw2"
+	cases := []struct {
+		name  string
+		found []personRow
+		req   linkReq
+		want  bool
+	}{
+		{"nothing found", nil, linkReq{}, false},
+		{"same user twice", []personRow{{userID: &u1}, {userID: &u1}}, linkReq{}, false},
+		{"two users", []personRow{{userID: &u1}, {userID: &u2}}, linkReq{}, true},
+		{"user in request differs", []personRow{{userID: &u1}}, linkReq{userID: &u2}, true},
+		{"user in request equal", []personRow{{userID: &u1}}, linkReq{userID: &u1}, false},
+		{"two CRM contacts", []personRow{{twenty: &tw1}, {twenty: &tw2}}, linkReq{}, true},
+		{"CRM contact in request differs", []personRow{{twenty: &tw1}}, linkReq{twentyID: tw2}, true},
+		{"one user and one contact", []personRow{{userID: &u1}, {twenty: &tw1}}, linkReq{}, false},
+	}
+	for _, c := range cases {
+		if got := attributeConflict(c.found, c.req) != ""; got != c.want {
+			t.Errorf("%s: conflict = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestComputeFlowDaily_OnlyDropAndExpiredAreDropOffs(t *testing.T) {
+	var evs []FlowEv
+	for _, how := range []string{"drop", "expired", "keep", "cancel", "done"} {
+		evs = append(evs, FlowEv{At: t0, Surface: SurfaceBot, Name: "wizard_exit", Who: "user:1",
+			Props: map[string]any{"step": "s_" + how, "how": how}})
+	}
+	got := map[string]int{}
+	for _, r := range ComputeFlowDaily(evs) {
+		got[r.Step] = r.LeftHere
+	}
+	if len(got) != 2 || got["s_drop"] != 1 || got["s_expired"] != 1 {
+		t.Errorf("drop-offs = %v, want only drop and expired", got)
 	}
 }

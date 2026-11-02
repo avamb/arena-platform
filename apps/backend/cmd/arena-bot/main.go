@@ -87,6 +87,10 @@ func run() error {
 	}
 	defer pool.Close()
 
+	if cfg.AnalyticsTGHashSecret == "" {
+		logger.Warn("ANALYTICS_TG_HASH_SECRET is not set: the bot writes no tg identifier into product analytics")
+	}
+
 	bundle, err := i18n.NewBundle()
 	if err != nil {
 		return fmt.Errorf("load i18n bundle: %w", err)

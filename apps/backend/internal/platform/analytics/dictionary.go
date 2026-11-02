@@ -12,9 +12,14 @@
 package analytics
 
 import (
+	"encoding/json"
+	"math"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/opsalert"
 )
 
 // Surfaces an event may come from.
@@ -88,6 +93,11 @@ var (
 	pathProp = PropDef{Kind: PropString, MaxLen: MaxStringLen, Path: true}
 	hostProp = PropDef{Kind: PropString, MaxLen: 100, Host: true}
 	utmProp  = str(100)
+	// identProp is an identifier-like value (a screen template, an error code,
+	// a flow or step name): letters, digits and _ . / : $ - only, 1-64
+	// characters. Free text there would be a place to leak what a person typed.
+	identPattern = regexp.MustCompile(`^[A-Za-z0-9_./:$-]{1,64}$`)
+	identProp    = PropDef{Kind: PropString, MaxLen: 64, Pattern: identPattern}
 	// labelProp is the data-track label of a clicked element: a constant
 	// chosen by our developers, lower-case [a-z0-9_.-], at most 64 characters.
 	labelProp = PropDef{Kind: PropString, MaxLen: 64, Pattern: regexp.MustCompile(`^[a-z0-9_.-]+$`)}
@@ -111,13 +121,13 @@ var Events = map[string]EventDef{
 		"utm_content": utmProp, "utm_term": utmProp,
 	}},
 	"engaged": {Surfaces: []string{SurfaceSite, SurfaceEventCenter}, Props: map[string]PropDef{
-		"path": pathProp, "screen": str(100), "seconds": {Kind: PropInt, Max: 86400},
+		"path": pathProp, "screen": identProp, "seconds": {Kind: PropInt, Max: 86400},
 	}},
 	"scroll": {Surfaces: site(), Props: map[string]PropDef{
 		"path": pathProp, "depth": {Kind: PropInt, OneOfInts: []int{25, 50, 75, 100}},
 	}},
 	"click": {Surfaces: []string{SurfaceSite, SurfaceEventCenter}, Props: map[string]PropDef{
-		"name": labelProp, "path": pathProp, "screen": str(100),
+		"name": labelProp, "path": pathProp, "screen": identProp,
 	}},
 	"email_click": {Surfaces: site(), ServerOnly: true, Props: map[string]PropDef{
 		// aid is set by the server when the same visit carried both codes: it
@@ -128,29 +138,29 @@ var Events = map[string]EventDef{
 		"analytics": {Kind: PropBool},
 	}},
 	"screen_view": {Surfaces: eventCenter(), Props: map[string]PropDef{
-		"screen": str(100),
+		"screen": identProp,
 	}},
 	"flow_step": {Surfaces: eventCenter(), Props: map[string]PropDef{
-		"flow": str(64), "step": str(64),
+		"flow": identProp, "step": identProp,
 	}},
 	"ui_error": {Surfaces: eventCenter(), Props: map[string]PropDef{
-		"screen": str(100), "code": str(100),
+		"screen": identProp, "code": identProp,
 	}},
 	"rage_click": {Surfaces: eventCenter(), Props: map[string]PropDef{
-		"screen": str(100), "name": labelProp,
+		"screen": identProp, "name": labelProp,
 	}},
 	"bot_update": {Surfaces: bot(), Props: map[string]PropDef{
-		"kind": str(32), "prefix": str(32), "step": str(64),
+		"kind": identProp, "prefix": identProp, "step": identProp,
 	}},
 	"wizard_step": {Surfaces: bot(), Props: map[string]PropDef{
-		"from": str(64), "to": str(64), "seconds": {Kind: PropInt, Max: 86400},
+		"from": identProp, "to": identProp, "seconds": {Kind: PropInt, Max: 86400},
 		"mode": {Kind: PropString, MaxLen: 16, OneOfStrings: []string{"create", "edit"}},
 	}},
 	"wizard_input_error": {Surfaces: bot(), Props: map[string]PropDef{
-		"step": str(64), "reason": str(64),
+		"step": identProp, "reason": identProp,
 	}},
 	"wizard_exit": {Surfaces: bot(), Props: map[string]PropDef{
-		"step": str(64),
+		"step": identProp,
 		"how":  {Kind: PropString, MaxLen: 16, OneOfStrings: []string{"cancel", "keep", "drop", "done", "expired"}},
 	}},
 }
@@ -217,11 +227,10 @@ func (pd PropDef) clean(v any) (any, bool) {
 		}
 		return s, true
 	case PropInt:
-		f, ok := v.(float64)
-		if !ok || f != float64(int64(f)) {
+		n, ok := wholeNumber(v)
+		if !ok {
 			return nil, false
 		}
-		n := int(f)
 		max := pd.Max
 		if max == 0 {
 			max = 86400
@@ -268,6 +277,7 @@ func cleanString(s string, pd PropDef) string {
 	if pd.Host {
 		s = hostOf(s)
 	}
+	s = scrubEmails(s)
 	max := pd.MaxLen
 	if max == 0 {
 		max = MaxStringLen
@@ -302,4 +312,73 @@ func containsString(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// scrubEmails replaces anything shaped like an e-mail address with
+// "[redacted]", also when it is percent-encoded ("a%40b.com"). A free-text
+// property (a page title, a utm value, a path) can carry an address the
+// visitor's page put there; the dictionary promises none is stored.
+func scrubEmails(s string) string {
+	if u, err := url.PathUnescape(s); err == nil && u != s {
+		if scrubbed := opsalert.ScrubEmails(u); scrubbed != u {
+			return scrubbed
+		}
+	}
+	return opsalert.ScrubEmails(s)
+}
+
+// wholeNumber reads an integer property from any numeric Go type: float64 from
+// a decoded JSON body, int / int32 / int64 and friends from in-process callers
+// (the bot). A float must be a whole number.
+func wholeNumber(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int8:
+		return int(n), true
+	case int16:
+		return int(n), true
+	case int32:
+		return int(n), true
+	case int64:
+		if n > math.MaxInt32 || n < math.MinInt32 {
+			return 0, false
+		}
+		return int(n), true
+	case uint:
+		return clampUint(uint64(n))
+	case uint8:
+		return int(n), true
+	case uint16:
+		return int(n), true
+	case uint32:
+		return clampUint(uint64(n))
+	case uint64:
+		return clampUint(n)
+	case float32:
+		return wholeFloat(float64(n))
+	case float64:
+		return wholeFloat(n)
+	case json.Number:
+		f, err := n.Float64()
+		if err != nil {
+			return 0, false
+		}
+		return wholeFloat(f)
+	}
+	return 0, false
+}
+
+func clampUint(n uint64) (int, bool) {
+	if n > math.MaxInt32 {
+		return 0, false
+	}
+	return int(n), true
+}
+
+func wholeFloat(f float64) (int, bool) {
+	if f != math.Trunc(f) || f > math.MaxInt32 || f < math.MinInt32 {
+		return 0, false
+	}
+	return int(f), true
 }
