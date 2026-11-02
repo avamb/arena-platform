@@ -129,6 +129,11 @@ func (s *Service) RecordProviderEvent(ctx context.Context, in RecordInput) (Reco
 		cctx, cancel := context.WithTimeout(ctx, s.callTimeout)
 		fresh, err := resp.GetDispute(cctx, pd.ID)
 		cancel()
+		if errors.Is(err, payments.ErrDisputeNotFound) {
+			// No such dispute at the provider: nothing to record, and a
+			// redelivery would not find it either.
+			return RecordResult{}, nil
+		}
 		if err != nil {
 			return RecordResult{}, fmt.Errorf("disputes: read the dispute back: %w", err)
 		}

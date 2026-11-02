@@ -282,6 +282,9 @@ func disputeError(err error) error {
 	if !errors.As(err, &e) {
 		return err
 	}
+	if e.Status == http.StatusNotFound {
+		return fmt.Errorf("%w: %s", payments.ErrDisputeNotFound, err.Error())
+	}
 	if e.Status == http.StatusForbidden || e.Status == http.StatusUnauthorized || e.Type == "permission_error" {
 		return fmt.Errorf("%w: %s", payments.ErrDisputeNotWritable, err.Error())
 	}

@@ -77,6 +77,11 @@ var ErrDisputeNotWritable = errors.New("payments: the key cannot answer disputes
 // (already submitted, closed, past its deadline).
 var ErrDisputeClosedForEvidence = errors.New("payments: the dispute no longer accepts evidence")
 
+// ErrDisputeNotFound: the provider answered that it has no such dispute.
+// A verified event naming one is acknowledged and records nothing;
+// redelivering it would never find the dispute either.
+var ErrDisputeNotFound = errors.New("payments: the provider has no such dispute")
+
 // DisputeResponder reads and answers disputes through the provider's API.
 // Every call is idempotent on the provider's side when a key is given.
 type DisputeResponder interface {
