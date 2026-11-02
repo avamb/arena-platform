@@ -577,6 +577,28 @@ export const PARITY: readonly ParityRow[] = [
     routes: [`GET ${O}/events/{event_id}/referral-program/summary`, `GET ${O}/events/{event_id}/referral-rewards`],
     note: "Суммы по валютам, никогда в одну. Начисления с фильтром по состоянию и «Показать ещё». Контактов покупателя в ответе нет.",
   },
+  {
+    area: "Приведи друга",
+    fn: "Программа магазина: настройки, пауза, завершение",
+    bot: "в работе (спека 52, раздел 7.1)",
+    web: "R3",
+    routes: [
+      `GET ${O}/shop/referral-program`,
+      `PUT ${O}/shop/referral-program`,
+      `POST ${O}/shop/referral-program/pause`,
+      `POST ${O}/shop/referral-program/resume`,
+      `POST ${O}/shop/referral-program/end`,
+    ],
+    note: "Тот же раздел, что на карточке мероприятия, внизу настроек магазина (одна программа на организацию). Правила и галочка перед запуском, форма закрыта, если платёжный канал магазина не умеет частичный возврат. Смотреть — `promo.read`, менять — `promo.update` + `refund.create` + `refund.approve`; сам экран — `shop.read`.",
+  },
+  {
+    area: "Приведи друга",
+    fn: "Итоги и начисления магазина",
+    bot: "в работе (спека 52, раздел 7.1)",
+    web: "R3",
+    routes: [`GET ${O}/shop/referral-program/summary`, `GET ${O}/shop/referral-rewards`],
+    note: "Суммы по валютам и список начислений с заказом магазина друга. Контактов покупателя в ответе нет.",
+  },
   // ── Пригласительные ─────────────────────────────────────────────────
   {
     area: "Пригласительные",

@@ -195,7 +195,7 @@ export function EventScreen() {
           // Its own key: the neighbouring sections share one, and two children with the same key are drawn twice.
           key={`referral:${orgId}:${eventId}`}
           orgId={orgId}
-          eventId={eventId}
+          target={{ kind: "event", eventId }}
           canManage={canManageReferral(access.can)}
           timezone={refs.find((r) => r.tz !== null)?.tz ?? undefined}
         />

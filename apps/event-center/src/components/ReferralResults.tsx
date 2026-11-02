@@ -11,7 +11,7 @@ import { useId, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { SelectField } from "@/components/FormField";
 import { Badge, Empty, ErrorBox, Loading } from "@/components/ui";
-import { fetchReferralRewards, fetchReferralSummary } from "@/lib/api/endpoints";
+import { fetchReferralRewards, fetchReferralSummary, referralTargetKey, type ReferralTarget } from "@/lib/api/endpoints";
 import type { ReferralRewardItem, ReferralSummary } from "@/lib/api/types";
 import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
@@ -57,9 +57,9 @@ export function ReferralSummaryBlock({ summary }: { summary: ReferralSummary }) 
   );
 }
 
-export function RewardRow({ r, zone }: { r: ReferralRewardItem; zone: string | undefined }) {
+export function RewardRow({ r, zone, target = { kind: "event", eventId: "" } }: { r: ReferralRewardItem; zone: string | undefined; target?: ReferralTarget }) {
   const { t, locale } = useI18n();
-  const reason = rewardReasonKey(r.reason);
+  const reason = rewardReasonKey(r.reason, target);
   const reversal = reversalKey(r.friend_reversal);
   return (
     <li className="card" data-testid="referral-reward" data-state={r.state}>
@@ -112,20 +112,21 @@ export function RewardRow({ r, zone }: { r: ReferralRewardItem; zone: string | u
   );
 }
 
-export function ReferralResults({ orgId, eventId, timezone }: { orgId: string; eventId: string; timezone?: string }) {
+export function ReferralResults({ orgId, target, timezone }: { orgId: string; target: ReferralTarget; timezone?: string }) {
   const { t } = useI18n();
+  const targetId = referralTargetKey(target);
   const ids = useId();
   const [state, setState] = useState("");
 
   const summary = useQuery({
-    queryKey: ["referralSummary", orgId, eventId],
-    queryFn: () => fetchReferralSummary(orgId, eventId),
+    queryKey: ["referralSummary", orgId, targetId],
+    queryFn: () => fetchReferralSummary(orgId, target),
   });
   const rewards = useInfiniteQuery({
-    queryKey: ["referralRewards", orgId, eventId, state],
+    queryKey: ["referralRewards", orgId, targetId, state],
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) =>
-      fetchReferralRewards(orgId, eventId, { state: state === "" ? undefined : state, cursor: pageParam, limit: REWARD_PAGE_SIZE }),
+      fetchReferralRewards(orgId, target, { state: state === "" ? undefined : state, cursor: pageParam, limit: REWARD_PAGE_SIZE }),
     getNextPageParam: (last) => last.next_cursor ?? undefined,
   });
   const rows = rewards.data?.pages.flatMap((p) => p.items) ?? [];
@@ -152,7 +153,7 @@ export function ReferralResults({ orgId, eventId, timezone }: { orgId: string; e
       {rows.length > 0 && (
         <ul className="cards" aria-labelledby={`${ids}-list`} data-testid="referral-rewards">
           {rows.map((r) => (
-            <RewardRow key={r.id} r={r} zone={timezone} />
+            <RewardRow key={r.id} r={r} zone={timezone} target={target} />
           ))}
         </ul>
       )}

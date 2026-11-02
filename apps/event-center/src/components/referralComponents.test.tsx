@@ -108,4 +108,12 @@ describe("RewardRow", () => {
     const es = render(<ul><RewardRow r={reward()} zone={undefined} /></ul>, "es");
     expect(es).toContain("Pagado");
   });
+
+  it("words a shop reward for the shop and keeps the event's words for an event", () => {
+    const row = reward({ state: "failed", reason: "some_provider_code" });
+    const shop = render(<ul><RewardRow r={row} zone={undefined} target={{ kind: "shop" }} /></ul>);
+    expect(shop).toContain("Open the shop orders");
+    expect(shop).not.toContain("orders of this event");
+    expect(render(<ul><RewardRow r={row} zone={undefined} /></ul>)).toContain("Open the orders of this event");
+  });
 });

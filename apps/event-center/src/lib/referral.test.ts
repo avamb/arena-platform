@@ -23,9 +23,14 @@ import {
   rewardReasonKey,
   rewardStateKey,
   rewardStateTone,
+  referralText,
   reversalKey,
+  SHOP_TEXT_KEYS,
   warningKey,
 } from "@/lib/referral";
+import { en } from "@/lib/i18n/en";
+import { es } from "@/lib/i18n/es";
+import { ru } from "@/lib/i18n/ru";
 
 const NOW = new Date("2026-11-02T10:00:00Z");
 
@@ -258,5 +263,34 @@ describe("the refund warning", () => {
     expect(cashbackNotice(null)).toBeNull();
     expect(cashbackNotice(undefined)).toBeNull();
     expect(cashbackNotice({ amount_minor: 500, currency: "EUR", code: "" })).toBeNull();
+  });
+});
+
+describe("the shop's own words", () => {
+  const SHOP = { kind: "shop" } as const;
+  const EVENT = { kind: "event", eventId: "e1" } as const;
+
+  it("uses the shop variant for the shop and the shared key for an event", () => {
+    expect(referralText(SHOP, "referral.intro")).toBe("referral.shop.intro");
+    expect(referralText(EVENT, "referral.intro")).toBe("referral.intro");
+    // A key without a shop variant is shared.
+    expect(referralText(SHOP, "referral.save")).toBe("referral.save");
+  });
+
+  it("has a shop text for every listed key in all three languages", () => {
+    for (const [name, catalog] of [["en", en], ["ru", ru], ["es", es]] as const) {
+      for (const key of SHOP_TEXT_KEYS) {
+        const shopKey = `referral.shop.${key.slice("referral.".length)}`;
+        expect((catalog as Record<string, string>)[shopKey], `${name} ${shopKey}`).toBeTruthy();
+        expect((catalog as Record<string, string>)[shopKey], `${name} ${shopKey}`).not.toBe((catalog as Record<string, string>)[key]);
+      }
+    }
+  });
+
+  it("tells warnings and reasons for the shop in the shop's words", () => {
+    expect(warningKey({ code: "referral.warning.no_channel", message: "" }, SHOP)).toBe("referral.shop.warning.no_channel");
+    expect(rewardReasonKey("something_new", SHOP)).toBe("referral.shop.reason.other");
+    expect(rewardReasonKey("cap_reached", SHOP)).toBe("referral.reason.cap_reached");
+    expect(rewardReasonKey("cap_reached", EVENT)).toBe("referral.reason.cap_reached");
   });
 });

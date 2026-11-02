@@ -1245,14 +1245,29 @@ export interface ReferralState {
   warnings: ReferralWarning[];
 }
 
+/** What a programme belongs to: one event, or the organizer's shop (one per organization). */
+export type ReferralTarget = { kind: "event"; eventId: string } | { kind: "shop" };
+
+/** A stable id of the target for query keys. A shop never collides with an event id (a UUID). */
+export function referralTargetKey(target: ReferralTarget): string {
+  return target.kind === "event" ? target.eventId : "shop";
+}
+
+function referralParams(orgId: string, target: ReferralTarget): Record<string, string> {
+  return target.kind === "event" ? { org_id: orgId, event_id: target.eventId } : { org_id: orgId };
+}
+
 /**
- * The event's programme. Without one the API answers a 404 `referral.program_not_found` whose
+ * The programme of an event or of the shop. Without one the API answers a 404 `referral.program_not_found` whose
  * `error.details` carry the capability and the warnings, so the screen can explain before anything
  * is filled in whether the programme can start; that 404 is a normal answer here, not a failure.
  */
-export async function fetchReferralProgram(orgId: string, eventId: string): Promise<ReferralState> {
+export async function fetchReferralProgram(orgId: string, target: ReferralTarget): Promise<ReferralState> {
   try {
-    const r = await call<ReferralProgramResponse>({ route: API.referralProgram, params: { org_id: orgId, event_id: eventId } });
+    const r = await call<ReferralProgramResponse>({
+      route: target.kind === "event" ? API.referralProgram : API.shopReferralProgram,
+      params: referralParams(orgId, target),
+    });
     return { program: r.program, capability: r.capability, warnings: r.warnings };
   } catch (error) {
     if (error instanceof ApiError && error.status === 404 && error.code === "referral.program_not_found") {
@@ -1268,31 +1283,44 @@ export async function fetchReferralProgram(orgId: string, eventId: string): Prom
 }
 
 /** Starts or changes the programme. `accept_terms` only when this call starts one. */
-export function saveReferralProgram(orgId: string, eventId: string, body: ReferralProgramRequest): Promise<ReferralProgramResponse> {
-  return call<ReferralProgramResponse>({ route: API.referralProgramPut, params: { org_id: orgId, event_id: eventId }, body });
+export function saveReferralProgram(orgId: string, target: ReferralTarget, body: ReferralProgramRequest): Promise<ReferralProgramResponse> {
+  return call<ReferralProgramResponse>({
+    route: target.kind === "event" ? API.referralProgramPut : API.shopReferralProgramPut,
+    params: referralParams(orgId, target),
+    body,
+  });
 }
 
 export type ReferralAction = "pause" | "resume" | "end";
 
 /** Pause, resume or end the programme. An ended programme stays ended. */
-export function referralAction(orgId: string, eventId: string, action: ReferralAction): Promise<ReferralProgramResponse> {
-  const route = action === "pause" ? API.referralProgramPause : action === "resume" ? API.referralProgramResume : API.referralProgramEnd;
-  return call<ReferralProgramResponse>({ route, params: { org_id: orgId, event_id: eventId } });
+export function referralAction(orgId: string, target: ReferralTarget, action: ReferralAction): Promise<ReferralProgramResponse> {
+  const shop = target.kind === "shop";
+  const route =
+    action === "pause"
+      ? shop ? API.shopReferralProgramPause : API.referralProgramPause
+      : action === "resume"
+        ? shop ? API.shopReferralProgramResume : API.referralProgramResume
+        : shop ? API.shopReferralProgramEnd : API.referralProgramEnd;
+  return call<ReferralProgramResponse>({ route, params: referralParams(orgId, target) });
 }
 
-export function fetchReferralSummary(orgId: string, eventId: string): Promise<ReferralSummary> {
-  return call<ReferralSummary>({ route: API.referralSummary, params: { org_id: orgId, event_id: eventId } });
+export function fetchReferralSummary(orgId: string, target: ReferralTarget): Promise<ReferralSummary> {
+  return call<ReferralSummary>({
+    route: target.kind === "event" ? API.referralSummary : API.shopReferralSummary,
+    params: referralParams(orgId, target),
+  });
 }
 
 /** One page of rewards, newest first. `cursor` is the previous page's `next_cursor`. */
 export function fetchReferralRewards(
   orgId: string,
-  eventId: string,
+  target: ReferralTarget,
   query: { state?: string; cursor?: string; limit?: number },
 ): Promise<ReferralRewardList> {
   return call<ReferralRewardList>({
-    route: API.referralRewards,
-    params: { org_id: orgId, event_id: eventId },
+    route: target.kind === "event" ? API.referralRewards : API.shopReferralRewards,
+    params: referralParams(orgId, target),
     query: { state: query.state, cursor: query.cursor, limit: query.limit },
   });
 }

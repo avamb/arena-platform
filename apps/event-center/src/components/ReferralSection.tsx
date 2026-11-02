@@ -1,5 +1,6 @@
 /**
- * "Refer a friend" on the event card (spec 52, sections 0 and 7.1). A buyer who paid gets a personal
+ * "Refer a friend" on the event card and on the shop settings (spec 52, sections 0 and 7.1). The same
+ * section serves both: `target` says whether the programme belongs to one event or to the organizer's shop. A buyer who paid gets a personal
  * code. A friend who uses it gets a discount, and the buyer gets a percent of what the friend paid back
  * on their own card, at once and without anyone confirming each payout.
  *
@@ -22,7 +23,15 @@ import { TextField } from "@/components/FormField";
 import { ReferralResults } from "@/components/ReferralResults";
 import { Badge, ErrorBox, Loading } from "@/components/ui";
 import { ApiError } from "@/lib/api/http";
-import { fetchReferralProgram, referralAction, saveReferralProgram, type ReferralAction, type ReferralState } from "@/lib/api/endpoints";
+import {
+  fetchReferralProgram,
+  referralAction,
+  referralTargetKey,
+  saveReferralProgram,
+  type ReferralAction,
+  type ReferralState,
+  type ReferralTarget,
+} from "@/lib/api/endpoints";
 import { formatDateTime } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -35,6 +44,7 @@ import {
   isDirty,
   isStarting,
   phaseKey,
+  referralText,
   programActions,
   programPhase,
   warningKey,
@@ -47,7 +57,8 @@ import type { MessageKey } from "@/lib/i18n/en";
 
 export interface ReferralSectionProps {
   orgId: string;
-  eventId: string;
+  /** The event, or the shop (one programme per organization). */
+  target: ReferralTarget;
   /** `promo.update` + `refund.create` + `refund.approve` (canManageReferral). */
   canManage: boolean;
   /** The venue's time zone: the last day is a day of the venue. UTC when missing. */
@@ -58,12 +69,15 @@ type Busy = ReferralAction | "save" | null;
 
 const RULES: readonly MessageKey[] = ["referral.rules.paidAtOnce", "referral.rules.cardClosed", "referral.rules.fee", "referral.rules.automatic"];
 
-export function ReferralSection({ orgId, eventId, canManage, timezone }: ReferralSectionProps) {
-  const { t, locale } = useI18n();
+export function ReferralSection({ orgId, target, canManage, timezone }: ReferralSectionProps) {
+  const { t: translate, locale } = useI18n();
+  // The words that differ for the shop are told for it; the rest are shared.
+  const t = (key: MessageKey, vars?: Parameters<typeof translate>[1]) => translate(referralText(target, key), vars);
+  const targetId = referralTargetKey(target);
   const ids = useId();
   const queryClient = useQueryClient();
-  const key = ["referral", orgId, eventId] as const;
-  const state = useQuery({ queryKey: key, queryFn: () => fetchReferralProgram(orgId, eventId) });
+  const key = ["referral", orgId, targetId] as const;
+  const state = useQuery({ queryKey: key, queryFn: () => fetchReferralProgram(orgId, target) });
 
   const program: ReferralProgram | null = state.data?.program ?? null;
   const stamp = program === null ? "" : `${program.id}:${program.updated_at}`;
@@ -117,8 +131,8 @@ export function ReferralSection({ orgId, eventId, canManage, timezone }: Referra
 
   const setNew = (next: ReferralState) => {
     queryClient.setQueryData(key, next);
-    void queryClient.invalidateQueries({ queryKey: ["referralSummary", orgId, eventId] });
-    void queryClient.invalidateQueries({ queryKey: ["referralRewards", orgId, eventId] });
+    void queryClient.invalidateQueries({ queryKey: ["referralSummary", orgId, targetId] });
+    void queryClient.invalidateQueries({ queryKey: ["referralRewards", orgId, targetId] });
   };
 
   const run = async (which: Busy, work: () => Promise<string>) => {
@@ -139,7 +153,7 @@ export function ReferralSection({ orgId, eventId, canManage, timezone }: Referra
     run("save", async () => {
       const built = judge(accepted);
       if (!built.ok) throw new ApiError(422, "referral.invalid_value", "");
-      const r = await saveReferralProgram(orgId, eventId, built.request);
+      const r = await saveReferralProgram(orgId, target, built.request);
       setNew({ program: r.program, capability: r.capability, warnings: r.warnings });
       setDraft(draftFromProgram(r.program));
       setShowErrors(false);
@@ -158,7 +172,7 @@ export function ReferralSection({ orgId, eventId, canManage, timezone }: Referra
 
   const act = (which: ReferralAction) =>
     run(which, async () => {
-      const r = await referralAction(orgId, eventId, which);
+      const r = await referralAction(orgId, target, which);
       setNew({ program: r.program, capability: r.capability, warnings: r.warnings });
       return t(which === "pause" ? "referral.paused" : which === "resume" ? "referral.resumed" : "referral.ended");
     });
@@ -167,7 +181,7 @@ export function ReferralSection({ orgId, eventId, canManage, timezone }: Referra
     if (!ticked) throw new ApiError(422, "referral.terms_not_accepted", "");
     const built = judge(true);
     if (!built.ok) throw new ApiError(422, "referral.invalid_value", "");
-    const r = await saveReferralProgram(orgId, eventId, built.request);
+    const r = await saveReferralProgram(orgId, target, built.request);
     setNew({ program: r.program, capability: r.capability, warnings: r.warnings });
     setDraft(draftFromProgram(r.program));
     setShowErrors(false);
@@ -176,14 +190,14 @@ export function ReferralSection({ orgId, eventId, canManage, timezone }: Referra
   };
 
   const confirmEnd = async () => {
-    const r = await referralAction(orgId, eventId, "end");
+    const r = await referralAction(orgId, target, "end");
     setNew({ program: r.program, capability: r.capability, warnings: r.warnings });
     setStatus(t("referral.ended"));
     setEnding(false);
   };
 
   return (
-    <section aria-labelledby={`${ids}-title`} data-testid="referral">
+    <section aria-labelledby={`${ids}-title`} data-testid="referral" data-target={target.kind}>
       <h2 id={`${ids}-title`}>{t("referral.title")}</h2>
       <p>{t("referral.intro")}</p>
 
@@ -234,7 +248,7 @@ export function ReferralSection({ orgId, eventId, canManage, timezone }: Referra
         </div>
       )}
       {warnings.map((w) => {
-        const k = warningKey(w);
+        const k = warningKey(w, target);
         return (
           <p key={w.code} className="notice notice-warn" role="note" data-testid="referral-warning" data-code={w.code}>
             {k === null ? w.message : t(k)}
@@ -404,7 +418,7 @@ export function ReferralSection({ orgId, eventId, canManage, timezone }: Referra
       )}
 
       {program !== null && (
-        <ReferralResults orgId={orgId} eventId={eventId} timezone={timezone} />
+        <ReferralResults orgId={orgId} target={target} timezone={timezone} />
       )}
     </section>
   );

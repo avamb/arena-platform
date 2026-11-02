@@ -4,13 +4,16 @@
  * It sits on top of mockApi.ts: call mockApi(page) first, then mockReferral(page). Playwright runs the
  * LAST registered route first and `route.fallback()` hands what this file does not answer down to the
  * earlier one, so the events, the order card and the login still come from mockApi.
+ *
+ * It answers the programme of the event (`/events/{id}/referral-*`) and of the shop (`/shop/referral-*`) from
+ * the same state; a shop test also calls mockShop(page) first, which serves the shop's own screens.
  */
 import type { Page, Route } from "@playwright/test";
 import { API, CORS, EVENT, ORDER, ORG_A } from "./mockApi";
 
 interface Program {
   id: string;
-  event_id: string;
+  event_id: string | null;
   status: "active" | "paused" | "ended";
   friend_discount_pct: number;
   cashback_pct: number;
@@ -37,6 +40,9 @@ export interface ReferralMockState {
 const BASE = ["event.read", "order.read", "session.read", "tier.read", "ticket.update", "refund.read", "promo.read"];
 export const MANAGER = [...BASE, "promo.update", "refund.create", "refund.approve"];
 export const READER = BASE;
+/** On the shop settings page: the shop rights come with the programme rights (mockShop serves the page itself). */
+export const SHOP_MANAGER = [...MANAGER, "shop.read", "shop.manage", "channel.read"];
+export const SHOP_READER = [...READER, "shop.read"];
 
 const json = (route: Route, status: number, body: unknown) =>
   route.fulfill({ status, contentType: "application/json", headers: CORS, body: JSON.stringify(body) });
@@ -131,9 +137,10 @@ export async function mockReferral(
       });
     }
 
-    if (!path.startsWith(`/events/${EVENT}/referral-`)) return route.fallback();
-    const sub = path.slice(`/events/${EVENT}/`.length);
-    state.referralCalls.push(`${m} ${sub}`);
+    const forShop = path.startsWith("/shop/referral-");
+    if (!forShop && !path.startsWith(`/events/${EVENT}/referral-`)) return route.fallback();
+    const sub = path.slice((forShop ? "/shop/" : `/events/${EVENT}/`).length);
+    state.referralCalls.push(`${m} ${forShop ? "shop " : ""}${sub}`);
     const answer = (status: number) =>
       json(route, status, { program: state.program, capability: capability(state.supported), warnings: [] });
 
@@ -147,7 +154,7 @@ export async function mockReferral(
     }
     if (sub === "referral-program" && m === "PUT") {
       const body = req.postDataJSON() as Record<string, unknown>;
-      state.writes.push(`PUT ${sub} ${JSON.stringify(body)}`);
+      state.writes.push(`PUT ${forShop ? "shop " : ""}${sub} ${JSON.stringify(body)}`);
       const starting = state.program === null || state.program.status === "ended";
       if (starting && body.accept_terms !== true) {
         return json(route, 422, { error: { code: "referral.terms_not_accepted", message: "terms" } });
@@ -156,7 +163,7 @@ export async function mockReferral(
       const now = "2026-11-02T10:00:00Z";
       state.program = {
         id: state.program?.id ?? "0193f01a-0000-7000-8000-0000000000b1",
-        event_id: EVENT,
+        event_id: forShop ? null : EVENT,
         status: starting ? "active" : (state.program as Program).status,
         friend_discount_pct: body.friend_discount_pct as number,
         cashback_pct: body.cashback_pct as number,
@@ -166,12 +173,12 @@ export async function mockReferral(
         ends_at: (body.ends_at as string | null | undefined) ?? null,
         terms_accepted_at: now,
         created_at: now,
-        updated_at: `${now}-${state.writes.length}`.slice(0, 20) === now ? now : new Date(Date.now()).toISOString(),
+        updated_at: new Date(Date.now()).toISOString(),
       };
       return answer(starting ? 201 : 200);
     }
     if (m === "POST" && /^referral-program\/(pause|resume|end)$/.test(sub)) {
-      state.writes.push(`POST ${sub}`);
+      state.writes.push(`POST ${forShop ? "shop " : ""}${sub}`);
       const which = sub.split("/")[1];
       if (state.program === null) return json(route, 404, { error: { code: "referral.program_not_found", message: "none" } });
       state.program = {
@@ -183,7 +190,7 @@ export async function mockReferral(
     }
     if (sub === "referral-program/summary" && m === "GET") {
       return json(route, 200, {
-        event_id: EVENT,
+        event_id: forShop ? null : EVENT,
         codes_issued: 14,
         friends: 23,
         friend_reversals: 1,

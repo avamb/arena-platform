@@ -20,9 +20,40 @@ import type {
   ReferralRewardItem,
   ReferralWarning,
 } from "@/lib/api/types";
+import type { ReferralTarget } from "@/lib/api/endpoints";
 import { windowEdgeInstant, edgeView } from "@/lib/categories";
 import type { MessageKey } from "@/lib/i18n/en";
 import type { Parsed } from "@/lib/promo";
+
+// ─── the target: an event or the shop ───────────────────────────────────────
+
+export type { ReferralTarget };
+
+/**
+ * The words that differ when the programme belongs to the shop: the shop sells goods, not tickets, so the
+ * intro, the "none yet" line and the reasons that name an event or a ticket are told for the shop. Every
+ * other key is shared. A shop key is `referral.shop.<rest>` of the shared key `referral.<rest>`.
+ */
+export const SHOP_TEXT_KEYS = [
+  "referral.intro",
+  "referral.none",
+  "referral.blocked.title",
+  "referral.blocked.next",
+  "referral.warning.no_channel",
+  "referral.warning.some_channels_unsupported",
+  "referral.reason.other",
+  "referral.reason.no_refundable_ticket",
+  "referral.reason.shop_not_supported",
+] as const;
+
+/** The default target of the helpers: an event (its words are the shared ones). */
+const EVENT_TARGET: ReferralTarget = { kind: "event", eventId: "" };
+
+/** The key to print for a shared key: the shop's own variant for the shop, the shared one for an event. */
+export function referralText(target: ReferralTarget, key: MessageKey): MessageKey {
+  if (target.kind !== "shop" || !(SHOP_TEXT_KEYS as readonly string[]).includes(key)) return key;
+  return `referral.shop.${key.slice("referral.".length)}` as MessageKey;
+}
 
 /** The most friends one code may serve (the API's `max_friends` ceiling). */
 export const MAX_REFERRAL_FRIENDS = 32767;
@@ -217,8 +248,8 @@ export function capabilityReasonKey(reason: string | undefined): MessageKey {
 const WARNING_CODES = ["referral.warning.no_channel", "referral.warning.some_channels_unsupported"] as const;
 
 /** The key of a known warning, else null (the screen then prints the server's own sentence). */
-export function warningKey(w: ReferralWarning): MessageKey | null {
-  return (WARNING_CODES as readonly string[]).includes(w.code) ? (w.code as MessageKey) : null;
+export function warningKey(w: ReferralWarning, target: ReferralTarget = EVENT_TARGET): MessageKey | null {
+  return (WARNING_CODES as readonly string[]).includes(w.code) ? referralText(target, w.code as MessageKey) : null;
 }
 
 // ─── rewards ─────────────────────────────────────────────────────────────────
@@ -267,11 +298,12 @@ const REWARD_REASONS = [
 ] as const;
 
 /** The sentence for a reward's reason, or null when it has none. An unknown reason falls back to a general sentence. */
-export function rewardReasonKey(reason: string | null | undefined): MessageKey | null {
+export function rewardReasonKey(reason: string | null | undefined, target: ReferralTarget = EVENT_TARGET): MessageKey | null {
   if (reason === null || reason === undefined || reason === "") return null;
-  return (REWARD_REASONS as readonly string[]).includes(reason)
-    ? (`referral.reason.${reason}` as MessageKey)
-    : "referral.reason.other";
+  return referralText(
+    target,
+    (REWARD_REASONS as readonly string[]).includes(reason) ? (`referral.reason.${reason}` as MessageKey) : "referral.reason.other",
+  );
 }
 
 /** The mark for a friend who got their money back after the cashback left, or null. */
