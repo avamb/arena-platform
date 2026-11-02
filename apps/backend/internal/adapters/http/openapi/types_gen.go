@@ -21282,12 +21282,6 @@ type ExportOrganizationMarketingSubscribersParams struct {
 	// Status `confirmed` (default), `pending`, `withdrawn` or `all`.
 	Status *string `form:"status,omitempty" json:"status,omitempty"`
 
-	// Limit Rows in the file, 1-1000 (default 1000).
-	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
-
-	// Offset Rows to skip.
-	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
-
 	// Locale Language of the column labels.
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }

@@ -53,7 +53,7 @@ func (s *Server) handleMarketingConfirmPage(w http.ResponseWriter, r *http.Reque
 		s.marketingConfirmInvalid(w, r)
 		return
 	}
-	writeMarketingPage(w, l.Locale, "confirm_ask", l.OrgName, "?token="+url.QueryEscape(strings.TrimSpace(token)))
+	writeMarketingPage(w, l.Locale, "confirm_ask", l.OrgName)
 }
 
 // marketingConfirmInvalid answers a used, expired or unknown confirmation token.
@@ -91,7 +91,7 @@ func (s *Server) handleMarketingConfirm(w http.ResponseWriter, r *http.Request) 
 		target = fallback
 	}
 	if target == "" {
-		writeMarketingPage(w, l.Locale, "confirmed", l.OrgName, "")
+		writeMarketingPage(w, l.Locale, "confirmed", l.OrgName)
 		return
 	}
 	// The page was checked by the return-URL policy when the checkout began.
@@ -112,7 +112,7 @@ func marketingLanding(raw, value string) string {
 func (s *Server) handleMarketingWithdrawPage(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	if s.pgxPool == nil {
-		writeMarketingPage(w, "", "invalid", "", "")
+		writeMarketingPage(w, "", "invalid", "")
 		return
 	}
 	u, err := marketing.LookupUnsubscribe(r.Context(), s.pgxPool, token)
@@ -120,19 +120,19 @@ func (s *Server) handleMarketingWithdrawPage(w http.ResponseWriter, r *http.Requ
 		if !errors.Is(err, marketing.ErrTokenInvalid) {
 			s.logger.Error("marketing: withdraw lookup failed", slog.String("error", err.Error()))
 		}
-		writeMarketingPage(w, r.URL.Query().Get("lang"), "invalid", "", "")
+		writeMarketingPage(w, r.URL.Query().Get("lang"), "invalid", "")
 		return
 	}
 	if u.Withdrawn {
-		writeMarketingPage(w, u.Locale, "done", u.OrgName, "")
+		writeMarketingPage(w, u.Locale, "done", u.OrgName)
 		return
 	}
-	writeMarketingPage(w, u.Locale, "ask", u.OrgName, "?token="+url.QueryEscape(strings.TrimSpace(token)))
+	writeMarketingPage(w, u.Locale, "ask", u.OrgName)
 }
 
 func (s *Server) handleMarketingWithdraw(w http.ResponseWriter, r *http.Request) {
 	if s.pgxPool == nil {
-		writeMarketingPage(w, "", "invalid", "", "")
+		writeMarketingPage(w, "", "invalid", "")
 		return
 	}
 	u, err := marketing.Withdraw(r.Context(), s.pgxPool, r.URL.Query().Get("token"), s.marketingVisit(r))
@@ -143,10 +143,10 @@ func (s *Server) handleMarketingWithdraw(w http.ResponseWriter, r *http.Request)
 				"marketing.withdraw_failed", "We could not stop the mailings. Try again in a minute.", r))
 			return
 		}
-		writeMarketingPage(w, "", "invalid", "", "")
+		writeMarketingPage(w, "", "invalid", "")
 		return
 	}
-	writeMarketingPage(w, u.Locale, "done", u.OrgName, "")
+	writeMarketingPage(w, u.Locale, "done", u.OrgName)
 }
 
 // marketingPageTexts: title, "ask" text, button, "done" text, "invalid"
@@ -183,32 +183,39 @@ var marketingPageTexts = map[string][8]string{
 		"לקבל עדכונים והצעות מ־%s? לחצו על הכפתור כדי לאשר את ההרשמה.", "לאישור ההרשמה"},
 }
 
+// marketingPageLangs are the page's languages; marketingPageLang answers one
+// of these constants, never the caller's own text.
+var marketingPageLangs = []string{"en", "ru", "es", "cs", "de", "fr", "he"}
+
 func marketingPageLang(raw string) string {
 	l := strings.ToLower(strings.TrimSpace(raw))
 	if i := strings.IndexAny(l, "-_"); i > 0 {
 		l = l[:i]
 	}
-	if _, ok := marketingPageTexts[l]; ok {
-		return l
+	for _, known := range marketingPageLangs {
+		if l == known {
+			return known
+		}
 	}
 	return "en"
 }
 
 // writeMarketingPage renders the small page of the two links. state is
-// "ask", "done", "invalid", "confirmed" or "confirm_ask"; action is the
-// form's query string.
-func writeMarketingPage(w http.ResponseWriter, locale, state, orgName, action string) {
+// "ask", "done", "invalid", "confirmed" or "confirm_ask". The form has no
+// action attribute: it posts to the page's own address, token included, so
+// nothing the visitor sent is written back into the page.
+func writeMarketingPage(w http.ResponseWriter, locale, state, orgName string) {
 	lang := marketingPageLang(locale)
 	t := marketingPageTexts[lang]
 	org := html.EscapeString(orgName)
 	var body string
 	switch state {
 	case "ask":
-		body = fmt.Sprintf(`<p>%s</p><form method="post" enctype="multipart/form-data" action="%s"><button type="submit">%s</button></form>`,
-			fmt.Sprintf(html.EscapeString(t[1]), org), html.EscapeString(action), html.EscapeString(t[2]))
+		body = fmt.Sprintf(`<p>%s</p><form method="post" enctype="multipart/form-data"><button type="submit">%s</button></form>`,
+			fmt.Sprintf(html.EscapeString(t[1]), org), html.EscapeString(t[2]))
 	case "confirm_ask":
-		body = fmt.Sprintf(`<p>%s</p><form method="post" enctype="multipart/form-data" action="%s"><button type="submit">%s</button></form>`,
-			fmt.Sprintf(html.EscapeString(t[6]), org), html.EscapeString(action), html.EscapeString(t[7]))
+		body = fmt.Sprintf(`<p>%s</p><form method="post" enctype="multipart/form-data"><button type="submit">%s</button></form>`,
+			fmt.Sprintf(html.EscapeString(t[6]), org), html.EscapeString(t[7]))
 	case "done":
 		body = "<p>" + fmt.Sprintf(html.EscapeString(t[3]), org) + "</p>"
 	case "confirmed":

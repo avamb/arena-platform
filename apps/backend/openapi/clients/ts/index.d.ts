@@ -7093,10 +7093,12 @@ export interface paths {
         };
         /**
          * The buyers who agreed to the organization's mailings, as CSV
-         * @description The same list as `marketing-subscribers` (up to 1000 rows a file, same
-         *     `status` filter), as an Excel-friendly CSV with the withdraw link of
-         *     every address. Column labels follow `?locale=` (en, ru, es). Requires
-         *     `order.read`; an organization API key is refused.
+         * @description The same list as `marketing-subscribers` (every row of the `status`
+         *     filter, read in batches), as an Excel-friendly CSV with the withdraw
+         *     link of every address. A list above 50000 rows is refused with `413`
+         *     before the first byte, never cut. Column labels follow `?locale=`
+         *     (en, ru, es). Requires `order.read`; an organization API key is
+         *     refused.
          */
         get: operations["exportOrganizationMarketingSubscribers"];
         put?: never;
@@ -56782,10 +56784,6 @@ export interface operations {
             query?: {
                 /** @description `confirmed` (default), `pending`, `withdrawn` or `all`. */
                 status?: string;
-                /** @description Rows in the file, 1-1000 (default 1000). */
-                limit?: number;
-                /** @description Rows to skip. */
-                offset?: number;
                 /** @description Language of the column labels. */
                 locale?: string;
             };
@@ -56827,6 +56825,15 @@ export interface operations {
             };
             /** @description Not a member, no `order.read`, or an API key. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `export.too_many_rows` - more than 50000 rows; choose one status at a time. */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };
