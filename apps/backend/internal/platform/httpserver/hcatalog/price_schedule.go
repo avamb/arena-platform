@@ -314,6 +314,13 @@ func (h *Handler) HandlePutTierPriceSchedule(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
+	// A schedule typed by hand ends the smart price this category follows
+	// (owner decision В-5, spec 51 §4.2).
+	if _, err := txq.OverrideSmartPriceRulesForTier(ctx, tier.ID); err != nil {
+		h.logger.Error("tier: smart price override failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("tier.schedule_failed", "failed to replace price schedule", r))
+		return
+	}
 	if err := tx.Commit(ctx); err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("tier.commit_failed", "failed to commit price schedule", r))
 		return
