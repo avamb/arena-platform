@@ -11,12 +11,25 @@ import (
 	"github.com/google/uuid"
 )
 
-const insertTicketPDFDownload = `-- name: InsertTicketPDFDownload :exec
-INSERT INTO ticket_access_events (checkout_session_id, ticket_id, org_id, source, action, ip, user_agent)
-VALUES ($1, $2, $3, $4, 'pdf_download', NULLIF($5::text, '')::inet, NULLIF($6::text, ''))`
+const insertTicketPDFDownload = `-- name: InsertTicketPDFDownload :execrows
+INSERT INTO ticket_access_events (checkout_session_id, ticket_id, org_id, source, action, ip, user_agent, likely_automated)
+SELECT $1, $2, $3, $4, 'pdf_download', NULLIF($5::text, '')::inet, NULLIF($6::text, ''), $7
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM   ticket_access_events e
+    WHERE  e.checkout_session_id = $1
+      AND  e.ticket_id = $2
+      AND  e.action = 'pdf_download'
+      AND  e.source = $4
+      AND  e.ip IS NOT DISTINCT FROM NULLIF($5::text, '')::inet
+      AND  e.likely_automated = $7
+      AND  e.occurred_at > now() - interval '1 minute'
+)`
 
 // InsertTicketPDFDownloadParams is one PDF request. IP is the client address
 // as text and UserAgent the request's header; "" stores NULL for either.
+// LikelyAutomated marks a request that looks like a mail scanner or a link
+// preview rather than the buyer.
 type InsertTicketPDFDownloadParams struct {
 	CheckoutSessionID uuid.UUID
 	TicketID          uuid.UUID
@@ -24,24 +37,31 @@ type InsertTicketPDFDownloadParams struct {
 	Source            string
 	IP                string
 	UserAgent         string
+	LikelyAutomated   bool
 }
 
-// InsertTicketPDFDownload records one PDF request.
-func (q *Queries) InsertTicketPDFDownload(ctx context.Context, arg InsertTicketPDFDownloadParams) error {
-	_, err := q.db.Exec(ctx, insertTicketPDFDownload,
-		arg.CheckoutSessionID, arg.TicketID, arg.OrgID, arg.Source, arg.IP, arg.UserAgent)
-	return err
+// InsertTicketPDFDownload records one PDF request and reports whether a row
+// was written: the same ticket from the same address and source within a
+// minute writes nothing.
+func (q *Queries) InsertTicketPDFDownload(ctx context.Context, arg InsertTicketPDFDownloadParams) (bool, error) {
+	tag, err := q.db.Exec(ctx, insertTicketPDFDownload,
+		arg.CheckoutSessionID, arg.TicketID, arg.OrgID, arg.Source, arg.IP, arg.UserAgent, arg.LikelyAutomated)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 const insertTicketsView = `-- name: InsertTicketsView :execrows
-INSERT INTO ticket_access_events (checkout_session_id, ticket_id, org_id, source, action, ip, user_agent)
-SELECT $1, NULL, $2, $3, 'tickets_view', NULLIF($4::text, '')::inet, NULLIF($5::text, '')
+INSERT INTO ticket_access_events (checkout_session_id, ticket_id, org_id, source, action, ip, user_agent, likely_automated)
+SELECT $1, NULL, $2, $3, 'tickets_view', NULLIF($4::text, '')::inet, NULLIF($5::text, ''), $6
 WHERE NOT EXISTS (
     SELECT 1
     FROM   ticket_access_events e
     WHERE  e.checkout_session_id = $1
       AND  e.action = 'tickets_view'
       AND  e.ip IS NOT DISTINCT FROM NULLIF($4::text, '')::inet
+      AND  e.likely_automated = $6
       AND  e.occurred_at > now() - interval '10 minutes'
 )`
 
@@ -53,6 +73,7 @@ type InsertTicketsViewParams struct {
 	Source            string
 	IP                string
 	UserAgent         string
+	LikelyAutomated   bool
 }
 
 // InsertTicketsView records that the buyer was shown the order's tickets and
@@ -60,7 +81,7 @@ type InsertTicketsViewParams struct {
 // ten minutes (the widget polls) writes nothing.
 func (q *Queries) InsertTicketsView(ctx context.Context, arg InsertTicketsViewParams) (bool, error) {
 	tag, err := q.db.Exec(ctx, insertTicketsView,
-		arg.CheckoutSessionID, arg.OrgID, arg.Source, arg.IP, arg.UserAgent)
+		arg.CheckoutSessionID, arg.OrgID, arg.Source, arg.IP, arg.UserAgent, arg.LikelyAutomated)
 	if err != nil {
 		return false, err
 	}
@@ -69,7 +90,7 @@ func (q *Queries) InsertTicketsView(ctx context.Context, arg InsertTicketsViewPa
 
 const listTicketAccessEventsByCheckout = `-- name: ListTicketAccessEventsByCheckout :many
 SELECT id, checkout_session_id, ticket_id, org_id, source, action,
-       host(ip) AS ip, user_agent, occurred_at
+       host(ip) AS ip, user_agent, likely_automated, occurred_at
 FROM   ticket_access_events
 WHERE  checkout_session_id = $1
 ORDER  BY occurred_at, id`
@@ -85,6 +106,7 @@ type TicketAccessEventRow struct {
 	Action            string     `json:"action"`
 	IP                *string    `json:"ip"`
 	UserAgent         *string    `json:"user_agent"`
+	LikelyAutomated   bool       `json:"likely_automated"`
 	OccurredAt        time.Time  `json:"occurred_at"`
 }
 
@@ -100,7 +122,7 @@ func (q *Queries) ListTicketAccessEventsByCheckout(ctx context.Context, checkout
 	for rows.Next() {
 		var r TicketAccessEventRow
 		if err := rows.Scan(&r.ID, &r.CheckoutSessionID, &r.TicketID, &r.OrgID, &r.Source,
-			&r.Action, &r.IP, &r.UserAgent, &r.OccurredAt); err != nil {
+			&r.Action, &r.IP, &r.UserAgent, &r.LikelyAutomated, &r.OccurredAt); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

@@ -17,6 +17,13 @@
 -- source says where the request came from: 'email' when the link in the
 -- ticket e-mail was followed (?src=email), otherwise 'web'.
 --
+-- likely_automated marks a request that looks like a machine rather than the
+-- buyer: corporate mail security (Safe Links, Mimecast, Proofpoint) opens
+-- every link of a letter at delivery, and link previews do the same. Such a
+-- row is kept (it still proves the letter arrived) but must never be quoted
+-- as "the buyer downloaded the ticket". A repeat of the same download from the
+-- same address and source within a minute is not written again.
+--
 -- The IP is stored in the clear on purpose (decision R-10, 2026-11-01): the
 -- dispute evidence must name the real address, and payment providers keep it
 -- too. Retention follows the other dispute evidence (counted from the event
@@ -40,6 +47,7 @@ CREATE TABLE IF NOT EXISTS ticket_access_events (
     action              text        NOT NULL,
     ip                  inet,
     user_agent          text,
+    likely_automated    boolean     NOT NULL DEFAULT false,
     occurred_at         timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT ticket_access_events_source_check
         CHECK (source IN ('web', 'email')),

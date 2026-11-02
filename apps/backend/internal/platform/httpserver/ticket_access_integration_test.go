@@ -39,13 +39,17 @@ func TestTicketAccessLog_PublicRoutesRecordDownloadsAndViews(t *testing.T) {
 		_, _ = f.pool.Exec(context.Background(), `DELETE FROM ticket_credentials WHERE ticket_id = $1`, ticket)
 	})
 
-	get := func(path string) (int, []byte) {
+	const buyerUA = "Mozilla/5.0 (X11; Linux x86_64) AccessLogTest/1.0"
+	getAs := func(path, ua string) (int, []byte) {
 		t.Helper()
 		req, err := http.NewRequest(http.MethodGet, f.ts.URL+path, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		req.Header.Set("User-Agent", "AccessLogTest/1.0")
+		req.Header.Set("User-Agent", ua)
+		if ua == buyerUA {
+			req.Header.Set("Accept-Language", "es-ES,es;q=0.9")
+		}
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -54,8 +58,13 @@ func TestTicketAccessLog_PublicRoutesRecordDownloadsAndViews(t *testing.T) {
 		body, _ := io.ReadAll(resp.Body)
 		return resp.StatusCode, body
 	}
+	get := func(path string) (int, []byte) { return getAs(path, buyerUA) }
 
 	pdfPath := "/v1/public/checkout/" + token + "/tickets/" + ticket.String() + "/pdf"
+	// The buyer's mail security opens the link first.
+	if code, _ := getAs(pdfPath+"?src=email", "Mozilla/5.0 Mimecast URL Protect"); code != http.StatusOK {
+		t.Fatalf("PDF for the scanner: %d", code)
+	}
 	if code, body := get(pdfPath + "?src=email"); code != http.StatusOK || string(body) != string(pdf) {
 		t.Fatalf("PDF from the letter: %d %q", code, body)
 	}
@@ -76,16 +85,23 @@ func TestTicketAccessLog_PublicRoutesRecordDownloadsAndViews(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var downloads, views int
+	var downloads, views, automated int
 	sources := map[string]int{}
 	for _, r := range rows {
+		if r.LikelyAutomated {
+			automated++
+			if r.Source != "email" || r.Action != "pdf_download" {
+				t.Errorf("automated row = %s/%s, want the scanner's e-mail download", r.Source, r.Action)
+			}
+			continue
+		}
 		if r.OrgID != f.orgA {
 			t.Errorf("row org = %s, want %s", r.OrgID, f.orgA)
 		}
 		if r.IP == nil || *r.IP == "" {
 			t.Errorf("row %s has no client address", r.Action)
 		}
-		if r.UserAgent == nil || *r.UserAgent != "AccessLogTest/1.0" {
+		if r.UserAgent == nil || *r.UserAgent != buyerUA {
 			t.Errorf("row %s user agent = %v", r.Action, r.UserAgent)
 		}
 		switch r.Action {
@@ -101,6 +117,9 @@ func TestTicketAccessLog_PublicRoutesRecordDownloadsAndViews(t *testing.T) {
 	}
 	if downloads != 2 || sources["email"] != 1 || sources["web"] != 1 {
 		t.Errorf("downloads = %d by source %v, want one from the letter and one from the page", downloads, sources)
+	}
+	if automated != 1 {
+		t.Errorf("automated rows = %d, want the scanner's one", automated)
 	}
 	if views != 1 {
 		t.Errorf("views = %d after three polls, want 1", views)

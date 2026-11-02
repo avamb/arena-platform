@@ -97,13 +97,28 @@ func TestTicketAccess_LogStoresDownloadsAndDedupsViews(t *testing.T) {
 	csID, orgID, _ := checkoutOfTicket(ctx, t, pool, seed.TicketID)
 	q := gen.New(pool)
 
-	for i := 0; i < 2; i++ {
-		if err := q.InsertTicketPDFDownload(ctx, gen.InsertTicketPDFDownloadParams{
-			CheckoutSessionID: csID, TicketID: seed.TicketID, OrgID: orgID,
-			Source: "email", IP: "2001:db8::7", UserAgent: "Mail/1.0",
-		}); err != nil {
-			t.Fatalf("insert download %d: %v", i, err)
-		}
+	download := gen.InsertTicketPDFDownloadParams{
+		CheckoutSessionID: csID, TicketID: seed.TicketID, OrgID: orgID,
+		Source: "email", IP: "2001:db8::7", UserAgent: "Mail/1.0",
+	}
+	if wrote, err := q.InsertTicketPDFDownload(ctx, download); err != nil || !wrote {
+		t.Fatalf("first download: wrote=%v err=%v", wrote, err)
+	}
+	if wrote, err := q.InsertTicketPDFDownload(ctx, download); err != nil || wrote {
+		t.Fatalf("repeat download within a minute: wrote=%v err=%v, want no row", wrote, err)
+	}
+	fromPage := download
+	fromPage.Source = "web"
+	if wrote, err := q.InsertTicketPDFDownload(ctx, fromPage); err != nil || !wrote {
+		t.Fatalf("download from the page: wrote=%v err=%v", wrote, err)
+	}
+	// A mail scanner behind the same address never hides the buyer's own
+	// download, and the buyer's never hides it.
+	scanner := download
+	scanner.UserAgent = "Mimecast URL Protect"
+	scanner.LikelyAutomated = true
+	if wrote, err := q.InsertTicketPDFDownload(ctx, scanner); err != nil || !wrote {
+		t.Fatalf("scanner download: wrote=%v err=%v", wrote, err)
 	}
 	view := gen.InsertTicketsViewParams{CheckoutSessionID: csID, OrgID: orgID, Source: "web", IP: "203.0.113.9", UserAgent: "Widget/1.0"}
 	if wrote, err := q.InsertTicketsView(ctx, view); err != nil || !wrote {
@@ -130,16 +145,20 @@ func TestTicketAccess_LogStoresDownloadsAndDedupsViews(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 5 {
-		t.Fatalf("rows = %d, want 2 downloads + 3 views", len(rows))
+	if len(rows) != 6 {
+		t.Fatalf("rows = %d, want 3 downloads + 3 views", len(rows))
 	}
 	d := rows[0]
 	if d.Action != "pdf_download" || d.Source != "email" || d.TicketID == nil || *d.TicketID != seed.TicketID ||
-		d.IP == nil || *d.IP != "2001:db8::7" || d.UserAgent == nil || *d.UserAgent != "Mail/1.0" || d.OrgID != orgID {
+		d.IP == nil || *d.IP != "2001:db8::7" || d.UserAgent == nil || *d.UserAgent != "Mail/1.0" || d.OrgID != orgID ||
+		d.LikelyAutomated {
 		t.Errorf("download row = %+v", d)
 	}
-	var views int
+	var views, automated int
 	for _, r := range rows {
+		if r.LikelyAutomated {
+			automated++
+		}
 		if r.Action == "tickets_view" {
 			views++
 			if r.TicketID != nil {
@@ -149,6 +168,9 @@ func TestTicketAccess_LogStoresDownloadsAndDedupsViews(t *testing.T) {
 	}
 	if views != 3 {
 		t.Errorf("views = %d, want 3", views)
+	}
+	if automated != 1 {
+		t.Errorf("automated rows = %d, want only the scanner's", automated)
 	}
 
 	// The rows go with their checkout: the fixture's own cleanup deletes the

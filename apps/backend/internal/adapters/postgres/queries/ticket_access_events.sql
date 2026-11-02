@@ -2,30 +2,44 @@
 -- (migration 0184, spec 51 decision R-13): the access log a chargeback answer
 -- quotes as Stripe's access_activity_log.
 
--- name: InsertTicketPDFDownload :exec
+-- name: InsertTicketPDFDownload :execrows
 -- One row per PDF request. ip is the client address as text ('' = unknown).
-INSERT INTO ticket_access_events (checkout_session_id, ticket_id, org_id, source, action, ip, user_agent)
-VALUES ($1, $2, $3, $4, 'pdf_download', NULLIF($5::text, '')::inet, NULLIF($6::text, ''));
+-- A repeat of the same ticket from the same address and source within a
+-- minute is not recorded again (0 rows), so the log cannot be flooded.
+INSERT INTO ticket_access_events (checkout_session_id, ticket_id, org_id, source, action, ip, user_agent, likely_automated)
+SELECT $1, $2, $3, $4, 'pdf_download', NULLIF($5::text, '')::inet, NULLIF($6::text, ''), $7
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM   ticket_access_events e
+    WHERE  e.checkout_session_id = $1
+      AND  e.ticket_id = $2
+      AND  e.action = 'pdf_download'
+      AND  e.source = $4
+      AND  e.ip IS NOT DISTINCT FROM NULLIF($5::text, '')::inet
+      AND  e.likely_automated = $7
+      AND  e.occurred_at > now() - interval '1 minute'
+);
 
 -- name: InsertTicketsView :execrows
 -- The order-status answer listed the paid tickets. The widget polls that
 -- answer, so a view from the same address within ten minutes is not recorded
 -- again (0 rows).
-INSERT INTO ticket_access_events (checkout_session_id, ticket_id, org_id, source, action, ip, user_agent)
-SELECT $1, NULL, $2, $3, 'tickets_view', NULLIF($4::text, '')::inet, NULLIF($5::text, '')
+INSERT INTO ticket_access_events (checkout_session_id, ticket_id, org_id, source, action, ip, user_agent, likely_automated)
+SELECT $1, NULL, $2, $3, 'tickets_view', NULLIF($4::text, '')::inet, NULLIF($5::text, ''), $6
 WHERE NOT EXISTS (
     SELECT 1
     FROM   ticket_access_events e
     WHERE  e.checkout_session_id = $1
       AND  e.action = 'tickets_view'
       AND  e.ip IS NOT DISTINCT FROM NULLIF($4::text, '')::inet
+      AND  e.likely_automated = $6
       AND  e.occurred_at > now() - interval '10 minutes'
 );
 
 -- name: ListTicketAccessEventsByCheckout :many
 -- Everything recorded for one purchase, oldest first.
 SELECT id, checkout_session_id, ticket_id, org_id, source, action,
-       host(ip) AS ip, user_agent, occurred_at
+       host(ip) AS ip, user_agent, likely_automated, occurred_at
 FROM   ticket_access_events
 WHERE  checkout_session_id = $1
 ORDER  BY occurred_at, id;

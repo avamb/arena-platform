@@ -21,9 +21,9 @@ type fakeAccessLog struct {
 	err   error
 }
 
-func (f *fakeAccessLog) InsertTicketPDFDownload(_ context.Context, arg gen.InsertTicketPDFDownloadParams) error {
+func (f *fakeAccessLog) InsertTicketPDFDownload(_ context.Context, arg gen.InsertTicketPDFDownloadParams) (bool, error) {
 	f.pdf = append(f.pdf, arg)
-	return f.err
+	return f.err == nil, f.err
 }
 
 func (f *fakeAccessLog) InsertTicketsView(_ context.Context, arg gen.InsertTicketsViewParams) (bool, error) {
@@ -54,6 +54,7 @@ func TestRecordPDFDownload_WritesTheRow(t *testing.T) {
 	r := httptest.NewRequest("GET", "/v1/public/checkout/tok/tickets/x/pdf?src=email", nil)
 	r.RemoteAddr = "203.0.113.7:51234"
 	r.Header.Set("User-Agent", "Mozilla/5.0 Test")
+	r.Header.Set("Accept-Language", "es-ES,es;q=0.9")
 	cs, org, ticket := uuid.New(), uuid.New(), uuid.New()
 
 	h.recordPDFDownload(r, cs, org, ticket)
@@ -65,6 +66,7 @@ func TestRecordPDFDownload_WritesTheRow(t *testing.T) {
 	want := gen.InsertTicketPDFDownloadParams{
 		CheckoutSessionID: cs, TicketID: ticket, OrgID: org,
 		Source: TicketAccessSourceEmail, IP: "203.0.113.7", UserAgent: "Mozilla/5.0 Test",
+		LikelyAutomated: false,
 	}
 	if got != want {
 		t.Errorf("row = %+v, want %+v", got, want)
@@ -87,6 +89,78 @@ func TestRecordTicketsView_BadAddressAndFailureAreHarmless(t *testing.T) {
 	if rec.views[0].IP != "" || rec.views[0].Source != TicketAccessSourceWeb {
 		t.Errorf("row = %+v, want unknown IP and source web", rec.views[0])
 	}
+}
+
+// A mail scanner or a link preview is recorded but marked, so it is never
+// quoted as the buyer's own download; a real browser is not marked.
+func TestTicketAccessLooksAutomated(t *testing.T) {
+	browser := "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile Safari/604.1"
+	cases := []struct {
+		name    string
+		ua      string
+		lang    string
+		headers map[string]string
+		want    bool
+	}{
+		{"buyer browser", browser, "ru-RU,ru;q=0.9", nil, false},
+		{"no Accept-Language", browser, "", nil, true},
+		{"no user agent", "", "en", nil, true},
+		{"Mimecast", "Mozilla/5.0 Mimecast URL Protect", "en", nil, true},
+		{"Microsoft Office", "Microsoft Office/16.0 (Windows NT 10.0)", "en", nil, true},
+		{"script", "Go-http-client/1.1", "en", nil, true},
+		{"crawler", "Mozilla/5.0 (compatible; bingbot/2.0)", "en", nil, true},
+		{"prefetch", browser, "en", map[string]string{"Sec-Purpose": "prefetch"}, true},
+	}
+	for _, c := range cases {
+		r := httptest.NewRequest("GET", "/x", nil)
+		r.Header.Del("User-Agent")
+		if c.ua != "" {
+			r.Header.Set("User-Agent", c.ua)
+		}
+		if c.lang != "" {
+			r.Header.Set("Accept-Language", c.lang)
+		}
+		for k, v := range c.headers {
+			r.Header.Set(k, v)
+		}
+		if got := ticketAccessLooksAutomated(r); got != c.want {
+			t.Errorf("%s: likely automated = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// The write outlives a client that hung up: the recorder still gets a live
+// context.
+func TestRecordPDFDownload_SurvivesACancelledRequest(t *testing.T) {
+	rec := &ctxAccessLog{}
+	h := (&Handler{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}).WithTicketAccessLog(rec)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	r := httptest.NewRequest("GET", "/x", nil).WithContext(ctx)
+	h.recordPDFDownload(r, uuid.New(), uuid.New(), uuid.New())
+	if rec.ctxErr != nil {
+		t.Errorf("recorder saw a dead context: %v", rec.ctxErr)
+	}
+	if !rec.hasDeadline {
+		t.Error("the write must be bounded by a timeout")
+	}
+}
+
+type ctxAccessLog struct {
+	ctxErr      error
+	hasDeadline bool
+}
+
+func (c *ctxAccessLog) InsertTicketPDFDownload(ctx context.Context, _ gen.InsertTicketPDFDownloadParams) (bool, error) {
+	c.ctxErr = ctx.Err()
+	_, c.hasDeadline = ctx.Deadline()
+	return true, nil
+}
+
+func (c *ctxAccessLog) InsertTicketsView(ctx context.Context, _ gen.InsertTicketsViewParams) (bool, error) {
+	c.ctxErr = ctx.Err()
+	_, c.hasDeadline = ctx.Deadline()
+	return true, nil
 }
 
 // Without a recorder nothing is attempted.
