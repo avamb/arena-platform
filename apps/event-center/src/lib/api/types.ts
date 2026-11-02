@@ -56,6 +56,11 @@ export type PromoterListEnvelope = S["PromoterListEnvelope"];
 export type PromoterEnvelope = S["PromoterEnvelope"];
 // 4-3: promo codes.
 export type PromoCodeItem = S["PromoCodeItem"];
+// Spec 51-1: cart reminder, marketing tick and its subscribers.
+export type GrowthSettings = S["GrowthSettings"];
+export type GrowthSettingsUpdate = S["GrowthSettingsUpdate"];
+export type MarketingSubscriber = S["MarketingSubscriber"];
+export type MarketingSubscriberList = S["MarketingSubscriberList"];
 export type PromoCodeListResponse = S["PromoCodeListResponse"];
 export type PromoCodeEnvelope = S["PromoCodeEnvelope"];
 export type PromoRedemptionItem = S["PromoRedemptionItem"];

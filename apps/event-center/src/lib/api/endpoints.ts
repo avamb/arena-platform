@@ -22,6 +22,9 @@ import type {
   CreateOrderRefundsRequest,
   CreateOrderRefundsResponse,
   CreatePromoCodeRequest,
+  GrowthSettings,
+  GrowthSettingsUpdate,
+  MarketingSubscriberList,
   BotInvitationCreateResponse,
   BotInvitationResendResponse,
   BotInvitationRevokeResponse,
@@ -204,6 +207,33 @@ export function downloadSampleTicket(orgId: string, sessionId: string, locale: s
     query: { locale },
     accept: "application/pdf",
     fallbackName: "sample-ticket.pdf",
+  });
+}
+
+// Spec 51-1
+export function fetchGrowthSettings(orgId: string): Promise<GrowthSettings> {
+  return call<GrowthSettings>({ route: API.growthSettings, params: { org_id: orgId } });
+}
+
+export function saveGrowthSettings(orgId: string, body: GrowthSettingsUpdate): Promise<GrowthSettings> {
+  return call<GrowthSettings>({ route: API.growthSettingsUpdate, params: { org_id: orgId }, body });
+}
+
+export function listMarketingSubscribers(orgId: string, status: string, limit = 100): Promise<MarketingSubscriberList> {
+  return call<MarketingSubscriberList>({
+    route: API.marketingSubscribers,
+    params: { org_id: orgId },
+    query: { status, limit: String(limit) },
+  });
+}
+
+export function downloadMarketingSubscribersCsv(orgId: string, status: string, locale: string): Promise<DownloadedFile> {
+  return download({
+    route: API.marketingSubscribersCsv,
+    params: { org_id: orgId },
+    query: { status, locale },
+    accept: "text/csv",
+    fallbackName: "subscribers.csv",
   });
 }
 

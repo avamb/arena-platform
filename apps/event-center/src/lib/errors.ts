@@ -202,7 +202,9 @@ export type ApiErrorStem =
   | "shopVariantsChanged"
   | "shopSettingsChanged"
   | "shopCurrencyLocked"
-  | "shopCurrencyUnsupported";
+  | "shopCurrencyUnsupported"
+  | "growthCodeNotFound"
+  | "growthCodeOnePerBuyer";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -245,6 +247,7 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "shopStockChanged", "shopDuplicateSlug", "shopVariantsInvalid", "shopMediaInvalid", "shopNotShippable", "shopNotCancellable", "shopNotRefundable", "shopRefundAmount", "shopCurrency", "shopOperatorOnly",
   "shopNothingToRefund", "shopOutOfStock", "shopOrderChanged", "shopOrderEmailUnavailable", "shopOrderNoBuyerEmail", "shopDuplicateDomain",
   "shopVariantsChanged", "shopSettingsChanged", "shopCurrencyLocked", "shopCurrencyUnsupported",
+  "growthCodeNotFound", "growthCodeOnePerBuyer",
 ];
 
 /**
@@ -254,6 +257,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
  */
 export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "order.seller_site_order": "sellerSiteOrder",
+  "growth.promo_code_not_found": "growthCodeNotFound",
+  "growth.promo_code_needs_one_use_per_buyer": "growthCodeOnePerBuyer",
   "refund.seller_site_order": "sellerSiteOrder",
   "session.change_site_unsupported": "sessionChangeSite",
   "organization.contact_missing": "contactMissing",
