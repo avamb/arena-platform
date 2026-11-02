@@ -703,25 +703,24 @@ func (h *Handler) orderPersist(
 		h.orderInternal(w, req, "insert checkout session failed", err)
 		return
 	}
-	// The code's max_uses is taken here, under a lock per code held until
-	// this transaction commits the order (P0-1 defect D-02):
-	// orderPromoDiscount counts recorded redemptions only, and PAY_ORDER
-	// records them. A code used up meanwhile refuses the order and writes
-	// nothing; the cart keeps its hold, so the site can send it again
+	// The code's max_uses and max_uses_per_customer are taken here, under a
+	// lock per code held until this transaction commits the order (P0-1
+	// defect D-02): orderPromoDiscount counts recorded redemptions only, and
+	// PAY_ORDER records them. A code used up meanwhile refuses the order and
+	// writes nothing; the cart keeps its hold, so the site can send it again
 	// without the code.
 	if promoCodeID != nil {
-		exhausted, err := hcheckout.ReservePromoUseTx(ctx, txq, hcheckout.PromoUse{
+		refusal, err := hcheckout.ReservePromoUseTx(ctx, txq, hcheckout.PromoUse{
 			PromoCodeID: *promoCodeID, OrgID: cc.orgID,
-			ReservationID: &res.ID, CustomerID: &customerID,
-			BuyerEmail: strings.TrimSpace(req.Email),
+			SessionID: &cc.sessionID, ReservationID: &res.ID,
+			CustomerID: &customerID, BuyerEmail: strings.TrimSpace(req.Email),
 		})
 		if err != nil {
 			h.orderTransient(w, req, cc, "reserve promo code use failed", err)
 			return
 		}
-		if exhausted {
-			writeBil24JSON(w, http.StatusOK, bil24Error(req.Command, ResultCodeUserVisible,
-				h.localizeDesc(req.Locale, cc.locale, "bil24.promo_exhausted", "promo code has already been used up", nil)))
+		if refusal != "" {
+			h.writePromoRefusal(w, req, cc, refusal)
 			return
 		}
 	}
@@ -1009,6 +1008,19 @@ func (h *Handler) orderTransient(w http.ResponseWriter, req bil24Request, cc car
 		slog.String("error", err.Error()),
 	)
 	h.writeCartTransient(w, req, cc)
+}
+
+// writePromoRefusal answers a code that has no use left for this order
+// (hcheckout.ReservePromoUseTx) with 101 and the rule it would break:
+// bil24.promo_exhausted for max_uses, bil24.promo_per_customer_limit for
+// max_uses_per_customer.
+func (h *Handler) writePromoRefusal(w http.ResponseWriter, req bil24Request, cc cartCtx, refusal string) {
+	k, ok := promoErrorKeys[refusal]
+	if !ok {
+		k = promoErrorKeys[hcheckout.PromoErrExhausted]
+	}
+	writeBil24JSON(w, http.StatusOK, bil24Error(req.Command, ResultCodeUserVisible,
+		h.localizeDesc(req.Locale, cc.locale, k.key, k.english, nil)))
 }
 
 func (h *Handler) orderInternal(w http.ResponseWriter, req bil24Request, msg string, err error) {

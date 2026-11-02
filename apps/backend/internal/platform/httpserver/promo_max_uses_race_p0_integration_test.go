@@ -8,7 +8,9 @@
 //
 // P0-1 defect D-02: the checkout that commits its order second counts the
 // first one under the code's lock (hcheckout.ReservePromoUseTx) and is
-// refused with promo.exhausted.
+// refused with promo.exhausted. The same lock covers max_uses_per_customer:
+// one buyer with two checkouts open at once gets the discount once and the
+// other checkout is refused with promo.per_customer_limit.
 package httpserver
 
 import (
@@ -147,5 +149,135 @@ func TestORD08_TwoConcurrentOrdersWithAMaxUsesOneCode(t *testing.T) {
 	}
 	if cancelledHolds != refused {
 		t.Errorf("released holds = %d, want %d (one per refused checkout)", cancelledHolds, refused)
+	}
+}
+
+// TestORD08_OneBuyerTwoConcurrentOrdersWithAPerCustomerOneCode is the
+// max_uses_per_customer half of D-02: one buyer (one e-mail) starts two
+// checkouts at the same moment, one per date of the event, with a code of
+// max_uses_per_customer=1 and no overall cap. Two dates, because on ONE date
+// the second checkout supersedes the buyer's first order instead
+// (supersedeOpenOrder), so only one of them can ever be paid there anyway.
+func TestORD08_OneBuyerTwoConcurrentOrdersWithAPerCustomerOneCode(t *testing.T) {
+	pool := integrationPool(t)
+	ctx := t.Context()
+	f := newHostedOrgFixture(t, ctx, pool, "p0ord8c")
+	defer f.cleanup()
+	defer f.cleanupPromos()
+	defer func() {
+		_, _ = pool.Exec(context.Background(), `UPDATE checkout_sessions SET promo_code_id = NULL WHERE org_id = $1`, f.orgID)
+	}()
+	srv := buildHostedCheckoutServer(t, pool, newStubStripe(t).baseURL())
+	q := gen.New(pool)
+
+	// A second date of the same event with its own category and places.
+	session2, tier2 := uuid.New(), uuid.New()
+	for i, st := range []struct {
+		sql  string
+		args []any
+	}{
+		{`INSERT INTO sessions (id, event_id, venue_id, start_at, end_at,
+		    capacity_total, status, admission_mode, currency, currency_source)
+		  VALUES ($1, $2, $3, now() + interval '31 days',
+		    now() + interval '31 days 2 hours', 100, 'scheduled',
+		    'general_admission', 'EUR', 'override')`, []any{session2, f.eventID, f.venueID}},
+		{`INSERT INTO ticket_tiers (id, session_id, name, pricing_mode, price_amount, currency, sort_order)
+		  VALUES ($1, $2, 'HOCO Tier 2', 'fixed', 2500, 'EUR', 0)`, []any{tier2, session2}},
+		{`INSERT INTO inventory_ledger (session_id, tier_id, capacity_total) VALUES ($1, NULL, 100)`, []any{session2}},
+	} {
+		if _, err := pool.Exec(ctx, st.sql, st.args...); err != nil {
+			t.Fatalf("second date step %d: %v", i, err)
+		}
+	}
+	if _, err := q.InsertGAUnits(ctx, session2, "ga|t1", 0, &tier2, 5); err != nil {
+		t.Fatalf("second date places: %v", err)
+	}
+
+	code := "MINE" + f.orgID.String()[:6]
+	promoID := f.insertPromo(t, ctx, code, "percent", 50,
+		", max_uses_per_customer", ", 1")
+
+	mail := fmt.Sprintf("p0ord8c-%s@arena-integration.test", f.orgID.String()[:8])
+	phone := fmt.Sprintf("+3634%07d", time.Now().UnixNano()%10_000_000)
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM customers WHERE id IN
+			(SELECT customer_id FROM customer_identities WHERE value_normalized = $1)`, mail)
+	})
+	carts := []map[string]any{
+		{"session_id": f.sessionID.String(), "ga_items": []map[string]any{{"tier_id": f.tierID.String(), "quantity": 1}}},
+		{"session_id": session2.String(), "ga_items": []map[string]any{{"tier_id": tier2.String(), "quantity": 1}}},
+	}
+
+	type started struct {
+		status int
+		body   []byte
+	}
+	results := make([]started, len(carts))
+	var wg sync.WaitGroup
+	gate := make(chan struct{})
+	for i, p := range carts {
+		wg.Add(1)
+		go func(i int, p map[string]any) {
+			defer wg.Done()
+			p["promo_code"] = code
+			p["buyer"] = map[string]any{"email": mail, "name": "One Buyer", "phone": phone}
+			p["return_url"] = hostedTicketsBaseURL + "/p0"
+			<-gate
+			results[i].status, results[i].body = f.postJSON(t, srv, f.feedToken, "/checkout/start", p)
+		}(i, p)
+	}
+	close(gate)
+	wg.Wait()
+
+	refused := 0
+	for i, r := range results {
+		if r.status != http.StatusCreated {
+			refused++
+			if r.status != http.StatusUnprocessableEntity || !strings.Contains(string(r.body), `"promo.per_customer_limit"`) {
+				t.Errorf("checkout %d refused with %d %s, want 422 promo.per_customer_limit", i, r.status, r.body)
+			}
+			continue
+		}
+		var s hostedStartResponse
+		if err := json.Unmarshal(r.body, &s); err != nil {
+			t.Fatal(err)
+		}
+		csID := uuid.MustParse(s.CheckoutSession.ID)
+		intents, err := q.ListPaymentIntentsByCheckout(ctx, csID)
+		if err != nil || len(intents) != 1 || intents[0].ProviderPaymentID == nil {
+			t.Fatalf("payment intent of checkout %d: %v", i, err)
+		}
+		paid := sessionCompletedEvent(*intents[0].ProviderPaymentID, "pi_p0ord8c_"+uuid.NewString()[:8], "paid")
+		if c, b := postSignedWebhookTo(t, srv, f.configWebhookPath(), paid, f.webhookSecret); c != http.StatusOK || !processed(t, b) {
+			t.Fatalf("checkout %d paid event = %d; body: %s", i, c, b)
+		}
+	}
+	if refused != 1 {
+		t.Errorf("refused checkouts = %d (%d/%d), want exactly 1", refused, results[0].status, results[1].status)
+	}
+
+	var redemptions, discountedOrders, cancelledHolds int
+	if err := pool.QueryRow(ctx, `SELECT
+		(SELECT count(*) FROM promo_code_redemptions WHERE promo_code_id = $1),
+		(SELECT count(*) FROM orders WHERE org_id = $2 AND status = 'paid' AND promo_code_id = $1),
+		(SELECT count(*) FROM reservations r JOIN sessions s ON s.id = r.session_id
+		  WHERE s.event_id = $3 AND r.state = 'cancelled')`,
+		promoID, f.orgID, f.eventID).Scan(&redemptions, &discountedOrders, &cancelledHolds); err != nil {
+		t.Fatal(err)
+	}
+	if discountedOrders != 1 || redemptions != 1 {
+		t.Errorf("paid orders with the code = %d, redemptions = %d; want 1 and 1", discountedOrders, redemptions)
+	}
+	if cancelledHolds != refused {
+		t.Errorf("released holds = %d, want %d (one per refused checkout)", cancelledHolds, refused)
+	}
+
+	// Paid, the use is a redemption now: a third checkout by the same e-mail
+	// is refused before any hold, by the pricing check (CheckPromoLimits).
+	p := carts[0]
+	p["buyer"] = map[string]any{"email": strings.ToUpper(mail), "name": "One Buyer", "phone": phone}
+	if c, b := f.postJSON(t, srv, f.feedToken, "/checkout/start", p); c != http.StatusUnprocessableEntity ||
+		!strings.Contains(string(b), `"promo.per_customer_limit"`) {
+		t.Errorf("third checkout of the same buyer = %d %s, want 422 promo.per_customer_limit", c, b)
 	}
 }

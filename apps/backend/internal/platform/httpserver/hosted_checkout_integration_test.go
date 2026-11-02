@@ -370,6 +370,8 @@ func newHostedOrgFixture(t *testing.T, ctx context.Context, pool *pgxpool.Pool, 
 	return f
 }
 
+// cleanup sweeps every session of the fixture's event, so a test may add
+// sessions of its own (the per-buyer promo race uses a second date).
 func (f *hostedOrgFixture) cleanup() {
 	ctx := context.Background()
 	stmts := []struct {
@@ -378,15 +380,15 @@ func (f *hostedOrgFixture) cleanup() {
 	}{
 		{`UPDATE order_items SET ticket_id = NULL
 		   WHERE order_id IN (SELECT id FROM orders WHERE org_id = $1)`, f.orgID},
-		{`UPDATE tickets SET order_id = NULL WHERE session_id = $1`, f.sessionID},
-		{`DELETE FROM barcodes WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`, f.sessionID},
-		{`DELETE FROM delivery_jobs WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`, f.sessionID},
-		{`DELETE FROM ticket_credentials WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id = $1)`, f.sessionID},
+		{`UPDATE tickets SET order_id = NULL WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1)`, f.eventID},
+		{`DELETE FROM barcodes WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1))`, f.eventID},
+		{`DELETE FROM delivery_jobs WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1))`, f.eventID},
+		{`DELETE FROM ticket_credentials WHERE ticket_id IN (SELECT id FROM tickets WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1))`, f.eventID},
 		// ticket.deliver jobs are keyed by payload->>'ticket_id', so they must
 		// go BEFORE the tickets they name or nothing can find them again.
 		{`DELETE FROM worker_jobs WHERE payload->>'ticket_id' IN
-		   (SELECT id::text FROM tickets WHERE session_id = $1)`, f.sessionID},
-		{`DELETE FROM tickets WHERE session_id = $1`, f.sessionID},
+		   (SELECT id::text FROM tickets WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1))`, f.eventID},
+		{`DELETE FROM tickets WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1)`, f.eventID},
 		{`DELETE FROM outbox_events WHERE aggregate_id IN (SELECT id::text FROM orders WHERE org_id = $1)`, f.orgID},
 		{`DELETE FROM order_events WHERE order_id IN (SELECT id FROM orders WHERE org_id = $1)`, f.orgID},
 		{`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE org_id = $1)`, f.orgID},
@@ -402,21 +404,21 @@ func (f *hostedOrgFixture) cleanup() {
 		{`DELETE FROM worker_jobs WHERE payload->>'checkout_session_id' IN
 		   (SELECT id::text FROM checkout_sessions WHERE org_id = $1)`, f.orgID},
 		{`DELETE FROM worker_jobs WHERE payload->>'reservation_id' IN
-		   (SELECT id::text FROM reservations WHERE session_id = $1)`, f.sessionID},
+		   (SELECT id::text FROM reservations WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1))`, f.eventID},
 		// P2: a buyer consent references its checkout session.
 		{`DELETE FROM checkout_consents WHERE org_id = $1`, f.orgID},
 		// P3a: the terms renderings a consent names (they reference the org).
 		{`DELETE FROM legal_renderings WHERE org_id = $1`, f.orgID},
 		{`DELETE FROM checkout_sessions WHERE org_id = $1`, f.orgID},
-		{`DELETE FROM reservation_ga_items WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`, f.sessionID},
-		{`DELETE FROM reservation_seats WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id = $1)`, f.sessionID},
-		{`DELETE FROM session_seats WHERE session_id = $1`, f.sessionID},
-		{`DELETE FROM reservations WHERE session_id = $1`, f.sessionID},
-		{`DELETE FROM inventory_ledger WHERE session_id = $1`, f.sessionID},
-		{`DELETE FROM ticket_tiers WHERE session_id = $1`, f.sessionID},
+		{`DELETE FROM reservation_ga_items WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1))`, f.eventID},
+		{`DELETE FROM reservation_seats WHERE reservation_id IN (SELECT id FROM reservations WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1))`, f.eventID},
+		{`DELETE FROM session_seats WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1)`, f.eventID},
+		{`DELETE FROM reservations WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1)`, f.eventID},
+		{`DELETE FROM inventory_ledger WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1)`, f.eventID},
+		{`DELETE FROM ticket_tiers WHERE session_id IN (SELECT id FROM sessions WHERE event_id = $1)`, f.eventID},
 		{`DELETE FROM event_publications WHERE event_id = $1`, f.eventID},
 		{`DELETE FROM agent_feed_tokens WHERE id = $1`, f.tokenID},
-		{`DELETE FROM sessions WHERE id = $1`, f.sessionID},
+		{`DELETE FROM sessions WHERE event_id = $1`, f.eventID},
 		{`DELETE FROM payment_provider_configs WHERE org_id = $1`, f.orgID},
 		{`DELETE FROM sales_channels WHERE id = $1`, f.channelID},
 		{`DELETE FROM events WHERE id = $1`, f.eventID},

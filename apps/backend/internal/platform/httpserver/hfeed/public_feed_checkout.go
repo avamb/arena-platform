@@ -1356,9 +1356,10 @@ func (h *Handler) confirmPublicCheckout(
 	// discount. A code used up meanwhile refuses the cart and releases its
 	// hold at once, so the buyer can try again at the list price.
 	if promoCodeID != nil {
-		exhausted, err := hcheckout.ReservePromoUseTx(ctx, txq, hcheckout.PromoUse{
+		refusal, err := hcheckout.ReservePromoUseTx(ctx, txq, hcheckout.PromoUse{
 			PromoCodeID: *promoCodeID, OrgID: checkCtx.OrgID,
-			ReservationID: &reservationID, BuyerEmail: buyer.Email,
+			SessionID: &checkCtx.SessionID, ReservationID: &reservationID,
+			BuyerEmail: buyer.Email,
 		})
 		if err != nil {
 			h.logger.Error("public_feed_checkout: reserve promo code use failed",
@@ -1370,17 +1371,17 @@ func (h *Handler) confirmPublicCheckout(
 			))
 			return
 		}
-		if exhausted {
+		if refusal != "" {
 			// The hold row is locked by this transaction (SetHoldExpiryTx),
 			// so it ends before the release starts.
 			_ = tx.Rollback(ctx)
 			if _, relErr := hcheckout.ReleaseHold(ctx, h.pool, h.reservationQueries, reservationID); relErr != nil {
-				h.logger.Warn("public_feed_checkout: release hold after a used-up promo code failed",
+				h.logger.Warn("public_feed_checkout: release hold after a refused promo code failed",
 					slog.String("reservation_id", reservationID.String()),
 					slog.String("error", relErr.Error()),
 				)
 			}
-			writePublicPromoError(w, r, hcheckout.PromoErrExhausted)
+			writePublicPromoError(w, r, refusal)
 			return
 		}
 	}

@@ -151,26 +151,48 @@ WHERE p.org_id = $1
 ORDER BY r.redeemed_at DESC;
 
 -- name: LockPromoCodeUses :exec
--- Serializes every reservation of one code's max_uses (P0-1 defect D-02):
+-- Serializes every reservation of one code's max_uses and
+-- max_uses_per_customer (P0-1 defect D-02):
 -- held until the transaction that writes the order commits.
 SELECT pg_advisory_xact_lock(hashtextextended('promo_code_uses:' || $1::text, 0));
 
 -- name: CountPromoCodeUsesInFlight :one
--- max_uses of the code, and the uses already taken: recorded redemptions
--- plus orders carrying the code that have no redemption yet and either were
--- paid or still hold their places. A live unpaid order of the same
--- reservation or the same buyer is not counted (a re-sent cart, a buyer who
--- came back from the payment page).
-SELECT pc.max_uses,
-       ((SELECT COUNT(*) FROM promo_code_redemptions r WHERE r.promo_code_id = pc.id)
-        + (SELECT COUNT(*) FROM orders o
-            WHERE o.org_id = pc.org_id AND o.promo_code_id = pc.id
-              AND NOT EXISTS (SELECT 1 FROM promo_code_redemptions r WHERE r.order_id = o.id)
-              AND (o.status IN ('paid', 'partially_refunded', 'refunded', 'manual_review')
-                   OR (o.status = 'pending_payment' AND o.expires_at > now()
-                       AND o.reservation_id IS DISTINCT FROM $3::uuid
-                       AND NOT (($4::uuid IS NOT NULL AND o.customer_id = $4::uuid)
-                                OR ($5::text <> '' AND lower(o.buyer_email) = lower($5::text))))))
-       )::int AS used
-FROM promo_codes pc
-WHERE pc.id = $1 AND pc.org_id = $2;
+-- max_uses and max_uses_per_customer of the code, the uses already taken
+-- (used) and the uses this buyer already took (mine). A use is a recorded
+-- redemption, or an order carrying the code with no redemption yet that was
+-- paid or still holds its places. Not counted: the live unpaid order of the
+-- same reservation (a re-sent cart) and a live unpaid order of the same buyer
+-- on the same session (the widget supersedes it, the gateway refuses the new
+-- one with bil24.open_order_exists). A buyer is the customer ($5) or the
+-- e-mail ($6): either one matches.
+WITH pc AS (
+    SELECT id, org_id, max_uses, max_uses_per_customer
+    FROM   promo_codes
+    WHERE  id = $1 AND org_id = $2
+), taken AS (
+    SELECT o.customer_id, o.buyer_email
+    FROM   orders o, pc
+    WHERE  o.org_id = pc.org_id AND o.promo_code_id = pc.id
+      AND  NOT EXISTS (SELECT 1 FROM promo_code_redemptions r WHERE r.order_id = o.id)
+      AND  (o.status IN ('paid', 'partially_refunded', 'refunded', 'manual_review')
+            OR (o.status = 'pending_payment' AND o.expires_at > now()
+                AND o.reservation_id IS DISTINCT FROM $3::uuid
+                AND NOT (o.session_id IS NOT DISTINCT FROM $4::uuid
+                         AND (COALESCE(o.customer_id = $5::uuid, false)
+                              OR COALESCE($6::text <> '' AND lower(o.buyer_email) = lower($6::text), false)))))
+), redeemed AS (
+    SELECT r.customer_id AS redemption_customer_id, o.customer_id, o.buyer_email
+    FROM   promo_code_redemptions r
+    JOIN   pc ON pc.id = r.promo_code_id
+    LEFT JOIN orders o ON o.id = r.order_id
+)
+SELECT pc.max_uses, pc.max_uses_per_customer,
+       ((SELECT COUNT(*) FROM redeemed) + (SELECT COUNT(*) FROM taken))::int AS used,
+       ((SELECT COUNT(*) FROM redeemed x
+          WHERE COALESCE(x.redemption_customer_id = $5::uuid OR x.customer_id = $5::uuid, false)
+             OR COALESCE($6::text <> '' AND lower(x.buyer_email) = lower($6::text), false))
+        + (SELECT COUNT(*) FROM taken x
+            WHERE COALESCE(x.customer_id = $5::uuid, false)
+               OR COALESCE($6::text <> '' AND lower(x.buyer_email) = lower($6::text), false))
+       )::int AS mine
+FROM pc;

@@ -1501,16 +1501,23 @@ entries short and factual.
   redemption, so its limits were never enforced. Per-customer counting is by
   `customer_id` where a customer exists (gateway session, paid order) and by
   `orders.buyer_email` where only the e-mail is known (widget pricing).
-  **`max_uses` is TAKEN when the order is written, not when it is paid**
-  (P0-1 defect D-02): widget `confirmPublicCheckout` and gateway
-  `orderPersist` call `hcheckout.ReservePromoUseTx` on the order's own
-  transaction, before `ConfirmCheckoutSession`; it takes an advisory lock
-  per code and counts redemptions plus the code's orders that were paid or
-  still hold their places (a live unpaid order of the same reservation or
-  buyer does not count). A used-up code answers 422 `promo.exhausted` (the
-  widget releases the hold at once) or 101 `bil24.promo_exhausted`. A new
-  surface that writes an order with a code must call it too. The
-  per-customer limit has no such reservation yet.
+  **`max_uses` and `max_uses_per_customer` are TAKEN when the order is
+  written, not when it is paid** (P0-1 defect D-02): widget
+  `confirmPublicCheckout` and gateway `orderPersist` call
+  `hcheckout.ReservePromoUseTx` on the order's own transaction, before
+  `ConfirmCheckoutSession`; it takes an advisory lock per code and counts
+  redemptions plus the code's orders that were paid or still hold their
+  places, for everybody (`used`) and for this buyer (`mine`, the customer
+  OR the e-mail matches). Not counted: the live unpaid order of the same
+  reservation, and a live unpaid order of the same buyer on the same
+  session (the widget supersedes it, the gateway answers
+  `bil24.open_order_exists`). A used-up code answers 422 `promo.exhausted`
+  or `promo.per_customer_limit` (the widget releases the hold at once), or
+  101 `bil24.promo_exhausted` / `bil24.promo_per_customer_limit`. A new
+  surface that writes an order with a code must call it too. Not covered
+  yet: `POST /v1/public/checkout/{token}/recover` carries the code onto the
+  new hold without calling it, and the widget knows only the e-mail at that
+  point (a buyer who changes e-mail but keeps the phone is not matched).
   CHECK_KDP with `actionEventId` + `lines` is the price quote the site's
   picker uses (`checkKDPQuote`, spec 18 §7.6): it answers resultCode 0 with
   `promoApplied` false and the reason in `description` when the code does not
