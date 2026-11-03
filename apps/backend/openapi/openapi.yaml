@@ -16053,6 +16053,165 @@ components:
             never fail over a label.
           allOf:
             - $ref: "#/components/schemas/CheckoutAttribution"
+        marketing_consent:
+          description: |
+            The buyer's tick on the organizer's mailings (spec 51-1),
+            optional. Recorded only when the feed session's
+            `marketing_optin.enabled` is true (consent journal, double
+            opt-in letter); sent to an organization that does not offer it,
+            it is ignored and nothing is stored. Ticked, it may earn the
+            organizer's reward code (see `PublicMarketingConsent`).
+          allOf:
+            - $ref: "#/components/schemas/PublicMarketingConsent"
+
+    PublicMarketingConsent:
+      type: object
+      required: [accepted]
+      description: |
+        The buyer's answer to the marketing consent tick (spec 51-1). When
+        ticked and the organization names a reward code, the reward competes
+        with any typed `promo_code` and the larger discount wins; the cart
+        keeps one code. The reward code typed by hand without the tick is
+        refused with `promo.not_applicable`.
+      properties:
+        accepted:
+          type: boolean
+          description: True when the buyer ticked the box.
+        text_version:
+          type: string
+          description: |
+            The `marketing_optin.text_version` the widget showed. Another
+            version answers 422 `marketing.consent_outdated`.
+        discount:
+          type: boolean
+          description: |
+            False asks for no reward (the buyer was told it is used up, 422
+            `marketing.discount_used`); the consent is still recorded.
+            Absent means true.
+
+    PublicMarketingOptInBlock:
+      type: object
+      required: [enabled]
+      description: |
+        The `marketing_optin` member of every session of the public feed
+        event (spec 51-1).
+      properties:
+        enabled:
+          type: boolean
+          description: True when the widget offers the tick.
+        org_name:
+          type: string
+          description: Whose mailings the buyer agrees to (the seller's legal name, else the organization name).
+        text_version:
+          type: string
+          description: The consent text version to send back in `marketing_consent.text_version`.
+        discount:
+          description: The reward for the tick, absent when there is none.
+          allOf:
+            - $ref: "#/components/schemas/PublicMarketingDiscount"
+
+    PublicMarketingDiscount:
+      type: object
+      required: [type, value]
+      description: The reward for the marketing consent tick.
+      properties:
+        type:
+          type: string
+          description: "`percent` (value 1-100) or `fixed_amount` (value in minor units of `currency`)."
+        value:
+          type: integer
+          format: int64
+          description: The percent or the amount in minor units.
+        currency:
+          type: [string, "null"]
+          description: The currency of a fixed amount.
+
+    GrowthSettings:
+      type: object
+      required: [cart_reminder_enabled, marketing_optin_enabled, consent_promo_code_id, updated_at]
+      description: The organization's cart reminder and marketing consent settings (spec 51-1).
+      properties:
+        cart_reminder_enabled:
+          type: boolean
+          description: Remind a buyer once of an unpaid widget order while the hold lives.
+        marketing_optin_enabled:
+          type: boolean
+          description: Offer the marketing consent tick at checkout.
+        consent_promo_code_id:
+          type: [string, "null"]
+          format: uuid
+          description: The promo code the tick earns, null for no reward.
+        updated_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the settings were last saved, null for the defaults.
+
+    GrowthSettingsUpdate:
+      type: object
+      required: [cart_reminder_enabled, marketing_optin_enabled]
+      description: The settings to store (spec 51-1).
+      properties:
+        cart_reminder_enabled:
+          type: boolean
+          description: Remind a buyer once of an unpaid widget order.
+        marketing_optin_enabled:
+          type: boolean
+          description: Offer the marketing consent tick at checkout.
+        consent_promo_code_id:
+          type: [string, "null"]
+          format: uuid
+          description: A live promo code limited to one use per buyer, or null for no reward.
+
+    MarketingSubscriber:
+      type: object
+      required: [id, email, name, locale, status, granted_at, confirmed_at, withdrawn_at, withdraw_url]
+      description: One address that ticked the marketing consent.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The subscription id.
+        email:
+          type: string
+          description: The buyer's e-mail as typed.
+        name:
+          type: string
+          description: The buyer's name, empty when not given.
+        locale:
+          type: string
+          description: The language the buyer checked out in.
+        status:
+          type: string
+          description: "`pending` (not confirmed yet), `confirmed` or `withdrawn`."
+        granted_at:
+          type: string
+          format: date-time
+          description: When the tick was last given.
+        confirmed_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the address confirmed.
+        withdrawn_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the consent was withdrawn.
+        withdraw_url:
+          type: string
+          description: The link that stops the mailings, to print in every mailing.
+
+    MarketingSubscriberList:
+      type: object
+      required: [items, total]
+      description: One page of subscribers.
+      properties:
+        items:
+          type: array
+          description: The page.
+          items:
+            $ref: "#/components/schemas/MarketingSubscriber"
+        total:
+          type: integer
+          description: How many match the filter.
 
     CheckoutAttribution:
       type: object
@@ -16449,6 +16608,9 @@ components:
             `WIDGET_PAYMENT_WINDOW_SECONDS + WIDGET_PAYMENT_GRACE_SECONDS`
             from now, so the provider's hosted session always stops accepting
             payment BEFORE arena releases the seats.
+        marketing_discount_applied:
+          type: boolean
+          description: True when the cart's discount is the reward for the marketing consent tick.
 
     PublicFeedCheckoutQuoteRequest:
       type: object
@@ -16477,6 +16639,13 @@ components:
           description: |
             Promotional code to apply. Absent, null or blank prices the cart
             without a discount.
+        marketing_consent:
+          description: |
+            The buyer's marketing consent tick (spec 51-1). Ticked, it may
+            earn the organizer's reward code; the one-use-per-buyer cap is
+            checked at `checkout/start`, where the e-mail is known.
+          allOf:
+            - $ref: "#/components/schemas/PublicMarketingConsent"
 
     PublicFeedCheckoutQuoteResponse:
       type: object
@@ -16496,6 +16665,12 @@ components:
             True when a `promo_code` was sent and it took something off: the
             discount in `pricing` is above zero. A code that fits the cart but
             changes nothing (free tickets) answers false.
+        marketing_discount_applied:
+          type: boolean
+          description: |
+            True when the cart's discount is the reward for the marketing
+            consent tick (it won over any typed code, which is then not
+            applied: `promo_applied` is false).
 
     WidgetFunnelEventInput:
       type: object
@@ -50255,6 +50430,13 @@ paths:
             buyer must tick "I accept the sale terms (seller: <legal name>)
             and the privacy policy" before paying, the seller's legal name
             for that text and the two pages it links to.
+          * `marketing_optin` — `PublicMarketingOptInBlock` (spec 51-1):
+            whether the widget offers the separate, never-required tick
+            "send me news and offers", whose mailings it is for, the text
+            version to send back and the discount it earns.
+          * `cart_reminder` — boolean. True when the organizer reminds a
+            buyer once by e-mail of an unpaid order (spec 51-1); the
+            widget then says so under the e-mail field.
           * `poster_media_id` — resolved cover: session's own value when
             set, otherwise the event fallback. Same on `poster_url`.
           * `media_gallery: SessionMediaItem[]` — ordered per-session
@@ -51209,6 +51391,462 @@ paths:
                 type: string
         "404":
           description: "`subscription.link_invalid` - the token is unknown, used or expired and no tickets site is configured."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "`dependency.database_unavailable` - the service is not wired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/public/checkout/{checkout_token}/resume:
+    get:
+      operationId: resumePublicCheckout
+      summary: Back to the payment of an unpaid order (the reminder's link)
+      description: |
+        The link of the unpaid-order reminder (spec 51-1). While the order is
+        unpaid and its payment page is still open, answers `303` to that page;
+        otherwise (paid, expired, cancelled) `303` to the buyer's own page with
+        `?checkout_token=`, where the widget shows the order. An unknown token
+        answers `303` to the tickets site. No JWT is required: the token is
+        the credential.
+      tags: [v1, public]
+      parameters:
+        - name: checkout_token
+          in: path
+          required: true
+          description: The opaque checkout token.
+          schema:
+            type: string
+        - name: src
+          in: query
+          required: false
+          description: Where the link was clicked (`reminder`). Informational only.
+          schema:
+            type: string
+      responses:
+        "303":
+          description: Redirect to the payment page or to the buyer's page.
+          headers:
+            Location:
+              description: The destination.
+              schema:
+                type: string
+        "404":
+          description: "`checkout.link_invalid` - the link is not valid and no tickets site is configured."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: "`checkout.rate_limited` - too many requests."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/public/marketing/confirm:
+    get:
+      operationId: getPublicMarketingConfirmPage
+      summary: The page that confirms a marketing consent
+      description: |
+        The link of the marketing consent confirmation letter (spec 51-1). A
+        valid token answers a small HTML page that names the organization and
+        asks with one button; it never confirms by itself, because mail
+        scanners open every link of a letter and a scanner's click must not
+        stand as the buyer's consent. An unknown, used or expired token
+        answers `303` to the tickets site with `arena_marketing=invalid`, or
+        JSON without a configured tickets site. No JWT is required.
+      tags: [v1, public]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: The one-time token from the letter.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The page with the confirm button.
+          content:
+            text/html:
+              schema:
+                type: string
+        "303":
+          description: Redirect with `arena_marketing=invalid`.
+          headers:
+            Location:
+              description: The tickets site with `arena_marketing=invalid`.
+              schema:
+                type: string
+        "404":
+          description: "`marketing.link_invalid` - the token is unknown, used or expired and no tickets site is configured."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "`dependency.database_unavailable` - the service is not wired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: confirmPublicMarketingConsent
+      summary: Confirm a marketing consent (double opt-in)
+      description: |
+        The button of the confirmation page (spec 51-1). A valid token
+        confirms the address, journals the click with its address and
+        browser, and answers `303` to the page the buyer checked out on (else
+        the tickets site) with `arena_marketing=confirmed`; an unknown, used
+        or expired token answers `303` to the tickets site with
+        `arena_marketing=invalid`. Without a configured tickets site the
+        answer is a small HTML page (confirmed) or JSON (invalid). The form
+        posts `multipart/form-data` with an empty body; the token is in the
+        query string. No JWT is required.
+      tags: [v1, public]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: The one-time token from the letter.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Confirmed, and no page to send the buyer to is configured.
+          content:
+            text/html:
+              schema:
+                type: string
+        "303":
+          description: Redirect with `arena_marketing` set.
+          headers:
+            Location:
+              description: The destination with `arena_marketing=confirmed` or `invalid`.
+              schema:
+                type: string
+        "404":
+          description: "`marketing.link_invalid` - the token is unknown, used or expired and no tickets site is configured."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "`dependency.database_unavailable` - the service is not wired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/public/marketing/withdraw:
+    get:
+      operationId: getPublicMarketingWithdrawPage
+      summary: The page that stops an organizer's mailings
+      description: |
+        The withdraw link of a marketing consent (spec 51-1). Answers a small
+        HTML page that names the organization and asks with one button; it
+        never withdraws by itself, because mail scanners open every link of a
+        letter. An unknown token answers the same page with "this link is not
+        valid". No JWT is required.
+      tags: [v1, public]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: The withdraw-only token of the subscription.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The page.
+          content:
+            text/html:
+              schema:
+                type: string
+    post:
+      operationId: postPublicMarketingWithdraw
+      summary: Stop an organizer's mailings
+      description: |
+        The button of the withdraw page: withdraws the marketing consent the
+        token names and answers the "done" page. A second withdrawal changes
+        nothing. The form posts `multipart/form-data` with an empty body; the
+        token is in the query string. No JWT is required.
+      tags: [v1, public]
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: The withdraw-only token of the subscription.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The "done" page, or the "not valid" page for an unknown token.
+          content:
+            text/html:
+              schema:
+                type: string
+        "500":
+          description: "`marketing.withdraw_failed` - the withdrawal could not be stored."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/growth-settings:
+    get:
+      operationId: getOrganizationGrowthSettings
+      summary: The cart reminder and marketing consent settings
+      description: |
+        Spec 51-1: whether arena reminds a buyer once of an unpaid widget
+        order (default on), whether the checkout offers the marketing consent
+        tick (default off) and the reward code. Requires `promo.read`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The settings (the defaults when never saved).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrowthSettings"
+        "400":
+          description: The path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a member of the organization, or no `promo.read`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "`growth.load_failed`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "`dependency.database_unavailable` - the service is not wired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      operationId: putOrganizationGrowthSettings
+      summary: Change the cart reminder and marketing consent settings
+      description: |
+        Stores the three settings. The reward code must be a live promo code
+        of the organization limited to one use per buyer
+        (`max_uses_per_customer` = 1), else 422. Requires `org.update`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrowthSettingsUpdate"
+      responses:
+        "200":
+          description: The stored settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrowthSettings"
+        "400":
+          description: "`growth.invalid_body` or `growth.invalid_promo_code_id`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a member of the organization, or no `org.update`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "`growth.promo_code_not_found` or `growth.promo_code_needs_one_use_per_buyer`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "`growth.save_failed`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "`dependency.database_unavailable` - the service is not wired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/marketing-subscribers:
+    get:
+      operationId: listOrganizationMarketingSubscribers
+      summary: The buyers who agreed to the organization's mailings
+      description: |
+        Spec 51-1: one page of the addresses that ticked the marketing consent,
+        newest first. By default only confirmed addresses (double opt-in);
+        `status` selects `pending`, `withdrawn` or `all`. Every item carries
+        its withdraw link, to print in the organizer's own mailings. Requires
+        `order.read`; an organization API key is refused (403
+        `marketing.api_key_forbidden`).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          required: false
+          description: "`confirmed` (default), `pending`, `withdrawn` or `all`."
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1-100 (default 100).
+          schema: { type: integer }
+        - name: offset
+          in: query
+          required: false
+          description: Rows to skip.
+          schema: { type: integer }
+      responses:
+        "200":
+          description: One page of subscribers and the total.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketingSubscriberList"
+        "400":
+          description: "`marketing.invalid_status`, or the path parameter is not a UUID."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a member, no `order.read`, or an API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "`marketing.list_failed`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "`dependency.database_unavailable` - the service is not wired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/marketing-subscribers.csv:
+    get:
+      operationId: exportOrganizationMarketingSubscribers
+      summary: The buyers who agreed to the organization's mailings, as CSV
+      description: |
+        The same list as `marketing-subscribers` (every row of the `status`
+        filter, read in batches), as an Excel-friendly CSV with the withdraw
+        link of every address. A list above 50000 rows is refused with `413`
+        before the first byte, never cut. Column labels follow `?locale=`
+        (en, ru, es). Requires `order.read`; an organization API key is
+        refused.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          required: false
+          description: "`confirmed` (default), `pending`, `withdrawn` or `all`."
+          schema: { type: string }
+        - name: locale
+          in: query
+          required: false
+          description: Language of the column labels.
+          schema: { type: string }
+      responses:
+        "200":
+          description: The CSV file.
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          description: "`marketing.invalid_status`, or the path parameter is not a UUID."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a member, no `order.read`, or an API key.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: "`export.too_many_rows` - more than 50000 rows; choose one status at a time."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "`marketing.list_failed`."
           content:
             application/json:
               schema:

@@ -298,4 +298,13 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		r.Post("/public/feeds/{feed_token}/sessions/{session_id}/sale-subscriptions", s.handleCreateSaleSubscription)
 	}
 	r.Get("/public/sale-subscriptions/confirm", s.handleConfirmSaleSubscription)
+	// Spec 51-1: the reminder's link back to the payment, and the two links
+	// of the marketing consent (confirm; withdraw page and its form).
+	if s.checkoutQueries != nil {
+		r.Get("/public/checkout/{checkout_token}/resume", s.handleCheckoutResume)
+	}
+	r.Get("/public/marketing/confirm", s.handleMarketingConfirmPage)
+	r.Post("/public/marketing/confirm", s.handleMarketingConfirm)
+	r.Get("/public/marketing/withdraw", s.handleMarketingWithdrawPage)
+	r.Post("/public/marketing/withdraw", s.handleMarketingWithdraw)
 }

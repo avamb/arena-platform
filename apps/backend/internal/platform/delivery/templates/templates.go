@@ -91,6 +91,17 @@ const (
 	TemplateKindSaleOpen             = "sale_open"
 )
 
+// TemplateKindCheckoutReminder is the ONE reminder about an unpaid widget
+// order while its hold is alive (package cartreminder, spec 51-1). A service
+// letter: it names that order only and carries no other offer.
+// Data.CartReminder carries the link and the hold's end.
+const TemplateKindCheckoutReminder = "checkout_reminder"
+
+// TemplateKindMarketingConfirm asks a buyer who ticked the marketing consent
+// to confirm the address (double opt-in, package marketing). Data.Marketing
+// carries the confirmation and the withdraw links.
+const TemplateKindMarketingConfirm = "marketing_confirm"
+
 // TemplateKindRefund is sent to a buyer when money for their tickets was
 // returned (PAY-07). It states the amount and the usual bank delay and
 // promises nothing beyond that.
@@ -239,6 +250,14 @@ type Data struct {
 	// sale_subscribe_confirm and sale_open); zero for every other kind.
 	SaleNotice SaleNoticeData
 
+	// CartReminder is what the unpaid-order reminder says (kind
+	// checkout_reminder); zero for every other kind.
+	CartReminder CartReminderData
+
+	// Marketing is what the marketing consent confirmation says (kind
+	// marketing_confirm); zero for every other kind.
+	Marketing MarketingConfirmData
+
 	// Refund is what the refund e-mail says; nil for every other kind. The
 	// refunded tickets themselves are listed in Tickets, each with the
 	// amount returned for it in Price.
@@ -294,6 +313,28 @@ type SaleNoticeData struct {
 	// When is the session start on the venue's clock; Venue its venue.
 	When  string
 	Venue string
+}
+
+// CartReminderData is the content of the unpaid-order reminder.
+type CartReminderData struct {
+	// URL brings the buyer back to the payment (arena's resume route).
+	URL string
+	// When is the session start and HoldUntil the end of the hold, both on
+	// the venue's clock; Venue is the venue.
+	When      string
+	HoldUntil string
+	Venue     string
+	// Tickets is how many tickets the order holds; Total its amount, ready
+	// to print ("37.80 EUR"); OrderNumber the buyer-facing number.
+	Tickets     int
+	Total       string
+	OrderNumber string
+}
+
+// MarketingConfirmData is the content of the marketing consent confirmation.
+type MarketingConfirmData struct {
+	ConfirmURL  string
+	WithdrawURL string
 }
 
 // SalesAlertData is the content of a sales alert.

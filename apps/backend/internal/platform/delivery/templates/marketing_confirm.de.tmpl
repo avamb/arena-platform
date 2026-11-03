@@ -1,0 +1,40 @@
+{{define "subject"}}Bestätigen Sie Ihr Abonnement bei {{.Branding.OrgName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="de" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bestätigen Sie Ihr Abonnement</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  <tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">Bestätigen Sie Ihr Abonnement</h1>
+  <p style="margin:0 0 12px 0;">Bei der Bestellung haben Sie zugestimmt, von {{.Branding.OrgName}} Neuigkeiten zu Veranstaltungen und Angebote per E-Mail zu erhalten. Bestätigen Sie, dass dies Ihre Adresse ist:</p>
+  <p style="margin:16px 0 16px 0;"><a href="{{.Marketing.ConfirmURL}}" style="display:inline-block;background:{{.Accent}};color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:6px;">Abonnement bestätigen</a></p>
+  <p style="margin:0 0 12px 0;"><span style="color:#93a0a8;font-size:12px;word-break:break-all;">Link: {{.Marketing.ConfirmURL}}</span></p>
+  <p style="margin:0 0 12px 0;">Wenn Sie das nicht angefordert haben, tun Sie nichts: Sie erhalten keine Mailings. Der Link gilt 7 Tage.</p>
+  <p style="margin:0 0 12px 0;">Anders entschieden? Sie können die Mailings jederzeit beenden: <a href="{{.Marketing.WithdrawURL}}" style="color:#46555f;">Mailings beenden</a></p>
+  </td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}Arena Platform — automatische Nachricht<br>{{end}}Wenn Sie auf „Abbestellen“ klicken, erreichen Sie unsere E-Mails an diese Adresse nie wieder, auch keine Tickets.</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}
+
+Bestätigen Sie Ihr Abonnement
+
+Bei der Bestellung haben Sie zugestimmt, von {{.Branding.OrgName}} Neuigkeiten zu Veranstaltungen und Angebote per E-Mail zu erhalten. Bestätigen Sie, dass dies Ihre Adresse ist:
+
+Abonnement bestätigen: {{.Marketing.ConfirmURL}}
+
+Wenn Sie das nicht angefordert haben, tun Sie nichts: Sie erhalten keine Mailings. Der Link gilt 7 Tage.
+
+Anders entschieden? Sie können die Mailings jederzeit beenden: {{.Marketing.WithdrawURL}}
+
+{{if not .WhiteLabel}}Arena Platform — automatische Nachricht{{end}}
+
+Wenn Sie auf „Abbestellen“ klicken, erreichen Sie unsere E-Mails an diese Adresse nie wieder, auch keine Tickets.
+{{end}}

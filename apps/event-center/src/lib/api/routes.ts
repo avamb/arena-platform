@@ -67,6 +67,11 @@ export const API = {
   promoters: { method: "GET", path: "/v1/organizations/{org_id}/promoters" },
   promoterCreate: { method: "POST", path: "/v1/organizations/{org_id}/promoters" },
   promoterUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/promoters/{id}" },
+  // Spec 51-1: cart reminder and marketing consent.
+  growthSettings: { method: "GET", path: "/v1/organizations/{org_id}/growth-settings" },
+  growthSettingsUpdate: { method: "PUT", path: "/v1/organizations/{org_id}/growth-settings" },
+  marketingSubscribers: { method: "GET", path: "/v1/organizations/{org_id}/marketing-subscribers" },
+  marketingSubscribersCsv: { method: "GET", path: "/v1/organizations/{org_id}/marketing-subscribers.csv" },
   // 4-3: promo codes.
   promoCodes: { method: "GET", path: "/v1/organizations/{org_id}/promo-codes" },
   promoCode: { method: "GET", path: "/v1/organizations/{org_id}/promo-codes/{id}" },
