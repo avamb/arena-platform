@@ -17,8 +17,11 @@ func (w *Wizard) Render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		return screen, err
 	}
 	// The poster's answer to this question, first among the buttons.
-	if label, _, _ := d.hintValue(); label != "" {
-		hint := Button{Label: w.texts.T(ws.Locale, "bot.wz.hint_btn", map[string]any{"Value": truncate(label, 40)}), Data: hintButtonData}
+	if label, _, data := d.hintValue(); label != "" {
+		if data != pageImageData {
+			data = hintButtonData
+		}
+		hint := Button{Label: w.texts.T(ws.Locale, d.Hints.buttonKey(), map[string]any{"Value": truncate(label, 40)}), Data: data}
 		screen.Buttons = append([][]Button{{hint}}, screen.Buttons...)
 	}
 	return screen, nil
@@ -62,16 +65,27 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		}
 		rows := [][]Button{}
 		posterButton := w.posterHints && d.Mode == ModeCreate && d.Event.PosterMediaID == ""
+		linkButton := w.pageHints && d.Mode == ModeCreate
+		first := []Button{}
 		if posterButton {
-			// The one action on this screen is the name; reading a poster is a
-			// separate, optional screen behind a button.
-			rows = append(rows, []Button{btn("bot.wz.poster_first_btn", "poster")})
+			// The one action on this screen is the name; reading a poster or
+			// a page is a separate, optional screen behind a button.
+			first = append(first, btn("bot.wz.poster_first_btn", "poster"))
+		}
+		if linkButton {
+			first = append(first, btn("bot.wz.link_first_btn", "link"))
+		}
+		if len(first) > 0 {
+			rows = append(rows, first)
 		}
 		// The text names the button only when it is there.
-		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_name", map[string]any{"Poster": posterButton}), Buttons: nav(rows...)}, nil
+		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_name", map[string]any{"Poster": posterButton, "Link": linkButton}), Buttons: nav(rows...)}, nil
 
 	case stEvPosterAsk:
 		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_poster_first", nil), Buttons: nav()}, nil
+
+	case stEvLinkAsk:
+		return Screen{Text: header(1, "bot.wz.title_event") + t("bot.wz.ask_link_first", nil), Buttons: nav()}, nil
 
 	case stEvAge:
 		rows := [][]Button{}
@@ -216,7 +230,7 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		posterCountries := w.posterCountries(d, countries)
 		keepIsPoster := false
 		for _, c := range posterCountries {
-			rows = append(rows, []Button{{Label: t("bot.wz.hint_btn", map[string]any{"Value": truncate(c.Name, 40)}), Data: "country:" + c.ID}})
+			rows = append(rows, []Button{{Label: t(d.Hints.buttonKey(), map[string]any{"Value": truncate(c.Name, 40)}), Data: "country:" + c.ID}})
 			keepIsPoster = keepIsPoster || c.ID == ws.Defaults.CountryID
 		}
 		if ws.Defaults.CountryID != "" && !keepIsPoster {
