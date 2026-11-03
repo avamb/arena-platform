@@ -397,7 +397,10 @@ func (f *hostedOrgFixture) cleanup() {
 		{`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE org_id = $1)`, f.orgID},
 		{`DELETE FROM payment_intent_events WHERE payment_intent_id IN
 		   (SELECT id FROM payment_intents WHERE org_id = $1)`, f.orgID},
+		{`DELETE FROM worker_jobs WHERE job_type = 'payment.receipt_archive' AND payload->>'payment_intent_id' IN
+		   (SELECT id::text FROM payment_intents WHERE org_id = $1)`, f.orgID},
 		{`DELETE FROM payment_intents WHERE org_id = $1`, f.orgID},
+		{`DELETE FROM media_objects WHERE org_id = $1 AND owner_type = 'payment_receipt'`, f.orgID},
 		{`DELETE FROM orders WHERE org_id = $1`, f.orgID},
 		// worker_jobs rows are keyed only by their JSON payload — no FK — so
 		// they MUST be swept BEFORE their parents are deleted, or they leak

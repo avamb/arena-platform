@@ -411,6 +411,12 @@ func (a *Adapter) CreateCheckoutSession(ctx context.Context, req payments.Create
 	if req.CustomerEmail != "" {
 		form.Set("customer_email", req.CustomerEmail)
 	}
+	// Stripe e-mails its own receipt to this address once the payment
+	// succeeds (live mode only, whatever the account's e-mail settings say).
+	// Leaving it out does not stop the account from sending one itself.
+	if req.ReceiptEmail != "" {
+		form.Set("payment_intent_data[receipt_email]", req.ReceiptEmail)
+	}
 	if req.ExpiresAtUnix > 0 {
 		form.Set("expires_at", strconv.FormatInt(req.ExpiresAtUnix, 10))
 	}

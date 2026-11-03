@@ -121,6 +121,20 @@ type Profile struct {
 	// ContactFormToTelegram: buyers' messages from the sales page's contact
 	// form also go to the organization's sales Telegram chat (migration 0148).
 	ContactFormToTelegram bool `json:"contact_form_to_telegram"`
+	// ProviderReceipt is whether the payment provider e-mails its own receipt
+	// to the buyer (spec 51, decision R-6, migration 0185).
+	ProviderReceipt ProviderReceipt `json:"provider_receipt"`
+}
+
+// ProviderReceipt is the organization's provider-receipt setting. Enabled is
+// the owner's choice, Forced the platform operator's "always send" (only a
+// platform superadmin changes it), Effective what checkout does: the provider
+// is asked to e-mail its receipt when either is on. Off cannot promise that no
+// receipt is sent: the organizer's own provider account may send one itself.
+type ProviderReceipt struct {
+	Enabled   bool `json:"enabled"`
+	Forced    bool `json:"forced"`
+	Effective bool `json:"effective"`
 }
 
 // personOnly refuses an organization API key: the seller's legal identity
@@ -227,6 +241,10 @@ func (h *Handler) loadProfile(ctx context.Context, orgID uuid.UUID) (Profile, ge
 	if err != nil {
 		return Profile{}, o, err
 	}
+	receipt, err := h.queries.GetOrgProviderReceiptSettings(ctx, orgID)
+	if err != nil {
+		return Profile{}, o, err
+	}
 	p := Profile{
 		OrgID: o.ID.String(), OrgName: o.Name, Country: o.Country,
 		LegalName: o.LegalName, LegalForm: form, RegistrationNumber: o.RegistrationNumber,
@@ -237,6 +255,7 @@ func (h *Handler) loadProfile(ctx context.Context, orgID uuid.UUID) (Profile, ge
 		Missing:               nonNil(sellerinfo.Missing(withEmailPlaceholder(orgFacts(o)))),
 		Channels:              []Channel{},
 		ContactFormToTelegram: toTelegram,
+		ProviderReceipt:       ProviderReceipt{Enabled: receipt.Enabled, Forced: receipt.Forced, Effective: receipt.Effective()},
 	}
 	p.Complete = len(p.Missing) == 0
 	for _, row := range rows {
@@ -561,8 +580,16 @@ func (h *Handler) writeFailed(w http.ResponseWriter, r *http.Request, orgID uuid
 }
 
 // HandlePatchProfile serves PATCH /v1/organizations/{org_id}/seller-profile:
-// the organization-wide switch of the contact form's Telegram leg,
-// {"contact_form_to_telegram": bool}.
+// the organization-wide switches. Every key is optional, at least one is
+// required:
+//
+//   - contact_form_to_telegram: the contact form's Telegram leg;
+//   - provider_receipt_enabled: the owner's choice, the payment provider
+//     e-mails its own receipt to the buyer (spec 51, decision R-6);
+//   - provider_receipt_forced: "always send", which overrides the owner. Only
+//     a platform superadmin changes it (403
+//     seller.provider_receipt_forced_superadmin_only otherwise); repeating the
+//     stored value is allowed to anyone.
 func (h *Handler) HandlePatchProfile(w http.ResponseWriter, r *http.Request) {
 	if !personOnly(w, r) || !h.ready(w, r) || h.pool == nil {
 		return
@@ -578,12 +605,16 @@ func (h *Handler) HandlePatchProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		ContactFormToTelegram *bool `json:"contact_form_to_telegram"`
+		ContactFormToTelegram  *bool `json:"contact_form_to_telegram"`
+		ProviderReceiptEnabled *bool `json:"provider_receipt_enabled"`
+		ProviderReceiptForced  *bool `json:"provider_receipt_forced"`
 	}
 	dec := json.NewDecoder(strings.NewReader(string(body)))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&req); err != nil || dec.More() || req.ContactFormToTelegram == nil {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("seller.invalid_body", "send contact_form_to_telegram as true or false", r))
+	if err := dec.Decode(&req); err != nil || dec.More() ||
+		(req.ContactFormToTelegram == nil && req.ProviderReceiptEnabled == nil && req.ProviderReceiptForced == nil) {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope("seller.invalid_body",
+			"send contact_form_to_telegram, provider_receipt_enabled or provider_receipt_forced as true or false", r))
 		return
 	}
 	tx, err := h.pool.Begin(ctx)
@@ -592,14 +623,54 @@ func (h *Handler) HandlePatchProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	updated, err := h.queries.WithTx(tx).SetContactFormToTelegram(ctx, orgID, *req.ContactFormToTelegram)
-	if err != nil {
-		h.writeFailed(w, r, orgID, err)
-		return
+	q := h.queries.WithTx(tx)
+	metadata := map[string]any{"org_id": orgID.String()}
+	action := "v1.organization.contact_form_update"
+	if req.ProviderReceiptForced != nil {
+		stored, err := q.GetOrgProviderReceiptSettings(ctx, orgID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("org.not_found", "organization not found", r))
+			return
+		}
+		if err != nil {
+			h.writeFailed(w, r, orgID, err)
+			return
+		}
+		if stored.Forced != *req.ProviderReceiptForced && !auth.HasSuperadminOrgAccess(ctx) {
+			httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelope(
+				"seller.provider_receipt_forced_superadmin_only",
+				"only the platform operator can change \"always send the provider receipt\"", r))
+			return
+		}
+		if _, err := q.SetOrgProviderReceiptForced(ctx, orgID, *req.ProviderReceiptForced); err != nil {
+			h.writeOrgUpdateFailed(w, r, orgID, err)
+			return
+		}
+		metadata["provider_receipt_forced"] = *req.ProviderReceiptForced
+		action = "v1.organization.provider_receipt_update"
 	}
-	if !updated {
-		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("org.not_found", "organization not found", r))
-		return
+	if req.ProviderReceiptEnabled != nil {
+		if _, err := q.SetOrgProviderReceiptEnabled(ctx, orgID, *req.ProviderReceiptEnabled); err != nil {
+			h.writeOrgUpdateFailed(w, r, orgID, err)
+			return
+		}
+		metadata["provider_receipt_enabled"] = *req.ProviderReceiptEnabled
+		action = "v1.organization.provider_receipt_update"
+	}
+	if req.ContactFormToTelegram != nil {
+		updated, err := q.SetContactFormToTelegram(ctx, orgID, *req.ContactFormToTelegram)
+		if err != nil {
+			h.writeFailed(w, r, orgID, err)
+			return
+		}
+		if !updated {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("org.not_found", "organization not found", r))
+			return
+		}
+		metadata["contact_form_to_telegram"] = *req.ContactFormToTelegram
+		if action != "v1.organization.contact_form_update" {
+			action = "v1.organization.settings_update"
+		}
 	}
 	if h.audit != nil {
 		actor, _ := auth.ActorFromContext(ctx)
@@ -607,13 +678,13 @@ func (h *Handler) HandlePatchProfile(w http.ResponseWriter, r *http.Request) {
 			OccurredAt:   time.Now().UTC(),
 			ActorType:    "user", // rewritten to api_key by audit.WithServiceActor
 			ActorID:      actor.ID,
-			Action:       "v1.organization.contact_form_update",
+			Action:       action,
 			ResourceType: "organization",
 			ResourceID:   orgID.String(),
 			RequestID:    logging.RequestID(ctx),
 			TraceID:      logging.TraceID(ctx),
 			IP:           httputil.ExtractClientIP(r),
-			Metadata:     map[string]any{"org_id": orgID.String(), "contact_form_to_telegram": *req.ContactFormToTelegram},
+			Metadata:     metadata,
 		}); err != nil {
 			h.writeFailed(w, r, orgID, err)
 			return
@@ -629,4 +700,14 @@ func (h *Handler) HandlePatchProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"seller_profile": after})
+}
+
+// writeOrgUpdateFailed answers a failed organization-row update: 404 when the
+// organization is gone, else the generic failure.
+func (h *Handler) writeOrgUpdateFailed(w http.ResponseWriter, r *http.Request, orgID uuid.UUID, err error) {
+	if errors.Is(err, pgx.ErrNoRows) {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("org.not_found", "organization not found", r))
+		return
+	}
+	h.writeFailed(w, r, orgID, err)
 }

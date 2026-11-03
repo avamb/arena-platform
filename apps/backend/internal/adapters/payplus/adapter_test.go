@@ -512,3 +512,18 @@ func TestResolveChargeRef(t *testing.T) {
 		t.Fatalf("unknown link = %v; want a declined lookup", err)
 	}
 }
+
+func TestCreateCheckoutSession_SendEmailApprovalFollowsReceiptEmail(t *testing.T) {
+	stub := newStubPayPlus(t, testAPIKey, testSecret)
+	a := New(Config{APIKey: testAPIKey, SecretKey: testSecret, PaymentPageUID: testPageUID, BaseURL: stub.baseURL()})
+	_, err := a.CreateCheckoutSession(t.Context(), payments.CreateHostedCheckoutRequest{
+		Amount: 1000, Currency: "ILS", ProductName: "Show", CustomerEmail: "buyer@example.test",
+		ReceiptEmail: "buyer@example.test", ClientReferenceID: "cs-2",
+	})
+	if err != nil {
+		t.Fatalf("CreateCheckoutSession: %v", err)
+	}
+	if got := scalar(stub.last("generateLink")["sendEmailApproval"]); got != "true" {
+		t.Fatalf("sendEmailApproval = %q; want true", got)
+	}
+}

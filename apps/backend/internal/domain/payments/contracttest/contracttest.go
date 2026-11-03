@@ -111,6 +111,11 @@ func Run(t *testing.T, c Case) {
 				t.Error("Capabilities.Disputes is true but the module is not a DisputeResponder")
 			}
 		}
+		if d.Capabilities.ProviderReceipt {
+			if _, ok := c.Module.(payments.ReceiptFetcher); !ok {
+				t.Error("Capabilities.ProviderReceipt is true but the module is not a ReceiptFetcher")
+			}
+		}
 		if (d.Capabilities.PartialRefund || d.Capabilities.AsyncRefund) && !d.Capabilities.Refund {
 			t.Error("PartialRefund/AsyncRefund without Refund makes no sense")
 		}
