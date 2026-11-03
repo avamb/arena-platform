@@ -1124,6 +1124,10 @@ func (h *Handler) processPaymentWebhook(w http.ResponseWriter, r *http.Request, 
 		h.processRefundWebhook(w, r, route)
 		return
 	}
+	if isDisputeEvent(route.Event) {
+		h.processDisputeWebhook(w, r, route)
+		return
+	}
 
 	// A module's event is decided by its KIND alone (spec 36, warning M1): a
 	// kind the core does not map — a refund, a dispute, an unpaid completed

@@ -48,7 +48,7 @@ func (s *Server) checkoutHandler() *hcheckout.Handler {
 		s.issueTicketsForCheckout,
 		s.publishTicketRefundedEvents,
 		s.publishTicketRefundedV1Events,
-	).WithMetrics(s.typedMetrics).WithPromoAttempts(s.promoAttemptRecorder()).WithRowOrgAccess(s.rowOrgAccess).WithRefundEngine(s.refundEngine()).WithShopPayments(s.shopPayments()).
+	).WithMetrics(s.typedMetrics).WithPromoAttempts(s.promoAttemptRecorder()).WithRowOrgAccess(s.rowOrgAccess).WithRefundEngine(s.refundEngine()).WithShopPayments(s.shopPayments()).WithDisputes(s.disputeRecorder()).
 		WithModuleOptions(payments.Options{
 			StripeAPIBaseURL:  s.stripeBaseURL(),
 			FlittAPIBaseURL:   s.flittBaseURL(),

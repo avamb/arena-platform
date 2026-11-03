@@ -288,6 +288,7 @@ func run() error {
 	registerContactFormHandler(registry, pool.Pool, cfg, salesNotifier, opsNotifier, logger)
 	registerOnboardingHandlers(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerRefundSweepHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
+	registerDisputeHandlers(registry, pool.Pool, cfg, salesNotifier, opsNotifier, buildEmailSender(cfg, logger), logger)
 	registerPaymentReceiptHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerBillingReconcileHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 	registerJobRetentionHandler(registry, pool.Pool, logger)
@@ -336,6 +337,7 @@ func run() error {
 	if err := cartreminder.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		logger.Warn("could not schedule initial cart reminder sweep job", "error", err.Error())
 	}
+	scheduleDisputeWatch(rootCtx, pool.Pool, logger)
 	scheduleShopSweep(rootCtx, pool.Pool, logger)
 
 	// billing.collect writes the billable events the rate job turns into
