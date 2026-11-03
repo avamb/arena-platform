@@ -336,6 +336,7 @@ func (h *refundEmail) buildMessage(ctx context.Context, orderID, orgID uuid.UUID
 		}
 	}
 	branding := resolveBranding(ctx, h.opts.Media, first, h.logger).Branding
+	branding.PaymentProvider = orderPaymentProvider(ctx, h.opts.DB, orderID, h.logger)
 
 	data := templates.Data{
 		RecipientEmail: recipient.Email,

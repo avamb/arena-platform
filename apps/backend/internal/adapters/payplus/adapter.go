@@ -299,9 +299,11 @@ func (a *Adapter) CreateCheckoutSession(ctx context.Context, req payments.Create
 		"charge_method":    chargeMethodCharge,
 		"amount":           amount,
 		"currency_code":    strings.ToUpper(strings.TrimSpace(req.Currency)),
-		// arena writes to the buyer itself (ticket letter, order letter);
-		// PayPlus's own e-mails would be a second, unbranded receipt.
-		"sendEmailApproval":     false,
+		// PayPlus e-mails its own approval (and the Invoice+ document when
+		// the merchant has it) only when the organization asked for the
+		// provider's receipt (spec 51, decision R-6); arena writes the ticket
+		// and order letters itself either way.
+		"sendEmailApproval":     strings.TrimSpace(req.ReceiptEmail) != "",
 		"sendEmailFailure":      false,
 		"send_failure_callback": true,
 		"more_info":             strings.TrimSpace(req.ClientReferenceID),
