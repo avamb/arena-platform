@@ -33,8 +33,8 @@ func (b *Bot) ecCallback(ctx context.Context, chatID int64, msgID int, from *mod
 		b.leaveEvStatus(ctx, from.ID) // anything but the status buttons ends a delete question
 	}
 	if kind == "nt" {
-		if id, _, ok := b.ecIdentity(ctx, chatID, &msgID, from); ok {
-			b.showNotifications(ctx, chatID, &msgID, id)
+		if id, jwt, ok := b.ecIdentity(ctx, chatID, &msgID, from); ok {
+			b.showNotifications(ctx, chatID, &msgID, id, jwt)
 		}
 		return
 	}

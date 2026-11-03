@@ -26,6 +26,14 @@ func (s *Server) mountExportRoutes(r chi.Router) {
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/sales.csv", s.handleExportSessionSales)
 		pr.Get("/organizations/{org_id}/events/{event_id}/sales.csv", s.handleExportEventSales)
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/summary.csv", s.handleExportSessionSummary)
+		pr.Get("/organizations/{org_id}/sessions/{session_id}/guest-list.csv", s.handleExportSessionGuestList)
+	})
+	// The automatic guest list is a setting of the calling person (package
+	// guestlist); it needs order.read because the file it sends holds buyers.
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "order.read", "orders")
+		pr.Get("/organizations/{org_id}/guest-list-subscription", s.handleGetGuestListSubscription)
+		pr.Put("/organizations/{org_id}/guest-list-subscription", s.handlePutGuestListSubscription)
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "promo.read", "promo_codes")
@@ -63,6 +71,27 @@ func (s *Server) handleExportSessionSummary(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	s.exportHandler().HandleSessionSummary(w, r)
+}
+
+func (s *Server) handleExportSessionGuestList(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.exportHandler().HandleSessionGuestList(w, r)
+}
+
+func (s *Server) handleGetGuestListSubscription(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.exportHandler().HandleGetGuestListSubscription(w, r)
+}
+
+func (s *Server) handlePutGuestListSubscription(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.exportHandler().HandlePutGuestListSubscription(w, r)
 }
 
 func (s *Server) handleExportPromoRedemptions(w http.ResponseWriter, r *http.Request) {

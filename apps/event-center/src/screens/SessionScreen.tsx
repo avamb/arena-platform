@@ -18,6 +18,7 @@ import { SessionSaleTimes } from "@/components/SessionSaleTimes";
 import { SessionSalesState } from "@/components/SessionSalesState";
 import { SessionChange } from "@/components/SessionChange";
 import { SessionTickets } from "@/components/SessionTickets";
+import { GuestListSubscription } from "@/components/GuestListSubscription";
 import { useOrg } from "@/screens/OrgLayout";
 
 function tierPrice(tier: TicketTierItem, locale: string, t: ReturnType<typeof useI18n>["t"]): string {
@@ -169,6 +170,11 @@ export function SessionScreen() {
               label="session.csvSummary"
               testId="csv-session-summary"
               fetchFile={() => downloadCsv(orgId, "sessionSummary", sessionId, locale)}
+            />
+            <DownloadButton
+              label="guestList.download"
+              testId="csv-session-guest-list"
+              fetchFile={() => downloadCsv(orgId, "sessionGuestList", sessionId, locale)}
             />
           </>
         )}
@@ -331,6 +337,7 @@ export function SessionScreen() {
       )}
       {/* M2 */}
       {canSales && <SessionTickets orgId={orgId} sessionId={sessionId} tz={tz} />}
+      {canSales && <GuestListSubscription orgId={orgId} />}
     </article>
   );
 }
