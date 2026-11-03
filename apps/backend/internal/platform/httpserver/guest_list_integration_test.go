@@ -7,11 +7,14 @@
 //   - the file: active tickets only (a cancelled one is left out), sorted by
 //     the guest's name, the name on the ticket before the buyer's, VIP and
 //     invitation columns; an agent is refused, another organization gets 404;
+//   - the workbook (guest-list.xlsx): the same rows, the ticket, barcode,
+//     order and phone as TEXT cells in text-formatted columns, X-Row-Count,
+//     and a file name made of the event's name and the session's date;
 //   - the subscription: a member turns it on and off, the answer says how the
 //     list would reach them (e-mail without the bot, telegram with it);
 //   - the schedule: the moment "3 hours before" writes one delivery per
 //     subscriber, a second pass writes nothing, and a member without a bot
-//     link gets the list by e-mail with the CSV attached;
+//     link gets the list by e-mail with the workbook attached;
 //   - the bot's routes: claim hands a linked member's delivery out once per
 //     lease, finish closes it, a second finish is a 404.
 //
@@ -19,7 +22,6 @@
 package httpserver
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -35,6 +37,8 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/guestlist"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/xlsxexport"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/xlsxexport/xlsxtest"
 )
 
 const guestListServiceToken = "guest-list-service-token-0123456789"
@@ -95,6 +99,46 @@ func TestGuestList_FileSubscriptionScheduleAndBotRoutes(t *testing.T) {
 	if !strings.HasPrefix(lines[2], `"Zed Buyer";"Parterre";"";`) || !strings.Contains(lines[2], `="4600051000001"`) ||
 		!strings.Contains(lines[2], `;"no";"yes";"2026-`) || !strings.Contains(lines[2], `="+34600111222"`) {
 		t.Errorf("second row (Zed, entered, stored barcode, phone) = %s", lines[2])
+	}
+
+	// The workbook: the same two rows, identifiers kept as text.
+	xpath := orgPath + "/sessions/" + f.sessID.String() + "/guest-list.xlsx?locale=en"
+	st, hdr, body = f.get(t, xpath, manager, nil)
+	if st != http.StatusOK {
+		t.Fatalf("guest list workbook: %d %s", st, body)
+	}
+	if ct := hdr.Get("Content-Type"); ct != xlsxexport.ContentType {
+		t.Errorf("Content-Type = %q", ct)
+	}
+	if cd := hdr.Get("Content-Disposition"); !strings.Contains(cd, `filename="guests_ec07-event-`) || !strings.HasSuffix(cd, `_2026-12-24.xlsx"`) {
+		t.Errorf("Content-Disposition = %q", cd)
+	}
+	if n := hdr.Get("X-Row-Count"); n != "2" {
+		t.Errorf("X-Row-Count = %q", n)
+	}
+	book := xlsxtest.Open(t, body)
+	rows := book.Values()
+	if len(rows) != 3 || rows[0][0] != "Guest" || rows[1][0] != "Anna Guest" || rows[2][0] != "Zed Buyer" {
+		t.Fatalf("workbook rows = %v", rows)
+	}
+	// D ticket, E barcode, I order, K phone of Zed's row.
+	for ref, want := range map[string]string{"E3": "4600051000001", "K3": "+34600111222"} {
+		if c, ok := book.CellAt(ref); !ok || c.Value != want || c.Type != "inlineStr" || !book.TextFormat(c.Style) {
+			t.Errorf("%s = %+v (text format %v), want the text %q", ref, c, book.TextFormat(c.Style), want)
+		}
+	}
+	for _, ref := range []string{"D2", "D3", "E2", "I2", "I3"} {
+		if c, ok := book.CellAt(ref); !ok || c.Type != "inlineStr" || !book.TextFormat(c.Style) {
+			t.Errorf("%s = %+v, want a text cell", ref, c)
+		}
+	}
+	for _, col := range []int{4, 5, 9, 11} {
+		if !book.TextFormat(book.ColumnStyle(col)) {
+			t.Errorf("column %d is not a text column", col)
+		}
+	}
+	if st, _, _ := f.get(t, xpath, agent, nil); st != http.StatusForbidden {
+		t.Errorf("agent workbook: %d, want 403", st)
 	}
 
 	// A cancelled ticket is not a guest.
@@ -159,9 +203,13 @@ func TestGuestList_FileSubscriptionScheduleAndBotRoutes(t *testing.T) {
 	}
 	if len(mail.sent) != 1 || len(mail.sent[0].Attachments) != 1 ||
 		!strings.HasPrefix(mail.sent[0].Attachments[0].Filename, "guests_ec07-event-") ||
-		!bytes.Contains(mail.sent[0].Attachments[0].Data, []byte("Anna Guest")) ||
+		!strings.HasSuffix(mail.sent[0].Attachments[0].Filename, ".xlsx") ||
+		mail.sent[0].Attachments[0].ContentType != xlsxexport.ContentType ||
 		!strings.Contains(mail.sent[0].TextBody, "3 hours") {
 		t.Fatalf("letter = %+v", mail.sent)
+	}
+	if rows := xlsxtest.Open(t, mail.sent[0].Attachments[0].Data).Values(); len(rows) != 3 || rows[1][0] != "Anna Guest" {
+		t.Fatalf("attached workbook rows = %v", rows)
 	}
 	var slot string
 	var sent bool

@@ -26,6 +26,7 @@ func (s *Server) mountExportRoutes(r chi.Router) {
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/sales.csv", s.handleExportSessionSales)
 		pr.Get("/organizations/{org_id}/events/{event_id}/sales.csv", s.handleExportEventSales)
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/summary.csv", s.handleExportSessionSummary)
+		pr.Get("/organizations/{org_id}/sessions/{session_id}/guest-list.xlsx", s.handleExportSessionGuestListXLSX)
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/guest-list.csv", s.handleExportSessionGuestList)
 	})
 	// The automatic guest list is a setting of the calling person (package
@@ -71,6 +72,13 @@ func (s *Server) handleExportSessionSummary(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	s.exportHandler().HandleSessionSummary(w, r)
+}
+
+func (s *Server) handleExportSessionGuestListXLSX(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.exportHandler().HandleSessionGuestListXLSX(w, r)
 }
 
 func (s *Server) handleExportSessionGuestList(w http.ResponseWriter, r *http.Request) {

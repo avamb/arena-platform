@@ -5120,7 +5120,7 @@ other = "<b>{{.Name}}</b>, {{.When}}\nGuest list. Tickets in the list: {{.Rows}}
 other = "The bot can send you this list on its own: 24 hours before the start, 3 hours before and when doors open. Turn it on in «☰ Menu», then «🔔 Notifications»."
 
 ["bot.gl.notif_text"]
-other = "<b>Guest list</b>\nThis bot sends a CSV with the guest list of every session to this chat: 24 hours before the start, 3 hours before and when doors open. The file comes only to you, never to a group: it has buyers' contacts."
+other = "<b>Guest list</b>\nThis bot sends an Excel file with the guest list of every session to this chat: 24 hours before the start, 3 hours before and when doors open. The file comes only to you, never to a group: it has buyers' contacts."
 
 ["bot.gl.toggle_on"]
 other = "☑ Send me the guest list"
@@ -5142,6 +5142,9 @@ other = "<b>{{.Name}}</b>, {{.When}}\nGuest list for doors open. Tickets in the 
 
 ["bot.gl.auto_stop"]
 other = "The file has buyers' contacts: do not forward it to outsiders. To stop these files, open «☰ Menu», then «🔔 Notifications»."
+
+["guestlist.sheet_name"]
+other = "Guests"
 
 ["guestlist.email.subject"]
 other = "Guest list: {{.Event}}, {{.When}}"

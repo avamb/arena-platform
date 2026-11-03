@@ -186,7 +186,7 @@ func (s *Scheduler) mailOne(ctx context.Context, q *gen.Queries, d gen.GuestList
 	}
 	loc := Location(d.SessionTimezone)
 	locale := NormalizeLocale(d.Locale)
-	file, err := Build(ctx, q, d.OrgID, d.SessionID, locale, loc, MaxRows)
+	file, err := Build(ctx, q, d.OrgID, d.SessionID, locale, loc, MaxRows, XLSX)
 	switch {
 	case errors.Is(err, ErrTooManyRows):
 		return gen.GuestListSkipped, ReasonTooMany
@@ -195,8 +195,8 @@ func (s *Scheduler) mailOne(ctx context.Context, q *gen.Queries, d gen.GuestList
 	case file.Rows == 0:
 		return gen.GuestListSkipped, ReasonNoTickets
 	}
-	slug := head.EventID.String()
-	if head.EventSlug != nil && *head.EventSlug != "" {
+	slug := ""
+	if head.EventSlug != nil {
 		slug = *head.EventSlug
 	}
 	letter := RenderEmail(locale, d.Slot, d.EventName, d.SessionStartAt, loc, file.Rows)
@@ -206,8 +206,8 @@ func (s *Scheduler) mailOne(ctx context.Context, q *gen.Queries, d gen.GuestList
 		HTMLBody: letter.HTML,
 		TextBody: letter.Text,
 		Attachments: []email.Attachment{{
-			Filename:    FileName(slug, d.SessionStartAt, loc),
-			ContentType: "text/csv; charset=utf-8",
+			Filename:    FileName(head.EventName, slug, d.SessionStartAt, loc, XLSX),
+			ContentType: file.ContentType,
 			Data:        file.Body,
 		}},
 	}

@@ -3,6 +3,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   downloadCsv,
+  downloadGuestListXlsx,
   downloadSampleTicket,
   fetchSessionSummary,
   listSessions,
@@ -173,7 +174,14 @@ export function SessionScreen() {
             />
             <DownloadButton
               label="guestList.download"
+              testId="xlsx-session-guest-list"
+              variant="primary"
+              fetchFile={() => downloadGuestListXlsx(orgId, sessionId, locale)}
+            />
+            <DownloadButton
+              label="guestList.downloadCsv"
               testId="csv-session-guest-list"
+              variant="link"
               fetchFile={() => downloadCsv(orgId, "sessionGuestList", sessionId, locale)}
             />
           </>
