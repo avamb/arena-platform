@@ -115,6 +115,7 @@ LEFT   JOIN sessions ts ON ts.id = t.session_id
 LEFT   JOIN sessions s ON s.id = COALESCE(o.session_id, t.session_id)
 LEFT   JOIN venues v ON v.id = s.venue_id
 WHERE  r.state = 'succeeded'
+  AND  r.origin <> 'referral_cashback'
   AND  COALESCE(r.succeeded_at, r.created_at) >= $1
   AND  (COALESCE(r.succeeded_at, r.created_at), r.id) > ($1, $2)
 ORDER BY COALESCE(r.succeeded_at, r.created_at), r.id

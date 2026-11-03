@@ -181,7 +181,7 @@ func RefundedStatus(current string, total, refunded int64) string {
 // some did (an order parked in manual_review stays there until all of it
 // went back); and the status it had before any refund when nothing did (a
 // refund that was reversed). An order that was never paid keeps its status.
-func refundStatus(o gen.ShopOrderRow, accepted int64) string {
+func refundStatus(o gen.ShopOrderRow, accepted, cashback int64) string {
 	base := o.Status
 	switch o.Status {
 	case StatusPaid, StatusShipped, StatusManualReview:
@@ -198,6 +198,11 @@ func refundStatus(o gen.ShopOrderRow, accepted int64) string {
 	}
 	switch {
 	case accepted >= o.Total && accepted > 0:
+		return StatusRefunded
+	case accepted > 0 && accepted+cashback >= o.Total:
+		// The ordinary refunds and the "Refer a friend" cashback together have
+		// returned the whole payment. The cashback alone never changes the
+		// status, so it needs an accepted ordinary refund beside it.
 		return StatusRefunded
 	case accepted > 0 && base == StatusManualReview:
 		return StatusManualReview

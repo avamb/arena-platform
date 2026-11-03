@@ -280,6 +280,8 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		r.Get("/public/checkout/{checkout_token}", s.handlePublicCheckoutStatus)
 		// Hold-expiry recovery endpoint — WID-0c (feature #320).
 		r.Post("/public/checkout/{checkout_token}/recover", s.handlePublicCheckoutRecover)
+		// The buyer's "Refer a friend" code and share link (spec 52).
+		r.Get("/public/checkout/{checkout_token}/referral", s.handlePublicCheckoutReferral)
 	}
 	if s.checkoutQueries != nil && s.ticketQueries != nil && s.credentialQueries != nil {
 		r.Get("/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf", s.handlePublicTicketPDF)

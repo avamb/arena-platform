@@ -40,6 +40,7 @@ func (s *Server) mountV1Routes() {
 		s.mountExportRoutes(r)
 		s.mountGrowthRoutes(r)
 		s.mountPageStatsRoutes(r)
+		s.mountReferralRoutes(r)
 		s.mountRefundOrgRoutes(r)
 		s.mountDisputeRoutes(r)
 		s.mountPaymentConfigRoutes(r)

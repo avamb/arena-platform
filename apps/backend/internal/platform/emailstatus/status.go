@@ -50,6 +50,11 @@ const (
 	KindShopReceived = "shop_received"
 	KindShopShipped  = "shop_shipped"
 	KindShopRefunded = "shop_refunded"
+	// The letters to a referrer of "Refer a friend" (migration 0191): the
+	// cashback went back to their card, or could not be returned. They name
+	// order_id (the referrer's order) and are no refund letters.
+	KindReferralCashback    = "referral_cashback"
+	KindReferralUnavailable = "referral_unavailable"
 )
 
 // Letter statuses as the API reports them. StatusQueued exists only in the

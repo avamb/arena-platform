@@ -143,6 +143,9 @@ func (s *Server) handleRefundOptions(w http.ResponseWriter, r *http.Request) {
 	if opts.Refusal != nil {
 		resp["refusal"] = map[string]any{"code": opts.Refusal.Code, "message": opts.Refusal.Message}
 	}
+	if warn := s.referralCashbackWarning(r.Context(), orgID, orderID); warn != nil {
+		resp["referral_cashback_paid"] = warn
+	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }
 

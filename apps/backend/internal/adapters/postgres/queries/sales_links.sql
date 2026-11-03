@@ -154,6 +154,7 @@ refunded AS (
                 LIMIT  1))
     WHERE  r.state  = 'succeeded'
       AND  r.org_id = $2
+      AND  r.origin <> 'referral_cashback'
     GROUP  BY r.currency
 ),
 lines AS (

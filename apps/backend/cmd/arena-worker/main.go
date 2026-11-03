@@ -81,6 +81,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/opswatchdog"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/referral"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/reservationexpiry"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesalert"
@@ -289,6 +290,7 @@ func run() error {
 	registerContactFormHandler(registry, pool.Pool, cfg, salesNotifier, opsNotifier, logger)
 	registerOnboardingHandlers(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerRefundSweepHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
+	registerReferralHandlers(registry, pool.Pool, cfg, metrics, salesNotifier, logger)
 	registerDisputeHandlers(registry, pool.Pool, cfg, salesNotifier, opsNotifier, buildEmailSender(cfg, logger), logger)
 	registerPaymentReceiptHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerBillingReconcileHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
@@ -335,6 +337,7 @@ func run() error {
 		logger.Info("reservation expire sweep job scheduled at startup")
 	}
 	scheduleRefundSweep(rootCtx, pool.Pool, logger)
+	scheduleReferralSweep(rootCtx, pool.Pool, logger)
 	if err := cartreminder.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		logger.Warn("could not schedule initial cart reminder sweep job", "error", err.Error())
 	}
@@ -666,6 +669,19 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	// sales_state.alert_email tells the owners and managers that a session
 	// sold out, or the owners that the sites did not take a sales state
 	// change (salesalert queues it).
+	// referral.cashback_email writes to the referrer (cashback sent, or not
+	// returnable to their card), referral.reversal_email to the owners (a friend
+	// took the money back). The referral sweep and payout queue them.
+	reg.Register(referral.JobTypeCashbackEmail, delivery.NewReferralCashbackEmailHandler(delivery.ReferralEmailOptions{
+		HandlerOptions: deliveryOpts,
+		DB:             pool,
+	}))
+	reg.Register(referral.JobTypeReversalEmail, delivery.NewReferralReversalEmailHandler(delivery.ReferralReversalEmailOptions{
+		Sender:    deliveryOpts.Sender,
+		Templates: deliveryOpts.Templates,
+		DB:        pool,
+		Logger:    logger,
+	}))
 	// guest_list.schedule writes the due guest lists and mails the ones of
 	// members without the bot (package guestlist).
 	registerGuestListSchedule(reg, pool, deliveryOpts.Sender, logger)

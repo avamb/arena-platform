@@ -90,6 +90,22 @@ export const API = {
   // 8-1: refund tickets of an order. The create asks for the password again (spec 37 4.6).
   refundOptions: { method: "GET", path: "/v1/organizations/{org_id}/orders/{order_id}/refund-options" },
   refundCreate: { method: "POST", path: "/v1/organizations/{org_id}/orders/{order_id}/refunds" },
+  // "Refer a friend" (spec 52): the programme of an event, its pause/resume/end, totals and rewards.
+  referralProgram: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/referral-program" },
+  referralProgramPut: { method: "PUT", path: "/v1/organizations/{org_id}/events/{event_id}/referral-program" },
+  referralProgramPause: { method: "POST", path: "/v1/organizations/{org_id}/events/{event_id}/referral-program/pause" },
+  referralProgramResume: { method: "POST", path: "/v1/organizations/{org_id}/events/{event_id}/referral-program/resume" },
+  referralProgramEnd: { method: "POST", path: "/v1/organizations/{org_id}/events/{event_id}/referral-program/end" },
+  referralSummary: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/referral-program/summary" },
+  referralRewards: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/referral-rewards" },
+  // The same programme for the organizer's shop (one per organization, so no event id).
+  shopReferralProgram: { method: "GET", path: "/v1/organizations/{org_id}/shop/referral-program" },
+  shopReferralProgramPut: { method: "PUT", path: "/v1/organizations/{org_id}/shop/referral-program" },
+  shopReferralProgramPause: { method: "POST", path: "/v1/organizations/{org_id}/shop/referral-program/pause" },
+  shopReferralProgramResume: { method: "POST", path: "/v1/organizations/{org_id}/shop/referral-program/resume" },
+  shopReferralProgramEnd: { method: "POST", path: "/v1/organizations/{org_id}/shop/referral-program/end" },
+  shopReferralSummary: { method: "GET", path: "/v1/organizations/{org_id}/shop/referral-program/summary" },
+  shopReferralRewards: { method: "GET", path: "/v1/organizations/{org_id}/shop/referral-rewards" },
   // 4-7: the owner's "Organization data".
   orgDetail: { method: "GET", path: "/v1/organizations/{id}" },
   orgUpdate: { method: "PATCH", path: "/v1/organizations/{id}" },

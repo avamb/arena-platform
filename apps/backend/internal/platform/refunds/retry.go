@@ -45,6 +45,12 @@ func Retryable(r Refund) bool {
 	if r.Settlement != "provider" || r.Provider == nil || r.TicketID == nil || r.OrderID == nil || r.ProviderRefundID != nil {
 		return false
 	}
+	if r.Origin == OriginReferralCashback {
+		// A cashback is money the programme owes a person, not a refund of a
+		// sale: the referral sweep decides whether it is paid, and a retry
+		// could pay it twice next to the sweep's own read-back.
+		return false
+	}
 	if r.FailureCode != nil && *r.FailureCode == failureTicketScanned {
 		// Refused for a scanned ticket: a retry would be refused the same way
 		// and notify the owners again.
@@ -126,6 +132,7 @@ func (e *Engine) Retry(ctx context.Context, in RetryInput) (BatchResult, error) 
 		OrgID: cur.OrgID, OrderID: *cur.OrderID,
 		Items:          []Item{{TicketID: *cur.TicketID, Amount: &amount}},
 		Reason:         reason,
+		Origin:         cur.Origin,
 		CancelTickets:  cancelTickets,
 		NotifyBuyer:    notify,
 		IdempotencyKey: key,

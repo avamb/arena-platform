@@ -572,6 +572,57 @@ export const PARITY: readonly ParityRow[] = [
     ready: { twin: "live/promo.spec.ts", smoke: "promo.mock.spec.ts" },
     routes: [`POST ${O}/promo-codes`, `PATCH ${O}/promo-codes/{id}`, `DELETE ${O}/promo-codes/{id}`],
   },
+  // ── Приведи друга ───────────────────────────────────────────────────
+  {
+    area: "Приведи друга",
+    fn: "Программа на карточке мероприятия",
+    bot: "в работе (спека 52, раздел 7.1)",
+    web: "R3",
+    routes: [`GET ${O}/events/{event_id}/referral-program`, `PUT ${O}/events/{event_id}/referral-program`],
+    note: "Скидка другу, кэшбэк приводящему, предел кэшбэка, число друзей на код, срок. Перед запуском — правила и галочка (`accept_terms`). Если ни один канал не умеет частичный возврат, форма закрыта с объяснением. Смотреть — `promo.read`, менять — `promo.update` + `refund.create` + `refund.approve`. На возврате заказа друга показана плашка «кэшбэк приводящему уже выплачен».",
+  },
+  {
+    area: "Приведи друга",
+    fn: "Пауза, возобновление, завершение",
+    bot: "в работе (спека 52, раздел 7.1)",
+    web: "R3",
+    routes: [
+      `POST ${O}/events/{event_id}/referral-program/pause`,
+      `POST ${O}/events/{event_id}/referral-program/resume`,
+      `POST ${O}/events/{event_id}/referral-program/end`,
+    ],
+    note: "Пауза и возобновление — одним нажатием, завершение — после вопроса. Завершённую программу включить снова нельзя, запускается новая.",
+  },
+  {
+    area: "Приведи друга",
+    fn: "Итоги и список начислений",
+    bot: "в работе (спека 52, раздел 7.1)",
+    web: "R3",
+    routes: [`GET ${O}/events/{event_id}/referral-program/summary`, `GET ${O}/events/{event_id}/referral-rewards`],
+    note: "Суммы по валютам, никогда в одну. Начисления с фильтром по состоянию и «Показать ещё». Контактов покупателя в ответе нет.",
+  },
+  {
+    area: "Приведи друга",
+    fn: "Программа магазина: настройки, пауза, завершение",
+    bot: "в работе (спека 52, раздел 7.1)",
+    web: "R3",
+    routes: [
+      `GET ${O}/shop/referral-program`,
+      `PUT ${O}/shop/referral-program`,
+      `POST ${O}/shop/referral-program/pause`,
+      `POST ${O}/shop/referral-program/resume`,
+      `POST ${O}/shop/referral-program/end`,
+    ],
+    note: "Тот же раздел, что на карточке мероприятия, внизу настроек магазина (одна программа на организацию). Правила и галочка перед запуском, форма закрыта, если платёжный канал магазина не умеет частичный возврат. Смотреть — `promo.read`, менять — `promo.update` + `refund.create` + `refund.approve`; сам экран — `shop.read`.",
+  },
+  {
+    area: "Приведи друга",
+    fn: "Итоги и начисления магазина",
+    bot: "в работе (спека 52, раздел 7.1)",
+    web: "R3",
+    routes: [`GET ${O}/shop/referral-program/summary`, `GET ${O}/shop/referral-rewards`],
+    note: "Суммы по валютам и список начислений с заказом магазина друга. Контактов покупателя в ответе нет.",
+  },
   // ── Рассылка и напоминания (спека 51-1) ─────────────────────────────
   {
     area: "Рассылка и напоминания",

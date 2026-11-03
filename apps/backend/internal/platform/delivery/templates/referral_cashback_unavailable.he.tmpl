@@ -1,0 +1,67 @@
+{{define "subject"}}בנוגע לקאשבק על הקנייה של חבר{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>לא הצלחנו להחזיר את הקאשבק</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" dir="rtl" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;text-align:right;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">לא הצלחנו להחזיר את הקאשבק</h1>
+  <p style="margin:0 0 12px 0;">שלום{{with .HolderName}} {{.}}{{end}},</p>
+  <p style="margin:0 0 12px 0;">חבר קנה עם הקוד שלך <strong>{{.Referral.Code}}</strong>, אך לא הצלחנו להחזיר <strong>{{.Referral.Amount}}</strong> לכרטיס שלך (הזמנה מס' {{.Referral.Order}}). אנחנו מצטערים.</p>
+  <p style="margin:0 0 12px 0;">לפי תנאי השירות, אנא פנו אל המארגן.</p>
+  {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">יצירת קשר עם המארגן: <a href="mailto:{{.Branding.ContactEmail}}" style="color:#46555f">{{.Branding.ContactEmail}}</a></p>{{else}}{{with .Branding.ContactFormURL}}<p style="margin:0 0 12px 0;">יצירת קשר עם המארגן: <a href="{{.}}" style="color:#46555f">כתיבה למארגן</a></p>{{end}}{{end}}
+  <p style="font-size:12px;color:#666">נשלח אל: {{.RecipientEmail}}</p>
+  </td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;text-align:right;">
+{{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
+  <p style="font-size:11px;color:#666;line-height:1.5">
+    <strong>{{.Branding.LegalName}}</strong>
+    {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
+    {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
+    {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.ContactEmail}}<br>יצירת קשר: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>יצירת קשר: <a href="{{.}}" style="color:#666">כתיבה למארגן</a>{{end}}{{end}}
+  </p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}Arena Platform — הודעה אוטומטית{{end}}</p>
+  <p style="font-size:11px;color:#999;line-height:1.5">אם תלחצו על ״ביטול הרשמה״, לא תקבלו יותר את המיילים עם הכרטיסים שלכם ואת המיילים החשובים על ההזמנה שלכם. אנחנו לא שולחים דיוורים שיווקיים ללא הסכמתכם.</p>
+  </td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}{{with .Branding.WebsiteURL}} ({{.}}){{end}}
+
+לא הצלחנו להחזיר את הקאשבק
+
+שלום{{with .HolderName}} {{.}}{{end}},
+
+חבר קנה עם הקוד שלך {{.Referral.Code}}, אך לא הצלחנו להחזיר {{.Referral.Amount}} לכרטיס שלך (הזמנה מס' {{.Referral.Order}}). אנחנו מצטערים.
+
+לפי תנאי השירות, אנא פנו אל המארגן.
+
+{{if .Branding.ContactEmail}}יצירת קשר עם המארגן: {{.Branding.ContactEmail}}
+{{else}}{{with .Branding.ContactFormURL}}יצירת קשר עם המארגן: {{.}}
+{{end}}{{end}}
+נשלח אל: {{.RecipientEmail}}
+
+--
+{{.Branding.LegalName}}
+{{with .Branding.LegalAddressLine1}}{{.}}
+{{end}}{{with .Branding.LegalAddressLine2}}{{.}}
+{{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
+{{else}}{{with .Branding.LegalAddressCity}}{{.}}
+{{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
+{{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.ContactEmail}}יצירת קשר: {{.}}
+{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}יצירת קשר: {{.}}
+{{end}}{{end}}
+{{if not .WhiteLabel}}Arena Platform — הודעה אוטומטית{{end}}
+
+אם תלחצו על ״ביטול הרשמה״, לא תקבלו יותר את המיילים עם הכרטיסים שלכם ואת המיילים החשובים על ההזמנה שלכם. אנחנו לא שולחים דיוורים שיווקיים ללא הסכמתכם.
+{{end}}

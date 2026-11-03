@@ -154,6 +154,9 @@ func (b *Bot) showEventCard(ctx context.Context, chatID int64, editMsgID *int, f
 	if row := b.promoEventRow(loc, id, eventID); row != nil { // promo codes of the event (EC-11)
 		rows = append(rows, row)
 	}
+	if row := b.referralEventRow(loc, id, eventID); row != nil { // "Refer a friend" (spec 52)
+		rows = append(rows, row)
+	}
 	if row := b.promoterEventRow(loc, id, eventID); row != nil { // the event's promoter (EC-14)
 		rows = append(rows, row)
 	}

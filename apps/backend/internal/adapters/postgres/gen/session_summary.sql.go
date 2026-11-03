@@ -418,6 +418,7 @@ LEFT JOIN tickets         rt ON rt.id = r.ticket_id
 LEFT JOIN payment_intents pi ON pi.id = r.payment_intent_id
 LEFT JOIN orders          po ON po.checkout_session_id = pi.checkout_session_id
 WHERE  COALESCE(ro.session_id, rt.session_id, po.session_id) = ANY($1::uuid[])
+  AND  r.origin <> 'referral_cashback'
 GROUP  BY COALESCE(ro.session_id, rt.session_id, po.session_id), r.settlement, r.state, r.currency`
 
 // SessionSummaryRefundsRow totals the refunds of one (session, settlement,
@@ -628,6 +629,7 @@ refunded AS (
                 LIMIT  1))
     WHERE  r.state  = 'succeeded'
       AND  r.org_id = $2
+      AND  r.origin <> 'referral_cashback'
     GROUP  BY p.id, r.currency
 ),
 lines AS (

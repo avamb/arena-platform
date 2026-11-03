@@ -10,6 +10,7 @@
  *   GET  /v1/public/checkout/{token}               (WID-D)
  *   POST /v1/public/checkout/{token}/recover       (WID-D, wraps WID-0c)
  *   POST /v1/public/feeds/{token}/sessions/{id}/sale-subscriptions  ("notify me when sales open")
+ *   GET  /v1/public/checkout/{token}/referral      ("Refer a friend" code of a paid order)
  *
  * The schema cache is module-level so a single widget instance does not
  * re-download the geometry on every re-render.  It is keyed by session ID
@@ -32,6 +33,7 @@ import type {
 } from './lib/checkout.js';
 import type { SaleSubscriptionPayload, SaleSubscriptionResponse } from './lib/saleSubscribe.js';
 import { applySeatCategoryOverlay } from './lib/seatCategories.js';
+import type { ReferralCode } from './lib/referral.js';
 
 // ─── Structured API error ────────────────────────────────────────────────────
 
@@ -421,4 +423,23 @@ export async function postSaleSubscription(
   if (!res.ok) throw await apiErrorFromResponse(res, 'postSaleSubscription');
   // The 202 is the whole answer; a body that does not parse must not turn it into a failure.
   return res.json().catch(() => ({ status: 'check_email' })) as Promise<SaleSubscriptionResponse>;
+}
+
+// ─── Refer a friend ──────────────────────────────────────────────────────────
+
+/**
+ * GET /v1/public/checkout/{checkoutToken}/referral
+ *
+ * The personal "Refer a friend" code of a PAID order. The `checkout_token` is
+ * the credential. The platform answers 404 `referral.not_available` for every
+ * order that has no code (not paid, no programme, programme over), so a caller
+ * treats any failure as "show nothing".
+ *
+ * @throws ApiError when the response is non-2xx.
+ */
+export async function getCheckoutReferral(checkoutToken: string, apiBase = ''): Promise<ReferralCode> {
+  const url = `${apiBase}/v1/public/checkout/${encodeURIComponent(checkoutToken)}/referral`;
+  const res = await fetch(url);
+  if (!res.ok) throw await apiErrorFromResponse(res, 'getCheckoutReferral');
+  return res.json() as Promise<ReferralCode>;
 }

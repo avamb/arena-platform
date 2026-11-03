@@ -49,6 +49,20 @@ type BatchInput struct {
 	// Approved: the caller holds refund.approve, so the rows skip
 	// 'requested' and are driven at once (spec §7 step 2).
 	Approved bool
+	// Origin is refunds.origin of the rows written: empty means OriginArena.
+	// OriginReferralCashback marks a "refer a friend" cashback (spec 52): a
+	// money-only partial refund of the referrer's own payment. With
+	// CancelTickets false it is NOT held back by a scan of the ticket (owner
+	// decision R-RF3: the ticket may have been bought at the door), see
+	// scanBlocksBatch.
+	Origin string
+	// Prepare, when set, runs inside the writing transaction, under the
+	// payment's lock, once the request is known to be a fresh batch (never
+	// on an idempotent replay), and returns the items to plan. It may read
+	// anything the lock protects (sums of refunds of the payment) to decide
+	// the amounts; an error rolls everything back and is returned as it is.
+	// The referral cashback uses it to apply its cap race-free.
+	Prepare func(ctx context.Context, tx pgx.Tx, pay Payment) ([]Item, error)
 
 	// paymentID, when set, is the payment the refund must go through (a
 	// retry goes through the payment of the refund it replaces, not the
@@ -85,10 +99,31 @@ type order struct {
 
 const maxBatchItems = 200
 
+// Values of refunds.origin written by the engine.
+const (
+	OriginArena            = "arena"
+	OriginReferralCashback = "referral_cashback"
+)
+
+// scanBlocksBatch reports whether a scan of a ticket stops the batch. Only a
+// referral cashback that leaves the ticket valid is exempt (spec 52, R-RF3).
+func scanBlocksBatch(in BatchInput) bool {
+	return in.Origin != OriginReferralCashback || in.CancelTickets
+}
+
+func batchOrigin(in BatchInput) string {
+	if in.Origin == "" {
+		return OriginArena
+	}
+	return in.Origin
+}
+
 func validateBatch(in BatchInput) *Error {
 	bad := func(msg string) *Error { return refusal(http.StatusBadRequest, CodeInvalidRequest, msg, nil) }
 	key := strings.TrimSpace(in.IdempotencyKey)
 	switch {
+	case in.Origin != "" && in.Origin != OriginArena && in.Origin != OriginReferralCashback:
+		return bad("unknown refund origin")
 	case key == "" || len(key) > 255:
 		return bad("an Idempotency-Key of 1 to 255 characters is required")
 	case strings.TrimSpace(in.Reason) == "":
@@ -170,6 +205,16 @@ func (e *Engine) CreateBatch(ctx context.Context, in BatchInput) (BatchResult, e
 		if in.beforePlan != nil {
 			if err := in.beforePlan(ctx, tx); err != nil {
 				return err
+			}
+		}
+		if in.Prepare != nil {
+			items, err := in.Prepare(ctx, tx, pay)
+			if err != nil {
+				return err
+			}
+			in.Items = items
+			if verr := validateBatch(in); verr != nil {
+				return verr
 			}
 		}
 		plan, perr := planBatch(ctx, tx, in, ord, pay, desc.Capabilities.PartialRefund)
@@ -385,12 +430,12 @@ func planBatch(ctx context.Context, tx pgx.Tx, in BatchInput, ord order, pay Pay
 		                  AND `+countsAgainstBudgetSQL+`), 0)::bigint,
 		       EXISTS (SELECT 1 FROM refunds r
 		                WHERE r.ticket_id = t.id AND r.cancel_ticket AND r.state NOT IN ('failed', 'rejected')),
-		       t.review_hold, `+ticketBlockedSQL+`
+		       t.review_hold, $5::boolean AND `+ticketBlockedSQL+`
 		         AND NOT EXISTS (SELECT 1 FROM refund_scan_exceptions sx
 		                         WHERE sx.ticket_id = t.id AND $4::uuid IS NOT NULL AND sx.used_by_refund = $4::uuid)
 		FROM   tickets t
 		LEFT JOIN order_items oi ON oi.ticket_id = t.id AND oi.order_id = $2
-		WHERE  t.id = ANY($1) AND t.checkout_session_id = $3`, ids, ord.ID, ord.CheckoutSessionID, in.retryOf)
+		WHERE  t.id = ANY($1) AND t.checkout_session_id = $3`, ids, ord.ID, ord.CheckoutSessionID, in.retryOf, scanBlocksBatch(in))
 	if err != nil {
 		return nil, err
 	}
@@ -487,15 +532,16 @@ func insertBatch(ctx context.Context, tx pgx.Tx, in BatchInput, pay Payment, pla
 		state = StateProviderPending
 	}
 	requestedBy := strPtr(in.Actor.ID)
+	origin := batchOrigin(in)
 	for _, p := range plan {
 		r, err := scanRefund(tx.QueryRow(ctx, `
 			INSERT INTO refunds (payment_intent_id, org_id, order_id, ticket_id, batch_id, amount, currency, reason,
 			                     requested_by, state, approved_at, settlement, provider, origin, cancel_ticket)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-			        CASE WHEN $10 = 'provider_pending' THEN now() END, 'provider', $11, 'arena', $12)
+			        CASE WHEN $10 = 'provider_pending' THEN now() END, 'provider', $11, $13, $12)
 			RETURNING `+refundColumns,
 			pay.ID, in.OrgID, in.OrderID, p.TicketID, res.BatchID, p.Amount, pay.Currency, in.Reason,
-			requestedBy, state, pay.Provider, in.CancelTickets))
+			requestedBy, state, pay.Provider, in.CancelTickets, origin))
 		if err != nil {
 			var pgErr *pgconn.PgError
 			if errors.As(err, &pgErr) && pgErr.Code == "23505" {
@@ -503,6 +549,12 @@ func insertBatch(ctx context.Context, tx pgx.Tx, in BatchInput, pay Payment, pla
 					map[string]any{"ticket_id": p.TicketID.String()})
 			}
 			return res, err
+		}
+		if !scanBlocksBatch(in) {
+			// A referral cashback ignores scans: it neither spends nor needs
+			// a superadmin's exception.
+			res.Refunds = append(res.Refunds, r)
+			continue
 		}
 		// A scanned ticket got here on a superadmin's exception: this refund
 		// spends it, or takes over the one the refund it retries spent.

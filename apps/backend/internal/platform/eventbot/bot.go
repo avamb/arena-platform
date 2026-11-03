@@ -595,6 +595,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.disputeCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "dp:"))
 	case "pm":
 		b.promoCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pm:"))
+	case "rf":
+		b.referralCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "rf:"))
 	case "pr":
 		b.promoterCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pr:"))
 	case "mt":

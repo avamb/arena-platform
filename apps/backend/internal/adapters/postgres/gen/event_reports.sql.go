@@ -372,6 +372,7 @@ FROM (
     WHERE  s.event_id    = $1
       AND  pr.state      = 'succeeded'
       AND  pr.settlement = 'provider'
+      AND  pr.origin     <> 'referral_cashback'
     UNION
     SELECT er.id, er.amount, er.currency
     FROM   refunds er

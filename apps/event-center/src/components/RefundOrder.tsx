@@ -33,6 +33,7 @@ import type { CreateOrderRefundsResponse, OrderRefundOptions, OrderRefundTicketO
 import { formatMoney } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import { orderNumber } from "@/lib/orders";
+import { cashbackNotice } from "@/lib/referral";
 import {
   MAX_REFUND_REASON,
   REFUND_REASONS,
@@ -372,9 +373,19 @@ function RefundBody({ o, number, step, draft, setDraft, problem, plan, canApprov
   const entry = refundEntry(o);
   const scannedList = scannedTickets(o);
   const busy = inProgressTickets(o);
+  // "Refer a friend": the referrer was already given cashback for this (friend's) order. A refund to the
+  // friend does not take it back, so the plate stands before every button of the panel.
+  const cashback = cashbackNotice(o.referral_cashback_paid);
+  const cashbackPlate =
+    cashback !== null ? (
+      <p className="notice notice-warn" role="note" data-testid="refund-referral-cashback">
+        {t("refund.referralCashback", { amount: money(cashback.amount_minor, cashback.currency), code: cashback.code })}
+      </p>
+    ) : null;
 
   const notes = (
     <>
+      {cashbackPlate}
       {busy.length > 0 && (
         <p className="notice" role="status" data-testid="refund-in-progress">
           {t("refund.inProgressNote", { tickets: busy.map(ticketLabel).join(", ") })}
@@ -411,6 +422,7 @@ function RefundBody({ o, number, step, draft, setDraft, problem, plan, canApprov
     return (
       <div data-testid="refund-final">
         <h3>{t("refund.final.title")}</h3>
+        {cashbackPlate}
         <dl className="facts-grid">
           <dt>{t("refund.final.order")}</dt>
           <dd>{number}</dd>

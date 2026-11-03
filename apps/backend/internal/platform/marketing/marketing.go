@@ -125,6 +125,13 @@ func SaveSettings(ctx context.Context, db DB, orgID uuid.UUID, in Settings, acto
 		if err != nil {
 			return Settings{}, err
 		}
+		manual, err := isOrganizerCode(ctx, db, row.ID)
+		if err != nil {
+			return Settings{}, err
+		}
+		if !manual {
+			return Settings{}, ErrCodeNotFound
+		}
 		if row.MaxUsesPerCustomer == nil || *row.MaxUsesPerCustomer != 1 {
 			return Settings{}, ErrCodeNeedsPerUser
 		}
@@ -169,10 +176,29 @@ func LoadOffer(ctx context.Context, db DB, orgID uuid.UUID) (Offer, error) {
 	if err != nil {
 		return Offer{}, err
 	}
-	if row.Status == "active" {
+	if row.Status != "active" {
+		return o, nil
+	}
+	manual, err := isOrganizerCode(ctx, db, row.ID)
+	if err != nil {
+		return Offer{}, err
+	}
+	if manual {
 		o.Code = &row
 	}
 	return o, nil
+}
+
+// isOrganizerCode reports whether a promo code is one the organizer made. A
+// personal "Refer a friend" code (spec 52) is never a reward for the tick: it
+// is limited to one use per buyer like a reward code, and every subscriber
+// would then get the friend's discount and pay its owner a cashback.
+func isOrganizerCode(ctx context.Context, db DB, id uuid.UUID) (bool, error) {
+	meta, err := gen.New(db).GetReferralPromoMeta(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	return meta.Origin == "manual", nil
 }
 
 // IsRewardCode reports whether a code is the organization's reward for the
