@@ -112,7 +112,9 @@ func (q *countQuota) Take(string) bool {
 	return true
 }
 
-func allow(_ http.ResponseWriter, _ *http.Request, _ uuid.UUID, _ bool, _, _ string) bool { return true }
+func allow(_ http.ResponseWriter, _ *http.Request, _ uuid.UUID, _ bool, _, _ string) bool {
+	return true
+}
 
 func newHandler(store *fakeStore, model *fakeModel, quota *countQuota) *Handler {
 	h := New(slog.New(slog.NewTextHandler(io.Discard, nil))).
