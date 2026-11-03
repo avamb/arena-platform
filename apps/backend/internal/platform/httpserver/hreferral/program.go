@@ -18,7 +18,7 @@ type programAnswer struct {
 	Warnings   []warningJSON  `json:"warnings"`
 }
 
-func (h *Handler) answer(w http.ResponseWriter, r *http.Request, status int, p gen.ReferralProgramRow, cap capabilityJSON, warnings []warningJSON) {
+func (h *Handler) answer(w http.ResponseWriter, _ *http.Request, status int, p gen.ReferralProgramRow, cap capabilityJSON, warnings []warningJSON) {
 	httputil.WriteJSON(w, status, programAnswer{Program: toProgramJSON(p), Capability: cap, Warnings: warnings})
 }
 
@@ -84,13 +84,13 @@ func invalid(w http.ResponseWriter, r *http.Request, field, msg string) {
 // parse validates a PUT body; false = the answer is written.
 func (h *Handler) parse(w http.ResponseWriter, r *http.Request, b putBody) (settings, bool) {
 	var s settings
-	pct := func(v *int, field string, required bool, def int) (int16, bool) {
+	pct := func(v *int, field string, required bool, def int16) (int16, bool) {
 		if v == nil {
 			if required {
 				invalid(w, r, field, field+" is required")
 				return 0, false
 			}
-			return int16(def), true
+			return def, true
 		}
 		if *v < 1 || *v > 100 {
 			invalid(w, r, field, field+" must be a whole number from 1 to 100")
@@ -270,9 +270,9 @@ func (h *Handler) transitionOf(w http.ResponseWriter, r *http.Request, t target,
 	// programme that is over is too. Anything else out of "ended" is refused:
 	// ended is final, a new programme is started with PUT.
 	row := cur
-	switch {
-	case cur.Status == to:
-	case cur.Status == StatusEnded:
+	switch cur.Status {
+	case to:
+	case StatusEnded:
 		writeErr(w, r, http.StatusConflict, "referral.program_ended",
 			"this friend programme has ended; start a new one instead")
 		return

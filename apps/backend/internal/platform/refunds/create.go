@@ -108,7 +108,7 @@ const (
 // scanBlocksBatch reports whether a scan of a ticket stops the batch. Only a
 // referral cashback that leaves the ticket valid is exempt (spec 52, R-RF3).
 func scanBlocksBatch(in BatchInput) bool {
-	return !(in.Origin == OriginReferralCashback && !in.CancelTickets)
+	return in.Origin != OriginReferralCashback || in.CancelTickets
 }
 
 func batchOrigin(in BatchInput) string {

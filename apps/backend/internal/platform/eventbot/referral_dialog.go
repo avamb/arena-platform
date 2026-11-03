@@ -277,8 +277,8 @@ func (b *Bot) referralShowCard(ctx context.Context, chatID int64, editMsgID *int
 		warnings []openapi.ReferralWarning
 	)
 	resp, err := b.arena.ReferralProgram(ctx, jwt, orgID, st.EventID)
-	switch {
-	case err == nil:
+	switch err {
+	case nil:
 		prog, capab, warnings = &resp.Program, &resp.Capability, resp.Warnings
 	default:
 		var ae *APIError
@@ -442,8 +442,8 @@ func (b *Bot) referralEnd(ctx context.Context, chatID int64, editMsgID *int, id 
 func (b *Bot) referralStart(ctx context.Context, chatID int64, editMsgID *int, id *Identity, jwt string, st referralDialog) {
 	resp, err := b.arena.ReferralProgram(ctx, jwt, id.Current.OrgID, st.EventID)
 	var prog *openapi.ReferralProgram
-	switch {
-	case err == nil:
+	switch err {
+	case nil:
 		prog = &resp.Program
 		if prog.Status == referralStatusEnded {
 			prog = nil
