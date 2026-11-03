@@ -8722,7 +8722,7 @@ components:
 
     SellerProfile:
       type: object
-      required: [org_id, org_name, country, missing, complete, seller_shown, channels]
+      required: [org_id, org_name, country, missing, complete, seller_shown, channels, provider_receipt]
       description: |
         The owner's "Organization data": the legal data the sales page prints in
         its seller block, and every hosted-page channel with its block settings.
@@ -8789,6 +8789,30 @@ components:
         contact_form_to_telegram:
           type: boolean
           description: Buyers' messages from the sales page's contact form also go to the organization's sales Telegram chat (default true).
+        provider_receipt:
+          description: Whether the payment provider e-mails its own receipt of the payment to the buyer (spec 51, migration 0185).
+          allOf:
+            - $ref: "#/components/schemas/SellerProviderReceipt"
+
+    SellerProviderReceipt:
+      type: object
+      required: [enabled, forced, effective]
+      description: |
+        The provider-receipt setting of the organization. When `effective` is
+        true, checkout asks the payment provider to e-mail its own receipt to
+        the buyer (Stripe `payment_intent_data.receipt_email`, PayPlus
+        `sendEmailApproval`). Off cannot promise that no receipt is sent: the
+        organizer's own provider account may send one by itself.
+      properties:
+        enabled:
+          type: boolean
+          description: The owner's choice (default true).
+        forced:
+          type: boolean
+          description: The platform operator's "always send"; overrides `enabled`. Only a platform superadmin changes it.
+        effective:
+          type: boolean
+          description: What checkout does now (`enabled` or `forced`).
 
     SellerProfileEnvelope:
       type: object
@@ -8803,12 +8827,23 @@ components:
     UpdateSellerProfileRequest:
       type: object
       additionalProperties: false
-      required: [contact_form_to_telegram]
-      description: The organization-wide switch of the contact form's Telegram leg.
+      description: |
+        The organization-wide switches. Every key is optional; at least one is
+        required (400 `seller.invalid_body` otherwise).
       properties:
         contact_form_to_telegram:
           type: boolean
           description: Post buyers' messages to the organization's sales Telegram chat too.
+        provider_receipt_enabled:
+          type: boolean
+          description: The owner's choice, the payment provider e-mails its own receipt to the buyer.
+        provider_receipt_forced:
+          type: boolean
+          description: |
+            "Always send the provider receipt", overriding the owner. Only a
+            platform superadmin (with `X-Admin-Reason`) changes it; anyone else
+            gets 403 `seller.provider_receipt_forced_superadmin_only` unless the
+            value repeats the stored one.
 
     SellerDisplayContactPatch:
       type: object
@@ -37834,12 +37869,17 @@ paths:
 
     patch:
       operationId: updateSellerProfile
-      summary: Switch the Telegram leg of the sales page's contact form
+      summary: Change the organization-wide sales page and payment switches
       description: |
         `contact_form_to_telegram` decides whether buyers' messages from the
         sales page's contact form also go to the organization's own sales
-        Telegram chat (the e-mail always goes). Requires `org.update`.
-        Audited as `v1.organization.contact_form_update`.
+        Telegram chat (the e-mail always goes). `provider_receipt_enabled` and
+        `provider_receipt_forced` decide whether the payment provider e-mails
+        its own receipt to the buyer; only a platform superadmin changes the
+        forced flag. Requires `org.update`. Audited as
+        `v1.organization.contact_form_update` (only the contact form),
+        `v1.organization.provider_receipt_update` (only the receipt) or
+        `v1.organization.settings_update` (both).
       tags: [v1]
       security:
         - bearerAuth: []
@@ -37877,7 +37917,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Caller lacks `org.update` in the organization.
+          description: Caller lacks `org.update` in the organization, is an API key, or changed `provider_receipt_forced` without being a platform superadmin (`seller.provider_receipt_forced_superadmin_only`).
           content:
             application/json:
               schema:
@@ -46509,6 +46549,15 @@ paths:
           description: |
             Media object not found, already soft-deleted, or owned by an
             organization the caller does not belong to (`media.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            The object is an archived payment provider receipt (owner type
+            `payment_receipt`), kept as dispute evidence; it is never deleted
+            (`media.receipt_not_deletable`).
           content:
             application/json:
               schema:

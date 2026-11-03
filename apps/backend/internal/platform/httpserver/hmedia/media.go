@@ -311,6 +311,14 @@ func (h *Handler) DeleteMedia(w http.ResponseWriter, r *http.Request) {
 	if !h.mediaOrgAllowed(w, r, obj.OrgID, true) {
 		return
 	}
+	if obj.OwnerType == mediastore.OwnerPaymentReceipt {
+		// An archived provider receipt is dispute evidence (spec 51 section
+		// 2): the organization is a party to the dispute, so it never deletes it.
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+			"media.receipt_not_deletable", "an archived payment receipt cannot be deleted", r,
+		))
+		return
+	}
 
 	if err := h.media.SoftDelete(ctx, id); err != nil {
 		if errors.Is(err, mediastore.ErrNotFound) {
@@ -421,6 +429,13 @@ func (h *Handler) DownloadMedia(w http.ResponseWriter, r *http.Request) {
 
 	if obj.ContentType != "" {
 		w.Header().Set("Content-Type", obj.ContentType)
+	}
+	if obj.OwnerType == mediastore.OwnerPaymentReceipt {
+		// The copy may be the provider's own HTML page: it is downloaded,
+		// never rendered on the API's origin.
+		w.Header().Set("Content-Disposition", "attachment")
+		w.Header().Set("Content-Security-Policy", "sandbox")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 	}
 	w.Header().Set("Content-Length", strconv.FormatInt(obj.ByteSize, 10))
 	w.Header().Set("Cache-Control", "private, max-age=60")

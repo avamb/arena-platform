@@ -129,6 +129,14 @@ func TestShopSB04_SettledPaymentPaysTheParkedOrder(t *testing.T) {
 	if v := f.variant(variant); v.Stock != 1 {
 		t.Fatalf("stock = %d; want 1 (two sold)", v.Stock)
 	}
+	// A payment settled by hand is the likeliest one to be disputed: its
+	// provider receipt is archived too (spec 51 section 2).
+	var receiptJobs int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FROM worker_jobs
+		WHERE job_type = 'payment.receipt_archive' AND payload->>'payment_intent_id' = $1`,
+		o.PaymentIntentID.String()).Scan(&receiptJobs); err != nil || receiptJobs != 1 {
+		t.Fatalf("receipt archive jobs = %d (%v); want 1", receiptJobs, err)
+	}
 	code, body, _ = f.do(http.MethodGet, "/v1/public/shop/checkout/"+o.OrderToken, "", "")
 	if code != http.StatusOK || body["status"] != "paid" || body["paid_at"] == nil || body["review_reason"] != nil {
 		t.Fatalf("buyer's view after payment = %d %v; want paid", code, body)
