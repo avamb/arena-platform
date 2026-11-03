@@ -320,7 +320,9 @@ func miniappSaveDescription(t *testing.T, e *miniappSaveEnv) {
 	// draft's stale copy of the description over it.
 	e.press("wz:e:age", "Сейчас")
 	e.press("wz:age:18+", "Правка мероприятия")
-	e.press("wz:publish", "Что уйдёт на сайт")
+	if preview := e.press("wz:publish", "Что уйдёт на сайт"); strings.Contains(preview, "меняли в другом месте") {
+		t.Fatalf("the preview warned about the editor's own save:\n%s", preview)
+	}
 	done := e.press("wz:publish:go", "Сохранено")
 	if strings.Contains(done, "меняли в другом месте") {
 		t.Fatalf("the publish warned about the editor's own save:\n%s", done)
@@ -344,10 +346,14 @@ func miniappSaveDescriptionWithAnOutsideEdit(t *testing.T, e *miniappSaveEnv) {
 	e.press("tf:s", "Описание: сохранено")
 	e.press("wz:e:age", "Сейчас")
 	e.press("wz:age:18+", "Правка мероприятия")
-	e.press("wz:publish", "Что уйдёт на сайт")
-	warn := e.press("wz:publish:go", "меняли в другом месте")
-	if !strings.Contains(warn, "меняли в другом месте") {
+	// The warning is on the preview already, with the name the site gave.
+	warn := e.press("wz:publish", "меняли в другом месте")
+	if !strings.Contains(warn, "(сайт)") || !strings.Contains(warn, "Что уйдёт на сайт") {
 		t.Fatalf("the warning is gone although the site changed the event too:\n%s", warn)
+	}
+	// A press of «Publish» on an older preview is still caught by the save.
+	if again := e.press("wz:publish:go", "меняли в другом месте"); !strings.Contains(again, "меняли в другом месте") {
+		t.Fatalf("the save did not warn:\n%s", again)
 	}
 	miniappTranslationsIntact(t, e)
 }

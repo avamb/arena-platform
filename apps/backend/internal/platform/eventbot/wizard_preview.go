@@ -43,6 +43,18 @@ func (w *Wizard) confirmDateScreen(loc string, d *Draft, head string, nav func(r
 // and what it leaves alone. Only its "Publish" button saves.
 func (w *Wizard) previewScreen(loc, orgName string, d *Draft) Screen {
 	t := func(key string, data map[string]any) string { return w.texts.T(loc, key, data) }
+	text := w.previewBody(loc, orgName, d) + "\n\n" + t("bot.wz.preview_footer", nil)
+	return Screen{Text: clipMessage(text, maxMessageRunes), Buttons: [][]Button{
+		{{Label: t("bot.wz.preview_publish_btn", nil), Data: "publish:go"}},
+		{{Label: t("bot.wz.preview_back_btn", nil), Data: "e:home"}},
+	}}
+}
+
+// previewBody is the preview without its footer: what the save will send, the
+// dates it leaves alone and the warnings. The «changed elsewhere» screen shows
+// it under its own warning (wizard_conflict.go).
+func (w *Wizard) previewBody(loc, orgName string, d *Draft) string {
+	t := func(key string, data map[string]any) string { return w.texts.T(loc, key, data) }
 	cur := d.currencyOrGuess()
 	plan := d.sendPlan()
 	currency := contains(d.Changed, "currency")
@@ -88,11 +100,7 @@ func (w *Wizard) previewScreen(loc, orgName string, d *Draft) Screen {
 	for _, wn := range warns {
 		text += "\n\n⚠ " + wn
 	}
-	text += "\n\n" + t("bot.wz.preview_footer", nil)
-	return Screen{Text: clipMessage(text, maxMessageRunes), Buttons: [][]Button{
-		{{Label: t("bot.wz.preview_publish_btn", nil), Data: "publish:go"}},
-		{{Label: t("bot.wz.preview_back_btn", nil), Data: "e:home"}},
-	}}
+	return text
 }
 
 // closedCategories warns about the categories of an existing date that the

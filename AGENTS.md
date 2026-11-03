@@ -1762,7 +1762,27 @@ entries short and factual.
   (`now() + interval '1 minute'`), never a plain `now()`: on a fast runner
   the whole edit flow fits in one second and `TestBotE2E_WizardCreatesAnEvent`
   failed three times in a row on CI (2026-09-29) while passing in earlier,
-  slower runs.
+  slower runs. Since 2026-11-02 the check runs when the preview of «Publish
+  changes» is DRAWN (`wizardRender` -> `renderCheckedPreview`,
+  `eventbot/wizard_conflict.go`, naming what changed through
+  `elsewhereChanges`) and again when the save starts (`saveGate`); a failed
+  read never saves (retry / save anyway), on the preview it is only a note.
+  So an e2e that moves `updated_at` before «Publish changes» sees the
+  warning on the `wz:publish` press, not only after `wz:publish:go`.
+  Each date the edit posts moves `updated_at` itself, so the event-bundle
+  import answers `event_updated_at` (read inside its transaction, after
+  `SetEventImportMetadata` took the row lock) and `Wizard.Save` takes it as
+  the draft's new mark (`recordSavedStamp`): after a save that stopped half
+  way, «Retry» and the preview no longer report the bot's own write, while an
+  edit made after it still differs. The import answers the mark to the
+  microsecond and the GET to the second, so every mark the draft stores or
+  compares goes through `editStamp` / `sameEditStamp` (UTC, cut to the
+  second); a raw `RFC3339Nano` comparison made the first version of this fix
+  report a conflict after EVERY partial save
+  (`TestBotE2E_WizardRetryAfterAPartialSave` drives it through the real
+  router; a fake that prints both marks alike cannot see it). Never "fix" this by re-reading the event
+  after a save (that would adopt a foreign edit) or by skipping the check once
+  `Saved.EventID` is set.
 - **`cmd/arena-bot` (package `internal/platform/eventbot`) is the fourth
   binary of the image and polls Telegram with `github.com/go-telegram/bot`;
   handlers of DIFFERENT accounts run concurrently, one account's updates run
@@ -2336,3 +2356,5 @@ entries short and factual.
   - `email.HeaderFrom` cuts a display name to `MaxFromNameRunes` (64) so a long Cyrillic brand name cannot push the encoded From line over 998 octets.
   - Migration 0187 adds the `subscription` rule to EVERY `standard-2026` EUR/USD version, as a one-off exception to "a number changes only by a new version" (no white label month existed before). Its Down refuses once a `white_label_month` event exists. The migration number is moved to head + 1 at merge; nothing but the migration-head pin depends on it.
   - Tests: `billing/white_label_test.go`, `delivery/templates/templates_white_label_test.go`, `adapters/email/sender_from_name_test.go`, `httpserver/white_label_integration_test.go`, widget `lib/platformBadge.test.ts`, admin-web `lib/api/billingWhiteLabel.test.ts`.
+- **Every buyer download and view of tickets is logged in `ticket_access_events` (migration 0184, spec 51 R-13) — the access log a chargeback answer quotes.** `hfeed/ticket_access.go` writes a `pdf_download` row for `GET /v1/public/checkout/{token}/tickets/{id}/pdf` (not repeated for the same ticket, IP, source and automation flag within a minute) and one `tickets_view` row when the status answer lists a paid order's tickets (deduplicated per checkout + IP + flag for ten minutes in SQL, the widget polls). **`likely_automated` marks a request that looks like a machine** (`ticketAccessLooksAutomated`: prefetch/preview headers, empty UA, a scanner/script fragment in the UA, or no `Accept-Language`) — corporate mail security (Safe Links, Mimecast, Proofpoint) opens every link of a letter at delivery, so an unmarked "downloaded from the e-mail" row would be false evidence; anything that quotes this log to a payment provider must leave those rows out or label them. The IP is stored in the clear on purpose (owner decision R-10) and is only the buyer's real address when `TRUSTED_PROXY_COUNT` matches the proxy chain. Recording is best effort: the write runs on `context.WithoutCancel` with a 2 s timeout, a failure is logged and the PDF still goes out. The e-mail link carries the checkout token, which also opens the order's status answer — deliberate, the letter already carries every ticket as an attachment. The ticket e-mail links each ticket's PDF with `?src=email` (`delivery/download_links.go`, `HandlerOptions.APIBaseURL` from `cfg.APIPublicBaseURL()` in arena-worker; empty = no links), because Brevo sees neither the attachment being opened nor the reader's IP. A new `source`/`action` value needs the migration CHECK too (`TestTicketAccessValues_MatchMigration`). No purge job yet: retention counted from the event date is a follow-up.
+- **A `python` script that writes a file in text mode (`open(fn, "w")`) on this Windows host turns every `\n` into `\r\n`**, so a freshly written Go file fails `gofmt -l`. Read and write bytes (`"rb"`/`"wb"`) and keep the file's own line ending.
