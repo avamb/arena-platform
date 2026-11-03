@@ -298,8 +298,18 @@ func TestGA47Bind_GAPlanRecordsQuantitiesAndSurvivesRebind(t *testing.T) {
 		t.Fatalf("ledger capacity_total after the first bind = %d, want 50", n)
 	}
 
-	// An operator raises the first category from 30 to 45.
-	edited := cats[0].id
+	// An operator raises the 30-place category to 45. Picked by its quantity,
+	// not by position: both categories share a sort_order, so ORDER BY leaves
+	// their order to the planner and cats[0] was the 20-place one on some runs.
+	var edited uuid.UUID
+	for _, c := range cats {
+		if c.capacity != nil && *c.capacity == 30 {
+			edited = c.id
+		}
+	}
+	if edited == uuid.Nil {
+		t.Fatalf("no 30-place category among %d", len(cats))
+	}
 	if err := gaquota.InTx(ctx, pool, gen.New(pool), func(txq *gen.Queries) error {
 		_, err := gaquota.SetQuantity(ctx, txq, f.sessionID, edited, 45)
 		return err
