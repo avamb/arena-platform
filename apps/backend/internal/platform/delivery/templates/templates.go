@@ -261,6 +261,12 @@ type Data struct {
 	// it stays false for invitations and for any other seller.
 	WithdrawalNotice bool
 
+	// WhiteLabel hides the "Arena Platform" line of a buyer letter: the
+	// brand of the event (its promoter, else the organization) or of the shop
+	// has white label today (spec 08_architecture/53). The letters to the
+	// organizer (alerts) never read it.
+	WhiteLabel bool
+
 	// Shop is the order the shop e-mails describe (kinds shop_order_received,
 	// shop_order_shipped and shop_order_refunded); Render fills an empty one when it is nil.
 	Shop *ShopOrderData

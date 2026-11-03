@@ -31,6 +31,9 @@ type publicSettingsJSON struct {
 	// CaptchaSiteKey is the Turnstile site key the checkout form renders its
 	// widget with; absent while the shop's checkout has no captcha.
 	CaptchaSiteKey string `json:"captcha_site_key,omitempty"`
+	// WhiteLabel is true when the organization has white label today: the
+	// storefront hides its "on the Arena Sold Out platform" footer.
+	WhiteLabel bool `json:"white_label"`
 }
 
 // publicOrgJSON names the shop's organization.
@@ -83,6 +86,7 @@ func (h *Handler) HandlePublicCatalog(w http.ResponseWriter, r *http.Request) {
 			Currency: st.Currency, ShippingFeeMinor: st.ShippingFeeMinor, ShippingLabel: st.ShippingLabel,
 			CountryISO2: st.CountryISO2, AgeGateMinAge: st.AgeGateMinAge, AnnouncementText: st.AnnouncementText,
 			ContactEmail: st.ContactEmail, MaxLineQty: st.MaxLineQty, CaptchaSiteKey: h.captchaSiteKey(),
+			WhiteLabel: h.whiteLabel(r.Context(), sf.Org.ID),
 		},
 		"products": products,
 		"pages":    links,
@@ -562,4 +566,15 @@ func (h *Handler) HandlePublicCheckoutStatus(w http.ResponseWriter, r *http.Requ
 		"review_reason":  reviewReason,
 		"review_message": reviewMessage,
 	})
+}
+
+// whiteLabel reports whether the organization has white label today. A
+// failed lookup keeps the footer (false) and is logged.
+func (h *Handler) whiteLabel(ctx context.Context, orgID uuid.UUID) bool {
+	on, err := h.o.WhiteLabel.Org(ctx, orgID)
+	if err != nil {
+		h.o.Logger.Warn("shop: white label lookup failed", "org_id", orgID.String(), "error", err.Error())
+		return false
+	}
+	return on
 }

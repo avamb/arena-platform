@@ -45,6 +45,9 @@ func sendRecorded(ctx context.Context, sender email.Sender, db emailstatus.DB, l
 			l.FromAddress = d.DefaultFrom()
 		}
 	}
+	if l.FromAddress != "" && msg.FromName != "" {
+		l.FromAddress = email.HeaderFrom(l.FromAddress, msg.FromName) // what the buyer saw
+	}
 	l.ReplyTo = msg.ReplyTo
 	l.BodySHA256 = emailstatus.BodyDigest(msg.HTMLBody, msg.TextBody)
 	l.Attachments = nil

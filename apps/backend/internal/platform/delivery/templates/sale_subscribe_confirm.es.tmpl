@@ -16,7 +16,7 @@
   <p style="margin:0 0 12px 0;"><span style="color:#93a0a8;font-size:12px;word-break:break-all;">Enlace: {{.SaleNotice.URL}}</span></p>
   <p style="margin:0 0 12px 0;">Si no lo pediste, ignora este correo: no te escribiremos sobre esto. El enlace funciona 7 días.</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — mensaje automático<br>Si pulsas «Cancelar suscripción», nuestros correos no volverán a llegar nunca a esta dirección, tampoco las entradas.</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}Arena Platform — mensaje automático<br>{{end}}Si pulsas «Cancelar suscripción», nuestros correos no volverán a llegar nunca a esta dirección, tampoco las entradas.</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -33,7 +33,7 @@ Confirmar mi dirección: {{.SaleNotice.URL}}
 
 Si no lo pediste, ignora este correo: no te escribiremos sobre esto. El enlace funciona 7 días.
 
-Arena Platform — mensaje automático
+{{if not .WhiteLabel}}Arena Platform — mensaje automático{{end}}
 
 Si pulsas «Cancelar suscripción», nuestros correos no volverán a llegar nunca a esta dirección, tampoco las entradas.
 {{end}}

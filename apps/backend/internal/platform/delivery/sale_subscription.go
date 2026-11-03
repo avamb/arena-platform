@@ -106,17 +106,21 @@ func sendSaleLetter(ctx context.Context, opts SaleLetterOptions, r *templates.Re
 	if err != nil {
 		return err
 	}
+	whiteLabel, brand := whiteLabelForSession(ctx, opts.DB, opts.Logger, s.sessionID)
 	data := templates.Data{
 		EventName:      in.EventName,
 		RecipientEmail: s.email,
 		Branding:       templates.Branding{OrgName: in.OrgName},
 		SaleNotice:     templates.SaleNoticeData{URL: link, When: in.When(), Venue: in.Venue},
+		WhiteLabel:     whiteLabel,
 	}
 	out, err := r.Render(kind, s.letterLocale(), data)
 	if err != nil {
 		return err
 	}
-	return opts.Sender.Send(ctx, email.Message{To: s.email, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody})
+	msg := email.Message{To: s.email, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}
+	applyWhiteLabelSender(&msg, whiteLabel, brand)
+	return opts.Sender.Send(ctx, msg)
 }
 
 // NewSaleConfirmHandler builds the handler of salesubscribe.JobTypeConfirmEmail.

@@ -234,6 +234,12 @@ export interface FeedSession {
    */
   show_withdrawal_notice?: boolean;
   /**
+   * True when the event's brand (its promoter, else the organization) has
+   * white label today: the widget then leaves out its "Tickets: Arena Sold
+   * Out" line. Absent on older backends (treated as false).
+   */
+  white_label?: boolean;
+  /**
    * The checkout consent (P2): whether the buyer must tick "I accept the sale
    * terms of the organizer <seller_legal_name> and the platform policy"
    * before paying, and the two pages the text links to. Absent on older
