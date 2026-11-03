@@ -66,6 +66,7 @@ import type {
   SessionChangeImpact,
   SessionEnvelope,
   SessionSalesState,
+  GuestListSubscription,
   SessionSalesStateHistory,
   SessionListResponse,
   SessionSummary,
@@ -161,7 +162,7 @@ export function fetchOrder(orgId: string, orderId: string): Promise<OrderDetail>
   return call<OrderDetail>({ route: API.order, params: { org_id: orgId, id: orderId } });
 }
 
-export type CsvKind = "eventSales" | "sessionSales" | "sessionSummary";
+export type CsvKind = "eventSales" | "sessionSales" | "sessionSummary" | "sessionGuestList";
 
 export function downloadCsv(
   orgId: string,
@@ -195,7 +196,29 @@ export function downloadCsv(
         accept,
         fallbackName: "summary.csv",
       });
+    case "sessionGuestList":
+      return download({
+        route: API.sessionGuestListCsv,
+        params: { org_id: orgId, session_id: id },
+        query: { locale },
+        accept,
+        fallbackName: "guests.csv",
+      });
   }
+}
+
+/** The caller's own "send me the guest list" setting in this organization. */
+export function getGuestListSubscription(orgId: string): Promise<GuestListSubscription> {
+  return call<GuestListSubscription>({ route: API.guestListSubscription, params: { org_id: orgId } });
+}
+
+/** Turns the caller's automatic guest list on or off. */
+export function setGuestListSubscription(orgId: string, enabled: boolean): Promise<GuestListSubscription> {
+  return call<GuestListSubscription>({
+    route: API.guestListSubscriptionSet,
+    params: { org_id: orgId },
+    body: { enabled },
+  });
 }
 
 export function downloadSampleTicket(orgId: string, sessionId: string, locale: string): Promise<DownloadedFile> {

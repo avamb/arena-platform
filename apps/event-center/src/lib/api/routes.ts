@@ -48,6 +48,13 @@ export const API = {
     path: "/v1/organizations/{org_id}/sessions/{session_id}/summary.csv",
   },
   sampleTicket: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/sample-ticket" },
+  // The guest list of a session, and the caller's own "send me the guest list" setting.
+  sessionGuestListCsv: {
+    method: "GET",
+    path: "/v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv",
+  },
+  guestListSubscription: { method: "GET", path: "/v1/organizations/{org_id}/guest-list-subscription" },
+  guestListSubscriptionSet: { method: "PUT", path: "/v1/organizations/{org_id}/guest-list-subscription" },
   // The search travels in the body, never in the URL: a buyer's e-mail or
   // phone in a query string is written by every proxy log (spec 37 §13).
   orderSearch: { method: "POST", path: "/v1/organizations/{org_id}/orders/search" },

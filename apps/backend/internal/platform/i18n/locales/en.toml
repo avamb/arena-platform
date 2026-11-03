@@ -5166,6 +5166,72 @@ other = "The page's picture does not fit a poster: it must be 4:5 or square, at 
 
 ["bot.wz.page_note_model"]
 other = "AI read part of this from the page's text. Check it carefully."
+["bot.gl.btn"]
+other = "👥 Guest list"
+
+["bot.gl.private_only"]
+other = "The guest list has buyers' contacts. Open it in your private chat with the bot."
+
+["bot.gl.empty"]
+other = "This session has no active tickets yet. The guest list is empty."
+
+["bot.gl.caption"]
+other = "<b>{{.Name}}</b>, {{.When}}\nGuest list. Tickets in the list: {{.Rows}}. The file has buyers' contacts: do not forward it to outsiders."
+
+["bot.gl.auto_hint"]
+other = "The bot can send you this list on its own: 24 hours before the start, 3 hours before and when doors open. Turn it on in «☰ Menu», then «🔔 Notifications»."
+
+["bot.gl.notif_text"]
+other = "<b>Guest list</b>\nThis bot sends a CSV with the guest list of every session to this chat: 24 hours before the start, 3 hours before and when doors open. The file comes only to you, never to a group: it has buyers' contacts."
+
+["bot.gl.toggle_on"]
+other = "☑ Send me the guest list"
+
+["bot.gl.toggle_off"]
+other = "☐ Do not send me the guest list"
+
+["bot.gl.toggle_failed"]
+other = "We could not change the setting. Please try again in a minute."
+
+["bot.gl.auto_caption_h24"]
+other = "<b>{{.Name}}</b>, {{.When}}\nGuest list, 24 hours before the start. Tickets in the list: {{.Rows}}."
+
+["bot.gl.auto_caption_h3"]
+other = "<b>{{.Name}}</b>, {{.When}}\nGuest list, 3 hours before the start. Tickets in the list: {{.Rows}}."
+
+["bot.gl.auto_caption_doors"]
+other = "<b>{{.Name}}</b>, {{.When}}\nGuest list for doors open. Tickets in the list: {{.Rows}}."
+
+["bot.gl.auto_stop"]
+other = "The file has buyers' contacts: do not forward it to outsiders. To stop these files, open «☰ Menu», then «🔔 Notifications»."
+
+["guestlist.email.subject"]
+other = "Guest list: {{.Event}}, {{.When}}"
+
+["guestlist.email.greeting"]
+other = "Hello!"
+
+["guestlist.email.attached"]
+other = "The guest list of «{{.Event}}» on {{.When}} is attached. Tickets in the list: {{.Rows}}."
+
+["guestlist.email.slot_h24"]
+other = "The session starts in 24 hours."
+
+["guestlist.email.slot_h3"]
+other = "The session starts in 3 hours."
+
+["guestlist.email.slot_doors"]
+other = "Doors are opening for the session."
+
+["guestlist.email.slot_manual"]
+other = "This is a fresh copy of the list."
+
+["guestlist.email.why"]
+other = "You get this letter because you turned on «Send me the guest list» in the event center. The file has buyers' contacts: do not forward it to outsiders."
+
+["guestlist.email.stop"]
+other = "To stop these letters, untick «Send me the guest list» in the «Notifications» section of the event center."
+
 ["bot.dp.btn"]
 other = "⚠️ Disputes"
 
