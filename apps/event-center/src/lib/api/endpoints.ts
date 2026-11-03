@@ -206,6 +206,22 @@ export function downloadCsv(
   }
 }
 
+/**
+ * The guest list of a session as an Excel workbook: the file people open.
+ * Excel opens a CSV with the list separator of its regional settings, so
+ * with English settings every row of the CSV lands in column A; the CSV
+ * (`downloadCsv(..., "sessionGuestList", ...)`) stays for imports.
+ */
+export function downloadGuestListXlsx(orgId: string, sessionId: string, locale: string): Promise<DownloadedFile> {
+  return download({
+    route: API.sessionGuestListXlsx,
+    params: { org_id: orgId, session_id: sessionId },
+    query: { locale },
+    accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    fallbackName: "guests.xlsx",
+  });
+}
+
 /** The caller's own "send me the guest list" setting in this organization. */
 export function getGuestListSubscription(orgId: string): Promise<GuestListSubscription> {
   return call<GuestListSubscription>({ route: API.guestListSubscription, params: { org_id: orgId } });

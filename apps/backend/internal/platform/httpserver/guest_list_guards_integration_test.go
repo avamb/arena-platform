@@ -149,9 +149,11 @@ func TestGuestList_SendTimeGuards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	csv := "/v1/organizations/" + f.orgID.String() + "/sessions/" + f.sessID.String() + "/guest-list.csv"
-	if st, _, body := f.get(t, csv, rawKey, nil); st != http.StatusForbidden || ec07ErrorCode(t, body) != "guest_list.api_key_forbidden" {
-		t.Errorf("API key: %d %s, want 403 guest_list.api_key_forbidden", st, body)
+	for _, ext := range []string{"csv", "xlsx"} {
+		file := "/v1/organizations/" + f.orgID.String() + "/sessions/" + f.sessID.String() + "/guest-list." + ext
+		if st, _, body := f.get(t, file, rawKey, nil); st != http.StatusForbidden || ec07ErrorCode(t, body) != "guest_list.api_key_forbidden" {
+			t.Errorf("API key %s: %d %s, want 403 guest_list.api_key_forbidden", ext, st, body)
+		}
 	}
 
 	// ── Rows 90 days after their moment are deleted, newer ones stay.

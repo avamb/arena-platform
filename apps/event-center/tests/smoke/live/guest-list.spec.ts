@@ -2,7 +2,8 @@
  * Twin test "Guest list" on the three roles of one organization, against a
  * REAL arena-api (owner decision 2026-11-02, migration 0187). It walks the
  * scenario of the bot's e2e (httpserver/bot_e2e_guest_list_integration_test.go):
- * the date's guest list downloads as a CSV of its active tickets, and the
+ * the date's guest list downloads as an Excel workbook of its active tickets
+ * (and as a CSV for import, the secondary link), and the
  * person turns "send me the guest list before every session" on (on the date)
  * and off (on the Notifications page, where the bot keeps the same toggle).
  *
@@ -16,6 +17,7 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type APIRequestContext } from "@playwright/test";
 import { liveEnv, noA11yViolations, person, signInAs, type Role } from "./liveEnv";
+import { xlsxPart } from "./xlsxHelpers";
 
 const env = liveEnv();
 const EVENT = "fe0000a2-0000-7000-8000-000000000002";
@@ -50,12 +52,15 @@ test.describe("guest list on the three roles (live)", () => {
       if (!may) {
         const csv = await request.get(orgUrl(`/sessions/${SESSION}/guest-list.csv`), { headers: auth(role) });
         expect(csv.status(), "the API refuses the file without order.read").toBe(403);
+        const xlsx = await request.get(orgUrl(`/sessions/${SESSION}/guest-list.xlsx`), { headers: auth(role) });
+        expect(xlsx.status(), "the API refuses the workbook without order.read").toBe(403);
         const sub = await request.get(orgUrl("/guest-list-subscription"), { headers: auth(role) });
         expect(sub.status(), "the API refuses the setting without order.read").toBe(403);
         await signInAs(page, person(env, role));
         await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
         await page.goto(`/o/${env.org_id}/events/${EVENT}/sessions/${SESSION}`);
         await expect(page.getByTestId("csv-session-guest-list")).toHaveCount(0);
+        await expect(page.getByTestId("xlsx-session-guest-list")).toHaveCount(0);
         await expect(page.getByTestId("guest-list-subscription")).toHaveCount(0);
         await page.goto(`/o/${env.org_id}/notifications`);
         await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
@@ -75,7 +80,29 @@ test.describe("guest list on the three roles (live)", () => {
       await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
       await page.goto(`/o/${env.org_id}/events/${EVENT}/sessions/${SESSION}`);
 
-      // ── the file ───────────────────────────────────────────────────────
+      // ── the workbook (the main button) ─────────────────────────────────
+      const [book] = await Promise.all([
+        page.waitForEvent("download"),
+        page.getByTestId("xlsx-session-guest-list").click(),
+      ]);
+      // The event's name, never an id, and the date of the session.
+      expect(book.suggestedFilename()).toMatch(/^guests_[a-z0-9-]+_\d{4}-\d{2}-\d{2}\.xlsx$/);
+      expect(book.suggestedFilename()).not.toContain(EVENT);
+      const sheet = xlsxPart(await readFile(await book.path()), "xl/worksheets/sheet1.xml");
+      expect(sheet).toContain('<row r="5">'); // the header and the four active tickets
+      expect(sheet).not.toContain('<row r="6">');
+      // Barcode (E) and ticket (D) cells are strings in the text format, and
+      // the columns themselves are text, so Excel never shows 4.6E+12.
+      for (const row of [2, 3, 4, 5]) {
+        expect(sheet).toMatch(new RegExp(`<c r="E${row}" s="2" t="inlineStr"><is><t>[0-9]{13}</t>`));
+        expect(sheet).toMatch(new RegExp(`<c r="D${row}" s="2" t="inlineStr">`));
+      }
+      expect(sheet).toContain('<col min="5" max="5" width="');
+      expect(sheet).toMatch(/<col min="5" max="5" width="\d+" customWidth="1" style="2"\/>/);
+      expect(sheet).toContain('state="frozen"');
+      expect(sheet).toContain('<autoFilter ref="A1:L5"/>');
+
+      // ── the CSV for import (the secondary link) ────────────────────────
       const [download] = await Promise.all([
         page.waitForEvent("download"),
         page.getByTestId("csv-session-guest-list").click(),

@@ -30957,7 +30957,7 @@ paths:
         doors open) for members linked to the bot, and takes each for 10
         minutes; a list not reported back with `.../finish` may be taken
         again, three times at most, and never more than 2 hours after its
-        moment. The bot fetches `guest-list.csv` AS the member, sends it to
+        moment. The bot fetches `guest-list.xlsx` AS the member, sends it to
         their private chat and reports the outcome. The answer carries no
         data of the file.
       tags: [v1]
@@ -57493,11 +57493,120 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/sessions/{session_id}/guest-list.xlsx:
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdGuestListXlsx
+      summary: Guest list of a session as an Excel workbook
+      description: |
+        The guest list people open: an .xlsx with one sheet, so Excel shows
+        the columns whatever its regional settings. The header row is bold
+        and frozen, the sheet has an autofilter, and the ticket number,
+        barcode, order number and phone are TEXT cells in text-formatted
+        columns, so Excel never shows a barcode as 4.6E+12 or drops a
+        leading zero, not even in rows added later. The entry time is text
+        on the venue's clock. `guest-list.csv` serves the same rows as a CSV.
+
+        One row per ACTIVE ticket of the session (cancelled, revoked and
+        transferred tickets are left out), sorted by the guest's name:
+        guest (the name on the ticket, else the buyer's), category, seat,
+        ticket number, barcode, VIP (`yes` / `no`), entered (`yes` / `no`),
+        entry time (venue's zone), order number, e-mail, phone and
+        invitation (`yes` / `no`). Same csvexport rules, locale selection and
+        50 000-row cap as the sales file. The same file is sent automatically
+        to the members who turned the guest list on
+        (`PUT .../guest-list-subscription`).
+
+        Requires `order.read` AND `session.read`; a session of another
+        organization is a 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+        - name: locale
+          in: query
+          required: false
+          description: Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+          schema: { type: string }
+      responses:
+        "200":
+          description: |
+            The workbook attachment, `Content-Disposition: attachment;
+            filename="guests_<event>_<YYYY-MM-DD of the session>.xlsx"`,
+            where `<event>` is the event's name transliterated to
+            `[a-z0-9-]`, else its page slug, else `event`.
+          headers:
+            X-Row-Count:
+              description: Number of data rows (tickets) in the sheet, the header row not counted.
+              schema: { type: integer }
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+                description: One sheet, one row per active ticket of the session.
+        "400":
+          description: org_id or session_id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `order.read` or `session.read`, or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: More than 50 000 active tickets (`export.too_many_rows`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`export.internal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Export queries unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv:
     get:
       operationId: getV1OrganizationsOrgIdSessionsSessionIdGuestListCsv
       summary: Guest list of a session as a CSV file
       description: |
+        The CSV twin of `guest-list.xlsx`, for imports into other systems:
+        the same rows, columns and access rules. People should get the
+        workbook: Excel opens a CSV with the list separator of its regional
+        settings, and with English settings every row lands in column A.
+
         One row per ACTIVE ticket of the session (cancelled, revoked and
         transferred tickets are left out), sorted by the guest's name:
         guest (the name on the ticket, else the buyer's), category, seat,
@@ -57533,7 +57642,13 @@ paths:
         "200":
           description: |
             The CSV attachment, `Content-Disposition: attachment;
-            filename="guests_<event slug or id>_<YYYY-MM-DD of the session>.csv"`.
+            filename="guests_<event>_<YYYY-MM-DD of the session>.csv"`, where
+            `<event>` is the event's name transliterated to `[a-z0-9-]`,
+            else its page slug, else `event`.
+          headers:
+            X-Row-Count:
+              description: Number of data rows (tickets) in the file, the header row not counted.
+              schema: { type: integer }
           content:
             text/csv:
               schema:

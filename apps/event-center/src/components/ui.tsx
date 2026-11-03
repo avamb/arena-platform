@@ -84,10 +84,13 @@ export function DownloadButton({
   label,
   fetchFile,
   testId,
+  variant,
 }: {
   label: MessageKey;
   fetchFile: () => Promise<DownloadedFile>;
   testId?: string;
+  /** "primary" for the main file of a screen, "link" for a secondary one. */
+  variant?: "primary" | "link";
 }) {
   const { t } = useI18n();
   const scope = useContext(ErrorScope);
@@ -114,7 +117,13 @@ export function DownloadButton({
   };
   return (
     <span className="download">
-      <button type="button" className="btn" onClick={onClick} disabled={state.busy} data-testid={testId}>
+      <button
+        type="button"
+        className={variant === undefined ? "btn" : `btn btn-${variant}`}
+        onClick={onClick}
+        disabled={state.busy}
+        data-testid={testId}
+      >
         {t(label)}
       </button>
       <span className={state.bad ? "bad-text" : "muted"} role={state.bad ? "alert" : "status"} aria-live="polite">

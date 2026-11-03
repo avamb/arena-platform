@@ -3,6 +3,7 @@ package hexport
 // guest_list.go — the organizer's guest list of a session (owner decision
 // 2026-11-02, spec 51 section 4.4, package guestlist):
 //
+//	GET /v1/organizations/{org_id}/sessions/{session_id}/guest-list.xlsx (order.read + session.read)
 //	GET /v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv  (order.read + session.read)
 //	GET /v1/organizations/{org_id}/guest-list-subscription               (order.read)
 //	PUT /v1/organizations/{org_id}/guest-list-subscription               (order.read)
@@ -18,6 +19,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/google/uuid"
 
@@ -27,9 +29,22 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
-// HandleSessionGuestList serves GET .../sessions/{session_id}/guest-list.csv:
-// one row per active ticket, sorted by the guest's name.
+// HandleSessionGuestListXLSX serves GET .../sessions/{session_id}/guest-list.xlsx,
+// the Excel workbook people open.
+func (h *Handler) HandleSessionGuestListXLSX(w http.ResponseWriter, r *http.Request) {
+	h.serveGuestList(w, r, guestlist.XLSX)
+}
+
+// HandleSessionGuestList serves GET .../sessions/{session_id}/guest-list.csv,
+// the same rows as a CSV for imports into other systems.
 func (h *Handler) HandleSessionGuestList(w http.ResponseWriter, r *http.Request) {
+	h.serveGuestList(w, r, guestlist.CSV)
+}
+
+// serveGuestList writes one row per active ticket, sorted by the guest's
+// name. X-Row-Count carries the number of data rows, so a client (the bot)
+// can say how many tickets the file holds without reading it.
+func (h *Handler) serveGuestList(w http.ResponseWriter, r *http.Request, format guestlist.Format) {
 	if !h.ready(w, r) {
 		return
 	}
@@ -59,7 +74,7 @@ func (h *Handler) HandleSessionGuestList(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	loc := venueLocation(header.VenueTimezone)
-	file, err := guestlist.Build(ctx, h.queries, orgID, sessionID, csvexport.LocaleFromRequest(r), loc, h.maxRows)
+	file, err := guestlist.Build(ctx, h.queries, orgID, sessionID, csvexport.LocaleFromRequest(r), loc, h.maxRows, format)
 	if errors.Is(err, guestlist.ErrTooManyRows) {
 		n, _ := h.queries.CountGuestListRows(ctx, sessionID, orgID)
 		h.tooManyRows(w, r, n)
@@ -69,8 +84,13 @@ func (h *Handler) HandleSessionGuestList(w http.ResponseWriter, r *http.Request)
 		h.internal(w, r, "guest list", err)
 		return
 	}
-	name := guestlist.FileName(slugOr(header.EventSlug, header.EventID.String()), header.StartAt, loc)
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	slug := ""
+	if header.EventSlug != nil {
+		slug = *header.EventSlug
+	}
+	name := guestlist.FileName(header.EventName, slug, header.StartAt, loc, format)
+	w.Header().Set("Content-Type", file.ContentType)
+	w.Header().Set("X-Row-Count", strconv.Itoa(file.Rows))
 	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")

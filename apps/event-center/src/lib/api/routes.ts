@@ -49,6 +49,10 @@ export const API = {
   },
   sampleTicket: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/sample-ticket" },
   // The guest list of a session, and the caller's own "send me the guest list" setting.
+  sessionGuestListXlsx: {
+    method: "GET",
+    path: "/v1/organizations/{org_id}/sessions/{session_id}/guest-list.xlsx",
+  },
   sessionGuestListCsv: {
     method: "GET",
     path: "/v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv",

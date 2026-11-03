@@ -5,7 +5,7 @@ package httpserver
 // The guest list of a session (owner decision 2026-11-02, package guestlist,
 // migration 0187), through the real bot against the stub Telegram:
 //
-//   - "👥 Список гостей" on a date's card sends guest-list.csv as a document,
+//   - "👥 Список гостей" on a date's card sends guest-list.xlsx as a document,
 //     one row per active ticket, sorted by the guest's name;
 //   - the toggle on the Notifications screen turns the automatic list on and
 //     off (guest_list_subscriptions);
@@ -27,6 +27,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventbot"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/guestlist"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/xlsxexport/xlsxtest"
 )
 
 // startGuestListTestBot is startDialogTestBot with a fast notice loop, so the
@@ -93,18 +94,28 @@ func TestBotE2E_GuestList_ButtonToggleAndAutomaticSend(t *testing.T) {
 	if !strings.Contains(capText, "Билетов в списке: 3") {
 		t.Errorf("guest list caption: %s", capText)
 	}
-	body := guestListDoc(t, tg)
-	if eventbot.CSVRows(body) != 3 {
-		t.Fatalf("guest list rows = %d, want 3:\n%s", eventbot.CSVRows(body), body)
+	name, body := guestListDoc(t, tg)
+	// The event's name and the date, never an id.
+	if strings.Contains(name, seed.richEvent.String()) || !strings.HasSuffix(name, ".xlsx") {
+		t.Errorf("document name = %q", name)
 	}
-	lines := strings.Split(strings.TrimSuffix(strings.TrimPrefix(string(body), "\xef\xbb\xbf"), "\r\n"), "\r\n")
-	if !strings.HasPrefix(lines[0], `"Гость";"Категория";"Место";"Билет"`) {
-		t.Errorf("header: %s", lines[0])
+	book := xlsxtest.Open(t, body)
+	lines := book.Values()
+	if len(lines) != 4 {
+		t.Fatalf("guest list rows = %d, want the header and 3: %v", len(lines), lines)
+	}
+	if book.SheetName != "Гости" || strings.Join(lines[0][:4], ";") != "Гость;Категория;Место;Билет" {
+		t.Errorf("sheet %q, header: %v", book.SheetName, lines[0])
 	}
 	// Sorted by name: the two tickets of "Buyer Name", then the invitation.
-	if !strings.HasPrefix(lines[1], `"Buyer Name"`) || !strings.HasPrefix(lines[3], `"Guest"`) ||
-		!strings.HasSuffix(lines[3], `"yes"`) || !strings.HasSuffix(lines[1], `"no"`) {
-		t.Errorf("rows not sorted by guest, or invitation column wrong:\n%s", strings.Join(lines, "\n"))
+	if lines[1][0] != "Buyer Name" || lines[3][0] != "Guest" || lines[3][11] != "yes" || lines[1][11] != "no" {
+		t.Errorf("rows not sorted by guest, or invitation column wrong: %v", lines)
+	}
+	// Barcodes are text cells in a text column.
+	for _, ref := range []string{"E2", "E3", "E4"} {
+		if c, ok := book.CellAt(ref); !ok || c.Type != "inlineStr" || len(c.Value) != 13 || !book.TextFormat(c.Style) {
+			t.Errorf("barcode %s = %+v", ref, c)
+		}
 	}
 
 	// The toggle on the Notifications screen.
@@ -134,8 +145,8 @@ func TestBotE2E_GuestList_ButtonToggleAndAutomaticSend(t *testing.T) {
 		t.Fatalf("RunOnce: written=%d err=%v", written, err)
 	}
 	auto := tg.waitSince(t, m, "за 24 часа до начала")
-	if !strings.Contains(auto, "[document guests_") {
-		t.Errorf("automatic list is not a document: %s", auto)
+	if !strings.Contains(auto, "[document guests_") || !strings.Contains(auto, ".xlsx]") {
+		t.Errorf("automatic list is not a workbook document: %s", auto)
 	}
 	waitSent(t, pool, f.orgID.String())
 
@@ -160,22 +171,23 @@ func TestBotE2E_GuestList_ButtonToggleAndAutomaticSend(t *testing.T) {
 	}
 }
 
-// guestListDoc returns the newest guests_*.csv document the stub received.
-func guestListDoc(t *testing.T, tg *stubTelegram) []byte {
+// guestListDoc returns the name and bytes of a guests_*.xlsx document the
+// stub received.
+func guestListDoc(t *testing.T, tg *stubTelegram) (string, []byte) {
 	t.Helper()
 	var name string
 	tg.mu.Lock()
 	for n := range tg.docs {
-		if strings.HasPrefix(n, "guests_") && strings.HasSuffix(n, ".csv") {
+		if strings.HasPrefix(n, "guests_") && strings.HasSuffix(n, ".xlsx") {
 			name = n
 		}
 	}
 	tg.mu.Unlock()
 	body, ok := tg.document(name)
 	if !ok {
-		t.Fatalf("no guests_*.csv document received")
+		t.Fatalf("no guests_*.xlsx document received")
 	}
-	return body
+	return name, body
 }
 
 func subscribed(t *testing.T, pool *pgxpool.Pool, orgID, userID string) bool {

@@ -4951,7 +4951,7 @@ other = "<b>{{.Name}}</b>, {{.When}}\nLista de invitados. Entradas en la lista: 
 other = "El bot puede enviarte esta lista por sí mismo: 24 horas antes del inicio, 3 horas antes y al abrir las puertas. Actívalo en «☰ Menú» y luego «🔔 Notificaciones»."
 
 ["bot.gl.notif_text"]
-other = "<b>Lista de invitados</b>\nEste bot envía a este chat un CSV con la lista de invitados de cada sesión: 24 horas antes del inicio, 3 horas antes y al abrir las puertas. El archivo llega solo a ti, nunca a un grupo: tiene los contactos de los compradores."
+other = "<b>Lista de invitados</b>\nEste bot envía a este chat un archivo de Excel con la lista de invitados de cada sesión: 24 horas antes del inicio, 3 horas antes y al abrir las puertas. El archivo llega solo a ti, nunca a un grupo: tiene los contactos de los compradores."
 
 ["bot.gl.toggle_on"]
 other = "☑ Enviarme la lista de invitados"
@@ -4973,6 +4973,9 @@ other = "<b>{{.Name}}</b>, {{.When}}\nLista de invitados para la apertura de pue
 
 ["bot.gl.auto_stop"]
 other = "El archivo tiene los contactos de los compradores: no lo reenvíes a personas ajenas. Para dejar de recibirlo, abre «☰ Menú» y luego «🔔 Notificaciones»."
+
+["guestlist.sheet_name"]
+other = "Invitados"
 
 ["guestlist.email.subject"]
 other = "Lista de invitados: {{.Event}}, {{.When}}"

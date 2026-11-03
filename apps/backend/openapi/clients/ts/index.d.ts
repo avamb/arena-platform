@@ -1979,7 +1979,7 @@ export interface paths {
          *     doors open) for members linked to the bot, and takes each for 10
          *     minutes; a list not reported back with `.../finish` may be taken
          *     again, three times at most, and never more than 2 hours after its
-         *     moment. The bot fetches `guest-list.csv` AS the member, sends it to
+         *     moment. The bot fetches `guest-list.xlsx` AS the member, sends it to
          *     their private chat and reports the outcome. The answer carries no
          *     data of the file.
          */
@@ -9599,6 +9599,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/sessions/{session_id}/guest-list.xlsx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Guest list of a session as an Excel workbook
+         * @description The guest list people open: an .xlsx with one sheet, so Excel shows
+         *     the columns whatever its regional settings. The header row is bold
+         *     and frozen, the sheet has an autofilter, and the ticket number,
+         *     barcode, order number and phone are TEXT cells in text-formatted
+         *     columns, so Excel never shows a barcode as 4.6E+12 or drops a
+         *     leading zero, not even in rows added later. The entry time is text
+         *     on the venue's clock. `guest-list.csv` serves the same rows as a CSV.
+         *
+         *     One row per ACTIVE ticket of the session (cancelled, revoked and
+         *     transferred tickets are left out), sorted by the guest's name:
+         *     guest (the name on the ticket, else the buyer's), category, seat,
+         *     ticket number, barcode, VIP (`yes` / `no`), entered (`yes` / `no`),
+         *     entry time (venue's zone), order number, e-mail, phone and
+         *     invitation (`yes` / `no`). Same csvexport rules, locale selection and
+         *     50 000-row cap as the sales file. The same file is sent automatically
+         *     to the members who turned the guest list on
+         *     (`PUT .../guest-list-subscription`).
+         *
+         *     Requires `order.read` AND `session.read`; a session of another
+         *     organization is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdGuestListXlsx"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv": {
         parameters: {
             query?: never;
@@ -9608,7 +9647,12 @@ export interface paths {
         };
         /**
          * Guest list of a session as a CSV file
-         * @description One row per ACTIVE ticket of the session (cancelled, revoked and
+         * @description The CSV twin of `guest-list.xlsx`, for imports into other systems:
+         *     the same rows, columns and access rules. People should get the
+         *     workbook: Excel opens a CSV with the list separator of its regional
+         *     settings, and with English settings every row lands in column A.
+         *
+         *     One row per ACTIVE ticket of the session (cancelled, revoked and
          *     transferred tickets are left out), sorted by the guest's name:
          *     guest (the name on the ticket, else the buyer's), category, seat,
          *     ticket number, barcode, VIP (`yes` / `no`), entered (`yes` / `no`),
@@ -66270,6 +66314,104 @@ export interface operations {
             };
         };
     };
+    getV1OrganizationsOrgIdSessionsSessionIdGuestListXlsx: {
+        parameters: {
+            query?: {
+                /** @description Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The workbook attachment, `Content-Disposition: attachment;
+             *     filename="guests_<event>_<YYYY-MM-DD of the session>.xlsx"`,
+             *     where `<event>` is the event's name transliterated to
+             *     `[a-z0-9-]`, else its page slug, else `event`.
+             */
+            200: {
+                headers: {
+                    /** @description Number of data rows (tickets) in the sheet, the header row not counted. */
+                    "X-Row-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+                };
+            };
+            /** @description org_id or session_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `order.read` or `session.read`, or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description More than 50 000 active tickets (`export.too_many_rows`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getV1OrganizationsOrgIdSessionsSessionIdGuestListCsv: {
         parameters: {
             query?: {
@@ -66289,10 +66431,14 @@ export interface operations {
         responses: {
             /**
              * @description The CSV attachment, `Content-Disposition: attachment;
-             *     filename="guests_<event slug or id>_<YYYY-MM-DD of the session>.csv"`.
+             *     filename="guests_<event>_<YYYY-MM-DD of the session>.csv"`, where
+             *     `<event>` is the event's name transliterated to `[a-z0-9-]`,
+             *     else its page slug, else `event`.
              */
             200: {
                 headers: {
+                    /** @description Number of data rows (tickets) in the file, the header row not counted. */
+                    "X-Row-Count"?: number;
                     [name: string]: unknown;
                 };
                 content: {

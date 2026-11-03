@@ -1,12 +1,14 @@
 // Package guestlist is the organizer's guest list of a session (owner
 // decision 2026-11-02, spec 51 section 4.4, migration 0187).
 //
-// The list is a CSV of the session's ACTIVE tickets, one row per ticket,
-// sorted by the guest's name: guest, category, seat, ticket number, barcode,
-// VIP, entered and entry time, order, e-mail, phone, invitation. It is built
-// here once and served two ways: on demand by
-// GET /v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv (the bot
-// button and the web event center), and automatically by the
+// The list holds the session's ACTIVE tickets, one row per ticket, sorted by
+// the guest's name: guest, category, seat, ticket number, barcode, VIP,
+// entered and entry time, order, e-mail, phone, invitation. The rows are built
+// here once (Cells) and written as an Excel workbook (.xlsx, what people get)
+// or a CSV (for imports). It is served two ways: on demand by
+// GET /v1/organizations/{org_id}/sessions/{session_id}/guest-list.xlsx (the
+// bot button and the web event center; guest-list.csv is the import file),
+// and automatically by the
 // guest_list.schedule job 24 hours and 3 hours before the start and at doors
 // open, to every owner and manager who ticked "send me the guest list"
 // (guest_list_subscriptions). The automatic list goes to the person's private
@@ -27,6 +29,8 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/ean13"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/csvexport"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/geoslug"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/xlsxexport"
 )
 
 // MaxRows is the largest list built; a session with more active tickets is
@@ -53,17 +57,45 @@ type Querier interface {
 	ListGuestListRows(ctx context.Context, sessionID, orgID uuid.UUID, limit int32) ([]gen.GuestListRow, error)
 }
 
+// Format is the file format of a list.
+type Format string
+
+// The two formats. XLSX is what people get (the bot, the letter, the event
+// center's main button): Excel opens it the same way whatever its regional
+// settings. CSV stays for imports into other systems.
+const (
+	XLSX Format = "xlsx"
+	CSV  Format = "csv"
+)
+
+// ContentType is the media type of a file in this format.
+func (f Format) ContentType() string {
+	if f == CSV {
+		return "text/csv; charset=utf-8"
+	}
+	return xlsxexport.ContentType
+}
+
 // File is a built guest list.
 type File struct {
-	Body []byte
-	Rows int
+	Body        []byte
+	Rows        int
+	ContentType string
+}
+
+// textColumns are the columns an XLSX keeps as text: identifiers whose
+// digits a spreadsheet would otherwise turn into a number (a 13-digit barcode
+// into 4.6E+12, a phone's leading zero dropped).
+var textColumns = map[csvexport.Column]bool{
+	csvexport.ColTicket: true, csvexport.ColBarcode: true,
+	csvexport.ColOrder: true, csvexport.ColPhone: true,
 }
 
 // Build reads the active tickets of a session of the organization and writes
-// the file with headers in locale. loc is the venue's zone for the entry time.
-// A session with more than maxRows tickets is ErrTooManyRows; maxRows <= 0
-// means MaxRows.
-func Build(ctx context.Context, q Querier, orgID, sessionID uuid.UUID, locale string, loc *time.Location, maxRows int64) (File, error) {
+// the file in format with headers in locale. loc is the venue's zone for the
+// entry time. A session with more than maxRows tickets is ErrTooManyRows;
+// maxRows <= 0 means MaxRows. Both formats are written from the same Cells.
+func Build(ctx context.Context, q Querier, orgID, sessionID uuid.UUID, locale string, loc *time.Location, maxRows int64, format Format) (File, error) {
 	if maxRows <= 0 {
 		maxRows = MaxRows
 	}
@@ -78,20 +110,46 @@ func Build(ctx context.Context, q Querier, orgID, sessionID uuid.UUID, locale st
 	if err != nil {
 		return File{}, err
 	}
+	header := csvexport.Header(locale, Columns...)
+	var body []byte
+	if format == CSV {
+		body, err = buildCSV(header, rows, loc)
+	} else {
+		body, err = buildXLSX(locale, header, rows, loc)
+	}
+	if err != nil {
+		return File{}, err
+	}
+	return File{Body: body, Rows: len(rows), ContentType: format.ContentType()}, nil
+}
+
+func buildCSV(header []string, rows []gen.GuestListRow, loc *time.Location) ([]byte, error) {
 	var buf bytes.Buffer
 	w := csvexport.NewWriter(&buf)
-	if err := w.WriteHeader(csvexport.Header(locale, Columns...)); err != nil {
-		return File{}, err
+	if err := w.WriteHeader(header); err != nil {
+		return nil, err
 	}
 	for _, r := range rows {
 		if err := w.WriteRow(Cells(r, loc)...); err != nil {
-			return File{}, err
+			return nil, err
 		}
 	}
 	if err := w.Flush(); err != nil {
-		return File{}, err
+		return nil, err
 	}
-	return File{Body: buf.Bytes(), Rows: len(rows)}, nil
+	return buf.Bytes(), nil
+}
+
+func buildXLSX(locale string, header []string, rows []gen.GuestListRow, loc *time.Location) ([]byte, error) {
+	cols := make([]xlsxexport.Column, len(Columns))
+	for i, c := range Columns {
+		cols[i] = xlsxexport.Column{Header: header[i], Text: textColumns[c]}
+	}
+	cells := make([][]csvexport.Cell, len(rows))
+	for i, r := range rows {
+		cells[i] = Cells(r, loc)
+	}
+	return xlsxexport.Build(xlsxexport.Sheet{Name: SheetName(locale), Columns: cols, Rows: cells})
 }
 
 // Cells renders one ticket. The barcode is the stored EAN-13 credential; a
@@ -146,15 +204,36 @@ func Location(tz string) *time.Location {
 	return loc
 }
 
-// FileName is `guests_<slug>_<YYYY-MM-DD>.csv`, the date being the session's
-// day in the venue's zone. Only [a-z0-9._-] survive.
-func FileName(slug string, start time.Time, loc *time.Location) string {
-	s := strings.ToLower(strings.TrimSpace(slug))
+// FileName is `guests_<event>_<YYYY-MM-DD>.<format>`: the event's name
+// transliterated to a slug (geoslug: Cyrillic to Latin, accents folded), else
+// its page slug, else "event"; the date is the session's day in the venue's
+// zone. Only [a-z0-9-] survive, so the name needs no quoting anywhere.
+func FileName(eventName, eventSlug string, start time.Time, loc *time.Location, format Format) string {
+	s := safeSlug(geoslug.Slugify(eventName))
+	if s == "" {
+		s = safeSlug(eventSlug)
+	}
+	if s == "" {
+		s = "event"
+	}
+	if loc == nil {
+		loc = time.UTC
+	}
+	ext := "xlsx"
+	if format == CSV {
+		ext = "csv"
+	}
+	// allow:timeformat: a calendar date in a file name, in the venue's zone.
+	return "guests_" + s + "_" + start.In(loc).Format("2006-01-02") + "." + ext
+}
+
+// safeSlug keeps [a-z0-9] and single dashes, at most 60 characters, cut at a
+// dash when there is one.
+func safeSlug(raw string) string {
 	var b strings.Builder
-	dash := false
-	for _, r := range s {
-		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-'
-		if ok {
+	dash := true // no leading dash
+	for _, r := range strings.ToLower(strings.TrimSpace(raw)) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
 			b.WriteRune(r)
 			dash = false
 			continue
@@ -164,16 +243,12 @@ func FileName(slug string, start time.Time, loc *time.Location) string {
 			dash = true
 		}
 	}
-	s = strings.Trim(b.String(), "-.")
-	if s == "" {
-		s = "session"
+	s := strings.Trim(b.String(), "-")
+	if len(s) > 60 {
+		s = s[:60]
+		if i := strings.LastIndexByte(s, '-'); i > 20 {
+			s = s[:i]
+		}
 	}
-	if len(s) > 80 {
-		s = s[:80]
-	}
-	if loc == nil {
-		loc = time.UTC
-	}
-	// allow:timeformat: a calendar date in a file name, in the venue's zone.
-	return "guests_" + s + "_" + start.In(loc).Format("2006-01-02") + ".csv"
+	return strings.Trim(s, "-")
 }
