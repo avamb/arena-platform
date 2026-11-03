@@ -7654,7 +7654,7 @@ type EventPageDate struct {
 	// Time The start time as written, `HH:MM` 24-hour, or empty when the page gives only the day.
 	Time string `json:"time"`
 
-	// UtcOffset The UTC offset the page wrote next to the time (`+01:00`), or empty. The time is never converted.
+	// UtcOffset The UTC offset the page wrote next to the time (`+01:00`, `Z` for UTC), or empty. The time is never converted.
 	UtcOffset string `json:"utc_offset"`
 }
 

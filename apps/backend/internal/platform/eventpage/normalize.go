@@ -52,9 +52,7 @@ func parseStart(s string) (parsedStart, bool) {
 	if m[6] != "" {
 		off := m[6]
 		secs := 0
-		if off == "Z" {
-			off = "+00:00"
-		} else {
+		if off != "Z" {
 			if len(off) == 5 { // +0100
 				off = off[:3] + ":" + off[3:]
 			}
@@ -69,7 +67,8 @@ func parseStart(s string) (parsedStart, bool) {
 			}
 		}
 		p.offset = off
-		p.instant = time.Date(y, time.Month(mo), d, hh, mm, 0, 0, time.FixedZone("", secs))
+		// The wall clock minus its offset is the instant, in UTC.
+		p.instant = time.Date(y, time.Month(mo), d, hh, mm, 0, 0, time.UTC).Add(-time.Duration(secs) * time.Second)
 	}
 	return p, true
 }
@@ -107,6 +106,10 @@ func doorsClock(s, date string) string {
 	return ""
 }
 
+// spacedThousandsRe is an amount grouped by spaces: groups of three after
+// the first, then an optional decimal part.
+var spacedThousandsRe = regexp.MustCompile(`^\d{1,3}( \d{3})+([.,]\d{1,2})?$`)
+
 // maxPriceMinor is the largest price the wizards accept.
 const maxPriceMinor = 99_999_999
 
@@ -115,23 +118,42 @@ const maxPriceMinor = 99_999_999
 // unit every wizard price uses. No float is involved. ok is false for
 // anything that is not one non-negative amount.
 func priceToMinor(s string) (int64, bool) {
+	s = strings.TrimSpace(s)
+	if strings.ContainsRune(s, '-') {
+		return 0, false
+	}
+	// A currency sign or code may stand before or after the amount, never
+	// inside it: "25 to 40" is two numbers, not 2540.
+	core := strings.TrimFunc(s, func(r rune) bool { return r < '0' || r > '9' })
 	var b strings.Builder
-	for _, r := range strings.TrimSpace(s) {
+	spaced := false
+	for _, r := range core {
 		switch {
 		case r >= '0' && r <= '9', r == '.', r == ',':
 			b.WriteRune(r)
-		case unicode.IsSpace(r), r == '\'', r == ' ', r == ' ':
-			// thousands separators
-		case r == '-':
-			return 0, false
-		case unicode.IsLetter(r) || unicode.IsSymbol(r):
-			// a currency symbol or code next to the amount
+		case unicode.IsSpace(r), r == '\'':
+			// a thousands separator
+			b.WriteRune(' ')
+			spaced = true
 		default:
 			return 0, false
 		}
 	}
 	num := b.String()
 	if num == "" {
+		return 0, false
+	}
+	if spaced {
+		// A space groups thousands only: "1 200,00", never "25 40".
+		if !spacedThousandsRe.MatchString(num) {
+			return 0, false
+		}
+		num = strings.ReplaceAll(num, " ", "")
+	}
+	// One separator followed by exactly three digits is ambiguous: "1.200"
+	// is twelve hundred in most of Europe and 1.20 elsewhere. No hint beats
+	// a price off by a thousand.
+	if seps := strings.Count(num, ".") + strings.Count(num, ","); seps == 1 && len(num)-strings.IndexAny(num, ".,")-1 == 3 {
 		return 0, false
 	}
 	lastDot, lastComma := strings.LastIndexByte(num, '.'), strings.LastIndexByte(num, ',')

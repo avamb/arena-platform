@@ -293,7 +293,7 @@ func (r *Result) MergeModel(m ModelFacts, now time.Time) {
 	if len(r.Facts.Categories) == 0 {
 		var offers []ldOffer
 		for _, c := range m.Categories {
-			offers = append(offers, ldOffer{Name: c.Name, Price: c.Price, Currency: c.Currency})
+			offers = append(offers, ldOffer(c))
 		}
 		r.categoriesFrom([]ldEvent{{Offers: offers}})
 		if len(r.Facts.Categories) > 0 {

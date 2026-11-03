@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"log/slog"
+	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
@@ -25,7 +26,11 @@ func (s *Server) mountEventPageRoutes(r chi.Router) {
 	h := heventpage.New(s.logger).
 		WithModel(eventPageModel(s.cfg, s.logger), eventPageModelQuota(s.cfg)).
 		WithMedia(s.media).
-		WithRowOrgAccess(s.rowOrgAccess)
+		WithRowOrgAccess(s.rowOrgAccess).
+		WithPictureGate(func(r *http.Request) bool {
+			// Storing the page's picture is an upload: it needs media.write too.
+			return s.perms != nil && s.perms.Check(r.Context(), "media.write", "media") == nil
+		})
 	if !s.authEnabled() {
 		return
 	}

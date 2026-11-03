@@ -91,6 +91,15 @@ func (f *fakeStore) Insert(_ context.Context, in mediastore.InsertInput) (medias
 
 func (f *fakeStore) Backend() string { return "local" }
 
+func (f *fakeStore) FindByChecksum(context.Context, uuid.UUID, string, string) (mediastore.Object, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.objs) > 0 {
+		return mediastore.Object{ID: uuid.MustParse("01900000-0000-7000-8000-0000000000aa")}, nil
+	}
+	return mediastore.Object{}, mediastore.ErrNotFound
+}
+
 type fakeModel struct {
 	calls int
 	facts eventpage.ModelFacts
@@ -266,7 +275,7 @@ func TestPageFacts_PageCapCountsOnlyCheckedAddresses(t *testing.T) {
 }
 
 func TestPageFacts_GuardAndBody(t *testing.T) {
-	deny := func(w http.ResponseWriter, r *http.Request, _ uuid.UUID, _ bool, code, msg string) bool {
+	deny := func(w http.ResponseWriter, _ *http.Request, _ uuid.UUID, _ bool, _, _ string) bool {
 		w.WriteHeader(http.StatusNotFound)
 		return false
 	}
@@ -286,5 +295,59 @@ func TestPageFacts_GuardAndBody(t *testing.T) {
 	r.ServeHTTP(rec, req)
 	if rec.Code != 400 {
 		t.Errorf("bad body: %d", rec.Code)
+	}
+}
+
+// A process busy with MaxConcurrentReadings readings refuses the next one
+// with 503 before the organization's page cap is taken.
+func TestPageFacts_BusyProcessRefusesWithoutTakingTheCap(t *testing.T) {
+	srv := site(t)
+	quota := &countQuota{left: 5}
+	h := newHandler(&fakeStore{}, nil, nil)
+	h.pageQuota = quota
+	for i := 0; i < MaxConcurrentReadings; i++ {
+		h.slots <- struct{}{}
+	}
+	if rec, out := call(t, h, srv.URL+"/event"); rec.Code != 503 || errCode(out) != "event_page.busy" {
+		t.Errorf("busy: %d %v", rec.Code, out)
+	}
+	if quota.taken != 0 {
+		t.Errorf("a busy refusal took %d of the cap", quota.taken)
+	}
+	<-h.slots
+	if rec, _ := call(t, h, srv.URL+"/event"); rec.Code != 200 {
+		t.Errorf("a free slot reads: %d", rec.Code)
+	}
+	if len(h.slots) != MaxConcurrentReadings-1 {
+		t.Errorf("the reading must give its slot back, %d taken", len(h.slots))
+	}
+}
+
+// A caller without media.write gets the facts but no stored picture.
+func TestPageFacts_PictureNeedsTheUploadPermission(t *testing.T) {
+	srv := site(t)
+	store := &fakeStore{}
+	h := newHandler(store, nil, nil).WithPictureGate(func(*http.Request) bool { return false })
+	rec, out := call(t, h, srv.URL+"/event")
+	if rec.Code != 200 {
+		t.Fatalf("status %d", rec.Code)
+	}
+	if len(store.objs) != 0 || out["facts"].(map[string]any)["image"] != nil {
+		t.Errorf("stored %d pictures, image %v", len(store.objs), out["facts"].(map[string]any)["image"])
+	}
+}
+
+// A page read twice stores its picture once.
+func TestPageFacts_SamePictureStoredOnce(t *testing.T) {
+	srv := site(t)
+	store := &fakeStore{}
+	h := newHandler(store, nil, nil)
+	for i := 0; i < 2; i++ {
+		if rec, _ := call(t, h, srv.URL+"/event"); rec.Code != 200 {
+			t.Fatalf("read %d: %d", i, rec.Code)
+		}
+	}
+	if len(store.objs) != 1 {
+		t.Errorf("stored %d objects, want 1", len(store.objs))
 	}
 }

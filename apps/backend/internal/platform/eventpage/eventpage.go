@@ -39,7 +39,7 @@ type DateFact struct {
 	Date      string `json:"date"`       // YYYY-MM-DD
 	Time      string `json:"time"`       // HH:MM, "" when the page gives only the day
 	Doors     string `json:"doors"`      // HH:MM of the same day, "" when absent
-	UTCOffset string `json:"utc_offset"` // "+01:00", "" when the page wrote none
+	UTCOffset string `json:"utc_offset"` // "+01:00", "Z" for UTC, "" when the page wrote none
 }
 
 // Category is one ticket price the page lists.

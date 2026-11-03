@@ -113,8 +113,10 @@ func TestFetchPage_Refusals(t *testing.T) {
 }
 
 // TestFetchPage_PrivateDestinationRefused proves the egress guard: with the
-// production rule (no private addresses) a page on 127.0.0.1, and a public
-// page redirecting there, are refused without reading anything.
+// production rule (no private addresses) a page on 127.0.0.1, localhost and
+// the cloud metadata address are refused without reading anything. A
+// redirect hop is dialed through the same guard (egress's own tests), and
+// the page client keeps the policy's redirect check (the ticketing test).
 func TestFetchPage_PrivateDestinationRefused(t *testing.T) {
 	hit := false
 	srv := pageServer(t, func(w http.ResponseWriter, _ *http.Request) {

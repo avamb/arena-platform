@@ -9,6 +9,8 @@ package heventpage
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -34,6 +36,10 @@ const (
 	PageReadsPerOrg = 20
 	// ModelReadsWindow is the window of the model-read cap.
 	ModelReadsWindow = 24 * time.Hour
+	// MaxConcurrentReadings bounds the readings one arena-api process runs
+	// at once, whatever the organization: a page, its parsed JSON-LD and up
+	// to three pictures are held in memory while one runs.
+	MaxConcurrentReadings = 4
 )
 
 // Time budget of one request: the page, then maybe the model, then the
@@ -61,6 +67,7 @@ type Quota interface {
 type pictureStore interface {
 	PutAndStream(ctx context.Context, key, contentType string, body io.Reader) (string, int64, error)
 	Insert(ctx context.Context, in mediastore.InsertInput) (mediastore.Object, error)
+	FindByChecksum(ctx context.Context, orgID uuid.UUID, ownerType, sha256Hex string) (mediastore.Object, error)
 	Backend() string
 }
 
@@ -73,6 +80,8 @@ type Handler struct {
 	modelQuota   Quota
 	media        pictureStore
 	rowOrgAccess RowOrgAccess
+	pictureGate  func(r *http.Request) bool
+	slots        chan struct{}
 	now          func() time.Time
 }
 
@@ -86,8 +95,17 @@ func New(logger *slog.Logger) *Handler {
 		logger:    logger,
 		fetcher:   eventpage.NewFetcher(egress.Fetch),
 		pageQuota: ratelimit.New(ratelimit.Config{MaxAttempts: PageReadsPerOrg, Window: PageReadsWindow}),
+		slots:     make(chan struct{}, MaxConcurrentReadings),
 		now:       time.Now,
 	}
+}
+
+// WithPictureGate says whether the caller may store the page's picture
+// (media.write in the path organization). Without it the picture is stored
+// for any caller who passed the route's gate.
+func (h *Handler) WithPictureGate(allowed func(r *http.Request) bool) *Handler {
+	h.pictureGate = allowed
+	return h
 }
 
 // WithPolicy replaces the egress policy (a test pins egress.PrivateDeny).
@@ -179,10 +197,20 @@ func (h *Handler) PageFacts(w http.ResponseWriter, r *http.Request) {
 		h.writeFetchErr(w, r, err)
 		return
 	}
+	// A busy process refuses before the cap is taken: the person tries
+	// again in a moment without losing one of the organization's readings.
+	select {
+	case h.slots <- struct{}{}:
+		defer func() { <-h.slots }()
+	default:
+		writeErr(w, r, http.StatusServiceUnavailable, "event_page.busy", "many pages are being read right now, try again in a minute", nil)
+		return
+	}
 	if h.pageQuota != nil && !h.pageQuota.Take(orgID.String()) {
 		writeErr(w, r, http.StatusTooManyRequests, "event_page.rate_limited", "this organization has read many pages in the last hour, try again later", nil)
 		return
 	}
+	storePicture := h.pictureGate == nil || h.pictureGate(r)
 
 	// The work runs on its own deadline and the write deadline moves past
 	// it, as the poster reading does. A caller that hangs up does not stop
@@ -206,7 +234,9 @@ func (h *Handler) PageFacts(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, r, http.StatusUnprocessableEntity, "event_page.nothing_found", "the page says nothing about an event that we could read", nil)
 		return
 	}
-	h.attachPicture(work, orgID, &res)
+	if storePicture {
+		h.attachPicture(work, orgID, &res)
+	}
 
 	w.Header().Set("Cache-Control", "no-store")
 	httputil.WriteJSON(w, http.StatusOK, factsResponse{
@@ -286,8 +316,16 @@ func (h *Handler) attachPicture(ctx context.Context, orgID uuid.UUID, res *event
 }
 
 // storePicture writes the picture as an event_poster media object of the
-// organization, attached to nothing.
+// organization, attached to nothing. The same picture read again (the page
+// read twice) is not stored a second time: the organization's existing
+// object with the same bytes is answered.
 func (h *Handler) storePicture(ctx context.Context, orgID uuid.UUID, p eventpage.Picture) (uuid.UUID, error) {
+	digest := sha256.Sum256(p.Data)
+	if obj, err := h.media.FindByChecksum(ctx, orgID, "event_poster", hex.EncodeToString(digest[:])); err == nil {
+		return obj.ID, nil
+	} else if !errors.Is(err, mediastore.ErrNotFound) {
+		return uuid.Nil, err
+	}
 	key, err := mediastore.NewStorageKey("event_poster")
 	if err != nil {
 		return uuid.Nil, err

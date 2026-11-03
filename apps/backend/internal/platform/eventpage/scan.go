@@ -26,8 +26,12 @@ const maxVisibleRunes = 20_000
 var skipText = map[string]bool{
 	"script": true, "style": true, "noscript": true, "template": true, "svg": true,
 	"head": true, "nav": true, "footer": true, "iframe": true, "canvas": true,
-	"select": true, "option": true, "button": true, "form": true,
+	"select": true,
 }
+
+// A form (ASP.NET wraps the whole page in one), a button and an option
+// outside a select are not skipped: their end tag may never come, and the
+// rest of the page would be lost.
 
 // blockElements end a line of visible text.
 var blockElements = map[string]bool{
@@ -71,6 +75,11 @@ func scanHTML(doc []byte) scanned {
 				attrs[string(k)] = string(v)
 			}
 			switch tag {
+			case "body":
+				// The end of <head> may be left out (legal HTML5): <body> ends it.
+				if skipTag == "head" {
+					skipDepth = 0
+				}
 			case "html":
 				if l := strings.TrimSpace(attrs["lang"]); l != "" && out.lang == "" {
 					out.lang = l

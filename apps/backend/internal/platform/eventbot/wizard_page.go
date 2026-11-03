@@ -99,7 +99,7 @@ func (b *Bot) readPageHints(ctx context.Context, chatID int64, loc, jwt string, 
 	}
 	if err != nil {
 		var api *APIError
-		if !errors.As(err, &api) || api.Status >= 500 && api.Code != "event_page.fetch_failed" {
+		if !errors.As(err, &api) || api.Status >= 500 && api.Code != "event_page.fetch_failed" && api.Code != "event_page.busy" {
 			b.logger.Warn("eventbot: event page reading failed", slog.String("error", err.Error()))
 		}
 		b.send(ctx, chatID, b.texts.T(loc, pageErrorKey(err), nil), nil)
@@ -154,7 +154,11 @@ func (w *Wizard) pageNote(loc string, h DraftHints, p PageReading) string {
 			v += " " + d.Time
 		}
 		if i < len(p.Facts.Dates) && p.Facts.Dates[i].UTCOffset != "" && d.Time != "" {
-			v += " (UTC" + p.Facts.Dates[i].UTCOffset + ")"
+			if off := p.Facts.Dates[i].UTCOffset; off == "Z" {
+				v += " (UTC)"
+			} else {
+				v += " (UTC" + off + ")"
+			}
 		}
 		lines = append(lines, line("bot.wz.ack_date", v))
 	}

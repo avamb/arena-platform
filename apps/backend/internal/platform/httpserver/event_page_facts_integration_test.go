@@ -111,6 +111,12 @@ func TestEventPageFacts_JSONLDPageThroughTheRouter(t *testing.T) {
 		t.Errorf("picture = %s %s %d %v", owner, ownerType, width, img)
 	}
 
+	// The same page read again answers the same stored picture.
+	if rec, again := postEventPageFacts(t, srv, token, f.orgID, site.URL+"/cherry-orchard"); rec.Code != http.StatusOK ||
+		again["facts"].(map[string]any)["image"].(map[string]any)["media_id"] != mediaID {
+		t.Errorf("second read: %d %v", rec.Code, again["facts"])
+	}
+
 	// A ticketing platform's page is refused before anything is fetched.
 	rec, out = postEventPageFacts(t, srv, token, f.orgID, "https://www.ticketmaster.es/event/123")
 	if rec.Code != http.StatusUnprocessableEntity || eventPageErrCode(out) != "event_page.ticketing_platform" {

@@ -11467,7 +11467,7 @@ export interface components {
             time: string;
             /** @description The doors-open time of the same day, `HH:MM`, or empty. */
             doors: string;
-            /** @description The UTC offset the page wrote next to the time (`+01:00`), or empty. The time is never converted. */
+            /** @description The UTC offset the page wrote next to the time (`+01:00`, `Z` for UTC), or empty. The time is never converted. */
             utc_offset: string;
         };
         /**
@@ -54817,7 +54817,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The site did not answer or answered with an error (`event_page.fetch_failed`, the site's status in `details.status`), or the organization guard is not configured. */
+            /** @description The site did not answer or answered with an error (`event_page.fetch_failed`, the site's status in `details.status`), many pages are being read at once (`event_page.busy`, try again in a minute), or the organization guard is not configured. */
             503: {
                 headers: {
                     [name: string]: unknown;

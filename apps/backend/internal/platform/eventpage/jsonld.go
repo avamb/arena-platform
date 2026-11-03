@@ -261,6 +261,10 @@ func readLocation(ev *ldEvent, v any) {
 
 // readOffers reads offers: an Offer, an AggregateOffer (its own offers, or
 // only a low and high price), or a list of them.
+// maxOffersPerEvent bounds the offers kept per event: a page cannot make
+// the inheritance to sub-events and the category pass quadratic.
+const maxOffersPerEvent = 50
+
 func readOffers(ev *ldEvent, v any, depth int) {
 	if depth > 3 {
 		return
@@ -301,7 +305,7 @@ func readOffers(ev *ldEvent, v any, depth int) {
 				o.Currency = ldText(spec["priceCurrency"])
 			}
 		}
-		if o.Price != "" {
+		if o.Price != "" && len(ev.Offers) < maxOffersPerEvent {
 			ev.Offers = append(ev.Offers, o)
 		}
 	}

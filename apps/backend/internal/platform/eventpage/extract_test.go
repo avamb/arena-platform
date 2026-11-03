@@ -123,7 +123,7 @@ func TestExtract_SeriesInGraph(t *testing.T) {
 	if d := byDate["2099-01-23"]; d.Time != "20:00" || d.UTCOffset != "" {
 		t.Errorf("no offset: %+v", d)
 	}
-	if d := byDate["2099-01-30"]; d.UTCOffset != "+00:00" {
+	if d := byDate["2099-01-30"]; d.UTCOffset != "Z" {
 		t.Errorf("Z: %+v", d)
 	}
 	if d := byDate["2099-02-06"]; d.Time != "" {
@@ -237,8 +237,8 @@ func TestExtract_EmptyListsAreNeverNil(t *testing.T) {
 func TestPriceToMinor(t *testing.T) {
 	cases := map[string]int64{
 		"25": 2500, "25.00": 2500, "34.9": 3490, "34,90": 3490, "1 200,00": 120000,
-		"1.200,50": 120050, "1,200.50": 120050, "1,200": 120000, "€ 25": 2500, "25 EUR": 2500,
-		"0": 0, "0.00": 0, "12.500": 1250, "1 500": 150000,
+		"1.200,50": 120050, "1,200.50": 120050, "€ 25": 2500, "25 EUR": 2500,
+		"0": 0, "0.00": 0, "1 500": 150000, "1 500 Kč": 150000, "CZK 1 200,50": 120050,
 	}
 	for in, want := range cases {
 		got, ok := priceToMinor(in)
@@ -246,7 +246,8 @@ func TestPriceToMinor(t *testing.T) {
 			t.Errorf("priceToMinor(%q) = %d, %v; want %d", in, got, ok, want)
 		}
 	}
-	for _, bad := range []string{"", "free", "-5", "1.2.3,4,5", "12.345", "999999999", "25.999"} {
+	for _, bad := range []string{"", "free", "-5", "1.2.3,4,5", "12.345", "999999999", "25.999",
+		"1.200", "1,200", "12.500", "25 to 40", "desde 25 hasta 40", "25 40", "25/40"} {
 		if got, ok := priceToMinor(bad); ok {
 			t.Errorf("priceToMinor(%q) = %d, want refused", bad, got)
 		}
@@ -328,5 +329,30 @@ func TestFitsPoster(t *testing.T) {
 		if got := FitsPoster(c.w, c.h); got != c.want {
 			t.Errorf("FitsPoster(%d, %d) = %v", c.w, c.h, got)
 		}
+	}
+}
+
+// A page wrapped in <form> (ASP.NET), a <head> that is never closed and an
+// <option> outside a <select> still give the model the visible text.
+func TestScanHTML_UnclosedWrappersKeepTheText(t *testing.T) {
+	page := `<html><head><title>T</title><body><form id="aspnetForm"><option>x<p>The Cherry Orchard plays at Teatro Kolybel on 20 November.</p><button>Buy</button><p>Doors at seven.</p></form></body></html>`
+	got := scanHTML([]byte(page)).visibleText
+	for _, want := range []string{"The Cherry Orchard plays", "Doors at seven."} {
+		if !strings.Contains(got, want) {
+			t.Errorf("visible text lacks %q: %q", want, got)
+		}
+	}
+}
+
+// One event cannot carry more than maxOffersPerEvent offers.
+func TestReadOffers_Capped(t *testing.T) {
+	var offers []any
+	for i := 0; i < 500; i++ {
+		offers = append(offers, map[string]any{"@type": "Offer", "price": "10", "name": "A"})
+	}
+	ev := &ldEvent{}
+	readOffers(ev, offers, 0)
+	if len(ev.Offers) != maxOffersPerEvent {
+		t.Errorf("offers = %d, want %d", len(ev.Offers), maxOffersPerEvent)
 	}
 }
