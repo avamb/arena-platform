@@ -16,6 +16,9 @@ const (
 	CategorySales = "sales"
 	// CategoryRefunds is the refund aggregation for the event.
 	CategoryRefunds = "refunds"
+	// CategoryReferralCashback is the "Refer a friend" cashback returned to
+	// referrers (spec 52, migration 0192): not a refund to a buyer.
+	CategoryReferralCashback = "referral_cashback"
 	// CategoryComplimentary is the complimentary-grant aggregation.
 	CategoryComplimentary = "complimentary"
 	// CategoryScans is the scan-event aggregation.
@@ -32,6 +35,7 @@ const (
 var AllLineCategories = []string{
 	CategorySales,
 	CategoryRefunds,
+	CategoryReferralCashback,
 	CategoryComplimentary,
 	CategoryScans,
 	CategoryCommissions,

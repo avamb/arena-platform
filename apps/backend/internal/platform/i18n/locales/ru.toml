@@ -1790,7 +1790,7 @@ other = "✖ Сбросить поиск"
 other = "Продано {{.Sold}} из {{.Total}}, свободно {{.Available}}{{if .Held}}, в брони {{.Held}}{{end}}"
 
 ["bot.ec.refunds_line"]
-other = "Возвраты: {{.Count}} на {{.Amount}}, нетто {{.Net}}"
+other = "Возвраты: {{.Count}} на {{.Amount}}{{if .Cashback}}, кэшбэк «Приведи друга»: {{.CashbackCount}} на {{.Cashback}}{{end}}, нетто {{.Net}}"
 
 ["bot.ec.entered_line"]
 other = "Вошло: {{.Used}} из {{.Total}}"
@@ -1853,7 +1853,7 @@ other = "Заказы: оплачено {{.Paid}}, ждут оплаты {{.Pend
 other = "Места: продано {{.Sold}}, свободно {{.Available}}, в брони {{.Held}}, закрыто {{.Unavailable}}, всего {{.Total}}"
 
 ["bot.ec.sum_money"]
-other = "Оплачено {{.Paid}}, заказов: {{.Orders}} (скидки {{.Discount}}, сервисный сбор {{.Charge}})\nВозвраты: {{.RefundCount}} на {{.Refunded}}{{if .External}}, из них {{.External}} вне системы{{end}}\nНетто: <b>{{.Net}}</b>{{if .Pending}}\nЖдут оплаты: {{.Pending}}, заказов: {{.PendingOrders}}{{end}}"
+other = "Оплачено {{.Paid}}, заказов: {{.Orders}} (скидки {{.Discount}}, сервисный сбор {{.Charge}})\nВозвраты: {{.RefundCount}} на {{.Refunded}}{{if .External}}, из них {{.External}} вне системы{{end}}{{if .Cashback}}\nКэшбэк «Приведи друга»: {{.CashbackCount}} на {{.Cashback}}{{end}}\nНетто: <b>{{.Net}}</b>{{if .Pending}}\nЖдут оплаты: {{.Pending}}, заказов: {{.PendingOrders}}{{end}}"
 
 ["bot.ec.scope_all"]
 other = "Все даты ({{.N}})"
@@ -5960,3 +5960,20 @@ other = "Arena не смогла это сделать. Ничего не отп
 
 ["bot.dp.err_unavailable"]
 other = "Arena не смогла сохранить этот шаг, поэтому ничего не отправлено. Попробуйте через минуту."
+
+# «Приведи друга» в карточке заказа (спека 52): кэшбэк, который заработал
+# заказ пригласившего, и код, по которому купил друг.
+["bot.ord.ref_paid"]
+other = "\n🤝 Кэшбэк «Приведи друга»: {{.Amount}} выплачен {{.When}}, заказ друга {{.Friend}}"
+
+["bot.ord.ref_pending"]
+other = "\n🤝 Кэшбэк «Приведи друга»: {{.Amount}} в пути, заказ друга {{.Friend}}"
+
+["bot.ord.ref_unpaid"]
+other = "\n🤝 Кэшбэк «Приведи друга» за заказ друга {{.Friend}} не выплачен"
+
+["bot.ord.ref_code"]
+other = "\n🤝 Куплено по коду пригласившего <b>{{.Code}}</b>{{if .Referrer}}, заказ пригласившего {{.Referrer}}{{end}}"
+
+["bot.ord.ref_more"]
+other = "\n…и ещё заказов друзей: {{.N}}"

@@ -385,6 +385,17 @@ export function groupByCurrency(discount: readonly ReferralMoney[], cashback: re
 
 // ─── the refund warning ──────────────────────────────────────────────────────
 
+/**
+ * How the order card words one friend's cashback: `paid` (the money went back,
+ * with its date), `pending` (owed or with the payment provider) or `unpaid`
+ * (capped, not possible, failed, cancelled, or a state this page does not know).
+ */
+export function cashbackRowKind(state: string): "paid" | "pending" | "unpaid" {
+  if (state === "paid") return "paid";
+  if (state === "due" || state === "sent") return "pending";
+  return "unpaid";
+}
+
 /** The cashback already given to the referrer for this order, when the API says so and it is a real amount. */
 export function cashbackNotice(c: OrderReferralCashbackPaid | null | undefined): OrderReferralCashbackPaid | null {
   if (c === null || c === undefined) return null;

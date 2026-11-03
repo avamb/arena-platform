@@ -148,6 +148,7 @@ func (b *Bot) orderCardText(loc string, d openapi.OrderDetail, meta *orderMeta, 
 	if line := b.letterLine(loc, "refund", refundLetterStatus(d), tz, private); line != "" {
 		sb.WriteString("\n" + line)
 	}
+	sb.WriteString(b.referralLines(loc, d.Referral, tz)) // order_referral.go
 
 	if key := UnpaidReasonKey(d.Status, d.UnpaidReason); key != "" {
 		sb.WriteString("\n\n" + b.texts.T(loc, key, nil))

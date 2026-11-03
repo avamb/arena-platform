@@ -229,7 +229,7 @@ func TestReport159_WorkerStateTransitions(t *testing.T) {
 
 func TestReport159_WorkerAllSixCategories(t *testing.T) {
 	content := findFileByName(t, "reporting_handler.go")
-	for _, cat := range []string{"sales", "refunds", "complimentary", "scans", "commissions", "payouts"} {
+	for _, cat := range []string{"sales", "refunds", "referral_cashback", "complimentary", "scans", "commissions", "payouts"} {
 		if !strings.Contains(content, `"`+cat+`"`) {
 			t.Errorf("reporting handler missing category %q", cat)
 		}
@@ -259,6 +259,7 @@ func TestReport159_SQLFileNamedQueries(t *testing.T) {
 		"AggregateSalesForEvent",
 		"AggregateComplimentaryForEvent",
 		"AggregateRefundsForEvent",
+		"AggregateReferralCashbackForEvent",
 		"AggregateScansForEvent",
 	} {
 		if !strings.Contains(content, "-- name: "+qName) {
@@ -330,6 +331,7 @@ func TestReport159_GenFileAllFunctions(t *testing.T) {
 		"AggregateSalesForEvent",
 		"AggregateComplimentaryForEvent",
 		"AggregateRefundsForEvent",
+		"AggregateReferralCashbackForEvent",
 		"AggregateScansForEvent",
 	} {
 		if !strings.Contains(content, "func (q *Queries) "+fn+"(") {
@@ -354,6 +356,7 @@ func TestReport159_QuerierInterfaceMethods(t *testing.T) {
 		"AggregateSalesForEvent",
 		"AggregateComplimentaryForEvent",
 		"AggregateRefundsForEvent",
+		"AggregateReferralCashbackForEvent",
 		"AggregateScansForEvent",
 	} {
 		if !strings.Contains(content, method) {

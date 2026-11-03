@@ -67,6 +67,7 @@ func (b *Bot) summaryText(loc string, v summaryView) string {
 			"Discount": FormatMoney(m.Discount, m.Currency, loc), "Charge": FormatMoney(m.ServiceCharge, m.Currency, loc),
 			"RefundCount": count, "Refunded": FormatMoney(m.Refunded, m.Currency, loc), "External": externalText,
 			"Net": FormatMoney(m.Net, m.Currency, loc), "Pending": pendingText, "PendingOrders": m.PendingOrders,
+			"Cashback": cashbackText(m, loc), "CashbackCount": m.CashbackRefunds,
 		}))
 		shown++
 	}

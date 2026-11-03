@@ -306,3 +306,32 @@ func TestBuildSummary_AdmissionsBySource(t *testing.T) {
 		t.Fatalf("quiet door: %s", raw)
 	}
 }
+
+// The "Refer a friend" cashback (spec 52) is money the organizer returned to
+// a referrer: it comes off the net on its own line and never mixes with the
+// refunds to buyers. The stand's case: 252,50 + 454,50 paid, one ticket
+// refunded for 207,05, cashback 45,45, the organizer keeps 454,50.
+func TestFoldMoney_ReferralCashbackIsItsOwnLine(t *testing.T) {
+	sess := uuid.New()
+	orders := []gen.SessionSummaryOrdersRow{
+		{SessionID: sess, Status: "partially_refunded", Source: "public_feed", Currency: "EUR", Orders: 1, Total: 25250},
+		{SessionID: sess, Status: "paid", Source: "public_feed", Currency: "EUR", Orders: 1, Total: 45450},
+	}
+	refunds := []gen.SessionSummaryRefundsRow{
+		{SessionID: sess, Settlement: "provider", State: "succeeded", Currency: "EUR", Origin: "arena", Refunds: 1, Amount: 20705},
+		{SessionID: sess, Settlement: "provider", State: "succeeded", Currency: "EUR", Origin: "referral_cashback", Refunds: 1, Amount: 4545},
+		// A cashback still with the provider moved no money yet.
+		{SessionID: sess, Settlement: "provider", State: "provider_pending", Currency: "EUR", Origin: "referral_cashback", Refunds: 1, Amount: 999},
+	}
+	_, groups, money := foldMoney(orders, refunds)
+	if len(money) != 1 {
+		t.Fatalf("money rows: %+v", money)
+	}
+	m := money[0]
+	if m.Paid != 70700 || m.Refunded != 20705 || m.Cashback != 4545 || m.CashbackRefunds != 1 || m.Net != 45450 {
+		t.Fatalf("money = %+v; want paid 70700, refunded 20705, cashback 4545 in 1, net 45450", m)
+	}
+	if len(groups) != 1 || groups[0].Amount != 20705 {
+		t.Fatalf("refund groups must hold the buyer refund only: %+v", groups)
+	}
+}
