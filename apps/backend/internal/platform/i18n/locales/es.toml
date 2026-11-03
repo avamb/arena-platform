@@ -447,7 +447,7 @@ other = "Empezar de nuevo"
 other = "Borrador eliminado. No se ha guardado nada."
 
 ["bot.wz.ask_name"]
-other = "¿Cómo se llama el evento? Los compradores verán este nombre, por ejemplo “Concierto en Madrid” o “Taller en Roma”.\n\nEscribe el nombre en un mensaje{{if .Poster}} o, si el cartel está listo, pulsa “Rellenar desde un cartel”: leeré el nombre, la fecha y los precios, y tú confirmas cada valor{{end}}."
+other = "¿Cómo se llama el evento? Los compradores verán este nombre, por ejemplo “Concierto en Madrid” o “Taller en Roma”.\n\nEscribe el nombre en un mensaje{{if .Poster}} o, si el cartel está listo, pulsa “Rellenar desde un cartel”: leeré el nombre, la fecha y los precios, y tú confirmas cada valor{{end}}.{{if .Link}}\n\n¿Tienes una página del evento en tu sitio web? Pulsa “Rellenar desde un enlace” o envía su dirección.{{end}}"
 
 ["bot.wz.err_name"]
 other = "Ponle un nombre al evento, de hasta 200 caracteres."
@@ -4935,6 +4935,68 @@ other = "Google Maps: {{.Url}}"
 ["salesnotify.shop.courier_map_waze"]
 other = "Waze: {{.Url}}"
 
+["bot.wz.link_first_btn"]
+other = "🔗 Rellenar desde un enlace"
+
+["bot.wz.ask_link_first"]
+other = "Envía el enlace a la página de este evento en tu sitio web. Leeré el nombre, las fechas, el recinto, los precios y la imagen y te los propondré. Confirmas cada valor con un botón.\n\nNo leo páginas de servicios de venta de entradas (Ticketmaster, Eventbrite y similares). Sus normas lo prohíben.\n\n¿Cambiaste de idea? Pulsa “Atrás” y escribe el nombre."
+
+["bot.wz.err_link_first"]
+other = "Espero el enlace a la página del evento. Empieza por https://. Para escribir el nombre, pulsa “Atrás”."
+
+["bot.wz.hint_btn_page"]
+other = "De la página: {{.Value}}"
+
+["bot.wz.page_reading"]
+other = "Leyendo la página…"
+
+["bot.wz.page_read"]
+other = "En la página encontré:\n{{.List}}\n\nTe los propondré como sugerencias. En cada paso pulsa “De la página” si es correcto, o escribe tu valor."
+
+["bot.wz.page_ack_image"]
+other = "Imagen para el cartel"
+
+["bot.wz.page_err_ticketing"]
+other = "Es una página de un servicio de venta de entradas. No la leo: sus normas lo prohíben. Envía el enlace a la página del evento en tu sitio web, o pulsa “Atrás” y escribe el nombre."
+
+["bot.wz.page_err_invalid"]
+other = "No parece la dirección de una página. Envía el enlace completo. Empieza por https://."
+
+["bot.wz.page_err_not_public"]
+other = "No se puede acceder a esta página desde internet, así que no puedo abrirla. Envía un enlace a una página pública de tu sitio web."
+
+["bot.wz.page_err_not_page"]
+other = "Este enlace no es una página web, o la página es demasiado grande. Envía el enlace a la página del evento."
+
+["bot.wz.page_err_nothing"]
+other = "No encontré ni el nombre ni la fecha del evento en esta página. Puede que la página la genere un script. Envía el cartel, o pulsa “Atrás” y escribe el nombre."
+
+["bot.wz.page_err_fetch"]
+other = "El sitio web no respondió o respondió con un error. Comprueba que la página se abre en el navegador y envía el enlace otra vez."
+
+["bot.wz.page_err_rate"]
+other = "Se leyeron muchas páginas en la última hora. Inténtalo más tarde o responde tú a las preguntas."
+
+["bot.wz.page_err_unavailable"]
+other = "Ahora no pude leer la página. Inténtalo dentro de un minuto, o pulsa “Atrás” y escribe el nombre."
+
+["bot.wz.page_note_no_dates"]
+other = "La página no tiene fecha. Te la preguntaré."
+
+["bot.wz.page_note_no_prices"]
+other = "La página no indica precios por categoría. Te preguntaré por las entradas."
+
+["bot.wz.page_note_more_dates"]
+other = "La página tiene más fechas ({{.Count}}). Tomé las 10 más próximas. Añade tú las demás."
+
+["bot.wz.page_note_online"]
+other = "La página dice que el evento es en línea. Te preguntaré el recinto."
+
+["bot.wz.page_note_image_not_poster"]
+other = "La imagen de la página no sirve como cartel: debe ser 4:5 o cuadrada, de al menos 1000 px de ancho. Puedes enviar un cartel en el paso “Cartel”."
+
+["bot.wz.page_note_model"]
+other = "La IA leyó parte de esto del texto de la página. Revísalo con atención."
 ["bot.gl.btn"]
 other = "👥 Lista de invitados"
 

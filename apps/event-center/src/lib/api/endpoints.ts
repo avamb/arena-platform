@@ -3,7 +3,7 @@
  * from the API table (routes.ts), which the parity test checks against
  * openapi.yaml.
  */
-import { ApiError, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
+import { ApiError, PAGE_READ_TIMEOUT_MS, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
 import type { PageStatsResponse } from "@/lib/api/types";
 import type {
@@ -32,6 +32,7 @@ import type {
   EventEnvelope,
   MediaObject,
   PosterFactsResponse,
+  EventPageFactsResponse,
   EventContactResponse,
   EventListResponse,
   EventSummary,
@@ -892,6 +893,22 @@ export function readPosterFacts(orgId: string, mediaId: string, signal?: AbortSi
     params: { org_id: orgId, media_id: mediaId },
     signal,
     timeoutMs: POSTER_READ_TIMEOUT_MS,
+  });
+}
+
+/**
+ * Asks the server to read the organizer's OWN event page (`event.update`, spec 59).
+ * The server fetches the address, never the browser. ONE request on its own long
+ * timeout, never repeated by itself: a lost answer may have used a daily reading.
+ * The answer is only a set of hints; the page's picture is stored unattached.
+ */
+export function readEventPageFacts(orgId: string, url: string, signal?: AbortSignal): Promise<EventPageFactsResponse> {
+  return call<EventPageFactsResponse>({
+    route: API.eventPageFacts,
+    params: { org_id: orgId },
+    body: { url },
+    signal,
+    timeoutMs: PAGE_READ_TIMEOUT_MS,
   });
 }
 
