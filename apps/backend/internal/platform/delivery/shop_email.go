@@ -262,9 +262,11 @@ func (h *shopEmail) loadRefund(ctx context.Context, o gen.ShopOrderRow, id uuid.
 		SELECT r.amount,
 		       (SELECT COALESCE(sum(x.amount), 0)::bigint FROM refunds x
 		         WHERE x.payment_intent_id = r.payment_intent_id AND x.state = 'succeeded'
+		           AND x.origin <> 'referral_cashback'
 		           AND (x.updated_at, x.id) <= (r.updated_at, r.id))
 		  FROM refunds r
-		 WHERE r.id = $1 AND r.payment_intent_id = $2 AND r.state = 'succeeded'`,
+		 WHERE r.id = $1 AND r.payment_intent_id = $2 AND r.state = 'succeeded'
+		   AND r.origin <> 'referral_cashback'`,
 		id, *o.PaymentIntentID).Scan(&r.Amount, &r.Running)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
@@ -287,8 +289,12 @@ type shopOrg struct {
 }
 
 func (h *shopEmail) loadOrg(ctx context.Context, orgID uuid.UUID) (shopOrg, error) {
+	return loadShopOrg(ctx, h.opts.DB, orgID)
+}
+
+func loadShopOrg(ctx context.Context, db gen.DBTX, orgID uuid.UUID) (shopOrg, error) {
 	var g shopOrg
-	err := h.opts.DB.QueryRow(ctx, `
+	err := db.QueryRow(ctx, `
 		SELECT name, slug, website_url, legal_name, legal_address_line1, legal_address_line2,
 		       legal_address_postal_code, legal_address_city, legal_address_country, contact_email,
 		       logo_media_id, sender_email, sender_verification_status,
@@ -299,6 +305,35 @@ func (h *shopEmail) loadOrg(ctx context.Context, orgID uuid.UUID) (shopOrg, erro
 		&g.LogoMediaID, &g.SenderEmail, &g.SenderStatus,
 		&g.RegNumber, &g.TaxID, &g.TaxScheme, &g.ShopDomain)
 	return g, err
+}
+
+// shopLetterPayload is the seller side of a shop letter: the organization's
+// name, legal block, sender and logo, and the SHOP's own contact address (the
+// organization's contact_email is never published on a hosted storefront, owner
+// rule 2026-10-13, so there is no fallback to it: no address, no contact line).
+func shopLetterPayload(ctx context.Context, db gen.DBTX, orgID uuid.UUID) (Payload, error) {
+	g, err := loadShopOrg(ctx, db, orgID)
+	if err != nil {
+		return Payload{}, fmt.Errorf("delivery: read organization of shop order: %w", err)
+	}
+	contact := ""
+	if st, err := gen.New(db).GetShopSettings(ctx, orgID); err == nil {
+		contact = ptrStr(st.ContactEmail)
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return Payload{}, fmt.Errorf("delivery: read shop settings: %w", err)
+	}
+	p := Payload{
+		OrgName: g.Name, OrgWebsiteURL: ptrStr(g.Website), OrgLegalName: ptrStr(g.LegalName),
+		OrgLegalAddressLine1: ptrStr(g.Line1), OrgLegalAddressLine2: ptrStr(g.Line2),
+		OrgLegalAddressPostal: ptrStr(g.Postal), OrgLegalAddressCity: ptrStr(g.City),
+		OrgLegalAddressCountry: ptrStr(g.Country), OrgContactEmail: contact,
+		OrgRegistrationNumber: ptrStr(g.RegNumber), OrgTaxID: ptrStr(g.TaxID), OrgTaxIDScheme: ptrStr(g.TaxScheme),
+		SenderEmail: ptrStr(g.SenderEmail), SenderVerificationStatus: g.SenderStatus,
+	}
+	if g.LogoMediaID != nil {
+		p.OrgLogoMediaID = g.LogoMediaID.String()
+	}
+	return p, nil
 }
 
 // statusURL is the storefront's result page of the order, where the status
@@ -383,26 +418,9 @@ func (h *shopEmail) buildMessage(ctx context.Context, o gen.ShopOrderRow, kind s
 	if err != nil {
 		return email.Message{}, fmt.Errorf("delivery: read organization of shop order: %w", err)
 	}
-	contact := ""
-	if st, err := h.q.GetShopSettings(ctx, o.OrgID); err == nil {
-		contact = ptrStr(st.ContactEmail)
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return email.Message{}, fmt.Errorf("delivery: read shop settings: %w", err)
-	}
-	// Only the shop's own contact address is printed: the organization's
-	// contact_email is never published on a hosted storefront (owner rule
-	// 2026-10-13), so there is no fallback to it. No address, no contact line.
-
-	p := Payload{
-		OrgName: g.Name, OrgWebsiteURL: ptrStr(g.Website), OrgLegalName: ptrStr(g.LegalName),
-		OrgLegalAddressLine1: ptrStr(g.Line1), OrgLegalAddressLine2: ptrStr(g.Line2),
-		OrgLegalAddressPostal: ptrStr(g.Postal), OrgLegalAddressCity: ptrStr(g.City),
-		OrgLegalAddressCountry: ptrStr(g.Country), OrgContactEmail: contact,
-		OrgRegistrationNumber: ptrStr(g.RegNumber), OrgTaxID: ptrStr(g.TaxID), OrgTaxIDScheme: ptrStr(g.TaxScheme),
-		SenderEmail: ptrStr(g.SenderEmail), SenderVerificationStatus: g.SenderStatus,
-	}
-	if g.LogoMediaID != nil {
-		p.OrgLogoMediaID = g.LogoMediaID.String()
+	p, err := shopLetterPayload(ctx, h.opts.DB, o.OrgID)
+	if err != nil {
+		return email.Message{}, err
 	}
 	branding := resolveBranding(ctx, h.opts.Media, p, h.logger).Branding
 

@@ -43,6 +43,7 @@ func (s *Server) mountV1Routes() {
 		s.mountAnalyticsRoutes(r)
 		s.mountAnalyticsUXRoutes(r)
 		s.mountSalesFunnelRoutes(r)
+		s.mountReferralRoutes(r)
 		s.mountRefundOrgRoutes(r)
 		s.mountDisputeRoutes(r)
 		s.mountPaymentConfigRoutes(r)

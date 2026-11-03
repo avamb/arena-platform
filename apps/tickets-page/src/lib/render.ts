@@ -36,6 +36,21 @@ export function preselectedSession(search: string): string | null {
   }
 }
 
+const PROMO_CODE_RE = /^[A-Z0-9-]{3,64}$/;
+
+/** The promo code a "Refer a friend" link carries (`?promo=<code>`): trimmed,
+ * upper-cased, letters, digits and dashes only (3-64), else null. The widget
+ * applies it to the first cart; the platform decides whether it fits. The
+ * address is only read, never changed. */
+export function promoFromSearch(search: string): string | null {
+  try {
+    const v = (new URLSearchParams(search).get('promo') ?? '').trim().toUpperCase();
+    return PROMO_CODE_RE.test(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 export function renderLoading(container: HTMLElement, locale: PageLocale): void {
   clear(container);
   const p = document.createElement('p');
@@ -288,6 +303,12 @@ export function renderEvent(
   const wantedSession = preselectedSession(currentSearch());
   if (wantedSession) {
     widget.setAttribute('session-id', wantedSession);
+  }
+  // `?promo=<code>` (a friend's link) is handed to the widget, which applies it
+  // to the first cart and keeps it for the tab.
+  const wantedPromo = promoFromSearch(currentSearch());
+  if (wantedPromo) {
+    widget.setAttribute('promo', wantedPromo);
   }
   // The hero above already shows the poster whole; the widget's own cover
   // would print the same picture a second time, cropped.

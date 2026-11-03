@@ -12,6 +12,7 @@
       frame: { type: 'String', attribute: 'frame' },
       materials: { type: 'String', attribute: 'materials' },
       funnel: { type: 'String', attribute: 'funnel' },
+      promo: { type: 'String', attribute: 'promo' },
     },
   }}
 />
@@ -42,6 +43,7 @@
   import { createMarketingQuoter, initialMarketingQuoteState, type MarketingQuoteState } from './lib/marketingQuote.js';
   import type { PromoState } from './lib/promoController.js';
   import { getPromoStrings } from './lib/promoI18n.js';
+  import { forgetWantedPromo, resolveWantedPromo } from './lib/referral.js';
   import { MAX_CART_SEATS, cartLimitMessage, seatCapMessage } from './lib/cartLimits.js';
   import { buyerErrorText } from './lib/errorI18n.js';
   import { pausedSalesState } from './lib/saleSubscribe.js';
@@ -131,9 +133,13 @@
      * would count a view nobody looked at: a promoter page mounts a widget per
      * card). Anything else (or absent) is a plain embed, which counts its own. */
     funnel?: string;
+    /** A promo code to apply to the first cart ("Refer a friend": the hosted
+     * page hands over the `?promo=` of its address). Without it the widget
+     * reads `?promo=` from the page address itself. */
+    promo?: string;
   }
 
-  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '', materials = '', funnel = '' }: Props = $props();
+  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '', materials = '', funnel = '', promo: promoAttribute = '' }: Props = $props();
 
   /**
    * Host element reference for CustomEvent dispatch (WID-S5).
@@ -359,6 +365,10 @@
   // controller; this component only feeds it the cart and renders its state.
 
   let promo = $state<PromoState>(initialPromoState());
+  // "Refer a friend": a code that came with the link (`?promo=`). It is applied
+  // ONCE, to the first cart; the platform stays the judge of whether it fits.
+  let wantedPromo = $state<string | null>(null);
+  let wantedPromoTried = false;
   const promoStrings = $derived(getPromoStrings(normLocale));
 
   const cartKey = $derived(
@@ -390,6 +400,20 @@
     const lines = cart.lines.length;
     untrack(() => promoCtl.cartChanged(lines));
   });
+
+  $effect(() => {
+    const code = wantedPromo;
+    if (!code || wantedPromoTried) return;
+    // Not before the buyer has chosen something: a quote needs a cart.
+    if (stage !== 'selecting' || cart.lines.length === 0 || !cartKey) return;
+    wantedPromoTried = true;
+    untrack(() => void promoCtl.apply(code));
+  });
+
+  /** The buyer took the code off, or the platform refused it: do not bring it back on a reload. */
+  function forgetPromoFromLink(): void {
+    forgetWantedPromo(normFeedToken);
+  }
 
   // ── The mailing tick's price (spec 51-1) ───────────────────────────────────
   //
@@ -453,6 +477,7 @@
     // Spec 43: remember which sales link or utm label brought the buyer. The
     // address is only read, never changed (its query also carries checkout_token).
     attribution = captureAttribution(normFeedToken, window.location.search);
+    wantedPromo = resolveWantedPromo(normFeedToken, promoAttribute, window.location.search);
 
     // Check for checkout_token in URL or sessionStorage first.
     const urlToken = getCheckoutTokenFromSearch(window.location.search);
@@ -816,6 +841,7 @@
           values.email,
         );
         promoCtl.drop();
+        forgetPromoFromLink();
       } else if (err instanceof ApiError && consentErrorMessage(err.code, normLocale) !== null) {
         // The channel asks for the consent and the platform did not get it.
         // If the box was not on screen (the feed said "not required"), show
@@ -1034,6 +1060,7 @@
         onRetry={handleRetry}
         onDone={orderStatus.status === 'paid' ? handleDone : undefined}
         apiBase={resolvedApiBase}
+        {checkoutToken}
         actionLoading={orderActionLoading}
         actionError={orderActionError}
       />
@@ -1216,7 +1243,9 @@
         cart={effectiveCart}
         buyerFields={selectedSession.buyer_fields as import('./lib/checkout.js').BuyerFieldConfig[]}
         serviceFeePercent={selectedSession.service_fee_percent}
-        promoAvailable={selectedSession.promo_codes_available === true}
+        promoAvailable={selectedSession.promo_codes_available === true || wantedPromo !== null}
+        promoExpanded={wantedPromo !== null}
+        promoPrefill={wantedPromo ?? ''}
         showWithdrawalNotice={selectedSession.show_withdrawal_notice === true}
         consent={forceConsent(selectedSession.consent, consentForcedFor === selectedSession.id)}
         marketing={selectedSession.marketing_optin ?? null}
@@ -1238,6 +1267,7 @@
         onRemovePromo={() => {
           promoCtl.remove();
           noteCheckoutChange({ type: 'promo_removed' });
+          forgetPromoFromLink();
         }}
         onEmailChange={(email) => noteCheckoutChange({ type: 'email_changed', email })}
         onContinue={() => promoCtl.cancelPending()}

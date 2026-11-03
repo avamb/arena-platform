@@ -11,6 +11,8 @@ import { SalesFigures } from "@/components/SalesFigures";
 import { EventStatusBlock } from "@/components/EventStatusBlock";
 import { EventPoster } from "@/components/EventPoster";
 import { EmailNoteSection } from "@/components/EmailNoteSection";
+import { ReferralSection } from "@/components/ReferralSection";
+import { canManageReferral, canViewReferral } from "@/lib/referral";
 import { MaterialsSection } from "@/components/materials/MaterialsSection";
 import { posterCapabilities } from "@/lib/posters";
 import { PageStats } from "@/components/PageStats";
@@ -201,6 +203,18 @@ export function EventScreen() {
           noteFormat={event.email_note_format}
           canEdit
           onSaved={() => flow.mark("note_saved")}
+        />
+      )}
+
+      {/* Spec 52: "Refer a friend". The route's own gate for looking is promo.read. */}
+      {canViewReferral(access.can) && (
+        <ReferralSection
+          // Its own key: the neighbouring sections share one, and two children with the same key are drawn twice.
+          key={`referral:${orgId}:${eventId}`}
+          orgId={orgId}
+          target={{ kind: "event", eventId }}
+          canManage={canManageReferral(access.can)}
+          timezone={refs.find((r) => r.tz !== null)?.tz ?? undefined}
         />
       )}
 

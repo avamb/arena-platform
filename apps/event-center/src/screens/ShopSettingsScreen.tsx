@@ -22,15 +22,18 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { SelectField, TextAreaField, TextField } from "@/components/FormField";
 import { NoShopAccess, ShopNav, ShopReadOnlyNote } from "@/components/ShopNav";
+import { ReferralSection } from "@/components/ReferralSection";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { ErrorBox, Loading } from "@/components/ui";
 import { fetchShopSettings, listSalesChannels, listShopProducts, saveShopSettings } from "@/lib/api/shopApi";
 import { listCountries } from "@/lib/api/endpoints";
 import type { ShopSettingsUpdateRequest } from "@/lib/api/types";
 import { currencyLabel, regionName } from "@/lib/format";
+import { canManageReferral, canViewReferral } from "@/lib/referral";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import {
   SHOP_LIMITS,
+  browserZone,
   channelWarning,
   checkSettings,
   currencyState,
@@ -461,6 +464,10 @@ export function ShopSettingsScreen() {
       {settings.isLoading && <Loading />}
       {settings.error !== null && <ErrorBox error={settings.error} onRetry={() => void settings.refetch()} />}
       {settings.data !== undefined && <SettingsPage key="settings" settings={settings.data} />}
+      {/* Spec 52: "Refer a friend" for the shop. The route's own gate for looking is promo.read. */}
+      {canViewReferral(access.can) && (
+        <ReferralSection key={`referral:${orgId}:shop`} orgId={orgId} target={{ kind: "shop" }} canManage={canManageReferral(access.can)} timezone={browserZone()} />
+      )}
     </section>
   );
 }

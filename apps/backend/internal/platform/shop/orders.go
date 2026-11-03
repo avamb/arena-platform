@@ -546,7 +546,11 @@ func (s *Service) syncRefundsTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, 
 		return o, err
 	}
 	accepted = min(accepted, o.Total)
-	status := refundStatus(o, accepted)
+	cashback, err := q.SumShopPaymentCashback(ctx, *o.PaymentIntentID)
+	if err != nil {
+		return o, err
+	}
+	status := refundStatus(o, accepted, cashback)
 	if accepted == o.RefundedMinor && status == o.Status {
 		return o, nil
 	}

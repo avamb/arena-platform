@@ -379,8 +379,19 @@ var orgIsolationAuditedSafe = map[string]string{
 	// scoped by (event id, org id) and answers pgx.ErrNoRows for a foreign
 	// event (404 event.not_found); every counter query is keyed by the event
 	// id it returned. TestPageStats_OrganizerReadStaysInsideTheOrganization.
-	"GET /v1/organizations/{org_id}/events/{event_id}/page-stats":     "hpagestats",
-	"GET /v1/organizations/{org_id}/events/{event_id}/page-stats.csv": "hpagestats",
+	// hreferral (spec 52, RF-3): every route loads the event with
+	// GetEventOrgForMaterials and compares it with the path organization
+	// (a foreign or unknown event is 404 event.not_found); every query then
+	// filters by that organization. Driven by TestReferralRoutes_* .
+	"GET /v1/organizations/{org_id}/events/{event_id}/referral-program":         "hreferral",
+	"PUT /v1/organizations/{org_id}/events/{event_id}/referral-program":         "hreferral",
+	"POST /v1/organizations/{org_id}/events/{event_id}/referral-program/pause":  "hreferral",
+	"POST /v1/organizations/{org_id}/events/{event_id}/referral-program/resume": "hreferral",
+	"POST /v1/organizations/{org_id}/events/{event_id}/referral-program/end":    "hreferral",
+	"GET /v1/organizations/{org_id}/events/{event_id}/referral-program/summary": "hreferral",
+	"GET /v1/organizations/{org_id}/events/{event_id}/referral-rewards":         "hreferral",
+	"GET /v1/organizations/{org_id}/events/{event_id}/page-stats":               "hpagestats",
+	"GET /v1/organizations/{org_id}/events/{event_id}/page-stats.csv":           "hpagestats",
 	// hsalesfunnel (spec 50 A7): GetEventPageStatsHeader is keyed by (event, org)
 	// and answers the route's own 404 for an event of another organization.
 	"GET /v1/organizations/{org_id}/events/{event_id}/funnel": "hsalesfunnel",

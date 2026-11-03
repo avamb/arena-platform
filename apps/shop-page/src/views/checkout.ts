@@ -8,7 +8,8 @@ import { MAX_NOTE_LEN, needsShipping, postalHint, subtotalMinor, shippingMinor, 
 import type { DownloadLink, OrderStatus } from '../lib/api';
 import { sized } from '../lib/cdn';
 import { esc } from '../lib/html';
-import { itemsLabel, MSG, resumeOrderText, T } from '../lib/i18n';
+import { itemsLabel, MSG, REF, resumeOrderText, T } from '../lib/i18n';
+import { referralDiscountMinor, type ReferralShare } from '../lib/referral';
 import type { StatusPhase } from '../lib/poll';
 import { cartSrcset, icon, money, optionPairs, ratioOf, url, type Ctx } from './common';
 
@@ -22,6 +23,7 @@ export const EMPTY_FORM: CheckoutForm = {
   postal: '',
   note: '',
   consent18: false,
+  promo: '',
 };
 
 function field(
@@ -73,6 +75,20 @@ function noteField(values: CheckoutForm): string {
           >${esc(values.note)}</textarea>
           <label class="field__label" for="Checkout-note">Комментарий к заказу</label>
         </div>`;
+}
+
+/**
+ * The friend's code field. It is drawn only while the shop runs a "Refer a friend" programme, or when
+ * the buyer arrived on a friend's link (the code is then already in it), so a shop without one shows nothing new.
+ */
+function promoField(ctx: Ctx, st: CheckoutViewState): string {
+  const value = st.values.promo ?? '';
+  if (!ctx.shop.settings.referral_active && value === '') return '';
+  const err = st.errors.promo;
+  return `<div class="field shop-checkout__promo${err ? ' field--with-error' : ''}">
+          <input class="field__input" id="Checkout-promo" name="promo" type="text" value="${esc(value)}" maxlength="64" placeholder="${esc(REF.promoPlaceholder)}" autocomplete="off" autocapitalize="characters" spellcheck="false"${err ? ' aria-invalid="true" aria-describedby="Checkout-promo-error"' : ' aria-describedby="Checkout-promo-hint"'}>
+          <label class="field__label" for="Checkout-promo">${esc(REF.promoLabel)}</label>
+        </div>${err ? `<small class="form__message" id="Checkout-promo-error"><span class="visually-hidden">Ошибка</span>${icon('error')}${esc(err)}</small>` : `<small class="shop-checkout__hint caption" id="Checkout-promo-hint">${esc(REF.promoHint)}</small>`}`;
 }
 
 export interface CheckoutViewState {
@@ -154,17 +170,31 @@ function addressBlock(ctx: Ctx, st: CheckoutViewState, label: string, shipping: 
  * Phone width (under 768 px): the order on one folded line above the form, "Ваш заказ · 2 товара · 580.00 NIS",
  * opened by a tap. The full block below the form is hidden there by CSS, so the buyer sees what they pay for before the button.
  */
-function mobileSummary(ctx: Ctx, lines: CartLine[], subtotal: number, shipping: number, total: number, ships: boolean, label: string): string {
+function mobileSummary(ctx: Ctx, lines: CartLine[], subtotal: number, shipping: number, total: number, ships: boolean, label: string, discount: number): string {
   const units = lines.reduce((n, l) => n + l.qty, 0);
   return `<details class="shop-checkout__mobile-summary" id="checkout-mobile-summary">
-    <summary><span>Ваш заказ · ${itemsLabel(units)} · ${esc(money(ctx, total))}</span></summary>
+    <summary><span>Ваш заказ · ${itemsLabel(units)} · <span data-ref-total>${esc(money(ctx, total - discount))}</span></span></summary>
     <ul class="shop-checkout__lines list-unstyled" role="list">${lines.map((l) => summaryRow(ctx, l)).join('')}</ul>
     <dl class="shop-checkout__totals">
       <div><dt>Товары</dt><dd>${esc(money(ctx, subtotal))}</dd></div>
       ${ships ? `<div><dt>${label}</dt><dd>${esc(money(ctx, shipping))}</dd></div>` : ''}
-      <div class="shop-checkout__total"><dt>Итого</dt><dd>${esc(money(ctx, total))}</dd></div>
-    </dl>
+      ${discountRow(ctx, discount)}
+      <div class="shop-checkout__total"><dt>Итого</dt><dd data-ref-total>${esc(money(ctx, total - discount))}</dd></div>
+    </dl>${discountNote(discount)}
   </details>`;
+}
+
+/**
+ * The friend's code in the order summary: the programme's percent of the goods, worked out the way the server does
+ * (referralDiscountMinor). It is a preview - the payment page shows the final amount. The row is always in the markup
+ * (hidden at zero), so typing a code can show it without drawing the page again (main.ts, updateCodeDiscount).
+ */
+function discountRow(ctx: Ctx, discount: number): string {
+  return `<div class="shop-checkout__discount" data-ref-discount-row${discount > 0 ? '' : ' hidden'}><dt>${REF.discountLabel}</dt><dd>−<span data-ref-discount>${esc(money(ctx, discount))}</span></dd></div>`;
+}
+
+function discountNote(discount: number): string {
+  return `<p class="shop-checkout__hint caption" data-ref-discount-note${discount > 0 ? '' : ' hidden'}>${REF.discountNote}</p>`;
 }
 
 export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState): string {
@@ -188,7 +218,9 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
   }
   const subtotal = subtotalMinor(lines);
   const shipping = shippingMinor(s, lines);
+  const discount = referralDiscountMinor(subtotal, s.referral_active ? s.referral_friend_discount_pct ?? 0 : 0, st.values.promo ?? '');
   const total = totalMinor(s, lines);
+  const payable = total - discount;
   const minAge = s.age_gate_min_age ?? 0;
   const ships = needsShipping(lines);
   const e = st.errors;
@@ -198,7 +230,7 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
     <h1 class="title title--primary">Оформление заказа</h1>
     <a href="${esc(url(ctx, '/cart'))}" class="underlined-link">Вернуться в корзину</a>
   </div>
-  ${mobileSummary(ctx, lines, subtotal, shipping, total, ships, label)}
+  ${mobileSummary(ctx, lines, subtotal, shipping, total, ships, label, discount)}
   <div class="shop-checkout__grid">
     <form id="checkout-form" class="shop-checkout__form" method="post" action="${esc(url(ctx, '/checkout'))}" novalidate>
       <h2 class="shop-checkout__heading h3">Контактные данные</h2>
@@ -206,7 +238,8 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
       ${field('email', 'Адрес электронной почты', st.values, e, { type: 'email', autocomplete: 'email', required: true })}
       ${field('phone', 'Номер телефона', st.values, e, { type: 'tel', autocomplete: 'tel', required: true, inputmode: 'tel' })}
       ${ships ? addressBlock(ctx, st, label, shipping) : ''}
-      ${noteField(st.values)}${
+      ${noteField(st.values)}
+      ${promoField(ctx, st)}${
         minAge > 0
           ? `
       <div class="shop-checkout__consent">
@@ -221,7 +254,7 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
         st.resume
           ? ''
           : `<button type="submit" class="button button--full-width shop-checkout__pay" id="checkout-pay"${st.submitting ? ' disabled' : ''}>
-        Оплатить ${esc(money(ctx, total))}
+        Оплатить <span data-ref-total>${esc(money(ctx, payable))}</span>
       </button>`
       }
     </form>
@@ -231,8 +264,9 @@ export function checkoutView(ctx: Ctx, lines: CartLine[], st: CheckoutViewState)
       <dl class="shop-checkout__totals">
         <div><dt>Товары</dt><dd>${esc(money(ctx, subtotal))}</dd></div>
         ${ships ? `<div><dt>${label}</dt><dd>${esc(money(ctx, shipping))}</dd></div>` : ''}
-        <div class="shop-checkout__total"><dt>Итого</dt><dd>${esc(money(ctx, total))}</dd></div>
-      </dl>
+        ${discountRow(ctx, discount)}
+        <div class="shop-checkout__total"><dt>Итого</dt><dd data-ref-total>${esc(money(ctx, payable))}</dd></div>
+      </dl>${discountNote(discount)}
     </aside>
   </div>
 </div></div>`;
@@ -326,7 +360,28 @@ function downloadsBlock(dl: DownloadsState): string {
   return body ? `<div class="shop-downloads"><h2 class="h3">Ваши файлы</h2>${body}</div>` : '';
 }
 
-export function statusView(ctx: Ctx, st: OrderStatus | 'loading' | 'error', dl?: DownloadsState, phase: StatusPhase = 'late'): string {
+/**
+ * "Пригласите друга" on a paid order: the buyer's own code and the link to hand out. Drawn only when the
+ * server gave a code (a shop without a programme answers 404 and the block never appears).
+ */
+export function referralBlock(ref: ReferralShare | null | undefined): string {
+  if (!ref || !ref.code) return '';
+  const link = ref.share_url && safeHref(ref.share_url) ? ref.share_url : '';
+  return `<div class="shop-referral" data-referral>
+    <h2 class="h3">${REF.inviteTitle}</h2>
+    <p>${esc(REF.inviteText(ref.friend_discount_pct, ref.cashback_pct))}</p>
+    <p class="shop-referral__code"><span class="caption">${REF.codeLabel}</span> <strong data-referral-code>${esc(ref.code)}</strong>
+      <button type="button" class="button button--secondary" data-copy-referral="${esc(ref.code)}">${REF.copyCode}</button></p>${
+        link
+          ? `
+    <p class="shop-referral__link"><span class="caption">${REF.linkLabel}</span> <a href="${esc(link)}" class="link" rel="noopener" data-referral-link>${esc(link)}</a>
+      <button type="button" class="button button--secondary" data-copy-referral="${esc(link)}">${REF.copyLink}</button></p>`
+          : ''
+      }
+  </div>`;
+}
+
+export function statusView(ctx: Ctx, st: OrderStatus | 'loading' | 'error', dl?: DownloadsState, phase: StatusPhase = 'late', ref?: ReferralShare | null): string {
   const all = esc(url(ctx, '/collections/all'));
   const wrap = (title: string, body: string): string => `<div class="template-404 page-width page-margin center shop-status">
   <h1 class="title">${esc(title)}</h1>${body}
@@ -351,7 +406,7 @@ export function statusView(ctx: Ctx, st: OrderStatus | 'loading' | 'error', dl?:
     case 'paid':
       return wrap(
         'Спасибо за заказ!',
-        `<p>Заказ${number} оплачен. Мы отправили подтверждение на вашу почту${hasPhysicalLines(st) ? ' и свяжемся с вами по доставке' : ''}.</p>${dl ? downloadsBlock(dl) : ''}<a href="${all}" class="button">${T.continueShopping}</a>`,
+        `<p>Заказ${number} оплачен. Мы отправили подтверждение на вашу почту${hasPhysicalLines(st) ? ' и свяжемся с вами по доставке' : ''}.</p>${dl ? downloadsBlock(dl) : ''}${referralBlock(ref)}<a href="${all}" class="button">${T.continueShopping}</a>`,
       );
     case 'pending': {
       // The buyer is usually back from the provider before its webhook reaches us: no "go back and pay" for the first minutes.

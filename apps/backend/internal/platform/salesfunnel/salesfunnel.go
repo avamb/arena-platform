@@ -24,7 +24,7 @@ import (
 )
 
 // The client steps the beacon accepts. They are also the values of the table
-// CHECK in migration 0192.
+// CHECK in migration 0193.
 const (
 	StepView        = "view"
 	StepSessionOpen = "session_open"
@@ -38,7 +38,7 @@ const (
 	StepPaid          = "paid"
 )
 
-// The surfaces a beacon may come from (the table CHECK in migration 0192).
+// The surfaces a beacon may come from (the table CHECK in migration 0193).
 const (
 	SurfaceWidget      = "widget"
 	SurfaceHostedPage  = "hosted_page"

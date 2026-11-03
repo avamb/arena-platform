@@ -9,6 +9,7 @@
  *   POST /v1/public/shop/{org_slug}/checkout            201 {order_token, number, status, payment_url, ...}
  *                                                        409 shop.out_of_stock
  *   GET  /v1/public/shop/checkout/{order_token}         order status
+ *   GET  /v1/public/shop/checkout/{order_token}/referral  the buyer's personal "Refer a friend" code (404: none)
  *
  * The wire shapes are private to this file. The views work on the NORMALISED
  * model below (ShopData, ShopProduct, ...), so a change of the contract stays
@@ -19,6 +20,8 @@
  * never written to localStorage or any other store (the basket keeps only
  * variant ids and quantities).
  */
+
+import { cleanPct, type ReferralShare } from './referral';
 
 export const API_BASE: string = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '');
 
@@ -42,6 +45,10 @@ export interface ShopSettings {
   captcha_site_key?: string | null;
   /** The shop's own domain (custom domain), when it has one. */
   shop_domain?: string | null;
+  /** True while the shop runs a "Refer a friend" programme: the checkout offers a promo-code field. */
+  referral_active?: boolean;
+  /** The programme's discount for a friend, in percent (0 or absent without a programme). A preview only: the server prices the order. */
+  referral_friend_discount_pct?: number;
   /** True when the organization has white label today: the footer leaves out the platform line. */
   white_label?: boolean;
 }
@@ -125,6 +132,8 @@ export interface CheckoutRequest {
   age_confirmed: boolean;
   /** Turnstile token, sent whenever the shop publishes a captcha site key. */
   captcha_token?: string;
+  /** A friend's personal code; the server refuses one that does not apply (422 promo.*). */
+  promo_code?: string;
 }
 
 export interface CheckoutCreated {
@@ -135,6 +144,8 @@ export interface CheckoutCreated {
   currency: string;
   number?: number;
   status?: OrderStatusName;
+  /** What a personal code took off the goods; 0 or absent without one. */
+  discount_minor?: number;
 }
 
 export type OrderStatusName = 'pending' | 'paid' | 'expired' | 'cancelled';
@@ -232,6 +243,8 @@ interface WireSettings {
   shop_name?: string;
   max_line_qty?: number;
   captcha_site_key?: string | null;
+  referral_active?: boolean;
+  referral_friend_discount_pct?: number;
   white_label?: boolean;
 }
 interface WireCatalog {
@@ -265,6 +278,7 @@ interface WireCheckoutCreated {
   payment_url?: string | null;
   currency: string;
   subtotal?: number;
+  discount?: number;
   shipping_fee?: number;
   total: number;
 }
@@ -399,6 +413,8 @@ export function normalizeCatalog(c: WireCatalog): ShopData {
       max_line_qty: s.max_line_qty && s.max_line_qty > 0 ? s.max_line_qty : DEFAULT_MAX_LINE_QTY,
       captcha_site_key: s.captcha_site_key || c.captcha_site_key || c.org?.captcha_site_key || null,
       shop_domain: c.org?.shop_domain || null,
+      referral_active: s.referral_active === true,
+      referral_friend_discount_pct: s.referral_active === true ? cleanPct(s.referral_friend_discount_pct) : 0,
       white_label: s.white_label === true,
     },
     products: (c.products ?? []).map(normalizeProduct),
@@ -473,11 +489,25 @@ export async function createCheckout(orgSlug: string, body: CheckoutRequest): Pr
     currency: r.currency,
     number: r.number,
     status: r.status,
+    discount_minor: r.discount ?? 0,
   };
 }
 
 export async function getOrderStatus(orderToken: string): Promise<OrderStatus> {
   return normalizeStatus(await request<WireStatus>(`/v1/public/shop/checkout/${seg(orderToken)}`));
+}
+
+/**
+ * The personal "Refer a friend" code of a paid order. 404 (no programme, not paid, unknown order)
+ * is an answer, not a failure: null. The first call makes the code, a repeat returns the same one.
+ */
+export async function getReferral(orderToken: string): Promise<ReferralShare | null> {
+  try {
+    return await request<ReferralShare>(`/v1/public/shop/checkout/${seg(orderToken)}/referral`, { cache: 'no-store' });
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  }
 }
 
 /**

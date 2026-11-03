@@ -73,12 +73,13 @@ WHERE  oi.order_id = $1
 ORDER  BY oi.ordinal`
 
 // orderOtherLettersSQL lists the order's change, cancellation and refund
-// letters, oldest first.
+// letters and the two cashback letters of "Refer a friend" (own kinds, so a
+// client never reads them as a refund letter), oldest first.
 const orderOtherLettersSQL = `
 SELECT l.id, l.kind, l.recipient, l.status, l.sent_at, l.delivered_at, l.proxy_opened_at, l.opened_at,
        l.failed_at, l.failure_event, l.failure_reason, l.clicked_at, l.deferred_at, ` + stuckExpr + `
 FROM   email_letters l
-WHERE  l.order_id = $1 AND l.kind IN ('change', 'cancel', 'refund') AND l.status <> 'sending'
+WHERE  l.order_id = $1 AND l.kind IN ('change', 'cancel', 'refund', 'referral_cashback', 'referral_unavailable') AND l.status <> 'sending'
 ORDER  BY l.sent_at`
 
 type letterRow struct {
@@ -262,7 +263,7 @@ WHERE  EXISTS (
    OR  EXISTS (
          SELECT 1
          FROM   email_letters l
-         WHERE  l.order_id = o.id AND l.kind IN ('change', 'cancel', 'refund')
+         WHERE  l.order_id = o.id AND l.kind IN ('change', 'cancel', 'refund', 'referral_cashback', 'referral_unavailable')
            AND  (l.status = 'failed' OR ` + stuckExpr + `)
            AND  NOT EXISTS (
                   SELECT 1 FROM email_letters n

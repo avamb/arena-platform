@@ -102,7 +102,9 @@ WHERE ft.token     = $1
 --
 -- promo_codes_available says whether the channel's organization has at least
 -- one promo code a buyer could still use right now: not deleted, status
--- 'active', inside its date window, uses not exhausted (max_uses). It looks at
+-- 'active', origin 'manual' (a friend's personal code reaches the widget by its
+-- ?promo= link, never by an open field), inside its date window, uses not
+-- exhausted (max_uses). It looks at
 -- nothing else (per-customer limit, event or category scope, currency, minimum
 -- order): the checkout/quote route stays the authority on whether a code fits a
 -- cart. The widget shows its promo field only when this is true.
@@ -116,6 +118,7 @@ SELECT
         WHERE p.org_id     = sc.org_id
           AND p.deleted_at IS NULL
           AND p.status     = 'active'
+          AND p.origin     = 'manual'
           AND (p.valid_from  IS NULL OR p.valid_from  <= now())
           AND (p.valid_until IS NULL OR p.valid_until >  now())
           AND (p.max_uses IS NULL

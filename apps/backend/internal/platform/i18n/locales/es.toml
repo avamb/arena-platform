@@ -4935,6 +4935,258 @@ other = "Google Maps: {{.Url}}"
 ["salesnotify.shop.courier_map_waze"]
 other = "Waze: {{.Url}}"
 
+["salesnotify.referral.title_refunded"]
+other = "↩️ <b>Trae a un amigo: un amigo recuperó su dinero</b> — {{.Org}}"
+
+["salesnotify.referral.title_disputed"]
+other = "⚠️ <b>Trae a un amigo: un amigo abrió una disputa</b> — {{.Org}}"
+
+["salesnotify.referral.body_refunded"]
+other = "Un amigo que usó el código <b>{{.Code}}</b> recuperó su dinero del pedido {{.Number}}. El cashback de {{.Amount}} ya se pagó a quien lo invitó y no se puede recuperar."
+
+["salesnotify.referral.body_disputed"]
+other = "Un amigo que usó el código <b>{{.Code}}</b> abrió una disputa por el pedido {{.Number}}. El cashback de {{.Amount}} ya se pagó a quien lo invitó y no se puede recuperar."
+
+["salesnotify.referral.code_paused"]
+other = "El código <b>{{.Code}}</b> está detenido: no dará nuevos descuentos. Los pagos ya realizados se mantienen."
+
+["bot.rfp.btn"]
+other = "🤝 Trae a un amigo"
+
+["bot.rfp.events_btn"]
+other = "Eventos"
+
+["bot.rfp.gone"]
+other = "Esta pantalla ya no está al día. Abre el evento de nuevo y sigue desde ahí."
+
+["bot.rfp.card_head"]
+other = "🤝 <b>Trae a un amigo</b> · {{.Name}}"
+
+["bot.rfp.none"]
+other = "Este evento aún no tiene programa.\n\nCada comprador del evento recibe un código personal. El amigo que lo use obtiene un descuento. El comprador recupera en su tarjeta una parte del pago del amigo."
+
+["bot.rfp.st_active"]
+other = "🟢 Activado"
+
+["bot.rfp.st_paused"]
+other = "⏸ En pausa. Los amigos nuevos no obtienen descuento y no se añade cashback nuevo. El cashback de los amigos que ya pagaron se sigue pagando."
+
+["bot.rfp.st_ended"]
+other = "⏹ Terminado. Para empezar de nuevo, activa un programa nuevo."
+
+["bot.rfp.settings"]
+other = "El amigo obtiene un {{.Friend}} % de descuento.\nEl comprador que lo trajo recupera el {{.Cashback}} % del pago del amigo en su tarjeta. Un comprador recupera como máximo el {{.Cap}} % de su propio pago.\nAmigos por código: {{.Max}}."
+
+["bot.rfp.max_none"]
+other = "sin límite"
+
+["bot.rfp.sum"]
+other = "<b>Resultados</b>\nCódigos emitidos: {{.Codes}}\nAmigos que vinieron: {{.Friends}}"
+
+["bot.rfp.sum_none"]
+other = "Aún no hay descuentos ni cashback."
+
+["bot.rfp.m_discount"]
+other = "Descuento dado: {{.Amount}}"
+
+["bot.rfp.m_paid"]
+other = "Cashback pagado: {{.Amount}}"
+
+["bot.rfp.m_way"]
+other = "Cashback en camino: {{.Amount}}"
+
+["bot.rfp.m_kept"]
+other = "Cashback no pagado: {{.Amount}}"
+
+["bot.rfp.sum_reversals"]
+other = "⚠️ Amigos que recuperaron su dinero después de pagar el cashback: {{.Count}}"
+
+["bot.rfp.cap_no"]
+other = "⚠️ No se puede pagar cashback en este evento. {{.Why}}\nEl programa necesita un canal de venta que pueda devolver una parte del pago a la tarjeta. Publica el evento en una página con pago con tarjeta o escribe a soporte."
+
+["bot.rfp.why_seller_site"]
+other = "El dinero lo recibe un sitio de WordPress, no Arena."
+
+["bot.rfp.why_provider_unsupported"]
+other = "El proveedor de pago del canal no está conectado a Arena para devoluciones."
+
+["bot.rfp.why_no_partial_refund"]
+other = "El proveedor de pago del canal solo devuelve pagos completos."
+
+["bot.rfp.warn_no_channel"]
+other = "ℹ️ El evento aún no está en una página con pago con tarjeta. El programa empezará a funcionar cuando lo esté."
+
+["bot.rfp.warn_some_channels_unsupported"]
+other = "ℹ️ Algunos canales de venta no pueden pagar cashback. Los códigos de los amigos se dan solo a quien pagó con un proveedor que puede devolver una parte del pago."
+
+["bot.rfp.on_btn"]
+other = "Activar"
+
+["bot.rfp.change_btn"]
+other = "Cambiar"
+
+["bot.rfp.pause_btn"]
+other = "⏸ Pausa"
+
+["bot.rfp.resume_btn"]
+other = "▶️ Reanudar"
+
+["bot.rfp.rewards_btn"]
+other = "Lista de cashback"
+
+["bot.rfp.end_btn"]
+other = "Terminar"
+
+["bot.rfp.paused_done"]
+other = "⏸ En pausa."
+
+["bot.rfp.resumed_done"]
+other = "▶️ Activado de nuevo."
+
+["bot.rfp.ended_done"]
+other = "⏹ Terminado."
+
+["bot.rfp.on_done"]
+other = "✅ El programa está activado."
+
+["bot.rfp.saved_done"]
+other = "✅ Guardado. Los valores nuevos valen para los códigos nuevos. Los códigos ya emitidos conservan los suyos."
+
+["bot.rfp.cancelled"]
+other = "No ha cambiado nada."
+
+["bot.rfp.end_ask"]
+other = "¿Terminar <b>Trae a un amigo</b> en {{.Name}}?\n\nEs definitivo. Los amigos nuevos no obtienen descuento y no se añade cashback nuevo. El cashback de los amigos que ya pagaron se sigue pagando. Para empezar de nuevo, activas un programa nuevo."
+
+["bot.rfp.end_yes_btn"]
+other = "Sí, terminar"
+
+["bot.rfp.end_no_btn"]
+other = "No, volver"
+
+["bot.rfp.d_head_new"]
+other = "🤝 <b>Activar Trae a un amigo</b> · {{.Name}}"
+
+["bot.rfp.d_head_edit"]
+other = "🤝 <b>Cambiar Trae a un amigo</b> · {{.Name}}\nLos valores nuevos valen para los códigos nuevos. Los códigos ya emitidos conservan los suyos."
+
+["bot.rfp.q_friend"]
+other = "¿Qué porcentaje de descuento obtiene el amigo? Escribe un número del 1 al 100."
+
+["bot.rfp.q_cashback"]
+other = "¿Qué porcentaje del pago del amigo se devuelve al comprador que lo trajo? Escribe un número del 1 al 100."
+
+["bot.rfp.q_cap"]
+other = "¿Cuánto puede recuperar como máximo un comprador, en porcentaje de su propio pago? Escribe un número del 1 al 100 o pulsa 100 %."
+
+["bot.rfp.q_max"]
+other = "¿Cuántos amigos pueden usar un código? Escribe un número o pulsa Sin límite."
+
+["bot.rfp.keep_btn"]
+other = "Mantener {{.Value}}"
+
+["bot.rfp.cap100_btn"]
+other = "100 %"
+
+["bot.rfp.nomax_btn"]
+other = "Sin límite"
+
+["bot.rfp.cancel_btn"]
+other = "Cancelar"
+
+["bot.rfp.rules"]
+other = "<b>Revisa y activa</b>\n\nEl amigo obtiene un {{.Friend}} % de descuento. El comprador que lo trajo recupera el {{.Cashback}} % del pago del amigo, como máximo el {{.Cap}} % de su propio pago. Amigos por código: {{.Max}}.\n\n<b>Reglas</b>\n1. El cashback se paga enseguida, cuando el amigo paga.\n2. Si el amigo devuelve la entrada después, el cashback sigue pagado. No se retira.\n3. La comisión del proveedor de pago no se devuelve.\n4. El dinero vuelve a la tarjeta con la que pagó el comprador. Si no es posible, no se paga nada y el dinero se queda contigo. Arena dice al comprador que te contacte.\n5. Los pagos son automáticos. Para detener los descuentos y el cashback nuevos, pulsa Pausa."
+
+["bot.rfp.edit_confirm"]
+other = "<b>Revisa y guarda</b>\n\nEl amigo obtiene un {{.Friend}} % de descuento. El comprador que lo trajo recupera el {{.Cashback}} % del pago del amigo, como máximo el {{.Cap}} % de su propio pago. Amigos por código: {{.Max}}.\n\nLos valores nuevos valen para los códigos nuevos. Los códigos ya emitidos conservan los suyos."
+
+["bot.rfp.go_btn"]
+other = "Entendido, activar"
+
+["bot.rfp.save_btn"]
+other = "Guardar"
+
+["bot.rfp.err_percent"]
+other = "Escribe un número entero del 1 al 100."
+
+["bot.rfp.err_friends"]
+other = "Escribe un número entero, 1 o más. O pulsa Sin límite."
+
+["bot.rfp.use_buttons"]
+other = "Usa los botones, por favor."
+
+["bot.rfp.err_provider"]
+other = "El programa no se puede activar. {{.Why}}\nNecesita un canal de venta que pueda devolver una parte del pago a la tarjeta. Publica el evento en una página con pago con tarjeta o escribe a soporte."
+
+["bot.rfp.err_terms"]
+other = "Lee las reglas y pulsa el botón para activar el programa."
+
+["bot.rfp.err_value"]
+other = "Un valor está fuera de rango. Vuelve, revisa los porcentajes e inténtalo de nuevo."
+
+["bot.rfp.err_ended"]
+other = "Este programa ha terminado. Abre la ficha y activa uno nuevo."
+
+["bot.rfp.f_all"]
+other = "Todos"
+
+["bot.rfp.rs_due"]
+other = "Por pagar"
+
+["bot.rfp.rs_sent"]
+other = "En camino"
+
+["bot.rfp.rs_paid"]
+other = "Pagado"
+
+["bot.rfp.rs_capped"]
+other = "Recortado por el límite"
+
+["bot.rfp.rs_not_possible"]
+other = "No pagado"
+
+["bot.rfp.rs_failed"]
+other = "Fallido"
+
+["bot.rfp.rs_cancelled"]
+other = "Cancelado"
+
+["bot.rfp.rw_head"]
+other = "🤝 <b>Cashback</b> · {{.Name}}\nMostrado: {{.Filter}} · página {{.Page}}"
+
+["bot.rfp.rw_empty"]
+other = "Aún no hay nada aquí."
+
+["bot.rfp.rw_row"]
+other = "Amigo {{.Friend}} → comprador {{.Referrer}} · <code>{{.Code}}</code>\n{{.Amount}} · {{.State}}"
+
+["bot.rfp.rw_reversal"]
+other = "⚠️ El amigo recuperó su dinero después de pagar el cashback."
+
+["bot.rfp.why_r_cap_reached"]
+other = "Se alcanzó el límite de cashback de este comprador."
+
+["bot.rfp.why_r_self_referral"]
+other = "El comprador usó su propio código."
+
+["bot.rfp.why_r_currency_mismatch"]
+other = "El amigo pagó en otra moneda."
+
+["bot.rfp.why_r_card_unavailable"]
+other = "La tarjeta no pudo recibir el dinero. Se queda contigo."
+
+["bot.rfp.why_r_friend_refunded"]
+other = "El amigo devolvió la entrada antes de que se pagara el cashback."
+
+["bot.rfp.why_r_friend_disputed"]
+other = "El amigo abrió una disputa."
+
+["bot.rfp.why_r_friend_not_paid"]
+other = "El pago del amigo no se completó."
+
+["bot.rfp.why_r_no_refundable_ticket"]
+other = "No hay entrada por la que devolver el dinero."
+
 ["bot.sp.btn"]
 other = "📈 Precio inteligente"
 

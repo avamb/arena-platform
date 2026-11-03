@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/referral"
 )
 
 // FulfillPaidOrderTx is called by the payment webhook, inside ITS
@@ -151,7 +152,33 @@ func (s *Service) markPaidTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, o g
 		return gen.ShopOrderRow{}, err
 	}
 	s.enqueueOrderEmailTx(ctx, tx, EmailReceived, paid)
+	s.recordReferralTx(ctx, tx, paid)
 	return paid, nil
+}
+
+// recordReferralTx writes the "Refer a friend" reward of a paid order that used
+// a personal code. It runs under a SAVEPOINT: a failure here is logged and
+// rolled back alone, and the friend's paid order commits regardless (AGENTS.md:
+// best-effort writes inside a money transaction). The cashback itself is paid
+// later by the referral.payout job, which the reward enqueues in this same
+// transaction.
+func (s *Service) recordReferralTx(ctx context.Context, tx pgx.Tx, o gen.ShopOrderRow) {
+	if o.PromoCodeID == nil {
+		return
+	}
+	sp, err := tx.Begin(ctx)
+	if err != nil {
+		s.logger.Warn("shop: could not open a savepoint, no referral reward written", "order_id", o.ID.String(), "error", err.Error())
+		return
+	}
+	if err := referral.RecordFriendShopOrderTx(ctx, sp, o); err != nil {
+		_ = sp.Rollback(ctx)
+		s.logger.Error("shop: referral reward not written", "order_id", o.ID.String(), "error", err.Error())
+		return
+	}
+	if err := sp.Commit(ctx); err != nil {
+		s.logger.Error("shop: referral reward savepoint release failed", "order_id", o.ID.String(), "error", err.Error())
+	}
 }
 
 // applySaleTx takes the order's goods off the shelf, locking the variant

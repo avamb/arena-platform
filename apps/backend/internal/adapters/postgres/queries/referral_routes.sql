@@ -1,0 +1,18 @@
+-- referral_routes.sql — "Refer a friend" (spec 52): the queries behind the
+-- organization's routes, the buyer's share link and the refund-options
+-- warning. The Go wrappers live in gen/referral_routes.sql.go
+-- (hand-maintained); the SQL text there is the source of truth.
+--
+--   GetLatestReferralProgramForEvent   live programme of an event, else the latest ended one
+--   LockReferralProgramEvent           advisory lock: one writer of an event's programme
+--   InsertReferralProgram              start a programme (terms accepted now)
+--   UpdateReferralProgram              replace the settings of a live programme
+--   SetReferralProgramStatus           active / paused / ended
+--   ListReferralEventChannels          channels an event is published into, with provider
+--   ListReferralOrgChannels            fallback: the organization's sales channels
+--   ListReferralRewardsForEvent        keyset page of rewards, no buyer e-mail or phone
+--   GetReferralSummaryCounts           codes issued, friends, friends who reversed
+--   ListReferralDiscountTotals         discount given, per currency
+--   ListReferralCashbackTotals         cashback per currency and state
+--   GetReferralShareFacts              org / event / promoter slugs for the share link
+--   GetReferralCashbackForFriendOrder  cashback already paid for a friend order

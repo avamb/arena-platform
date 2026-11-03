@@ -16,6 +16,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/referral"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/txretry"
 )
 
@@ -53,6 +54,9 @@ type CheckoutInput struct {
 	// AgeConfirmed is the buyer's "I am old enough" tick; required when the
 	// shop has an age gate.
 	AgeConfirmed bool
+	// PromoCode is the personal "Refer a friend" code the buyer typed (spec 52
+	// section 3.5), "" for none. The shop takes no other promo codes.
+	PromoCode string
 	// HoldFor is how long the order holds its goods: the provider's payment
 	// window plus a grace, so the hold outlives the hosted page.
 	HoldFor time.Duration
@@ -84,6 +88,10 @@ const MaxPendingPerBuyer = 3
 // defeat MaxPendingPerBuyer; this cap bounds how much stock one client can
 // park without paying (audit SA-05). Same answer as the e-mail cap.
 const MaxPendingPerClient = 3
+
+// MaxPromoCodeLen is the longest promo code a checkout accepts (the longest
+// personal code is 9 characters; the column allows 64).
+const MaxPromoCodeLen = 64
 
 // DownloadWindow is how long after payment the files of a digital order can
 // be fetched; DownloadsPerLine is how many download links one line may be
@@ -160,6 +168,10 @@ func normalizeCheckout(in *CheckoutInput) error {
 	in.DeliveryNote = strings.TrimSpace(in.DeliveryNote)
 	if !textOK(in.DeliveryNote, MaxNoteLen) {
 		return invalid("shop.text_too_long", "delivery_note is limited to 2000 characters")
+	}
+	in.PromoCode = strings.TrimSpace(in.PromoCode)
+	if utf8.RuneCountInString(in.PromoCode) > MaxPromoCodeLen {
+		return newErr(http.StatusUnprocessableEntity, referral.ShopPromoNotApplicable, "this promo code does not apply here")
 	}
 	in.Locale = strings.ToLower(strings.TrimSpace(in.Locale))
 	if len(in.Locale) > 2 {
@@ -386,7 +398,19 @@ func (s *Service) placeOrderTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, i
 			shippingFee, deliveryKind = 0, "none"
 			in.Ship = Address{}
 		}
-		total := subtotal + shippingFee
+		var discount int64
+		var promoID *uuid.UUID
+		if in.PromoCode != "" {
+			promo, refusal, err := referral.CheckShopPromo(ctx, q, in.OrgID, in.PromoCode, subtotal, in.Buyer.Email, in.Buyer.Phone, now)
+			if err != nil {
+				return err
+			}
+			if refusal != "" {
+				return promoRefusal(refusal)
+			}
+			discount, promoID = promo.Discount, &promo.PromoCodeID
+		}
+		total := subtotal - discount + shippingFee
 		if total > 0 && in.PaymentReady != nil {
 			return in.PaymentReady
 		}
@@ -407,8 +431,9 @@ func (s *Service) placeOrderTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, i
 			ShipName: in.Ship.Name, ShipAddress1: in.Ship.Address1, ShipAddress2: in.Ship.Address2,
 			ShipCity: in.Ship.City, ShipPostal: in.Ship.Postal, ShipCountry: in.Ship.Country,
 			DeliveryKind: deliveryKind, DeliveryNote: in.DeliveryNote, Currency: settings.Currency,
-			Subtotal: subtotal, ShippingFee: shippingFee, Total: total,
+			Subtotal: subtotal, Discount: discount, ShippingFee: shippingFee, Total: total,
 			BuyerLocale: locale, ExpiresAt: &expires, CustomerID: customerID, BuyerIPHash: ipHash,
+			PromoCodeID: promoID,
 		})
 		if err != nil {
 			return err
@@ -437,6 +462,20 @@ func (s *Service) placeOrderTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, i
 	}
 	*out = placed
 	return nil
+}
+
+// promoRefusal is the 422 answer of a personal code the shop cannot take.
+func promoRefusal(code string) *Error {
+	msg := "this promo code does not apply here"
+	switch code {
+	case referral.ShopPromoOwn:
+		msg = "a personal code cannot be used by the person it was issued to"
+	case referral.ShopPromoNotActive:
+		msg = "this promo code is not active any more"
+	case referral.ShopPromoExhausted:
+		msg = "this promo code has been used up"
+	}
+	return newErr(http.StatusUnprocessableEntity, code, msg)
 }
 
 // resolveCustomerTx finds or creates the buyer's customer (e-mail and phone

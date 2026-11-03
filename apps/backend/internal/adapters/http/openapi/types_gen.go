@@ -12684,6 +12684,20 @@ type OrderPaymentSummary struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// OrderReferralCashbackPaid Present on an order that is a friend's, when the referrer has been given
+// (or is being given) cashback for it. A refund to the friend does not
+// take that money back from the referrer.
+type OrderReferralCashbackPaid struct {
+	// AmountMinor The cashback, in minor units.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// Code The personal code the friend used.
+	Code string `json:"code"`
+
+	// Currency Currency of the cashback.
+	Currency string `json:"currency"`
+}
+
 // OrderRefundDetail A refund with its history.
 type OrderRefundDetail struct {
 	// History The latest steps of the refund (at most 100), oldest first.
@@ -12796,6 +12810,9 @@ type OrderRefundOptions struct {
 
 	// Provider Payment provider of the order; empty when arena took no payment.
 	Provider string `json:"provider"`
+
+	// ReferralCashbackPaid Present when this order is a friend's and the referrer has been given (or is being given) "Refer a friend" cashback for it; a refund to the friend does not take that money back.
+	ReferralCashbackPaid *OrderReferralCashbackPaid `json:"referral_cashback_paid,omitempty"`
 
 	// Refusal Present when arena cannot send a refund for this order, with the error code and message the create call would answer.
 	Refusal *struct {
@@ -15075,6 +15092,21 @@ type PublicMaterialVideo struct {
 	VideoId *string `json:"video_id"`
 }
 
+// PublicReferralCode A buyer's personal "Refer a friend" code with the link to share.
+type PublicReferralCode struct {
+	// CashbackPct Percent of the friend's payment that goes back to the buyer.
+	CashbackPct int `json:"cashback_pct"`
+
+	// Code The personal code, such as ANNA-7K2QX9.
+	Code string `json:"code"`
+
+	// FriendDiscountPct Percent off a friend gets.
+	FriendDiscountPct int `json:"friend_discount_pct"`
+
+	// ShareUrl The event's page with `?promo=<code>&utm_source=referral&utm_medium=friend&utm_campaign=<event slug>`; for a shop order the storefront with `?promo=<code>&utm_source=referral&utm_medium=friend`. Null when the page address is not known.
+	ShareUrl *string `json:"share_url"`
+}
+
 // PublicSaleSubscriptionAccepted The request was saved.
 type PublicSaleSubscriptionAccepted struct {
 	// Status Always `check_email`.
@@ -15253,6 +15285,239 @@ type ReadyzResponse struct {
 
 // ReadyzResponseStatus "ready" when all probes pass, "not_ready" when any probe fails
 type ReadyzResponseStatus string
+
+// ReferralCapability Whether the sales channels of an event can pay the "Refer a friend" cashback.
+type ReferralCapability struct {
+	// Channels The judged channels.
+	Channels []ReferralCapabilityChannel `json:"channels"`
+
+	// Source Which channels were judged: `event` (the ones the event is published into) or `organization` (the event is not published yet).
+	Source string `json:"source"`
+
+	// Supported True when at least one channel can pay the cashback, or the event sells through no channel yet.
+	Supported bool `json:"supported"`
+}
+
+// ReferralCapabilityChannel One sales channel of the event and whether it can pay the cashback.
+type ReferralCapabilityChannel struct {
+	// ChannelId UUID of the sales channel.
+	ChannelId openapi_types.UUID `json:"channel_id"`
+
+	// Provider Payment provider of the channel; empty when none is set.
+	Provider string `json:"provider"`
+
+	// Reason When not supported: `seller_site` (a WordPress site takes the money), `provider_unsupported` (no module behind the provider) or `no_partial_refund` (the provider returns whole payments only).
+	Reason *string `json:"reason,omitempty"`
+
+	// Supported True when the provider can return part of a payment to the card.
+	Supported bool `json:"supported"`
+}
+
+// ReferralCashbackTotals The cashback of one currency by reward state: `due` is promised and not
+// yet sent, `sent` is on its way to the card, `paid` is back on it; the
+// other states are money that stayed with the organizer.
+type ReferralCashbackTotals struct {
+	// CancelledMinor Cashback cancelled (self-invitation, the friend returned the ticket before it was paid), in minor units.
+	CancelledMinor int64 `json:"cancelled_minor"`
+
+	// CappedMinor Cashback cut off by the cap, in minor units.
+	CappedMinor int64 `json:"capped_minor"`
+
+	// Currency ISO 4217 currency.
+	Currency string `json:"currency"`
+
+	// DueMinor Cashback promised and not yet sent, in minor units.
+	DueMinor int64 `json:"due_minor"`
+
+	// FailedMinor Cashback whose payout failed, in minor units.
+	FailedMinor int64 `json:"failed_minor"`
+
+	// NotPossibleMinor Cashback that could not be paid (card unavailable, provider declined), in minor units.
+	NotPossibleMinor int64 `json:"not_possible_minor"`
+
+	// PaidMinor Cashback paid, in minor units.
+	PaidMinor int64 `json:"paid_minor"`
+
+	// SentMinor Cashback sent to the provider and not yet confirmed, in minor units.
+	SentMinor int64 `json:"sent_minor"`
+}
+
+// ReferralMoney A sum of minor units in one currency.
+type ReferralMoney struct {
+	// AmountMinor The sum in minor units.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// Currency ISO 4217 currency.
+	Currency string `json:"currency"`
+}
+
+// ReferralProgram The "Refer a friend" programme of one event or of the organization's
+// shop (spec 52). `status` is `active`, `paused` or `ended`; ended is
+// final. Percentages are whole numbers of percent.
+type ReferralProgram struct {
+	// CashbackCapPct The cashback to one referrer never exceeds this percent of their own payment (minus what already went back to them), 1 to 100.
+	CashbackCapPct int `json:"cashback_cap_pct"`
+
+	// CashbackPct Percent of what the friend paid that goes back to the referrer, 1 to 100.
+	CashbackPct int `json:"cashback_pct"`
+
+	// CreatedAt When the programme was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EndsAt When the programme ends; null for the end of sales.
+	EndsAt *time.Time `json:"ends_at"`
+
+	// EventId The event the programme belongs to; null for a shop programme.
+	EventId *openapi_types.UUID `json:"event_id"`
+
+	// FriendDiscountPct Percent off the friend gets, 1 to 100.
+	FriendDiscountPct int `json:"friend_discount_pct"`
+
+	// Id UUID of the programme.
+	Id openapi_types.UUID `json:"id"`
+
+	// MaxFriends How many friends one code serves; null for no limit.
+	MaxFriends *int `json:"max_friends"`
+
+	// Scope `event` for an event's programme, `shop` for the organization's shop programme.
+	Scope string `json:"scope"`
+
+	// StartsAt When the programme starts; null for at once.
+	StartsAt *time.Time `json:"starts_at"`
+
+	// Status `active`, `paused` or `ended`.
+	Status string `json:"status"`
+
+	// TermsAcceptedAt When the organizer accepted the programme's terms.
+	TermsAcceptedAt time.Time `json:"terms_accepted_at"`
+
+	// UpdatedAt When the programme last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ReferralProgramRequest The full settings of an event's programme (PUT replaces them). An
+// absent `max_friends` or `ends_at` means no limit, an absent
+// `cashback_cap_pct` means 100.
+type ReferralProgramRequest struct {
+	// AcceptTerms Must be true when this call starts a programme. The organizer accepts that the cashback is paid at once and is not taken back if the friend returns the ticket, and that the payment provider's fee is not returned.
+	AcceptTerms *bool `json:"accept_terms,omitempty"`
+
+	// CashbackCapPct Cap of the cashback to one referrer, in percent of their own payment. Default 100.
+	CashbackCapPct *int `json:"cashback_cap_pct,omitempty"`
+
+	// CashbackPct Percent of what the friend paid that goes back to the referrer.
+	CashbackPct int `json:"cashback_pct"`
+
+	// EndsAt When the programme ends; null or absent for the end of sales. Must be in the future.
+	EndsAt *time.Time `json:"ends_at"`
+
+	// FriendDiscountPct Percent off the friend gets.
+	FriendDiscountPct int `json:"friend_discount_pct"`
+
+	// MaxFriends How many friends one code serves; null or absent for no limit.
+	MaxFriends *int `json:"max_friends"`
+}
+
+// ReferralProgramResponse A programme with the capability of the event's channels.
+type ReferralProgramResponse struct {
+	// Capability Whether the sales channels of the event can pay the cashback.
+	Capability ReferralCapability `json:"capability"`
+
+	// Program The event's programme.
+	Program ReferralProgram `json:"program"`
+
+	// Warnings Non-blocking notes.
+	Warnings []ReferralWarning `json:"warnings"`
+}
+
+// ReferralRewardItem The cashback owed for one friend order. `state` is `due`, `sent`,
+// `paid`, `capped`, `not_possible`, `failed` or `cancelled`; `reason`
+// says why it ended without money, and `friend_reversal`
+// (`refunded`, `partially_refunded`, `disputed`) is set when the friend
+// later got their money back after the cashback had left. No buyer
+// contact data is part of it.
+type ReferralRewardItem struct {
+	// CashbackMinor The cashback in minor units.
+	CashbackMinor int64 `json:"cashback_minor"`
+
+	// CashbackPct The percent the cashback was worked out with.
+	CashbackPct int `json:"cashback_pct"`
+
+	// Code The personal code the friend used.
+	Code string `json:"code"`
+
+	// CreatedAt When the reward was written (the friend paid).
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency Currency of the cashback (the referrer's order).
+	Currency string `json:"currency"`
+
+	// FriendAmountMinor What the friend paid, in minor units.
+	FriendAmountMinor *int64 `json:"friend_amount_minor"`
+
+	// FriendCurrency Currency of the friend's order.
+	FriendCurrency *string `json:"friend_currency"`
+
+	// FriendOrderNumber Number of the friend's order (the one the buyer's e-mail and PDF print).
+	FriendOrderNumber *int64 `json:"friend_order_number"`
+
+	// FriendReversal `refunded`, `partially_refunded` or `disputed` when the friend got their money back after the cashback was paid; otherwise null.
+	FriendReversal *string `json:"friend_reversal"`
+
+	// Id UUID of the reward.
+	Id openapi_types.UUID `json:"id"`
+
+	// Reason Why the reward ended without money (such as cap_reached, self_referral, currency_mismatch, card_unavailable); null when it did not.
+	Reason *string `json:"reason"`
+
+	// ReferrerOrderNumber Number of the referrer's order the cashback goes back to.
+	ReferrerOrderNumber *int64 `json:"referrer_order_number"`
+
+	// State Where the reward stands, see the schema description.
+	State string `json:"state"`
+
+	// UpdatedAt When the reward last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ReferralRewardList A page of rewards, newest first.
+type ReferralRewardList struct {
+	// Items The rewards of this page.
+	Items []ReferralRewardItem `json:"items"`
+
+	// NextCursor Pass it as `cursor` to get the next page; null on the last page.
+	NextCursor *string `json:"next_cursor"`
+}
+
+// ReferralSummary Totals of an event's (or the shop's) "Refer a friend" programmes. Money is never added across currencies.
+type ReferralSummary struct {
+	// Cashback The cashback per currency and state.
+	Cashback []ReferralCashbackTotals `json:"cashback"`
+
+	// CodesIssued Personal codes issued.
+	CodesIssued int64 `json:"codes_issued"`
+
+	// DiscountGiven The discount friends got, per currency.
+	DiscountGiven []ReferralMoney `json:"discount_given"`
+
+	// EventId The event; null for the shop's totals.
+	EventId *openapi_types.UUID `json:"event_id"`
+
+	// FriendReversals Friends who got their money back or opened a dispute after the cashback was paid.
+	FriendReversals int64 `json:"friend_reversals"`
+
+	// Friends Friend orders that used a personal code (a self-invitation is not counted).
+	Friends int64 `json:"friends"`
+}
+
+// ReferralWarning A non-blocking note about the programme.
+type ReferralWarning struct {
+	// Code Stable code, such as `referral.warning.no_channel` or `referral.warning.some_channels_unsupported`.
+	Code string `json:"code"`
+
+	// Message Human-readable explanation.
+	Message string `json:"message"`
+}
 
 // RefundEnvelope Top-level response envelope returned by every refund endpoint
 // that yields a single row. Wraps a single `RefundItem` under the
@@ -18351,6 +18616,9 @@ type ShopCheckoutRequest struct {
 	// Locale Language of the storefront (two letters); the payment page uses it.
 	Locale *string `json:"locale,omitempty"`
 
+	// PromoCode A friend's personal code of the shop's "Refer a friend" programme (any letter case, up to 64 characters). The discount is the programme's percent of the goods total, never of the delivery fee. Refused with 422 `promo.not_applicable`, `promo.own_referral_code`, `promo.not_active` or `promo.exhausted`; leave it out for no code.
+	PromoCode *string `json:"promo_code,omitempty"`
+
 	// ReturnUrl Storefront page the provider sends the buyer back to (an allowed origin), with `checkout_token`.
 	ReturnUrl *string `json:"return_url,omitempty"`
 
@@ -18365,6 +18633,9 @@ type ShopCheckoutResponse struct {
 
 	// DeliveryKind `shipping` when the order holds a physical product, `none` for digital products and services only.
 	DeliveryKind string `json:"delivery_kind"`
+
+	// Discount What a personal code took off the goods, minor units; 0 without a code. The total is subtotal - discount + shipping_fee.
+	Discount int64 `json:"discount"`
 
 	// ExpiresAt Until when the order holds its goods.
 	ExpiresAt *time.Time `json:"expires_at"`
@@ -18398,6 +18669,9 @@ type ShopCheckoutStatus struct {
 
 	// DeliveryKind `shipping` when the order holds a physical product, `none` for digital products and services only.
 	DeliveryKind string `json:"delivery_kind"`
+
+	// Discount What a personal code took off the goods, minor units; 0 without a code.
+	Discount int64 `json:"discount"`
 
 	// ExpiresAt Until when the order holds its goods.
 	ExpiresAt *time.Time `json:"expires_at"`
@@ -18950,6 +19224,12 @@ type ShopPublicSettings struct {
 
 	// MaxLineQty How many units of one variant an order may hold; the quantity picker stops there.
 	MaxLineQty *int32 `json:"max_line_qty,omitempty"`
+
+	// ReferralActive True while the shop runs a "Refer a friend" programme; the checkout then offers a promo-code field. An older server leaves it out, read that as false.
+	ReferralActive *bool `json:"referral_active,omitempty"`
+
+	// ReferralFriendDiscountPct The programme's discount for a friend, in percent, present only while `referral_active` is true. The checkout page previews the discount a friend's code takes off the goods (that percent of the goods total, delivery excluded, rounded down in minor units); the payment page shows the final amount and the server decides.
+	ReferralFriendDiscountPct *int32 `json:"referral_friend_discount_pct,omitempty"`
 
 	// ShippingFeeMinor Flat delivery fee, minor units.
 	ShippingFeeMinor int64 `json:"shipping_fee_minor"`
@@ -22646,6 +22926,18 @@ type GetV1OrganizationsOrgIdEventsEventIdPageStatsCsvParams struct {
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdEventsEventIdReferralRewardsParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdReferralRewards.
+type GetV1OrganizationsOrgIdEventsEventIdReferralRewardsParams struct {
+	// State Only rewards in this state: due, sent, paid, capped, not_possible, failed or cancelled.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Limit Page size, 1 to 200. Default 50.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The `next_cursor` of the previous page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdEventsEventIdSalesCsvParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdSalesCsv.
 type GetV1OrganizationsOrgIdEventsEventIdSalesCsvParams struct {
 	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
@@ -23141,6 +23433,18 @@ type ResolveShopOrderParams struct {
 type ListShopProductsParams struct {
 	// Status Only products of this status: `draft`, `active` or `archived`.
 	Status *string `form:"status,omitempty" json:"status,omitempty"`
+}
+
+// GetV1OrganizationsOrgIdShopReferralRewardsParams defines parameters for GetV1OrganizationsOrgIdShopReferralRewards.
+type GetV1OrganizationsOrgIdShopReferralRewardsParams struct {
+	// State Only rewards in this state: due, sent, paid, capped, not_possible, failed or cancelled.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// Limit Page size, 1 to 200. Default 50.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The `next_cursor` of the previous page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear.
@@ -23787,6 +24091,9 @@ type ReorderEventReportPhotosJSONRequestBody = EventReportPhotoOrderRequest
 // UpdateEventReportPhotoJSONRequestBody defines body for UpdateEventReportPhoto for application/json ContentType.
 type UpdateEventReportPhotoJSONRequestBody = UpdateEventReportPhotoRequest
 
+// PutV1OrganizationsOrgIdEventsEventIdReferralProgramJSONRequestBody defines body for PutV1OrganizationsOrgIdEventsEventIdReferralProgram for application/json ContentType.
+type PutV1OrganizationsOrgIdEventsEventIdReferralProgramJSONRequestBody = ReferralProgramRequest
+
 // CreateSessionJSONRequestBody defines body for CreateSession for application/json ContentType.
 type CreateSessionJSONRequestBody = CreateSessionRequest
 
@@ -23987,6 +24294,9 @@ type AddShopProductImageJSONRequestBody = ShopImageAddRequest
 
 // ReplaceShopProductVariantsJSONRequestBody defines body for ReplaceShopProductVariants for application/json ContentType.
 type ReplaceShopProductVariantsJSONRequestBody = ShopVariantsReplaceRequest
+
+// PutV1OrganizationsOrgIdShopReferralProgramJSONRequestBody defines body for PutV1OrganizationsOrgIdShopReferralProgram for application/json ContentType.
+type PutV1OrganizationsOrgIdShopReferralProgramJSONRequestBody = ReferralProgramRequest
 
 // PutShopSettingsJSONRequestBody defines body for PutShopSettings for application/json ContentType.
 type PutShopSettingsJSONRequestBody = ShopSettingsUpdateRequest

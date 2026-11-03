@@ -22,3 +22,21 @@ func TestRetryable_NotForAScannedTicket(t *testing.T) {
 		t.Fatal("a refund stopped for a scanned ticket is offered for a retry")
 	}
 }
+
+// A referral cashback is never retried: the referral sweep owns its outcome.
+func TestRetryable_NotForAReferralCashback(t *testing.T) {
+	ticket, order := uuid.New(), uuid.New()
+	provider := "stripe"
+	r := Refund{State: StateFailed, Settlement: "provider", Provider: &provider, TicketID: &ticket, OrderID: &order}
+	if !Retryable(r) {
+		t.Fatal("an ordinary refused refund must stay retryable")
+	}
+	r.Origin = OriginReferralCashback
+	if Retryable(r) {
+		t.Fatal("a failed referral cashback is offered for a retry")
+	}
+	r.State = StateManualReview
+	if Retryable(r) {
+		t.Fatal("a parked referral cashback is offered for a retry")
+	}
+}

@@ -116,6 +116,11 @@ func FulfillCompletedCheckoutTx(
 		if err := recordPromoRedemptionTx(ctx, txq, ord); err != nil {
 			return out, fmt.Errorf("promo redemption: %w", err)
 		}
+
+		// ── 2c. "Refer a friend" reward (best effort, under a savepoint) ───
+		// A personal code of a referrer earns them a cashback. Never fatal:
+		// the friend's payment is more important than the referrer's reward.
+		recordReferralRewardTx(ctx, tx, ord)
 	}
 
 	// ── 3. Reservation conversion job (non-fatal) ────────────────────────────

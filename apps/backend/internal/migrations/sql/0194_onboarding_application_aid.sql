@@ -1,4 +1,4 @@
--- 0193_onboarding_application_aid.sql — the visitor id a website application
+-- 0194_onboarding_application_aid.sql — the visitor id a website application
 -- was started with (spec 08_architecture/50_product_analytics_ru.md, stage A5).
 --
 -- arenasoldout.com sends an optional `aid` (the analytics visitor id, only

@@ -98,6 +98,11 @@ const scanExemptForRefundSQL = `EXISTS (SELECT 1 FROM refund_scan_exceptions sx
 // may be created for it.
 const ticketBlockedSQL = `(` + ticketScannedSQL + ` AND NOT ` + scanExemptLiveSQL + `)`
 
+// refundIgnoresScanSQL is true for the stored refund r that a scan of its
+// ticket does not stop: a referral cashback that leaves the ticket valid
+// (spec 52, owner decision R-RF3). Same rule as scanBlocksBatch.
+const refundIgnoresScanSQL = `(r.origin = 'referral_cashback' AND NOT r.cancel_ticket)`
+
 // ticketBlockedForRefundSQL is the same for the stored refund r.
 const ticketBlockedForRefundSQL = `(` + ticketScannedSQL + ` AND NOT ` + scanExemptForRefundSQL + `)`
 
@@ -317,6 +322,7 @@ func (e *Engine) blockScannedAtClaim(ctx context.Context, tx pgx.Tx, id uuid.UUI
 		                   OR (COALESCE(r.ticket_id, r.cancelled_ticket_id) IS NULL
 		                       AND t.checkout_session_id = pi.checkout_session_id))
 		WHERE r.id = $1 AND r.state = 'provider_pending' AND r.provider_refund_id IS NULL AND r.provider_attempts = 0
+		  AND `+refundIgnoresScanSQL+` IS NOT TRUE
 		  AND `+ticketBlockedForRefundSQL+scannedOrder+` LIMIT 1`, id).Scan(&ticket)
 	if err == pgx.ErrNoRows {
 		// Nothing blocks it. Its own ticket, scanned and passing on a live
@@ -326,6 +332,7 @@ func (e *Engine) blockScannedAtClaim(ctx context.Context, tx pgx.Tx, id uuid.UUI
 			FROM refunds r
 			WHERE r.id = $1 AND sx.ticket_id = r.ticket_id
 			  AND sx.used_at IS NULL AND sx.expires_at > now()
+			  AND `+refundIgnoresScanSQL+` IS NOT TRUE
 			  AND r.state = 'provider_pending' AND r.provider_attempts = 0`, id)
 		return nil, uuid.Nil, serr
 	}
@@ -359,7 +366,8 @@ func (e *Engine) ScannedTicketForRefund(ctx context.Context, refundID uuid.UUID)
 			JOIN payment_intents pi ON pi.id = r.payment_intent_id
 			JOIN tickets t ON (t.id = COALESCE(r.ticket_id, r.cancelled_ticket_id)
 			                   OR (COALESCE(r.ticket_id, r.cancelled_ticket_id) IS NULL AND t.checkout_session_id = pi.checkout_session_id))
-			WHERE r.id = $1 AND `+ticketBlockedForRefundSQL+scannedOrder+` LIMIT 1`, refundID).Scan(&id)
+			WHERE r.id = $1 AND `+refundIgnoresScanSQL+` IS NOT TRUE
+			  AND `+ticketBlockedForRefundSQL+scannedOrder+` LIMIT 1`, refundID).Scan(&id)
 		if err == nil {
 			found = true
 			return nil
