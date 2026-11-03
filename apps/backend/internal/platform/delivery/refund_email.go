@@ -349,9 +349,16 @@ func (h *refundEmail) buildMessage(ctx context.Context, orderID, orgID uuid.UUID
 		Refund: &templates.RefundData{Total: formatMoney(total, currency),
 			TicketsCancelled: allVoid, SomeTicketsCancelled: anyCancel && !allVoid},
 	}
+	if orderEvents != uuid.Nil {
+		data.WhiteLabel = whiteLabelForEvent(ctx, whiteLabelResolver(h.opts.DB), h.logger, orderEvents)
+	} else {
+		data.WhiteLabel = whiteLabelForTicket(ctx, whiteLabelResolver(h.opts.DB), h.logger, first.TicketID)
+	}
 	out, err := h.renderer.Render(templates.TemplateKindRefund, recipient.LocaleHint, data)
 	if err != nil {
 		return email.Message{}, fmt.Errorf("delivery: render refund e-mail: %w", err)
 	}
-	return ticketEmailMessage(first, recipient.Email, out.Subject, out.HTMLBody, out.TextBody), nil
+	msg := ticketEmailMessage(first, recipient.Email, out.Subject, out.HTMLBody, out.TextBody)
+	applyWhiteLabelSender(&msg, data.WhiteLabel, brandSenderName(first))
+	return msg, nil
 }

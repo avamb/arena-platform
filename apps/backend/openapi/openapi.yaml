@@ -23750,6 +23750,186 @@ components:
           format: date-time
           description: New end of the rate. It must be in the future, after the start and not after the start of the organization's next rate.
 
+    BillingWhiteLabelPeriod:
+      type: object
+      required: [id, org_id, promoter_id, starts_on, ends_on, monthly_price_minor, currency, reason, created_at, ended_at, status]
+      description: "A white label period of a brand: from starts_on to ends_on (UTC calendar days, both inclusive) the platform badge is hidden on the brand's widget, letters and shop, and the brand pays the monthly white label price."
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id of the period.
+        org_id:
+          type: string
+          format: uuid
+          description: The organization.
+        org_name:
+          type: string
+          description: Name of the organization. Present in the list only.
+        promoter_id:
+          type: [string, "null"]
+          format: uuid
+          description: The promoter whose events the period covers; null for the organization itself (its events without a promoter, and its shop).
+        promoter_name:
+          type: [string, "null"]
+          description: Name of the promoter. Present in the list only.
+        starts_on:
+          type: string
+          format: date
+          description: First day of white label (UTC).
+        ends_on:
+          type: [string, "null"]
+          format: date
+          description: Last day of white label (UTC), null while it is open.
+        monthly_price_minor:
+          type: [integer, "null"]
+          format: int64
+          description: Individual monthly price in minor units of currency; null means the price list, 0 is free.
+        currency:
+          type: [string, "null"]
+          description: Currency of the individual price, the organization's billing account currency on the day the period was created; null with the price list. A non-zero individual price is not charged in another currency.
+        reason:
+          type: string
+          description: The X-Admin-Reason the period was created with.
+        created_at:
+          type: string
+          format: date-time
+          description: When the period was created.
+        ended_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the end was last set, null when never.
+        status:
+          type: string
+          description: "State today (UTC): scheduled, in_force or ended."
+          example: in_force
+
+    BillingWhiteLabelList:
+      type: object
+      required: [items]
+      description: White label periods, by organization and brand.
+      properties:
+        items:
+          type: array
+          description: The periods.
+          items:
+            $ref: "#/components/schemas/BillingWhiteLabelPeriod"
+
+    BillingCreateWhiteLabelRequest:
+      type: object
+      additionalProperties: false
+      required: [org_id, starts_on]
+      description: Body of POST /v1/admin/billing/white-label.
+      properties:
+        org_id:
+          type: string
+          format: uuid
+          description: The organization.
+        promoter_id:
+          type: [string, "null"]
+          format: uuid
+          description: A promoter of the organization; absent or null turns white label on for the organization itself.
+        starts_on:
+          type: string
+          format: date
+          description: First day, today (UTC) or later.
+        ends_on:
+          type: [string, "null"]
+          format: date
+          description: Last day, on or after starts_on; absent or null keeps the period open.
+        monthly_price_minor:
+          type: [integer, "null"]
+          format: int64
+          minimum: 0
+          description: Individual monthly price in minor units of the organization's billing account currency; absent means the price list, 0 is free.
+        currency:
+          type: [string, "null"]
+          description: The currency the operator means for monthly_price_minor (ISO 4217). Optional; when given and different from the organization's billing account currency the request answers 422 billing.white_label_currency_mismatch. The stored currency is always the account's.
+
+    BillingEndWhiteLabelRequest:
+      type: object
+      additionalProperties: false
+      required: [ends_on]
+      description: Body of POST /v1/admin/billing/white-label/{id}/end.
+      properties:
+        ends_on:
+          type: string
+          format: date
+          description: New last day. Yesterday (UTC) or later, earlier than the current end.
+
+    OrgWhiteLabelPeriod:
+      type: object
+      required: [id, org_id, promoter_id, promoter_name, brand_name, starts_on, ends_on, monthly_price_minor, effective_monthly_minor, currency, created_at, ended_at, status]
+      description: A white label period of the organization as its owner sees it.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id of the period.
+        org_id:
+          type: string
+          format: uuid
+          description: The organization.
+        promoter_id:
+          type: [string, "null"]
+          format: uuid
+          description: The promoter whose events the period covers; null for the organization itself.
+        promoter_name:
+          type: [string, "null"]
+          description: Name of the promoter, null for the organization itself.
+        brand_name:
+          type: string
+          description: The brand's name, the promoter's or the organization's.
+        starts_on:
+          type: string
+          format: date
+          description: First day of white label (UTC).
+        ends_on:
+          type: [string, "null"]
+          format: date
+          description: Last day of white label (UTC), null while it is open.
+        monthly_price_minor:
+          type: [integer, "null"]
+          format: int64
+          description: Individual monthly price, null when the price list applies.
+        effective_monthly_minor:
+          type: [integer, "null"]
+          format: int64
+          description: The monthly price that applies, in minor units of currency; null when it cannot be read.
+        currency:
+          type: string
+          description: Currency of effective_monthly_minor, the individual price's currency or the organization's billing account currency; empty when it cannot be read.
+        created_at:
+          type: string
+          format: date-time
+          description: When the period was created.
+        ended_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the end was last set, null when never.
+        status:
+          type: string
+          description: "State today (UTC): scheduled, in_force or ended."
+          example: in_force
+
+    OrgWhiteLabelList:
+      type: object
+      required: [items, currency, price_list_monthly_minor]
+      description: The organization's white label periods and the price list's monthly price.
+      properties:
+        items:
+          type: array
+          description: The periods, by brand, newest first.
+          items:
+            $ref: "#/components/schemas/OrgWhiteLabelPeriod"
+        currency:
+          type: string
+          description: Currency of the organization's billing account, empty when it cannot be read.
+        price_list_monthly_minor:
+          type: [integer, "null"]
+          format: int64
+          description: The price list's monthly white label price, null when the account or the rule is missing.
+
     BillingChargeItem:
       type: object
       required: [id, billable_event_id, kind, occurred_at, rated_at, event_id, session_id, order_id, currency, amount_minor, rule_type, reason, reversal_of, price_list_version, pricing_class, seated, sale_currency, unit_price_minor]
@@ -25924,6 +26104,9 @@ components:
         captcha_site_key:
           type: string
           description: Cloudflare Turnstile site key the checkout form renders its widget with; the widget's token goes to checkout as `captcha_token`. Absent while the shop's checkout has no captcha.
+        white_label:
+          type: boolean
+          description: True when the organization has white label today; the storefront then hides its "on the Arena Sold Out platform" footer.
 
     ShopPublicOrg:
       type: object
@@ -31636,6 +31819,172 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/admin/billing/white-label:
+    get:
+      operationId: getV1AdminBillingWhiteLabel
+      summary: Admin - list white label periods
+      description: "Lists the white label periods of brands (an organization, or one of its promoters): the days the platform badge is hidden. Requires JWT, billing.admin and a platform superadmin."
+      tags: [v1, admin, billing]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: org_id
+          in: query
+          required: false
+          description: Only periods of this organization.
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: "The periods."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingWhiteLabelList"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller lacks billing.admin or is not a platform superadmin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "org_id is not a UUID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: postV1AdminBillingWhiteLabel
+      summary: Admin - turn white label on for a brand
+      description: "Turns white label on for a brand from starts_on (today or later, UTC) to ends_on (open when absent). The brand is the organization (promoter_id absent: its events without a promoter and its shop) or one of its promoters. Two periods of one brand never share a day. The job billing.white_label charges every completed month in arrears, prorated by days, at the price list's monthly rate or at monthly_price_minor. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row."
+      tags: [v1, admin, billing]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log and on the period.
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingCreateWhiteLabelRequest"
+      responses:
+        "201":
+          description: "The new period."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingWhiteLabelPeriod"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is not valid JSON of the expected shape"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller lacks billing.admin or is not a platform superadmin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Organization or promoter not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The brand already has white label on some of these days"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "A field is not valid, or starts_on is in the past"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/billing/white-label/{id}/end:
+    post:
+      operationId: postV1AdminBillingWhiteLabelEnd
+      summary: Admin - end a white label period
+      description: "Sets the last day of a white label period. It is yesterday or later (yesterday ends white label now), earlier than the current end, and not earlier than the day before the period starts. A period is never deleted and its end never moves later. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row."
+      tags: [v1, admin, billing]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: "Id of the period."
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log and on the period.
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingEndWhiteLabelRequest"
+      responses:
+        "200":
+          description: "The period with its new end."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingWhiteLabelPeriod"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is not valid JSON of the expected shape"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller lacks billing.admin or is not a platform superadmin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Period not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The period already ends on or before that day"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "ends_on is not a date, is before yesterday, or is not earlier than the current end"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/admin/billing/accounts:
     get:
       operationId: getV1AdminBillingAccounts
@@ -49450,6 +49799,9 @@ paths:
             covered by the right of withdrawal. False for every other
             country (Israel included, which has its own cancellation
             regime) and when the country is unknown.
+          * `white_label` — boolean. True when the event's brand (its
+            promoter, else the organization) has white label today; the
+            widget then hides its "Tickets: Arena Sold Out" badge.
           * `consent` — `PublicCheckoutConsentBlock` (P2): whether the
             buyer must tick "I accept the sale terms (seller: <legal name>)
             and the privacy policy" before paying, the seller's legal name
@@ -54384,6 +54736,39 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/billing/white-label:
+    get:
+      operationId: getOrgBillingWhiteLabel
+      summary: White label periods of an organization
+      description: "Lists the organization's white label periods (its own brand and its promoters) with the monthly price that applies: the period's individual price, else the price list's for the organization's billing account. Read-only: only a platform superadmin turns white label on or off. Requires JWT and billing.read in the organization (the owner)."
+      tags: [v1, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The periods.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgWhiteLabelList"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "The caller is not a member of the organization or lacks billing.read there."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/organizations/{org_id}/billing/charges:
     get:
       operationId: listOrgBillingCharges

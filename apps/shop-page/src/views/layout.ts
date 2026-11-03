@@ -349,7 +349,7 @@ ${socialList(ctx, 'list-unstyled list-social footer__list-social', 'link list-so
       <div class="footer__copyright caption">
         <small class="copyright__content"
           >&copy; ${year}, <a href="${esc(url(ctx, '/'))}" title="">${esc(name)}</a></small>
-        <small class="copyright__content">${T.poweredBy}</small></div>
+        ${ctx.shop.settings.white_label ? '' : `<small class="copyright__content">${T.poweredBy}</small>`}</div>
     </div>
   </div>
 </footer>

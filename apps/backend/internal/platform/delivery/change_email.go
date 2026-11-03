@@ -363,6 +363,7 @@ func (h *changeEmail) buildMessage(
 		VenueName:      joinNonEmpty(", ", first.VenueName, first.VenueCity),
 		Branding:       branding,
 		EventNote:      changeEventNote(moves, first.EventEmailNote, first.EventEmailNoteFormat),
+		WhiteLabel:     whiteLabelForTicket(ctx, whiteLabelResolver(h.opts.DB), h.logger, tickets[0].TicketID.String()),
 		Change: templates.ChangeData{
 			Date:           sessionchange.Has(rec.Kinds, sessionchange.KindDate) || sessionchange.Has(rec.Kinds, sessionchange.KindTime),
 			Venue:          sessionchange.Has(rec.Kinds, sessionchange.KindVenue),
@@ -397,6 +398,7 @@ func (h *changeEmail) buildMessage(
 	// or the organization's verified one, still originates it.
 	first.OrgContactEmail, first.ContactFormURL = contactEmail, contactForm
 	msg := ticketEmailMessage(first, recipient.Email, out.Subject, out.HTMLBody, out.TextBody)
+	applyWhiteLabelSender(&msg, data.WhiteLabel, brandSenderName(first))
 	if moves {
 		for i, t := range tickets {
 			if len(t.PDF) == 0 {

@@ -16,7 +16,7 @@
   <p style="margin:0 0 12px 0;"><span style="color:#93a0a8;font-size:12px;word-break:break-all;">Odkaz: {{.SaleNotice.URL}}</span></p>
   <p style="margin:0 0 12px 0;">Pokud jste o to nežádali, tento e-mail ignorujte: psát vám o tom nebudeme. Odkaz platí 7 dní.</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — automatická zpráva<br>Pokud kliknete na „Odhlásit odběr“, e-maily od nás už na tuto adresu nikdy nepřijdou, ani vstupenky.</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}Arena Platform — automatická zpráva<br>{{end}}Pokud kliknete na „Odhlásit odběr“, e-maily od nás už na tuto adresu nikdy nepřijdou, ani vstupenky.</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -33,7 +33,7 @@ Potvrdit adresu: {{.SaleNotice.URL}}
 
 Pokud jste o to nežádali, tento e-mail ignorujte: psát vám o tom nebudeme. Odkaz platí 7 dní.
 
-Arena Platform — automatická zpráva
+{{if not .WhiteLabel}}Arena Platform — automatická zpráva{{end}}
 
 Pokud kliknete na „Odhlásit odběr“, e-maily od nás už na tuto adresu nikdy nepřijdou, ani vstupenky.
 {{end}}

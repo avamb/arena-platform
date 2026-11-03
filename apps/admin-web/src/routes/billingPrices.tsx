@@ -75,6 +75,7 @@ import {
 } from "./onboardingUi";
 import { VersionDetailBody, VersionFormBody, VersionsTable } from "./billingPricesLists";
 import { AccountsTable, RateFormBody, RatesTable, TermsFormBody, type OrgChoice } from "./billingPricesRates";
+import { WhiteLabelPanel } from "./billingWhiteLabel";
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -95,12 +96,13 @@ function BillingPricesRoute() {
   );
 }
 
-type Tab = "lists" | "rates" | "accounts";
+type Tab = "lists" | "rates" | "accounts" | "white-label";
 
 const TABS: readonly { id: Tab; label: string }[] = [
   { id: "lists", label: "Price lists" },
   { id: "rates", label: "Individual rates" },
   { id: "accounts", label: "Accounts" },
+  { id: "white-label", label: "White label" },
 ];
 
 /** What the operator is doing in a dialog, if anything. */
@@ -378,6 +380,8 @@ function BillingPricesPage(): JSX.Element {
           }}
         />
       ) : null}
+
+      {tab === "white-label" ? <WhiteLabelPanel orgs={orgs} /> : null}
 
       {modal.kind === "detail" ? (
         <Dialog

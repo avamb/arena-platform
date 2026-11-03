@@ -6,9 +6,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+
 	billingcredits "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/credits"
 	billingreconcile "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/reconcile"
 	billingusage "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/usage"
+	billingwhitelabel "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/whitelabelcharge"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/clock"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
@@ -65,6 +68,15 @@ func registerBillingReconcileHandler(reg *worker.Registry, pool *pgxpool.Pool, c
 		Scheduler: billingcredits.NewPGScheduler(pool),
 		Logger:    logger,
 	}))
+
+	// billing.white_label writes one white_label_month event per white label
+	// period and completed month (spec 08_architecture/53). Same switch: the
+	// date X; the rate job prices the events.
+	reg.Register(billingwhitelabel.JobType, billingwhitelabel.NewHandler(billingwhitelabel.HandlerOptions{
+		Charger:   billingwhitelabel.New(gen.New(pool), billingwhitelabel.Options{Since: cfg.BillingCollectSince}),
+		Scheduler: billingwhitelabel.NewPGScheduler(pool),
+		Logger:    logger,
+	}))
 }
 
 // scheduleBillingReconcile seeds the first reconcile at start-up. Non-fatal:
@@ -81,5 +93,8 @@ func scheduleBillingReconcile(ctx context.Context, pool *pgxpool.Pool, cfg *conf
 	}
 	if err := billingcredits.ScheduleInitialJob(ctx, pool); err != nil {
 		logger.Warn("could not schedule initial billing credit expire job", "error", err.Error())
+	}
+	if err := billingwhitelabel.ScheduleInitialJob(ctx, pool); err != nil {
+		logger.Warn("could not schedule initial billing white label job", "error", err.Error())
 	}
 }

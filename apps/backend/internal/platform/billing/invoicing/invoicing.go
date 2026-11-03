@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/billing"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/billing/credits"
 )
 
@@ -231,7 +232,7 @@ func GenerateUsage(ctx context.Context, q *gen.Queries, accountID uuid.UUID, per
 		ruleType := rule
 		line, err := q.InsertBillingInvoiceLine(ctx, gen.InsertBillingInvoiceLineParams{
 			InvoiceID: row.ID, Kind: LineUsage, RuleType: &ruleType,
-			Description: fmt.Sprintf("Platform service: %s, %d charges", rule, len(list)),
+			Description: usageLineDescription(rule, len(list)),
 			Quantity:    int64(len(list)), UnitAmountMinor: unit, TotalAmountMinor: total, Currency: acc.Currency,
 		})
 		if err != nil {
@@ -569,4 +570,13 @@ func MatchBankPaymentTo(ctx context.Context, q *gen.Queries, txID, invoiceID uui
 		return MatchResult{}, err
 	}
 	return MatchResult{Transaction: row, Invoice: &paid}, nil
+}
+
+// usageLineDescription names one usage line of an invoice. A white label
+// month (rule subscription) is named as such, one line per brand-month count.
+func usageLineDescription(rule string, n int) string {
+	if rule == string(billing.RuleSubscription) {
+		return fmt.Sprintf("White label: %d brand-months", n)
+	}
+	return fmt.Sprintf("Platform service: %s, %d charges", rule, n)
 }
