@@ -11,6 +11,7 @@
       sessions: { type: 'String', attribute: 'sessions' },
       frame: { type: 'String', attribute: 'frame' },
       materials: { type: 'String', attribute: 'materials' },
+      funnel: { type: 'String', attribute: 'funnel' },
       promo: { type: 'String', attribute: 'promo' },
     },
   }}
@@ -50,6 +51,7 @@
   import { consentErrorMessage, consentPayload, forceConsent } from './lib/consent.js';
   import { isMarketingRewardRefusal, marketingErrorMessage, marketingPayload } from './lib/marketing.js';
   import { captureAttribution, type AttributionPayload } from './lib/attribution.js';
+  import { createFunnel, parseFunnelHost, type Funnel, type FunnelStep } from './lib/funnel.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
   import {
@@ -126,13 +128,18 @@
      * the buyer does not see everything twice. Anything else (or absent)
      * shows the block whenever the event has any material. */
     materials?: string;
+    /** Buyer funnel (spec 50 A7): 'hosted_page' or 'tickets_page' says the
+     * Arena page around the widget counts the event's view itself (the widget
+     * would count a view nobody looked at: a promoter page mounts a widget per
+     * card). Anything else (or absent) is a plain embed, which counts its own. */
+    funnel?: string;
     /** A promo code to apply to the first cart ("Refer a friend": the hosted
      * page hands over the `?promo=` of its address). Without it the widget
      * reads `?promo=` from the page address itself. */
     promo?: string;
   }
 
-  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '', materials = '', promo: promoAttribute = '' }: Props = $props();
+  const { feedToken = '', eventId = '', sessionId = '', locale = 'en', apiBase = '', cover = '', sessions = '', frame = '', materials = '', funnel = '', promo: promoAttribute = '' }: Props = $props();
 
   /**
    * Host element reference for CustomEvent dispatch (WID-S5).
@@ -286,6 +293,26 @@
   // Spec 43: the sales link / utm touch that brought the buyer, read from the
   // page address on mount (kept 7 days per feed token). Sent with checkout/start.
   let attribution: AttributionPayload | null = null;
+  // Spec 50 A7: the anonymous buyer-funnel beacon (view, session_open,
+  // seats_chosen). It reads its utm from the same stored touch as the checkout.
+  // Built on first use, when the props are known; a step is sent once per
+  // event and session. Fire-and-forget: never blocks or breaks the buyer.
+  let funnelBeacon: Funnel | null = null;
+  function sendFunnel(step: FunnelStep, sessionId?: string): void {
+    if (!event) return;
+    funnelBeacon ??= createFunnel({
+      apiBase: resolvedApiBase,
+      feedToken: normFeedToken,
+      viewCountedByHost: parseFunnelHost(funnel),
+      touch: () => attribution,
+    });
+    funnelBeacon.track(step, event.id, sessionId);
+  }
+  /** Spec 50 A7: the buyer touched the session's seats or tickets, which is the
+   * click that opens a session for a single-session event (no chip to press). */
+  function openedSession(): void {
+    if (selectedSession) sendFunnel('session_open', selectedSession.id);
+  }
   /** Why the last tap on a seat was refused (the order is at the seat cap), or null. */
   let cartLimitNotice = $state<string | null>(null);
   /**
@@ -322,6 +349,12 @@
   const effectiveCart = $derived({ ...cart, expiresAt: holdExpiresAt });
 
   const cartCount = $derived(totalSelectionCount(selectedSeatKeys, gaQuantities));
+
+  // Spec 50 A7: seats or tickets were put in the cart (once per session).
+  $effect(() => {
+    const sid = selectedSession?.id;
+    if (cartCount > 0 && sid) untrack(() => sendFunnel('seats_chosen', sid));
+  });
 
   // ── Promo code ─────────────────────────────────────────────────────────────
   //
@@ -537,6 +570,9 @@
   function applyFeedEvent(data: import('./types.js').FeedEventDetailResponse): void {
     event = data.event;
     selectedSession = pickInitialSession(data.event, normSessionId);
+    // Spec 50 A7: the event was shown (a page around the widget may count it).
+    // A session counts as opened only on a buyer action, never on load.
+    sendFunnel('view');
   }
 
   /**
@@ -602,6 +638,7 @@
   // ── GA area tap handler (AB-40D) ───────────────────────────────────────────
 
   function onGaAreaTap(_categoryIndex: number, tierId: string): void {
+    openedSession();
     // The overlay is a single-open picker: tapping a different area swaps
     // the target; tapping the same area again with the picker already open
     // does nothing (Done / × closes it).
@@ -619,6 +656,7 @@
   // ── Seat tap handler ───────────────────────────────────────────────────────
 
   function onSeatTap(seatKey: string, status: SeatStatusValue): void {
+    openedSession();
     const prev = selectedSeatKeys;
     // One order holds at most MAX_CART_SEATS seats (the platform refuses more):
     // say so instead of letting the buyer find out at the payment step.
@@ -647,6 +685,7 @@
   // ── GA quantity handler ────────────────────────────────────────────────────
 
   function onGaQuantityChange(tierId: string, qty: number): void {
+    openedSession();
     const next = new Map(gaQuantities);
     next.set(tierId, qty);
     gaQuantities = next;
@@ -1088,6 +1127,8 @@
               gaAreas = [];
             }
             selectedSession = s;
+            // Spec 50 A7: the buyer opened a session.
+            if (s) sendFunnel('session_open', s.id);
           }}
         />
         {/if}

@@ -36,6 +36,11 @@ export type { ReferralTarget };
  */
 export const SHOP_TEXT_KEYS = [
   "referral.intro",
+  "referral.line",
+  "referral.f.cashback",
+  "referral.f.cashback.hint",
+  "referral.f.cap",
+  "referral.f.cap.hint",
   "referral.none",
   "referral.blocked.title",
   "referral.blocked.next",

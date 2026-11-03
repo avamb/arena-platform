@@ -214,7 +214,7 @@ describe('the block on a paid order', () => {
 
   it('puts the two percentages into the offer', () => {
     expect(referralText(getReferralStrings('en'), CODE)).toBe(
-      'Your friend gets 10% off with your code, and up to 5% of their purchase comes back to your card.',
+      'Your friend gets 10% off with your code, and up to 5% of their ticket price (after the discount, without the service charge) comes back to your card.',
     );
     expect(referralText(getReferralStrings('ru'), CODE)).toContain('10%');
     expect(referralText(getReferralStrings('ru'), CODE)).toContain('5%');

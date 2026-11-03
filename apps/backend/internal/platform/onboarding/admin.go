@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/analytics"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/opsalert"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/provisioning"
@@ -464,12 +465,21 @@ func (s *Service) Purge(ctx context.Context, id, reviewer uuid.UUID) error {
 
 // purgeRow blanks every personal field of an application and its history.
 func purgeRow(ctx context.Context, q querier, id uuid.UUID, now time.Time) error {
+	// The analytics link between the address and the visitor goes with it
+	// (spec 50 section 11). The address must be read before it is blanked.
+	var email string
+	if err := q.QueryRow(ctx, `SELECT applicant_email FROM onboarding_applications WHERE id = $1`, id).Scan(&email); err != nil {
+		return err
+	}
+	if err := analytics.ForgetEmail(ctx, q, email); err != nil {
+		return err
+	}
 	if _, err := q.Exec(ctx, `
 UPDATE onboarding_applications SET applicant_email = 'purged+' || id::text || '@invalid.local',
   email_confirmed_at = NULL, applicant_name = NULL, applicant_phone = NULL, country = NULL, org_name = NULL,
   legal_name = NULL, answers = '{}', requested_fields = '{}', info_request_message = NULL,
   access_token_hash = NULL, resume_token_hash = NULL, resume_token_expires_at = NULL, telegram_user_id = NULL,
-  utm = '{}', ip_hash = NULL, purged_at = $2, updated_at = $2 WHERE id = $1`, id, now); err != nil {
+  utm = '{}', ip_hash = NULL, aid = NULL, purged_at = $2, updated_at = $2 WHERE id = $1`, id, now); err != nil {
 		return err
 	}
 	if _, err := q.Exec(ctx, `UPDATE onboarding_application_events SET snapshot = NULL, detail = '{}' WHERE application_id = $1 AND kind <> 'purged'`, id); err != nil {

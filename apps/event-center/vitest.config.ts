@@ -9,6 +9,7 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
       "@openapi": path.resolve(__dirname, "../backend/openapi/clients/ts"),
       "@seatmap": path.resolve(__dirname, "../widget/src"),
+      "@arena-track": path.resolve(__dirname, "../../packages/arena-track/src"),
     },
   },
   test: {

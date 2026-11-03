@@ -19,26 +19,34 @@ import (
 	"github.com/google/uuid"
 )
 
-// CashbackAmount is pct percent of what the friend paid, rounded down
-// (owner decision R-RF1: the base is the friend's payment).
-func CashbackAmount(friendPaidMinor int64, pct int) int64 {
-	if friendPaidMinor <= 0 || pct <= 0 {
+// ItemsBase is the base every referral percentage is taken from: the price of
+// the tickets (or the shop goods) after every discount, without the service
+// charge, the delivery fee or any other fee or tax (owner decision 2026-11-03,
+// it replaces R-RF1's "what the friend paid"). subtotal and discount are the
+// order's own columns in minor units.
+func ItemsBase(subtotalMinor, discountMinor int64) int64 {
+	return max(subtotalMinor-discountMinor, 0)
+}
+
+// CashbackAmount is pct percent of the friend's ItemsBase, rounded down.
+func CashbackAmount(friendBaseMinor int64, pct int) int64 {
+	if friendBaseMinor <= 0 || pct <= 0 {
 		return 0
 	}
-	return friendPaidMinor * int64(pct) / 100
+	return friendBaseMinor * int64(pct) / 100
 }
 
 // ApplyCap limits a cashback so that, together with what was already paid back
-// to the referrer's order, it stays within capPct percent of what the referrer
-// paid (spec 52 section 4). alreadyCashbackMinor is the cashback already owed
+// to the referrer's order, it stays within capPct percent of the referrer's
+// ItemsBase (spec 52 section 4). alreadyCashbackMinor is the cashback already owed
 // or paid on that order, alreadyRefundedMinor the money other refunds have
 // returned or are returning on it. pay is what may still be paid; capped says
 // it is less than amount.
-func ApplyCap(amount, referrerPaidMinor, alreadyCashbackMinor, alreadyRefundedMinor int64, capPct int) (pay int64, capped bool) {
+func ApplyCap(amount, referrerBaseMinor, alreadyCashbackMinor, alreadyRefundedMinor int64, capPct int) (pay int64, capped bool) {
 	if amount <= 0 {
 		return 0, false
 	}
-	room := max(referrerPaidMinor*int64(capPct)/100-alreadyCashbackMinor-alreadyRefundedMinor, 0)
+	room := max(referrerBaseMinor*int64(capPct)/100-alreadyCashbackMinor-alreadyRefundedMinor, 0)
 	pay = min(amount, room)
 	return pay, pay < amount
 }

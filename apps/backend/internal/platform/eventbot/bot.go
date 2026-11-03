@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/analytics"
 )
 
 // pendingInviteTTL is how long the bot waits for the e-mail after a person
@@ -82,6 +83,15 @@ type Options struct {
 	// Button presses have their own fixed budget (callbackRateLimit). Only
 	// end-to-end tests that type faster than any person should ever set it.
 	MessageRateLimit int
+	// Analytics receives the bot's behaviour events (bot_update, wizard_step,
+	// wizard_input_error, wizard_exit, draft_reminder; spec 50 §4.4). nil
+	// switches them off. The identifier of a stranger is a keyed hash of the
+	// Telegram id made with AnalyticsTGHashSecret.
+	Analytics analytics.Tracker
+	// AnalyticsTGHashSecret is ANALYTICS_TG_HASH_SECRET, the key of
+	// analytics.TGHasher (the same value arena-worker's rollup holds). Empty
+	// switches the bot's analytics off: no tg identifier, no events.
+	AnalyticsTGHashSecret string
 }
 
 // Bot is the running event-center bot.
@@ -141,6 +151,8 @@ type Bot struct {
 	// menuKB remembers the chats that got the "☰ Menu" keyboard
 	// (menu_keyboard.go).
 	menuKB *menuShown
+	// an records product-analytics events; nil when they are off.
+	an *botAnalytics
 }
 
 // bgGroup is the WaitGroup of the background work. Once Run starts waiting
@@ -273,6 +285,10 @@ func New(opts Options) (*Bot, error) {
 		onbForms:       &onbFormCache{m: map[string]onbFormEntry{}},
 		feed:           newFeedMemory(),
 		menuKB:         newMenuShown(),
+	}
+	b.an = newBotAnalytics(opts.Analytics, opts.AnalyticsTGHashSecret, opts.Queries)
+	if b.an != nil {
+		b.dialogs = stepDialogs{DialogStore: b.dialogs, an: b.an}
 	}
 	b.sessions = newSessionDialogs(b.dialogs)
 	b.onb = newOnbDialogs(b.dialogs)
@@ -427,6 +443,10 @@ func (b *Bot) handleUpdate(ctx context.Context, _ *tgbot.Bot, u *models.Update) 
 			b.refuse(tctx, u, from, first)
 			return
 		}
+		// bot_update is written after the handler, so analytics never delays
+		// the answer (the step it carries was noted before).
+		record := b.an.begin(u, from)
+		defer record(tctx)
 		b.route(tctx, u)
 	})
 	if err != nil {
@@ -697,6 +717,7 @@ func (b *Bot) acceptInvitation(ctx context.Context, chatID int64, from *models.U
 		TelegramUsername: from.Username,
 		Locale:           locale,
 	})
+	b.an.forget(from.ID) // the account may be linked now: analytics asks again
 	if err != nil {
 		switch {
 		case IsAPIError(err, http.StatusNotFound):
@@ -902,6 +923,7 @@ func (b *Bot) switchOrg(ctx context.Context, chatID int64, editMsgID *int, from 
 				b.reply(ctx, chatID, editMsgID, b.texts.T(id.Locale(), "bot.error_generic", nil), nil)
 				return
 			}
+			b.an.forget(from.ID)
 			prefix := b.texts.T(id.Locale(), "bot.org_switched", map[string]any{"Org": Esc(id.Memberships[i].OrgName)}) + "\n\n"
 			b.showHome(ctx, chatID, editMsgID, from, prefix)
 			return

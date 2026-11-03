@@ -4137,10 +4137,10 @@ components:
           description: Percent off the friend gets, 1 to 100.
         cashback_pct:
           type: integer
-          description: Percent of what the friend paid that goes back to the referrer, 1 to 100.
+          description: Percent of the friend's tickets (or shop goods) after the discount, without the service charge, delivery or other fees, that goes back to the referrer, 1 to 100.
         cashback_cap_pct:
           type: integer
-          description: The cashback to one referrer never exceeds this percent of their own payment (minus what already went back to them), 1 to 100.
+          description: The cashback to one referrer never exceeds this percent of their own tickets (or shop goods) after the discount, without fees (minus what already went back to them), 1 to 100.
         max_friends:
           type: [integer, "null"]
           description: How many friends one code serves; null for no limit.
@@ -4183,12 +4183,12 @@ components:
           type: integer
           minimum: 1
           maximum: 100
-          description: Percent of what the friend paid that goes back to the referrer.
+          description: Percent of the friend's tickets (or shop goods) after the discount, without the service charge, delivery or other fees, that goes back to the referrer.
         cashback_cap_pct:
           type: integer
           minimum: 1
           maximum: 100
-          description: Cap of the cashback to one referrer, in percent of their own payment. Default 100.
+          description: Cap of the cashback to one referrer, in percent of their own tickets (or shop goods) after the discount, without fees. Default 100.
         max_friends:
           type: [integer, "null"]
           minimum: 1
@@ -4442,7 +4442,7 @@ components:
           description: Percent off a friend gets.
         cashback_pct:
           type: integer
-          description: Percent of the friend's payment that goes back to the buyer.
+          description: Percent of the friend's tickets (or shop goods) after the discount, without the service charge, delivery or other fees, that goes back to the buyer.
         share_url:
           type: [string, "null"]
           description: The event's page with `?promo=<code>&utm_source=referral&utm_medium=friend&utm_campaign=<event slug>`; for a shop order the storefront with `?promo=<code>&utm_source=referral&utm_medium=friend`. Null when the page address is not known.
@@ -10049,6 +10049,566 @@ components:
           items:
             $ref: "#/components/schemas/PublicMaterialPhoto"
 
+    AnalyticsBatchRequest:
+      type: object
+      required: [events]
+      description: |
+        Body of POST /v1/t and POST /v1/me/t, the product analytics receivers
+        (spec 50, section 4.2). Unknown fields are ignored: a client cannot name
+        its own user, surface or time of storage.
+      properties:
+        aid:
+          type: string
+          description: |
+            Optional visitor id of arenasoldout.com, sent only after the
+            visitor consented to analytics: 8 to 40 characters of `A-Za-z0-9_-`.
+            Ignored by POST /v1/me/t.
+          example: "a_7Hk2xQp9"
+        cid:
+          type: string
+          description: |
+            Optional contact code of the link in one of our e-mails, only in the
+            first batch after the visit started from it. Ignored by POST /v1/me/t.
+          example: "x7k2qpm3ab"
+        pv:
+          type: string
+          description: |
+            Id of the current page view, kept in the tab's memory only: 4 to 40
+            characters of `A-Za-z0-9_-`. It identifies an anonymous visitor
+            (one without `aid`) and is ignored by POST /v1/me/t.
+          example: "p_Q9xLm2Ke"
+        org_id:
+          type: string
+          description: |
+            POST /v1/me/t only: id of the organization of the current screen.
+            Stored only when the caller is a member of it or a platform
+            superadmin, otherwise stored as empty.
+        events:
+          type: array
+          description: At most 50 events; further ones are ignored.
+          items:
+            $ref: "#/components/schemas/AnalyticsEvent"
+
+    AnalyticsEvent:
+      type: object
+      required: [name]
+      description: One behaviour event of a batch.
+      properties:
+        name:
+          type: string
+          description: |
+            Event name from the dictionary: `page_view`, `engaged`, `scroll`,
+            `click`, `consent` (website), `screen_view`, `flow_step`,
+            `ui_error`, `rage_click` (event center, plus `engaged` and `click`).
+            An unknown name drops the event.
+          example: "page_view"
+        at:
+          type: string
+          description: |
+            Client time in RFC 3339. It only keeps the order of the events
+            inside the batch; the server time is stored. Ignored when more than
+            a day from the server's time.
+          example: "2026-11-01T10:00:00Z"
+        props:
+          type: object
+          description: |
+            Properties of the event, a flat object. Only the properties the
+            dictionary lists for the event are kept (for example `path`, `lang`,
+            `utm_source` for `page_view`; `flow` and `step` for `flow_step`);
+            strings are cut to 200 characters. Never put an e-mail, a phone, a
+            name, a text typed by a person or an id of an entity here.
+          additionalProperties: true
+
+    AnalyticsContactCodesRequest:
+      type: object
+      required: [twenty_person_ids]
+      additionalProperties: false
+      description: Body of POST /v1/admin/analytics/contact-codes.
+      properties:
+        twenty_person_ids:
+          type: array
+          minItems: 1
+          maxItems: 500
+          description: |
+            Ids of the CRM (Twenty) people to issue codes for: 1 to 500 distinct
+            ids, each 1 to 64 characters of letters, digits and `_ . : -`.
+            Repeated ids are answered once.
+          items:
+            type: string
+            description: A CRM person id.
+
+    AnalyticsContactCode:
+      type: object
+      required: [twenty_person_id, code]
+      description: The code of one CRM contact.
+      properties:
+        twenty_person_id:
+          type: string
+          description: The CRM person id the code belongs to, as sent.
+        code:
+          type: string
+          description: The 10-character `cid` code to append to links to the website.
+          example: "x7k2qpm3ab"
+
+    AnalyticsContactCodesResponse:
+      type: object
+      required: [codes]
+      description: Answer of POST /v1/admin/analytics/contact-codes.
+      properties:
+        codes:
+          type: array
+          description: One entry per distinct id, in the order the ids were sent.
+          items:
+            $ref: "#/components/schemas/AnalyticsContactCode"
+
+    AnalyticsTouch:
+      type: object
+      description: |
+        Where a visit came from. Every field is left out when unknown; an empty
+        object means the person has no touch yet.
+      properties:
+        source:
+          type: string
+          description: "`email`, a `utm_source`, a search engine, `direct` or a referrer host."
+        medium:
+          type: string
+          description: "`email`, a `utm_medium`, `organic` or `referral`."
+        campaign:
+          type: string
+          description: The `utm_campaign` of the visit.
+        ref_host:
+          type: string
+          description: Host the visitor came from.
+        kind:
+          type: string
+          description: "How the touch was recognised: `email_click`, `utm`, `organic` or `referral`."
+        at:
+          type: string
+          format: date-time
+          description: When the touch happened.
+
+    AnalyticsArticleRead:
+      type: object
+      required: [path, at, seconds]
+      description: A blog article the person read (engaged for at least 30 seconds and scrolled at least 75 percent).
+      properties:
+        path:
+          type: string
+          description: Site path of the article without the language prefix.
+        at:
+          type: string
+          format: date-time
+          description: When the person last read it.
+        seconds:
+          type: integer
+          description: Engaged seconds in that visit.
+
+    AnalyticsProfile:
+      type: object
+      required:
+        - person_id
+        - twenty_person_id
+        - email
+        - may_create_contact
+        - stage
+        - first_touch
+        - last_touch
+        - first_source
+        - last_source
+        - last_seen_at
+        - visits_30d
+        - engaged_minutes_30d
+        - articles
+        - milestones
+        - gmv_30d
+        - activity_score
+        - activity_explanation
+        - timeline_url
+        - changed_at
+      description: |
+        One person's profile as the CRM sync needs it (spec 50, section 9).
+        Built hourly by the analytics rollup; the e-mail is looked up while the
+        request is served.
+      properties:
+        person_id:
+          type: string
+          format: uuid
+          description: The person in the analytics schema.
+        twenty_person_id:
+          type: [string, "null"]
+          description: The CRM person id; null until the person is tied to a CRM contact.
+        email:
+          type: [string, "null"]
+          description: The person's address from their user or organizer application; null when none is known.
+        may_create_contact:
+          type: boolean
+          description: True when the CRM sync may create a contact for this person if none is found (organizer application or an existing CRM contact); false for an account-only user.
+        stage:
+          type: string
+          description: "`lead`, `applicant`, `organizer` or `selling`."
+        first_touch:
+          allOf:
+            - $ref: "#/components/schemas/AnalyticsTouch"
+          description: How the person first reached us.
+        last_touch:
+          allOf:
+            - $ref: "#/components/schemas/AnalyticsTouch"
+          description: How the person last reached us.
+        first_source:
+          type: string
+          description: Short text of the first touch for a CRM field (`email / outreach`, `google`); empty when none.
+        last_source:
+          type: string
+          description: Short text of the last touch for a CRM field; empty when none.
+        last_seen_at:
+          type: [string, "null"]
+          format: date-time
+          description: Time of the person's latest recorded event; null when there is none.
+        visits_30d:
+          type: integer
+          description: Visits (sessions) in the last 30 UTC days.
+        engaged_minutes_30d:
+          type: integer
+          description: Engaged minutes in the last 30 UTC days.
+        articles:
+          type: array
+          description: Articles read, newest first, at most 20.
+          items:
+            $ref: "#/components/schemas/AnalyticsArticleRead"
+        milestones:
+          type: object
+          description: |
+            Milestones reached, name to time: `application_started`,
+            `application_submitted`, `application_approved`,
+            `application_rejected`, `org_created`, `payment_connected`,
+            `first_event_created`, `first_event_published`, `first_sale`,
+            `sales_100`, `member_invited`. A key is present only once reached.
+          additionalProperties:
+            type: string
+            format: date-time
+            description: When the milestone was reached.
+        gmv_30d:
+          type: object
+          description: Currency code to minor units sold in the last 30 days; empty when nothing sold.
+          additionalProperties:
+            type: integer
+            format: int64
+            description: Minor units sold in that currency.
+        activity_score:
+          type: integer
+          description: The activity index (visits, articles, price page, e-mail clicks, application steps, halved every 14 days).
+        activity_explanation:
+          type: string
+          description: One line that explains the index, for example `article x1 = 3.0 + visit x2 = 1.8 (half-life 14 days)`.
+        timeline_url:
+          type: [string, "null"]
+          description: Link to the person's timeline in the admin console (`/analytics/people/<person_id>`); null when the console address is not configured.
+        changed_at:
+          type: string
+          format: date-time
+          description: When the profile last changed; the client keeps the greatest as its next `changed_since`.
+
+    AnalyticsProfilesResponse:
+      type: object
+      required: [profiles, next_cursor]
+      description: One page of changed profiles.
+      properties:
+        profiles:
+          type: array
+          description: Profiles ordered by `changed_at`, then `person_id`.
+          items:
+            $ref: "#/components/schemas/AnalyticsProfile"
+        next_cursor:
+          type: string
+          description: Cursor to send as `after` for the next page. Always present; on an empty page it is the cursor the caller sent.
+
+    AnalyticsFlowNumbers:
+      type: object
+      required: [entered, left_here, drop_off_pct, errors, median_seconds]
+      description: The numbers of one flow step over one period.
+      properties:
+        entered:
+          type: integer
+          description: How many times the step was entered.
+        left_here:
+          type: integer
+          description: How many runs (event center) or exits (bot) stopped at this step.
+        drop_off_pct:
+          type: [number, "null"]
+          description: |
+            `left_here` as a share of `entered`, in percent with one decimal,
+            at most 100. Null when nobody entered the step.
+        errors:
+          type: integer
+          description: Errors booked on the step.
+        median_seconds:
+          type: [integer, "null"]
+          description: Median seconds spent on the step (the median of the daily medians). Null when unknown.
+
+    AnalyticsFlowStep:
+      type: object
+      required: [step, entered, left_here, drop_off_pct, errors, median_seconds, previous]
+      description: One step of a flow, with the numbers of the period and of the previous period.
+      properties:
+        step:
+          type: string
+          description: Name of the step as the event center or the bot reports it.
+        entered:
+          type: integer
+          description: How many times the step was entered in the period.
+        left_here:
+          type: integer
+          description: How many runs or exits stopped at this step in the period.
+        drop_off_pct:
+          type: [number, "null"]
+          description: Share of `entered` that left here, in percent with one decimal. Null when nobody entered.
+        errors:
+          type: integer
+          description: Errors booked on the step in the period.
+        median_seconds:
+          type: [integer, "null"]
+          description: Median seconds spent on the step in the period. Null when unknown.
+        previous:
+          description: The same numbers for the previous period of equal length.
+          allOf:
+            - $ref: "#/components/schemas/AnalyticsFlowNumbers"
+
+    AnalyticsFlow:
+      type: object
+      required: [surface, flow, steps]
+      description: One flow of one surface with its steps.
+      properties:
+        surface:
+          type: string
+          description: Where the flow runs - `bot` or `event_center`.
+        flow:
+          type: string
+          description: Name of the flow. The bot's wizard is `wizard`.
+        steps:
+          type: array
+          description: The steps, most entered first.
+          items:
+            $ref: "#/components/schemas/AnalyticsFlowStep"
+
+    AnalyticsFlowsResponse:
+      type: object
+      required: [surface, from, to, previous_from, previous_to, flows]
+      description: Answer of the flows dashboard.
+      properties:
+        surface:
+          type: string
+          description: The surface filter that was applied, empty for all.
+        from:
+          type: string
+          description: First day of the period, YYYY-MM-DD (UTC).
+        to:
+          type: string
+          description: Last day of the period, YYYY-MM-DD (UTC).
+        previous_from:
+          type: string
+          description: First day of the previous period of equal length.
+        previous_to:
+          type: string
+          description: Last day of the previous period.
+        flows:
+          type: array
+          description: The flows, by surface and name.
+          items:
+            $ref: "#/components/schemas/AnalyticsFlow"
+
+    AnalyticsErrorItem:
+      type: object
+      required: [kind, surface, key, place, count, previous_count, change_pct]
+      description: One repeating error or rage-click place.
+      properties:
+        kind:
+          type: string
+          description: |
+            Which event it is: `ui_error` (key is the error code, place the
+            screen), `wizard_input_error` (key is the reason, place the wizard
+            step) or `rage_click` (key is the screen, place empty).
+        surface:
+          type: string
+          description: Where it happened - `event_center` or `bot`.
+        key:
+          type: string
+          description: The error code, the reason or the screen, depending on `kind`.
+        place:
+          type: string
+          description: The screen or the step the key happened on, empty for a rage click.
+        count:
+          type: integer
+          description: Occurrences in the period.
+        previous_count:
+          type: integer
+          description: Occurrences in the previous period of equal length.
+        change_pct:
+          type: [number, "null"]
+          description: Change of `count` against `previous_count` in percent. Null when the previous count is zero.
+
+    AnalyticsErrorsResponse:
+      type: object
+      required: [surface, from, to, previous_from, previous_to, items]
+      description: Answer of the errors dashboard.
+      properties:
+        surface:
+          type: string
+          description: The surface filter that was applied, empty for all.
+        from:
+          type: string
+          description: First day of the period, YYYY-MM-DD (UTC).
+        to:
+          type: string
+          description: Last day of the period, YYYY-MM-DD (UTC).
+        previous_from:
+          type: string
+          description: First day of the previous period of equal length.
+        previous_to:
+          type: string
+          description: Last day of the previous period.
+        items:
+          type: array
+          description: At most 100 rows, most frequent first.
+          items:
+            $ref: "#/components/schemas/AnalyticsErrorItem"
+
+    AnalyticsTimelineProfile:
+      type: object
+      required: [stage, last_seen_at, visits_30d, engaged_minutes_30d, articles, milestones, activity_score, score_explanation, changed_at]
+      description: The profile the hourly rollup built for a person.
+      properties:
+        stage:
+          type: string
+          description: "`lead`, `applicant`, `organizer` or `selling`."
+        last_seen_at:
+          type: [string, "null"]
+          format: date-time
+          description: Time of the person's latest event, null when there is none.
+        visits_30d:
+          type: integer
+          description: Sessions of the last 30 days.
+        engaged_minutes_30d:
+          type: integer
+          description: Engaged minutes of the last 30 days.
+        articles:
+          type: array
+          description: The latest articles read (path, time, seconds).
+          items:
+            type: object
+            additionalProperties: true
+        milestones:
+          type: object
+          description: Milestone name to the time it happened; `gmv_30d` maps a currency to minor units.
+          additionalProperties: true
+        activity_score:
+          type: integer
+          description: The activity index stored by the last rollup.
+        score_explanation:
+          type: string
+          description: The one line that explains the index, recomputed now (count and decayed weight of each kind of activity).
+        changed_at:
+          type: string
+          format: date-time
+          description: When the profile last changed.
+
+    AnalyticsTimelineSession:
+      type: object
+      required: [id, surface, started_at, ended_at, pages, engaged_seconds, entry]
+      description: One session of a person.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Session id.
+        surface:
+          type: string
+          description: "`site`, `event_center` or `bot`."
+        started_at:
+          type: string
+          format: date-time
+          description: First event of the session.
+        ended_at:
+          type: string
+          format: date-time
+          description: Last event of the session.
+        pages:
+          type: integer
+          description: Pages or screens viewed.
+        engaged_seconds:
+          type: integer
+          description: Active time in seconds.
+        entry:
+          type: object
+          description: Entry path and source of the session (path, source, medium, campaign, ref_host).
+          additionalProperties: true
+
+    AnalyticsTimelineEvent:
+      type: object
+      required: [at, surface, name, props]
+      description: One raw event of a person.
+      properties:
+        at:
+          type: string
+          format: date-time
+          description: Server time of the event.
+        surface:
+          type: string
+          description: "`site`, `event_center` or `bot`."
+        name:
+          type: string
+          description: Event name from the dictionary.
+        props:
+          type: object
+          description: The properties the dictionary allows for the event.
+          additionalProperties: true
+
+    AnalyticsPersonTimeline:
+      type: object
+      required: [person_id, twenty_person_id, user_id, first_touch, last_touch, created_at, profile, sessions, events, next_cursor]
+      description: One page of a person's timeline.
+      properties:
+        person_id:
+          type: string
+          format: uuid
+          description: Id of the analytics person.
+        twenty_person_id:
+          type: [string, "null"]
+          description: The CRM contact this person is linked to, null when none.
+        user_id:
+          type: [string, "null"]
+          format: uuid
+          description: The platform user this person is linked to, null when none.
+        first_touch:
+          type: object
+          description: First marketing touch (source, medium, campaign, ref_host, at). Empty when unknown.
+          additionalProperties: true
+        last_touch:
+          type: object
+          description: Latest marketing touch, same shape as `first_touch`.
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+          description: When analytics first saw the person.
+        profile:
+          description: The profile, null until the rollup has written one. Only on the first page.
+          oneOf:
+            - $ref: "#/components/schemas/AnalyticsTimelineProfile"
+            - type: "null"
+        sessions:
+          type: array
+          description: The newest sessions (at most 100), newest first. Only on the first page, empty on the others.
+          items:
+            $ref: "#/components/schemas/AnalyticsTimelineSession"
+        events:
+          type: array
+          description: One page of events, newest first.
+          items:
+            $ref: "#/components/schemas/AnalyticsTimelineEvent"
+        next_cursor:
+          type: [string, "null"]
+          description: Pass it as `cursor` to get the next, older page. Null on the last page.
+
     PageTrackRequest:
       type: object
       required: [kind]
@@ -10183,6 +10743,276 @@ components:
           description: The utm pairs of the page views, biggest first, at most 20.
           items:
             $ref: "#/components/schemas/PageStatsSource"
+
+    SalesFunnelPage:
+      type: object
+      required: [slug, event_slug]
+      description: A hosted event page, named the way its address names it.
+      properties:
+        slug:
+          type: string
+          description: The organization's or the promoter's slug (the first address segment), matched case-insensitively.
+          example: "acme-theatre"
+        event_slug:
+          type: string
+          description: The event's slug (the second address segment), matched case-insensitively.
+          example: "spring-gala"
+
+    SalesFunnelRequest:
+      type: object
+      required: [step, surface]
+      description: |
+        Body of POST /v1/public/funnel, the buyer funnel beacon (spec 50, stage
+        A7). Name the event EITHER with `feed_token` and `event_id` (the widget)
+        OR with `page` (a page Arena hosts); sending both, or neither, is not
+        counted. The surface follows the addressing: `feed_token` is the
+        `widget` surface only, `page` is `hosted_page` or `tickets_page`. A body
+        that disagrees with itself is not counted (the answer is still 204).
+        Unknown fields are ignored.
+      properties:
+        feed_token:
+          type: string
+          description: The active feed token the event is published to. Required with `event_id`, absent with `page`.
+        event_id:
+          type: string
+          format: uuid
+          description: The event. Required with `feed_token`, absent with `page`.
+        page:
+          description: The hosted page of the event, instead of `feed_token` and `event_id`.
+          allOf:
+            - $ref: "#/components/schemas/SalesFunnelPage"
+        session_id:
+          type: string
+          format: uuid
+          description: |
+            The session the step was taken in. Optional; a session that is not a
+            live session of the event is not counted. `session_open` and
+            `seats_chosen` should carry it, `view` never does.
+        step:
+          type: string
+          description: |
+            How far the visitor got: `view` (the event was shown),
+            `session_open` (a session was opened) or `seats_chosen` (seats or
+            tickets were put in the cart). Any other value is not counted.
+          example: "session_open"
+        surface:
+          type: string
+          description: |
+            Where the visitor was: `widget` (the embedded widget on a seller's
+            own site), `hosted_page` (the hosted event page) or `tickets_page`
+            (the promoter page that lists events). `widget` goes with
+            `feed_token`, the other two with `page`. Any other value, or one that
+            does not fit the addressing, is not counted.
+          example: "widget"
+        utm_source:
+          type: string
+          description: |
+            Optional `utm_source` of the page address. Only the characters
+            `A-Z a-z 0-9 . _ ~ -` are kept (a value with any other character is
+            counted as empty) and it is cut to 64 characters.
+          example: "instagram"
+        utm_campaign:
+          type: string
+          description: Optional `utm_campaign` of the page address, cleaned like `utm_source`.
+          example: "spring"
+
+    SalesFunnelStep:
+      type: object
+      required: [step, count, suspect_count, share_of_previous]
+      description: One step of a sales funnel.
+      properties:
+        step:
+          type: string
+          description: |
+            `view`, `session_open`, `seats_chosen` (counted by the beacon),
+            `checkout_start`, `payment_open` or `paid` (counted from the orders).
+        count:
+          type: [integer, "null"]
+          format: int64
+          description: |
+            People who reached the step. The steps counted from the orders count
+            buyers, not attempts: a buyer who retries the checkout is one
+            (a buyer is the customer or the order's e-mail, per session and
+            day in the venue's zone), so a share of the previous step cannot
+            pass 1 through retries. Null when the step cannot be read for
+            this request: `view` when one session is asked for, because a view
+            belongs to the event, not to a session. Probable bots are not in it.
+        suspect_count:
+          type: integer
+          format: int64
+          description: Hits of the beacon counted apart because the browser looked like a bot. Always 0 for the steps counted from the orders.
+        share_of_previous:
+          type: [number, "null"]
+          format: double
+          description: The count divided by the previous step's count, 0 to 1 and sometimes above 1 (the view counters are a guide). Null for the first step, and when either count is unknown or the previous one is 0.
+
+    SalesFunnelMoney:
+      type: object
+      required: [currency, amount_minor]
+      description: An amount in one currency.
+      properties:
+        currency:
+          type: string
+          description: ISO 4217 code.
+          example: "EUR"
+        amount_minor:
+          type: integer
+          format: int64
+          description: The amount in minor units (cents).
+          example: 5400
+
+    SalesFunnelSession:
+      type: object
+      required: [id, start_at, status, timezone]
+      description: A live session of the event with the zone of its venue.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The session.
+        start_at:
+          type: string
+          description: Start of the session, RFC 3339 in UTC.
+          example: "2026-12-01T19:00:00Z"
+        status:
+          type: string
+          description: The session's status, such as `scheduled` or `cancelled`.
+        timezone:
+          type: [string, "null"]
+          description: IANA zone of the session's venue, null when the venue has none on record.
+
+    SalesFunnelSource:
+      type: object
+      required: [utm_source, utm_campaign, steps, revenue]
+      description: |
+        The funnel of one source, the pair of `utm_source` and `utm_campaign`
+        the visit carried. The server steps take the pair from the checkout's
+        attribution. Visits that carried no utm are the pair of two empty strings.
+      properties:
+        utm_source:
+          type: string
+          description: The cleaned `utm_source`, empty when none.
+        utm_campaign:
+          type: string
+          description: The cleaned `utm_campaign`, empty when none.
+        steps:
+          type: array
+          description: The six steps, in funnel order.
+          items:
+            $ref: "#/components/schemas/SalesFunnelStep"
+        revenue:
+          type: array
+          description: The total of the paid orders of this source minus their succeeded refunds, per currency. A currency whose net is 0 is left out.
+          items:
+            $ref: "#/components/schemas/SalesFunnelMoney"
+
+    SalesFunnelSalesLink:
+      type: object
+      required: [sales_link_id, code, label, checkout_start, paid, revenue]
+      description: What the orders that came through one tracked sales link did (spec 43).
+      properties:
+        sales_link_id:
+          type: string
+          format: uuid
+          description: The sales link.
+        code:
+          type: [string, "null"]
+          description: The link's short code.
+        label:
+          type: [string, "null"]
+          description: The label the organizer gave the link.
+        checkout_start:
+          type: integer
+          format: int64
+          description: Orders that took a hold through the link.
+        paid:
+          type: integer
+          format: int64
+          description: Orders through the link that were paid.
+        revenue:
+          type: array
+          description: The total of the paid orders through the link minus their succeeded refunds, per currency.
+          items:
+            $ref: "#/components/schemas/SalesFunnelMoney"
+
+    SalesFunnelGateway:
+      type: object
+      required: [steps, revenue]
+      description: |
+        The sites that sell through the Bil24 gateway protocol (WordPress
+        plugins, channels with a gateway credential). They have no client
+        steps, so their funnel starts at the cart: `seats_chosen` (carts taken),
+        `checkout_start` (orders created) and `paid`. Their share of a step is
+        taken against the step before in this list.
+      properties:
+        steps:
+          type: array
+          description: Three steps, in order, `seats_chosen`, `checkout_start` and `paid`.
+          items:
+            $ref: "#/components/schemas/SalesFunnelStep"
+        revenue:
+          type: array
+          description: The total of the paid orders of these sites minus their succeeded refunds, per currency.
+          items:
+            $ref: "#/components/schemas/SalesFunnelMoney"
+
+    SalesFunnelResponse:
+      type: object
+      required: [event_id, session_id, from, to, timezone, sessions, steps, revenue, sources, sales_links, gateway]
+      description: |
+        The sales funnel of an event for a window of days: view, session_open,
+        seats_chosen, checkout_start, payment_open, paid. The first three come
+        from the anonymous beacon of the widget and the pages, the last three
+        from the orders. A guide for the organizer, not proof for an advertising
+        account: a bot may look like a person and a person may block the beacon.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: The event.
+        session_id:
+          type: [string, "null"]
+          format: uuid
+          description: The session the answer is limited to, null for the whole event.
+        from:
+          type: string
+          description: First day of the window, `YYYY-MM-DD`.
+        to:
+          type: string
+          description: Last day of the window (inclusive), `YYYY-MM-DD`.
+        timezone:
+          type: [string, "null"]
+          description: IANA zone of the event's venue that decides which day a step belongs to; null (UTC days) while the event has no session.
+        sessions:
+          type: array
+          description: The live sessions of the event, for the session picker, each with the zone of its own venue.
+          items:
+            $ref: "#/components/schemas/SalesFunnelSession"
+        steps:
+          type: array
+          description: The six steps of the sites that sell through the widget, the hosted pages or the API, in funnel order.
+          items:
+            $ref: "#/components/schemas/SalesFunnelStep"
+        revenue:
+          type: array
+          description: The total of the paid orders of those sites minus their succeeded refunds, per currency.
+          items:
+            $ref: "#/components/schemas/SalesFunnelMoney"
+        sources:
+          type: array
+          description: The funnel by utm pair, the biggest first, at most 50.
+          items:
+            $ref: "#/components/schemas/SalesFunnelSource"
+        sales_links:
+          type: array
+          description: The orders by tracked sales link, the most paid first.
+          items:
+            $ref: "#/components/schemas/SalesFunnelSalesLink"
+        gateway:
+          description: The sites on the Bil24 gateway protocol; null when the event has no cart or order from them in the window.
+          oneOf:
+            - $ref: "#/components/schemas/SalesFunnelGateway"
+            - type: "null"
 
     HostedPageResponse:
       type: object
@@ -22838,6 +23668,9 @@ components:
           additionalProperties:
             type: string
           description: "Optional marketing attribution (source, medium, campaign, term, content, ref)."
+        aid:
+          type: string
+          description: "Optional visitor id of arenasoldout.com (cookie aso_aid, set only after the analytics consent): 8-40 characters of A-Z a-z 0-9 _ -. Anything else is ignored. Product analytics joins the visit with the application through it."
         turnstile_token:
           type: string
           description: "Cloudflare Turnstile response token; verified by the platform."
@@ -28292,6 +29125,636 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/t:
+    post:
+      operationId: postAnalyticsSite
+      summary: Record a batch of website behaviour events (product analytics)
+      description: |
+        Receiver of the product analytics script of arenasoldout.com (spec 50,
+        section 4.2). No JWT, no cookie. The body is a batch of at most 50
+        events and at most 16 KiB. Each event name and property is checked
+        against the platform's dictionary: an unknown event is dropped whole,
+        an unknown property silently, strings are cut to 200 characters. The
+        server's clock is authoritative; the client's `at` only keeps the order
+        inside the batch and is ignored when it is more than a day from the
+        server's.
+
+        The visitor is `aid` (only after consent), else the page-view id `pv`
+        (anonymous). A batch with neither usable identifier stores nothing. A
+        `cid` (the contact code of a link in one of our e-mails) that exists
+        also writes one server-side `email_click` event.
+
+        The answer is always 204 with an empty body, whatever was stored or
+        refused, including a request over the limit of 120 per minute per
+        client address; the receiver tells nothing about the reason. Only a
+        body that is not readable JSON, or is larger than 16 KiB, is 400. The
+        client's address and browser are used for the limit and the suspect
+        flag and are stored nowhere.
+      tags: [PublicFeed]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyticsBatchRequest"
+      responses:
+        "204":
+          description: Accepted, or silently refused. Empty body.
+        "400":
+          description: The body is not a readable JSON object or is over 16 KiB (`track.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/me/t:
+    post:
+      operationId: postAnalyticsMe
+      summary: Record a batch of event center behaviour events (product analytics)
+      description: |
+        Receiver of the product analytics script of the event center (spec 50,
+        section 4.2). Same body, same dictionary and same always-204 answer as
+        `POST /v1/t`, but the surface is `event_center` and the person is the
+        signed-in user.
+
+        The user is taken from the token and never from the body. `org_id` is
+        the organization of the current screen: it is stored only when the
+        caller is a member of it (or a platform superadmin), otherwise it is
+        stored as empty. Limit: 300 requests per minute per user. `aid`, `cid`
+        and `pv` are ignored here.
+      tags: [v1, iam]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyticsBatchRequest"
+      responses:
+        "204":
+          description: Accepted, or silently refused. Empty body.
+        "400":
+          description: The body is not a readable JSON object or is over 16 KiB (`track.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT Authorization header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/analytics/contact-codes:
+    post:
+      operationId: postV1AdminAnalyticsContactCodes
+      summary: Admin - issue contact codes for CRM contacts (product analytics)
+      description: |
+        Returns one `cid` code per CRM person id (spec 50, section 3). The
+        mailing workflow asks for the codes just before it sends and appends
+        `?cid=<code>` to every link to our website, so a click can be tied to
+        the contact. A contact that already has a code gets the same one back,
+        so every mailing to it carries one stable code. New codes are 10
+        characters of `abcdefghjkmnpqrstuvwxyz23456789`.
+
+        At most 500 ids per call; the answer holds one entry per distinct id, in
+        the order sent. Requires JWT, `superadmin.read` and `X-Admin-Reason`.
+        The call is audited (`v1.admin.analytics.contact_codes.issue`) on the
+        transaction that issues the codes; without a durable audit writer
+        nothing is changed and the answer is 503.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the call (recorded in the audit log).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyticsContactCodesRequest"
+      responses:
+        "200":
+          description: One code per contact.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsContactCodesResponse"
+        "400":
+          description: The body is not a readable JSON object (`analytics.invalid_body`) or X-Admin-Reason is missing (`superadmin.missing_reason`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold superadmin.read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: 'The list is empty, longer than 500, or holds an id that is not 1 to 64 characters of letters, digits and `_ . : -` (`analytics.invalid_twenty_person_ids`).'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database or durable audit log unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/analytics/profiles:
+    get:
+      operationId: getV1AdminAnalyticsProfiles
+      summary: Admin - profiles that changed since a point in time (product analytics)
+      description: |
+        The feed the CRM sync pulls (spec 50, section 9): one entry per person
+        whose profile was rebuilt with a different result, oldest change first.
+        Only profiles changed at or before the start of the last FINISHED
+        rollup run are served, so a profile that is still being committed never
+        appears half-done and a client that keeps its cursor cannot miss one.
+        The e-mail address is resolved when the request is served, from the
+        person's user or organizer application, and is never stored in the
+        analytics schema; a person with no known address is still listed (the
+        CRM sync skips it unless it has a `twenty_person_id`).
+
+        Pages are keyset pages on (`changed_at`, `person_id`), exclusive: send
+        the `next_cursor` of a page as `after` to get the page that follows. It
+        is ALWAYS present; on an empty page it is the cursor the caller sent, so
+        a client simply stores it. Without `after` (and `changed_since`) the
+        listing starts at the beginning.
+
+        `may_create_contact` tells whether the sync may CREATE a CRM contact
+        for the person when none is found: only a person with an organizer
+        application, or one already tied to a CRM contact. An account-only user
+        (an invited manager) can have an existing card updated, never a new
+        one.
+
+        `activity_explanation` is built from the stored profile and sessions;
+        visits to the price page are not stored per visit, so their share shows
+        as `price page and other`.
+
+        Requires JWT and `superadmin.read`.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: changed_since
+          in: query
+          description: RFC 3339 time. Only profiles changed at or after it are returned (a lower bound for a client without a cursor); absent means all.
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          description: Page size, 1 to 200 (default 100).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: after
+          in: query
+          description: Opaque cursor, the `next_cursor` of the previous page; the page starts strictly after it.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of changed profiles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsProfilesResponse"
+        "400":
+          description: Unreadable `changed_since` (`analytics.invalid_changed_since`), `limit` (`analytics.invalid_limit`) or `after` (`analytics.invalid_cursor`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold superadmin.read.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/service/analytics/contact-codes:
+    post:
+      operationId: postV1ServiceAnalyticsContactCodes
+      summary: Service - issue contact codes for CRM contacts (n8n sync)
+      description: |
+        Returns one `cid` code per CRM person id (spec 50, section 3). The
+        mailing workflow asks for the codes just before it sends and appends
+        `?cid=<code>` to every link to our website, so a click can be tied to
+        the contact. A contact that already has a code gets the same one back,
+        so every mailing to it carries one stable code. New codes are 10
+        characters of `abcdefghjkmnpqrstuvwxyz23456789`.
+
+        At most 500 ids per call; the answer holds one entry per distinct id, in
+        the order sent. Called by the n8n CRM sync with `Authorization: Bearer <ANALYTICS_SYNC_TOKEN>`,
+        not by a person (the same call for a human superadmin is
+        `POST /v1/admin/analytics/contact-codes`). Needs `X-Admin-Reason`. While
+        `ANALYTICS_SYNC_TOKEN` is unset the route answers 503.
+        The call is audited (`v1.admin.analytics.contact_codes.issue`, actor type
+        `service`, `metadata.actor_label` `n8n_crm_sync`) on the
+        transaction that issues the codes; without a durable audit writer
+        nothing is changed and the answer is 503.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for the call (recorded in the audit log).
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalyticsContactCodesRequest"
+      responses:
+        "200":
+          description: One code per contact.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsContactCodesResponse"
+        "400":
+          description: The body is not a readable JSON object (`analytics.invalid_body`) or X-Admin-Reason is missing (`superadmin.missing_reason`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or wrong service token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: 'The list is empty, longer than 500, or holds an id that is not 1 to 64 characters of letters, digits and `_ . : -` (`analytics.invalid_twenty_person_ids`).'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The service token is not configured (`analytics.sync_not_configured`), the database or the durable audit log is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/service/analytics/profiles:
+    get:
+      operationId: getV1ServiceAnalyticsProfiles
+      summary: Service - changed profiles for the CRM sync (n8n)
+      description: |
+        The feed the CRM sync pulls (spec 50, section 9): one entry per person
+        whose profile was rebuilt with a different result, oldest change first.
+        Only profiles changed at or before the start of the last FINISHED
+        rollup run are served, so a profile that is still being committed never
+        appears half-done and a client that keeps its cursor cannot miss one.
+        The e-mail address is resolved when the request is served, from the
+        person's user or organizer application, and is never stored in the
+        analytics schema; a person with no known address is still listed (the
+        CRM sync skips it unless it has a `twenty_person_id`).
+
+        Pages are keyset pages on (`changed_at`, `person_id`), exclusive: send
+        the `next_cursor` of a page as `after` to get the page that follows. It
+        is ALWAYS present; on an empty page it is the cursor the caller sent, so
+        a client simply stores it. Without `after` (and `changed_since`) the
+        listing starts at the beginning.
+
+        `may_create_contact` tells whether the sync may CREATE a CRM contact
+        for the person when none is found: only a person with an organizer
+        application, or one already tied to a CRM contact. An account-only user
+        (an invited manager) can have an existing card updated, never a new
+        one.
+
+        `activity_explanation` is built from the stored profile and sessions;
+        visits to the price page are not stored per visit, so their share shows
+        as `price page and other`.
+
+        Called by the n8n CRM sync with `Authorization: Bearer <ANALYTICS_SYNC_TOKEN>`;
+        the same listing for a human superadmin is
+        `GET /v1/admin/analytics/profiles`. While `ANALYTICS_SYNC_TOKEN` is unset the
+        route answers 503.
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: changed_since
+          in: query
+          description: RFC 3339 time. Only profiles changed at or after it are returned (a lower bound for a client without a cursor); absent means all.
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          description: Page size, 1 to 200 (default 100).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: after
+          in: query
+          description: Opaque cursor, the `next_cursor` of the previous page; the page starts strictly after it.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A page of changed profiles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsProfilesResponse"
+        "400":
+          description: Unreadable `changed_since` (`analytics.invalid_changed_since`), `limit` (`analytics.invalid_limit`) or `after` (`analytics.invalid_cursor`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or wrong service token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The service token is not configured (`analytics.sync_not_configured`) or the database is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/analytics/flows:
+    get:
+      operationId: getAdminAnalyticsFlows
+      summary: Where people leave the flows of the event center and the bot (superadmin)
+      description: |
+        UX dashboard of the platform's own product analytics (spec 50, section
+        10). For every flow and step of `analytics.flow_daily` over the period:
+        how many entered the step, how many left the flow there, the drop-off
+        share, the errors booked on the step and the median seconds spent on
+        it (the median of the daily medians), together with the same numbers
+        for the previous period of equal length. Requires `superadmin.read`;
+        it is read-only and needs no `X-Admin-Reason`.
+
+        Days are UTC days, both ends inclusive. Without `from` and `to` the
+        period is the last seven days up to today. Steps of one flow are
+        listed by the number of people who entered them, most first. The bot's
+        wizard is the flow `wizard`; errors that happened on a screen outside
+        any flow are the pseudo flow `_screens`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: surface
+          description: Only this surface - `bot`, `event_center` or `site`. Empty or absent means all.
+          in: query
+          required: false
+          schema: { type: string }
+        - name: from
+          description: First day of the period, YYYY-MM-DD (UTC). Default is six days before `to`.
+          in: query
+          required: false
+          schema: { type: string }
+        - name: to
+          description: Last day of the period, YYYY-MM-DD (UTC). Default is today. At most 180 days after `from`.
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: The flows with the numbers of both periods.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsFlowsResponse"
+        "400":
+          description: |
+            `analytics.invalid_surface` - surface is not one of the three;
+            `analytics.invalid_period` - from or to is not a date, from is after to,
+            or the period is longer than 180 days.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT Authorization header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Insufficient permission (`superadmin.read`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The analytics data could not be read (`analytics.read_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/analytics/errors:
+    get:
+      operationId: getAdminAnalyticsErrors
+      summary: Most frequent errors and rage clicks of the event center and the bot (superadmin)
+      description: |
+        UX dashboard of the platform's own product analytics (spec 50, section
+        10). Counts, over the period and over the previous period of equal
+        length, the `ui_error` codes of the event center (with the screen),
+        the `wizard_input_error` reasons of the bot (with the wizard step) and
+        the `rage_click` events (by screen), most frequent first, at most 100
+        rows. Robot traffic (`suspect`) is left out. Requires `superadmin.read`;
+        it is read-only and needs no `X-Admin-Reason`.
+
+        Days are UTC days, both ends inclusive. Without `from` and `to` the
+        period is the last seven days up to today.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: surface
+          description: Only this surface - `bot`, `event_center` or `site`. Empty or absent means all.
+          in: query
+          required: false
+          schema: { type: string }
+        - name: from
+          description: First day of the period, YYYY-MM-DD (UTC). Default is six days before `to`.
+          in: query
+          required: false
+          schema: { type: string }
+        - name: to
+          description: Last day of the period, YYYY-MM-DD (UTC). Default is today. At most 180 days after `from`.
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: The errors with the counts of both periods.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsErrorsResponse"
+        "400":
+          description: |
+            `analytics.invalid_surface` - surface is not one of the three;
+            `analytics.invalid_period` - from or to is not a date, from is after to,
+            or the period is longer than 180 days.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT Authorization header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Insufficient permission (`superadmin.read`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The analytics data could not be read (`analytics.read_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/admin/analytics/people/{person_id}/timeline:
+    get:
+      operationId: getAdminAnalyticsPersonTimeline
+      summary: One person's profile, sessions and events (superadmin)
+      description: |
+        The page behind the `arena_timeline_url` of a CRM card (spec 50,
+        sections 9 and 10). Returns the person's profile (stage, touches,
+        milestones, activity index with the one line that explains it), their
+        newest sessions and one page of their raw events, newest first. The
+        events are those written under any of the person's identifiers
+        (visitor id, contact code, user, Telegram hash); robot traffic is
+        left out. The answer carries no e-mail, name or typed text, only
+        dictionary event names and their allowed properties.
+
+        The first page (no `cursor`) also carries the profile and the
+        sessions; a page fetched with a `cursor` carries events only.
+        Requires `superadmin.read`; it is read-only and needs no
+        `X-Admin-Reason`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: person_id
+          description: Id of the analytics person.
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: limit
+          description: Events per page, 1 to 200. Default 50. A value outside the range is refused with 400 `analytics.invalid_limit`.
+          in: query
+          required: false
+          schema: { type: integer, default: 50, minimum: 1, maximum: 200 }
+        - name: cursor
+          description: The `next_cursor` of the previous page. Absent for the first page.
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: The person's timeline page.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsPersonTimeline"
+        "400":
+          description: |
+            `analytics.invalid_person_id` - not a UUID; `analytics.invalid_limit` -
+            not an integer from 1 to 200; `analytics.invalid_cursor` - not a cursor this
+            route issued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT Authorization header.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Insufficient permission (`superadmin.read`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such person (`analytics.person_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The analytics data could not be read (`analytics.read_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The database is unavailable (`dependency.database_unavailable`).
           content:
             application/json:
               schema:
@@ -49675,6 +51138,65 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/public/funnel:
+    post:
+      operationId: postPublicFunnel
+      summary: Count a step of the buyer funnel
+      description: |
+        The buyer funnel beacon (spec 50, stage A7), sent by the widget and the
+        hosted pages. No JWT, no cookie, nothing kept on the device. One call
+        adds one hit to a counter row of the event: the day (the calendar day in
+        the venue's zone), the step (`view`, `session_open`, `seats_chosen`),
+        the surface, the session and the two cleaned utm values. The visitor's
+        IP address, User-Agent, country and time of day are never stored and
+        never logged; an obvious bot (by User-Agent, or none) is counted in
+        `suspect_hits` instead of `hits`. The same visitor's identical step in
+        one day is counted once: the filter is a salted hash kept in the memory
+        of the server until the end of the UTC day.
+
+        Name the event with `feed_token` and `event_id` (it must be published to
+        that active token), or with `page` (resolved like
+        `GET /v1/public/pages/{org_slug}/{event_slug}`). An event or session that
+        does not exist, or is not published, is answered 204 like a counted step
+        and is not counted: the route tells nothing about which events exist. One
+        event keeps at most 200 different utm pairs a day; more are counted
+        without utm.
+
+        Rate limited by the context (`PUBLIC_PAGE_TRACK_EVENT_RATE_LIMIT`) and by
+        client IP (`PUBLIC_PAGE_TRACK_IP_RATE_LIMIT`) before any database read; a
+        request over a limit is answered 429 `funnel.rate_limited` and is not
+        counted. The server steps (`checkout_start`, `payment_open`, `paid`) are
+        not sent here; `GET /v1/organizations/{org_id}/events/{event_id}/funnel`
+        counts them from the orders.
+      tags: [PublicFeed]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesFunnelRequest"
+      responses:
+        "204":
+          description: Counted, or deliberately not counted (a duplicate, an unknown step, surface, event or session, or a surface that does not fit the addressing).
+        "400":
+          description: The body is not readable JSON (`funnel.invalid_body`). Anything else wrong with it is answered 204 and not counted, so the route tells nothing about why.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limited (`funnel.rate_limited`, with Retry-After).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available, or the hit could not be written (`funnel.unavailable`). Never 502, which Cloudflare would replace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/public/pages/{org_slug}:
     get:
       operationId: getPublicPromoterPage
@@ -57604,9 +59126,10 @@ paths:
         Replaces the settings of the event's live programme (200), or starts a new
         one when it has none or the last one ended (201). A buyer of the event who
         paid gets a personal code; a friend who uses it gets `friend_discount_pct`
-        off, and the referrer gets `cashback_pct` of what the friend paid back on the
-        card they paid with, at once, capped at `cashback_cap_pct` of the referrer's
-        own payment.
+        off, and the referrer gets `cashback_pct` of the friend's tickets (or goods)
+        after the discount, without the service charge, delivery or other fees, back
+        on the card they paid with, at once, capped at `cashback_cap_pct` of the
+        referrer's own tickets (or goods) on the same base.
 
         Changing the percentages affects NEW codes only: a code already issued keeps
         its discount, and a reward keeps the cashback it was written with. Starting
@@ -58132,9 +59655,10 @@ paths:
         Replaces the settings of the shop's live programme (200), or starts a new
         one when it has none or the last one ended (201); a shop has one live
         programme at a time. A buyer who paid for a shop order gets a personal code; a friend who uses it gets `friend_discount_pct`
-        off, and the referrer gets `cashback_pct` of what the friend paid back on the
-        card they paid with, at once, capped at `cashback_cap_pct` of the referrer's
-        own payment.
+        off, and the referrer gets `cashback_pct` of the friend's tickets (or goods)
+        after the discount, without the service charge, delivery or other fees, back
+        on the card they paid with, at once, capped at `cashback_cap_pct` of the
+        referrer's own tickets (or goods) on the same base.
 
         Changing the percentages affects NEW codes only: a code already issued keeps
         its discount, and a reward keeps the cashback it was written with. Starting
@@ -58612,6 +60136,104 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: Internal server error (`page_stats.failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database not available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/funnel:
+    get:
+      operationId: getV1OrganizationsOrgIdEventsEventIdFunnel
+      summary: Sales funnel of the event
+      description: |
+        How far buyers got, step by step: view, session_open, seats_chosen
+        (counted by the anonymous beacon `POST /v1/public/funnel` of the widget
+        and the hosted pages), then checkout_start, payment_open and paid
+        (counted live from the orders). Each step has its count and its share of
+        the previous one; paid orders add the revenue per currency, net of
+        succeeded refunds, and the order steps count buyers, not attempts. The same
+        steps are split by utm pair and, for the orders, by tracked sales link.
+
+        Sites that sell through the Bil24 gateway protocol have no client steps;
+        they are reported apart in `gateway`, whose funnel starts at the cart.
+        By default the window is the last 30 days ending today in the venue's
+        zone; `from` and `to` (`YYYY-MM-DD`, inclusive) set it, at most 366
+        days. `session_id` limits the answer to one session; the `view` step
+        then has no count, because a view belongs to the event. The view
+        counters are a guide for the organizer, not proof for an advertising
+        account.
+
+        Requires `report.read` (the owner and the manager hold it). `from` and `to` are
+        calendar days in the venue's zone. An event of
+        another organization (or a deleted one) is a 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: false
+          description: First day, `YYYY-MM-DD`. Default 29 days before `to`.
+          schema: { type: string }
+        - name: to
+          in: query
+          required: false
+          description: Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone.
+          schema: { type: string }
+        - name: session_id
+          in: query
+          required: false
+          description: Limit the answer to one session of the event.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The funnel of the window.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesFunnelResponse"
+        "400":
+          description: A path parameter or `session_id` is not a UUID (`funnel.invalid_session`), or the window is wrong (`funnel.invalid_date`, `funnel.invalid_range`, `funnel.range_too_long`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `report.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found, or not part of this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`funnel.failed`).
           content:
             application/json:
               schema:

@@ -107,6 +107,7 @@ type startRequest struct {
 	Locale         string            `json:"locale"`
 	Source         string            `json:"source"`
 	UTM            map[string]string `json:"utm"`
+	AID            string            `json:"aid"`
 	TurnstileToken string            `json:"turnstile_token"`
 	Honeypot       string            `json:"honeypot"`
 }
@@ -132,6 +133,7 @@ func (h *Handler) HandleStart(w http.ResponseWriter, r *http.Request) {
 	started, err := h.svc.Start(r.Context(), onboarding.StartInput{
 		FirstName: req.FirstName, LastName: req.LastName, Email: req.Email, Phone: req.Phone,
 		Locale: req.Locale, Source: onboarding.SourceSite, UTM: req.UTM, IPHash: h.hashIP(ip),
+		AID: req.AID,
 	})
 	if err != nil {
 		h.fail(w, r, "start", err)

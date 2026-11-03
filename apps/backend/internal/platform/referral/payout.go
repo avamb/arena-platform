@@ -165,7 +165,7 @@ func (s *Service) prepare(rw gen.ReferralRewardRow, referrer gen.ReferralOrderFa
 			pay.ID).Scan(&cashback, &other); err != nil {
 			return nil, err
 		}
-		amount, _ := ApplyCap(cur.AmountMinor, referrer.Total, cashback, other, int(cur.CapPct))
+		amount, _ := ApplyCap(cur.AmountMinor, ItemsBase(referrer.Subtotal, referrer.Discount), cashback, other, int(cur.CapPct))
 		if amount == 0 {
 			return nil, &outcome{state: StateCapped, reason: "cap_reached"}
 		}

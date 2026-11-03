@@ -4,7 +4,12 @@ on:
   push:
     branches:
       - master
+  # ready_for_review is listed so a draft that is marked ready gets its run;
+  # draft PRs themselves run nothing (see the changes job).
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  # Full run of every job on demand (Actions tab -> CI -> Run workflow).
+  workflow_dispatch:
 
 # Least-privilege default: every job gets read-only token unless it declares more.
 permissions:
@@ -16,11 +21,89 @@ concurrency:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────
+  # Job 0: Changes — decides which jobs a pull request needs.
+  #
+  # Actions minutes are scarce (private repo, free plan: one full run is
+  # ~85 minutes). A push to master and a manual run run EVERYTHING; a pull
+  # request runs only the jobs whose area it touches, and a draft pull
+  # request runs nothing. A change to this file runs everything.
+  #
+  # Go jobs run unless every changed file is in a place the Go tests never
+  # read: a frontend app, packages/, the spec folders, AGENTS.md /
+  # CLAUDE.md, or docs/ outside
+  # docs/ops/ and docs/text_style_standard_ru.md (Go tests read those).
+  # When a new Go test starts reading a file outside apps/backend, check
+  # that its folder is not in GO_SKIP below.
+  # ─────────────────────────────────────────────────────────────────
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    permissions:
+      contents: read
+    outputs:
+      go: ${{ steps.detect.outputs.go }}
+      admin: ${{ steps.detect.outputs.admin }}
+      tickets: ${{ steps.detect.outputs.tickets }}
+      shop: ${{ steps.detect.outputs.shop }}
+      rich: ${{ steps.detect.outputs.rich }}
+      ec: ${{ steps.detect.outputs.ec }}
+      ec_live: ${{ steps.detect.outputs.ec_live }}
+      widget: ${{ steps.detect.outputs.widget }}
+      widget_e2e: ${{ steps.detect.outputs.widget_e2e }}
+      venue: ${{ steps.detect.outputs.venue }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed areas
+        id: detect
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          areas="go admin tickets shop rich ec ec_live widget widget_e2e venue"
+          all() { for a in $areas; do echo "$a=$1" >> "$GITHUB_OUTPUT"; done; echo "all areas: $1"; }
+
+          if [ "$EVENT_NAME" != "pull_request" ]; then all true; exit 0; fi
+          if [ -z "$BASE_SHA" ] || ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then all true; exit 0; fi
+
+          files=$(git diff --name-only "$BASE_SHA"...HEAD)
+          echo "changed files:"; echo "$files"
+          if [ -z "$files" ] || echo "$files" | grep -qx '\.github/workflows/ci\.yml'; then all true; exit 0; fi
+
+          has() { echo "$files" | grep -qE "$1" && echo true || echo false; }
+
+          GO_SKIP='^(apps/(admin-web|event-center|rich-editor|shop-page|tickets-page|venue-svg-generator|widget)/|packages/|00_project_control/|02_product_and_market_research/|08_architecture/|09_autoforge/|claude-progress|AGENTS\.md$|CLAUDE\.md$)'
+          # bash -e: grep exits 1 on no match, hence the "|| true".
+          go_files=$( { echo "$files" | grep -vE "$GO_SKIP" | grep -vE '^docs/'
+                        echo "$files" | grep -E '^docs/(ops/|text_style_standard_ru\.md)'; } || true )
+          go=false; [ -n "$(echo "$go_files" | tr -d '[:space:]')" ] && go=true
+
+          openapi='^(apps/backend/openapi/|package(-lock)?\.json$)'
+          admin=$(has "^apps/admin-web/|$openapi")
+          tickets=$(has '^apps/tickets-page/|^apps/backend/internal/platform/richtext/testdata/')
+          shop=$(has '^apps/shop-page/')
+          rich=$(has '^apps/rich-editor/')
+          ec=$(has "^apps/event-center/|^apps/rich-editor/|^apps/widget/src/|^packages/arena-track/|$openapi")
+          widget=$(has '^apps/widget/|^docs/widget-embed/')
+          venue=$(has '^apps/venue-svg-generator/')
+          ec_live=false; { [ "$ec" = true ] || [ "$go" = true ]; } && ec_live=true
+          widget_e2e=false; { [ "$widget" = true ] || [ "$go" = true ]; } && widget_e2e=true
+
+          for a in $areas; do echo "$a=${!a}" >> "$GITHUB_OUTPUT"; echo "$a: ${!a}"; done
+
+  # ─────────────────────────────────────────────────────────────────
   # Job 1: Lint — static analysis via golangci-lint
   # ─────────────────────────────────────────────────────────────────
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     timeout-minutes: 15
     permissions:
       contents: read
@@ -48,7 +131,10 @@ jobs:
   test:
     name: Unit / Race
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    # 20 minutes was not enough on the private repo's runners (2026-11-02).
+    timeout-minutes: 35
     permissions:
       contents: read
 
@@ -115,6 +201,8 @@ jobs:
   integration:
     name: Integration (PostgreSQL + Testcontainers)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     timeout-minutes: 30
     permissions:
       contents: read
@@ -202,6 +290,8 @@ jobs:
   openapi-check:
     name: OpenAPI Check (Go types + TS client drift)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     timeout-minutes: 10
     permissions:
       contents: read
@@ -258,6 +348,8 @@ jobs:
   admin-build:
     name: Admin (unit / build / container smoke)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.admin == 'true'
     timeout-minutes: 20
     permissions:
       contents: read
@@ -352,6 +444,8 @@ jobs:
   tickets-page-build:
     name: Tickets page (unit / build / container smoke)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.tickets == 'true'
     timeout-minutes: 15
     permissions:
       contents: read
@@ -414,6 +508,8 @@ jobs:
   shop-page-build:
     name: Shop page (unit / build / container smoke)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.shop == 'true'
     timeout-minutes: 15
     permissions:
       contents: read
@@ -481,6 +577,8 @@ jobs:
   rich-editor-build:
     name: Rich editor (unit / build)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rich == 'true'
     timeout-minutes: 10
     permissions:
       contents: read
@@ -520,6 +618,8 @@ jobs:
   event-center-build:
     name: Event center (unit / build / smoke / container smoke)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.ec == 'true'
     timeout-minutes: 20
     permissions:
       contents: read
@@ -536,6 +636,7 @@ jobs:
           cache-dependency-path: |
             apps/event-center/package-lock.json
             apps/rich-editor/package-lock.json
+            packages/arena-track/package-lock.json
 
       - name: Install dependencies
         run: npm --prefix apps/event-center ci
@@ -547,6 +648,15 @@ jobs:
         run: |
           npm --prefix apps/rich-editor ci
           npm --prefix apps/rich-editor run build
+
+      # The shared analytics tracker (spec 50, packages/arena-track): the event center
+      # imports its TypeScript source through the @arena-track alias, so only its own
+      # type-check and tests need an install of their own.
+      - name: Shared tracker (arena-track) type-check and tests
+        run: |
+          npm --prefix packages/arena-track ci
+          npm --prefix packages/arena-track run type-check
+          npm --prefix packages/arena-track test
 
       - name: Type-check
         run: npm --prefix apps/event-center run type-check
@@ -629,6 +739,8 @@ jobs:
   event-center-live:
     name: Event center (live twin tests, real backend)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.ec_live == 'true'
     timeout-minutes: 25
     permissions:
       contents: read
@@ -726,6 +838,8 @@ jobs:
   venue-svg-generator:
     name: Venue SVG generator (pytest / docker build)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.venue == 'true'
     timeout-minutes: 15
     permissions:
       contents: read
@@ -733,30 +847,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Detect changes in the generator
-        id: changes
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          run=true
-          # Compare against the base only when there is one; a new branch or a
-          # force push has no usable "before" and runs the job.
-          if [ -n "$BASE_SHA" ] && ! echo "$BASE_SHA" | grep -qE '^0+$' && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
-            if git diff --name-only "$BASE_SHA" HEAD | grep -qE '^(apps/venue-svg-generator/|\.github/workflows/ci\.yml$)'; then
-              run=true
-            else
-              run=false
-            fi
-          fi
-          echo "run=$run" >> "$GITHUB_OUTPUT"
-          echo "venue-svg-generator job runs: $run"
 
       - name: Set up Python
-        if: steps.changes.outputs.run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -764,24 +856,19 @@ jobs:
           cache-dependency-path: apps/venue-svg-generator/requirements-dev.txt
 
       - name: Install dependencies
-        if: steps.changes.outputs.run == 'true'
         run: pip install -r apps/venue-svg-generator/requirements-dev.txt
 
       - name: Unit tests (pytest)
-        if: steps.changes.outputs.run == 'true'
         working-directory: apps/venue-svg-generator
         run: python -m pytest -q -rs
 
       - name: Build the Docker image
-        if: steps.changes.outputs.run == 'true'
         run: docker build -t arena_new/arena-venue-gen:ci apps/venue-svg-generator
 
       - name: Image smoke (the CLI starts)
-        if: steps.changes.outputs.run == 'true'
         run: docker run --rm arena_new/arena-venue-gen:ci python -m m1_product --help
 
       - name: Image smoke (the HTTP service answers /healthz)
-        if: steps.changes.outputs.run == 'true'
         run: |
           docker run -d --name venue-gen-smoke -p 18090:8090 arena_new/arena-venue-gen:ci
           for i in $(seq 1 20); do
@@ -806,6 +893,8 @@ jobs:
   widget:
     name: Widget (unit / build / size / mock E2E)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.widget == 'true'
     timeout-minutes: 20
     permissions:
       contents: read
@@ -880,6 +969,8 @@ jobs:
   widget-acceptance:
     name: Widget Acceptance (real backend)
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.widget_e2e == 'true'
     timeout-minutes: 30
     permissions:
       contents: read

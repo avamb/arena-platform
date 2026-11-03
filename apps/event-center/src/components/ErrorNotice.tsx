@@ -4,9 +4,11 @@
  */
 import { describeApiError } from "@/lib/errors";
 import { useI18n } from "@/lib/i18n";
+import { useReportUiError } from "@/lib/analytics/hooks";
 
 export function ErrorNotice({ error, testId = "error-notice" }: { error: unknown; testId?: string }) {
   const { t } = useI18n();
+  useReportUiError(error);
   const text = describeApiError(error, t);
   return (
     <div className="notice notice-bad" role="alert" data-testid={testId}>

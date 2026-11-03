@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/analytics"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventbot"
@@ -87,6 +88,27 @@ func run() error {
 	}
 	defer pool.Close()
 
+	if cfg.AnalyticsTGHashSecret == "" {
+		logger.Warn("ANALYTICS_TG_HASH_SECRET is not set: the bot writes no tg identifier into product analytics")
+	}
+
+	// The bot's behaviour events (spec 50 §4.4) go to analytics.events through
+	// the same buffered writer arena-api uses. Closing it writes what is still
+	// buffered, and runs before the pool is closed (defers run last-in first).
+	analyticsWriter := analytics.NewWriter(analytics.Options{
+		DB:          pool.Pool,
+		Logger:      logger,
+		Dropped:     metrics.AnalyticsDroppedTotal,
+		FlushFailed: metrics.AnalyticsFlushFailedTotal,
+	})
+	defer func() {
+		flushCtx, cancelFlush := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancelFlush()
+		if err := analyticsWriter.Close(flushCtx); err != nil {
+			logger.Warn("analytics: flush at shutdown incomplete", "error", err.Error())
+		}
+	}()
+
 	bundle, err := i18n.NewBundle()
 	if err != nil {
 		return fmt.Errorf("load i18n bundle: %w", err)
@@ -99,6 +121,9 @@ func run() error {
 		Minter:  eventbot.NewTokenMinter(cfg.JWTSecretStub, cfg.JWTIssuer, cfg.JWTAudience),
 		Texts:   eventbot.NewTexts(bundle),
 		Logger:  logger,
+
+		Analytics:             analyticsWriter,
+		AnalyticsTGHashSecret: cfg.AnalyticsTGHashSecret,
 
 		TicketsBaseURL: cfg.PublicTicketsBaseURL,
 

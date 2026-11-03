@@ -193,7 +193,7 @@ func TestReferralCashback_InSalesReports(t *testing.T) {
 		t.Errorf("foreign org lookup = %v, %v", rows, err)
 	}
 
-	// The post-event report: the cashback is its own line (migration 0192).
+	// The post-event report: the cashback is its own line (migration 0195).
 	agg, err := q.AggregateReferralCashbackForEvent(ctx, event)
 	if err != nil || agg.Quantity != 1 || agg.GrossAmount != 4545 || agg.Currency != "EUR" {
 		t.Fatalf("AggregateReferralCashbackForEvent = %+v, %v", agg, err)

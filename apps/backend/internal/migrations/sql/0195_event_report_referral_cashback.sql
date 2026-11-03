@@ -1,5 +1,5 @@
 -- +goose Up
--- 0192_event_report_referral_cashback.sql — the post-event report (feature
+-- 0195_event_report_referral_cashback.sql — the post-event report (feature
 -- #159) gets its own line for the "Refer a friend" cashback (spec 52): money
 -- the organizer returned to referrers out of their own payments. It is not a
 -- refund to a buyer, so the `refunds` line keeps leaving it out and this line

@@ -20,6 +20,8 @@ export default defineConfig({
       // sanitizer, the per-seat category overlay and the geometry types. One copy, so
       // the organizer sees the hall the way the buyer does (spec 26, principle P7).
       "@seatmap": path.resolve(__dirname, "../widget/src"),
+      // The shared analytics tracker (spec 50, 4.1): one dependency-free TypeScript source, no build step.
+      "@arena-track": path.resolve(__dirname, "../../packages/arena-track/src"),
     },
   },
   server: {

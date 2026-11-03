@@ -5132,7 +5132,7 @@ other = "This screen is out of date. Open the event again and carry on from ther
 other = "🤝 <b>Refer a friend</b> · {{.Name}}"
 
 ["bot.rfp.none"]
-other = "There is no programme for this event yet.\n\nEvery buyer of the event gets a personal code. A friend who uses it gets a discount. The buyer gets part of the friend's payment back on their card."
+other = "There is no programme for this event yet.\n\nEvery buyer of the event gets a personal code. A friend who uses it gets a discount. The buyer gets part of the friend's ticket price back on their card (without the service charge)."
 
 ["bot.rfp.st_active"]
 other = "🟢 On"
@@ -5144,7 +5144,7 @@ other = "⏸ Paused. New friends get no discount. Arena adds no new cashback. Ca
 other = "⏹ Ended. To start again, turn on a new programme."
 
 ["bot.rfp.settings"]
-other = "A friend gets {{.Friend}} % off.\nThe buyer who brought them gets {{.Cashback}} % of the friend's payment back on their card. One buyer gets back at most {{.Cap}} % of their own payment.\nFriends per code: {{.Max}}."
+other = "A friend gets {{.Friend}} % off.\nThe buyer who brought them gets {{.Cashback}} % of the friend's ticket price back on their card, after the discount and without the service charge. One buyer gets back at most {{.Cap}} % of the price of their own tickets.\nFriends per code: {{.Max}}."
 
 ["bot.rfp.max_none"]
 other = "no limit"
@@ -5243,7 +5243,7 @@ other = "🤝 <b>Change Refer a friend</b> · {{.Name}}\nNew values apply to new
 other = "How many percent off does a friend get? Type a number from 1 to 100."
 
 ["bot.rfp.q_cashback"]
-other = "How many percent of the friend's payment goes back to the buyer who brought them? Type a number from 1 to 100."
+other = "How many percent of the friend's ticket price (after the discount, without the service charge) goes back to the buyer who brought them? Type a number from 1 to 100."
 
 ["bot.rfp.q_cap"]
 other = "What is the most one buyer can get back, in percent of their own payment? Type a number from 1 to 100, or press 100 %."
@@ -5264,10 +5264,10 @@ other = "No limit"
 other = "Cancel"
 
 ["bot.rfp.rules"]
-other = "<b>Check and turn on</b>\n\nA friend gets {{.Friend}} % off. The buyer who brought them gets {{.Cashback}} % of the friend's payment back, at most {{.Cap}} % of their own payment. Friends per code: {{.Max}}.\n\n<b>Rules</b>\n1. The cashback is paid at once, after the friend pays.\n2. If the friend returns the ticket later, the cashback stays paid. It is not taken back.\n3. The fee of the payment provider is not returned.\n4. The money goes back to the card the buyer paid with. If that is not possible, nothing is paid and the money stays with you. Arena tells the buyer to contact you.\n5. Payouts are automatic. To stop new discounts and new cashback, press Pause."
+other = "<b>Check and turn on</b>\n\nA friend gets {{.Friend}} % off. The buyer who brought them gets {{.Cashback}} % of the friend's ticket price back (after the discount, without the service charge), at most {{.Cap}} % of the price of their own tickets. Friends per code: {{.Max}}.\n\n<b>Rules</b>\n1. The cashback is paid at once, after the friend pays.\n2. If the friend returns the ticket later, the cashback stays paid. It is not taken back.\n3. The fee of the payment provider is not returned.\n4. The money goes back to the card the buyer paid with. If that is not possible, nothing is paid and the money stays with you. Arena tells the buyer to contact you.\n5. Payouts are automatic. To stop new discounts and new cashback, press Pause."
 
 ["bot.rfp.edit_confirm"]
-other = "<b>Check and save</b>\n\nA friend gets {{.Friend}} % off. The buyer who brought them gets {{.Cashback}} % of the friend's payment back, at most {{.Cap}} % of their own payment. Friends per code: {{.Max}}.\n\nNew values apply to new codes. Codes already issued keep theirs."
+other = "<b>Check and save</b>\n\nA friend gets {{.Friend}} % off. The buyer who brought them gets {{.Cashback}} % of the friend's ticket price back (after the discount, without the service charge), at most {{.Cap}} % of the price of their own tickets. Friends per code: {{.Max}}.\n\nNew values apply to new codes. Codes already issued keep theirs."
 
 ["bot.rfp.go_btn"]
 other = "Understood, turn on"

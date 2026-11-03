@@ -142,6 +142,17 @@ type Draft struct {
 	// way (menu_keyboard.go): a typed text or a poster is then not taken as
 	// an answer until a wizard button continues the draft.
 	Paused bool `json:"paused,omitempty"`
+	// StepSince is when the draft reached its current step (Unix seconds),
+	// kept by wizardApply for the "seconds spent on a step" analytics number
+	// (spec 50). Absent in a draft saved before it existed: the number is then
+	// simply not reported. No schema bump: an unknown field is ignored on read
+	// and a missing one is zero.
+	StepSince int64 `json:"step_since,omitempty"`
+
+	// rejected is the message key (without "bot.wz.") of the last answer the
+	// wizard refused in this Apply call, for analytics only (wizard_analytics.go).
+	// Never stored.
+	rejected string
 }
 
 // DraftEvent is the event part of the draft.
@@ -918,14 +929,14 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			return t("bot.wz.poster_ok", map[string]any{"W": in.Poster.W, "H": in.Poster.H}), nil
 		}
 		if text == "" || len([]rune(text)) > 200 {
-			return t("bot.wz.err_name", nil), nil
+			return d.reject("err_name", t("bot.wz.err_name", nil)), nil
 		}
 		d.Event.Name = text
 		d.next(stEvAge)
 
 	case stEvLinkAsk:
 		if !in.PageRead {
-			return t("bot.wz.err_link_first", nil), nil
+			return d.reject("err_link_first", t("bot.wz.err_link_first", nil)), nil
 		}
 		// The page is read: back to the name question with its hints.
 		d.back()
@@ -933,7 +944,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 
 	case stEvPosterAsk:
 		if in.Poster == nil {
-			return t("bot.wz.err_poster_first", nil), nil
+			return d.reject("err_poster_first", t("bot.wz.err_poster_first", nil)), nil
 		}
 		// The poster is in: back to the name question, whose hints now read
 		// the poster's answer.
@@ -990,7 +1001,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 
 	case stPromoterName:
 		if text == "" {
-			return t("bot.wz.err_promoter_name", nil), nil
+			return d.reject("err_promoter_name", t("bot.wz.err_promoter_name", nil)), nil
 		}
 		promoters, err := w.refs.Promoters(ctx, ws.JWT, ws.OrgID)
 		if err != nil {
@@ -999,7 +1010,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		for _, p := range promoters {
 			if strings.EqualFold(strings.TrimSpace(p.Name), text) {
 				d.back()
-				return t("bot.wz.err_promoter_dup", nil), nil
+				return d.reject("err_promoter_dup", t("bot.wz.err_promoter_dup", nil)), nil
 			}
 		}
 		d.Scratch.NewPromo = text
@@ -1015,7 +1026,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			if IsAPIError(err, 409) {
 				d.History = nil
 				d.Step = stEvPromoter
-				return t("bot.wz.err_promoter_dup", nil), nil
+				return d.reject("err_promoter_dup", t("bot.wz.err_promoter_dup", nil)), nil
 			}
 			return "", err
 		}
@@ -1046,7 +1057,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 	case stSDate:
 		iso, ok := ParseDate(text)
 		if !ok {
-			return t("bot.wz.err_date", nil), nil
+			return d.reject("err_date", t("bot.wz.err_date", nil)), nil
 		}
 		d.session().Date = iso
 		d.goTo(stSTime)
@@ -1056,7 +1067,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		if data != "default" {
 			v, ok := ParseTime(text)
 			if !ok {
-				return t("bot.wz.err_time", nil), nil
+				return d.reject("err_time", t("bot.wz.err_time", nil)), nil
 			}
 			hhmm = v
 		}
@@ -1077,7 +1088,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		if text != "" {
 			off, ok := salesEndOffset(s.Time, text)
 			if !ok {
-				return t("bot.wz.err_sales_end", nil), nil
+				return d.reject("err_sales_end", t("bot.wz.err_sales_end", nil)), nil
 			}
 			s.SalesEndMin = off
 			d.goTo(stSDoors)
@@ -1087,7 +1098,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		s := d.session()
 		off, ok := salesEndOffset(s.Time, text)
 		if !ok {
-			return t("bot.wz.err_sales_end", nil), nil
+			return d.reject("err_sales_end", t("bot.wz.err_sales_end", nil)), nil
 		}
 		s.SalesEndMin = off
 		d.goTo(stSDoors)
@@ -1102,7 +1113,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		case text != "":
 			before, ok := doorsOffset(s.Time, text)
 			if !ok {
-				return t("bot.wz.err_doors", nil), nil
+				return d.reject("err_doors", t("bot.wz.err_doors", nil)), nil
 			}
 			s.DoorsMin = before
 		default:
@@ -1123,7 +1134,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			s.CityID, s.CityName, s.VenueID, s.VenueName, s.Timezone = prev.CityID, prev.CityName, prev.VenueID, prev.VenueName, prev.Timezone
 			s.Capacity = prev.Capacity
 			if dup := d.duplicateSession(); dup {
-				return t("bot.wz.err_duplicate_session", nil), nil
+				return d.reject("err_duplicate_session", t("bot.wz.err_duplicate_session", nil)), nil
 			}
 			note = w.sessionAddedNote(loc, d)
 			d.goTo(d.afterSessionStep())
@@ -1228,7 +1239,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 
 	case stCityName:
 		if text == "" {
-			return t("bot.wz.err_city_name", nil), nil
+			return d.reject("err_city_name", t("bot.wz.err_city_name", nil)), nil
 		}
 		s := d.session()
 		c, err := w.refs.CreateCity(ctx, ws.JWT, ws.OrgID, s.CountryID, text, loc)
@@ -1279,7 +1290,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 
 	case stVName:
 		if text == "" {
-			return t("bot.wz.err_venue_name", nil), nil
+			return d.reject("err_venue_name", t("bot.wz.err_venue_name", nil)), nil
 		}
 		d.Scratch.NewVenue.Name = text
 		d.goTo(stVAddress)
@@ -1295,7 +1306,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		// capacity and is remembered as the new venue's usual size.
 		n, ok := ParseCount(text)
 		if !ok {
-			return t("bot.wz.err_capacity", nil), nil
+			return d.reject("err_capacity", t("bot.wz.err_capacity", nil)), nil
 		}
 		d.Scratch.NewVenue.Capacity = n
 		d.session().Capacity = n
@@ -1318,11 +1329,11 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 					d.Scratch.TzHint = hint
 					return t("bot.wz.tz_suggest_note", map[string]any{"City": Esc(strings.TrimSpace(text)), "Zone": hint}), nil
 				}
-				return t("bot.wz.err_venue_tz", nil), nil
+				return d.reject("err_venue_tz", t("bot.wz.err_venue_tz", nil)), nil
 			}
 		}
 		if _, err := time.LoadLocation(zone); err != nil || zone == "" {
-			return t("bot.wz.err_venue_tz", nil), nil
+			return d.reject("err_venue_tz", t("bot.wz.err_venue_tz", nil)), nil
 		}
 		d.Scratch.NewVenue.Timezone = zone
 		d.Scratch.TzHint = ""
@@ -1340,7 +1351,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		} else {
 			n, ok := ParseCount(text)
 			if !ok {
-				return t("bot.wz.err_capacity", nil), nil
+				return d.reject("err_capacity", t("bot.wz.err_capacity", nil)), nil
 			}
 			s.Capacity = n
 		}
@@ -1387,7 +1398,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			name = t("bot.wz.t_name_default", nil)
 		}
 		if name == "" {
-			return t("bot.wz.err_name", nil), nil
+			return d.reject("err_name", t("bot.wz.err_name", nil)), nil
 		}
 		cat := DraftCategory{Name: name}
 		if d.Mode == ModeEdit {
@@ -1403,7 +1414,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 	case stTPrice:
 		p, ok := ParsePriceMinor(text)
 		if !ok {
-			return t("bot.wz.err_price", nil), nil
+			return d.reject("err_price", t("bot.wz.err_price", nil)), nil
 		}
 		d.tk().Categories[0].PriceMinor = p
 		d.goTo(stTChanges)
@@ -1420,10 +1431,10 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 	case stTChangeDate:
 		iso, ok := ParseDate(text)
 		if !ok {
-			return t("bot.wz.err_date", nil), nil
+			return d.reject("err_date", t("bot.wz.err_date", nil)), nil
 		}
 		if sched := d.tk().Schedule; len(sched) > 0 && iso <= sched[len(sched)-1].From {
-			return t("bot.wz.err_change_date_order", nil), nil
+			return d.reject("err_change_date_order", t("bot.wz.err_change_date_order", nil)), nil
 		}
 		d.Scratch.Step = DraftPriceStep{From: iso}
 		d.goTo(stTChangePrice)
@@ -1431,7 +1442,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 	case stTChangePrice:
 		p, ok := ParsePriceMinor(text)
 		if !ok {
-			return t("bot.wz.err_price", nil), nil
+			return d.reject("err_price", t("bot.wz.err_price", nil)), nil
 		}
 		d.Scratch.Step.PriceMinor = p
 		d.tk().Schedule = append(d.tk().Schedule, d.Scratch.Step)
@@ -1461,11 +1472,11 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 
 	case stTCatName:
 		if text == "" {
-			return t("bot.wz.err_name", nil), nil
+			return d.reject("err_name", t("bot.wz.err_name", nil)), nil
 		}
 		for _, c := range d.tk().Categories {
 			if strings.EqualFold(c.Name, text) {
-				return t("bot.wz.err_cat_dup", map[string]any{"Name": Esc(text)}), nil
+				return d.reject("err_cat_dup", t("bot.wz.err_cat_dup", map[string]any{"Name": Esc(text)})), nil
 			}
 		}
 		d.Scratch.Cat = DraftCategory{Name: text}
@@ -1474,7 +1485,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 	case stTCatPrice:
 		p, ok := ParsePriceMinor(text)
 		if !ok {
-			return t("bot.wz.err_price", nil), nil
+			return d.reject("err_price", t("bot.wz.err_price", nil)), nil
 		}
 		d.Scratch.Cat.PriceMinor = p
 		switch {
@@ -1502,7 +1513,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 	case stTCatPlaces:
 		n, ok := ParseCount(text)
 		if !ok {
-			return t("bot.wz.err_places", nil), nil
+			return d.reject("err_places", t("bot.wz.err_places", nil)), nil
 		}
 		d.Scratch.Cat.Places = n
 		d.carryTierID(&d.Scratch.Cat)
@@ -1513,10 +1524,10 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 	case stTCatUntil:
 		until, limit, ok := ParseCategoryEnd(text)
 		if !ok {
-			return t("bot.wz.err_cat_end", nil), nil
+			return d.reject("err_cat_end", t("bot.wz.err_cat_end", nil)), nil
 		}
 		if prev := lastUntil(d.tk().Categories); until != "" && prev != "" && until < prev {
-			return t("bot.wz.err_until_order", map[string]any{"Name": Esc(d.Scratch.Cat.Name)}), nil
+			return d.reject("err_until_order", t("bot.wz.err_until_order", map[string]any{"Name": Esc(d.Scratch.Cat.Name)})), nil
 		}
 		d.Scratch.Cat.SellUntil, d.Scratch.Cat.SellLimit = until, limit
 		d.carryTierID(&d.Scratch.Cat)
@@ -1531,7 +1542,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		case "done":
 			tk := d.tk()
 			if len(tk.Categories) < 2 {
-				return t("bot.wz.err_min_two", nil), nil
+				return d.reject("err_min_two", t("bot.wz.err_min_two", nil)), nil
 			}
 			if tk.Mode == ModeSequence {
 				// The last category sells until the session starts: its own
@@ -1559,7 +1570,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			cur = strings.TrimPrefix(data, "cur:")
 		}
 		if len(cur) != 3 || strings.Trim(cur, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") != "" {
-			return t("bot.wz.err_currency", nil), nil
+			return d.reject("err_currency", t("bot.wz.err_currency", nil)), nil
 		}
 		d.Currency = cur
 		if d.Mode == ModeEdit {
@@ -1604,7 +1615,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			}
 		case data == "done":
 			if len(d.Channels) == 0 {
-				return t("bot.wz.err_channels_empty", nil), nil
+				return d.reject("err_channels_empty", t("bot.wz.err_channels_empty", nil)), nil
 			}
 			d.goTo(stXPublish)
 		}
@@ -1824,7 +1835,7 @@ func (w *Wizard) finishSession(loc string, d *Draft) (string, error) {
 	if d.duplicateSession() {
 		d.History = nil
 		d.Step = stSDate
-		return w.texts.T(loc, "bot.wz.err_duplicate_session", nil), nil
+		return d.reject("err_duplicate_session", w.texts.T(loc, "bot.wz.err_duplicate_session", nil)), nil
 	}
 	note := w.sessionAddedNote(loc, d)
 	d.goTo(d.afterSessionStep())

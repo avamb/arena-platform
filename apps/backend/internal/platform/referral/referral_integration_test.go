@@ -551,6 +551,33 @@ func TestRecordFriendOrder_CapAtRecord(t *testing.T) {
 	}
 }
 
+// TestRecordFriendOrder_BaseIsTicketsAfterDiscountWithoutTheCharge is the
+// owner's case from the stand (2026-11-03): the friend's 450.00 of tickets
+// plus a 4.50 service charge earns 10 % of 450.00, and the referrer's cap is
+// taken from their tickets after the discount, not from their payment.
+func TestRecordFriendOrder_BaseIsTicketsAfterDiscountWithoutTheCharge(t *testing.T) {
+	f := newFixture(t, 10, 10, 100)
+	code := f.issue(t)
+	pc := code.PromoCodeID
+	friend := uuid.New()
+	f.addOrder(t, friend, "paid", 45450, "fee-"+f.suffix+"@example.com", "Friend", &pc)
+	f.exec(t, `UPDATE orders SET subtotal = 50000, discount = 5000, charge = 450 WHERE id = $1`, friend)
+	f.record(t, friend)
+	if rw := f.rewardOf(t, friend); rw.State != referral.StateDue || rw.Amount != 4500 {
+		t.Fatalf("reward = %+v; want due 4500 (10 %% of 45000, the charge left out)", rw)
+	}
+
+	// The referrer paid 5000 of which 500 is a service charge: a 10 % cap is
+	// 10 % of the 4500 of tickets, 450, not 500.
+	g := newFixture(t, 10, 50, 10)
+	g.exec(t, `UPDATE orders SET subtotal = 4500, discount = 0, charge = 500, total = 5000 WHERE id = $1`, g.referrerOrder)
+	gc := g.issue(t)
+	big := g.friend(t, gc, 3000, "big-"+g.suffix+"@example.com") // 50 % of 3000 = 1500
+	if rw := g.rewardOf(t, big); rw.State != referral.StateDue || rw.Amount != 450 || rw.Reason != "cap_reduced" {
+		t.Fatalf("capped reward = %+v; want due 450 cap_reduced", rw)
+	}
+}
+
 // ─── Payout ─────────────────────────────────────────────────────────────────
 
 func TestPayout_PartialMoneyOnlyRefund_TicketsStayValid_ScannedAllowed(t *testing.T) {
