@@ -16,7 +16,7 @@
   <p style="margin:0 0 12px 0;"><span style="color:#93a0a8;font-size:12px;word-break:break-all;">Link: {{.SaleNotice.URL}}</span></p>
   <p style="margin:0 0 12px 0;">If you did not ask for this, ignore this letter: we will not write to you about it. The link works for 7 days.</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — automated message<br>If you click «Unsubscribe», letters from us will never reach this address again, tickets included.</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}Arena Platform — automated message<br>{{end}}If you click «Unsubscribe», letters from us will never reach this address again, tickets included.</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -33,7 +33,7 @@ Confirm my address: {{.SaleNotice.URL}}
 
 If you did not ask for this, ignore this letter: we will not write to you about it. The link works for 7 days.
 
-Arena Platform — automated message
+{{if not .WhiteLabel}}Arena Platform — automated message{{end}}
 
 If you click «Unsubscribe», letters from us will never reach this address again, tickets included.
 {{end}}

@@ -51,6 +51,7 @@ func newBillingAdminEnv(t *testing.T) *billingAdminEnv {
 		ctx := context.Background()
 		for _, stmt := range []string{
 			`DELETE FROM org_rate_overrides WHERE org_id = $1`,
+			`DELETE FROM white_label_periods WHERE org_id = $1`,
 			`DELETE FROM billing_accounts WHERE org_id = $1`,
 		} {
 			if _, err := e.srv.pgxPool.Exec(ctx, stmt, e.orgID); err != nil {
@@ -673,7 +674,9 @@ func TestBillingAdmin_EveryWriteIsAudited(t *testing.T) {
 		// resource is the audit resource_id, learned from the answer.
 		resource func(resp string) string
 	}
-	var v2ID, rateID string
+	var v2ID, rateID, wlID string
+	tomorrow := time.Now().UTC().AddDate(0, 0, 1).Format("2006-01-02")
+	later := time.Now().UTC().AddDate(0, 0, 9).Format("2006-01-02")
 	fixed := func(p string) func() string { return func() string { return p } }
 	steps := []step{
 		{"POST /v1/admin/billing/price-lists", http.MethodPost, fixed("/v1/admin/billing/price-lists"),
@@ -693,6 +696,13 @@ func TestBillingAdmin_EveryWriteIsAudited(t *testing.T) {
 			fixed("/v1/admin/billing/accounts/" + acc.ID.String() + "/terms"),
 			fmt.Sprintf(`{"effective_from":%q,"price_list_code":%q,"plan_kind":"standard","billing_cycle":"monthly","shortfall_policy":"block_publishing"}`, rfc(future), code), http.StatusCreated,
 			func(string) string { return acc.ID.String() }},
+		{"POST /v1/admin/billing/white-label", http.MethodPost, fixed("/v1/admin/billing/white-label"),
+			fmt.Sprintf(`{"org_id":%q,"starts_on":%q,"monthly_price_minor":0}`, e.orgID, tomorrow), http.StatusCreated,
+			func(r string) string { wlID = jsonField(t, r, "id"); return wlID }},
+		{"POST /v1/admin/billing/white-label/{id}/end", http.MethodPost,
+			func() string { return "/v1/admin/billing/white-label/" + wlID + "/end" },
+			fmt.Sprintf(`{"ends_on":%q}`, later), http.StatusOK,
+			func(string) string { return wlID }},
 		{"POST /v1/admin/billing/price-lists/{id}/revoke", http.MethodPost,
 			func() string { return "/v1/admin/billing/price-lists/" + v2ID + "/revoke" }, "", http.StatusOK,
 			func(string) string { return v2ID }},

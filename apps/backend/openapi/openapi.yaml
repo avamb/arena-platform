@@ -193,6 +193,162 @@ components:
             - $ref: "#/components/schemas/PosterFacts"
           description: What the model read from the poster.
 
+    EventPageDate:
+      type: object
+      description: One date of the event as the page writes it.
+      required: [date, time, doors, utc_offset]
+      properties:
+        date:
+          type: string
+          description: The day, `YYYY-MM-DD`.
+        time:
+          type: string
+          description: The start time as written, `HH:MM` 24-hour, or empty when the page gives only the day.
+        doors:
+          type: string
+          description: The doors-open time of the same day, `HH:MM`, or empty.
+        utc_offset:
+          type: string
+          description: The UTC offset the page wrote next to the time (`+01:00`, `Z` for UTC), or empty. The time is never converted.
+
+    EventPageImage:
+      type: object
+      description: |
+        The page's picture, stored as an `event_poster` media object of the
+        organization and attached to nothing until the organizer chooses it.
+      required: [media_id, width, height, fits_poster]
+      properties:
+        media_id:
+          type: string
+          format: uuid
+          description: Id of the stored media object.
+        width:
+          type: integer
+          description: Width in pixels.
+        height:
+          type: integer
+          description: Height in pixels.
+        fits_poster:
+          type: boolean
+          description: True when the picture passes the poster rules of the Telegram bot (4:5 or square, at least 1000 px wide).
+
+    EventPageFacts:
+      type: object
+      description: |
+        What an organizer's event page says, normalized. An empty string, or
+        an empty list, means "not on the page". Every value is a HINT for a
+        wizard to offer as a button; nothing is written from it. The fields
+        of `PosterFacts` mean the same here (`date` and `time` repeat the
+        first entry of `dates`), so a client of the poster reading reads this
+        too.
+      required: [name, date, time, venue_name, city, country, street, age, description, dates, categories, image]
+      properties:
+        name:
+          type: string
+          description: Event name.
+        date:
+          type: string
+          description: First date, `YYYY-MM-DD`, or empty.
+        time:
+          type: string
+          description: Start time of the first date, `HH:MM`, or empty.
+        venue_name:
+          type: string
+          description: Venue name, or empty.
+        city:
+          type: string
+          description: City, or empty.
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 code when the page gives one, else empty.
+        street:
+          type: string
+          description: Street address of the venue, or empty.
+        age:
+          type: string
+          description: Age rating, one of `0+`, `6+`, `12+`, `16+`, `18+`, or empty.
+        description:
+          type: string
+          description: The page's description as plain text with line breaks, at most 4000 characters, or empty.
+        dates:
+          type: array
+          description: The future dates the page lists, oldest first, at most 10; past, cancelled and postponed dates are left out.
+          items:
+            $ref: "#/components/schemas/EventPageDate"
+        categories:
+          type: array
+          description: The ticket prices the page lists, at most 10; empty when there are none.
+          items:
+            $ref: "#/components/schemas/PosterFactsCategory"
+        image:
+          description: The page's picture, or null when the page has none or it could not be downloaded.
+          oneOf:
+            - $ref: "#/components/schemas/EventPageImage"
+            - type: "null"
+
+    EventPageWarning:
+      type: object
+      description: A fact about the reading the organizer should know.
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: |
+            Stable code: `event_page.some_dates_skipped`, `event_page.past_dates_skipped`,
+            `event_page.cancelled_dates_skipped`, `event_page.online_event`,
+            `event_page.price_range_only`, `event_page.read_by_model`,
+            `event_page.model_unavailable`, `event_page.model_quota`,
+            `event_page.image_not_poster`, `event_page.image_unavailable`,
+            `event_page.no_dates`, `event_page.no_prices`,
+            `event_page.javascript_page`. The list may grow.
+        count:
+          type: integer
+          description: How many dates a skipping warning is about.
+        values:
+          type: array
+          description: Short page values the text needs (the low and high price and the currency of a price range, a picture's size).
+          items:
+            type: string
+
+    EventPageFactsRequest:
+      type: object
+      description: The address of the organizer's own event page.
+      required: [url]
+      properties:
+        url:
+          type: string
+          description: A full `http` or `https` address of a public web page. A page of a ticketing platform is refused.
+
+    EventPageFactsResponse:
+      type: object
+      description: The answer of the event-page reading.
+      required: [facts, sources, final_url, language, warnings]
+      properties:
+        facts:
+          allOf:
+            - $ref: "#/components/schemas/EventPageFacts"
+          description: What the page says.
+        sources:
+          type: object
+          description: |
+            Where each found value came from, by field (`name`, `dates`,
+            `venue`, `description`, `age`, `categories`, `image`):
+            `json_ld`, `open_graph` or `model`. A value read by the model must
+            be shown as such.
+          additionalProperties:
+            type: string
+        final_url:
+          type: string
+          description: The page's address after redirects.
+        language:
+          type: string
+          description: The page's language (`es`, `ru`), or empty. It does not change the draft.
+        warnings:
+          type: array
+          description: Facts about the reading; empty when there are none.
+          items:
+            $ref: "#/components/schemas/EventPageWarning"
+
     TextFormatKind:
       type: string
       enum: [description, email_note, session_message]
@@ -1483,6 +1639,96 @@ components:
           description: Invitations whose PDF is not sent yet; each is handed out once.
           items:
             $ref: "#/components/schemas/BotInvitationPdfNotice"
+
+    GuestListSubscription:
+      type: object
+      required: [enabled, channel, eligible]
+      description: The caller's automatic guest list setting.
+      properties:
+        enabled:
+          type: boolean
+          description: True when the caller receives the guest list of every session automatically.
+        channel:
+          type: string
+          description: How the list reaches the caller - `telegram` (private chat with the event center bot), `email` (not linked to the bot) or `none` (neither; nothing can be sent).
+        eligible:
+          type: boolean
+          description: False for a role that never receives the list (only owners and managers do); such a caller cannot turn it on.
+
+    GuestListSubscriptionRequest:
+      type: object
+      required: [enabled]
+      description: Body of PUT .../guest-list-subscription.
+      properties:
+        enabled:
+          type: boolean
+          description: True turns the automatic guest list on, false turns it off.
+
+    BotGuestListDelivery:
+      type: object
+      required: [id, org_id, session_id, slot, attempt, telegram_user_id, event_name, session_start_at, session_timezone]
+      description: One automatic guest list the bot has to send.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The delivery, to report back with `.../finish`.
+        org_id:
+          type: string
+          format: uuid
+          description: The organization of the session.
+        session_id:
+          type: string
+          format: uuid
+          description: The session whose guest list to send.
+        slot:
+          type: string
+          description: The moment - `h24` (24 hours before the start), `h3` (3 hours before) or `doors` (doors open).
+        attempt:
+          type: integer
+          format: int32
+          description: The claim's token, to send back with `.../finish`.
+        telegram_user_id:
+          type: integer
+          format: int64
+          description: The private chat (the person's Telegram id) to send the file to.
+        event_name:
+          type: string
+          description: The event's name, for the caption.
+        session_start_at:
+          type: string
+          format: date-time
+          description: The session's start (RFC 3339).
+        session_timezone:
+          type: string
+          description: The venue's IANA zone, `UTC` when unknown.
+
+    BotGuestListDeliveriesResponse:
+      type: object
+      required: [deliveries]
+      description: Answer of POST /v1/bot/guest-list-deliveries/claim.
+      properties:
+        deliveries:
+          type: array
+          description: The lists taken for this call.
+          items:
+            $ref: "#/components/schemas/BotGuestListDelivery"
+
+    BotGuestListFinishRequest:
+      type: object
+      required: [attempt, outcome]
+      description: Body of POST /v1/bot/guest-list-deliveries/{id}/finish.
+      properties:
+        attempt:
+          type: integer
+          format: int32
+          description: The `attempt` of the claim that is reported.
+        outcome:
+          type: string
+          description: "`sent`, `failed` (may be taken again after the lease), `skipped` (closed without a send) or `email` (send it by e-mail instead)."
+        reason:
+          type: string
+          description: A short code (`[a-z0-9_]`, up to 40 characters) of why it failed or was skipped; never data of the file.
 
     AuthLogoutRequest:
       type: object
@@ -23002,6 +23248,186 @@ components:
           format: date-time
           description: New end of the rate. It must be in the future, after the start and not after the start of the organization's next rate.
 
+    BillingWhiteLabelPeriod:
+      type: object
+      required: [id, org_id, promoter_id, starts_on, ends_on, monthly_price_minor, currency, reason, created_at, ended_at, status]
+      description: "A white label period of a brand: from starts_on to ends_on (UTC calendar days, both inclusive) the platform badge is hidden on the brand's widget, letters and shop, and the brand pays the monthly white label price."
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id of the period.
+        org_id:
+          type: string
+          format: uuid
+          description: The organization.
+        org_name:
+          type: string
+          description: Name of the organization. Present in the list only.
+        promoter_id:
+          type: [string, "null"]
+          format: uuid
+          description: The promoter whose events the period covers; null for the organization itself (its events without a promoter, and its shop).
+        promoter_name:
+          type: [string, "null"]
+          description: Name of the promoter. Present in the list only.
+        starts_on:
+          type: string
+          format: date
+          description: First day of white label (UTC).
+        ends_on:
+          type: [string, "null"]
+          format: date
+          description: Last day of white label (UTC), null while it is open.
+        monthly_price_minor:
+          type: [integer, "null"]
+          format: int64
+          description: Individual monthly price in minor units of currency; null means the price list, 0 is free.
+        currency:
+          type: [string, "null"]
+          description: Currency of the individual price, the organization's billing account currency on the day the period was created; null with the price list. A non-zero individual price is not charged in another currency.
+        reason:
+          type: string
+          description: The X-Admin-Reason the period was created with.
+        created_at:
+          type: string
+          format: date-time
+          description: When the period was created.
+        ended_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the end was last set, null when never.
+        status:
+          type: string
+          description: "State today (UTC): scheduled, in_force or ended."
+          example: in_force
+
+    BillingWhiteLabelList:
+      type: object
+      required: [items]
+      description: White label periods, by organization and brand.
+      properties:
+        items:
+          type: array
+          description: The periods.
+          items:
+            $ref: "#/components/schemas/BillingWhiteLabelPeriod"
+
+    BillingCreateWhiteLabelRequest:
+      type: object
+      additionalProperties: false
+      required: [org_id, starts_on]
+      description: Body of POST /v1/admin/billing/white-label.
+      properties:
+        org_id:
+          type: string
+          format: uuid
+          description: The organization.
+        promoter_id:
+          type: [string, "null"]
+          format: uuid
+          description: A promoter of the organization; absent or null turns white label on for the organization itself.
+        starts_on:
+          type: string
+          format: date
+          description: First day, today (UTC) or later.
+        ends_on:
+          type: [string, "null"]
+          format: date
+          description: Last day, on or after starts_on; absent or null keeps the period open.
+        monthly_price_minor:
+          type: [integer, "null"]
+          format: int64
+          minimum: 0
+          description: Individual monthly price in minor units of the organization's billing account currency; absent means the price list, 0 is free.
+        currency:
+          type: [string, "null"]
+          description: The currency the operator means for monthly_price_minor (ISO 4217). Optional; when given and different from the organization's billing account currency the request answers 422 billing.white_label_currency_mismatch. The stored currency is always the account's.
+
+    BillingEndWhiteLabelRequest:
+      type: object
+      additionalProperties: false
+      required: [ends_on]
+      description: Body of POST /v1/admin/billing/white-label/{id}/end.
+      properties:
+        ends_on:
+          type: string
+          format: date
+          description: New last day. Yesterday (UTC) or later, earlier than the current end.
+
+    OrgWhiteLabelPeriod:
+      type: object
+      required: [id, org_id, promoter_id, promoter_name, brand_name, starts_on, ends_on, monthly_price_minor, effective_monthly_minor, currency, created_at, ended_at, status]
+      description: A white label period of the organization as its owner sees it.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id of the period.
+        org_id:
+          type: string
+          format: uuid
+          description: The organization.
+        promoter_id:
+          type: [string, "null"]
+          format: uuid
+          description: The promoter whose events the period covers; null for the organization itself.
+        promoter_name:
+          type: [string, "null"]
+          description: Name of the promoter, null for the organization itself.
+        brand_name:
+          type: string
+          description: The brand's name, the promoter's or the organization's.
+        starts_on:
+          type: string
+          format: date
+          description: First day of white label (UTC).
+        ends_on:
+          type: [string, "null"]
+          format: date
+          description: Last day of white label (UTC), null while it is open.
+        monthly_price_minor:
+          type: [integer, "null"]
+          format: int64
+          description: Individual monthly price, null when the price list applies.
+        effective_monthly_minor:
+          type: [integer, "null"]
+          format: int64
+          description: The monthly price that applies, in minor units of currency; null when it cannot be read.
+        currency:
+          type: string
+          description: Currency of effective_monthly_minor, the individual price's currency or the organization's billing account currency; empty when it cannot be read.
+        created_at:
+          type: string
+          format: date-time
+          description: When the period was created.
+        ended_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the end was last set, null when never.
+        status:
+          type: string
+          description: "State today (UTC): scheduled, in_force or ended."
+          example: in_force
+
+    OrgWhiteLabelList:
+      type: object
+      required: [items, currency, price_list_monthly_minor]
+      description: The organization's white label periods and the price list's monthly price.
+      properties:
+        items:
+          type: array
+          description: The periods, by brand, newest first.
+          items:
+            $ref: "#/components/schemas/OrgWhiteLabelPeriod"
+        currency:
+          type: string
+          description: Currency of the organization's billing account, empty when it cannot be read.
+        price_list_monthly_minor:
+          type: [integer, "null"]
+          format: int64
+          description: The price list's monthly white label price, null when the account or the rule is missing.
+
     BillingChargeItem:
       type: object
       required: [id, billable_event_id, kind, occurred_at, rated_at, event_id, session_id, order_id, currency, amount_minor, rule_type, reason, reversal_of, price_list_version, pricing_class, seated, sale_currency, unit_price_minor]
@@ -25176,6 +25602,9 @@ components:
         captcha_site_key:
           type: string
           description: Cloudflare Turnstile site key the checkout form renders its widget with; the widget's token goes to checkout as `captcha_token`. Absent while the shop's checkout has no captcha.
+        white_label:
+          type: boolean
+          description: True when the organization has white label today; the storefront then hides its "on the Arena Sold Out platform" footer.
 
     ShopPublicOrg:
       type: object
@@ -29569,6 +29998,97 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/bot/guest-list-deliveries/claim:
+    post:
+      operationId: claimBotGuestListDeliveries
+      summary: Automatic guest lists the bot must send now
+      description: |
+        Called by the bot PROCESS under `BOT_SERVICE_TOKEN`. Returns up to 20
+        guest lists whose moment came (24 hours, 3 hours before the start,
+        doors open) for members linked to the bot, and takes each for 10
+        minutes; a list not reported back with `.../finish` may be taken
+        again, three times at most, and never more than 2 hours after its
+        moment. The bot fetches `guest-list.xlsx` AS the member, sends it to
+        their private chat and reports the outcome. The answer carries no
+        data of the file.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The lists to send now
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotGuestListDeliveriesResponse"
+        "401":
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Service token not configured or database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/bot/guest-list-deliveries/{id}/finish:
+    post:
+      operationId: finishBotGuestListDelivery
+      summary: Report how one automatic guest list ended
+      description: |
+        Called by the bot PROCESS under `BOT_SERVICE_TOKEN` for a delivery it
+        claimed. `attempt` must be the claim's own: a report of an older
+        claim is a 404 and changes nothing. `sent` closes it; `failed` lets
+        it be taken again when its 10-minute lease is over; `skipped` closes
+        it without a send (no rights any more, no tickets); `email` moves it
+        to the e-mail channel (the person blocked the bot). A delivery
+        already sent is a 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the delivery (from the claim)
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotGuestListFinishRequest"
+      responses:
+        "204":
+          description: Recorded
+        "400":
+          description: Bad id, or outcome / reason not allowed (`bot.invalid_guest_list_outcome`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No open delivery with this id and attempt (`bot.guest_list_delivery_not_found`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Service token not configured or database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
 
   # ─────────────────────────────────────────────────────────────────────────
   # Admin Organizations CRUD (feature #233)
@@ -30167,6 +30687,172 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/admin/billing/white-label:
+    get:
+      operationId: getV1AdminBillingWhiteLabel
+      summary: Admin - list white label periods
+      description: "Lists the white label periods of brands (an organization, or one of its promoters): the days the platform badge is hidden. Requires JWT, billing.admin and a platform superadmin."
+      tags: [v1, admin, billing]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: org_id
+          in: query
+          required: false
+          description: Only periods of this organization.
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: "The periods."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingWhiteLabelList"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller lacks billing.admin or is not a platform superadmin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "org_id is not a UUID"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: postV1AdminBillingWhiteLabel
+      summary: Admin - turn white label on for a brand
+      description: "Turns white label on for a brand from starts_on (today or later, UTC) to ends_on (open when absent). The brand is the organization (promoter_id absent: its events without a promoter and its shop) or one of its promoters. Two periods of one brand never share a day. The job billing.white_label charges every completed month in arrears, prorated by days, at the price list's monthly rate or at monthly_price_minor. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row."
+      tags: [v1, admin, billing]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log and on the period.
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingCreateWhiteLabelRequest"
+      responses:
+        "201":
+          description: "The new period."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingWhiteLabelPeriod"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is not valid JSON of the expected shape"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller lacks billing.admin or is not a platform superadmin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Organization or promoter not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The brand already has white label on some of these days"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "A field is not valid, or starts_on is in the past"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/billing/white-label/{id}/end:
+    post:
+      operationId: postV1AdminBillingWhiteLabelEnd
+      summary: Admin - end a white label period
+      description: "Sets the last day of a white label period. It is yesterday or later (yesterday ends white label now), earlier than the current end, and not earlier than the day before the period starts. A period is never deleted and its end never moves later. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row."
+      tags: [v1, admin, billing]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: "Id of the period."
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log and on the period.
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingEndWhiteLabelRequest"
+      responses:
+        "200":
+          description: "The period with its new end."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingWhiteLabelPeriod"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is not valid JSON of the expected shape"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller lacks billing.admin or is not a platform superadmin"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Period not found"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The period already ends on or before that day"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "ends_on is not a date, is before yesterday, or is not earlier than the current end"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/admin/billing/accounts:
     get:
       operationId: getV1AdminBillingAccounts
@@ -47024,6 +47710,106 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/event-page-facts:
+    post:
+      operationId: postV1OrganizationsOrgIdEventPageFacts
+      summary: Read the organizer's own event page
+      description: |
+        Downloads the organizer's OWN event page and answers what it says
+        about the event: the name, the dates, the venue, the description, the
+        ticket prices and a picture (spec 59). The values are hints for an
+        event wizard (the Telegram bot, the web event center) to offer as
+        buttons; nothing is created but the page's picture, stored as an
+        unattached `event_poster` media object the organizer may choose as
+        the poster.
+
+        Sources by trust: a schema.org `Event` in JSON-LD, then Open Graph and
+        the meta tags, and only when those leave the dates or the prices
+        missing, a text model reading the page's visible text (`sources` says
+        which). Model readings are capped at `EVENT_PAGE_READS_PER_ORG_PER_DAY`
+        (default 30) per organization in a sliding 24 hours; past the cap, or
+        without a model key, the reading answers without them and says so in
+        `warnings`. Page reads are capped at 20 an hour per organization. Both
+        counters live in the memory of one arena-api process.
+
+        The page is fetched only on the public internet (no private, loopback
+        or metadata address, also after a redirect), http or https, within 10
+        seconds and 2 MiB. A page of a ticketing platform (Ticketmaster,
+        Eventbrite and others) is refused before it is read: their terms forbid
+        automated collection. The call may take up to a minute.
+
+        Requires the `event.update` permission in the path organization (the
+        owner and the manager hold it).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventPageFactsRequest"
+      responses:
+        "200":
+          description: What the page says.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventPageFactsResponse"
+        "400":
+          description: org_id is not a UUID, the body is not JSON with `url` (`event_page.invalid_request`), or the address is not a full http(s) address (`event_page.invalid_url`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid JWT.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.update` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The organization is not found or not the caller's (`org.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: |
+            A ticketing platform's page (`event_page.ticketing_platform`), an
+            address not on the public internet (`event_page.destination_not_allowed`),
+            not a web page (`event_page.not_html`), a page larger than 2 MiB
+            (`event_page.too_large`), or a page that says nothing about an event
+            (`event_page.nothing_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: The organization read 20 pages in the last hour (`event_page.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The site did not answer or answered with an error (`event_page.fetch_failed`, the site's status in `details.status`), many pages are being read at once (`event_page.busy`, try again in a minute), or the organization guard is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/texts/format:
     post:
       operationId: postV1OrganizationsOrgIdTextsFormat
@@ -47981,6 +48767,9 @@ paths:
             covered by the right of withdrawal. False for every other
             country (Israel included, which has its own cancellation
             regime) and when the country is unknown.
+          * `white_label` — boolean. True when the event's brand (its
+            promoter, else the organization) has white label today; the
+            widget then hides its "Tickets: Arena Sold Out" badge.
           * `consent` — `PublicCheckoutConsentBlock` (P2): whether the
             buyer must tick "I accept the sale terms (seller: <legal name>)
             and the privacy policy" before paying, the seller's legal name
@@ -53319,6 +54108,39 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/billing/white-label:
+    get:
+      operationId: getOrgBillingWhiteLabel
+      summary: White label periods of an organization
+      description: "Lists the organization's white label periods (its own brand and its promoters) with the monthly price that applies: the period's individual price, else the price list's for the organization's billing account. Read-only: only a platform superadmin turns white label on or off. Requires JWT and billing.read in the organization (the owner)."
+      tags: [v1, billing]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          description: Organization UUID that scopes this request (tenant isolation).
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The periods.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgWhiteLabelList"
+        "401":
+          description: "Unauthorized."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "The caller is not a member of the organization or lacks billing.read there."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/organizations/{org_id}/billing/charges:
     get:
       operationId: listOrgBillingCharges
@@ -55908,7 +56730,8 @@ paths:
         refused with 413 before any byte is sent.
 
         Requires `order.read` AND `session.read`; a session of another
-        organization is a 404.
+        organization is a 404. The file holds buyers' contacts, so an
+        organization API key is refused (403 `guest_list.api_key_forbidden`).
       tags: [v1]
       security:
         - bearerAuth: []
@@ -55954,7 +56777,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Actor lacks `order.read` or `session.read`, or is not a member of the organization.
+          description: Actor lacks `order.read` or `session.read`, is not a member of the organization, or is an organization API key (`guest_list.api_key_forbidden`).
           content:
             application/json:
               schema:
@@ -56324,6 +57147,331 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Export queries unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/sessions/{session_id}/guest-list.xlsx:
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdGuestListXlsx
+      summary: Guest list of a session as an Excel workbook
+      description: |
+        The guest list people open: an .xlsx with one sheet, so Excel shows
+        the columns whatever its regional settings. The header row is bold
+        and frozen, the sheet has an autofilter, and the ticket number,
+        barcode, order number and phone are TEXT cells in text-formatted
+        columns, so Excel never shows a barcode as 4.6E+12 or drops a
+        leading zero, not even in rows added later. The entry time is text
+        on the venue's clock. `guest-list.csv` serves the same rows as a CSV.
+
+        One row per ACTIVE ticket of the session (cancelled, revoked and
+        transferred tickets are left out), sorted by the guest's name:
+        guest (the name on the ticket, else the buyer's), category, seat,
+        ticket number, barcode, VIP (`yes` / `no`), entered (`yes` / `no`),
+        entry time (venue's zone), order number, e-mail, phone and
+        invitation (`yes` / `no`). Same csvexport rules, locale selection and
+        50 000-row cap as the sales file. The same file is sent automatically
+        to the members who turned the guest list on
+        (`PUT .../guest-list-subscription`).
+
+        Requires `order.read` AND `session.read`; a session of another
+        organization is a 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+        - name: locale
+          in: query
+          required: false
+          description: Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+          schema: { type: string }
+      responses:
+        "200":
+          description: |
+            The workbook attachment, `Content-Disposition: attachment;
+            filename="guests_<event>_<YYYY-MM-DD of the session>.xlsx"`,
+            where `<event>` is the event's name transliterated to
+            `[a-z0-9-]`, else its page slug, else `event`.
+          headers:
+            X-Row-Count:
+              description: Number of data rows (tickets) in the sheet, the header row not counted.
+              schema: { type: integer }
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+                description: One sheet, one row per active ticket of the session.
+        "400":
+          description: org_id or session_id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `order.read` or `session.read`, or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: More than 50 000 active tickets (`export.too_many_rows`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`export.internal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Export queries unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv:
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdGuestListCsv
+      summary: Guest list of a session as a CSV file
+      description: |
+        The CSV twin of `guest-list.xlsx`, for imports into other systems:
+        the same rows, columns and access rules. People should get the
+        workbook: Excel opens a CSV with the list separator of its regional
+        settings, and with English settings every row lands in column A.
+
+        One row per ACTIVE ticket of the session (cancelled, revoked and
+        transferred tickets are left out), sorted by the guest's name:
+        guest (the name on the ticket, else the buyer's), category, seat,
+        ticket number, barcode, VIP (`yes` / `no`), entered (`yes` / `no`),
+        entry time (venue's zone), order number, e-mail, phone and
+        invitation (`yes` / `no`). Same csvexport rules, locale selection and
+        50 000-row cap as the sales file. The same file is sent automatically
+        to the members who turned the guest list on
+        (`PUT .../guest-list-subscription`).
+
+        Requires `order.read` AND `session.read`; a session of another
+        organization is a 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+        - name: locale
+          in: query
+          required: false
+          description: Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+          schema: { type: string }
+      responses:
+        "200":
+          description: |
+            The CSV attachment, `Content-Disposition: attachment;
+            filename="guests_<event>_<YYYY-MM-DD of the session>.csv"`, where
+            `<event>` is the event's name transliterated to `[a-z0-9-]`,
+            else its page slug, else `event`.
+          headers:
+            X-Row-Count:
+              description: Number of data rows (tickets) in the file, the header row not counted.
+              schema: { type: integer }
+          content:
+            text/csv:
+              schema:
+                type: string
+                description: One line per active ticket of the session.
+        "400":
+          description: org_id or session_id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `order.read` or `session.read`, or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, or not part of this organization (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: More than 50 000 active tickets (`export.too_many_rows`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`export.internal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Export queries unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/guest-list-subscription:
+    get:
+      operationId: getV1OrganizationsOrgIdGuestListSubscription
+      summary: Whether the caller receives guest lists automatically
+      description: |
+        The CALLING member's setting. When it is on, the guest list of every
+        session of the organization is sent to them 24 hours before the
+        start, 3 hours before it and at doors open (the start when no doors
+        time is set): to their private chat with the event center bot, or by
+        e-mail when they are not linked to the bot. Only owners and managers
+        get files. Requires `order.read`; an organization API key is refused
+        (403 `guest_list.api_key_forbidden`).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The caller's setting.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestListSubscription"
+        "400":
+          description: org_id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a member with `order.read`, or an organization API key (`guest_list.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`export.internal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      operationId: putV1OrganizationsOrgIdGuestListSubscription
+      summary: Turn the automatic guest list on or off for the caller
+      description: |
+        Turns the caller's automatic guest list on or off. A repeat of the
+        current value changes nothing. Turning it off also stops a list
+        whose moment has come but which was not sent yet. Requires
+        `order.read`; an organization API key is refused (403
+        `guest_list.api_key_forbidden`), and only owners and managers may
+        turn it on (403 `guest_list.role_not_eligible`).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuestListSubscriptionRequest"
+      responses:
+        "200":
+          description: The caller's setting after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestListSubscription"
+        "400":
+          description: Body has no boolean `enabled` or carries another field (`guest_list.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a member with `order.read`, an organization API key (`guest_list.api_key_forbidden`), or turning it on for a role that never receives the list (`guest_list.role_not_eligible`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`export.internal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable (`dependency.database_unavailable`).
           content:
             application/json:
               schema:

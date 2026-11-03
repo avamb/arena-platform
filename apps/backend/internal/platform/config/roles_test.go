@@ -563,3 +563,25 @@ func TestLoadFor_TextFormatSettings(t *testing.T) {
 		t.Error("a cap that is not a number must be refused")
 	}
 }
+
+// The event-page reading (spec 59) caps its model calls per organization.
+func TestLoadFor_EventPageReadsCap(t *testing.T) {
+	clearConfigEnv(t)
+	setEnv(t, productionCommon)
+	setEnv(t, roleMinimum[RoleAPI])
+	cfg, err := LoadFor(RoleAPI)
+	if err != nil {
+		t.Fatalf("api: %v", err)
+	}
+	if cfg.EventPageReadsPerOrgPerDay != 30 {
+		t.Errorf("default = %d, want 30", cfg.EventPageReadsPerOrgPerDay)
+	}
+	t.Setenv("EVENT_PAGE_READS_PER_ORG_PER_DAY", "0")
+	if cfg, err = LoadFor(RoleAPI); err != nil || cfg.EventPageReadsPerOrgPerDay != 0 {
+		t.Errorf("0 = no cap: %d, %v", cfg.EventPageReadsPerOrgPerDay, err)
+	}
+	t.Setenv("EVENT_PAGE_READS_PER_ORG_PER_DAY", "-1")
+	if _, err = LoadFor(RoleAPI); err == nil || !strings.Contains(err.Error(), "EVENT_PAGE_READS_PER_ORG_PER_DAY") {
+		t.Errorf("-1 must be refused, got %v", err)
+	}
+}

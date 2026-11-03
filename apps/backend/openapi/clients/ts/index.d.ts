@@ -1641,6 +1641,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/bot/guest-list-deliveries/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Automatic guest lists the bot must send now
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN`. Returns up to 20
+         *     guest lists whose moment came (24 hours, 3 hours before the start,
+         *     doors open) for members linked to the bot, and takes each for 10
+         *     minutes; a list not reported back with `.../finish` may be taken
+         *     again, three times at most, and never more than 2 hours after its
+         *     moment. The bot fetches `guest-list.xlsx` AS the member, sends it to
+         *     their private chat and reports the outcome. The answer carries no
+         *     data of the file.
+         */
+        post: operations["claimBotGuestListDeliveries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/guest-list-deliveries/{id}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report how one automatic guest list ended
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN` for a delivery it
+         *     claimed. `attempt` must be the claim's own: a report of an older
+         *     claim is a 404 and changes nothing. `sent` closes it; `failed` lets
+         *     it be taken again when its 10-minute lease is over; `skipped` closes
+         *     it without a send (no rights any more, no tickets); `email` moves it
+         *     to the e-mail channel (the person blocked the bot). A delivery
+         *     already sent is a 404.
+         */
+        post: operations["finishBotGuestListDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/users/{user_id}": {
         parameters: {
             query?: never;
@@ -1827,6 +1880,50 @@ export interface paths {
          * @description Sets the end of an individual rate. The end is in the future. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row.
          */
         post: operations["postV1AdminBillingRateOverrideClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/white-label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - list white label periods
+         * @description Lists the white label periods of brands (an organization, or one of its promoters): the days the platform badge is hidden. Requires JWT, billing.admin and a platform superadmin.
+         */
+        get: operations["getV1AdminBillingWhiteLabel"];
+        put?: never;
+        /**
+         * Admin - turn white label on for a brand
+         * @description Turns white label on for a brand from starts_on (today or later, UTC) to ends_on (open when absent). The brand is the organization (promoter_id absent: its events without a promoter and its shop) or one of its promoters. Two periods of one brand never share a day. The job billing.white_label charges every completed month in arrears, prorated by days, at the price list's monthly rate or at monthly_price_minor. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row.
+         */
+        post: operations["postV1AdminBillingWhiteLabel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/white-label/{id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - end a white label period
+         * @description Sets the last day of a white label period. It is yesterday or later (yesterday ends white label now), earlier than the current end, and not earlier than the day before the period starts. A period is never deleted and its end never moves later. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row.
+         */
+        post: operations["postV1AdminBillingWhiteLabelEnd"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6174,6 +6271,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/event-page-facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read the organizer's own event page
+         * @description Downloads the organizer's OWN event page and answers what it says
+         *     about the event: the name, the dates, the venue, the description, the
+         *     ticket prices and a picture (spec 59). The values are hints for an
+         *     event wizard (the Telegram bot, the web event center) to offer as
+         *     buttons; nothing is created but the page's picture, stored as an
+         *     unattached `event_poster` media object the organizer may choose as
+         *     the poster.
+         *
+         *     Sources by trust: a schema.org `Event` in JSON-LD, then Open Graph and
+         *     the meta tags, and only when those leave the dates or the prices
+         *     missing, a text model reading the page's visible text (`sources` says
+         *     which). Model readings are capped at `EVENT_PAGE_READS_PER_ORG_PER_DAY`
+         *     (default 30) per organization in a sliding 24 hours; past the cap, or
+         *     without a model key, the reading answers without them and says so in
+         *     `warnings`. Page reads are capped at 20 an hour per organization. Both
+         *     counters live in the memory of one arena-api process.
+         *
+         *     The page is fetched only on the public internet (no private, loopback
+         *     or metadata address, also after a redirect), http or https, within 10
+         *     seconds and 2 MiB. A page of a ticketing platform (Ticketmaster,
+         *     Eventbrite and others) is refused before it is read: their terms forbid
+         *     automated collection. The call may take up to a minute.
+         *
+         *     Requires the `event.update` permission in the path organization (the
+         *     owner and the manager hold it).
+         */
+        post: operations["postV1OrganizationsOrgIdEventPageFacts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/texts/format": {
         parameters: {
             query?: never;
@@ -6530,6 +6671,9 @@ export interface paths {
          *         covered by the right of withdrawal. False for every other
          *         country (Israel included, which has its own cancellation
          *         regime) and when the country is unknown.
+         *       * `white_label` — boolean. True when the event's brand (its
+         *         promoter, else the organization) has white label today; the
+         *         widget then hides its "Tickets: Arena Sold Out" badge.
          *       * `consent` — `PublicCheckoutConsentBlock` (P2): whether the
          *         buyer must tick "I accept the sale terms (seller: <legal name>)
          *         and the privacy policy" before paying, the seller's legal name
@@ -8431,6 +8575,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/billing/white-label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * White label periods of an organization
+         * @description Lists the organization's white label periods (its own brand and its promoters) with the monthly price that applies: the period's individual price, else the price list's for the organization's billing account. Read-only: only a platform superadmin turns white label on or off. Requires JWT and billing.read in the organization (the owner).
+         */
+        get: operations["getOrgBillingWhiteLabel"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/billing/charges": {
         parameters: {
             query?: never;
@@ -9195,7 +9359,8 @@ export interface paths {
          *     refused with 413 before any byte is sent.
          *
          *     Requires `order.read` AND `session.read`; a session of another
-         *     organization is a 404.
+         *     organization is a 404. The file holds buyers' contacts, so an
+         *     organization API key is refused (403 `guest_list.api_key_forbidden`).
          */
         get: operations["getV1OrganizationsOrgIdSessionsSessionIdSalesCsv"];
         put?: never;
@@ -9312,6 +9477,116 @@ export interface paths {
          */
         get: operations["getV1OrganizationsOrgIdSessionsSessionIdSummaryCsv"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/guest-list.xlsx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Guest list of a session as an Excel workbook
+         * @description The guest list people open: an .xlsx with one sheet, so Excel shows
+         *     the columns whatever its regional settings. The header row is bold
+         *     and frozen, the sheet has an autofilter, and the ticket number,
+         *     barcode, order number and phone are TEXT cells in text-formatted
+         *     columns, so Excel never shows a barcode as 4.6E+12 or drops a
+         *     leading zero, not even in rows added later. The entry time is text
+         *     on the venue's clock. `guest-list.csv` serves the same rows as a CSV.
+         *
+         *     One row per ACTIVE ticket of the session (cancelled, revoked and
+         *     transferred tickets are left out), sorted by the guest's name:
+         *     guest (the name on the ticket, else the buyer's), category, seat,
+         *     ticket number, barcode, VIP (`yes` / `no`), entered (`yes` / `no`),
+         *     entry time (venue's zone), order number, e-mail, phone and
+         *     invitation (`yes` / `no`). Same csvexport rules, locale selection and
+         *     50 000-row cap as the sales file. The same file is sent automatically
+         *     to the members who turned the guest list on
+         *     (`PUT .../guest-list-subscription`).
+         *
+         *     Requires `order.read` AND `session.read`; a session of another
+         *     organization is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdGuestListXlsx"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Guest list of a session as a CSV file
+         * @description The CSV twin of `guest-list.xlsx`, for imports into other systems:
+         *     the same rows, columns and access rules. People should get the
+         *     workbook: Excel opens a CSV with the list separator of its regional
+         *     settings, and with English settings every row lands in column A.
+         *
+         *     One row per ACTIVE ticket of the session (cancelled, revoked and
+         *     transferred tickets are left out), sorted by the guest's name:
+         *     guest (the name on the ticket, else the buyer's), category, seat,
+         *     ticket number, barcode, VIP (`yes` / `no`), entered (`yes` / `no`),
+         *     entry time (venue's zone), order number, e-mail, phone and
+         *     invitation (`yes` / `no`). Same csvexport rules, locale selection and
+         *     50 000-row cap as the sales file. The same file is sent automatically
+         *     to the members who turned the guest list on
+         *     (`PUT .../guest-list-subscription`).
+         *
+         *     Requires `order.read` AND `session.read`; a session of another
+         *     organization is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdGuestListCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/guest-list-subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the caller receives guest lists automatically
+         * @description The CALLING member's setting. When it is on, the guest list of every
+         *     session of the organization is sent to them 24 hours before the
+         *     start, 3 hours before it and at doors open (the start when no doors
+         *     time is set): to their private chat with the event center bot, or by
+         *     e-mail when they are not linked to the bot. Only owners and managers
+         *     get files. Requires `order.read`; an organization API key is refused
+         *     (403 `guest_list.api_key_forbidden`).
+         */
+        get: operations["getV1OrganizationsOrgIdGuestListSubscription"];
+        /**
+         * Turn the automatic guest list on or off for the caller
+         * @description Turns the caller's automatic guest list on or off. A repeat of the
+         *     current value changes nothing. Turning it off also stops a list
+         *     whose moment has come but which was not sent yet. Requires
+         *     `order.read`; an organization API key is refused (403
+         *     `guest_list.api_key_forbidden`), and only owners and managers may
+         *     turn it on (403 `guest_list.role_not_eligible`).
+         */
+        put: operations["putV1OrganizationsOrgIdGuestListSubscription"];
         post?: never;
         delete?: never;
         options?: never;
@@ -11821,6 +12096,110 @@ export interface components {
             /** @description What the model read from the poster. */
             facts: components["schemas"]["PosterFacts"];
         };
+        /** @description One date of the event as the page writes it. */
+        EventPageDate: {
+            /** @description The day, `YYYY-MM-DD`. */
+            date: string;
+            /** @description The start time as written, `HH:MM` 24-hour, or empty when the page gives only the day. */
+            time: string;
+            /** @description The doors-open time of the same day, `HH:MM`, or empty. */
+            doors: string;
+            /** @description The UTC offset the page wrote next to the time (`+01:00`, `Z` for UTC), or empty. The time is never converted. */
+            utc_offset: string;
+        };
+        /**
+         * @description The page's picture, stored as an `event_poster` media object of the
+         *     organization and attached to nothing until the organizer chooses it.
+         */
+        EventPageImage: {
+            /**
+             * Format: uuid
+             * @description Id of the stored media object.
+             */
+            media_id: string;
+            /** @description Width in pixels. */
+            width: number;
+            /** @description Height in pixels. */
+            height: number;
+            /** @description True when the picture passes the poster rules of the Telegram bot (4:5 or square, at least 1000 px wide). */
+            fits_poster: boolean;
+        };
+        /**
+         * @description What an organizer's event page says, normalized. An empty string, or
+         *     an empty list, means "not on the page". Every value is a HINT for a
+         *     wizard to offer as a button; nothing is written from it. The fields
+         *     of `PosterFacts` mean the same here (`date` and `time` repeat the
+         *     first entry of `dates`), so a client of the poster reading reads this
+         *     too.
+         */
+        EventPageFacts: {
+            /** @description Event name. */
+            name: string;
+            /** @description First date, `YYYY-MM-DD`, or empty. */
+            date: string;
+            /** @description Start time of the first date, `HH:MM`, or empty. */
+            time: string;
+            /** @description Venue name, or empty. */
+            venue_name: string;
+            /** @description City, or empty. */
+            city: string;
+            /** @description ISO 3166-1 alpha-2 code when the page gives one, else empty. */
+            country: string;
+            /** @description Street address of the venue, or empty. */
+            street: string;
+            /** @description Age rating, one of `0+`, `6+`, `12+`, `16+`, `18+`, or empty. */
+            age: string;
+            /** @description The page's description as plain text with line breaks, at most 4000 characters, or empty. */
+            description: string;
+            /** @description The future dates the page lists, oldest first, at most 10; past, cancelled and postponed dates are left out. */
+            dates: components["schemas"]["EventPageDate"][];
+            /** @description The ticket prices the page lists, at most 10; empty when there are none. */
+            categories: components["schemas"]["PosterFactsCategory"][];
+            /** @description The page's picture, or null when the page has none or it could not be downloaded. */
+            image: components["schemas"]["EventPageImage"] | null;
+        };
+        /** @description A fact about the reading the organizer should know. */
+        EventPageWarning: {
+            /**
+             * @description Stable code: `event_page.some_dates_skipped`, `event_page.past_dates_skipped`,
+             *     `event_page.cancelled_dates_skipped`, `event_page.online_event`,
+             *     `event_page.price_range_only`, `event_page.read_by_model`,
+             *     `event_page.model_unavailable`, `event_page.model_quota`,
+             *     `event_page.image_not_poster`, `event_page.image_unavailable`,
+             *     `event_page.no_dates`, `event_page.no_prices`,
+             *     `event_page.javascript_page`. The list may grow.
+             */
+            code: string;
+            /** @description How many dates a skipping warning is about. */
+            count?: number;
+            /** @description Short page values the text needs (the low and high price and the currency of a price range, a picture's size). */
+            values?: string[];
+        };
+        /** @description The address of the organizer's own event page. */
+        EventPageFactsRequest: {
+            /** @description A full `http` or `https` address of a public web page. A page of a ticketing platform is refused. */
+            url: string;
+        };
+        /** @description The answer of the event-page reading. */
+        EventPageFactsResponse: {
+            /** @description What the page says. */
+            facts: components["schemas"]["EventPageFacts"];
+            /**
+             * @description Where each found value came from, by field (`name`, `dates`,
+             *     `venue`, `description`, `age`, `categories`, `image`):
+             *     `json_ld`, `open_graph` or `model`. A value read by the model must
+             *     be shown as such.
+             */
+            sources: {
+                [key: string]: string;
+            };
+            /** @description The page's address after redirects. */
+            final_url: string;
+            /** @description The page's language (`es`, `ru`), or empty. It does not change the draft. */
+            language: string;
+            /** @description Facts about the reading; empty when there are none. */
+            warnings: components["schemas"]["EventPageWarning"][];
+        };
         /**
          * @description Which text is formatted. It picks the tags the model may add and the
          *     longest text: `description` (an event description, 4000 characters, with
@@ -12963,6 +13342,76 @@ export interface components {
         BotInvitationPdfNoticesResponse: {
             /** @description Invitations whose PDF is not sent yet; each is handed out once. */
             notices: components["schemas"]["BotInvitationPdfNotice"][];
+        };
+        /** @description The caller's automatic guest list setting. */
+        GuestListSubscription: {
+            /** @description True when the caller receives the guest list of every session automatically. */
+            enabled: boolean;
+            /** @description How the list reaches the caller - `telegram` (private chat with the event center bot), `email` (not linked to the bot) or `none` (neither; nothing can be sent). */
+            channel: string;
+            /** @description False for a role that never receives the list (only owners and managers do); such a caller cannot turn it on. */
+            eligible: boolean;
+        };
+        /** @description Body of PUT .../guest-list-subscription. */
+        GuestListSubscriptionRequest: {
+            /** @description True turns the automatic guest list on, false turns it off. */
+            enabled: boolean;
+        };
+        /** @description One automatic guest list the bot has to send. */
+        BotGuestListDelivery: {
+            /**
+             * Format: uuid
+             * @description The delivery, to report back with `.../finish`.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The organization of the session.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description The session whose guest list to send.
+             */
+            session_id: string;
+            /** @description The moment - `h24` (24 hours before the start), `h3` (3 hours before) or `doors` (doors open). */
+            slot: string;
+            /**
+             * Format: int32
+             * @description The claim's token, to send back with `.../finish`.
+             */
+            attempt: number;
+            /**
+             * Format: int64
+             * @description The private chat (the person's Telegram id) to send the file to.
+             */
+            telegram_user_id: number;
+            /** @description The event's name, for the caption. */
+            event_name: string;
+            /**
+             * Format: date-time
+             * @description The session's start (RFC 3339).
+             */
+            session_start_at: string;
+            /** @description The venue's IANA zone, `UTC` when unknown. */
+            session_timezone: string;
+        };
+        /** @description Answer of POST /v1/bot/guest-list-deliveries/claim. */
+        BotGuestListDeliveriesResponse: {
+            /** @description The lists taken for this call. */
+            deliveries: components["schemas"]["BotGuestListDelivery"][];
+        };
+        /** @description Body of POST /v1/bot/guest-list-deliveries/{id}/finish. */
+        BotGuestListFinishRequest: {
+            /**
+             * Format: int32
+             * @description The `attempt` of the claim that is reported.
+             */
+            attempt: number;
+            /** @description `sent`, `failed` (may be taken again after the lease), `skipped` (closed without a send) or `email` (send it by e-mail instead). */
+            outcome: string;
+            /** @description A short code (`[a-z0-9_]`, up to 40 characters) of why it failed or was skipped; never data of the file. */
+            reason?: string;
         };
         AuthLogoutRequest: {
             /**
@@ -31072,6 +31521,176 @@ export interface components {
              */
             effective_to: string;
         };
+        /** @description A white label period of a brand: from starts_on to ends_on (UTC calendar days, both inclusive) the platform badge is hidden on the brand's widget, letters and shop, and the brand pays the monthly white label price. */
+        BillingWhiteLabelPeriod: {
+            /**
+             * Format: uuid
+             * @description Id of the period.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The organization.
+             */
+            org_id: string;
+            /** @description Name of the organization. Present in the list only. */
+            org_name?: string;
+            /**
+             * Format: uuid
+             * @description The promoter whose events the period covers; null for the organization itself (its events without a promoter, and its shop).
+             */
+            promoter_id: string | null;
+            /** @description Name of the promoter. Present in the list only. */
+            promoter_name?: string | null;
+            /**
+             * Format: date
+             * @description First day of white label (UTC).
+             */
+            starts_on: string;
+            /**
+             * Format: date
+             * @description Last day of white label (UTC), null while it is open.
+             */
+            ends_on: string | null;
+            /**
+             * Format: int64
+             * @description Individual monthly price in minor units of currency; null means the price list, 0 is free.
+             */
+            monthly_price_minor: number | null;
+            /** @description Currency of the individual price, the organization's billing account currency on the day the period was created; null with the price list. A non-zero individual price is not charged in another currency. */
+            currency: string | null;
+            /** @description The X-Admin-Reason the period was created with. */
+            reason: string;
+            /**
+             * Format: date-time
+             * @description When the period was created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the end was last set, null when never.
+             */
+            ended_at: string | null;
+            /**
+             * @description State today (UTC): scheduled, in_force or ended.
+             * @example in_force
+             */
+            status: string;
+        };
+        /** @description White label periods, by organization and brand. */
+        BillingWhiteLabelList: {
+            /** @description The periods. */
+            items: components["schemas"]["BillingWhiteLabelPeriod"][];
+        };
+        /** @description Body of POST /v1/admin/billing/white-label. */
+        BillingCreateWhiteLabelRequest: {
+            /**
+             * Format: uuid
+             * @description The organization.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description A promoter of the organization; absent or null turns white label on for the organization itself.
+             */
+            promoter_id?: string | null;
+            /**
+             * Format: date
+             * @description First day, today (UTC) or later.
+             */
+            starts_on: string;
+            /**
+             * Format: date
+             * @description Last day, on or after starts_on; absent or null keeps the period open.
+             */
+            ends_on?: string | null;
+            /**
+             * Format: int64
+             * @description Individual monthly price in minor units of the organization's billing account currency; absent means the price list, 0 is free.
+             */
+            monthly_price_minor?: number | null;
+            /** @description The currency the operator means for monthly_price_minor (ISO 4217). Optional; when given and different from the organization's billing account currency the request answers 422 billing.white_label_currency_mismatch. The stored currency is always the account's. */
+            currency?: string | null;
+        };
+        /** @description Body of POST /v1/admin/billing/white-label/{id}/end. */
+        BillingEndWhiteLabelRequest: {
+            /**
+             * Format: date
+             * @description New last day. Yesterday (UTC) or later, earlier than the current end.
+             */
+            ends_on: string;
+        };
+        /** @description A white label period of the organization as its owner sees it. */
+        OrgWhiteLabelPeriod: {
+            /**
+             * Format: uuid
+             * @description Id of the period.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The organization.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description The promoter whose events the period covers; null for the organization itself.
+             */
+            promoter_id: string | null;
+            /** @description Name of the promoter, null for the organization itself. */
+            promoter_name: string | null;
+            /** @description The brand's name, the promoter's or the organization's. */
+            brand_name: string;
+            /**
+             * Format: date
+             * @description First day of white label (UTC).
+             */
+            starts_on: string;
+            /**
+             * Format: date
+             * @description Last day of white label (UTC), null while it is open.
+             */
+            ends_on: string | null;
+            /**
+             * Format: int64
+             * @description Individual monthly price, null when the price list applies.
+             */
+            monthly_price_minor: number | null;
+            /**
+             * Format: int64
+             * @description The monthly price that applies, in minor units of currency; null when it cannot be read.
+             */
+            effective_monthly_minor: number | null;
+            /** @description Currency of effective_monthly_minor, the individual price's currency or the organization's billing account currency; empty when it cannot be read. */
+            currency: string;
+            /**
+             * Format: date-time
+             * @description When the period was created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the end was last set, null when never.
+             */
+            ended_at: string | null;
+            /**
+             * @description State today (UTC): scheduled, in_force or ended.
+             * @example in_force
+             */
+            status: string;
+        };
+        /** @description The organization's white label periods and the price list's monthly price. */
+        OrgWhiteLabelList: {
+            /** @description The periods, by brand, newest first. */
+            items: components["schemas"]["OrgWhiteLabelPeriod"][];
+            /** @description Currency of the organization's billing account, empty when it cannot be read. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description The price list's monthly white label price, null when the account or the rule is missing.
+             */
+            price_list_monthly_minor: number | null;
+        };
         /** @description One charge. A reversal has reversal_of set and a negative amount, and carries the time of the event it reverses. */
         BillingChargeItem: {
             /**
@@ -32919,6 +33538,8 @@ export interface components {
             max_line_qty?: number;
             /** @description Cloudflare Turnstile site key the checkout form renders its widget with; the widget's token goes to checkout as `captcha_token`. Absent while the shop's checkout has no captcha. */
             captcha_site_key?: string;
+            /** @description True when the organization has white label today; the storefront then hides its "on the Arena Sold Out platform" footer. */
+            white_label?: boolean;
         };
         /** @description The organization behind a storefront. */
         ShopPublicOrg: {
@@ -37453,6 +38074,105 @@ export interface operations {
             };
         };
     };
+    claimBotGuestListDeliveries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lists to send now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotGuestListDeliveriesResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    finishBotGuestListDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the delivery (from the claim) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotGuestListFinishRequest"];
+            };
+        };
+        responses: {
+            /** @description Recorded */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad id, or outcome / reason not allowed (`bot.invalid_guest_list_outcome`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No open delivery with this id and attempt (`bot.guest_list_delivery_not_found`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     deleteV1AdminUser: {
         parameters: {
             query?: never;
@@ -38193,6 +38913,221 @@ export interface operations {
                 };
             };
             /** @description The end is not in the future or not after the start */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AdminBillingWhiteLabel: {
+        parameters: {
+            query?: {
+                /** @description Only periods of this organization. */
+                org_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The periods. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingWhiteLabelList"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description org_id is not a UUID */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingWhiteLabel: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log and on the period. */
+                "X-Admin-Reason": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingCreateWhiteLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description The new period. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingWhiteLabelPeriod"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of the expected shape */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization or promoter not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The brand already has white label on some of these days */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A field is not valid, or starts_on is in the past */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingWhiteLabelEnd: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log and on the period. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the period. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingEndWhiteLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description The period with its new end. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingWhiteLabelPeriod"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of the expected shape */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Period not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The period already ends on or before that day */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description ends_on is not a date, is before yesterday, or is not earlier than the current end */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -55415,6 +56350,102 @@ export interface operations {
             };
         };
     };
+    postV1OrganizationsOrgIdEventPageFacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventPageFactsRequest"];
+            };
+        };
+        responses: {
+            /** @description What the page says. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPageFactsResponse"];
+                };
+            };
+            /** @description org_id is not a UUID, the body is not JSON with `url` (`event_page.invalid_request`), or the address is not a full http(s) address (`event_page.invalid_url`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization is not found or not the caller's (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description A ticketing platform's page (`event_page.ticketing_platform`), an
+             *     address not on the public internet (`event_page.destination_not_allowed`),
+             *     not a web page (`event_page.not_html`), a page larger than 2 MiB
+             *     (`event_page.too_large`), or a page that says nothing about an event
+             *     (`event_page.nothing_found`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization read 20 pages in the last hour (`event_page.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The site did not answer or answered with an error (`event_page.fetch_failed`, the site's status in `details.status`), many pages are being read at once (`event_page.busy`, try again in a minute), or the organization guard is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     postV1OrganizationsOrgIdTextsFormat: {
         parameters: {
             query?: never;
@@ -61768,6 +62799,47 @@ export interface operations {
             };
         };
     };
+    getOrgBillingWhiteLabel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The periods. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgWhiteLabelList"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller is not a member of the organization or lacks billing.read there. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     listOrgBillingCharges: {
         parameters: {
             query?: {
@@ -64682,7 +65754,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor lacks `order.read` or `session.read`, or is not a member of the organization. */
+            /** @description Actor lacks `order.read` or `session.read`, is not a member of the organization, or is an organization API key (`guest_list.api_key_forbidden`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -65080,6 +66152,342 @@ export interface operations {
                 };
             };
             /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdGuestListXlsx: {
+        parameters: {
+            query?: {
+                /** @description Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The workbook attachment, `Content-Disposition: attachment;
+             *     filename="guests_<event>_<YYYY-MM-DD of the session>.xlsx"`,
+             *     where `<event>` is the event's name transliterated to
+             *     `[a-z0-9-]`, else its page slug, else `event`.
+             */
+            200: {
+                headers: {
+                    /** @description Number of data rows (tickets) in the sheet, the header row not counted. */
+                    "X-Row-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+                };
+            };
+            /** @description org_id or session_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `order.read` or `session.read`, or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description More than 50 000 active tickets (`export.too_many_rows`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdGuestListCsv: {
+        parameters: {
+            query?: {
+                /** @description Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The CSV attachment, `Content-Disposition: attachment;
+             *     filename="guests_<event>_<YYYY-MM-DD of the session>.csv"`, where
+             *     `<event>` is the event's name transliterated to `[a-z0-9-]`,
+             *     else its page slug, else `event`.
+             */
+            200: {
+                headers: {
+                    /** @description Number of data rows (tickets) in the file, the header row not counted. */
+                    "X-Row-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description org_id or session_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `order.read` or `session.read`, or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description More than 50 000 active tickets (`export.too_many_rows`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdGuestListSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's setting. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestListSubscription"];
+                };
+            };
+            /** @description org_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not a member with `order.read`, or an organization API key (`guest_list.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putV1OrganizationsOrgIdGuestListSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuestListSubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description The caller's setting after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestListSubscription"];
+                };
+            };
+            /** @description Body has no boolean `enabled` or carries another field (`guest_list.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not a member with `order.read`, an organization API key (`guest_list.api_key_forbidden`), or turning it on for a role that never receives the list (`guest_list.role_not_eligible`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable (`dependency.database_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;

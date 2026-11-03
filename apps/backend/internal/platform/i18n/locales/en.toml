@@ -615,7 +615,7 @@ other = "Start over"
 other = "Draft deleted. Nothing was saved."
 
 ["bot.wz.ask_name"]
-other = "What is the event called? Buyers will see this name, for example “Concert in Madrid” or “Workshop in Rome”.\n\nType the name as a message.{{if .Poster}} Or, if the poster is ready, tap “Fill in from a poster”. I will read the name, date and prices from it. You confirm each value.{{end}}"
+other = "What is the event called? Buyers will see this name, for example “Concert in Madrid” or “Workshop in Rome”.\n\nType the name as a message.{{if .Poster}} Or, if the poster is ready, tap “Fill in from a poster”. I will read the name, date and prices from it. You confirm each value.{{end}}{{if .Link}}\n\nHave an event page on your website? Tap “Fill in from a link”, or just send its address.{{end}}"
 
 ["bot.wz.err_name"]
 other = "Please give the event a name, up to 200 characters."
@@ -5103,6 +5103,137 @@ other = "Google Maps: {{.Url}}"
 
 ["salesnotify.shop.courier_map_waze"]
 other = "Waze: {{.Url}}"
+
+["bot.wz.link_first_btn"]
+other = "🔗 Fill in from a link"
+
+["bot.wz.ask_link_first"]
+other = "Send the link to this event's page on your website. I will read the name, dates, venue, prices and picture from it and offer them to you. You confirm each value with a button.\n\nI do not read pages of ticketing services (Ticketmaster, Eventbrite and similar). Their rules forbid it.\n\nChanged your mind? Press “Back” and type the name."
+
+["bot.wz.err_link_first"]
+other = "I am waiting for the link to the event page. It starts with https://. To type the name instead, press “Back”."
+
+["bot.wz.hint_btn_page"]
+other = "From the page: {{.Value}}"
+
+["bot.wz.page_reading"]
+other = "Reading the page…"
+
+["bot.wz.page_read"]
+other = "I found on the page:\n{{.List}}\n\nI will offer these as hints. At each step, tap “From the page” if it is right, or type your own value."
+
+["bot.wz.page_ack_image"]
+other = "Picture for the poster"
+
+["bot.wz.page_err_ticketing"]
+other = "This is a page of a ticketing service. I do not read it: the service's rules forbid it. Send the link to the event page on your own website, or press “Back” and type the name."
+
+["bot.wz.page_err_invalid"]
+other = "This does not look like a page address. Send the full link. It starts with https://."
+
+["bot.wz.page_err_not_public"]
+other = "I cannot open this page: it is not on the public internet. Send a link to a public page of your website."
+
+["bot.wz.page_err_not_page"]
+other = "This link is not a web page, or the page is too large. Send the link to the event page."
+
+["bot.wz.page_err_nothing"]
+other = "I found neither an event name nor a date on this page. The page may be built by a script. Send the poster, or press “Back” and type the name."
+
+["bot.wz.page_err_fetch"]
+other = "The website did not answer or answered with an error. Check that the page opens in a browser and send the link again."
+
+["bot.wz.page_err_rate"]
+other = "Many pages were read in the last hour. Try again later, or answer the questions yourself."
+
+["bot.wz.page_err_unavailable"]
+other = "I could not read the page right now. Try again in a minute, or press “Back” and type the name."
+
+["bot.wz.page_note_no_dates"]
+other = "The page has no date. I will ask for it."
+
+["bot.wz.page_note_no_prices"]
+other = "The page lists no prices by category. I will ask about the tickets."
+
+["bot.wz.page_note_more_dates"]
+other = "The page has more dates ({{.Count}}). I took the 10 nearest. Add the others yourself."
+
+["bot.wz.page_note_online"]
+other = "The page says the event is online. I will ask for the venue."
+
+["bot.wz.page_note_image_not_poster"]
+other = "The page's picture does not fit a poster: it must be 4:5 or square, at least 1000 px wide. You can send a poster at the “Poster” step."
+
+["bot.wz.page_note_model"]
+other = "AI read part of this from the page's text. Check it carefully."
+["bot.gl.btn"]
+other = "👥 Guest list"
+
+["bot.gl.private_only"]
+other = "The guest list has buyers' contacts. Open it in your private chat with the bot."
+
+["bot.gl.empty"]
+other = "This session has no active tickets yet. The guest list is empty."
+
+["bot.gl.caption"]
+other = "<b>{{.Name}}</b>, {{.When}}\nGuest list. Tickets in the list: {{.Rows}}. The file has buyers' contacts: do not forward it to outsiders."
+
+["bot.gl.auto_hint"]
+other = "The bot can send you this list on its own: 24 hours before the start, 3 hours before and when doors open. Turn it on in «☰ Menu», then «🔔 Notifications»."
+
+["bot.gl.notif_text"]
+other = "<b>Guest list</b>\nThis bot sends an Excel file with the guest list of every session to this chat: 24 hours before the start, 3 hours before and when doors open. The file comes only to you, never to a group: it has buyers' contacts."
+
+["bot.gl.toggle_on"]
+other = "☑ Send me the guest list"
+
+["bot.gl.toggle_off"]
+other = "☐ Do not send me the guest list"
+
+["bot.gl.toggle_failed"]
+other = "We could not change the setting. Please try again in a minute."
+
+["bot.gl.auto_caption_h24"]
+other = "<b>{{.Name}}</b>, {{.When}}\nGuest list, 24 hours before the start. Tickets in the list: {{.Rows}}."
+
+["bot.gl.auto_caption_h3"]
+other = "<b>{{.Name}}</b>, {{.When}}\nGuest list, 3 hours before the start. Tickets in the list: {{.Rows}}."
+
+["bot.gl.auto_caption_doors"]
+other = "<b>{{.Name}}</b>, {{.When}}\nGuest list for doors open. Tickets in the list: {{.Rows}}."
+
+["bot.gl.auto_stop"]
+other = "The file has buyers' contacts: do not forward it to outsiders. To stop these files, open «☰ Menu», then «🔔 Notifications»."
+
+["guestlist.sheet_name"]
+other = "Guests"
+
+["guestlist.email.subject"]
+other = "Guest list: {{.Event}}, {{.When}}"
+
+["guestlist.email.greeting"]
+other = "Hello!"
+
+["guestlist.email.attached"]
+other = "The guest list of «{{.Event}}» on {{.When}} is attached. Tickets in the list: {{.Rows}}."
+
+["guestlist.email.slot_h24"]
+other = "The session starts in 24 hours."
+
+["guestlist.email.slot_h3"]
+other = "The session starts in 3 hours."
+
+["guestlist.email.slot_doors"]
+other = "Doors are opening for the session."
+
+["guestlist.email.slot_manual"]
+other = "This is a fresh copy of the list."
+
+["guestlist.email.why"]
+other = "You get this letter because you turned on «Send me the guest list» in the event center. The file has buyers' contacts: do not forward it to outsiders."
+
+["guestlist.email.stop"]
+other = "To stop these letters, untick «Send me the guest list» in the «Notifications» section of the event center."
 
 ["bot.dp.btn"]
 other = "⚠️ Disputes"

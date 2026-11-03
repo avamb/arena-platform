@@ -3862,6 +3862,27 @@ type BillingCreateUsageInvoiceRequest struct {
 	Period string `json:"period"`
 }
 
+// BillingCreateWhiteLabelRequest Body of POST /v1/admin/billing/white-label.
+type BillingCreateWhiteLabelRequest struct {
+	// Currency The currency the operator means for monthly_price_minor (ISO 4217). Optional; when given and different from the organization's billing account currency the request answers 422 billing.white_label_currency_mismatch. The stored currency is always the account's.
+	Currency *string `json:"currency"`
+
+	// EndsOn Last day, on or after starts_on; absent or null keeps the period open.
+	EndsOn *openapi_types.Date `json:"ends_on"`
+
+	// MonthlyPriceMinor Individual monthly price in minor units of the organization's billing account currency; absent means the price list, 0 is free.
+	MonthlyPriceMinor *int64 `json:"monthly_price_minor"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PromoterId A promoter of the organization; absent or null turns white label on for the organization itself.
+	PromoterId *openapi_types.UUID `json:"promoter_id"`
+
+	// StartsOn First day, today (UTC) or later.
+	StartsOn openapi_types.Date `json:"starts_on"`
+}
+
 // BillingCreditLot A credit lot that still holds something.
 type BillingCreditLot struct {
 	// Currency Currency of the money fields.
@@ -3908,6 +3929,12 @@ type BillingCurrentRate struct {
 
 	// UnseatedRateMinor Price of one unseated ticket in minor units of the account currency.
 	UnseatedRateMinor *int64 `json:"unseated_rate_minor"`
+}
+
+// BillingEndWhiteLabelRequest Body of POST /v1/admin/billing/white-label/{id}/end.
+type BillingEndWhiteLabelRequest struct {
+	// EndsOn New last day. Yesterday (UTC) or later, earlier than the current end.
+	EndsOn openapi_types.Date `json:"ends_on"`
 }
 
 // BillingEventSummary What the platform charged for one event of the organization.
@@ -4417,6 +4444,54 @@ type BillingVoidInvoiceRequest struct {
 	Reason string `json:"reason"`
 }
 
+// BillingWhiteLabelList White label periods, by organization and brand.
+type BillingWhiteLabelList struct {
+	// Items The periods.
+	Items []BillingWhiteLabelPeriod `json:"items"`
+}
+
+// BillingWhiteLabelPeriod A white label period of a brand: from starts_on to ends_on (UTC calendar days, both inclusive) the platform badge is hidden on the brand's widget, letters and shop, and the brand pays the monthly white label price.
+type BillingWhiteLabelPeriod struct {
+	// CreatedAt When the period was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency Currency of the individual price, the organization's billing account currency on the day the period was created; null with the price list. A non-zero individual price is not charged in another currency.
+	Currency *string `json:"currency"`
+
+	// EndedAt When the end was last set, null when never.
+	EndedAt *time.Time `json:"ended_at"`
+
+	// EndsOn Last day of white label (UTC), null while it is open.
+	EndsOn *openapi_types.Date `json:"ends_on"`
+
+	// Id Id of the period.
+	Id openapi_types.UUID `json:"id"`
+
+	// MonthlyPriceMinor Individual monthly price in minor units of currency; null means the price list, 0 is free.
+	MonthlyPriceMinor *int64 `json:"monthly_price_minor"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Name of the organization. Present in the list only.
+	OrgName *string `json:"org_name,omitempty"`
+
+	// PromoterId The promoter whose events the period covers; null for the organization itself (its events without a promoter, and its shop).
+	PromoterId *openapi_types.UUID `json:"promoter_id"`
+
+	// PromoterName Name of the promoter. Present in the list only.
+	PromoterName *string `json:"promoter_name"`
+
+	// Reason The X-Admin-Reason the period was created with.
+	Reason string `json:"reason"`
+
+	// StartsOn First day of white label (UTC).
+	StartsOn openapi_types.Date `json:"starts_on"`
+
+	// Status State today (UTC): scheduled, in_force or ended.
+	Status string `json:"status"`
+}
+
 // BindSessionSeatingRequest Request body for the seating-bind endpoint. Assigns the given
 // seating_plan_version to the target session in an assigned-seats
 // or hybrid admission mode, materializes one session_seats row per
@@ -4483,6 +4558,54 @@ type BindSessionSeatingResponse struct {
 		// SeatingPlanVersionId UUIDv7 of the bound plan version, when set.
 		SeatingPlanVersionId *openapi_types.UUID `json:"seating_plan_version_id,omitempty"`
 	} `json:"session"`
+}
+
+// BotGuestListDeliveriesResponse Answer of POST /v1/bot/guest-list-deliveries/claim.
+type BotGuestListDeliveriesResponse struct {
+	// Deliveries The lists taken for this call.
+	Deliveries []BotGuestListDelivery `json:"deliveries"`
+}
+
+// BotGuestListDelivery One automatic guest list the bot has to send.
+type BotGuestListDelivery struct {
+	// Attempt The claim's token, to send back with `.../finish`.
+	Attempt int32 `json:"attempt"`
+
+	// EventName The event's name, for the caption.
+	EventName string `json:"event_name"`
+
+	// Id The delivery, to report back with `.../finish`.
+	Id openapi_types.UUID `json:"id"`
+
+	// OrgId The organization of the session.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// SessionId The session whose guest list to send.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// SessionStartAt The session's start (RFC 3339).
+	SessionStartAt time.Time `json:"session_start_at"`
+
+	// SessionTimezone The venue's IANA zone, `UTC` when unknown.
+	SessionTimezone string `json:"session_timezone"`
+
+	// Slot The moment - `h24` (24 hours before the start), `h3` (3 hours before) or `doors` (doors open).
+	Slot string `json:"slot"`
+
+	// TelegramUserId The private chat (the person's Telegram id) to send the file to.
+	TelegramUserId int64 `json:"telegram_user_id"`
+}
+
+// BotGuestListFinishRequest Body of POST /v1/bot/guest-list-deliveries/{id}/finish.
+type BotGuestListFinishRequest struct {
+	// Attempt The `attempt` of the claim that is reported.
+	Attempt int32 `json:"attempt"`
+
+	// Outcome `sent`, `failed` (may be taken again after the lease), `skipped` (closed without a send) or `email` (send it by e-mail instead).
+	Outcome string `json:"outcome"`
+
+	// Reason A short code (`[a-z0-9_]`, up to 40 characters) of why it failed or was skipped; never data of the file.
+	Reason *string `json:"reason,omitempty"`
 }
 
 // BotInvitation A bot invitation as the API reports it, never the code.
@@ -7928,6 +8051,126 @@ type EventMapPoint struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// EventPageDate One date of the event as the page writes it.
+type EventPageDate struct {
+	// Date The day, `YYYY-MM-DD`.
+	Date string `json:"date"`
+
+	// Doors The doors-open time of the same day, `HH:MM`, or empty.
+	Doors string `json:"doors"`
+
+	// Time The start time as written, `HH:MM` 24-hour, or empty when the page gives only the day.
+	Time string `json:"time"`
+
+	// UtcOffset The UTC offset the page wrote next to the time (`+01:00`, `Z` for UTC), or empty. The time is never converted.
+	UtcOffset string `json:"utc_offset"`
+}
+
+// EventPageFacts What an organizer's event page says, normalized. An empty string, or
+// an empty list, means "not on the page". Every value is a HINT for a
+// wizard to offer as a button; nothing is written from it. The fields
+// of `PosterFacts` mean the same here (`date` and `time` repeat the
+// first entry of `dates`), so a client of the poster reading reads this
+// too.
+type EventPageFacts struct {
+	// Age Age rating, one of `0+`, `6+`, `12+`, `16+`, `18+`, or empty.
+	Age string `json:"age"`
+
+	// Categories The ticket prices the page lists, at most 10; empty when there are none.
+	Categories []PosterFactsCategory `json:"categories"`
+
+	// City City, or empty.
+	City string `json:"city"`
+
+	// Country ISO 3166-1 alpha-2 code when the page gives one, else empty.
+	Country string `json:"country"`
+
+	// Date First date, `YYYY-MM-DD`, or empty.
+	Date string `json:"date"`
+
+	// Dates The future dates the page lists, oldest first, at most 10; past, cancelled and postponed dates are left out.
+	Dates []EventPageDate `json:"dates"`
+
+	// Description The page's description as plain text with line breaks, at most 4000 characters, or empty.
+	Description string `json:"description"`
+
+	// Image The page's picture, or null when the page has none or it could not be downloaded.
+	Image *EventPageImage `json:"image"`
+
+	// Name Event name.
+	Name string `json:"name"`
+
+	// Street Street address of the venue, or empty.
+	Street string `json:"street"`
+
+	// Time Start time of the first date, `HH:MM`, or empty.
+	Time string `json:"time"`
+
+	// VenueName Venue name, or empty.
+	VenueName string `json:"venue_name"`
+}
+
+// EventPageFactsRequest The address of the organizer's own event page.
+type EventPageFactsRequest struct {
+	// Url A full `http` or `https` address of a public web page. A page of a ticketing platform is refused.
+	Url string `json:"url"`
+}
+
+// EventPageFactsResponse The answer of the event-page reading.
+type EventPageFactsResponse struct {
+	// Facts What the page says.
+	Facts EventPageFacts `json:"facts"`
+
+	// FinalUrl The page's address after redirects.
+	FinalUrl string `json:"final_url"`
+
+	// Language The page's language (`es`, `ru`), or empty. It does not change the draft.
+	Language string `json:"language"`
+
+	// Sources Where each found value came from, by field (`name`, `dates`,
+	// `venue`, `description`, `age`, `categories`, `image`):
+	// `json_ld`, `open_graph` or `model`. A value read by the model must
+	// be shown as such.
+	Sources map[string]string `json:"sources"`
+
+	// Warnings Facts about the reading; empty when there are none.
+	Warnings []EventPageWarning `json:"warnings"`
+}
+
+// EventPageImage The page's picture, stored as an `event_poster` media object of the
+// organization and attached to nothing until the organizer chooses it.
+type EventPageImage struct {
+	// FitsPoster True when the picture passes the poster rules of the Telegram bot (4:5 or square, at least 1000 px wide).
+	FitsPoster bool `json:"fits_poster"`
+
+	// Height Height in pixels.
+	Height int `json:"height"`
+
+	// MediaId Id of the stored media object.
+	MediaId openapi_types.UUID `json:"media_id"`
+
+	// Width Width in pixels.
+	Width int `json:"width"`
+}
+
+// EventPageWarning A fact about the reading the organizer should know.
+type EventPageWarning struct {
+	// Code Stable code: `event_page.some_dates_skipped`, `event_page.past_dates_skipped`,
+	// `event_page.cancelled_dates_skipped`, `event_page.online_event`,
+	// `event_page.price_range_only`, `event_page.read_by_model`,
+	// `event_page.model_unavailable`, `event_page.model_quota`,
+	// `event_page.image_not_poster`, `event_page.image_unavailable`,
+	// `event_page.no_dates`, `event_page.no_prices`,
+	// `event_page.javascript_page`. The list may grow.
+	Code string `json:"code"`
+
+	// Count How many dates a skipping warning is about.
+	Count *int `json:"count,omitempty"`
+
+	// Values Short page values the text needs (the low and high price and the currency of a price range, a picture's size).
+	Values *[]string `json:"values,omitempty"`
+}
+
 // EventPartnerLink One "where else to buy" link of an event.
 type EventPartnerLink struct {
 	// CreatedAt When the link was added.
@@ -8680,6 +8923,24 @@ type GrowthSettingsUpdate struct {
 
 	// MarketingOptinEnabled Offer the marketing consent tick at checkout.
 	MarketingOptinEnabled bool `json:"marketing_optin_enabled"`
+}
+
+// GuestListSubscription The caller's automatic guest list setting.
+type GuestListSubscription struct {
+	// Channel How the list reaches the caller - `telegram` (private chat with the event center bot), `email` (not linked to the bot) or `none` (neither; nothing can be sent).
+	Channel string `json:"channel"`
+
+	// Eligible False for a role that never receives the list (only owners and managers do); such a caller cannot turn it on.
+	Eligible bool `json:"eligible"`
+
+	// Enabled True when the caller receives the guest list of every session automatically.
+	Enabled bool `json:"enabled"`
+}
+
+// GuestListSubscriptionRequest Body of PUT .../guest-list-subscription.
+type GuestListSubscriptionRequest struct {
+	// Enabled True turns the automatic guest list on, false turns it off.
+	Enabled bool `json:"enabled"`
 }
 
 // HealthzResponse defines model for HealthzResponse.
@@ -12512,6 +12773,60 @@ type OrgMeResponse struct {
 	// `platform_superadmin`) and any roles of the token. Empty for an
 	// API key.
 	Roles []string `json:"roles"`
+}
+
+// OrgWhiteLabelList The organization's white label periods and the price list's monthly price.
+type OrgWhiteLabelList struct {
+	// Currency Currency of the organization's billing account, empty when it cannot be read.
+	Currency string `json:"currency"`
+
+	// Items The periods, by brand, newest first.
+	Items []OrgWhiteLabelPeriod `json:"items"`
+
+	// PriceListMonthlyMinor The price list's monthly white label price, null when the account or the rule is missing.
+	PriceListMonthlyMinor *int64 `json:"price_list_monthly_minor"`
+}
+
+// OrgWhiteLabelPeriod A white label period of the organization as its owner sees it.
+type OrgWhiteLabelPeriod struct {
+	// BrandName The brand's name, the promoter's or the organization's.
+	BrandName string `json:"brand_name"`
+
+	// CreatedAt When the period was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency Currency of effective_monthly_minor, the individual price's currency or the organization's billing account currency; empty when it cannot be read.
+	Currency string `json:"currency"`
+
+	// EffectiveMonthlyMinor The monthly price that applies, in minor units of currency; null when it cannot be read.
+	EffectiveMonthlyMinor *int64 `json:"effective_monthly_minor"`
+
+	// EndedAt When the end was last set, null when never.
+	EndedAt *time.Time `json:"ended_at"`
+
+	// EndsOn Last day of white label (UTC), null while it is open.
+	EndsOn *openapi_types.Date `json:"ends_on"`
+
+	// Id Id of the period.
+	Id openapi_types.UUID `json:"id"`
+
+	// MonthlyPriceMinor Individual monthly price, null when the price list applies.
+	MonthlyPriceMinor *int64 `json:"monthly_price_minor"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// PromoterId The promoter whose events the period covers; null for the organization itself.
+	PromoterId *openapi_types.UUID `json:"promoter_id"`
+
+	// PromoterName Name of the promoter, null for the organization itself.
+	PromoterName *string `json:"promoter_name"`
+
+	// StartsOn First day of white label (UTC).
+	StartsOn openapi_types.Date `json:"starts_on"`
+
+	// Status State today (UTC): scheduled, in_force or ended.
+	Status string `json:"status"`
 }
 
 // OrganizationItem A single active organization (primary tenant boundary).
@@ -18044,6 +18359,9 @@ type ShopPublicSettings struct {
 
 	// ShippingLabel How the delivery is called.
 	ShippingLabel string `json:"shipping_label"`
+
+	// WhiteLabel True when the organization has white label today; the storefront then hides its "on the Arena Sold Out platform" footer.
+	WhiteLabel *bool `json:"white_label,omitempty"`
 }
 
 // ShopPublicVariant A variant on the storefront.
@@ -20640,6 +20958,24 @@ type PostV1AdminBillingRateOverrideCloseParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// GetV1AdminBillingWhiteLabelParams defines parameters for GetV1AdminBillingWhiteLabel.
+type GetV1AdminBillingWhiteLabelParams struct {
+	// OrgId Only periods of this organization.
+	OrgId *openapi_types.UUID `form:"org_id,omitempty" json:"org_id,omitempty"`
+}
+
+// PostV1AdminBillingWhiteLabelParams defines parameters for PostV1AdminBillingWhiteLabel.
+type PostV1AdminBillingWhiteLabelParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log and on the period.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminBillingWhiteLabelEndParams defines parameters for PostV1AdminBillingWhiteLabelEnd.
+type PostV1AdminBillingWhiteLabelEndParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log and on the period.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // PostV1AdminCustomerImportsParams defines parameters for PostV1AdminCustomerImports.
 type PostV1AdminCustomerImportsParams struct {
 	// XAdminReason Human-readable business reason for the admin write (audit trail).
@@ -21871,6 +22207,18 @@ type GetV1OrganizationsOrgIdSessionsSessionIdChangeImpactParams struct {
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdSessionsSessionIdGuestListCsvParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdGuestListCsv.
+type GetV1OrganizationsOrgIdSessionsSessionIdGuestListCsvParams struct {
+	// Locale Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// GetV1OrganizationsOrgIdSessionsSessionIdGuestListXlsxParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdGuestListXlsx.
+type GetV1OrganizationsOrgIdSessionsSessionIdGuestListXlsxParams struct {
+	// Locale Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
 // CreateInvitationBatchParams defines parameters for CreateInvitationBatch.
 type CreateInvitationBatchParams struct {
 	// DryRun true validates the file and writes nothing (answers the report, 200). Default false.
@@ -22290,6 +22638,12 @@ type PostV1AdminBillingRateOverridesJSONRequestBody = BillingCreateRateOverrideR
 // PostV1AdminBillingRateOverrideCloseJSONRequestBody defines body for PostV1AdminBillingRateOverrideClose for application/json ContentType.
 type PostV1AdminBillingRateOverrideCloseJSONRequestBody = BillingCloseRateOverrideRequest
 
+// PostV1AdminBillingWhiteLabelJSONRequestBody defines body for PostV1AdminBillingWhiteLabel for application/json ContentType.
+type PostV1AdminBillingWhiteLabelJSONRequestBody = BillingCreateWhiteLabelRequest
+
+// PostV1AdminBillingWhiteLabelEndJSONRequestBody defines body for PostV1AdminBillingWhiteLabelEnd for application/json ContentType.
+type PostV1AdminBillingWhiteLabelEndJSONRequestBody = BillingEndWhiteLabelRequest
+
 // PostV1AdminCustomerImportsJSONRequestBody defines body for PostV1AdminCustomerImports for application/json ContentType.
 type PostV1AdminCustomerImportsJSONRequestBody = CreateCustomerImportRequest
 
@@ -22412,6 +22766,9 @@ type StripeBillingWebhookJSONRequestBody StripeBillingWebhookJSONBody
 
 // CreateTariffJSONRequestBody defines body for CreateTariff for application/json ContentType.
 type CreateTariffJSONRequestBody CreateTariffJSONBody
+
+// FinishBotGuestListDeliveryJSONRequestBody defines body for FinishBotGuestListDelivery for application/json ContentType.
+type FinishBotGuestListDeliveryJSONRequestBody = BotGuestListFinishRequest
 
 // AcceptBotInvitationJSONRequestBody defines body for AcceptBotInvitation for application/json ContentType.
 type AcceptBotInvitationJSONRequestBody = BotInvitationAcceptRequest
@@ -22554,6 +22911,9 @@ type PostV1OrganizationsOrgIdDisputesDisputeIdDeadlineJSONRequestBody = DisputeD
 // PostV1OrganizationsOrgIdDisputesDisputeIdSubmitJSONRequestBody defines body for PostV1OrganizationsOrgIdDisputesDisputeIdSubmit for application/json ContentType.
 type PostV1OrganizationsOrgIdDisputesDisputeIdSubmitJSONRequestBody = SubmitDisputeRequest
 
+// PostV1OrganizationsOrgIdEventPageFactsJSONRequestBody defines body for PostV1OrganizationsOrgIdEventPageFacts for application/json ContentType.
+type PostV1OrganizationsOrgIdEventPageFactsJSONRequestBody = EventPageFactsRequest
+
 // CreateEventJSONRequestBody defines body for CreateEvent for application/json ContentType.
 type CreateEventJSONRequestBody = CreateEventRequest
 
@@ -22661,6 +23021,9 @@ type UpdateExternalAllocationJSONRequestBody UpdateExternalAllocationJSONBody
 
 // PutOrganizationGrowthSettingsJSONRequestBody defines body for PutOrganizationGrowthSettings for application/json ContentType.
 type PutOrganizationGrowthSettingsJSONRequestBody = GrowthSettingsUpdate
+
+// PutV1OrganizationsOrgIdGuestListSubscriptionJSONRequestBody defines body for PutV1OrganizationsOrgIdGuestListSubscription for application/json ContentType.
+type PutV1OrganizationsOrgIdGuestListSubscriptionJSONRequestBody = GuestListSubscriptionRequest
 
 // ImportBil24SessionJSONRequestBody defines body for ImportBil24Session for application/json ContentType.
 type ImportBil24SessionJSONRequestBody = ImportBil24SessionRequest

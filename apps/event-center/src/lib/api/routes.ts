@@ -48,6 +48,17 @@ export const API = {
     path: "/v1/organizations/{org_id}/sessions/{session_id}/summary.csv",
   },
   sampleTicket: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/sample-ticket" },
+  // The guest list of a session, and the caller's own "send me the guest list" setting.
+  sessionGuestListXlsx: {
+    method: "GET",
+    path: "/v1/organizations/{org_id}/sessions/{session_id}/guest-list.xlsx",
+  },
+  sessionGuestListCsv: {
+    method: "GET",
+    path: "/v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv",
+  },
+  guestListSubscription: { method: "GET", path: "/v1/organizations/{org_id}/guest-list-subscription" },
+  guestListSubscriptionSet: { method: "PUT", path: "/v1/organizations/{org_id}/guest-list-subscription" },
   // The search travels in the body, never in the URL: a buyer's e-mail or
   // phone in a query string is written by every proxy log (spec 37 §13).
   orderSearch: { method: "POST", path: "/v1/organizations/{org_id}/orders/search" },
@@ -139,6 +150,8 @@ export const API = {
   // Poster-first creation: reads the uploaded poster with the vision model on the
   // server (the model key never reaches the browser). Costs a daily slot of the organization.
   posterFacts: { method: "POST", path: "/v1/organizations/{org_id}/media/{media_id}/poster-facts" },
+  // Spec 59: reads the organizer's OWN event page on the server (egress-guarded) into hints.
+  eventPageFacts: { method: "POST", path: "/v1/organizations/{org_id}/event-page-facts" },
   eventUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{id}" },
   // RT-11 (spec 44): the editor's "Format" button (a model adds the marks, the code keeps the words) and
   // the test letter of the organizer's own text. The text itself is saved with eventUpdate.

@@ -26,6 +26,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/honboarding"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hshop"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/whitelabel"
 )
 
 // shopService builds the shop core over the raw pool; without one every call
@@ -100,6 +101,9 @@ func (s *Server) shopHandler() *hshop.Handler {
 		Window:       widgetPaymentWindow(s.cfg),
 		Grace:        widgetPaymentGrace(s.cfg),
 		Bundle:       s.bundle,
+	}
+	if s.pgxPool != nil {
+		opts.WhiteLabel = whitelabel.New(gen.New(s.pgxPool))
 	}
 	if starter := s.hostedPaymentStarter(); starter != nil {
 		opts.Payments = starter

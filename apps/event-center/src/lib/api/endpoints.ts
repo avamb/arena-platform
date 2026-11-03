@@ -3,7 +3,7 @@
  * from the API table (routes.ts), which the parity test checks against
  * openapi.yaml.
  */
-import { ApiError, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
+import { ApiError, PAGE_READ_TIMEOUT_MS, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
 import type { PageStatsResponse } from "@/lib/api/types";
 import type {
@@ -35,6 +35,7 @@ import type {
   EventEnvelope,
   MediaObject,
   PosterFactsResponse,
+  EventPageFactsResponse,
   EventContactResponse,
   EventListResponse,
   EventSummary,
@@ -68,6 +69,7 @@ import type {
   SessionChangeImpact,
   SessionEnvelope,
   SessionSalesState,
+  GuestListSubscription,
   SessionSalesStateHistory,
   SessionListResponse,
   SessionSummary,
@@ -163,7 +165,7 @@ export function fetchOrder(orgId: string, orderId: string): Promise<OrderDetail>
   return call<OrderDetail>({ route: API.order, params: { org_id: orgId, id: orderId } });
 }
 
-export type CsvKind = "eventSales" | "sessionSales" | "sessionSummary";
+export type CsvKind = "eventSales" | "sessionSales" | "sessionSummary" | "sessionGuestList";
 
 export function downloadCsv(
   orgId: string,
@@ -197,7 +199,45 @@ export function downloadCsv(
         accept,
         fallbackName: "summary.csv",
       });
+    case "sessionGuestList":
+      return download({
+        route: API.sessionGuestListCsv,
+        params: { org_id: orgId, session_id: id },
+        query: { locale },
+        accept,
+        fallbackName: "guests.csv",
+      });
   }
+}
+
+/**
+ * The guest list of a session as an Excel workbook: the file people open.
+ * Excel opens a CSV with the list separator of its regional settings, so
+ * with English settings every row of the CSV lands in column A; the CSV
+ * (`downloadCsv(..., "sessionGuestList", ...)`) stays for imports.
+ */
+export function downloadGuestListXlsx(orgId: string, sessionId: string, locale: string): Promise<DownloadedFile> {
+  return download({
+    route: API.sessionGuestListXlsx,
+    params: { org_id: orgId, session_id: sessionId },
+    query: { locale },
+    accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    fallbackName: "guests.xlsx",
+  });
+}
+
+/** The caller's own "send me the guest list" setting in this organization. */
+export function getGuestListSubscription(orgId: string): Promise<GuestListSubscription> {
+  return call<GuestListSubscription>({ route: API.guestListSubscription, params: { org_id: orgId } });
+}
+
+/** Turns the caller's automatic guest list on or off. */
+export function setGuestListSubscription(orgId: string, enabled: boolean): Promise<GuestListSubscription> {
+  return call<GuestListSubscription>({
+    route: API.guestListSubscriptionSet,
+    params: { org_id: orgId },
+    body: { enabled },
+  });
 }
 
 export function downloadSampleTicket(orgId: string, sessionId: string, locale: string): Promise<DownloadedFile> {
@@ -883,6 +923,22 @@ export function readPosterFacts(orgId: string, mediaId: string, signal?: AbortSi
     params: { org_id: orgId, media_id: mediaId },
     signal,
     timeoutMs: POSTER_READ_TIMEOUT_MS,
+  });
+}
+
+/**
+ * Asks the server to read the organizer's OWN event page (`event.update`, spec 59).
+ * The server fetches the address, never the browser. ONE request on its own long
+ * timeout, never repeated by itself: a lost answer may have used a daily reading.
+ * The answer is only a set of hints; the page's picture is stored unattached.
+ */
+export function readEventPageFacts(orgId: string, url: string, signal?: AbortSignal): Promise<EventPageFactsResponse> {
+  return call<EventPageFactsResponse>({
+    route: API.eventPageFacts,
+    params: { org_id: orgId },
+    body: { url },
+    signal,
+    timeoutMs: PAGE_READ_TIMEOUT_MS,
   });
 }
 

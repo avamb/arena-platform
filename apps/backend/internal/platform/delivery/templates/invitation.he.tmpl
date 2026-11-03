@@ -33,7 +33,7 @@
     {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
     {{with .Branding.ContactEmail}}<br>יצירת קשר: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>יצירת קשר: <a href="{{.}}" style="color:#666">כתיבה למארגן</a>{{end}}{{end}}
   </p>
-  <p style="font-size:11px;color:#999">Arena Platform — שליחת הזמנות אוטומטית</p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}Arena Platform — שליחת הזמנות אוטומטית{{end}}</p>
   <p style="font-size:11px;color:#999;line-height:1.5">אם תלחצו על ״ביטול הרשמה״, לא תקבלו יותר את המיילים עם הכרטיסים שלכם ואת המיילים החשובים על ההזמנה שלכם. אנחנו לא שולחים דיוורים שיווקיים ללא הסכמתכם.</p>
   </td></tr>
 </table>
@@ -71,7 +71,7 @@
 {{end}}{{with .Branding.ContactEmail}}יצירת קשר: {{.}}
 {{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}יצירת קשר: {{.}}
 {{end}}{{end}}
-Arena Platform — שליחת הזמנות אוטומטית
+{{if not .WhiteLabel}}Arena Platform — שליחת הזמנות אוטומטית{{end}}
 
 אם תלחצו על ״ביטול הרשמה״, לא תקבלו יותר את המיילים עם הכרטיסים שלכם ואת המיילים החשובים על ההזמנה שלכם. אנחנו לא שולחים דיוורים שיווקיים ללא הסכמתכם.
 {{end}}

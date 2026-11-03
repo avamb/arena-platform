@@ -270,6 +270,14 @@ func (b *Bot) wizardText(ctx context.Context, chatID int64, from *models.User, t
 		d.Step == stPreview || d.Step == stSConfirm {
 		return false
 	}
+	// "Fill in from a link" (spec 59): the address on its own question, or
+	// pasted as the name of a new event — nobody names an event https://….
+	if d.Mode == ModeCreate && (d.Step == stEvLinkAsk || (d.Step == stEvName && looksLikePageURL(text))) {
+		if b.readPageHints(ctx, chatID, ws.Locale, jwt, ws.OrgID, text, d) {
+			b.wizardApply(ctx, chatID, nil, from, ws, d, WizInput{PageRead: true})
+		}
+		return true
+	}
 	if d.Step == stXDescription {
 		// The description is formatted and shown first; the wizard gets it
 		// only when the organizer presses a button under the preview
