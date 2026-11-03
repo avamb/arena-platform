@@ -108,6 +108,8 @@ func run(args []string) error {
 	eventStatusOp := fs.String("event-status-op", "", "5-1 twin helper: reset or inspect")
 	saleTimesOp := fs.String("sale-times-op", "", "5-3 twin helper: reset or inspect")
 	salesStateOp := fs.String("sales-state-op", "", "sales state twin helper: reset (see sales_state_fixture.go)")
+	growthOp := fs.String("growth-op", "", "spec 51-1 twin helper: reset (see growth_fixture.go)")
+	smartPriceOp := fs.String("smart-price-op", "", "smart price twin helper: reset or sell (see smart_price_fixture.go)")
 	categoriesOp := fs.String("categories-op", "", "5-4 twin helper: reset or inspect")
 	refundOp := fs.String("refund-op", "", "8-1 twin helper: reset, inspect or scan (see refund_fixture.go)")
 	seatsOp := fs.String("seats-op", "", "S2b twin helper: reset, inspect or sell (see seats_fixture.go)")
@@ -142,8 +144,14 @@ func run(args []string) error {
 	if *saleTimesOp != "" {
 		return runSaleTimesOp(*saleTimesOp)
 	}
+	if *smartPriceOp != "" {
+		return runSmartPriceOp(*smartPriceOp)
+	}
 	if *salesStateOp != "" {
 		return runSalesStateOp(*salesStateOp)
+	}
+	if *growthOp != "" {
+		return runGrowthOp(*growthOp)
 	}
 	if *invitationsOp != "" {
 		return runInvitationsOp(*invitationsOp, *invitationEmail)
@@ -303,12 +311,20 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	if err := applySaleTimesFixture(ctx, tx); err != nil {
 		return err
 	}
+	// Spec 51 §4.2: the smart price twin test's date (smart_price_fixture.go).
+	if err := applySmartPriceFixture(ctx, tx); err != nil {
+		return err
+	}
 	// Migration 0183: the sales state twin test's date (sales_state_fixture.go).
 	if err := applySalesStateFixture(ctx, tx); err != nil {
 		return err
 	}
 	// 5-4: the categories twin test's date (categories_fixture.go).
 	if err := applyCategoriesFixture(ctx, tx); err != nil {
+		return err
+	}
+	// Spec 51-1: the reward codes and subscribers of the growth twin test (growth_fixture.go).
+	if err := applyGrowthFixture(ctx, tx); err != nil {
 		return err
 	}
 	// S2b: the seated hall of the seat manager's twin test (seats_fixture.go).

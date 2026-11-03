@@ -175,6 +175,20 @@ func (s *Server) mountTierRoutes(r chi.Router) {
 			pr.Delete("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}", s.handleDeleteTier)
 		})
 	}
+	// Smart price presets (spec 51 §4.2): written through the event-bundle
+	// import, so they need the import's handles.
+	if s.authEnabled() && s.eventQueries != nil && s.pool != nil {
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "tier.read", "tiers")
+			pr.Get("/organizations/{org_id}/sessions/{session_id}/smart-price", s.handleSmartPriceList)
+		})
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "tier.update", "tiers")
+			pr.Post("/organizations/{org_id}/sessions/{session_id}/smart-price/preview", s.handleSmartPricePreview)
+			pr.Post("/organizations/{org_id}/sessions/{session_id}/smart-price", s.handleSmartPriceEnable)
+			pr.Post("/organizations/{org_id}/sessions/{session_id}/smart-price/{rule_id}/stop", s.handleSmartPriceStop)
+		})
+	}
 }
 
 // mountPublicationRoutes mounts event publication endpoints (feature #151).
@@ -283,4 +297,13 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		r.Post("/public/feeds/{feed_token}/sessions/{session_id}/sale-subscriptions", s.handleCreateSaleSubscription)
 	}
 	r.Get("/public/sale-subscriptions/confirm", s.handleConfirmSaleSubscription)
+	// Spec 51-1: the reminder's link back to the payment, and the two links
+	// of the marketing consent (confirm; withdraw page and its form).
+	if s.checkoutQueries != nil {
+		r.Get("/public/checkout/{checkout_token}/resume", s.handleCheckoutResume)
+	}
+	r.Get("/public/marketing/confirm", s.handleMarketingConfirmPage)
+	r.Post("/public/marketing/confirm", s.handleMarketingConfirm)
+	r.Get("/public/marketing/withdraw", s.handleMarketingWithdrawPage)
+	r.Post("/public/marketing/withdraw", s.handleMarketingWithdraw)
 }

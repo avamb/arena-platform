@@ -886,6 +886,13 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 			return updErr
 		}
 		updated = row
+		if req.PriceAmount != nil && *req.PriceAmount != current.PriceAmount {
+			// A price typed by hand ends the smart price this category
+			// follows: the price stops rising (owner decision В-5, spec 51 §4.2).
+			if _, err := txq.OverrideSmartPriceRulesForTier(ctx, gen.SmartOverride{TierID: tierID}); err != nil {
+				return err
+			}
+		}
 		if setColor {
 			if _, err := txq.SetTicketTierColor(ctx, tierID, sessionID, newColor); err != nil {
 				return err

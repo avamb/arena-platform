@@ -5355,6 +5355,142 @@ other = "The friend's payment did not go through."
 
 ["bot.rfp.why_r_no_refundable_ticket"]
 other = "There is no ticket to return the money for."
+
+["bot.sp.btn"]
+other = "📈 Smart price"
+
+["bot.sp.title"]
+other = "📈 <b>Smart price: {{.Name}}</b>"
+
+["bot.sp.intro"]
+other = "The price rises by itself, by your rule. Buyers always see the price they pay now. Tickets already sold keep their price.\n\nChoose how the price rises. You will see the prices before Arena saves anything."
+
+["bot.sp.kind_by_sales_btn"]
+other = "Every N tickets sold"
+
+["bot.sp.kind_by_days_btn"]
+other = "Every N days"
+
+["bot.sp.kind_last_days_btn"]
+other = "Higher in the last days"
+
+["bot.sp.rule_by_sales"]
+other = "+{{.Step}}% every {{.Every}} tickets sold, at most +{{.Cap}}%"
+
+["bot.sp.rule_by_days"]
+other = "+{{.Step}}% every {{.Every}} days, at most +{{.Cap}}%"
+
+["bot.sp.rule_last_days"]
+other = "+{{.Step}}% in the last {{.Every}} days before the date"
+
+["bot.sp.active"]
+other = "On: {{.Rule}}."
+
+["bot.sp.now"]
+other = "Now: <b>{{.Price}}</b>, step {{.Step}} of {{.Steps}}."
+
+["bot.sp.now_last"]
+other = "This is the last step."
+
+["bot.sp.now_left"]
+other = "Then {{.Next}}, after {{.Left}} more tickets are sold."
+
+["bot.sp.now_at"]
+other = "Then {{.Next}} from {{.When}}."
+
+["bot.sp.stop_btn"]
+other = "⏸ Stop the rise"
+
+["bot.sp.stop_confirm"]
+other = "⏸ <b>{{.Name}}</b>: the price stays {{.Price}} until sales end. Tickets already sold keep their price.\n\nStop the rise?"
+
+["bot.sp.stop_yes_btn"]
+other = "✔ Yes, stop"
+
+["bot.sp.stopped"]
+other = "⏸ The price no longer rises. It stays as it is now."
+
+["bot.sp.in_chain"]
+other = "This category already sells in steps. To change them, open Edit, then Tickets."
+
+["bot.sp.ended_stopped"]
+other = "Smart price stopped on {{.When}}."
+
+["bot.sp.ended_overridden"]
+other = "Smart price went off on {{.When}}: someone changed the price by hand."
+
+["bot.sp.preview_head"]
+other = "📈 <b>{{.Name}}</b>: {{.Rule}}."
+
+["bot.sp.row_now"]
+other = "now: {{.Price}}"
+
+["bot.sp.row_tickets"]
+other = "{{.N}}. {{.Places}} tickets: {{.Price}}"
+
+["bot.sp.row_rest"]
+other = "{{.N}}. the rest, {{.Places}}: {{.Price}}"
+
+["bot.sp.row_from"]
+other = "from {{.When}}: {{.Price}}"
+
+["bot.sp.preview_note"]
+other = "Arena rounds each price up to a whole unit. Buyers see one category with its current price and how many tickets are left at it. Arena saves nothing yet."
+
+["bot.sp.enable_btn"]
+other = "✔ Turn on"
+
+["bot.sp.nums_btn"]
+other = "✏️ Other numbers"
+
+["bot.sp.enabled"]
+other = "📈 Smart price is on. The price rises by your rule."
+
+["bot.sp.q_nums_by_sales"]
+other = "Type three numbers with spaces: the rise per step in %, the tickets in one step, the largest rise in %.\n\nFor example: <code>10 50 50</code>"
+
+["bot.sp.q_nums_by_days"]
+other = "Type three numbers with spaces: the rise per step in %, the days in one step, the largest rise in %.\n\nFor example: <code>10 7 50</code>"
+
+["bot.sp.q_nums_last_days"]
+other = "Type two numbers with a space: the rise in %, and how many days before the date it starts.\n\nFor example: <code>20 3</code>"
+
+["bot.sp.err_nums"]
+other = "These are not the numbers the question asks for. Type whole numbers only."
+
+["bot.sp.err_input"]
+other = "Arena cannot use these numbers. Check them and type them again."
+
+["bot.sp.err_on"]
+other = "Smart price is already on, or the category already sells in steps."
+
+["bot.sp.err_changed"]
+other = "Someone changed this date's categories at the same moment, so nothing was saved. Open the category again and repeat."
+
+["bot.sp.err_schedule"]
+other = "This category already has a price schedule. Remove its future price windows in Edit, then turn smart price on."
+
+["bot.sp.err_places"]
+other = "There are not enough free tickets for these steps. Make a step smaller, or choose rising by days."
+
+["bot.sp.err_no_room"]
+other = "There is no time left for these steps before sales end. Make a step shorter."
+
+["bot.sp.err_too_late"]
+other = "It is too late for this rule: the rise would start in the past. Choose fewer days."
+
+["bot.sp.err_seated"]
+other = "A category with seats on a hall plan rises by days only."
+
+["bot.sp.err_free"]
+other = "Smart price needs a fixed price above zero. Set the price first."
+
+["bot.sp.err_off"]
+other = "Smart price is already off."
+
+["bot.sp.price_warn"]
+other = "📈 This category follows smart price. A price set by hand turns smart price off: the price no longer rises after it."
+
 ["bot.wz.link_first_btn"]
 other = "🔗 Fill in from a link"
 

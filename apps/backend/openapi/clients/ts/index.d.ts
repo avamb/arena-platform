@@ -6678,6 +6678,13 @@ export interface paths {
          *         buyer must tick "I accept the sale terms (seller: <legal name>)
          *         and the privacy policy" before paying, the seller's legal name
          *         for that text and the two pages it links to.
+         *       * `marketing_optin` — `PublicMarketingOptInBlock` (spec 51-1):
+         *         whether the widget offers the separate, never-required tick
+         *         "send me news and offers", whose mailings it is for, the text
+         *         version to send back and the discount it earns.
+         *       * `cart_reminder` — boolean. True when the organizer reminds a
+         *         buyer once by e-mail of an unpaid order (spec 51-1); the
+         *         widget then says so under the e-mail field.
          *       * `poster_media_id` — resolved cover: session's own value when
          *         set, otherwise the event fallback. Same on `poster_url`.
          *       * `media_gallery: SessionMediaItem[]` — ordered per-session
@@ -7071,6 +7078,178 @@ export interface paths {
          *     answer is JSON instead. No JWT is required.
          */
         get: operations["confirmPublicSaleSubscription"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/checkout/{checkout_token}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Back to the payment of an unpaid order (the reminder's link)
+         * @description The link of the unpaid-order reminder (spec 51-1). While the order is
+         *     unpaid and its payment page is still open, answers `303` to that page;
+         *     otherwise (paid, expired, cancelled) `303` to the buyer's own page with
+         *     `?checkout_token=`, where the widget shows the order. An unknown token
+         *     answers `303` to the tickets site. No JWT is required: the token is
+         *     the credential.
+         */
+        get: operations["resumePublicCheckout"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/marketing/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The page that confirms a marketing consent
+         * @description The link of the marketing consent confirmation letter (spec 51-1). A
+         *     valid token answers a small HTML page that names the organization and
+         *     asks with one button; it never confirms by itself, because mail
+         *     scanners open every link of a letter and a scanner's click must not
+         *     stand as the buyer's consent. An unknown, used or expired token
+         *     answers `303` to the tickets site with `arena_marketing=invalid`, or
+         *     JSON without a configured tickets site. No JWT is required.
+         */
+        get: operations["getPublicMarketingConfirmPage"];
+        put?: never;
+        /**
+         * Confirm a marketing consent (double opt-in)
+         * @description The button of the confirmation page (spec 51-1). A valid token
+         *     confirms the address, journals the click with its address and
+         *     browser, and answers `303` to the page the buyer checked out on (else
+         *     the tickets site) with `arena_marketing=confirmed`; an unknown, used
+         *     or expired token answers `303` to the tickets site with
+         *     `arena_marketing=invalid`. Without a configured tickets site the
+         *     answer is a small HTML page (confirmed) or JSON (invalid). The form
+         *     posts `multipart/form-data` with an empty body; the token is in the
+         *     query string. No JWT is required.
+         */
+        post: operations["confirmPublicMarketingConsent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/marketing/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The page that stops an organizer's mailings
+         * @description The withdraw link of a marketing consent (spec 51-1). Answers a small
+         *     HTML page that names the organization and asks with one button; it
+         *     never withdraws by itself, because mail scanners open every link of a
+         *     letter. An unknown token answers the same page with "this link is not
+         *     valid". No JWT is required.
+         */
+        get: operations["getPublicMarketingWithdrawPage"];
+        put?: never;
+        /**
+         * Stop an organizer's mailings
+         * @description The button of the withdraw page: withdraws the marketing consent the
+         *     token names and answers the "done" page. A second withdrawal changes
+         *     nothing. The form posts `multipart/form-data` with an empty body; the
+         *     token is in the query string. No JWT is required.
+         */
+        post: operations["postPublicMarketingWithdraw"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/growth-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The cart reminder and marketing consent settings
+         * @description Spec 51-1: whether arena reminds a buyer once of an unpaid widget
+         *     order (default on), whether the checkout offers the marketing consent
+         *     tick (default off) and the reward code. Requires `promo.read`.
+         */
+        get: operations["getOrganizationGrowthSettings"];
+        /**
+         * Change the cart reminder and marketing consent settings
+         * @description Stores the three settings. The reward code must be a live promo code
+         *     of the organization limited to one use per buyer
+         *     (`max_uses_per_customer` = 1), else 422. Requires `org.update`.
+         */
+        put: operations["putOrganizationGrowthSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/marketing-subscribers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The buyers who agreed to the organization's mailings
+         * @description Spec 51-1: one page of the addresses that ticked the marketing consent,
+         *     newest first. By default only confirmed addresses (double opt-in);
+         *     `status` selects `pending`, `withdrawn` or `all`. Every item carries
+         *     its withdraw link, to print in the organizer's own mailings. Requires
+         *     `order.read`; an organization API key is refused (403
+         *     `marketing.api_key_forbidden`).
+         */
+        get: operations["listOrganizationMarketingSubscribers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/marketing-subscribers.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The buyers who agreed to the organization's mailings, as CSV
+         * @description The same list as `marketing-subscribers` (every row of the `status`
+         *     filter, read in batches), as an Excel-friendly CSV with the withdraw
+         *     link of every address. A list above 50000 rows is refused with `413`
+         *     before the first byte, never cut. Column labels follow `?locale=`
+         *     (en, ru, es). Requires `order.read`; an organization API key is
+         *     refused.
+         */
+        get: operations["exportOrganizationMarketingSubscribers"];
         put?: never;
         post?: never;
         delete?: never;
@@ -9787,6 +9966,86 @@ export interface paths {
         get: operations["getV1OrganizationsOrgIdPromoCodesPromoCodeIdRedemptionsCsv"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/smart-price": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the session's smart price presets
+         * @description Every smart price preset of the session (spec 51 §4.2), newest first,
+         *     with where an active one stands now: the current price, the step,
+         *     the next price and how many tickets are left at this price (a rise
+         *     by tickets sold) or when the next price starts (a rise by days).
+         *     Requires the `tier.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdSmartPrice"];
+        put?: never;
+        /**
+         * Enable a smart price preset
+         * @description Enables a preset on one or more categories of the session. The
+         *     preset is NOT a price engine: the session is read back as its
+         *     event-bundle, the category becomes a chain of steps with sell limits
+         *     (`by_sales`) or gets price windows (`by_days`, `last_days`), and the
+         *     bundle is written through the event-bundle import. The chain sweep
+         *     and the price schedule then decide every price. Every step adds the
+         *     same percentage of the starting price, rounded up to a whole unit of
+         *     the currency, and never goes over the cap. A preset never overwrites
+         *     a chain or future price changes typed by hand. A price edited by
+         *     hand later ends the preset. Requires the `tier.update` permission.
+         */
+        post: operations["postV1OrganizationsOrgIdSessionsSessionIdSmartPrice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/smart-price/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview a smart price preset
+         * @description The steps or price windows a preset would write, with their prices.
+         *     Nothing is written. Requires the `tier.update` permission.
+         */
+        post: operations["postV1OrganizationsOrgIdSessionsSessionIdSmartPricePreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/smart-price/{rule_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop a smart price preset
+         * @description Freezes the price where it is now. The later steps of a chain take
+         *     the current step's price (no place moves). The future price windows
+         *     are removed. Requires the `tier.update` permission.
+         */
+        post: operations["postV1OrganizationsOrgIdSessionsSessionIdSmartPriceRuleIdStop"];
         delete?: never;
         options?: never;
         head?: never;
@@ -21799,6 +22058,153 @@ export interface components {
             /** @description The last delivery error while not delivered, else null. */
             last_error: string | null;
         };
+        /** @description A smart price preset to preview or enable (spec 51 §4.2). */
+        SmartPriceRequest: {
+            /** @description The categories the preset applies to. Exactly one for by_sales. */
+            tier_ids: string[];
+            /** @description by_sales (every N tickets), by_days (every N days) or last_days (once, N days before the session). */
+            kind: string;
+            /** @description The rise of every step, a percentage of the starting price (1-100). */
+            step_percent: number;
+            /** @description Tickets per step (by_sales), days per step (by_days) or days before the session (last_days). */
+            every: number;
+            /** @description The highest rise over the starting price (by_sales, by_days), at least step_percent and at most 500. */
+            cap_percent?: number;
+            /** @description The calendar day (YYYY-MM-DD, venue calendar) a by_days preset counts from. Empty counts from today. */
+            start_date?: string;
+        };
+        /** @description The parameters a preset was enabled with. */
+        SmartPriceParams: {
+            /** @description by_sales, by_days or last_days. */
+            kind?: string;
+            /** @description The rise of every step, a percentage of the starting price. */
+            step_percent?: number;
+            /** @description Tickets per step, days per step or days before the session. */
+            every?: number;
+            /** @description The highest rise over the starting price. */
+            cap_percent?: number;
+            /** @description The day a by_days preset counts from. */
+            start_date?: string;
+        };
+        /** @description One row of a preset's table, a chain step or a price window. */
+        SmartPriceStep: {
+            /** @description How many tickets the step sells (by_sales). */
+            places?: number;
+            /**
+             * Format: date-time
+             * @description When the price window starts (by_days, last_days).
+             */
+            from?: string;
+            /**
+             * Format: int64
+             * @description The price of the step in minor units.
+             */
+            price: number;
+        };
+        /** @description What a preset would write for one category. */
+        SmartPricePreviewCategory: {
+            /**
+             * Format: uuid
+             * @description The category.
+             */
+            tier_id: string;
+            /** @description The category name. */
+            name: string;
+            /** @description ISO 4217 currency of the category. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description The starting price in minor units.
+             */
+            base_price: number;
+            /**
+             * Format: int64
+             * @description The highest price the preset reaches, in minor units.
+             */
+            cap_price: number;
+            /** @description The steps (by_sales, the first is the category itself) or the price windows (by_days, last_days). */
+            steps: components["schemas"]["SmartPriceStep"][];
+        };
+        /** @description The table a preset would write. Nothing is written. */
+        SmartPricePreviewResponse: {
+            /** @description The preset kind. */
+            kind: string;
+            /** @description One entry per category. */
+            categories: components["schemas"]["SmartPricePreviewCategory"][];
+        };
+        /** @description Where an active preset stands at the moment of the read. */
+        SmartPriceNow: {
+            /**
+             * Format: int64
+             * @description The price buyers pay now, in minor units.
+             */
+            price: number;
+            /** @description The current step, starting at 1. */
+            step: number;
+            /** @description How many steps there are. */
+            steps: number;
+            /**
+             * Format: int64
+             * @description The next price in minor units, null at the last step.
+             */
+            next_price?: number | null;
+            /** @description How many tickets are left at the current price (by_sales), null at the last step. */
+            remaining_at_price?: number | null;
+            /**
+             * Format: date-time
+             * @description When the next price starts (by_days, last_days).
+             */
+            next_at?: string | null;
+        };
+        /** @description One smart price preset of a session. */
+        SmartPriceRule: {
+            /**
+             * Format: uuid
+             * @description The preset.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The category the preset was applied to (the first step of a chain).
+             */
+            tier_id: string;
+            /** @description The later steps the preset created (by_sales). A price edited by hand on any of them, or on tier_id, turns the preset off. */
+            step_tier_ids: string[];
+            /** @description The category name. */
+            tier_name: string;
+            /** @description by_sales, by_days or last_days. */
+            kind: string;
+            /** @description The parameters the preset was enabled with. */
+            params: components["schemas"]["SmartPriceParams"];
+            /**
+             * Format: int64
+             * @description The starting price in minor units.
+             */
+            base_price: number;
+            /** @description ISO 4217 currency of the category. */
+            currency: string;
+            /** @description active, stopped (the organizer froze the price) or overridden (a price was edited by hand). */
+            status: string;
+            /**
+             * Format: date-time
+             * @description When the preset was enabled.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the preset was stopped or overridden.
+             */
+            stopped_at?: string | null;
+            /** @description Where an active preset stands now, null otherwise. */
+            now?: components["schemas"]["SmartPriceNow"] | null;
+        };
+        /** @description The smart price presets of a session. */
+        SmartPriceRulesResponse: {
+            /** @description The presets, newest first. */
+            rules: components["schemas"]["SmartPriceRule"][];
+            /** @description Advisory warnings of the import that wrote the change. */
+            warnings: components["schemas"]["ImportWarning"][];
+        };
         /**
          * @description One sales state per session for EVERY sales channel (migration 0183).
          *     The organizer may set `soon` or `sold_out`; while either is set no
@@ -25249,6 +25655,132 @@ export interface components {
              *     never fail over a label.
              */
             attribution?: components["schemas"]["CheckoutAttribution"];
+            /**
+             * @description The buyer's tick on the organizer's mailings (spec 51-1),
+             *     optional. Recorded only when the feed session's
+             *     `marketing_optin.enabled` is true (consent journal, double
+             *     opt-in letter); sent to an organization that does not offer it,
+             *     it is ignored and nothing is stored. Ticked, it may earn the
+             *     organizer's reward code (see `PublicMarketingConsent`).
+             */
+            marketing_consent?: components["schemas"]["PublicMarketingConsent"];
+        };
+        /**
+         * @description The buyer's answer to the marketing consent tick (spec 51-1). When
+         *     ticked and the organization names a reward code, the reward competes
+         *     with any typed `promo_code` and the larger discount wins; the cart
+         *     keeps one code. The reward code typed by hand without the tick is
+         *     refused with `promo.not_applicable`.
+         */
+        PublicMarketingConsent: {
+            /** @description True when the buyer ticked the box. */
+            accepted: boolean;
+            /**
+             * @description The `marketing_optin.text_version` the widget showed. Another
+             *     version answers 422 `marketing.consent_outdated`.
+             */
+            text_version?: string;
+            /**
+             * @description False asks for no reward (the buyer was told it is used up, 422
+             *     `marketing.discount_used`); the consent is still recorded.
+             *     Absent means true.
+             */
+            discount?: boolean;
+        };
+        /**
+         * @description The `marketing_optin` member of every session of the public feed
+         *     event (spec 51-1).
+         */
+        PublicMarketingOptInBlock: {
+            /** @description True when the widget offers the tick. */
+            enabled: boolean;
+            /** @description Whose mailings the buyer agrees to (the seller's legal name, else the organization name). */
+            org_name?: string;
+            /** @description The consent text version to send back in `marketing_consent.text_version`. */
+            text_version?: string;
+            /** @description The reward for the tick, absent when there is none. */
+            discount?: components["schemas"]["PublicMarketingDiscount"];
+        };
+        /** @description The reward for the marketing consent tick. */
+        PublicMarketingDiscount: {
+            /** @description `percent` (value 1-100) or `fixed_amount` (value in minor units of `currency`). */
+            type: string;
+            /**
+             * Format: int64
+             * @description The percent or the amount in minor units.
+             */
+            value: number;
+            /** @description The currency of a fixed amount. */
+            currency?: string | null;
+        };
+        /** @description The organization's cart reminder and marketing consent settings (spec 51-1). */
+        GrowthSettings: {
+            /** @description Remind a buyer once of an unpaid widget order while the hold lives. */
+            cart_reminder_enabled: boolean;
+            /** @description Offer the marketing consent tick at checkout. */
+            marketing_optin_enabled: boolean;
+            /**
+             * Format: uuid
+             * @description The promo code the tick earns, null for no reward.
+             */
+            consent_promo_code_id: string | null;
+            /**
+             * Format: date-time
+             * @description When the settings were last saved, null for the defaults.
+             */
+            updated_at: string | null;
+        };
+        /** @description The settings to store (spec 51-1). */
+        GrowthSettingsUpdate: {
+            /** @description Remind a buyer once of an unpaid widget order. */
+            cart_reminder_enabled: boolean;
+            /** @description Offer the marketing consent tick at checkout. */
+            marketing_optin_enabled: boolean;
+            /**
+             * Format: uuid
+             * @description A live promo code limited to one use per buyer, or null for no reward.
+             */
+            consent_promo_code_id?: string | null;
+        };
+        /** @description One address that ticked the marketing consent. */
+        MarketingSubscriber: {
+            /**
+             * Format: uuid
+             * @description The subscription id.
+             */
+            id: string;
+            /** @description The buyer's e-mail as typed. */
+            email: string;
+            /** @description The buyer's name, empty when not given. */
+            name: string;
+            /** @description The language the buyer checked out in. */
+            locale: string;
+            /** @description `pending` (not confirmed yet), `confirmed` or `withdrawn`. */
+            status: string;
+            /**
+             * Format: date-time
+             * @description When the tick was last given.
+             */
+            granted_at: string;
+            /**
+             * Format: date-time
+             * @description When the address confirmed.
+             */
+            confirmed_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the consent was withdrawn.
+             */
+            withdrawn_at: string | null;
+            /** @description The link that stops the mailings, to print in every mailing. */
+            withdraw_url: string;
+        };
+        /** @description One page of subscribers. */
+        MarketingSubscriberList: {
+            /** @description The page. */
+            items: components["schemas"]["MarketingSubscriber"][];
+            /** @description How many match the filter. */
+            total: number;
         };
         /**
          * @description Where the buyer came from (spec 43): the last touch, optionally with
@@ -25603,6 +26135,8 @@ export interface components {
              *     payment BEFORE arena releases the seats.
              */
             expires_at: string;
+            /** @description True when the cart's discount is the reward for the marketing consent tick. */
+            marketing_discount_applied?: boolean;
         };
         /**
          * @description The cart to price, in the shape of `PublicFeedCheckoutStartRequest`
@@ -25624,6 +26158,12 @@ export interface components {
              *     without a discount.
              */
             promo_code?: string | null;
+            /**
+             * @description The buyer's marketing consent tick (spec 51-1). Ticked, it may
+             *     earn the organizer's reward code; the one-use-per-buyer cap is
+             *     checked at `checkout/start`, where the e-mail is known.
+             */
+            marketing_consent?: components["schemas"]["PublicMarketingConsent"];
         };
         /** @description The priced cart. Nothing was held, reserved or created. */
         PublicFeedCheckoutQuoteResponse: {
@@ -25639,6 +26179,12 @@ export interface components {
              *     changes nothing (free tickets) answers false.
              */
             promo_applied: boolean;
+            /**
+             * @description True when the cart's discount is the reward for the marketing
+             *     consent tick (it won over any typed code, which is then not
+             *     applied: `promo_applied` is false).
+             */
+            marketing_discount_applied?: boolean;
         };
         /**
          * @description A single widget funnel telemetry event.  No PII is stored — the only
@@ -58279,6 +58825,511 @@ export interface operations {
             };
         };
     };
+    resumePublicCheckout: {
+        parameters: {
+            query?: {
+                /** @description Where the link was clicked (`reminder`). Informational only. */
+                src?: string;
+            };
+            header?: never;
+            path: {
+                /** @description The opaque checkout token. */
+                checkout_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Redirect to the payment page or to the buyer's page. */
+            303: {
+                headers: {
+                    /** @description The destination. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `checkout.link_invalid` - the link is not valid and no tickets site is configured. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `checkout.rate_limited` - too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicMarketingConfirmPage: {
+        parameters: {
+            query: {
+                /** @description The one-time token from the letter. */
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page with the confirm button. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Redirect with `arena_marketing=invalid`. */
+            303: {
+                headers: {
+                    /** @description The tickets site with `arena_marketing=invalid`. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `marketing.link_invalid` - the token is unknown, used or expired and no tickets site is configured. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    confirmPublicMarketingConsent: {
+        parameters: {
+            query: {
+                /** @description The one-time token from the letter. */
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Confirmed, and no page to send the buyer to is configured. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Redirect with `arena_marketing` set. */
+            303: {
+                headers: {
+                    /** @description The destination with `arena_marketing=confirmed` or `invalid`. */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `marketing.link_invalid` - the token is unknown, used or expired and no tickets site is configured. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicMarketingWithdrawPage: {
+        parameters: {
+            query: {
+                /** @description The withdraw-only token of the subscription. */
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+        };
+    };
+    postPublicMarketingWithdraw: {
+        parameters: {
+            query: {
+                /** @description The withdraw-only token of the subscription. */
+                token: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The "done" page, or the "not valid" page for an unknown token. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description `marketing.withdraw_failed` - the withdrawal could not be stored. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getOrganizationGrowthSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings (the defaults when never saved). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrowthSettings"];
+                };
+            };
+            /** @description The path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not a member of the organization, or no `promo.read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `growth.load_failed`. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putOrganizationGrowthSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GrowthSettingsUpdate"];
+            };
+        };
+        responses: {
+            /** @description The stored settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrowthSettings"];
+                };
+            };
+            /** @description `growth.invalid_body` or `growth.invalid_promo_code_id`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not a member of the organization, or no `org.update`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `growth.promo_code_not_found` or `growth.promo_code_needs_one_use_per_buyer`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `growth.save_failed`. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listOrganizationMarketingSubscribers: {
+        parameters: {
+            query?: {
+                /** @description `confirmed` (default), `pending`, `withdrawn` or `all`. */
+                status?: string;
+                /** @description Page size, 1-100 (default 100). */
+                limit?: number;
+                /** @description Rows to skip. */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of subscribers and the total. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarketingSubscriberList"];
+                };
+            };
+            /** @description `marketing.invalid_status`, or the path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not a member, no `order.read`, or an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `marketing.list_failed`. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    exportOrganizationMarketingSubscribers: {
+        parameters: {
+            query?: {
+                /** @description `confirmed` (default), `pending`, `withdrawn` or `all`. */
+                status?: string;
+                /** @description Language of the column labels. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The CSV file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description `marketing.invalid_status`, or the path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not a member, no `order.read`, or an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `export.too_many_rows` - more than 50000 rows; choose one status at a time. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `marketing.list_failed`. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getPublicCheckoutStatus: {
         parameters: {
             query?: never;
@@ -67666,6 +68717,386 @@ export interface operations {
                 };
             };
             /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdSmartPrice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The presets of the session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartPriceRulesResponse"];
+                };
+            };
+            /** @description Invalid body (`smart_price.invalid_body`) or path parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`tier.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, deleted, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`smart_price.read_failed`, `smart_price.write_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdSessionsSessionIdSmartPrice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmartPriceRequest"];
+            };
+        };
+        responses: {
+            /** @description The presets of the session after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartPriceRulesResponse"];
+                };
+            };
+            /** @description Invalid body (`smart_price.invalid_body`) or path parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`tier.update`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, deleted, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The category already follows a smart price or sells in steps, already has future price changes, or the smart price is already off (`smart_price.already_on`, `smart_price.category_in_chain`, `smart_price.schedule_exists`, `smart_price.not_active`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preset cannot be applied (`smart_price.invalid_kind`, `smart_price.invalid_step`, `smart_price.invalid_every`, `smart_price.invalid_cap`, `smart_price.invalid_start`, `smart_price.no_category`, `smart_price.one_category`, `smart_price.seated_by_sales`, `smart_price.category_not_found`, `smart_price.free_category`, `smart_price.not_enough_places`, `smart_price.no_room`, `smart_price.too_late`, `smart_price.session_unsupported`) or the import refused the result (`import.*`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`smart_price.read_failed`, `smart_price.write_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdSessionsSessionIdSmartPricePreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmartPriceRequest"];
+            };
+        };
+        responses: {
+            /** @description What the preset would write. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartPricePreviewResponse"];
+                };
+            };
+            /** @description Invalid body (`smart_price.invalid_body`) or path parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`tier.update`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, deleted, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The category already follows a smart price or sells in steps, already has future price changes, or the smart price is already off (`smart_price.already_on`, `smart_price.category_in_chain`, `smart_price.schedule_exists`, `smart_price.not_active`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preset cannot be applied (`smart_price.invalid_kind`, `smart_price.invalid_step`, `smart_price.invalid_every`, `smart_price.invalid_cap`, `smart_price.invalid_start`, `smart_price.no_category`, `smart_price.one_category`, `smart_price.seated_by_sales`, `smart_price.category_not_found`, `smart_price.free_category`, `smart_price.not_enough_places`, `smart_price.no_room`, `smart_price.too_late`, `smart_price.session_unsupported`) or the import refused the result (`import.*`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`smart_price.read_failed`, `smart_price.write_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdSessionsSessionIdSmartPriceRuleIdStop: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+                /** @description UUID of the preset */
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The presets of the session after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartPriceRulesResponse"];
+                };
+            };
+            /** @description Invalid body (`smart_price.invalid_body`) or path parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`tier.update`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, deleted, or not part of this organization (`session.not_found`) or the preset is unknown (`smart_price.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The category already follows a smart price or sells in steps, already has future price changes, or the smart price is already off (`smart_price.already_on`, `smart_price.category_in_chain`, `smart_price.schedule_exists`, `smart_price.not_active`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preset cannot be applied (`smart_price.invalid_kind`, `smart_price.invalid_step`, `smart_price.invalid_every`, `smart_price.invalid_cap`, `smart_price.invalid_start`, `smart_price.no_category`, `smart_price.one_category`, `smart_price.seated_by_sales`, `smart_price.category_not_found`, `smart_price.free_category`, `smart_price.not_enough_places`, `smart_price.no_room`, `smart_price.too_late`, `smart_price.session_unsupported`) or the import refused the result (`import.*`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`smart_price.read_failed`, `smart_price.write_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

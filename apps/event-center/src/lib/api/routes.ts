@@ -67,6 +67,11 @@ export const API = {
   promoters: { method: "GET", path: "/v1/organizations/{org_id}/promoters" },
   promoterCreate: { method: "POST", path: "/v1/organizations/{org_id}/promoters" },
   promoterUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/promoters/{id}" },
+  // Spec 51-1: cart reminder and marketing consent.
+  growthSettings: { method: "GET", path: "/v1/organizations/{org_id}/growth-settings" },
+  growthSettingsUpdate: { method: "PUT", path: "/v1/organizations/{org_id}/growth-settings" },
+  marketingSubscribers: { method: "GET", path: "/v1/organizations/{org_id}/marketing-subscribers" },
+  marketingSubscribersCsv: { method: "GET", path: "/v1/organizations/{org_id}/marketing-subscribers.csv" },
   // 4-3: promo codes.
   promoCodes: { method: "GET", path: "/v1/organizations/{org_id}/promo-codes" },
   promoCode: { method: "GET", path: "/v1/organizations/{org_id}/promo-codes/{id}" },
@@ -192,6 +197,12 @@ export const API = {
     method: "PUT",
     path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule",
   },
+  // Smart price (spec 51 §4.2): a preset the server writes through the
+  // event-bundle import as steps or price windows. Preview writes nothing.
+  smartPriceList: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/smart-price" },
+  smartPricePreview: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/smart-price/preview" },
+  smartPriceEnable: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/smart-price" },
+  smartPriceStop: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/smart-price/{rule_id}/stop" },
   // 6-1a: the event wizard. The check (?dry_run=true) writes nothing; the
   // geo reads are public and feed the venue form.
   eventBundleCheck: { method: "POST", path: "/v1/organizations/{org_id}/imports/event-bundle" },

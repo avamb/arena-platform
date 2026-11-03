@@ -57,6 +57,11 @@ export type PromoterListEnvelope = S["PromoterListEnvelope"];
 export type PromoterEnvelope = S["PromoterEnvelope"];
 // 4-3: promo codes.
 export type PromoCodeItem = S["PromoCodeItem"];
+// Spec 51-1: cart reminder, marketing tick and its subscribers.
+export type GrowthSettings = S["GrowthSettings"];
+export type GrowthSettingsUpdate = S["GrowthSettingsUpdate"];
+export type MarketingSubscriber = S["MarketingSubscriber"];
+export type MarketingSubscriberList = S["MarketingSubscriberList"];
 export type PromoCodeListResponse = S["PromoCodeListResponse"];
 export type PromoCodeEnvelope = S["PromoCodeEnvelope"];
 export type PromoRedemptionItem = S["PromoRedemptionItem"];
@@ -97,6 +102,12 @@ export type TierPriceWindow = S["TierPriceWindow"];
 export type TierPriceWindowInput = S["TierPriceWindowInput"];
 export type TierPriceSchedule = S["TierPriceSchedule"];
 export type TierPriceScheduleEnvelope = S["TierPriceScheduleEnvelope"];
+// Smart price (spec 51 §4.2).
+export type SmartPriceRequest = S["SmartPriceRequest"];
+export type SmartPriceRule = S["SmartPriceRule"];
+export type SmartPriceRulesResponse = S["SmartPriceRulesResponse"];
+export type SmartPricePreviewResponse = S["SmartPricePreviewResponse"];
+export type SmartPricePreviewCategory = S["SmartPricePreviewCategory"];
 export type PutTierPriceScheduleRequest = S["PutTierPriceScheduleRequest"];
 // 6-1a: the event wizard.
 export type VenueItem = S["VenueItem"];

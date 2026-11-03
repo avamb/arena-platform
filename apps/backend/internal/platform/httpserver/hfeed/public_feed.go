@@ -181,6 +181,14 @@ type publicFeedTierResponse struct {
 	// changes ("price rises on <date>"), nil when no change is known.
 	CurrentPrice      int64   `json:"current_price"`
 	NextPriceChangeAt *string `json:"next_price_change_at"`
+	// NextPrice is the price from NextPriceChangeAt on ("the price rises to
+	// 22 EUR on 10.11"), omitted when no change is known.
+	NextPrice *int64 `json:"next_price,omitempty"`
+	// PriceStep is set on a category that sells in steps by tickets sold
+	// (a chain with a dearer next step, spec 51 §4.2): how many tickets are
+	// left at this price and what the next step costs. The numbers are the
+	// real ones; the widget never makes up a "few left".
+	PriceStep *publicFeedPriceStep `json:"price_step,omitempty"`
 	// IsOpen is false for a category an operator closed: it accepts no new
 	// holds, so the widget must not offer it (migration 0101, plan
 	// 08_architecture/23 step 5).
@@ -301,6 +309,14 @@ type publicFeedSessionResponse struct {
 	// terms of the organizer <seller_legal_name> and the platform policy"
 	// before paying (P2), and which two pages the text links to.
 	Consent publicConsentBlock `json:"consent"`
+	// MarketingOptIn tells the widget whether to offer the separate,
+	// never-required tick "send me news and offers" (spec 51-1), whose
+	// mailings it is for and the discount it earns.
+	MarketingOptIn publicMarketingBlock `json:"marketing_optin"`
+	// CartReminder says whether the organizer reminds a buyer once by e-mail
+	// of an unpaid order (spec 51-1), so the widget can say so under the
+	// e-mail field.
+	CartReminder bool `json:"cart_reminder"`
 	// Timezone is the IANA zone of the session's venue (`venues.timezone`),
 	// "" when the venue has none. The widget formats the session chips in
 	// it: a buyer whose phone lives in another zone (found 2026-09-29 — an
@@ -784,6 +800,8 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	showWithdrawalNotice := h.showWithdrawalNotice(ctx, event.OrgID)
 	whiteLabel := h.whiteLabelForEvent(ctx, eventID)
 	consent := h.consentBlockFor(ctx, consentRequired, consentLegalName, eventID, feedToken)
+	marketingBlock := marketingBlockFor(h.loadMarketing(ctx, event.OrgID))
+	cartReminder := h.cartReminderOn(ctx, event.OrgID)
 
 	if h.sessionQueries != nil {
 		sessions, err := h.sessionQueries.ListSessionsByEvent(ctx, eventID)
@@ -844,6 +862,8 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 				sessResp.ShowWithdrawalNotice = showWithdrawalNotice
 				sessResp.WhiteLabel = whiteLabel
 				sessResp.Consent = consent
+				sessResp.MarketingOptIn = marketingBlock
+				sessResp.CartReminder = cartReminder
 				sessResp.Timezone = h.venueTimezone(ctx, sess.VenueID, venueTimezones)
 				// A cancelled session stays in the payload with
 				// its status, so a buyer who holds tickets still sees the date
@@ -902,13 +922,23 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 							placeStats = nil
 						}
 						now := time.Now().UTC()
+						steps := h.loadChainView(ctx, sess.ID, tiers)
 						for _, tier := range tiers {
+							if steps.hide[tier.ID] {
+								// A step of a chain that does not sell now:
+								// one card per chain, never a false "sold out".
+								continue
+							}
 							tr := publicFeedTierFromRow(tier)
+							if name, ok := steps.name[tier.ID]; ok {
+								tr.Name = name
+							}
 							if eff, ok := effPrices[tier.ID]; ok {
 								tr.CurrentPrice = eff.Amount
 								if eff.NextChangeAt != nil {
 									s := eff.NextChangeAt.UTC().Format(time.RFC3339)
 									tr.NextPriceChangeAt = &s
+									tr.NextPrice = eff.NextAmount
 								}
 							}
 							if sessionWithdrawn {
@@ -920,6 +950,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 							} else {
 								tr.Available = publicFeedTierAvailable(hcheckout.CapSaleWindow(tier, salesEndOf(sess)), placeStats, now)
 							}
+							tr.PriceStep = steps.priceStep(tier.ID, tr, effPrices, tiers)
 							sessResp.Tiers = append(sessResp.Tiers, tr)
 						}
 					}

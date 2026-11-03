@@ -4,11 +4,13 @@
   import { sheetAmounts, formatAmount, formatDiscount } from '../lib/promo.js';
   import type { PromoQuote } from '../lib/promo.js';
   import { promoPayBlocked } from '../lib/promoController.js';
+  import { sheetQuote, type MarketingQuoteState } from '../lib/marketingQuote.js';
   import { getPromoStrings } from '../lib/promoI18n.js';
   import type { CartState } from '../lib/cart.js';
   import BuyerForm from './BuyerForm.svelte';
   import type { BuyerFieldConfig, BuyerFormValues } from '../lib/checkout.js';
   import type { SessionConsent } from '../lib/consent.js';
+  import type { SessionMarketingOptIn } from '../lib/marketing.js';
 
   interface Props {
     cart: CartState;
@@ -30,6 +32,18 @@
      * the sale terms" checkbox when it is required.
      */
     consent?: SessionConsent | null;
+    /** The session's mailing tick (spec 51-1), handed to the buyer form. */
+    marketing?: SessionMarketingOptIn | null;
+    /** The platform said the subscriber discount is used up for this address. */
+    marketingDiscountUsed?: boolean;
+    /** The mailing tick is ticked in the buyer form. */
+    marketingTicked?: boolean;
+    /** The platform's price of the cart with the tick (spec 51-1). */
+    marketingQuote?: MarketingQuoteState | null;
+    /** Told when the buyer ticks or unticks the mailing box. */
+    onMarketingChange?: (ticked: boolean) => void;
+    /** The organizer sends the one unpaid-order reminder. */
+    cartReminder?: boolean;
     submitting?: boolean;
     submitError?: string | null;
     /**
@@ -83,7 +97,7 @@
     onEmailChange?: (email: string) => void;
   }
   const {
-    cart, buyerFields, locale = 'en', serviceFeePercent = null, showWithdrawalNotice = false, consent = null, submitting = false, submitError = null,
+    cart, buyerFields, locale = 'en', serviceFeePercent = null, showWithdrawalNotice = false, consent = null, marketing = null, marketingDiscountUsed = false, marketingTicked = false, marketingQuote = null, onMarketingChange, cartReminder = false, submitting = false, submitError = null,
     promoCode = null, promoQuote = null, cartKey = '', promoAvailable = false, promoExpanded = false, promoPrefill = '', promoBusy = false, promoError = null, promoNote = null,
     onApplyPromo, onRemovePromo, onContinue,
     conflictKeys, onContinueWithoutConflicts,
@@ -99,7 +113,12 @@
   // cart (the discount changes the service fee's base, so the sheet must not
   // work it out itself); without one they are the list prices and the same
   // basis-point floor the platform uses.
-  const amounts = $derived(sheetAmounts({ subtotal: total.amount, fee: localFee, currency: total.currency }, promoQuote, cartKey));
+  // With the mailing tick its reward may take something off too: then the
+  // numbers are the platform's quote of the cart WITH the tick.
+  const pricedBy = $derived(
+    marketingQuote ? sheetQuote(promoQuote, marketingQuote, marketingTicked, cartKey, promoCode) : promoQuote,
+  );
+  const amounts = $derived(sheetAmounts({ subtotal: total.amount, fee: localFee, currency: total.currency }, pricedBy, cartKey));
   const fee = $derived(amounts.fee);
   const payTotal = $derived(amounts.total);
   // The pay button waits for the quote of THIS cart; with no code applied it
@@ -297,6 +316,10 @@
         submitText={payLabel}
         withdrawalNotice={shouldShowWithdrawalNotice(showWithdrawalNotice, payTotal)}
         {consent}
+        {marketing}
+        {marketingDiscountUsed}
+        {cartReminder}
+        {onMarketingChange}
         onSubmit={onCheckout}
         {onEmailChange}
       />

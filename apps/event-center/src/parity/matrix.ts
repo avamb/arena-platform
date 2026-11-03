@@ -457,6 +457,21 @@ export const PARITY: readonly ParityRow[] = [
       `PUT ${O}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule`,
     ],
   },
+  {
+    area: "Категории",
+    fn: "Умная цена: пресет роста цены",
+    bot: "smart_price.go, `sp:`",
+    web: "R4",
+    // spec 51 §4.2
+    ready: { twin: "live/smart-price.spec.ts" },
+    routes: [
+      `GET ${O}/sessions/{session_id}/smart-price`,
+      `POST ${O}/sessions/{session_id}/smart-price/preview`,
+      `POST ${O}/sessions/{session_id}/smart-price`,
+      `POST ${O}/sessions/{session_id}/smart-price/{rule_id}/stop`,
+    ],
+    note: "Ступени по продажам или окна цен по дням, через импорт мероприятия; ручная правка цены выключает пресет.",
+  },
   // ── Заказы ──────────────────────────────────────────────────────────
   {
     area: "Заказы",
@@ -607,6 +622,25 @@ export const PARITY: readonly ParityRow[] = [
     web: "R3",
     routes: [`GET ${O}/shop/referral-program/summary`, `GET ${O}/shop/referral-rewards`],
     note: "Суммы по валютам и список начислений с заказом магазина друга. Контактов покупателя в ответе нет.",
+  },
+  // ── Рассылка и напоминания (спека 51-1) ─────────────────────────────
+  {
+    area: "Рассылка и напоминания",
+    fn: "Напоминание о неоплаченном заказе, галочка рассылки и скидка за неё",
+    bot: "— (пока только веб)",
+    web: "R3",
+    ready: { twin: "live/growth.spec.ts" },
+    routes: [`GET ${O}/growth-settings`, `PUT ${O}/growth-settings`],
+    note: "Спека 51-1. Скидку даёт промокод организации с лимитом одно использование на покупателя. Сохранить может только владелец (`org.update`).",
+  },
+  {
+    area: "Рассылка и напоминания",
+    fn: "Подписчики рассылки и CSV",
+    bot: "— (пока только веб)",
+    web: "R3",
+    ready: { twin: "live/growth.spec.ts" },
+    routes: [`GET ${O}/marketing-subscribers`, `GET ${O}/marketing-subscribers.csv`],
+    note: "Спека 51-1. В CSV у каждого подписчика своя ссылка отказа. Ключ API получает отказ.",
   },
   // ── Пригласительные ─────────────────────────────────────────────────
   {

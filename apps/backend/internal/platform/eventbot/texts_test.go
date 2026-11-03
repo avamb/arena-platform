@@ -48,10 +48,12 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		"Seats": 3, "Share": 40, "Changed": 2, "Same": 1,
 		// a hall plan sent from the wizard (plan_upload.go)
 		"Element": "e",
+		// the smart price screen (smart_price.go)
+		"Step": 1, "Steps": 4, "Every": 30, "Cap": 50, "Rule": "r",
 		// the sales state of a session (sessions_sales_state.go)
 		"Free": 4, "Sites": 1, "Attempts": 2,
 		// the Refer a friend screens (referral_dialog.go)
-		"Friend": "№1", "Referrer": "№2", "Cashback": 20, "Cap": 100, "Codes": 3, "Friends": 2,
+		"Friend": "№1", "Referrer": "№2", "Cashback": 20, "Codes": 3, "Friends": 2,
 		// the Disputes screens (disputes_keys.go)
 		"Size": "12 KB", "Tag": " (t)",
 	}

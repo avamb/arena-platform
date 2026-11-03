@@ -157,6 +157,17 @@ export type ApiErrorStem =
   | "tierPriceInvalid"
   | "tierCapacityInvalid"
   | "tierPriceWindows"
+  | "smartPriceOn"
+  | "smartPriceSchedule"
+  | "smartPricePlaces"
+  | "smartPriceNoRoom"
+  | "smartPriceTooLate"
+  | "smartPriceSeated"
+  | "smartPriceFree"
+  | "smartPriceOff"
+  | "smartPriceChanged"
+  | "smartPriceUnsupported"
+  | "smartPriceInput"
   // B3-3/B4: billing
   | "billingCardUnavailable"
   | "billingKeyReused"
@@ -206,7 +217,9 @@ export type ApiErrorStem =
   // Refer a friend (spec 52)
   | "referralTerms"
   | "referralProvider"
-  | "referralNoProgram";
+  | "referralNoProgram"
+  | "growthCodeNotFound"
+  | "growthCodeOnePerBuyer";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -229,6 +242,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "saleTimeInvalid", "doorsAfterStart",
   // 5-4
   "tierPriceInvalid", "tierCapacityInvalid", "tierPriceWindows",
+  "smartPriceOn", "smartPriceSchedule", "smartPricePlaces", "smartPriceNoRoom", "smartPriceTooLate", "smartPriceSeated",
+  "smartPriceFree", "smartPriceOff", "smartPriceChanged", "smartPriceUnsupported", "smartPriceInput",
   // B3-3/B4
   "billingCardUnavailable", "billingKeyReused", "billingPackGone", "billingNoAccount", "billingNotCardPayable",
   "billingPayerInvalid", "billingTerms", "billingFxMissing", "billingClosed",
@@ -251,6 +266,7 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "shopVariantsChanged", "shopSettingsChanged", "shopCurrencyLocked", "shopCurrencyUnsupported",
   // Refer a friend (spec 52)
   "referralTerms", "referralProvider", "referralNoProgram",
+  "growthCodeNotFound", "growthCodeOnePerBuyer",
 ];
 
 /**
@@ -260,6 +276,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
  */
 export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "order.seller_site_order": "sellerSiteOrder",
+  "growth.promo_code_not_found": "growthCodeNotFound",
+  "growth.promo_code_needs_one_use_per_buyer": "growthCodeOnePerBuyer",
   "refund.seller_site_order": "sellerSiteOrder",
   "session.change_site_unsupported": "sessionChangeSite",
   "organization.contact_missing": "contactMissing",
@@ -387,6 +405,27 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "tier.capacity_required": "tierCapacityInvalid",
   "tier.price_windows_overlap": "tierPriceWindows",
   "tier.too_many_price_windows": "tierPriceWindows",
+  "smart_price.already_on": "smartPriceOn",
+  "smart_price.category_in_chain": "smartPriceOn",
+  "smart_price.schedule_exists": "smartPriceSchedule",
+  "smart_price.not_enough_places": "smartPricePlaces",
+  "smart_price.no_room": "smartPriceNoRoom",
+  "smart_price.too_late": "smartPriceTooLate",
+  "smart_price.seated_by_sales": "smartPriceSeated",
+  "smart_price.free_category": "smartPriceFree",
+  "smart_price.not_active": "smartPriceOff",
+  "smart_price.not_found": "smartPriceOff",
+  "smart_price.changed": "smartPriceChanged",
+  "smart_price.session_unsupported": "smartPriceUnsupported",
+  "smart_price.invalid_step": "smartPriceInput",
+  "smart_price.invalid_every": "smartPriceInput",
+  "smart_price.invalid_cap": "smartPriceInput",
+  "smart_price.invalid_start": "smartPriceInput",
+  "smart_price.invalid_kind": "smartPriceInput",
+  "smart_price.invalid_body": "smartPriceInput",
+  "smart_price.no_category": "smartPriceInput",
+  "smart_price.one_category": "smartPriceInput",
+  "smart_price.duplicate_category": "smartPriceInput",
   "tier.schedule_requires_fixed_mode": "tierPriceWindows",
   "tier.invalid_sale_window_start": "tierSaleWindow",
   "tier.invalid_sale_window_end": "tierSaleWindow",

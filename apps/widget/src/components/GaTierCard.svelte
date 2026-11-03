@@ -2,14 +2,19 @@
   import { clampGaQuantity, gaTierUpperBound, GA_MAX_QUANTITY } from '../lib/selection.js';
   import { formatPrice } from '../lib/checkout.js';
   import { priceLabelBesideName } from '../lib/priceLabel.js';
+  import { priceStepLine } from '../lib/priceStep.js';
   import type { Tier } from '../types.js';
 
   interface Props {
     tier: Tier;
     quantity: number;
     onQuantityChange: (tierId: string, qty: number) => void;
+    /** Buyer's language for the price change line. */
+    locale?: string;
+    /** The venue's IANA zone: a price changes at the venue's midnight. */
+    timeZone?: string | null;
   }
-  const { tier, quantity, onQuantityChange }: Props = $props();
+  const { tier, quantity, onQuantityChange, locale = 'en', timeZone = null }: Props = $props();
 
   // The picker's upper bound is what is actually LEFT in the category, not
   // the quantity it was declared with — see gaTierUpperBound.
@@ -20,9 +25,9 @@
   const priceText = $derived(
     priceLabelBesideName(tier.name, price > 0 && tier.currency ? formatPrice(price, tier.currency) : 'Free'),
   );
-  const nextChange = $derived(
-    tier.next_price_change_at ? new Date(tier.next_price_change_at) : null,
-  );
+  // Smart price (spec 51 §4.2): the real next price and when, or the real
+  // tickets left at this price. Nothing when the feed says nothing.
+  const priceChange = $derived(priceStepLine(tier, locale, timeZone));
   const soldOut = $derived(remaining <= 0);
   const canIncrease = $derived(quantity < Math.min(GA_MAX_QUANTITY, remaining));
   const canDecrease = $derived(quantity > 0);
@@ -47,10 +52,8 @@
     {#if soldOut}
       <span class="ga-card-soldout" data-testid="ga-sold-out">Sold out</span>
     {/if}
-    {#if nextChange && !Number.isNaN(nextChange.getTime())}
-      <span class="ga-card-price-change" data-testid="ga-price-change">
-        price changes on {nextChange.toLocaleDateString()}
-      </span>
+    {#if priceChange && !soldOut}
+      <span class="ga-card-price-change" data-testid="ga-price-change">{priceChange}</span>
     {/if}
   </div>
   <div class="ga-card-stepper">

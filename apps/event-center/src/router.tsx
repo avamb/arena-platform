@@ -24,6 +24,7 @@ import { parseSeatsSearch } from "@/lib/seatManager/embed";
 import { OrdersScreen } from "@/screens/OrdersScreen";
 import { OrderScreen } from "@/screens/OrderScreen";
 import { NotificationsScreen } from "@/screens/NotificationsScreen";
+import { GrowthScreen } from "@/screens/GrowthScreen";
 import { BillingBalanceScreen } from "@/screens/BillingBalanceScreen";
 import { BillingInvoicesScreen } from "@/screens/BillingInvoicesScreen";
 import { BillingScreen } from "@/screens/BillingScreen";
@@ -187,6 +188,13 @@ const notificationsRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/notifications",
   component: NotificationsScreen,
+});
+
+// Spec 51-1: cart reminder, mailing tick and subscribers.
+const growthRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/growth",
+  component: GrowthScreen,
 });
 
 // B2-7: billing usage (read-only). Reachable by the address for everyone, the
@@ -370,6 +378,7 @@ export const routeTree = rootRoute.addChildren([
     ordersRoute,
     orderRoute,
     notificationsRoute,
+    growthRoute,
     invitationsRoute,
     billingRoute,
     billingBalanceRoute,

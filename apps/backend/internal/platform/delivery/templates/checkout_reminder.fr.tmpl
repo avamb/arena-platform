@@ -1,0 +1,43 @@
+{{define "subject"}}Votre commande attend le paiement : {{.EventName}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vos billets vous attendent</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  <tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">Vos billets vous attendent</h1>
+  <p style="margin:0 0 12px 0;">Vous avez commencé une commande pour {{.EventName}} ({{.CartReminder.When}}), mais le paiement n’est pas terminé.</p>
+  <p style="margin:0 0 12px 0;">Nous réservons vos billets jusqu’à {{.CartReminder.HoldUntil}}. Ensuite, ils seront remis en vente.</p>
+  <p style="margin:0 0 12px 0;">Commande {{.CartReminder.OrderNumber}} · Billets: {{.CartReminder.Tickets}} · Total: {{.CartReminder.Total}}</p>
+  {{with .CartReminder.Venue}}<p style="margin:0 0 12px 0;">Lieu: {{.}}</p>{{end}}
+  <p style="margin:16px 0 16px 0;"><a href="{{.CartReminder.URL}}" style="display:inline-block;background:{{.Accent}};color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:6px;">Continuer vers le paiement</a></p>
+  <p style="margin:0 0 12px 0;"><span style="color:#93a0a8;font-size:12px;word-break:break-all;">Lien: {{.CartReminder.URL}}</span></p>
+  <p style="margin:0 0 12px 0;">Si vous ne voulez plus ces billets, ne faites rien : la réservation prendra fin d’elle-même. C’est le seul rappel concernant cette commande.</p>
+  </td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}Arena Platform — message automatique<br>{{end}}Si vous cliquez sur « Se désabonner », vous ne recevrez plus les e-mails contenant vos billets ni les e-mails importants concernant votre commande. Nous n’envoyons pas de communications commerciales sans votre consentement.</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}
+
+Vos billets vous attendent
+
+Vous avez commencé une commande pour {{.EventName}} ({{.CartReminder.When}}), mais le paiement n’est pas terminé.
+Nous réservons vos billets jusqu’à {{.CartReminder.HoldUntil}}. Ensuite, ils seront remis en vente.
+Commande {{.CartReminder.OrderNumber}} · Billets: {{.CartReminder.Tickets}} · Total: {{.CartReminder.Total}}
+{{with .CartReminder.Venue}}Lieu: {{.}}
+{{end}}
+Continuer vers le paiement: {{.CartReminder.URL}}
+
+Si vous ne voulez plus ces billets, ne faites rien : la réservation prendra fin d’elle-même. C’est le seul rappel concernant cette commande.
+
+{{if not .WhiteLabel}}Arena Platform — message automatique{{end}}
+
+Si vous cliquez sur « Se désabonner », vous ne recevrez plus les e-mails contenant vos billets ni les e-mails importants concernant votre commande. Nous n’envoyons pas de communications commerciales sans votre consentement.
+{{end}}

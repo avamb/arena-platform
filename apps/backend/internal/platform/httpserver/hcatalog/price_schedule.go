@@ -290,6 +290,20 @@ func (h *Handler) HandlePutTierPriceSchedule(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// A schedule typed by hand ends the smart price this category follows
+	// (owner decision В-5, spec 51 §4.2): the preset's own future windows
+	// the person sent back unchanged go, every window they typed stays.
+	if n, err := txq.OverrideSmartPriceRulesForTier(ctx, gen.SmartOverride{TierID: tier.ID, ScheduleTyped: true, Before: before}); err != nil {
+		h.logger.Error("tier: smart price override failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("tier.schedule_failed", "failed to replace price schedule", r))
+		return
+	} else if n > 0 {
+		if rows, err = txq.ListTierPriceWindows(ctx, []uuid.UUID{tier.ID}); err != nil {
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("tier.schedule_failed", "failed to replace price schedule", r))
+			return
+		}
+	}
+
 	if h.audit != nil {
 		actor, _ := auth.ActorFromContext(ctx)
 		ev := audit.Event{
@@ -588,6 +602,14 @@ func (h *Handler) applyGridToSessionTx(
 		rows, errCode, errMsg := replaceTierScheduleTx(ctx, txq, tier.ID, windows)
 		if errCode != "" {
 			return errMsg + " (" + tier.Name + ")"
+		}
+		// A grid typed by hand ends the smart price the category follows.
+		if n, err := txq.OverrideSmartPriceRulesForTier(ctx, gen.SmartOverride{TierID: tier.ID, ScheduleTyped: true, Before: before}); err != nil {
+			return "failed to end the smart price of " + tier.Name
+		} else if n > 0 {
+			if rows, err = txq.ListTierPriceWindows(ctx, []uuid.UUID{tier.ID}); err != nil {
+				return "failed to load price schedule for " + tier.Name
+			}
 		}
 		if h.audit != nil {
 			ev := audit.Event{

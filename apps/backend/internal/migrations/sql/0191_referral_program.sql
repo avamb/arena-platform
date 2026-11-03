@@ -153,7 +153,7 @@ ALTER TABLE email_letters
     DROP CONSTRAINT email_letters_kind_check,
     ADD CONSTRAINT email_letters_kind_check
         CHECK (kind IN ('ticket', 'invitation', 'change', 'cancel', 'refund',
-                        'shop_received', 'shop_shipped', 'shop_refunded',
+                        'shop_received', 'shop_shipped', 'shop_refunded', 'checkout_reminder',
                         'referral_cashback', 'referral_unavailable'));
 
 COMMENT ON TABLE referral_rewards IS
@@ -180,7 +180,7 @@ ALTER TABLE email_letters
     DROP CONSTRAINT IF EXISTS email_letters_kind_check,
     ADD CONSTRAINT email_letters_kind_check
         CHECK (kind IN ('ticket', 'invitation', 'change', 'cancel', 'refund',
-                        'shop_received', 'shop_shipped', 'shop_refunded'));
+                        'shop_received', 'shop_shipped', 'shop_refunded', 'checkout_reminder'));
 
 -- No cashback refund can exist here (refused above), so the old CHECK holds.
 ALTER TABLE refunds DROP CONSTRAINT refunds_origin_check;

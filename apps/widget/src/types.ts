@@ -163,6 +163,13 @@ export interface Tier {
   current_price?: number;
   /** AB-48: when the price next changes ("price rises on <date>"). */
   next_price_change_at?: string | null;
+  /** The price from next_price_change_at on (smart price, spec 51 §4.2). */
+  next_price?: number | null;
+  /**
+   * A category that sells in steps by tickets sold: the tickets left at this
+   * price and the next step's price. Only set when the next step is dearer.
+   */
+  price_step?: { remaining_at_price: number | null; next_price: number } | null;
   currency: string;
   pwyw_min?: number | null;
   pwyw_max?: number | null;
@@ -246,6 +253,16 @@ export interface FeedSession {
    * backends (treated as not required).
    */
   consent?: import('./lib/consent.js').SessionConsent;
+  /**
+   * The organizer's mailing tick (spec 51-1): offered, for whom, the text
+   * version and the discount it earns. Absent on older backends (not offered).
+   */
+  marketing_optin?: import('./lib/marketing.js').SessionMarketingOptIn;
+  /**
+   * True when the organizer reminds a buyer once by e-mail of an unpaid order
+   * (spec 51-1); the buyer form then says so under the e-mail field.
+   */
+  cart_reminder?: boolean;
   /**
    * IANA zone of the session's venue ("Europe/Madrid"); "" or absent when
    * unknown. Session chips are formatted in it — the time on the door —

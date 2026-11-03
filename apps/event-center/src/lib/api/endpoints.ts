@@ -22,6 +22,9 @@ import type {
   CreateOrderRefundsRequest,
   CreateOrderRefundsResponse,
   CreatePromoCodeRequest,
+  GrowthSettings,
+  GrowthSettingsUpdate,
+  MarketingSubscriberList,
   BotInvitationCreateResponse,
   BotInvitationResendResponse,
   BotInvitationRevokeResponse,
@@ -94,6 +97,11 @@ import type {
   SeatLayoutAlgorithmsResponse,
   SeatLayoutSuggestRequest,
   SeatLayoutSuggestResponse,
+} from "@/lib/api/types";
+import type {
+  SmartPricePreviewResponse,
+  SmartPriceRequest,
+  SmartPriceRulesResponse,
 } from "@/lib/api/types";
 import type {
   StaffInvitationCancelRequest,
@@ -251,6 +259,33 @@ export function downloadSampleTicket(orgId: string, sessionId: string, locale: s
     query: { locale },
     accept: "application/pdf",
     fallbackName: "sample-ticket.pdf",
+  });
+}
+
+// Spec 51-1
+export function fetchGrowthSettings(orgId: string): Promise<GrowthSettings> {
+  return call<GrowthSettings>({ route: API.growthSettings, params: { org_id: orgId } });
+}
+
+export function saveGrowthSettings(orgId: string, body: GrowthSettingsUpdate): Promise<GrowthSettings> {
+  return call<GrowthSettings>({ route: API.growthSettingsUpdate, params: { org_id: orgId }, body });
+}
+
+export function listMarketingSubscribers(orgId: string, status: string, limit = 100): Promise<MarketingSubscriberList> {
+  return call<MarketingSubscriberList>({
+    route: API.marketingSubscribers,
+    params: { org_id: orgId },
+    query: { status, limit: String(limit) },
+  });
+}
+
+export function downloadMarketingSubscribersCsv(orgId: string, status: string, locale: string): Promise<DownloadedFile> {
+  return download({
+    route: API.marketingSubscribersCsv,
+    params: { org_id: orgId },
+    query: { status, locale },
+    accept: "text/csv",
+    fallbackName: "subscribers.csv",
   });
 }
 
@@ -789,6 +824,31 @@ export function updateTier(ref: TierRef, body: UpdateTicketTierRequest): Promise
 /** The category's price windows, to find the one in force now. */
 export function fetchTierSchedule(ref: TierRef): Promise<TierPriceScheduleEnvelope> {
   return call<TierPriceScheduleEnvelope>({ route: API.tierSchedule, params: tierParams(ref) });
+}
+
+// ─── Smart price (spec 51 §4.2) ─────────────────────────────────────────────
+
+/** The session's smart price presets, with where an active one stands now. */
+export function listSmartPrice(orgId: string, sessionId: string): Promise<SmartPriceRulesResponse> {
+  return call<SmartPriceRulesResponse>({ route: API.smartPriceList, params: { org_id: orgId, session_id: sessionId } });
+}
+
+/** The steps or price windows a preset would write. Writes nothing. */
+export function previewSmartPrice(orgId: string, sessionId: string, body: SmartPriceRequest): Promise<SmartPricePreviewResponse> {
+  return call<SmartPricePreviewResponse>({ route: API.smartPricePreview, params: { org_id: orgId, session_id: sessionId }, body });
+}
+
+/** Turns a preset on. The server writes it through the event-bundle import. */
+export function enableSmartPrice(orgId: string, sessionId: string, body: SmartPriceRequest): Promise<SmartPriceRulesResponse> {
+  return call<SmartPriceRulesResponse>({ route: API.smartPriceEnable, params: { org_id: orgId, session_id: sessionId }, body });
+}
+
+/** Freezes the price where it is now. */
+export function stopSmartPrice(orgId: string, sessionId: string, ruleId: string): Promise<SmartPriceRulesResponse> {
+  return call<SmartPriceRulesResponse>({
+    route: API.smartPriceStop,
+    params: { org_id: orgId, session_id: sessionId, rule_id: ruleId },
+  });
 }
 
 /** Replaces the whole schedule. Send every window back, the changed one included. */

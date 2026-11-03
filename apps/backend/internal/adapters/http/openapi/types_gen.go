@@ -8898,6 +8898,33 @@ type GrantMembershipRequest struct {
 // GrantMembershipRequestRole Named role to grant, scoped to the organization in the path.
 type GrantMembershipRequestRole string
 
+// GrowthSettings The organization's cart reminder and marketing consent settings (spec 51-1).
+type GrowthSettings struct {
+	// CartReminderEnabled Remind a buyer once of an unpaid widget order while the hold lives.
+	CartReminderEnabled bool `json:"cart_reminder_enabled"`
+
+	// ConsentPromoCodeId The promo code the tick earns, null for no reward.
+	ConsentPromoCodeId *openapi_types.UUID `json:"consent_promo_code_id"`
+
+	// MarketingOptinEnabled Offer the marketing consent tick at checkout.
+	MarketingOptinEnabled bool `json:"marketing_optin_enabled"`
+
+	// UpdatedAt When the settings were last saved, null for the defaults.
+	UpdatedAt *time.Time `json:"updated_at"`
+}
+
+// GrowthSettingsUpdate The settings to store (spec 51-1).
+type GrowthSettingsUpdate struct {
+	// CartReminderEnabled Remind a buyer once of an unpaid widget order.
+	CartReminderEnabled bool `json:"cart_reminder_enabled"`
+
+	// ConsentPromoCodeId A live promo code limited to one use per buyer, or null for no reward.
+	ConsentPromoCodeId *openapi_types.UUID `json:"consent_promo_code_id"`
+
+	// MarketingOptinEnabled Offer the marketing consent tick at checkout.
+	MarketingOptinEnabled bool `json:"marketing_optin_enabled"`
+}
+
 // GuestListSubscription The caller's automatic guest list setting.
 type GuestListSubscription struct {
 	// Channel How the list reaches the caller - `telegram` (private chat with the event center bot), `email` (not linked to the bot) or `none` (neither; nothing can be sent).
@@ -10555,6 +10582,45 @@ type MACSWebhookSubscriber struct {
 
 	// UpdatedAt ISO 8601 last-update timestamp.
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+}
+
+// MarketingSubscriber One address that ticked the marketing consent.
+type MarketingSubscriber struct {
+	// ConfirmedAt When the address confirmed.
+	ConfirmedAt *time.Time `json:"confirmed_at"`
+
+	// Email The buyer's e-mail as typed.
+	Email string `json:"email"`
+
+	// GrantedAt When the tick was last given.
+	GrantedAt time.Time `json:"granted_at"`
+
+	// Id The subscription id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Locale The language the buyer checked out in.
+	Locale string `json:"locale"`
+
+	// Name The buyer's name, empty when not given.
+	Name string `json:"name"`
+
+	// Status `pending` (not confirmed yet), `confirmed` or `withdrawn`.
+	Status string `json:"status"`
+
+	// WithdrawUrl The link that stops the mailings, to print in every mailing.
+	WithdrawUrl string `json:"withdraw_url"`
+
+	// WithdrawnAt When the consent was withdrawn.
+	WithdrawnAt *time.Time `json:"withdrawn_at"`
+}
+
+// MarketingSubscriberList One page of subscribers.
+type MarketingSubscriberList struct {
+	// Items The page.
+	Items []MarketingSubscriber `json:"items"`
+
+	// Total How many match the filter.
+	Total int `json:"total"`
 }
 
 // MeAssignedNetwork defines model for MeAssignedNetwork.
@@ -14353,6 +14419,11 @@ type PublicFeedCheckoutQuoteRequest struct {
 	// GaItems GA items for GA or hybrid sessions.
 	GaItems *[]PublicGAItem `json:"ga_items,omitempty"`
 
+	// MarketingConsent The buyer's marketing consent tick (spec 51-1). Ticked, it may
+	// earn the organizer's reward code; the one-use-per-buyer cap is
+	// checked at `checkout/start`, where the e-mail is known.
+	MarketingConsent *PublicMarketingConsent `json:"marketing_consent,omitempty"`
+
 	// PromoCode Promotional code to apply. Absent, null or blank prices the cart
 	// without a discount.
 	PromoCode *string `json:"promo_code"`
@@ -14366,6 +14437,11 @@ type PublicFeedCheckoutQuoteRequest struct {
 
 // PublicFeedCheckoutQuoteResponse The priced cart. Nothing was held, reserved or created.
 type PublicFeedCheckoutQuoteResponse struct {
+	// MarketingDiscountApplied True when the cart's discount is the reward for the marketing
+	// consent tick (it won over any typed code, which is then not
+	// applied: `promo_applied` is false).
+	MarketingDiscountApplied *bool `json:"marketing_discount_applied,omitempty"`
+
 	// Pricing The breakdown `checkout/start` would store for the same cart:
 	// subtotal, promo discount, service charge, total and currency.
 	// Widgets render these numbers verbatim.
@@ -14424,6 +14500,14 @@ type PublicFeedCheckoutStartRequest struct {
 	// person may buy in Czech from one organizer and in English from
 	// another.
 	Locale *string `json:"locale,omitempty"`
+
+	// MarketingConsent The buyer's tick on the organizer's mailings (spec 51-1),
+	// optional. Recorded only when the feed session's
+	// `marketing_optin.enabled` is true (consent journal, double
+	// opt-in letter); sent to an organization that does not offer it,
+	// it is ignored and nothing is stored. Ticked, it may earn the
+	// organizer's reward code (see `PublicMarketingConsent`).
+	MarketingConsent *PublicMarketingConsent `json:"marketing_consent,omitempty"`
 
 	// PromoCode Optional promotional code to apply.
 	PromoCode *string `json:"promo_code"`
@@ -14484,6 +14568,9 @@ type PublicFeedCheckoutStartResponse struct {
 	// payment BEFORE arena releases the seats.
 	ExpiresAt time.Time `json:"expires_at"`
 
+	// MarketingDiscountApplied True when the cart's discount is the reward for the marketing consent tick.
+	MarketingDiscountApplied *bool `json:"marketing_discount_applied,omitempty"`
+
 	// Pricing Itemized result of running the deterministic pricing pipeline
 	// (`ComputePricing`, feature #129). Every monetary field is
 	// expressed in the smallest currency unit (integer cents/agorot).
@@ -14515,6 +14602,25 @@ type PublicGAItem struct {
 
 	// TierId UUID of the ticket tier.
 	TierId openapi_types.UUID `json:"tier_id"`
+}
+
+// PublicMarketingConsent The buyer's answer to the marketing consent tick (spec 51-1). When
+// ticked and the organization names a reward code, the reward competes
+// with any typed `promo_code` and the larger discount wins; the cart
+// keeps one code. The reward code typed by hand without the tick is
+// refused with `promo.not_applicable`.
+type PublicMarketingConsent struct {
+	// Accepted True when the buyer ticked the box.
+	Accepted bool `json:"accepted"`
+
+	// Discount False asks for no reward (the buyer was told it is used up, 422
+	// `marketing.discount_used`); the consent is still recorded.
+	// Absent means true.
+	Discount *bool `json:"discount,omitempty"`
+
+	// TextVersion The `marketing_optin.text_version` the widget showed. Another
+	// version answers 422 `marketing.consent_outdated`.
+	TextVersion *string `json:"text_version,omitempty"`
 }
 
 // PublicMaterialMapPoint The one map point of an event, as buyers see it (task 1-2c).
@@ -18861,6 +18967,156 @@ type ShopVariantsReplaceRequest struct {
 	Variants []ShopVariantInput `json:"variants"`
 }
 
+// SmartPriceNow Where an active preset stands at the moment of the read.
+type SmartPriceNow struct {
+	// NextAt When the next price starts (by_days, last_days).
+	NextAt *time.Time `json:"next_at"`
+
+	// NextPrice The next price in minor units, null at the last step.
+	NextPrice *int64 `json:"next_price"`
+
+	// Price The price buyers pay now, in minor units.
+	Price int64 `json:"price"`
+
+	// RemainingAtPrice How many tickets are left at the current price (by_sales), null at the last step.
+	RemainingAtPrice *int `json:"remaining_at_price"`
+
+	// Step The current step, starting at 1.
+	Step int `json:"step"`
+
+	// Steps How many steps there are.
+	Steps int `json:"steps"`
+}
+
+// SmartPriceParams The parameters a preset was enabled with.
+type SmartPriceParams struct {
+	// CapPercent The highest rise over the starting price.
+	CapPercent *int `json:"cap_percent,omitempty"`
+
+	// Every Tickets per step, days per step or days before the session.
+	Every *int `json:"every,omitempty"`
+
+	// Kind by_sales, by_days or last_days.
+	Kind *string `json:"kind,omitempty"`
+
+	// StartDate The day a by_days preset counts from.
+	StartDate *string `json:"start_date,omitempty"`
+
+	// StepPercent The rise of every step, a percentage of the starting price.
+	StepPercent *int `json:"step_percent,omitempty"`
+}
+
+// SmartPricePreviewCategory What a preset would write for one category.
+type SmartPricePreviewCategory struct {
+	// BasePrice The starting price in minor units.
+	BasePrice int64 `json:"base_price"`
+
+	// CapPrice The highest price the preset reaches, in minor units.
+	CapPrice int64 `json:"cap_price"`
+
+	// Currency ISO 4217 currency of the category.
+	Currency string `json:"currency"`
+
+	// Name The category name.
+	Name string `json:"name"`
+
+	// Steps The steps (by_sales, the first is the category itself) or the price windows (by_days, last_days).
+	Steps []SmartPriceStep `json:"steps"`
+
+	// TierId The category.
+	TierId openapi_types.UUID `json:"tier_id"`
+}
+
+// SmartPricePreviewResponse The table a preset would write. Nothing is written.
+type SmartPricePreviewResponse struct {
+	// Categories One entry per category.
+	Categories []SmartPricePreviewCategory `json:"categories"`
+
+	// Kind The preset kind.
+	Kind string `json:"kind"`
+}
+
+// SmartPriceRequest A smart price preset to preview or enable (spec 51 §4.2).
+type SmartPriceRequest struct {
+	// CapPercent The highest rise over the starting price (by_sales, by_days), at least step_percent and at most 500.
+	CapPercent *int `json:"cap_percent,omitempty"`
+
+	// Every Tickets per step (by_sales), days per step (by_days) or days before the session (last_days).
+	Every int `json:"every"`
+
+	// Kind by_sales (every N tickets), by_days (every N days) or last_days (once, N days before the session).
+	Kind string `json:"kind"`
+
+	// StartDate The calendar day (YYYY-MM-DD, venue calendar) a by_days preset counts from. Empty counts from today.
+	StartDate *string `json:"start_date,omitempty"`
+
+	// StepPercent The rise of every step, a percentage of the starting price (1-100).
+	StepPercent int `json:"step_percent"`
+
+	// TierIds The categories the preset applies to. Exactly one for by_sales.
+	TierIds []openapi_types.UUID `json:"tier_ids"`
+}
+
+// SmartPriceRule One smart price preset of a session.
+type SmartPriceRule struct {
+	// BasePrice The starting price in minor units.
+	BasePrice int64 `json:"base_price"`
+
+	// CreatedAt When the preset was enabled.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 currency of the category.
+	Currency string `json:"currency"`
+
+	// Id The preset.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind by_sales, by_days or last_days.
+	Kind string `json:"kind"`
+
+	// Now Where an active preset stands now, null otherwise.
+	Now *SmartPriceNow `json:"now"`
+
+	// Params The parameters the preset was enabled with.
+	Params SmartPriceParams `json:"params"`
+
+	// Status active, stopped (the organizer froze the price) or overridden (a price was edited by hand).
+	Status string `json:"status"`
+
+	// StepTierIds The later steps the preset created (by_sales). A price edited by hand on any of them, or on tier_id, turns the preset off.
+	StepTierIds []openapi_types.UUID `json:"step_tier_ids"`
+
+	// StoppedAt When the preset was stopped or overridden.
+	StoppedAt *time.Time `json:"stopped_at"`
+
+	// TierId The category the preset was applied to (the first step of a chain).
+	TierId openapi_types.UUID `json:"tier_id"`
+
+	// TierName The category name.
+	TierName string `json:"tier_name"`
+}
+
+// SmartPriceRulesResponse The smart price presets of a session.
+type SmartPriceRulesResponse struct {
+	// Rules The presets, newest first.
+	Rules []SmartPriceRule `json:"rules"`
+
+	// Warnings Advisory warnings of the import that wrote the change.
+	Warnings []ImportWarning `json:"warnings"`
+}
+
+// SmartPriceStep One row of a preset's table, a chain step or a price window.
+type SmartPriceStep struct {
+	// From When the price window starts (by_days, last_days).
+	From *time.Time `json:"from,omitempty"`
+
+	// Places How many tickets the step sells (by_sales).
+	Places *int `json:"places,omitempty"`
+
+	// Price The price of the step in minor units.
+	Price int64 `json:"price"`
+}
+
 // StaffInvitationCancelRequest Which tickets to cancel; an empty body cancels them all.
 type StaffInvitationCancelRequest struct {
 	// NotifyGuest Send the guest the cancellation letter when the invitation has the guest's e-mail (default true).
@@ -22135,6 +22391,27 @@ type ListOrgStaffInvitationsParams struct {
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
 
+// ListOrganizationMarketingSubscribersParams defines parameters for ListOrganizationMarketingSubscribers.
+type ListOrganizationMarketingSubscribersParams struct {
+	// Status `confirmed` (default), `pending`, `withdrawn` or `all`.
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// Limit Page size, 1-100 (default 100).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Rows to skip.
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// ExportOrganizationMarketingSubscribersParams defines parameters for ExportOrganizationMarketingSubscribers.
+type ExportOrganizationMarketingSubscribersParams struct {
+	// Status `confirmed` (default), `pending`, `withdrawn` or `all`.
+	Status *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// Locale Language of the column labels.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
 // GrantOrganizationMembershipParams defines parameters for GrantOrganizationMembership.
 type GrantOrganizationMembershipParams struct {
 	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) when the caller is a platform superadmin writing in an organization they are not a member of; ignored for everybody else.
@@ -22540,6 +22817,12 @@ type CreatePaymentIntentParams struct {
 	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
 }
 
+// ResumePublicCheckoutParams defines parameters for ResumePublicCheckout.
+type ResumePublicCheckoutParams struct {
+	// Src Where the link was clicked (`reminder`). Informational only.
+	Src *string `form:"src,omitempty" json:"src,omitempty"`
+}
+
 // GetPublicTicketPdfParams defines parameters for GetPublicTicketPdf.
 type GetPublicTicketPdfParams struct {
 	// Src Where the link was followed from, only for the access log:
@@ -22564,6 +22847,30 @@ type ListPublicFeedEventsParams struct {
 
 	// Offset Pagination offset.
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// GetPublicMarketingConfirmPageParams defines parameters for GetPublicMarketingConfirmPage.
+type GetPublicMarketingConfirmPageParams struct {
+	// Token The one-time token from the letter.
+	Token string `form:"token" json:"token"`
+}
+
+// ConfirmPublicMarketingConsentParams defines parameters for ConfirmPublicMarketingConsent.
+type ConfirmPublicMarketingConsentParams struct {
+	// Token The one-time token from the letter.
+	Token string `form:"token" json:"token"`
+}
+
+// GetPublicMarketingWithdrawPageParams defines parameters for GetPublicMarketingWithdrawPage.
+type GetPublicMarketingWithdrawPageParams struct {
+	// Token The withdraw-only token of the subscription.
+	Token string `form:"token" json:"token"`
+}
+
+// PostPublicMarketingWithdrawParams defines parameters for PostPublicMarketingWithdraw.
+type PostPublicMarketingWithdrawParams struct {
+	// Token The withdraw-only token of the subscription.
+	Token string `form:"token" json:"token"`
 }
 
 // GetPublicTermsParams defines parameters for GetPublicTerms.
@@ -23169,6 +23476,9 @@ type CreateExternalAllocationJSONRequestBody CreateExternalAllocationJSONBody
 // UpdateExternalAllocationJSONRequestBody defines body for UpdateExternalAllocation for application/json ContentType.
 type UpdateExternalAllocationJSONRequestBody UpdateExternalAllocationJSONBody
 
+// PutOrganizationGrowthSettingsJSONRequestBody defines body for PutOrganizationGrowthSettings for application/json ContentType.
+type PutOrganizationGrowthSettingsJSONRequestBody = GrowthSettingsUpdate
+
 // PutV1OrganizationsOrgIdGuestListSubscriptionJSONRequestBody defines body for PutV1OrganizationsOrgIdGuestListSubscription for application/json ContentType.
 type PutV1OrganizationsOrgIdGuestListSubscriptionJSONRequestBody = GuestListSubscriptionRequest
 
@@ -23261,6 +23571,12 @@ type PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody = SeatB
 
 // PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest for application/json ContentType.
 type PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody = SeatLayoutSuggestRequest
+
+// PostV1OrganizationsOrgIdSessionsSessionIdSmartPriceJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSmartPrice for application/json ContentType.
+type PostV1OrganizationsOrgIdSessionsSessionIdSmartPriceJSONRequestBody = SmartPriceRequest
+
+// PostV1OrganizationsOrgIdSessionsSessionIdSmartPricePreviewJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSmartPricePreview for application/json ContentType.
+type PostV1OrganizationsOrgIdSessionsSessionIdSmartPricePreviewJSONRequestBody = SmartPriceRequest
 
 // SearchShopOrdersJSONRequestBody defines body for SearchShopOrders for application/json ContentType.
 type SearchShopOrdersJSONRequestBody = ShopOrderSearchRequest

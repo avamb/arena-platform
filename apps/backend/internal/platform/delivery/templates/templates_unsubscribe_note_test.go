@@ -54,7 +54,7 @@ func noteFor(kind, loc string) string {
 	switch kind {
 	case TemplateKindShopOrderReceived, TemplateKindShopOrderShipped, TemplateKindShopOrderRefunded:
 		return shopUnsubscribeNotes[loc]
-	case TemplateKindSaleSubscribeConfirm, TemplateKindSaleOpen:
+	case TemplateKindSaleSubscribeConfirm, TemplateKindSaleOpen, TemplateKindMarketingConfirm:
 		return saleUnsubscribeNotes[loc]
 	}
 	return unsubscribeNotes[loc]
@@ -78,6 +78,8 @@ func buyerLetterKinds() map[string]Data {
 		TemplateKindSaleOpen:                    {EventName: "E", RecipientEmail: "x@y.z", SaleNotice: SaleNoticeData{URL: "https://t.example/b", When: "w"}},
 		TemplateKindReferralCashbackSent:        referralBuyerData(),
 		TemplateKindReferralCashbackUnavailable: referralBuyerData(),
+		TemplateKindCheckoutReminder:            {EventName: "E", RecipientEmail: "x@y.z", CartReminder: CartReminderData{URL: "https://a.example/r", When: "w", HoldUntil: "h", Tickets: 2, Total: "1.00 EUR", OrderNumber: "7"}},
+		TemplateKindMarketingConfirm:            {EventName: "E", RecipientEmail: "x@y.z", Marketing: MarketingConfirmData{ConfirmURL: "https://a.example/c", WithdrawURL: "https://a.example/w"}},
 	}
 }
 

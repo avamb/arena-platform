@@ -207,6 +207,32 @@ func sweepRows() []sweepRow {
 			path: func(id sweepIDs) string { return orgPath(id) + "/sessions/" + id.Session1.String() + "/sales-state" },
 			body: func(_ sweepIDs) string { return `{"state":"open"}` }},
 
+		// ── Smart price presets (spec 51 §4.2): the handler reads the session's
+		// event with loadBundleSource, which compares its organization to
+		// {org_id}. The writes are attack-only: a control run would really
+		// change the session's prices.
+		{hole: "SMP", name: "smart price list", route: "GET /v1/organizations/{org_id}/sessions/{session_id}/smart-price", perm: "tier.read",
+			path: func(id sweepIDs) string { return orgPath(id) + "/sessions/" + id.Session1.String() + "/smart-price" }},
+		{hole: "SMP", name: "smart price preview", route: "POST /v1/organizations/{org_id}/sessions/{session_id}/smart-price/preview", perm: "tier.update",
+			attackOnly: true,
+			path: func(id sweepIDs) string {
+				return orgPath(id) + "/sessions/" + id.Session1.String() + "/smart-price/preview"
+			},
+			body: func(id sweepIDs) string {
+				return fmt.Sprintf(`{"tier_ids":[%q],"kind":"by_days","step_percent":10,"every":7,"cap_percent":50}`, id.Tier)
+			}},
+		{hole: "SMP", name: "smart price enable", route: "POST /v1/organizations/{org_id}/sessions/{session_id}/smart-price", perm: "tier.update",
+			attackOnly: true,
+			path:       func(id sweepIDs) string { return orgPath(id) + "/sessions/" + id.Session1.String() + "/smart-price" },
+			body: func(id sweepIDs) string {
+				return fmt.Sprintf(`{"tier_ids":[%q],"kind":"by_days","step_percent":10,"every":7,"cap_percent":50}`, id.Tier)
+			}},
+		{hole: "SMP", name: "smart price stop", route: "POST /v1/organizations/{org_id}/sessions/{session_id}/smart-price/{rule_id}/stop", perm: "tier.update",
+			attackOnly: true,
+			path: func(id sweepIDs) string {
+				return orgPath(id) + "/sessions/" + id.Session1.String() + "/smart-price/" + id.Tier.String() + "/stop"
+			}},
+
 		// ── H8 seating bind and seat block/unblock: only the path organization was checked.
 		{hole: "H8", name: "seating bind", route: "POST /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/seating", perm: "event_session.assign_seating_plan",
 			path: func(id sweepIDs) string { return sessionBase(id, id.Event, id.Session2) + "/seating" },
