@@ -28,6 +28,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/whitelabel"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/withdrawal"
 )
 
@@ -281,4 +282,22 @@ func (h *Handler) showWithdrawalNotice(ctx context.Context, orgID uuid.UUID) boo
 		return false
 	}
 	return withdrawal.ForSeller(c.LegalAddressCountry, c.Country)
+}
+
+// whiteLabelForEvent reports whether the event's brand has white label today
+// (spec 08_architecture/53). A failed lookup answers false (the badge stays)
+// and is logged: it never fails the page.
+func (h *Handler) whiteLabelForEvent(ctx context.Context, eventID uuid.UUID) bool {
+	if h.publicFeedQueries == nil {
+		return false
+	}
+	on, err := whitelabel.New(h.publicFeedQueries).Event(ctx, eventID)
+	if err != nil {
+		h.logger.Warn("public_feed: white label lookup failed",
+			slog.String("event_id", eventID.String()),
+			slog.String("error", err.Error()),
+		)
+		return false
+	}
+	return on
 }

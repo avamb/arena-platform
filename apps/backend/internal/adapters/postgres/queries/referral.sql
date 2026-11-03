@@ -1,4 +1,4 @@
--- referral.sql — "Refer a friend" (spec 52, migration 0195). The Go wrappers
+-- referral.sql — "Refer a friend" (spec 52, migration 0191). The Go wrappers
 -- live in gen/referral.sql.go (hand-maintained); the payout and sweep SQL is
 -- in internal/platform/referral.
 

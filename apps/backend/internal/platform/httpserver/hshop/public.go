@@ -38,6 +38,9 @@ type publicSettingsJSON struct {
 	// percent, only while the programme is active. The checkout previews the
 	// discount with it; the order is priced by the server.
 	ReferralFriendDiscountPct int `json:"referral_friend_discount_pct,omitempty"`
+	// WhiteLabel is true when the organization has white label today: the
+	// storefront hides its "on the Arena Sold Out platform" footer.
+	WhiteLabel bool `json:"white_label"`
 }
 
 // publicOrgJSON names the shop's organization.
@@ -92,6 +95,7 @@ func (h *Handler) HandlePublicCatalog(w http.ResponseWriter, r *http.Request) {
 			CountryISO2: st.CountryISO2, AgeGateMinAge: st.AgeGateMinAge, AnnouncementText: st.AnnouncementText,
 			ContactEmail: st.ContactEmail, MaxLineQty: st.MaxLineQty, CaptchaSiteKey: h.captchaSiteKey(),
 			ReferralActive: referralActive, ReferralFriendDiscountPct: referralPct,
+			WhiteLabel: h.whiteLabel(r.Context(), sf.Org.ID),
 		},
 		"products": products,
 		"pages":    links,
@@ -577,4 +581,15 @@ func (h *Handler) HandlePublicCheckoutStatus(w http.ResponseWriter, r *http.Requ
 		"review_reason":  reviewReason,
 		"review_message": reviewMessage,
 	})
+}
+
+// whiteLabel reports whether the organization has white label today. A
+// failed lookup keeps the footer (false) and is logged.
+func (h *Handler) whiteLabel(ctx context.Context, orgID uuid.UUID) bool {
+	on, err := h.o.WhiteLabel.Org(ctx, orgID)
+	if err != nil {
+		h.o.Logger.Warn("shop: white label lookup failed", "org_id", orgID.String(), "error", err.Error())
+		return false
+	}
+	return on
 }

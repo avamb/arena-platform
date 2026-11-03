@@ -1,5 +1,5 @@
 // Package referral is the server core of the "Refer a friend" programme
-// (spec 52, migration 0195).
+// (spec 52, migration 0191).
 //
 // A buyer who paid for an event with a programme gets a personal promo code
 // (IssueCode). A friend who pays with it earns the buyer a cashback: a row in

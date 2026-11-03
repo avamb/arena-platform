@@ -63,6 +63,12 @@ var AllowedOwnerTypes = map[string]struct{}{
 	"shop_digital":     {}, // shop (0172): the file a digital product sells, never a picture
 }
 
+// OwnerPaymentReceipt is the owner type of an archived payment provider
+// receipt (migration 0185). It is in the CHECK constraint but deliberately NOT
+// in AllowedOwnerTypes: no upload route may create one, only the archive job
+// (internal/platform/paymentreceipts).
+const OwnerPaymentReceipt = "payment_receipt"
+
 // Repo is the persistence + storage facade used by HTTP handlers and the
 // worker GC job. A single Repo is safe for concurrent use.
 type Repo struct {
@@ -201,6 +207,38 @@ func (r *Repo) GetByID(ctx context.Context, id uuid.UUID) (Object, error) {
 			return Object{}, ErrNotFound
 		}
 		return Object{}, fmt.Errorf("mediastore: get: %w", err)
+	}
+	return obj, nil
+}
+
+// FindByChecksum returns the newest ACTIVE row of the organization with this
+// owner type and content checksum, or ErrNotFound. The event-page reading
+// (spec 59) uses it so a page read twice stores its picture once.
+func (r *Repo) FindByChecksum(ctx context.Context, orgID uuid.UUID, ownerType, sha256Hex string) (Object, error) {
+	const q = `
+		SELECT id, org_id, owner_type, owner_id, storage_backend, storage_key,
+		       content_type, byte_size, checksum_sha256, width, height,
+		       created_at, deleted_at
+		FROM   media_objects
+		WHERE  org_id = $1
+		  AND  owner_type = $2
+		  AND  checksum_sha256 = $3
+		  AND  deleted_at IS NULL
+		ORDER  BY created_at DESC
+		LIMIT  1
+	`
+	var obj Object
+	err := r.pool.QueryRow(ctx, q, orgID, ownerType, sha256Hex).Scan(
+		&obj.ID, &obj.OrgID, &obj.OwnerType, &obj.OwnerID,
+		&obj.StorageBackend, &obj.StorageKey, &obj.ContentType, &obj.ByteSize,
+		&obj.ChecksumSHA256, &obj.Width, &obj.Height,
+		&obj.CreatedAt, &obj.DeletedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Object{}, ErrNotFound
+		}
+		return Object{}, fmt.Errorf("mediastore: find by checksum: %w", err)
 	}
 	return obj, nil
 }

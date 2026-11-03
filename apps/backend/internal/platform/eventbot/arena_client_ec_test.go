@@ -44,9 +44,44 @@ func TestSafeFileName(t *testing.T) {
 		``:                                                      "export.csv",
 		`inline`:                                                "export.csv",
 	} {
-		if got := safeFileName(in); got != want {
+		if got := safeFileName(in, ".csv"); got != want {
 			t.Errorf("safeFileName(%q) = %q, want %q", in, got, want)
 		}
+	}
+	if got := safeFileName(`attachment; filename="guests_swan_2026-11-20.xlsx"`, ".xlsx"); got != "guests_swan_2026-11-20.xlsx" {
+		t.Errorf("xlsx name = %q", got)
+	}
+}
+
+func TestDownloadXLSX_RowsComeFromTheHeader(t *testing.T) {
+	t.Parallel()
+	orgID, sessionID := uuid.New(), uuid.New()
+	var gotPath, gotAccept string
+	rows := "3"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath, gotAccept = r.URL.RequestURI(), r.Header.Get("Accept")
+		w.Header().Set("Content-Type", xlsxContentType)
+		w.Header().Set("Content-Disposition", `attachment; filename="guests_swan_2026-11-20.xlsx"`)
+		if rows != "" {
+			w.Header().Set("X-Row-Count", rows)
+		}
+		_, _ = w.Write([]byte("PK\x03\x04"))
+	}))
+	defer srv.Close()
+	c := NewArenaClient(srv.URL, "svc", srv.Client())
+	f, err := c.SessionGuestList(context.Background(), "jwt", orgID, sessionID, "es")
+	if err != nil {
+		t.Fatalf("SessionGuestList: %v", err)
+	}
+	if gotPath != "/v1/organizations/"+orgID.String()+"/sessions/"+sessionID.String()+"/guest-list.xlsx?locale=es" || gotAccept != xlsxContentType {
+		t.Errorf("path = %q accept = %q", gotPath, gotAccept)
+	}
+	if f.Name != "guests_swan_2026-11-20.xlsx" || f.Rows != 3 {
+		t.Errorf("file = %q rows=%d", f.Name, f.Rows)
+	}
+	rows = ""
+	if _, err := c.SessionGuestList(context.Background(), "jwt", orgID, sessionID, "es"); err == nil {
+		t.Error("an answer without X-Row-Count was taken as a file")
 	}
 }
 

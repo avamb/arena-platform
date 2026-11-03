@@ -60,7 +60,7 @@ type ShopOrderRow struct {
 	// otherwise.
 	ReviewReason *string `json:"review_reason"`
 	// PromoCodeID is the personal "Refer a friend" code the order was bought
-	// with (migration 0195); discount holds what it took off the goods.
+	// with (migration 0191); discount holds what it took off the goods.
 	PromoCodeID *uuid.UUID `json:"promo_code_id"`
 }
 

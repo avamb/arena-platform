@@ -458,6 +458,8 @@ func (b *Bot) sesShowCard(ctx context.Context, chatID int64, msgID *int, jwt, lo
 		rows = append(rows, []Button{b.sesBtn(loc, "bot.ec.summary_btn", "sm", nil), b.sesBtn(loc, "bot.ec.csv_btn", "csv", nil)})
 		rows = append(rows, []Button{b.sesBtn(loc, "bot.ord.btn", "or", nil)})
 		if !it.cancelled() {
+			// The guest list of the date (guest_list.go).
+			rows = append(rows, []Button{b.sesBtn(loc, "bot.gl.btn", "gl", nil)})
 			// Who has not come in yet (M2).
 			rows = append(rows, []Button{b.sesBtn(loc, "bot.ses.not_entered_btn", "ne:1", nil)})
 		}
@@ -825,6 +827,11 @@ func (b *Bot) sessionsCallback(ctx context.Context, chatID int64, msgID int, fro
 		session, event, name := dlg.Items[dlg.Cur].ID, dlg.EventID, dlg.EventName
 		b.sessions.drop(ctx, from.ID, dlg)
 		b.seatLayoutOpen(ctx, chatID, &msgID, id, jwt, event, session, name)
+	case data == "gl":
+		if dlg.Cur < 0 || dlg.Cur >= len(dlg.Items) || !canViewSales(id) || dlg.Items[dlg.Cur].cancelled() {
+			return
+		}
+		b.sendGuestList(ctx, chatID, from, dlg.Items[dlg.Cur].ID)
 	case data == "sm" || data == "csv":
 		if dlg.Cur < 0 || dlg.Cur >= len(dlg.Items) || !canViewSales(id) {
 			return

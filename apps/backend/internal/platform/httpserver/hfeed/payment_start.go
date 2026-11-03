@@ -414,6 +414,22 @@ func (s *StripePaymentStarter) resolveConfig(ctx context.Context, orgID, channel
 	}, nil
 }
 
+// receiptEmail is the address the provider is asked to e-mail its own
+// receipt to (spec 51, decision R-6): the buyer's, when the organization's
+// owner left the setting on or the platform operator set "always send". A
+// setting that cannot be read counts as the default, which is on.
+func (s *StripePaymentStarter) receiptEmail(ctx context.Context, orgID uuid.UUID, buyerEmail string) string {
+	email := strings.TrimSpace(buyerEmail)
+	if email == "" {
+		return ""
+	}
+	settings, err := s.orgQueries.GetOrgProviderReceiptSettings(ctx, orgID)
+	if err != nil || settings.Effective() {
+		return email
+	}
+	return ""
+}
+
 // CheckPaymentConfigured implements the PaymentStarter pre-flight: the
 // configuration half of StartHostedCheckout, and nothing else.
 func (s *StripePaymentStarter) CheckPaymentConfigured(ctx context.Context, orgID, channelID uuid.UUID) error {
@@ -481,6 +497,7 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 		Currency:          req.Currency,
 		ProductName:       req.ProductName,
 		CustomerEmail:     req.BuyerEmail,
+		ReceiptEmail:      s.receiptEmail(ctx, req.OrgID, req.BuyerEmail),
 		CustomerName:      strings.TrimSpace(req.BuyerName),
 		CustomerPhone:     strings.TrimSpace(req.BuyerPhone),
 		ClientReferenceID: req.reference(),

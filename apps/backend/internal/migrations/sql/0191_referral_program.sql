@@ -36,7 +36,7 @@
 -- that migration 0172 already has, total = subtotal - discount + shipping).
 -- No permission is added.
 --
--- Numbered 0195 provisionally: renumber just before the merge (AGENTS.md).
+-- Numbered 0191: it follows 0189 (smart price) and 0190 (abandoned cart).
 
 -- +goose Up
 
@@ -169,7 +169,7 @@ COMMENT ON TABLE referral_rewards IS
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM refunds WHERE origin = 'referral_cashback') THEN
-        RAISE EXCEPTION '0195 down refused: refunds of origin referral_cashback exist; they are real money returned to referrers and cannot become ordinary refunds. Keep the programme tables, or remove those rows by hand after exporting them';
+        RAISE EXCEPTION '0191 down refused: refunds of origin referral_cashback exist; they are real money returned to referrers and cannot become ordinary refunds. Keep the programme tables, or remove those rows by hand after exporting them';
     END IF;
 END
 $$;

@@ -339,8 +339,12 @@ func TestPayPlus_TicketPurchaseThroughHostedCheckout(t *testing.T) {
 	if link["refURL_success"] != wantReturn || link["refURL_cancel"] != wantReturn || link["refURL_failure"] != wantReturn {
 		t.Errorf("refURLs = %v / %v / %v; want the payment-return hop %s", link["refURL_success"], link["refURL_cancel"], link["refURL_failure"], wantReturn)
 	}
-	if m := fmt.Sprint(link["expiry_datetime"]); m != "31" {
-		t.Errorf("expiry_datetime = %s; want 31 minutes (the 1860 s widget window, rounded down)", m)
+	// The adapter rounds DOWN the time left when it posts the link, measured
+	// from its own clock: the 1860 s widget window gives 31 minutes, or 30
+	// when more than a second passed since the hold was taken (a slow CI
+	// runner). Either keeps the PayPlus page inside the hold.
+	if m := fmt.Sprint(link["expiry_datetime"]); m != "31" && m != "30" {
+		t.Errorf("expiry_datetime = %s; want 31 minutes (the 1860 s widget window, rounded down), or 30 on a slow run", m)
 	}
 
 	// ── 3. The intent is keyed by page_request_uid ──────────────────────────

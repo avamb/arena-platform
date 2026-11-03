@@ -2,7 +2,7 @@
 // source: referral_shop.sql
 //
 // "Refer a friend" for the merchandise shop (spec 52 sections 0 R-RF6, 3.5 and
-// 4; migration 0195). A shop programme is referral_programs.scope = 'shop', one
+// 4; migration 0191). A shop programme is referral_programs.scope = 'shop', one
 // live per organization. A personal code of a shop order carries
 // promo_codes.referrer_shop_order_id; the friend's shop order carries
 // shop_orders.promo_code_id and its discount in shop_orders.discount.

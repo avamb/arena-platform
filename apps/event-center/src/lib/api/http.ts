@@ -28,6 +28,8 @@ export const UPLOAD_TIMEOUT_MS = 120_000;
  * (and never repeats the paid request by itself).
  */
 export const POSTER_READ_TIMEOUT_MS = 60_000;
+/** An event page reading: the server spends up to a minute (page, model, picture). */
+export const PAGE_READ_TIMEOUT_MS = 75_000;
 export const CLIENT_CHANNEL = "event_center_web";
 
 export class ApiError extends Error {

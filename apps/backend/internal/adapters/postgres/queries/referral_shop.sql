@@ -1,5 +1,5 @@
 -- referral_shop.sql — "Refer a friend" for the merchandise shop (spec 52,
--- migration 0195). The Go wrappers live in gen/referral_shop.sql.go
+-- migration 0191). The Go wrappers live in gen/referral_shop.sql.go
 -- (hand-maintained); the payout and sweep SQL is in internal/platform/referral.
 --
 -- A shop programme is referral_programs.scope = 'shop' (one live per

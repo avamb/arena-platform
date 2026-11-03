@@ -1641,6 +1641,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/bot/guest-list-deliveries/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Automatic guest lists the bot must send now
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN`. Returns up to 20
+         *     guest lists whose moment came (24 hours, 3 hours before the start,
+         *     doors open) for members linked to the bot, and takes each for 10
+         *     minutes; a list not reported back with `.../finish` may be taken
+         *     again, three times at most, and never more than 2 hours after its
+         *     moment. The bot fetches `guest-list.xlsx` AS the member, sends it to
+         *     their private chat and reports the outcome. The answer carries no
+         *     data of the file.
+         */
+        post: operations["claimBotGuestListDeliveries"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/guest-list-deliveries/{id}/finish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report how one automatic guest list ended
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN` for a delivery it
+         *     claimed. `attempt` must be the claim's own: a report of an older
+         *     claim is a 404 and changes nothing. `sent` closes it; `failed` lets
+         *     it be taken again when its 10-minute lease is over; `skipped` closes
+         *     it without a send (no rights any more, no tickets); `email` moves it
+         *     to the e-mail channel (the person blocked the bot). A delivery
+         *     already sent is a 404.
+         */
+        post: operations["finishBotGuestListDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/users/{user_id}": {
         parameters: {
             query?: never;
@@ -1827,6 +1880,50 @@ export interface paths {
          * @description Sets the end of an individual rate. The end is in the future. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row.
          */
         post: operations["postV1AdminBillingRateOverrideClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/white-label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - list white label periods
+         * @description Lists the white label periods of brands (an organization, or one of its promoters): the days the platform badge is hidden. Requires JWT, billing.admin and a platform superadmin.
+         */
+        get: operations["getV1AdminBillingWhiteLabel"];
+        put?: never;
+        /**
+         * Admin - turn white label on for a brand
+         * @description Turns white label on for a brand from starts_on (today or later, UTC) to ends_on (open when absent). The brand is the organization (promoter_id absent: its events without a promoter and its shop) or one of its promoters. Two periods of one brand never share a day. The job billing.white_label charges every completed month in arrears, prorated by days, at the price list's monthly rate or at monthly_price_minor. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row.
+         */
+        post: operations["postV1AdminBillingWhiteLabel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/billing/white-label/{id}/end": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - end a white label period
+         * @description Sets the last day of a white label period. It is yesterday or later (yesterday ends white label now), earlier than the current end, and not earlier than the day before the period starts. A period is never deleted and its end never moves later. Requires JWT, billing.admin, a platform superadmin and X-Admin-Reason. Writes an audit row.
+         */
+        post: operations["postV1AdminBillingWhiteLabelEnd"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3901,11 +3998,16 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Switch the Telegram leg of the sales page's contact form
+         * Change the organization-wide sales page and payment switches
          * @description `contact_form_to_telegram` decides whether buyers' messages from the
          *     sales page's contact form also go to the organization's own sales
-         *     Telegram chat (the e-mail always goes). Requires `org.update`.
-         *     Audited as `v1.organization.contact_form_update`.
+         *     Telegram chat (the e-mail always goes). `provider_receipt_enabled` and
+         *     `provider_receipt_forced` decide whether the payment provider e-mails
+         *     its own receipt to the buyer; only a platform superadmin changes the
+         *     forced flag. Requires `org.update`. Audited as
+         *     `v1.organization.contact_form_update` (only the contact form),
+         *     `v1.organization.provider_receipt_update` (only the receipt) or
+         *     `v1.organization.settings_update` (both).
          */
         patch: operations["updateSellerProfile"];
         trace?: never;
@@ -6169,6 +6271,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/event-page-facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read the organizer's own event page
+         * @description Downloads the organizer's OWN event page and answers what it says
+         *     about the event: the name, the dates, the venue, the description, the
+         *     ticket prices and a picture (spec 59). The values are hints for an
+         *     event wizard (the Telegram bot, the web event center) to offer as
+         *     buttons; nothing is created but the page's picture, stored as an
+         *     unattached `event_poster` media object the organizer may choose as
+         *     the poster.
+         *
+         *     Sources by trust: a schema.org `Event` in JSON-LD, then Open Graph and
+         *     the meta tags, and only when those leave the dates or the prices
+         *     missing, a text model reading the page's visible text (`sources` says
+         *     which). Model readings are capped at `EVENT_PAGE_READS_PER_ORG_PER_DAY`
+         *     (default 30) per organization in a sliding 24 hours; past the cap, or
+         *     without a model key, the reading answers without them and says so in
+         *     `warnings`. Page reads are capped at 20 an hour per organization. Both
+         *     counters live in the memory of one arena-api process.
+         *
+         *     The page is fetched only on the public internet (no private, loopback
+         *     or metadata address, also after a redirect), http or https, within 10
+         *     seconds and 2 MiB. A page of a ticketing platform (Ticketmaster,
+         *     Eventbrite and others) is refused before it is read: their terms forbid
+         *     automated collection. The call may take up to a minute.
+         *
+         *     Requires the `event.update` permission in the path organization (the
+         *     owner and the manager hold it).
+         */
+        post: operations["postV1OrganizationsOrgIdEventPageFacts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/texts/format": {
         parameters: {
             query?: never;
@@ -6525,6 +6671,9 @@ export interface paths {
          *         covered by the right of withdrawal. False for every other
          *         country (Israel included, which has its own cancellation
          *         regime) and when the country is unknown.
+         *       * `white_label` — boolean. True when the event's brand (its
+         *         promoter, else the organization) has white label today; the
+         *         widget then hides its "Tickets: Arena Sold Out" badge.
          *       * `consent` — `PublicCheckoutConsentBlock` (P2): whether the
          *         buyer must tick "I accept the sale terms (seller: <legal name>)
          *         and the privacy policy" before paying, the seller's legal name
@@ -8278,6 +8427,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/billing/white-label": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * White label periods of an organization
+         * @description Lists the organization's white label periods (its own brand and its promoters) with the monthly price that applies: the period's individual price, else the price list's for the organization's billing account. Read-only: only a platform superadmin turns white label on or off. Requires JWT and billing.read in the organization (the owner).
+         */
+        get: operations["getOrgBillingWhiteLabel"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/billing/charges": {
         parameters: {
             query?: never;
@@ -9042,7 +9211,8 @@ export interface paths {
          *     refused with 413 before any byte is sent.
          *
          *     Requires `order.read` AND `session.read`; a session of another
-         *     organization is a 404.
+         *     organization is a 404. The file holds buyers' contacts, so an
+         *     organization API key is refused (403 `guest_list.api_key_forbidden`).
          */
         get: operations["getV1OrganizationsOrgIdSessionsSessionIdSalesCsv"];
         put?: never;
@@ -9479,6 +9649,116 @@ export interface paths {
          */
         get: operations["getV1OrganizationsOrgIdSessionsSessionIdSummaryCsv"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/guest-list.xlsx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Guest list of a session as an Excel workbook
+         * @description The guest list people open: an .xlsx with one sheet, so Excel shows
+         *     the columns whatever its regional settings. The header row is bold
+         *     and frozen, the sheet has an autofilter, and the ticket number,
+         *     barcode, order number and phone are TEXT cells in text-formatted
+         *     columns, so Excel never shows a barcode as 4.6E+12 or drops a
+         *     leading zero, not even in rows added later. The entry time is text
+         *     on the venue's clock. `guest-list.csv` serves the same rows as a CSV.
+         *
+         *     One row per ACTIVE ticket of the session (cancelled, revoked and
+         *     transferred tickets are left out), sorted by the guest's name:
+         *     guest (the name on the ticket, else the buyer's), category, seat,
+         *     ticket number, barcode, VIP (`yes` / `no`), entered (`yes` / `no`),
+         *     entry time (venue's zone), order number, e-mail, phone and
+         *     invitation (`yes` / `no`). Same csvexport rules, locale selection and
+         *     50 000-row cap as the sales file. The same file is sent automatically
+         *     to the members who turned the guest list on
+         *     (`PUT .../guest-list-subscription`).
+         *
+         *     Requires `order.read` AND `session.read`; a session of another
+         *     organization is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdGuestListXlsx"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Guest list of a session as a CSV file
+         * @description The CSV twin of `guest-list.xlsx`, for imports into other systems:
+         *     the same rows, columns and access rules. People should get the
+         *     workbook: Excel opens a CSV with the list separator of its regional
+         *     settings, and with English settings every row lands in column A.
+         *
+         *     One row per ACTIVE ticket of the session (cancelled, revoked and
+         *     transferred tickets are left out), sorted by the guest's name:
+         *     guest (the name on the ticket, else the buyer's), category, seat,
+         *     ticket number, barcode, VIP (`yes` / `no`), entered (`yes` / `no`),
+         *     entry time (venue's zone), order number, e-mail, phone and
+         *     invitation (`yes` / `no`). Same csvexport rules, locale selection and
+         *     50 000-row cap as the sales file. The same file is sent automatically
+         *     to the members who turned the guest list on
+         *     (`PUT .../guest-list-subscription`).
+         *
+         *     Requires `order.read` AND `session.read`; a session of another
+         *     organization is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdGuestListCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/guest-list-subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the caller receives guest lists automatically
+         * @description The CALLING member's setting. When it is on, the guest list of every
+         *     session of the organization is sent to them 24 hours before the
+         *     start, 3 hours before it and at doors open (the start when no doors
+         *     time is set): to their private chat with the event center bot, or by
+         *     e-mail when they are not linked to the bot. Only owners and managers
+         *     get files. Requires `order.read`; an organization API key is refused
+         *     (403 `guest_list.api_key_forbidden`).
+         */
+        get: operations["getV1OrganizationsOrgIdGuestListSubscription"];
+        /**
+         * Turn the automatic guest list on or off for the caller
+         * @description Turns the caller's automatic guest list on or off. A repeat of the
+         *     current value changes nothing. Turning it off also stops a list
+         *     whose moment has come but which was not sent yet. Requires
+         *     `order.read`; an organization API key is refused (403
+         *     `guest_list.api_key_forbidden`), and only owners and managers may
+         *     turn it on (403 `guest_list.role_not_eligible`).
+         */
+        put: operations["putV1OrganizationsOrgIdGuestListSubscription"];
         post?: never;
         delete?: never;
         options?: never;
@@ -10017,6 +10297,218 @@ export interface paths {
          */
         get: operations["getV1OrganizationsOrgIdRefundsRefundId"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/disputes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the organization's payment disputes
+         * @description Lists chargebacks and bank inquiries of the organization's payments,
+         *     open ones first by deadline. Requires `dispute.read`. An organization API
+         *     key is refused: the list carries buyers' names and addresses.
+         */
+        get: operations["getV1OrganizationsOrgIdDisputes"];
+        put?: never;
+        /**
+         * Enter a dispute from a provider's letter
+         * @description For a provider that reports chargebacks by e-mail or not at all (PayPlus,
+         *     Flitt until its callback is proven), the organizer enters the dispute from
+         *     the provider's letter: the order, the reason and the deadline. The evidence
+         *     package is then built like for any other dispute. Requires
+         *     `dispute.respond`.
+         */
+        post: operations["postV1OrganizationsOrgIdDisputes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/disputes/{dispute_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one dispute with its package
+         * @description The dispute, its evidence package (fields, files, gaps, e-mail draft), its
+         *     journal and the low-value advice. Requires `dispute.read`.
+         */
+        get: operations["getV1OrganizationsOrgIdDisputesDisputeId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/disputes/{dispute_id}/files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download one PDF of the evidence package
+         * @description One PDF of the dispute's evidence package. Requires `dispute.read`.
+         */
+        get: operations["getV1OrganizationsOrgIdDisputesDisputeIdFilesFileId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/disputes/{dispute_id}/package": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Build the evidence package again
+         * @description Collects the facts again and stores a new version of the package. For a
+         *     dispute answered through the provider's API it also saves the evidence as
+         *     a draft at the provider (never the final answer). Requires
+         *     `dispute.respond`.
+         */
+        post: operations["postV1OrganizationsOrgIdDisputesDisputeIdPackage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/disputes/{dispute_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send the answer to the dispute
+         * @description A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+         *     The organizer's one press that answers the bank. For a dispute answered
+         *     through the provider's API the evidence is sent once and cannot be changed
+         *     afterwards; for an e-mail dispute the letter with the package is queued to
+         *     the provider, with a copy to the owner. Nothing is sent without this call.
+         *     Requires `dispute.respond`.
+         */
+        post: operations["postV1OrganizationsOrgIdDisputesDisputeIdSubmit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/disputes/{dispute_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept the dispute
+         * @description A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+         *     Gives up the disputed amount: for a dispute answered through the provider's
+         *     API the provider closes it now; for another provider the dispute is marked
+         *     accepted in arena. Requires `dispute.respond`.
+         */
+        post: operations["postV1OrganizationsOrgIdDisputesDisputeIdAccept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/disputes/{dispute_id}/deadline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record the deadline from the provider's letter
+         * @description For a dispute that is not answered through the provider's API: the
+         *     deadline and the answer address the organizer read in the provider's
+         *     letter. Requires `dispute.respond`.
+         */
+        post: operations["postV1OrganizationsOrgIdDisputesDisputeIdDeadline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/disputes/{dispute_id}/sent-by-organizer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record that the organizer answered outside arena
+         * @description The organizer sent the answer themself (from their own mailbox or the
+         *     provider's dashboard); the dispute waits for the bank. Requires
+         *     `dispute.respond`.
+         */
+        post: operations["postV1OrganizationsOrgIdDisputesDisputeIdSentByOrganizer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/dispute-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the low-value dispute rule
+         * @description Below the threshold of its currency the card advises accepting a dispute
+         *     instead of contesting it. Requires `dispute.read`.
+         */
+        get: operations["getV1OrganizationsOrgIdDisputeSettings"];
+        /**
+         * Change the low-value dispute rule
+         * @description Stores the organization's own rule: whether the advice is shown and the
+         *     threshold per currency, in minor units. Requires `dispute.respond`.
+         */
+        put: operations["putV1OrganizationsOrgIdDisputeSettings"];
         post?: never;
         delete?: never;
         options?: never;
@@ -11805,6 +12297,110 @@ export interface components {
             /** @description What the model read from the poster. */
             facts: components["schemas"]["PosterFacts"];
         };
+        /** @description One date of the event as the page writes it. */
+        EventPageDate: {
+            /** @description The day, `YYYY-MM-DD`. */
+            date: string;
+            /** @description The start time as written, `HH:MM` 24-hour, or empty when the page gives only the day. */
+            time: string;
+            /** @description The doors-open time of the same day, `HH:MM`, or empty. */
+            doors: string;
+            /** @description The UTC offset the page wrote next to the time (`+01:00`, `Z` for UTC), or empty. The time is never converted. */
+            utc_offset: string;
+        };
+        /**
+         * @description The page's picture, stored as an `event_poster` media object of the
+         *     organization and attached to nothing until the organizer chooses it.
+         */
+        EventPageImage: {
+            /**
+             * Format: uuid
+             * @description Id of the stored media object.
+             */
+            media_id: string;
+            /** @description Width in pixels. */
+            width: number;
+            /** @description Height in pixels. */
+            height: number;
+            /** @description True when the picture passes the poster rules of the Telegram bot (4:5 or square, at least 1000 px wide). */
+            fits_poster: boolean;
+        };
+        /**
+         * @description What an organizer's event page says, normalized. An empty string, or
+         *     an empty list, means "not on the page". Every value is a HINT for a
+         *     wizard to offer as a button; nothing is written from it. The fields
+         *     of `PosterFacts` mean the same here (`date` and `time` repeat the
+         *     first entry of `dates`), so a client of the poster reading reads this
+         *     too.
+         */
+        EventPageFacts: {
+            /** @description Event name. */
+            name: string;
+            /** @description First date, `YYYY-MM-DD`, or empty. */
+            date: string;
+            /** @description Start time of the first date, `HH:MM`, or empty. */
+            time: string;
+            /** @description Venue name, or empty. */
+            venue_name: string;
+            /** @description City, or empty. */
+            city: string;
+            /** @description ISO 3166-1 alpha-2 code when the page gives one, else empty. */
+            country: string;
+            /** @description Street address of the venue, or empty. */
+            street: string;
+            /** @description Age rating, one of `0+`, `6+`, `12+`, `16+`, `18+`, or empty. */
+            age: string;
+            /** @description The page's description as plain text with line breaks, at most 4000 characters, or empty. */
+            description: string;
+            /** @description The future dates the page lists, oldest first, at most 10; past, cancelled and postponed dates are left out. */
+            dates: components["schemas"]["EventPageDate"][];
+            /** @description The ticket prices the page lists, at most 10; empty when there are none. */
+            categories: components["schemas"]["PosterFactsCategory"][];
+            /** @description The page's picture, or null when the page has none or it could not be downloaded. */
+            image: components["schemas"]["EventPageImage"] | null;
+        };
+        /** @description A fact about the reading the organizer should know. */
+        EventPageWarning: {
+            /**
+             * @description Stable code: `event_page.some_dates_skipped`, `event_page.past_dates_skipped`,
+             *     `event_page.cancelled_dates_skipped`, `event_page.online_event`,
+             *     `event_page.price_range_only`, `event_page.read_by_model`,
+             *     `event_page.model_unavailable`, `event_page.model_quota`,
+             *     `event_page.image_not_poster`, `event_page.image_unavailable`,
+             *     `event_page.no_dates`, `event_page.no_prices`,
+             *     `event_page.javascript_page`. The list may grow.
+             */
+            code: string;
+            /** @description How many dates a skipping warning is about. */
+            count?: number;
+            /** @description Short page values the text needs (the low and high price and the currency of a price range, a picture's size). */
+            values?: string[];
+        };
+        /** @description The address of the organizer's own event page. */
+        EventPageFactsRequest: {
+            /** @description A full `http` or `https` address of a public web page. A page of a ticketing platform is refused. */
+            url: string;
+        };
+        /** @description The answer of the event-page reading. */
+        EventPageFactsResponse: {
+            /** @description What the page says. */
+            facts: components["schemas"]["EventPageFacts"];
+            /**
+             * @description Where each found value came from, by field (`name`, `dates`,
+             *     `venue`, `description`, `age`, `categories`, `image`):
+             *     `json_ld`, `open_graph` or `model`. A value read by the model must
+             *     be shown as such.
+             */
+            sources: {
+                [key: string]: string;
+            };
+            /** @description The page's address after redirects. */
+            final_url: string;
+            /** @description The page's language (`es`, `ru`), or empty. It does not change the draft. */
+            language: string;
+            /** @description Facts about the reading; empty when there are none. */
+            warnings: components["schemas"]["EventPageWarning"][];
+        };
         /**
          * @description Which text is formatted. It picks the tags the model may add and the
          *     longest text: `description` (an event description, 4000 characters, with
@@ -12947,6 +13543,76 @@ export interface components {
         BotInvitationPdfNoticesResponse: {
             /** @description Invitations whose PDF is not sent yet; each is handed out once. */
             notices: components["schemas"]["BotInvitationPdfNotice"][];
+        };
+        /** @description The caller's automatic guest list setting. */
+        GuestListSubscription: {
+            /** @description True when the caller receives the guest list of every session automatically. */
+            enabled: boolean;
+            /** @description How the list reaches the caller - `telegram` (private chat with the event center bot), `email` (not linked to the bot) or `none` (neither; nothing can be sent). */
+            channel: string;
+            /** @description False for a role that never receives the list (only owners and managers do); such a caller cannot turn it on. */
+            eligible: boolean;
+        };
+        /** @description Body of PUT .../guest-list-subscription. */
+        GuestListSubscriptionRequest: {
+            /** @description True turns the automatic guest list on, false turns it off. */
+            enabled: boolean;
+        };
+        /** @description One automatic guest list the bot has to send. */
+        BotGuestListDelivery: {
+            /**
+             * Format: uuid
+             * @description The delivery, to report back with `.../finish`.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The organization of the session.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description The session whose guest list to send.
+             */
+            session_id: string;
+            /** @description The moment - `h24` (24 hours before the start), `h3` (3 hours before) or `doors` (doors open). */
+            slot: string;
+            /**
+             * Format: int32
+             * @description The claim's token, to send back with `.../finish`.
+             */
+            attempt: number;
+            /**
+             * Format: int64
+             * @description The private chat (the person's Telegram id) to send the file to.
+             */
+            telegram_user_id: number;
+            /** @description The event's name, for the caption. */
+            event_name: string;
+            /**
+             * Format: date-time
+             * @description The session's start (RFC 3339).
+             */
+            session_start_at: string;
+            /** @description The venue's IANA zone, `UTC` when unknown. */
+            session_timezone: string;
+        };
+        /** @description Answer of POST /v1/bot/guest-list-deliveries/claim. */
+        BotGuestListDeliveriesResponse: {
+            /** @description The lists taken for this call. */
+            deliveries: components["schemas"]["BotGuestListDelivery"][];
+        };
+        /** @description Body of POST /v1/bot/guest-list-deliveries/{id}/finish. */
+        BotGuestListFinishRequest: {
+            /**
+             * Format: int32
+             * @description The `attempt` of the claim that is reported.
+             */
+            attempt: number;
+            /** @description `sent`, `failed` (may be taken again after the lease), `skipped` (closed without a send) or `email` (send it by e-mail instead). */
+            outcome: string;
+            /** @description A short code (`[a-z0-9_]`, up to 40 characters) of why it failed or was skipped; never data of the file. */
+            reason?: string;
         };
         AuthLogoutRequest: {
             /**
@@ -15607,6 +16273,249 @@ export interface components {
             cancel_tickets?: boolean;
             /** @description Send the buyer a letter about the refund. Defaults to true. */
             notify_buyer?: boolean;
+        };
+        /** @description A chargeback or bank inquiry of one of the organization's payments. */
+        Dispute: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the dispute.
+             */
+            id: string;
+            /** @description Payment module name. */
+            provider: string;
+            /** @description The provider's own dispute id; for a dispute entered by hand, the reference from the provider's letter. */
+            provider_dispute_id?: string | null;
+            /** @description api (answered through the provider's API), email (answered by e-mail), manual (entered by the organizer). */
+            channel: string;
+            /** @description UUID of the disputed order. */
+            order_id?: string | null;
+            /**
+             * Format: int64
+             * @description The order number the buyer sees; 0 when unknown.
+             */
+            order_number: number;
+            /** @description Name of the event. */
+            event_name: string;
+            /** @description Start of the session, RFC 3339. */
+            session_start_at?: string | null;
+            /** @description IANA zone of the venue. */
+            venue_timezone: string;
+            /** @description The buyer's name from the order. */
+            buyer_name: string;
+            /** @description The buyer's e-mail from the order. */
+            buyer_email: string;
+            /**
+             * Format: int64
+             * @description Disputed amount in minor units.
+             */
+            amount: number;
+            /** @description ISO 4217 code. */
+            currency: string;
+            /** @description The provider's reason code. */
+            reason: string;
+            /** @description fraud, not_received, not_recognized, refund, quality, duplicate or other. */
+            reason_group: string;
+            /** @description The provider's last status. */
+            provider_status: string;
+            /** @description needs_response, draft_ready, submitted, under_review, accepted, expired or closed. */
+            state: string;
+            /** @description won, lost, accepted, withdrawn or expired once the dispute ends. */
+            outcome?: string | null;
+            /** @description A bank inquiry (no money withdrawn yet). */
+            is_inquiry: boolean;
+            /** @description The charge can still be refunded instead of contested. */
+            is_charge_refundable: boolean;
+            /** @description Deadline of the answer, RFC 3339. */
+            due_by?: string | null;
+            /** @description provider, organizer (from the provider's letter) or default (7 days, an estimate). */
+            due_by_source: string;
+            /** @description Address an e-mail answer goes to; empty when the provider's default is used. */
+            respond_to: string;
+            /** @description The amount is below the low-value threshold of its currency. */
+            low_value: boolean;
+            /** @description When the provider withdrew the amount, RFC 3339. */
+            funds_withdrawn_at?: string | null;
+            /** @description When the provider returned the amount, RFC 3339. */
+            funds_reinstated_at?: string | null;
+            /** @description When the dispute was opened, RFC 3339. */
+            opened_at: string;
+            /** @description When the answer was sent, RFC 3339. */
+            submitted_at?: string | null;
+            /** @description When the organizer accepted the dispute, RFC 3339. */
+            accepted_at?: string | null;
+            /** @description When the dispute ended, RFC 3339. */
+            closed_at?: string | null;
+        };
+        /** @description One page of the organization's disputes. */
+        DisputeList: {
+            /** @description The disputes of the page. */
+            disputes: components["schemas"]["Dispute"][];
+            /** @description Disputes matching the filter. */
+            total: number;
+            /** @description Disputes that wait for the organizer. */
+            open_count: number;
+        };
+        /** @description One PDF of an evidence package. */
+        DisputeFile: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the file.
+             */
+            id: string;
+            /** @description receipt, service_documentation, customer_communication, refund_policy, uncategorized_file or full. */
+            kind: string;
+            /** @description File name. */
+            filename: string;
+            /** @description Size in bytes. */
+            bytes: number;
+            /** @description Pages. */
+            pages: number;
+            /** @description SHA-256 of the file, hex. */
+            sha256: string;
+            /** @description Sent to the provider (false for the full file in the organization's language). */
+            for_provider: boolean;
+        };
+        /** @description The letter of an e-mail answer. */
+        DisputeEmailDraft: {
+            /** @description Recipient address. */
+            to: string;
+            /** @description Subject of the letter. */
+            subject: string;
+            /** @description Plain-text body of the letter. */
+            body: string;
+        };
+        /** @description One version of a dispute's evidence package. */
+        DisputePackage: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the package.
+             */
+            id: string;
+            /** @description Version number, from 1. */
+            version: number;
+            /** @description Language of the full file. */
+            locale: string;
+            /** @description Text fields of the evidence as they are sent to the provider. */
+            fields: {
+                [key: string]: string;
+            };
+            /** @description Codes of facts arena does not have for this order. */
+            gaps: string[];
+            /** @description The files were uploaded to the provider. */
+            uploaded: boolean;
+            /** @description The letter of an e-mail answer; null for an API answer. */
+            email_draft?: components["schemas"]["DisputeEmailDraft"] | null;
+            /** @description Size of the files sent to the provider. */
+            total_bytes: number;
+            /** @description Pages of the files sent to the provider. */
+            total_pages: number;
+            /** @description When it was built, RFC 3339. */
+            built_at: string;
+            /** @description The PDF files. */
+            files: components["schemas"]["DisputeFile"][];
+        };
+        /** @description One line of a dispute's journal. */
+        DisputeEvent: {
+            /** @description What happened (opened, package_built, draft_saved, submitted, email_sent, accepted, ...). */
+            kind: string;
+            /** @description The provider's status at that moment, if any. */
+            provider_status: string;
+            /** @description The person who acted, if any. */
+            actor_user_id?: string | null;
+            /** @description user, system or the provider. */
+            actor_label: string;
+            /** @description Details of the line. */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** @description When, RFC 3339. */
+            created_at: string;
+        };
+        /** @description The low-value advice for one dispute. */
+        DisputeLowValue: {
+            /** @description The advice is switched on. */
+            enabled: boolean;
+            /**
+             * Format: int64
+             * @description Threshold of the dispute's currency in minor units; 0 when none.
+             */
+            threshold: number;
+            /** @description The card advises accepting this dispute. */
+            advised: boolean;
+        };
+        /** @description One dispute with its newest package and its journal. */
+        DisputeCard: {
+            /** @description The dispute. */
+            dispute: components["schemas"]["Dispute"];
+            /** @description The newest evidence package; null while it is being built. */
+            package?: components["schemas"]["DisputePackage"] | null;
+            /** @description The journal, oldest first. */
+            events: components["schemas"]["DisputeEvent"][];
+            /** @description The low-value advice. */
+            low_value: components["schemas"]["DisputeLowValue"];
+            /** @description The payment key is a test one, so submit may ask for a test outcome. */
+            test_outcome_available: boolean;
+            /** @description Set by the rebuild route — the evidence was saved as a draft at the provider. */
+            draft_saved?: boolean;
+            /** @description Set by the rebuild route — why the draft was not saved (key_not_writable, closed_for_evidence, provider_unavailable). */
+            draft_error?: string | null;
+        };
+        /** @description The organizer's answer. */
+        SubmitDisputeRequest: {
+            /** @description win or lose: with a test payment key the provider decides the dispute that way; refused for a live key. */
+            test_outcome?: string;
+            /** @description The package version the organizer looked at. When a newer version was built since, the answer is refused with 409 dispute.package_changed. Absent sends the newest. */
+            package_version?: number;
+            /** @description The letter as the organizer edited it; absent takes the package draft. E-mail disputes only. */
+            email?: components["schemas"]["DisputeEmailDraft"];
+        };
+        /** @description A dispute entered from a provider's letter. */
+        CreateManualDisputeRequest: {
+            /**
+             * Format: uuid
+             * @description UUID of the disputed order.
+             */
+            order_id: string;
+            /** @description Reason from the letter (fraudulent, product_not_received, ...). */
+            reason: string;
+            /** @description Deadline from the letter, RFC 3339 with a zone. */
+            due_by?: string;
+            /** @description Address the answer goes to. */
+            respond_to?: string;
+            /** @description The provider's own reference, if the letter has one. */
+            provider_dispute_id?: string;
+            /**
+             * Format: int64
+             * @description Disputed amount in minor units; 0 takes the order's total.
+             */
+            amount?: number;
+        };
+        /** @description The deadline and address from the provider's letter. */
+        DisputeDeadlineRequest: {
+            /** @description Deadline, RFC 3339 with a zone. */
+            due_by?: string;
+            /** @description Address the answer goes to. */
+            respond_to?: string;
+        };
+        /** @description The low-value rule in force. */
+        DisputeSettings: {
+            /** @description The advice to accept small disputes is shown. */
+            low_value_enabled: boolean;
+            /** @description Threshold per currency in minor units. */
+            low_value_thresholds: {
+                [key: string]: number;
+            };
+            /** @description The organization has its own rule (else the platform default). */
+            own: boolean;
+        };
+        /** @description The organization's own low-value rule. */
+        DisputeSettingsRequest: {
+            /** @description Show the advice to accept small disputes. */
+            low_value_enabled: boolean;
+            /** @description Threshold per currency in minor units. */
+            low_value_thresholds: {
+                [key: string]: number;
+            };
         };
         /** @description The refund operation as recorded, one refund per ticket. */
         CreateOrderRefundsResponse: {
@@ -19478,16 +20387,45 @@ export interface components {
             channels: components["schemas"]["SellerProfileChannel"][];
             /** @description Buyers' messages from the sales page's contact form also go to the organization's sales Telegram chat (default true). */
             contact_form_to_telegram?: boolean;
+            /** @description Whether the payment provider e-mails its own receipt of the payment to the buyer (spec 51, migration 0185). */
+            provider_receipt: components["schemas"]["SellerProviderReceipt"];
+        };
+        /**
+         * @description The provider-receipt setting of the organization. When `effective` is
+         *     true, checkout asks the payment provider to e-mail its own receipt to
+         *     the buyer (Stripe `payment_intent_data.receipt_email`, PayPlus
+         *     `sendEmailApproval`). Off cannot promise that no receipt is sent: the
+         *     organizer's own provider account may send one by itself.
+         */
+        SellerProviderReceipt: {
+            /** @description The owner's choice (default true). */
+            enabled: boolean;
+            /** @description The platform operator's "always send"; overrides `enabled`. Only a platform superadmin changes it. */
+            forced: boolean;
+            /** @description What checkout does now (`enabled` or `forced`). */
+            effective: boolean;
         };
         /** @description Envelope of the seller-profile routes. */
         SellerProfileEnvelope: {
             /** @description The profile as stored after the call. */
             seller_profile: components["schemas"]["SellerProfile"];
         };
-        /** @description The organization-wide switch of the contact form's Telegram leg. */
+        /**
+         * @description The organization-wide switches. Every key is optional; at least one is
+         *     required (400 `seller.invalid_body` otherwise).
+         */
         UpdateSellerProfileRequest: {
             /** @description Post buyers' messages to the organization's sales Telegram chat too. */
-            contact_form_to_telegram: boolean;
+            contact_form_to_telegram?: boolean;
+            /** @description The owner's choice, the payment provider e-mails its own receipt to the buyer. */
+            provider_receipt_enabled?: boolean;
+            /**
+             * @description "Always send the provider receipt", overriding the owner. Only a
+             *     platform superadmin (with `X-Admin-Reason`) changes it; anyone else
+             *     gets 403 `seller.provider_receipt_forced_superadmin_only` unless the
+             *     value repeats the stored one.
+             */
+            provider_receipt_forced?: boolean;
         };
         /** @description Tri-state contact change; an absent key keeps, null or "" clears. */
         SellerDisplayContactPatch: {
@@ -30935,6 +31873,176 @@ export interface components {
              */
             effective_to: string;
         };
+        /** @description A white label period of a brand: from starts_on to ends_on (UTC calendar days, both inclusive) the platform badge is hidden on the brand's widget, letters and shop, and the brand pays the monthly white label price. */
+        BillingWhiteLabelPeriod: {
+            /**
+             * Format: uuid
+             * @description Id of the period.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The organization.
+             */
+            org_id: string;
+            /** @description Name of the organization. Present in the list only. */
+            org_name?: string;
+            /**
+             * Format: uuid
+             * @description The promoter whose events the period covers; null for the organization itself (its events without a promoter, and its shop).
+             */
+            promoter_id: string | null;
+            /** @description Name of the promoter. Present in the list only. */
+            promoter_name?: string | null;
+            /**
+             * Format: date
+             * @description First day of white label (UTC).
+             */
+            starts_on: string;
+            /**
+             * Format: date
+             * @description Last day of white label (UTC), null while it is open.
+             */
+            ends_on: string | null;
+            /**
+             * Format: int64
+             * @description Individual monthly price in minor units of currency; null means the price list, 0 is free.
+             */
+            monthly_price_minor: number | null;
+            /** @description Currency of the individual price, the organization's billing account currency on the day the period was created; null with the price list. A non-zero individual price is not charged in another currency. */
+            currency: string | null;
+            /** @description The X-Admin-Reason the period was created with. */
+            reason: string;
+            /**
+             * Format: date-time
+             * @description When the period was created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the end was last set, null when never.
+             */
+            ended_at: string | null;
+            /**
+             * @description State today (UTC): scheduled, in_force or ended.
+             * @example in_force
+             */
+            status: string;
+        };
+        /** @description White label periods, by organization and brand. */
+        BillingWhiteLabelList: {
+            /** @description The periods. */
+            items: components["schemas"]["BillingWhiteLabelPeriod"][];
+        };
+        /** @description Body of POST /v1/admin/billing/white-label. */
+        BillingCreateWhiteLabelRequest: {
+            /**
+             * Format: uuid
+             * @description The organization.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description A promoter of the organization; absent or null turns white label on for the organization itself.
+             */
+            promoter_id?: string | null;
+            /**
+             * Format: date
+             * @description First day, today (UTC) or later.
+             */
+            starts_on: string;
+            /**
+             * Format: date
+             * @description Last day, on or after starts_on; absent or null keeps the period open.
+             */
+            ends_on?: string | null;
+            /**
+             * Format: int64
+             * @description Individual monthly price in minor units of the organization's billing account currency; absent means the price list, 0 is free.
+             */
+            monthly_price_minor?: number | null;
+            /** @description The currency the operator means for monthly_price_minor (ISO 4217). Optional; when given and different from the organization's billing account currency the request answers 422 billing.white_label_currency_mismatch. The stored currency is always the account's. */
+            currency?: string | null;
+        };
+        /** @description Body of POST /v1/admin/billing/white-label/{id}/end. */
+        BillingEndWhiteLabelRequest: {
+            /**
+             * Format: date
+             * @description New last day. Yesterday (UTC) or later, earlier than the current end.
+             */
+            ends_on: string;
+        };
+        /** @description A white label period of the organization as its owner sees it. */
+        OrgWhiteLabelPeriod: {
+            /**
+             * Format: uuid
+             * @description Id of the period.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The organization.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description The promoter whose events the period covers; null for the organization itself.
+             */
+            promoter_id: string | null;
+            /** @description Name of the promoter, null for the organization itself. */
+            promoter_name: string | null;
+            /** @description The brand's name, the promoter's or the organization's. */
+            brand_name: string;
+            /**
+             * Format: date
+             * @description First day of white label (UTC).
+             */
+            starts_on: string;
+            /**
+             * Format: date
+             * @description Last day of white label (UTC), null while it is open.
+             */
+            ends_on: string | null;
+            /**
+             * Format: int64
+             * @description Individual monthly price, null when the price list applies.
+             */
+            monthly_price_minor: number | null;
+            /**
+             * Format: int64
+             * @description The monthly price that applies, in minor units of currency; null when it cannot be read.
+             */
+            effective_monthly_minor: number | null;
+            /** @description Currency of effective_monthly_minor, the individual price's currency or the organization's billing account currency; empty when it cannot be read. */
+            currency: string;
+            /**
+             * Format: date-time
+             * @description When the period was created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the end was last set, null when never.
+             */
+            ended_at: string | null;
+            /**
+             * @description State today (UTC): scheduled, in_force or ended.
+             * @example in_force
+             */
+            status: string;
+        };
+        /** @description The organization's white label periods and the price list's monthly price. */
+        OrgWhiteLabelList: {
+            /** @description The periods, by brand, newest first. */
+            items: components["schemas"]["OrgWhiteLabelPeriod"][];
+            /** @description Currency of the organization's billing account, empty when it cannot be read. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description The price list's monthly white label price, null when the account or the rule is missing.
+             */
+            price_list_monthly_minor: number | null;
+        };
         /** @description One charge. A reversal has reversal_of set and a negative amount, and carries the time of the event it reverses. */
         BillingChargeItem: {
             /**
@@ -32789,6 +33897,8 @@ export interface components {
              * @description The programme's discount for a friend, in percent, present only while `referral_active` is true. The checkout page previews the discount a friend's code takes off the goods (that percent of the goods total, delivery excluded, rounded down in minor units); the payment page shows the final amount and the server decides.
              */
             referral_friend_discount_pct?: number;
+            /** @description True when the organization has white label today; the storefront then hides its "on the Arena Sold Out platform" footer. */
+            white_label?: boolean;
         };
         /** @description The organization behind a storefront. */
         ShopPublicOrg: {
@@ -37335,6 +38445,105 @@ export interface operations {
             };
         };
     };
+    claimBotGuestListDeliveries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The lists to send now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotGuestListDeliveriesResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    finishBotGuestListDelivery: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the delivery (from the claim) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotGuestListFinishRequest"];
+            };
+        };
+        responses: {
+            /** @description Recorded */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad id, or outcome / reason not allowed (`bot.invalid_guest_list_outcome`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No open delivery with this id and attempt (`bot.guest_list_delivery_not_found`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     deleteV1AdminUser: {
         parameters: {
             query?: never;
@@ -38075,6 +39284,221 @@ export interface operations {
                 };
             };
             /** @description The end is not in the future or not after the start */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1AdminBillingWhiteLabel: {
+        parameters: {
+            query?: {
+                /** @description Only periods of this organization. */
+                org_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The periods. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingWhiteLabelList"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description org_id is not a UUID */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingWhiteLabel: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log and on the period. */
+                "X-Admin-Reason": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingCreateWhiteLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description The new period. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingWhiteLabelPeriod"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of the expected shape */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization or promoter not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The brand already has white label on some of these days */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A field is not valid, or starts_on is in the past */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminBillingWhiteLabelEnd: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log and on the period. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the period. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BillingEndWhiteLabelRequest"];
+            };
+        };
+        responses: {
+            /** @description The period with its new end. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BillingWhiteLabelPeriod"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of the expected shape */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller lacks billing.admin or is not a platform superadmin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Period not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The period already ends on or before that day */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description ends_on is not a date, is before yesterday, or is not earlier than the current end */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -46924,7 +48348,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks `org.update` in the organization. */
+            /** @description Caller lacks `org.update` in the organization, is an API key, or changed `provider_receipt_forced` without being a platform superadmin (`seller.provider_receipt_forced_superadmin_only`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -55176,6 +56600,19 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description The object is an archived payment provider receipt (owner type
+             *     `payment_receipt`), kept as dispute evidence; it is never deleted
+             *     (`media.receipt_not_deletable`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Media storage backend is not configured. */
             503: {
                 headers: {
@@ -55274,6 +56711,102 @@ export interface operations {
                 };
             };
             /** @description Poster reading is not configured (`media.poster_reader_not_configured`), the model could not be reached (`media.poster_read_failed`), or media storage is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdEventPageFacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventPageFactsRequest"];
+            };
+        };
+        responses: {
+            /** @description What the page says. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPageFactsResponse"];
+                };
+            };
+            /** @description org_id is not a UUID, the body is not JSON with `url` (`event_page.invalid_request`), or the address is not a full http(s) address (`event_page.invalid_url`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization is not found or not the caller's (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description A ticketing platform's page (`event_page.ticketing_platform`), an
+             *     address not on the public internet (`event_page.destination_not_allowed`),
+             *     not a web page (`event_page.not_html`), a page larger than 2 MiB
+             *     (`event_page.too_large`), or a page that says nothing about an event
+             *     (`event_page.nothing_found`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization read 20 pages in the last hour (`event_page.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The site did not answer or answered with an error (`event_page.fetch_failed`, the site's status in `details.status`), many pages are being read at once (`event_page.busy`, try again in a minute), or the organization guard is not configured. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -61191,6 +62724,47 @@ export interface operations {
             };
         };
     };
+    getOrgBillingWhiteLabel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Organization UUID that scopes this request (tenant isolation). */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The periods. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgWhiteLabelList"];
+                };
+            };
+            /** @description Unauthorized. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller is not a member of the organization or lacks billing.read there. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     listOrgBillingCharges: {
         parameters: {
             query?: {
@@ -64105,7 +65679,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor lacks `order.read` or `session.read`, or is not a member of the organization. */
+            /** @description Actor lacks `order.read` or `session.read`, is not a member of the organization, or is an organization API key (`guest_list.api_key_forbidden`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -65662,6 +67236,342 @@ export interface operations {
                 };
             };
             /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdGuestListXlsx: {
+        parameters: {
+            query?: {
+                /** @description Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The workbook attachment, `Content-Disposition: attachment;
+             *     filename="guests_<event>_<YYYY-MM-DD of the session>.xlsx"`,
+             *     where `<event>` is the event's name transliterated to
+             *     `[a-z0-9-]`, else its page slug, else `event`.
+             */
+            200: {
+                headers: {
+                    /** @description Number of data rows (tickets) in the sheet, the header row not counted. */
+                    "X-Row-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+                };
+            };
+            /** @description org_id or session_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `order.read` or `session.read`, or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description More than 50 000 active tickets (`export.too_many_rows`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdGuestListCsv: {
+        parameters: {
+            query?: {
+                /** @description Header language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The CSV attachment, `Content-Disposition: attachment;
+             *     filename="guests_<event>_<YYYY-MM-DD of the session>.csv"`, where
+             *     `<event>` is the event's name transliterated to `[a-z0-9-]`,
+             *     else its page slug, else `event`.
+             */
+            200: {
+                headers: {
+                    /** @description Number of data rows (tickets) in the file, the header row not counted. */
+                    "X-Row-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/csv": string;
+                };
+            };
+            /** @description org_id or session_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `order.read` or `session.read`, or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description More than 50 000 active tickets (`export.too_many_rows`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdGuestListSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's setting. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestListSubscription"];
+                };
+            };
+            /** @description org_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not a member with `order.read`, or an organization API key (`guest_list.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putV1OrganizationsOrgIdGuestListSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuestListSubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description The caller's setting after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestListSubscription"];
+                };
+            };
+            /** @description Body has no boolean `enabled` or carries another field (`guest_list.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not a member with `order.read`, an organization API key (`guest_list.api_key_forbidden`), or turning it on for a role that never receives the list (`guest_list.role_not_eligible`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable (`dependency.database_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -67491,6 +69401,885 @@ export interface operations {
                 };
             };
             /** @description Refunds are not available (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdDisputes: {
+        parameters: {
+            query?: {
+                /** @description open (waiting for the organizer), review (answered, waiting for the bank) or closed; absent lists all. */
+                group?: string;
+                /** @description Only the disputes of this order. */
+                order_id?: string;
+                /** @description Page size, 1-100, default 50. */
+                limit?: number;
+                /** @description Rows to skip. */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The disputes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeList"];
+                };
+            };
+            /** @description A filter is not valid (dispute.invalid_request). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.read, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdDisputes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateManualDisputeRequest"];
+            };
+        };
+        responses: {
+            /** @description The new dispute's card. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeCard"];
+                };
+            };
+            /** @description The body is not valid (dispute.invalid_request). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order is not one of this organization's (dispute.order_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description This dispute was already entered (dispute.duplicate). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order was not paid through a payment provider (dispute.order_not_paid) or a field is refused. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdDisputesDisputeId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the dispute */
+                dispute_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dispute's card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeCard"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.read, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Dispute not found in this organization (dispute.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdDisputesDisputeIdFilesFileId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the dispute */
+                dispute_id: string;
+                /** @description UUIDv7 of the file */
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The PDF. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.read, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Dispute or file not found in this organization (dispute.not_found, dispute.file_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdDisputesDisputeIdPackage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the dispute */
+                dispute_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dispute's card with draft_saved and draft_error. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeCard"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Dispute not found in this organization (dispute.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdDisputesDisputeIdSubmit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the dispute */
+                dispute_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SubmitDisputeRequest"];
+            };
+        };
+        responses: {
+            /** @description The dispute's card after the answer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeCard"];
+                };
+            };
+            /** @description The body is not valid (dispute.invalid_request). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Dispute not found in this organization (dispute.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The dispute was already answered or closed (dispute.already_submitted), or the provider no longer accepts an answer (dispute.closed_for_evidence). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No package yet (dispute.package_missing), the payment key cannot answer disputes (dispute.key_not_writable), no recipient address (dispute.recipient_required), or a test outcome with a live key (dispute.test_outcome_live). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdDisputesDisputeIdAccept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the dispute */
+                dispute_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dispute's card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeCard"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Dispute not found in this organization (dispute.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The dispute was already answered or closed (dispute.already_submitted). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The payment key cannot close disputes (dispute.key_not_writable). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdDisputesDisputeIdDeadline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the dispute */
+                dispute_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisputeDeadlineRequest"];
+            };
+        };
+        responses: {
+            /** @description The dispute's card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeCard"];
+                };
+            };
+            /** @description The body is not valid (dispute.invalid_request). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Dispute not found in this organization (dispute.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The dispute keeps the provider's own deadline (dispute.wrong_channel) or a field is refused. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdDisputesDisputeIdSentByOrganizer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the dispute */
+                dispute_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dispute's card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeCard"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Dispute not found in this organization (dispute.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The dispute was already answered or closed (dispute.already_submitted). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdDisputeSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rule in force. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeSettings"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.read, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putV1OrganizationsOrgIdDisputeSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisputeSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description The stored rule. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeSettings"];
+                };
+            };
+            /** @description The body is not valid (dispute.invalid_request). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
             503: {
                 headers: {
                     [name: string]: unknown;

@@ -51,5 +51,9 @@ func (s *Server) mountBotRoutes(r chi.Router) {
 		// INV-09: the invitations issued from Telegram whose PDF the bot sends
 		// into the issuer's chat, each handed out once.
 		pr.Post("/bot/invitations/pdf-notices/claim", s.handleClaimInvitationPDFNotices)
+		// The automatic guest list (package guestlist): the lists due now for
+		// people linked to the bot, and how each one ended.
+		pr.Post("/bot/guest-list-deliveries/claim", s.handleClaimGuestListDeliveries)
+		pr.Post("/bot/guest-list-deliveries/{id}/finish", s.handleFinishGuestListDelivery)
 	})
 }

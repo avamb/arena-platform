@@ -293,6 +293,10 @@ type publicFeedSessionResponse struct {
 	// on a specific date carry no right of withdrawal. False everywhere
 	// else, including an unknown country.
 	ShowWithdrawalNotice bool `json:"show_withdrawal_notice"`
+	// WhiteLabel is true when the event's brand (its promoter, else the
+	// organization) has white label today (spec 08_architecture/53): the
+	// widget then hides its "Tickets: Arena Sold Out" badge.
+	WhiteLabel bool `json:"white_label"`
 	// Consent tells the widget whether the buyer must tick "I accept the sale
 	// terms of the organizer <seller_legal_name> and the platform policy"
 	// before paying (P2), and which two pages the text links to.
@@ -778,6 +782,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	}
 
 	showWithdrawalNotice := h.showWithdrawalNotice(ctx, event.OrgID)
+	whiteLabel := h.whiteLabelForEvent(ctx, eventID)
 	consent := h.consentBlockFor(ctx, consentRequired, consentLegalName, eventID, feedToken)
 
 	if h.sessionQueries != nil {
@@ -837,6 +842,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 				sessResp.ServiceFeePercent = serviceFeePercent
 				sessResp.PromoCodesAvailable = promoCodesAvailable
 				sessResp.ShowWithdrawalNotice = showWithdrawalNotice
+				sessResp.WhiteLabel = whiteLabel
 				sessResp.Consent = consent
 				sessResp.Timezone = h.venueTimezone(ctx, sess.VenueID, venueTimezones)
 				// A cancelled session stays in the payload with

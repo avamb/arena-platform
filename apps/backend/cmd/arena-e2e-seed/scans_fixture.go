@@ -24,6 +24,7 @@ const (
 	scansCheckoutID   = "fe0000a2-0000-7000-8000-000000000005"
 	scansOrderID      = "fe0000a2-0000-7000-8000-000000000006"
 	scansSubscriberID = "fe0000a2-0000-7000-8000-000000000007"
+	scansIssuanceID   = "fe0000a2-0000-7000-8000-000000000008"
 )
 
 // scansTicket is one ticket of the fixture.
@@ -73,6 +74,9 @@ func applyScansFixture(ctx context.Context, tx pgx.Tx) error {
 			VALUES ($1, $2, $3, $4, $5, $6, $7, 'public_feed', 'paid', 'EUR', 7500, 0, 0, 7500, $8, 'scans-buyer@example.test', now())
 			ON CONFLICT (id) DO NOTHING`,
 			[]any{scansOrderID, orgID, scansChannelID, scansEventID, scansSessionID, scansCheckoutID, scansReservation, scansBuyerName}},
+		{"complimentary issuance", `INSERT INTO complimentary_issuances (id, org_id, session_id, tier_id, qty, batch_id, status)
+			VALUES ($1, $2, $3, $4, 1, 'e2e-scans', 'issued') ON CONFLICT (id) DO NOTHING`,
+			[]any{scansIssuanceID, orgID, scansSessionID, tierID}},
 		{"macs subscriber", `INSERT INTO webhook_subscribers (id, site_url, callback_url, signing_secret, event_types, active, kind, org_id)
 			VALUES ($1, '', 'https://macs.example.test/api/_wh/tickets', 'whsec_e2e_scans', '{}', true, 'macs', $2) ON CONFLICT (id) DO NOTHING`,
 			[]any{scansSubscriberID, orgID}},
@@ -101,6 +105,12 @@ func applyScansFixture(ctx context.Context, tx pgx.Tx) error {
 		}
 	}
 	t := scansTickets()
+	// Ticket 4 is a real invitation: it belongs to a complimentary issuance
+	// (the guest list marks it, task "guest list" 2026-11-02).
+	if err := exec("invitation link", `UPDATE tickets SET checkout_session_id = NULL, complimentary_issuance_id = $1 WHERE id = $2 AND complimentary_issuance_id IS NULL`,
+		scansIssuanceID, t[3].id); err != nil {
+		return err
+	}
 	// Ticket 1: arena's scanner turned it away first, MACS let it in later.
 	// used_at is stamped as the scanner and MACS both do.
 	if err := exec("macs scan", `INSERT INTO scan_events (org_id, session_id, ticket_id, credential_code, scanned_at, gate, result, source, scanner_label, external_scan_id, subscriber_id)

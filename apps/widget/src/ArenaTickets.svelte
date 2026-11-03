@@ -83,6 +83,7 @@
   import GaAreaPopover from './components/GaAreaPopover.svelte';
   import OrderStatus from './components/OrderStatus.svelte';
   import Materials from './components/Materials.svelte';
+  import { PLATFORM_BADGE_URL, getPlatformBadgeStrings, showPlatformBadge } from './lib/platformBadge.js';
 
   interface Props {
     /** The public feed token identifying the event/catalogue. */
@@ -148,6 +149,7 @@
   const coverHidden = $derived(cover.trim().toLowerCase() === 'hidden');
   const frameHidden = $derived(frame.trim().toLowerCase() === 'hidden');
   const materialsHidden = $derived(materials.trim().toLowerCase() === 'hidden');
+  const badgeT = $derived(getPlatformBadgeStrings(normLocale));
 
   /**
    * Scope for the stored checkout token (see `checkoutTokenKey`).
@@ -1124,6 +1126,15 @@
           />
         {/if}
 
+        <!-- Platform line (spec 53): shown unless the event's brand has
+             white label today. -->
+        {#if showPlatformBadge(event.sessions, selectedSession)}
+          <p class="arena-tickets-platform" data-arena-platform-badge>
+            {badgeT.prefix}
+            <a href={PLATFORM_BADGE_URL} target="_blank" rel="noopener" aria-label={`Arena Sold Out (${badgeT.new_tab})`}>Arena Sold Out</a>
+          </p>
+        {/if}
+
       {:else if !normSessionId}
         <div class="arena-tickets-placeholder" aria-hidden="true"></div>
       {/if}
@@ -1325,6 +1336,18 @@
 
   .arena-tickets-placeholder {
     display: none;
+  }
+
+  .arena-tickets-platform {
+    margin: 12px 0 0;
+    font-size: 12px;
+    line-height: 1.4;
+    text-align: center;
+    opacity: 0.7;
+  }
+
+  .arena-tickets-platform a {
+    color: inherit;
   }
 
   .ga-tiers-section {

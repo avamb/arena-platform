@@ -261,7 +261,7 @@ func (h *referralCashbackEmail) buildMessage(ctx context.Context, rw gen.Referra
 	if kind == referral.LetterUnavailable {
 		lkind = emailstatus.KindReferralUnavailable
 	}
-	// Recorded under its own kind (migration 0195), tied to the referrer's order and
+	// Recorded under its own kind (migration 0191), tied to the referrer's order and
 	// to no refund: it is no refund letter.
 	letter := emailstatus.NewLetter{
 		OrgID: rw.OrgID, OrderID: rw.ReferrerOrderID, ShopOrderID: rw.ReferrerShopOrderID, Kind: lkind, Recipient: to.Email,

@@ -1,7 +1,7 @@
 // Hand-maintained typed query wrapper; follows sqlc output conventions.
 // source: referral.sql
 //
-// "Refer a friend" (spec 52, migration 0195). The shared PromoCodeRow is NOT
+// "Refer a friend" (spec 52, migration 0191). The shared PromoCodeRow is NOT
 // widened with origin / referral_* (a dozen queries feed its scanner):
 // a promo code's referral facts are read by their own query below.
 
@@ -243,7 +243,7 @@ type ReferralRewardRow struct {
 	ReversalNotifiedAt  *time.Time `json:"reversal_notified_at"`
 	LetterSentAt        *time.Time `json:"letter_sent_at"`
 	// CorrectionSentAt: the referrer was told the money went back and later
-	// got the one correction letter (migration 0195).
+	// got the one correction letter (migration 0191).
 	CorrectionSentAt *time.Time `json:"correction_sent_at"`
 	Attempts         int32      `json:"attempts"`
 	NextAttemptAt    *time.Time `json:"next_attempt_at"`

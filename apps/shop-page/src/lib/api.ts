@@ -49,6 +49,8 @@ export interface ShopSettings {
   referral_active?: boolean;
   /** The programme's discount for a friend, in percent (0 or absent without a programme). A preview only: the server prices the order. */
   referral_friend_discount_pct?: number;
+  /** True when the organization has white label today: the footer leaves out the platform line. */
+  white_label?: boolean;
 }
 
 export interface ShopImage {
@@ -243,6 +245,7 @@ interface WireSettings {
   captcha_site_key?: string | null;
   referral_active?: boolean;
   referral_friend_discount_pct?: number;
+  white_label?: boolean;
 }
 interface WireCatalog {
   org?: { slug: string; name: string; shop_domain?: string | null; captcha_site_key?: string | null };
@@ -412,6 +415,7 @@ export function normalizeCatalog(c: WireCatalog): ShopData {
       shop_domain: c.org?.shop_domain || null,
       referral_active: s.referral_active === true,
       referral_friend_discount_pct: s.referral_active === true ? cleanPct(s.referral_friend_discount_pct) : 0,
+      white_label: s.white_label === true,
     },
     products: (c.products ?? []).map(normalizeProduct),
     pages: links.filter((p) => !isPolicySlug(p.slug)),

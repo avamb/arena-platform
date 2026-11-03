@@ -12,6 +12,7 @@ package eventbot
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/geotz"
@@ -28,6 +29,58 @@ type DraftHints struct {
 	City        string              `json:"city,omitempty"`
 	Description string              `json:"description,omitempty"`
 	Categories  []DraftHintCategory `json:"categories,omitempty"`
+	// Source is "page" for an event page's reading (spec 59), "" for a
+	// poster: it names the button ("From the page" or "From the poster").
+	Source string `json:"source,omitempty"`
+	// Dates are every date the page lists; the n-th is the hint of the n-th
+	// date question. A poster gives Date and Time only.
+	Dates []DraftHintDate `json:"dates,omitempty"`
+	// Country is the page's ISO 3166-1 alpha-2 code, "" when unknown.
+	Country string `json:"country,omitempty"`
+	// Image is the page's picture, stored by arena-api and attached to
+	// nothing until pressed at the poster question.
+	Image *DraftHintImage `json:"image,omitempty"`
+	// Offsets are the UTC offsets the page wrote for its dates ("+01:00"),
+	// shown once in the "found" message; never applied.
+	Offsets []string `json:"offsets,omitempty"`
+}
+
+// DraftHintDate is one date an event page lists.
+type DraftHintDate struct {
+	Date string `json:"date"` // YYYY-MM-DD
+	Time string `json:"time,omitempty"`
+}
+
+// DraftHintImage is the page's picture.
+type DraftHintImage struct {
+	MediaID string `json:"media_id"`
+	W       int    `json:"w"`
+	H       int    `json:"h"`
+}
+
+// hintSourcePage marks hints read from an event page.
+const hintSourcePage = "page"
+
+// pageImageData is the callback payload of "From the page: picture".
+const pageImageData = "pageimg"
+
+// buttonKey is the text key of the hint button.
+func (h DraftHints) buttonKey() string {
+	if h.Source == hintSourcePage {
+		return "bot.wz.hint_btn_page"
+	}
+	return "bot.wz.hint_btn"
+}
+
+// dateHint is the hint of the n-th date (0-based).
+func (h DraftHints) dateHint(n int) (DraftHintDate, bool) {
+	if n < len(h.Dates) {
+		return h.Dates[n], true
+	}
+	if n == 0 && h.Date != "" {
+		return DraftHintDate{Date: h.Date, Time: h.Time}, true
+	}
+	return DraftHintDate{}, false
 }
 
 // DraftHintCategory is one price the poster printed.
@@ -40,7 +93,7 @@ type DraftHintCategory struct {
 // Empty reports whether the poster gave nothing usable.
 func (h DraftHints) Empty() bool {
 	return h.Name == "" && h.Age == "" && h.Date == "" && h.Time == "" && h.VenueName == "" &&
-		h.City == "" && h.Description == "" && len(h.Categories) == 0
+		h.City == "" && h.Description == "" && len(h.Categories) == 0 && len(h.Dates) == 0 && h.Image == nil
 }
 
 // HintsFromFacts converts the reader's facts into draft hints.
@@ -95,12 +148,22 @@ func (d *Draft) hintValue() (label, text, data string) {
 	case stEvAge:
 		return h.Age, "", "age:" + h.Age
 	case stSDate:
-		if d.Cur == 0 && h.Date != "" {
-			v := DisplayDate(h.Date)
+		if dh, ok := h.dateHint(d.Cur); ok && dh.Date != "" {
+			v := DisplayDate(dh.Date)
 			return v, v, ""
 		}
 	case stSTime:
-		return h.Time, h.Time, ""
+		if dh, ok := h.dateHint(d.Cur); ok {
+			return dh.Time, dh.Time, ""
+		}
+		if d.Cur == 0 {
+			return h.Time, h.Time, ""
+		}
+	case stEvPoster:
+		if img := h.Image; img != nil && img.MediaID != d.Event.PosterMediaID {
+			v := "🖼 " + strconv.Itoa(img.W) + "×" + strconv.Itoa(img.H)
+			return v, "", pageImageData
+		}
 	case stVName:
 		return h.VenueName, h.VenueName, ""
 	case stCityName:
@@ -185,7 +248,7 @@ const maxPosterCountries = 3
 // largest cities first). Nil without a city, for a later date, or when no
 // country of the platform has such a place.
 func (w *Wizard) posterCountries(d *Draft, countries []RefItem) []RefItem {
-	if d.Cur != 0 || strings.TrimSpace(d.Hints.City) == "" {
+	if d.Cur != 0 || (strings.TrimSpace(d.Hints.City) == "" && d.Hints.Country == "") {
 		return nil
 	}
 	byISO := map[string]RefItem{}
@@ -193,6 +256,11 @@ func (w *Wizard) posterCountries(d *Draft, countries []RefItem) []RefItem {
 		byISO[strings.ToUpper(c.ISO2)] = c
 	}
 	var out []RefItem
+	// An event page may name the country itself (spec 59): it comes first.
+	if c, ok := byISO[strings.ToUpper(d.Hints.Country)]; ok && d.Hints.Country != "" {
+		out = append(out, c)
+		delete(byISO, strings.ToUpper(d.Hints.Country))
+	}
 	for _, cc := range geotz.CountriesOfCity(d.Hints.City) {
 		if c, ok := byISO[cc]; ok {
 			out = append(out, c)
