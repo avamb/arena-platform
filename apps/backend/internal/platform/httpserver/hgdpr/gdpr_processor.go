@@ -39,6 +39,7 @@ package hgdpr
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -46,6 +47,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/marketing"
 )
 
 // GDPRProcessor handles background processing of pending data_subject_requests.
@@ -247,6 +249,17 @@ func (p *GDPRProcessor) processDelete(ctx context.Context, req gen.DataSubjectRe
 		p.logger.Info("gdpr_processor: shop order personal data erased",
 			slog.String("user_id", req.UserID.String()), slog.Int64("orders", erased))
 	}
+	// Marketing consents given at checkout (spec 51-1) are keyed by address,
+	// not by user: withdraw them and blank the address and the click data
+	// while the address is still known. The journal rows stay as evidence.
+	var addr string
+	if err := p.queries.DB().QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, req.UserID).Scan(&addr); err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("processDelete: read address for marketing consents: %w", err)
+		}
+	} else if err := p.forgetMarketing(ctx, addr); err != nil {
+		return fmt.Errorf("processDelete: forget marketing consents: %w", err)
+	}
 	// AnonymizeUser replaces PII with placeholder values and sets anonymized_at.
 	if err := p.queries.AnonymizeUser(ctx, req.UserID); err != nil {
 		return fmt.Errorf("processDelete: anonymize user: %w", err)
@@ -271,4 +284,22 @@ func FormatTimePtr(t *time.Time) any {
 		return nil
 	}
 	return t.UTC().Format(time.RFC3339)
+}
+
+// forgetMarketing runs the marketing erasure in ONE transaction: it renames
+// the subscription and blanks the journal's address and browser together, so
+// a failure leaves both as they were and the retry finds the same rows.
+func (p *GDPRProcessor) forgetMarketing(ctx context.Context, addr string) error {
+	if p.pool == nil {
+		return marketing.ForgetEmailTx(ctx, p.queries.DB(), addr, time.Now().UTC())
+	}
+	tx, err := p.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := marketing.ForgetEmailTx(ctx, tx, addr, time.Now().UTC()); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

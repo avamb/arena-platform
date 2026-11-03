@@ -38,6 +38,7 @@
     type CheckoutErrorChange,
   } from './lib/checkoutError.js';
   import { createPromoController, initialPromoState, promoPayBlocked } from './lib/promoController.js';
+  import { createMarketingQuoter, initialMarketingQuoteState, type MarketingQuoteState } from './lib/marketingQuote.js';
   import type { PromoState } from './lib/promoController.js';
   import { getPromoStrings } from './lib/promoI18n.js';
   import { MAX_CART_SEATS, cartLimitMessage, seatCapMessage } from './lib/cartLimits.js';
@@ -45,6 +46,7 @@
   import { pausedSalesState } from './lib/saleSubscribe.js';
   import { buildTierColorMap } from './lib/seatmap-render.js';
   import { consentErrorMessage, consentPayload, forceConsent } from './lib/consent.js';
+  import { isMarketingRewardRefusal, marketingErrorMessage, marketingPayload } from './lib/marketing.js';
   import { captureAttribution, type AttributionPayload } from './lib/attribution.js';
   import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
   import { dispatchWidgetEvent, ARENA_EVENTS } from './lib/events.js';
@@ -272,6 +274,9 @@
   // session did not ask for it (the switch was turned on after the page
   // loaded). The checkbox is shown for it instead of a dead end.
   let consentForcedFor = $state<string | null>(null);
+  // Spec 51-1: the session whose subscriber discount the platform said is
+  // used up for the typed address; the next press sends `discount: false`.
+  let marketingDiscountUsedFor = $state<string | null>(null);
   // Spec 43: the sales link / utm touch that brought the buyer, read from the
   // page address on mount (kept 7 days per feed token). Sent with checkout/start.
   let attribution: AttributionPayload | null = null;
@@ -351,6 +356,42 @@
     void cartKey;
     const lines = cart.lines.length;
     untrack(() => promoCtl.cartChanged(lines));
+  });
+
+  // ── The mailing tick's price (spec 51-1) ───────────────────────────────────
+  //
+  // Ticked, the organizer's reward code may take something off: the pay button
+  // then names the platform's price of the cart WITH the tick. It never blocks
+  // paying; the payment page applies the discount whatever the button said.
+
+  let marketingTicked = $state(false);
+  let marketingQ = $state<MarketingQuoteState>(initialMarketingQuoteState());
+
+  const marketingQuoter = createMarketingQuoter({
+    getCartKey: () => cartKey,
+    getCode: () => promo.code,
+    buildPayload: (code) =>
+      selectedSession ? buildQuotePayload(selectedSession.id, [...selectedSeatKeys], buildGaItems(gaQuantities), code) : null,
+    consent: () =>
+      selectedSession
+        ? marketingPayload(selectedSession.marketing_optin, true, marketingDiscountUsedFor === selectedSession.id)
+        : undefined,
+    quote: (payload, signal) => {
+      if (!normFeedToken) return Promise.reject(new Error('no feed token'));
+      return postCheckoutQuote(normFeedToken, payload, resolvedApiBase, signal);
+    },
+    onChange: (next) => {
+      marketingQ = next;
+    },
+  });
+
+  $effect(() => {
+    // The tick, the cart, the applied code or the used-up discount changed.
+    const ticked = marketingTicked;
+    void cartKey;
+    void promo.code;
+    void marketingDiscountUsedFor;
+    untrack(() => void marketingQuoter.refresh(ticked));
   });
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -674,6 +715,13 @@
       // Spec 43: the sales link / utm touch, when there is one. The platform
       // cleans it and never refuses a purchase over it.
       if (attribution) payload.attribution = attribution;
+      // Spec 51-1: the organizer's mailing tick, sent only when ticked.
+      const marketing = marketingPayload(
+        selectedSession.marketing_optin,
+        values.marketingAccepted === true,
+        marketingDiscountUsedFor === selectedSession.id,
+      );
+      if (marketing) payload.marketing_consent = marketing;
       // Language for the buyer's ticket e-mail / PDF — the same resolved
       // locale the widget renders its own copy in. The backend ignores a
       // locale it has no e-mail template for, so sending it is always safe.
@@ -736,6 +784,12 @@
         conflictKeys = new Set();
         checkoutError = makeCheckoutError('consent', consentErrorMessage(err.code, normLocale) ?? '');
         consentForcedFor = selectedSession?.id ?? null;
+      } else if (err instanceof ApiError && marketingErrorMessage(err.code, normLocale) !== null) {
+        // The reward is once per address: say so and let the buyer pay the
+        // regular price with the next press (the tick is still recorded).
+        conflictKeys = new Set();
+        checkoutError = makeCheckoutError('other', marketingErrorMessage(err.code, normLocale) ?? '');
+        if (isMarketingRewardRefusal(err.code)) marketingDiscountUsedFor = selectedSession?.id ?? null;
       } else if (err instanceof ApiError && cartLimitMessage(err.code, normLocale) !== null) {
         // The platform refused the size of the cart: say so in the buyer's language.
         conflictKeys = new Set();
@@ -1124,6 +1178,12 @@
         promoAvailable={selectedSession.promo_codes_available === true}
         showWithdrawalNotice={selectedSession.show_withdrawal_notice === true}
         consent={forceConsent(selectedSession.consent, consentForcedFor === selectedSession.id)}
+        marketing={selectedSession.marketing_optin ?? null}
+        marketingDiscountUsed={marketingDiscountUsedFor === selectedSession.id}
+        {marketingTicked}
+        marketingQuote={marketingQ}
+        onMarketingChange={(ticked) => (marketingTicked = ticked)}
+        cartReminder={selectedSession.cart_reminder === true}
         locale={normLocale}
         submitting={checkoutSubmitting}
         submitError={checkoutError?.text ?? null}

@@ -131,6 +131,10 @@ type PublicFeedCheckoutStartRequest struct {
 	// a sales link of the organization before the hold; an empty or invalid
 	// object is never an error — a purchase must not fail over a label.
 	Attribution json.RawMessage `json:"attribution,omitempty"`
+	// MarketingConsent is the buyer's tick on the organizer's mailings
+	// (spec 51-1). Recorded only when the organization offers the tick;
+	// ticked, it may earn the organizer's reward code.
+	MarketingConsent *PublicMarketingConsent `json:"marketing_consent,omitempty"`
 }
 
 // normalizeBuyerLocale validates a caller-supplied locale against the
@@ -501,6 +505,25 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// ── 8b. Marketing consent (spec 51-1) ─────────────────────────────────────
+	// Read on the pool before any transaction. The reward code typed by hand
+	// without the tick is refused like any code that does not fit.
+	mk, mkOK := h.marketingFor(ctx, w, r, checkCtx.OrgID, checkCtx.SessionID, req.MarketingConsent)
+	if !mkOK {
+		return
+	}
+	// An address the order takes but a mailing list cannot (no dot in the
+	// domain, a display name) drops the tick before any hold: the order goes
+	// on at its own price and nothing of the buyer is stored for mailings.
+	// Left to the confirmation transaction it would fail the whole checkout.
+	mk.dropUnmailable(req.HolderEmail)
+	if mk.typedRewardRefused(promoRow) {
+		pj.record(ctx, promoRow, promoNotApplicable)
+		h.refusePromo(w, r, promoAttempt, promoNotApplicable)
+		return
+	}
+	growth := growthCheckout{grant: grantFor(mk, r, checkCtx.OrgID, publicOrderBuyer{Email: req.HolderEmail, Name: buyerName}, buyerLocale, "")}
+
 	// ── 9. Mint checkout_token ────────────────────────────────────────────────
 	checkoutToken, err := mintCheckoutToken()
 	if err != nil {
@@ -541,6 +564,12 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		pj.record(ctx, promoRow, promoErrCode)
 		if promoErrCode != "" {
 			h.refusePromoFor(w, r, promoAttempt, promoErrCode, promoRow, h.promoQueries)
+			return
+		}
+		var block string
+		gaDiscount, gaPromoCodeID, growth.rewardWon, block = h.pickDiscount(ctx, h.promoQueries, mk, gaPromoLines, req.HolderEmail, gaDiscount, gaPromoCodeID)
+		if block != "" {
+			writeMarketingBlock(w, r, block)
 			return
 		}
 	}
@@ -814,6 +843,13 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			h.refusePromoFor(w, r, promoAttempt, promoErrCode, promoRow, promoQ)
 			return
 		}
+		var block string
+		discount, promoCodeID, growth.rewardWon, block = h.pickDiscount(ctx, promoQ, mk, promoLines, req.HolderEmail, discount, promoCodeID)
+		if block != "" {
+			// The deferred rollback releases the holds.
+			writeMarketingBlock(w, r, block)
+			return
+		}
 
 		// Priced BEFORE the commit on purpose: ComputePricingLines is pure, and
 		// the total it yields is what decides whether this cart needs a payment
@@ -862,7 +898,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 			seatTierPrices[tid] = l.UnitPrice
 		}
 		h.confirmPublicCheckout(ctx, w, r, checkCtx, res.ID, checkoutToken, bd, promoCodeID, expiresAt,
-			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, seatTierPrices, req.ReturnURL, buyerLocale, consent, attr)
+			publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, seatTierPrices, req.ReturnURL, buyerLocale, consent, attr, growth)
 		return
 	}
 
@@ -1016,7 +1052,7 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 	// Pure GA: reservation_ga_items.unit_price is authoritative for every unit,
 	// so no tier price map is needed.
 	h.confirmPublicCheckout(ctx, w, r, checkCtx, reservation.ID, checkoutToken, bd, promoCodeID, expiresAt,
-		publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, nil, req.ReturnURL, buyerLocale, consent, attr)
+		publicOrderBuyer{Email: req.HolderEmail, Name: buyerName, Phone: buyerPhone, Locale: buyerLocale}, nil, req.ReturnURL, buyerLocale, consent, attr, growth)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1246,6 +1282,7 @@ func (h *Handler) confirmPublicCheckout(
 	buyerLocale string,
 	consent *pendingConsent,
 	attr orderAttribution,
+	growth growthCheckout,
 ) {
 	// ── 0. A paid cart needs a place to send the buyer BACK to, and a
 	// payment window, before anything is written. Resolving the return URL
@@ -1381,9 +1418,24 @@ func (h *Handler) confirmPublicCheckout(
 					slog.String("error", relErr.Error()),
 				)
 			}
-			writePublicPromoError(w, r, refusal)
+			if growth.rewardWon {
+				writeMarketingBlock(w, r, rewardRefusal(refusal))
+			} else {
+				writePublicPromoError(w, r, refusal)
+			}
 			return
 		}
+	}
+
+	if err := h.recordGrowthTx(ctx, tx, cs.ID, returnBase, growth); err != nil {
+		h.logger.Error("public_feed_checkout: record marketing consent failed",
+			slog.String("checkout_session_id", cs.ID.String()),
+			slog.String("error", err.Error()),
+		)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"checkout.start_failed", "We could not start the checkout. Try again in a minute.", r,
+		))
+		return
 	}
 
 	cs, err = txq.ConfirmCheckoutSession(
@@ -1469,6 +1521,8 @@ func (h *Handler) confirmPublicCheckout(
 			"checkout_token":   checkoutToken,
 			"expires_at":       expiresAt.Format(time.RFC3339),
 			"pricing":          bd,
+
+			"marketing_discount_applied": growth.rewardWon && bd.Discount > 0,
 		})
 		return
 	}
@@ -1496,6 +1550,8 @@ func (h *Handler) confirmPublicCheckout(
 		"checkout_token":   checkoutToken,
 		"expires_at":       expiresAt.Format(time.RFC3339),
 		"pricing":          bd,
+
+		"marketing_discount_applied": growth.rewardWon && bd.Discount > 0,
 	})
 }
 

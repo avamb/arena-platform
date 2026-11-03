@@ -4,7 +4,8 @@
  */
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -17,8 +18,10 @@ export interface Person {
   user_id: string;
   /** The Telegram account the person is linked to (arena-e2e-seed, tgedit_fixture.go). */
   telegram_user_id: number;
-  /** An access token of the harness's own sign-in (about 15 minutes). */
+  /** An access token of the harness's own sign-in (about 15 minutes); `person()` renews it. */
   access_token: string;
+  /** When `access_token` stops working (RFC 3339). */
+  expires_at?: string;
 }
 
 export interface LiveEnv {
@@ -43,15 +46,47 @@ export interface LiveEnv {
   people: Person[];
 }
 
+const envFile = join(dirname(fileURLToPath(import.meta.url)), "..", ".live-env.json");
+
 export function liveEnv(): LiveEnv {
-  const file = join(dirname(fileURLToPath(import.meta.url)), "..", ".live-env.json");
-  return JSON.parse(readFileSync(file, "utf8")) as LiveEnv;
+  return JSON.parse(readFileSync(envFile, "utf8")) as LiveEnv;
 }
 
+/** A token with less than this left is renewed before it is handed out. */
+const RENEW_MARGIN_MS = 3 * 60_000;
+
+/**
+ * The person of a role, with an access token that still works. The harness
+ * signs everybody in once, and a token lives about 15 minutes, while a full
+ * run takes longer: a spec late in the run got 401 from the API. A token
+ * close to its end is renewed with the same sign-in the harness makes, and
+ * written back to `.live-env.json` so the next spec file reads the new one.
+ */
 export function person(env: LiveEnv, role: Role): Person {
   const p = env.people.find((x) => x.role === role);
   if (p === undefined) throw new Error(`the live fixture has no ${role}`);
+  renewToken(env, p);
   return p;
+}
+
+function renewToken(env: LiveEnv, p: Person): void {
+  if (p.expires_at === undefined) return;
+  const left = Date.parse(p.expires_at) - Date.now();
+  if (Number.isFinite(left) && left > RENEW_MARGIN_MS) return;
+  const script =
+    'fetch(process.env.LOGIN_URL,{method:"POST",headers:{"Content-Type":"application/json","X-Client-Channel":"event_center_web"},' +
+    "body:JSON.stringify({email:process.env.LOGIN_EMAIL,password:process.env.LOGIN_PASSWORD})})" +
+    ".then(async(r)=>{if(!r.ok){console.error(r.status,await r.text());process.exit(1)}" +
+    "const b=await r.json();process.stdout.write(JSON.stringify({access_token:b.access_token,expires_at:b.expires_at}))})" +
+    ".catch((e)=>{console.error(String(e));process.exit(1)})";
+  const r = spawnSync(process.execPath, ["-e", script], {
+    env: { ...process.env, LOGIN_URL: `${env.api_base_url}/v1/auth/login`, LOGIN_EMAIL: p.email, LOGIN_PASSWORD: p.password },
+    encoding: "utf8",
+    timeout: 30_000,
+  });
+  if (r.status !== 0) throw new Error(`renewing the token of ${p.role} failed: ${r.stderr}`);
+  Object.assign(p, JSON.parse(r.stdout) as { access_token: string; expires_at: string });
+  writeFileSync(envFile, JSON.stringify(env, null, 2));
 }
 
 /**

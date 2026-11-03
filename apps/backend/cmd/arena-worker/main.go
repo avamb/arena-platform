@@ -54,6 +54,7 @@ import (
 	billingcredits "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/credits"
 	billingrate "github.com/abhteam/arena_new/apps/backend/internal/platform/billing/rate"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/brevo"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/cartreminder"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/contactform"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/convertjob"
@@ -72,6 +73,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/issuejob"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/macs"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/marketing"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/onboarding"
@@ -333,6 +335,9 @@ func run() error {
 		logger.Info("reservation expire sweep job scheduled at startup")
 	}
 	scheduleRefundSweep(rootCtx, pool.Pool, logger)
+	if err := cartreminder.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
+		logger.Warn("could not schedule initial cart reminder sweep job", "error", err.Error())
+	}
 	scheduleDisputeWatch(rootCtx, pool.Pool, logger)
 	scheduleShopSweep(rootCtx, pool.Pool, logger)
 
@@ -684,6 +689,20 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	}
 	reg.Register(salesubscribe.JobTypeConfirmEmail, delivery.NewSaleConfirmHandler(saleLetters))
 	reg.Register(salesubscribe.JobTypeOpenEmail, delivery.NewSaleOpenHandler(saleLetters))
+
+	// Spec 51-1: the one reminder about an unpaid widget order (the sweep
+	// picks the orders, the letter checks them again) and the confirmation of
+	// a marketing consent ticked at checkout.
+	growthLetters := delivery.GrowthLetterOptions{
+		Sender:     deliveryOpts.Sender,
+		Templates:  deliveryOpts.Templates,
+		DB:         pool,
+		APIBaseURL: cfg.APIPublicBaseURL(),
+		Logger:     logger,
+	}
+	reg.Register(cartreminder.JobTypeSweep, cartreminder.NewSweepHandler(pool, logger))
+	reg.Register(cartreminder.JobTypeEmail, delivery.NewCartReminderHandler(growthLetters))
+	reg.Register(marketing.JobTypeConfirmEmail, delivery.NewMarketingConfirmHandler(growthLetters))
 
 	// event.email_note_test mails the organizer a sample ticket letter with
 	// the event's own note (EC-31). A preview: never recorded as a buyer letter.

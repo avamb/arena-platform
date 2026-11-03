@@ -132,6 +132,11 @@ export interface BuyerFormValues {
    * asks for it; never stored anywhere.
    */
   consentAccepted?: boolean;
+  /**
+   * The buyer ticked the organizer's mailing box (spec 51-1). Only set when
+   * the session offers it; never pre-ticked, never stored.
+   */
+  marketingAccepted?: boolean;
 }
 
 /** Per-field validation errors (undefined = no error). */
@@ -190,6 +195,11 @@ export interface CheckoutStartPayload {
    */
   consent?: import('./consent.js').CheckoutConsentPayload;
   /**
+   * The buyer's tick on the organizer's mailings (spec 51-1), sent only when
+   * ticked. It may earn the organizer's reward code for this order.
+   */
+  marketing_consent?: import('./marketing.js').MarketingConsentPayload;
+  /**
    * The sales link and utm labels that brought the buyer (spec 43), read from
    * the page address and kept for 7 days. Optional; the platform cleans it and
    * a missing or invalid object never fails the purchase. Not sent to
@@ -207,6 +217,8 @@ export interface CheckoutQuotePayload {
   seats?: string[];
   ga_items?: PublicGAItem[];
   promo_code?: string;
+  /** The mailing tick (spec 51-1); ticked, it may earn the organizer's reward code. */
+  marketing_consent?: import('./marketing.js').MarketingConsentPayload;
 }
 
 /**
@@ -223,6 +235,10 @@ export interface CheckoutQuoteResponse {
     total: number;
     currency: string;
   };
+  /** True when a promo_code was sent and its discount is in `pricing`. */
+  promo_applied?: boolean;
+  /** True when the discount in `pricing` is the reward for the mailing tick. */
+  marketing_discount_applied?: boolean;
 }
 
 /** Response from POST /v1/public/feeds/{token}/checkout/start. */

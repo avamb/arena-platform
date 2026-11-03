@@ -309,6 +309,14 @@ type publicFeedSessionResponse struct {
 	// terms of the organizer <seller_legal_name> and the platform policy"
 	// before paying (P2), and which two pages the text links to.
 	Consent publicConsentBlock `json:"consent"`
+	// MarketingOptIn tells the widget whether to offer the separate,
+	// never-required tick "send me news and offers" (spec 51-1), whose
+	// mailings it is for and the discount it earns.
+	MarketingOptIn publicMarketingBlock `json:"marketing_optin"`
+	// CartReminder says whether the organizer reminds a buyer once by e-mail
+	// of an unpaid order (spec 51-1), so the widget can say so under the
+	// e-mail field.
+	CartReminder bool `json:"cart_reminder"`
 	// Timezone is the IANA zone of the session's venue (`venues.timezone`),
 	// "" when the venue has none. The widget formats the session chips in
 	// it: a buyer whose phone lives in another zone (found 2026-09-29 — an
@@ -792,6 +800,8 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	showWithdrawalNotice := h.showWithdrawalNotice(ctx, event.OrgID)
 	whiteLabel := h.whiteLabelForEvent(ctx, eventID)
 	consent := h.consentBlockFor(ctx, consentRequired, consentLegalName, eventID, feedToken)
+	marketingBlock := marketingBlockFor(h.loadMarketing(ctx, event.OrgID))
+	cartReminder := h.cartReminderOn(ctx, event.OrgID)
 
 	if h.sessionQueries != nil {
 		sessions, err := h.sessionQueries.ListSessionsByEvent(ctx, eventID)
@@ -852,6 +862,8 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 				sessResp.ShowWithdrawalNotice = showWithdrawalNotice
 				sessResp.WhiteLabel = whiteLabel
 				sessResp.Consent = consent
+				sessResp.MarketingOptIn = marketingBlock
+				sessResp.CartReminder = cartReminder
 				sessResp.Timezone = h.venueTimezone(ctx, sess.VenueID, venueTimezones)
 				// A cancelled session stays in the payload with
 				// its status, so a buyer who holds tickets still sees the date
