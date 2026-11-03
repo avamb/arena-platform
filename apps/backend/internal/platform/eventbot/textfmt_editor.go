@@ -34,7 +34,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"log/slog"
-	"time"
 
 	"github.com/go-telegram/bot/models"
 	"github.com/google/uuid"
@@ -257,7 +256,7 @@ func (b *Bot) tfEditorSyncDraft(ctx context.Context, from *models.User, id *Iden
 	d.Event.Description, d.Event.DescriptionFormat = art, richtext.FormatART
 	d.Loaded.Event.Description, d.Loaded.Event.DescriptionFormat = art, richtext.FormatART
 	if ev, err := b.arena.GetEvent(ctx, jwt, eid); err == nil && sameOtherParts(ev, d.Loaded.Event) {
-		stamp := ev.UpdatedAt.UTC().Format(time.RFC3339Nano)
+		stamp := editStamp(ev.UpdatedAt)
 		d.Event.UpdatedAt, d.Loaded.Event.UpdatedAt = stamp, stamp
 	}
 	d.refreshChanged()

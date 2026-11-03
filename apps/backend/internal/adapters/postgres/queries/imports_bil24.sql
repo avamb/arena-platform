@@ -87,6 +87,15 @@ WHERE  id     = $1
   AND  org_id = $2
   AND  deleted_at IS NULL;
 
+-- name: GetEventUpdatedAtForImport :one
+-- Read inside the import transaction after SetEventImportMetadata, which
+-- holds the row lock: the value is the one this import wrote, never a
+-- concurrent writer's.
+SELECT updated_at
+FROM   events
+WHERE  id     = $1
+  AND  org_id = $2;
+
 -- name: GetSessionImportContext :one
 SELECT s.id, s.event_id, s.venue_id, s.currency, s.currency_source, s.status,
        s.admission_mode, e.org_id

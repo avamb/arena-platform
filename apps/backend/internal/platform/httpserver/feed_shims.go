@@ -59,7 +59,17 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		WithLegalTerms(s.legalTermsAPIBase()).
 		WithMetrics(s.typedMetrics).
 		WithPromoAttempts(s.promoAttemptRecorder()).
-		WithSaleSubscriptions(s.saleSubscriptionService(), s.saleSubscriptionSalt())
+		WithSaleSubscriptions(s.saleSubscriptionService(), s.saleSubscriptionSalt()).
+		WithTicketAccessLog(s.ticketAccessRecorder())
+}
+
+// ticketAccessRecorder is the buyer's ticket access log (migration 0184); nil
+// without a database, never a typed-nil interface.
+func (s *Server) ticketAccessRecorder() hfeed.TicketAccessRecorder {
+	if s.ticketQueries == nil {
+		return nil
+	}
+	return s.ticketQueries
 }
 
 // saleSubscriptionService is "notify me when sales open"; nil without a pool.
