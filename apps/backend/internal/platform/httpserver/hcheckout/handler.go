@@ -289,6 +289,10 @@ type Handler struct {
 	// answers 503 and writes nothing.
 	refundEngine *refunds.Engine
 
+	// disputes records verified dispute events (dispute_webhook.go, spec
+	// 51.3). Nil: a dispute event is acknowledged and nothing is written.
+	disputes DisputeRecorder
+
 	// shopPayments takes the payments of merchandise shop orders (a payment
 	// intent without a checkout session, shop_payments.go). Nil: no shop.
 	shopPayments ShopPayments

@@ -96,6 +96,9 @@ func ProviderDescriptor() payments.Descriptor {
 			AsyncRefund:     true,
 			RefundLookup:    true,
 			ProviderReceipt: true,
+			// Evidence goes through the API; submit=true only after a
+			// person pressed "Submit" (spec 51.3).
+			Disputes: true,
 		},
 	}
 }
@@ -245,9 +248,10 @@ func normalizeEvent(body []byte) payments.NormalizedEvent {
 		ev.ArenaRefundID = strings.TrimSpace(obj.Metadata["arena_refund_id"])
 		ev.FailureCode = obj.FailureReason
 		ev.RefundStatus = refundResult(refundObject{ID: ev.ProviderRefundID, Status: obj.Status, FailureReason: obj.FailureReason}).Status
-	case "charge.dispute.created":
-		ev.Kind = payments.EventDisputeOpened
-		ev.ProviderPaymentID = ""
+	default:
+		if kind, ok := disputeEventTypes[env.Type]; ok {
+			normalizeDisputeEvent(&ev, kind, body)
+		}
 	}
 	return ev
 }

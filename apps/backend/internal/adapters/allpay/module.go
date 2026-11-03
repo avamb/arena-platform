@@ -70,6 +70,9 @@ func ProviderDescriptor() payments.Descriptor {
 	return payments.Descriptor{
 		Name:  Name,
 		Title: "AllPay",
+		// AllPay's help page names this address for chargeback matters;
+		// the channel and deadline are not confirmed yet (spec 51.3 §6.1).
+		DisputeEmail: "info@allpay.co.il",
 		Secrets: []payments.SecretField{
 			{
 				Key:        SecretMerchantID,
@@ -272,8 +275,13 @@ func NormalizeCallback(cb *Callback, body []byte) payments.NormalizedEvent {
 	case cb.Type == TypeChargeback:
 		ev.Kind = payments.EventDisputeOpened
 		ev.Type = EventTypeChargeback
+		ev.Dispute = chargebackDispute(cb, cb.Type)
 	case cb.Type == TypeChargebackRevert:
+		// The chargeback was taken back: the dispute closes in the
+		// merchant's favour (spec 51.3). Money moves on AllPay's side only.
+		ev.Kind = payments.EventDisputeUpdated
 		ev.Type = EventTypeChargebackRevert
+		ev.Dispute = chargebackDispute(cb, cb.Type)
 	case cb.Type != "":
 		ev.Type = eventTypeOtherPrefix + cb.Type
 	case cb.NotCharged:
@@ -288,4 +296,18 @@ func NormalizeCallback(cb *Callback, body []byte) payments.NormalizedEvent {
 		ev.FailureMessage = cb.Error
 	}
 	return ev
+}
+
+// chargebackDispute is the dispute an AllPay chargeback callback states.
+// AllPay sends no chargeback id and no deadline: the order id names the
+// dispute (one chargeback per order) and the organizer enters the deadline
+// from AllPay's letter.
+func chargebackDispute(cb *Callback, status string) *payments.Dispute {
+	return &payments.Dispute{
+		ID:              cb.OrderID,
+		Status:          status,
+		AmountMinor:     cb.AmountMinor,
+		Currency:        cb.Currency,
+		PaymentIntentID: cb.OrderID,
+	}
 }
