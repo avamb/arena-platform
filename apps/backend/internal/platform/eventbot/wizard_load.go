@@ -84,7 +84,7 @@ func (w *Wizard) LoadEventDraft(ctx context.Context, io EditIO, ws WizSession, e
 	d := &Draft{Version: draftSchemaVersion, Mode: ModeEdit, Step: stEditMenu}
 	d.Event = DraftEvent{
 		EventID:           ev.Id.String(),
-		UpdatedAt:         ev.UpdatedAt.UTC().Format(time.RFC3339Nano),
+		UpdatedAt:         editStamp(ev.UpdatedAt),
 		Name:              ev.Name,
 		Age:               deref(ev.AgeRating),
 		PromoterName:      deref(ev.PromoterName),

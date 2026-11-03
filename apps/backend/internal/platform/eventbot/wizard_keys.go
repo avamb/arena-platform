@@ -213,6 +213,10 @@ var wizardKeys = []string{
 	"bot.wz.s_tickets_same_btn", "bot.wz.s_tickets_own_btn", "bot.wz.ack_tickets",
 	"bot.wz.ask_more_sessions_edit",
 	"bot.wz.edit_changed_meanwhile",
+	// The «changed elsewhere» check on the preview and before the save:
+	// wizard_conflict.go.
+	"bot.wz.elsewhere_list", "bot.wz.elsewhere_part", "bot.wz.elsewhere_unknown",
+	"bot.wz.preview_conflict_footer", "bot.wz.preview_check_failed", "bot.wz.edit_check_failed",
 	"bot.wz.edit_saved",
 	"bot.wz.copy_intro",
 	"bot.wz.edit_load_failed",

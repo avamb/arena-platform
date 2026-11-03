@@ -5,7 +5,7 @@
 витрина: `apps/shop-page/README.md`, таблица 301: `apps/shop-page/docs/redirects_301.md`.
 Основание: аудит `docs/reviews/shop_module_audit_2026-10-30_ru.md` (SA-06, SA-07, SA-08, SA-23).
 
-Пример ниже: организация Einat Winery, витрина `shop.einatwinery.com`, стенд
+Пример ниже: организация client-4, витрина `client4.example`, стенд
 `shop-staging.arenasoldout.com`, API стенда `api-staging.arenasoldout.com`, прод `api.arenasoldout.com`.
 Каждый шаг сначала на стенде, потом на проде. Магазин остаётся закрытым (`enabled=false`), пока не пройден шаг 8.
 
@@ -15,29 +15,29 @@
 ## 0. Что нужно до начала
 
 - Импорт из Shopify сделан (`docs/ops/shop_import.md`), картинки и баннер перенесены в медиа платформы
-  (аудит SA-02: адреса `www.einatwinery.com/cdn/...` после переключения DNS отдают HTML), витрина на стенде
+  (аудит SA-02: адреса `www.client4.example/cdn/...` после переключения DNS отдают HTML), витрина на стенде
   сверена с живым сайтом.
 - У организации есть учётная запись владельца и конфигурация AllPay (шаг 5).
 - JWT платформенного суперадмина (`POST /v1/auth/login`). Пароль в команды и в чат не вставляется.
-- Решено, на каком адресе живёт витрина. Дальше `SHOP_HOST` = `shop.einatwinery.com`.
+- Решено, на каком адресе живёт витрина. Дальше `SHOP_HOST` = `client4.example`.
 
 ```bash
 API=https://api-staging.arenasoldout.com       # прод: https://api.arenasoldout.com
 ORG=<uuid организации>
 TOKEN=<JWT суперадмина>
-SHOP_HOST=shop.einatwinery.com
+SHOP_HOST=client4.example
 ```
 
 ## 1. DNS и Cloudflare у клиента
 
-1. В зоне клиента (`einatwinery.com`) создать запись `CNAME shop` на хост сервера, где стоит сервис
+1. В зоне клиента (`client4.example`) создать запись `CNAME shop` на хост сервера, где стоит сервис
    `shop-page` в Dokploy (тот же хост, что у остальных витрин платформы; адрес берёт оператор из панели).
    Если Cloudflare у клиента, облако оранжевое, режим SSL/TLS **Full (strict)**.
 2. Пока сертификата нет, режим Full (strict) отвечает 526. Это нормально: Traefik заказывает сертификат
    Let's Encrypt только после того, как DNS указывает на сервер (шаг 2, пункт 4).
 3. Если зона на другом аккаунте Cloudflare, запись создаёт сам клиент по инструкции выше. У платформы
    токена на чужую зону нет и быть не должно.
-4. Apex-домен `einatwinery.com` и `www` остаются на Shopify до шага 10.
+4. Apex-домен `client4.example` и `www` остаются на Shopify до шага 10.
 
 ## 2. Сервис `shop-page` в Dokploy
 
@@ -45,10 +45,10 @@ SHOP_HOST=shop.einatwinery.com
 2. Build-аргумент `VITE_API_BASE_URL` = origin API без завершающего слеша
    (стенд `https://api-staging.arenasoldout.com`, прод `https://api.arenasoldout.com`).
    Значение запекается в JS и в CSP (`connect-src`, `img-src`). Секретов в `VITE_*` не бывает.
-3. Домен в Dokploy: `shop.einatwinery.com`, HTTPS через Let's Encrypt, порт 8080.
+3. Домен в Dokploy: `client4.example`, HTTPS через Let's Encrypt, порт 8080.
 4. После переключения DNS (шаг 1) сертификат заказывается сразу. Если домен был добавлен до DNS, Traefik
    сам не повторит попытку: `docker restart` контейнера `shop-page` (см. AGENTS.md, «WordPress site moved»).
-5. Проверка: `curl -sI https://shop.einatwinery.com/health` отвечает 200, `curl -sI https://shop.einatwinery.com/robots.txt`
+5. Проверка: `curl -sI https://client4.example/health` отвечает 200, `curl -sI https://client4.example/robots.txt`
    отдаёт текст, не HTML.
 
 ## 3. CORS и адрес возврата в arena-api (без этого оформление не работает)
@@ -57,7 +57,7 @@ SHOP_HOST=shop.einatwinery.com
 origin есть в `CORS_ALLOWED_ORIGINS` или равен `PUBLIC_TICKETS_BASE_URL` (`checkoutReturnURLPolicy`).
 
 1. В окружение `arena-api` добавить origin витрины к существующему списку, через запятую, без `*` и без слеша:
-   `CORS_ALLOWED_ORIGINS=<прежний список>,https://shop.einatwinery.com`.
+   `CORS_ALLOWED_ORIGINS=<прежний список>,https://client4.example`.
 2. Передеплоить `arena-api` (в Dokploy: Redeploy сервиса, окружение подхватывается при создании контейнера).
 3. Проверка CORS (до включения магазина ответ 404, важен сам заголовок: он должен содержать `access-control-allow-origin` с origin витрины):
 
@@ -81,7 +81,7 @@ origin есть в `CORS_ALLOWED_ORIGINS` или равен `PUBLIC_TICKETS_BASE
 
 Turnstile на оформлении ввела отдельная доработка модуля. Для **стенда** годятся тестовые ключи Cloudflare,
 они всегда пропускают: site key `1x00000000000000000000AA`, secret `1x0000000000000000000000000000000AA`.
-Для **прода** ключи создаются в Cloudflare (Turnstile, виджет на домен `shop.einatwinery.com`), пара хранится
+Для **прода** ключи создаются в Cloudflare (Turnstile, виджет на домен `client4.example`), пара хранится
 только в окружении Dokploy. Тестовые ключи на проде не ставить: они ничего не проверяют.
 
 ## 5. Платёжный провайдер AllPay (SA-23)
@@ -139,7 +139,7 @@ curl -s -H "Authorization: Bearer $TOKEN" -H "X-Admin-Reason: shop release $SHOP
 | `contact_email` | адрес для покупателей или `null` (Reply-To писем) |
 | `logistics_note` | внутренняя заметка логисту, до 2000 символов |
 | `sales_channel_id` | UUID канала из шага 5 |
-| `shop_domain` | голый хост, `shop.einatwinery.com`. Нет поля или `null` оставляет, `""` очищает. Уникален на платформу (409 `shop.duplicate_domain`) |
+| `shop_domain` | голый хост, `client4.example`. Нет поля или `null` оставляет, `""` очищает. Уникален на платформу (409 `shop.duplicate_domain`) |
 | `max_line_qty` | 1-99, нет поля оставляет текущее |
 | `enabled` | `true` открывает витрину и оформление, нет поля оставляет |
 
@@ -155,10 +155,10 @@ curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H "X-Admin-Reason: shop releas
     "country_iso2": "IL",
     "age_gate_min_age": 18,
     "announcement_text": "",
-    "contact_email": "shop@einatwinery.com",
+    "contact_email": "shop@client4.example",
     "logistics_note": "",
     "sales_channel_id": "<CHANNEL_ID>",
-    "shop_domain": "shop.einatwinery.com",
+    "shop_domain": "client4.example",
     "max_line_qty": 24,
     "enabled": false
   }'
@@ -189,7 +189,7 @@ curl -s "$API/v1/public/shop/by-host?host=$SHOP_HOST"      # пока магаз
    письмо «заказ получен», заказ в ивент-центре, «Отправлен» с письмом `shop_order_shipped`, частичный возврат
    и возврат остатка (письма `shop_order_refunded`). Приёмка 2-4 в спеке 47 §9.
 2. Включить магазин (то же тело, что в шаге 6, но `"enabled": true`).
-3. Открыть `https://shop.einatwinery.com/`: каталог, карточка, корзина, оформление доходит до страницы AllPay.
+3. Открыть `https://client4.example/`: каталог, карточка, корзина, оформление доходит до страницы AllPay.
 4. На проде первый боевой заказ сделать самим на минимальную сумму, сверить сумму в кабинете AllPay и в arena,
    вернуть его целиком из ивент-центра.
 5. Если что-то идёт не так, магазин закрывается тем же вызовом с `"enabled": false`. Заказы и остатки не теряются.
@@ -203,7 +203,7 @@ curl -sI https://$SHOP_HOST/cart | grep -i x-robots # noindex, nofollow
 curl -sI https://$SHOP_HOST/no-such-page | head -1  # HTTP 404
 ```
 
-В `index.html` витрины зашит `og:image` `https://shop.einatwinery.com/theme/brand/logo.png`, файл кладёт доработка
+В `index.html` витрины зашит `og:image` `https://client4.example/theme/brand/logo.png`, файл кладёт доработка
 витрины (аудит SA-02). Проверить, что он открывается.
 
 ## 10. 301 со старых адресов и пауза Shopify
@@ -212,14 +212,14 @@ curl -sI https://$SHOP_HOST/no-such-page | head -1  # HTTP 404
 (не на `arenasoldout.com`): коллекции, `/collections/*/products/*`, блоги, аккаунты, постоянные ссылки корзины.
 Таблица и отличия: `apps/shop-page/docs/redirects_301.md`.
 
-Когда основной домен `einatwinery.com` переводится на витрину (спека 47 §9, пункт 6):
+Когда основной домен `client4.example` переводится на витрину (спека 47 §9, пункт 6):
 
-1. Заменить домен: `shop_domain` = `einatwinery.com` (вызов шага 6), домен в Dokploy и DNS (apex на сервер,
+1. Заменить домен: `shop_domain` = `client4.example` (вызов шага 6), домен в Dokploy и DNS (apex на сервер,
    у Cloudflare можно CNAME flattening), origin в `CORS_ALLOWED_ORIGINS` (шаг 3), хост в `public/robots.txt` и `public/sitemap.xml`
-   (там зашит `shop.einatwinery.com`), `og:image` в `index.html`. Передеплоить `arena-api` и пересобрать `shop-page`.
-2. Пока основной домен остаётся на Shopify, а витрина на `shop.einatwinery.com`, 301 со старых адресов делается на стороне
+   (там зашит `client4.example`), `og:image` в `index.html`. Передеплоить `arena-api` и пересобрать `shop-page`.
+2. Пока основной домен остаётся на Shopify, а витрина на `client4.example`, 301 со старых адресов делается на стороне
    Shopify (Navigation, URL redirects) или Cloudflare Bulk Redirects зоны клиента: старый путь на тот же путь
-   `https://shop.einatwinery.com/...`.
+   `https://client4.example/...`.
 3. Проверить 10-15 старых адресов из `hrefs.txt` выгрузки: `curl -sI` отдаёт 301 или 200, не 404.
 4. Шаг «пауза Shopify» (приостановить магазин, не удалять) делать последним, после первой успешной боевой продажи
    и подтверждённых 301. Подписку Shopify не отключать, пока владелец не подтвердит, что старые заказы не нужны (SA-29).

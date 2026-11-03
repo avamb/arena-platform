@@ -339,6 +339,17 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 		t.Fatalf("tier = %d %s windows=%d", tierPrice, tierCur, windows)
 	}
 
+	// BOT-02: the Event Center shows the manager the same event.
+	var managerID uuid.UUID
+	if err := pool.QueryRow(ctx, `SELECT id FROM users WHERE email = $1`, managerEmail).Scan(&managerID); err != nil {
+		t.Fatalf("manager user: %v", err)
+	}
+	assertECSeesTheBotEvent(t, api.URL, f.orgID, managerID, botEventAsEC{
+		EventID: eventID, Name: eventName, Status: evStatus, Age: "16+",
+		StartLocal: "2099-12-15 20:00", VenueTimezone: "Europe/Tallinn", Capacity: 120,
+		PriceMinor: 2500, Currency: "EUR",
+	})
+
 	// The draft is gone, the answers are remembered for next time.
 	if _, err := q.GetBotDraft(ctx, e2eWizardTelegramUser, f.orgID); err == nil {
 		t.Fatal("draft must be deleted after publishing")
@@ -403,18 +414,32 @@ func TestBotE2E_WizardCreatesAnEvent(t *testing.T) {
 	// a change inside the same second as the load is invisible. On a fast
 	// machine the whole edit above fits in one second, which made a plain
 	// now() pass unnoticed (CI, 2026-09-29); move it a clear minute ahead.
-	if _, err := pool.Exec(ctx, `UPDATE events SET updated_at = now() + interval '1 minute' WHERE id = $1`, eventID); err != nil {
+	// Somebody renames the event elsewhere (the web event center) meanwhile.
+	outside := eventName + " (веб)"
+	if _, err := pool.Exec(ctx, `UPDATE events SET name = $2, updated_at = now() + interval '1 minute' WHERE id = $1`, eventID, outside); err != nil {
 		t.Fatal(err)
 	}
-	// "Publish changes" first shows what goes to the site; only the
-	// preview's own button saves.
+	// "Publish changes" first shows what goes to the site. The change made
+	// elsewhere is said on that preview, where the organizer decides, with
+	// what changed; the preview offers "Save anyway" instead of "Publish".
 	preview := press("wz:publish", "Что уйдёт на сайт")
-	for _, want := range []string{"«" + eventName + "» → «" + renamed + "»", "Возраст: 16+ → 18+", "новые категории"} {
+	for _, want := range []string{
+		"меняли в другом месте",
+		"Название: «" + eventName + "» → «" + outside + "»",
+		"«" + eventName + "» → «" + renamed + "»", "Возраст: 16+ → 18+", "новые категории",
+		"«Всё равно сохранить» запишет вашу версию",
+	} {
 		if !strings.Contains(preview, want) {
 			t.Errorf("publish preview lacks %q:\n%s", want, preview)
 		}
 	}
-	press("wz:publish:go", "меняли в другом месте")
+	if _, _, keys := tg.lastOf(e2eWizardTelegramUser); !hasData(keys, "wz:publish:force") || hasData(keys, "wz:publish:go") {
+		t.Errorf("the preview buttons: %v", keys)
+	}
+	var nameBeforeForce string
+	if err := pool.QueryRow(ctx, `SELECT name FROM events WHERE id = $1`, eventID).Scan(&nameBeforeForce); err != nil || nameBeforeForce != outside {
+		t.Fatalf("the preview saved something: name %q (%v)", nameBeforeForce, err)
+	}
 	// An edited, published event shows the buyers' link right in the message.
 	editSaved := press("wz:publish:force", "Сохранено")
 	if !strings.Contains(editSaved, "https://tickets.test/") || !strings.Contains(editSaved, "🔗") {

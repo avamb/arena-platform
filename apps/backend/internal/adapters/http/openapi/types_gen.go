@@ -9456,6 +9456,13 @@ type ImportBil24SessionResponse struct {
 	// EventId Arena event UUID mapped to the payload's action.actionId.
 	EventId openapi_types.UUID `json:"event_id"`
 
+	// EventUpdatedAt The event's `updated_at` as this import left it, read inside the
+	// import transaction while it still held the event's row lock. A
+	// client that edits the event in several calls (one date per call)
+	// compares it with a later read of the event to tell its own write
+	// from somebody else's edit. Absent from a dry run.
+	EventUpdatedAt *time.Time `json:"event_updated_at,omitempty"`
+
 	// ExternalRef The idempotency key the bundle was stored under (event-bundle
 	// spec §4), or null when the payload carried none — only possible
 	// for source=bil24 (the legacy route never sends externalRef).

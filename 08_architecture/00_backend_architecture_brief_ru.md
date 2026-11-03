@@ -176,7 +176,7 @@ Authorization must combine role permissions with resource ownership. Organizers 
 
 The platform may expose a Bil24-compatible command API as a separate gateway layer. This gateway preserves the old request/response contract for existing integrations that need drop-in migration, while translating commands into the new backend domain model.
 
-The compatibility gateway is not the core API and must not leak legacy constraints into the internal model. It is an adapter for migration, partner continuity, low-risk rollback, and third-party clients. For owned WordPress sites such as Vino&Co, the preferred path is a new platform-native WordPress plugin.
+The compatibility gateway is not the core API and must not leak legacy constraints into the internal model. It is an adapter for migration, partner continuity, low-risk rollback, and third-party clients. For owned WordPress sites such as client-1, the preferred path is a new platform-native WordPress plugin.
 
 Required compatibility elements:
 
@@ -186,7 +186,7 @@ Required compatibility elements:
 - Command names used by current integrations.
 - Legacy ID field names and response shapes where existing clients depend on them.
 - Bil24-like session/cart/order semantics where required for drop-in migration.
-- Contract tests based on captured WordPress/Vino&Co request/response fixtures.
+- Contract tests based on captured WordPress/client-1 request/response fixtures.
 
 ### Scanner Boundary
 

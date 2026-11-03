@@ -29,7 +29,7 @@ $b = New-Object byte[] 32; [System.Security.Cryptography.RandomNumberGenerator]:
 
 ### 1.2. Передать токен arena-api
 
-1. Откройте панель Dokploy, проект Arena на сервере arena-prod.
+1. Откройте панель Dokploy, проект Arena на сервере prod-host.
 2. В переменных окружения сервиса arena-api добавьте строку
    `BREVO_WEBHOOK_TOKEN=<ваш токен>`.
 3. Перезапустите (Deploy) arena-api.
@@ -55,7 +55,7 @@ Invoke-RestMethod -Method Post -Uri "https://api.arenasoldout.com/v1/webhooks/br
 ### 1.4. Добавить вебхук в Brevo (рекомендуемый способ: через API)
 
 Внимание: аккаунт Brevo общий с сайтами WordPress. Не меняйте и не удаляйте
-существующие вебхуки (например, вебхук Lampyris). Добавьте новый вебхук рядом.
+существующие вебхуки (например, вебхук client-2). Добавьте новый вебхук рядом.
 
 При этом способе токен передаётся в заголовке `Authorization`, а не в
 адресе. Поэтому он не попадает в журналы доступа Traefik и Cloudflare.
