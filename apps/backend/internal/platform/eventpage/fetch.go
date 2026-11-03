@@ -12,6 +12,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -94,6 +95,23 @@ func NewFetcher(policy egress.Policy) *Fetcher {
 	return &Fetcher{policy: policy, page: page, img: policy.Client(ImageTimeout)}
 }
 
+// urlShape is the only address shape a request is ever built from: http or
+// https, a host with no user info, spaces or backslashes, then an optional
+// path and query. The egress policy still decides where it may go.
+var urlShape = regexp.MustCompile(`(?i)^https?://[^\s/?#@\\]+(?:[/?][^\s#]*)?$`)
+
+// shapedURL parses raw after the shape check above.
+func shapedURL(raw string) (*url.URL, error) {
+	if !urlShape.MatchString(raw) {
+		return nil, ErrInvalidURL
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return nil, ErrInvalidURL
+	}
+	return u, nil
+}
+
 // CheckURL validates a user's page address without fetching it: an
 // absolute http(s) address on a public host, not a ticketing platform. The
 // returned URL is the parsed address.
@@ -107,9 +125,9 @@ func (f *Fetcher) CheckURL(ctx context.Context, raw string) (*url.URL, error) {
 	if i := strings.IndexByte(raw, '#'); i >= 0 {
 		raw = raw[:i]
 	}
-	u, err := url.Parse(raw)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return nil, ErrInvalidURL
+	u, err := shapedURL(raw)
+	if err != nil {
+		return nil, err
 	}
 	if IsTicketingHost(u.Hostname()) {
 		return nil, ErrTicketingPlatform
@@ -181,9 +199,9 @@ type Picture struct {
 // FetchImage downloads a picture. Only JPEG and PNG are accepted, decided by
 // the bytes, never by the server's header.
 func (f *Fetcher) FetchImage(ctx context.Context, raw string) (Picture, error) {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-		return Picture{}, ErrInvalidURL
+	u, err := shapedURL(strings.TrimSpace(raw))
+	if err != nil {
+		return Picture{}, err
 	}
 	if err := f.policy.CheckURL(ctx, u.String()); err != nil {
 		if errors.Is(err, egress.ErrDestinationNotAllowed) {
