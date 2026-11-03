@@ -16123,6 +16123,9 @@ type SellerProfile struct {
 	// OrgName Display name of the organization.
 	OrgName string `json:"org_name"`
 
+	// ProviderReceipt Whether the payment provider e-mails its own receipt of the payment to the buyer (spec 51, migration 0185).
+	ProviderReceipt SellerProviderReceipt `json:"provider_receipt"`
+
 	// RegistrationNumber Company registration number.
 	RegistrationNumber *string `json:"registration_number"`
 
@@ -16196,6 +16199,22 @@ type SellerProfileContact struct {
 type SellerProfileEnvelope struct {
 	// SellerProfile The profile as stored after the call.
 	SellerProfile SellerProfile `json:"seller_profile"`
+}
+
+// SellerProviderReceipt The provider-receipt setting of the organization. When `effective` is
+// true, checkout asks the payment provider to e-mail its own receipt to
+// the buyer (Stripe `payment_intent_data.receipt_email`, PayPlus
+// `sendEmailApproval`). Off cannot promise that no receipt is sent: the
+// organizer's own provider account may send one by itself.
+type SellerProviderReceipt struct {
+	// Effective What checkout does now (`enabled` or `forced`).
+	Effective bool `json:"effective"`
+
+	// Enabled The owner's choice (default true).
+	Enabled bool `json:"enabled"`
+
+	// Forced The platform operator's "always send"; overrides `enabled`. Only a platform superadmin changes it.
+	Forced bool `json:"forced"`
 }
 
 // ServerInfoResponse defines model for ServerInfoResponse.
@@ -19648,10 +19667,20 @@ type UpdateSellerDisplayRequest struct {
 	ShowSeller *bool `json:"show_seller,omitempty"`
 }
 
-// UpdateSellerProfileRequest The organization-wide switch of the contact form's Telegram leg.
+// UpdateSellerProfileRequest The organization-wide switches. Every key is optional; at least one is
+// required (400 `seller.invalid_body` otherwise).
 type UpdateSellerProfileRequest struct {
 	// ContactFormToTelegram Post buyers' messages to the organization's sales Telegram chat too.
-	ContactFormToTelegram bool `json:"contact_form_to_telegram"`
+	ContactFormToTelegram *bool `json:"contact_form_to_telegram,omitempty"`
+
+	// ProviderReceiptEnabled The owner's choice, the payment provider e-mails its own receipt to the buyer.
+	ProviderReceiptEnabled *bool `json:"provider_receipt_enabled,omitempty"`
+
+	// ProviderReceiptForced "Always send the provider receipt", overriding the owner. Only a
+	// platform superadmin (with `X-Admin-Reason`) changes it; anyone else
+	// gets 403 `seller.provider_receipt_forced_superadmin_only` unless the
+	// value repeats the stored one.
+	ProviderReceiptForced *bool `json:"provider_receipt_forced,omitempty"`
 }
 
 // UpdateSessionRequest Partial update for PATCH

@@ -336,6 +336,7 @@ func (h *changeEmail) buildMessage(
 	// The organization's own logo through the media store; best effort, the
 	// platform logo is the fallback.
 	branding := resolveBranding(ctx, h.opts.Media, first, h.logger).Branding
+	branding.PaymentProvider = orderPaymentProvider(ctx, h.opts.DB, recipient.OrderID, h.logger)
 
 	// The body names the event's promoter e-mail when it has one. Otherwise it
 	// follows the ticket letter's rule (ContactRoute, already on the payload):

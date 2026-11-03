@@ -93,8 +93,9 @@ func ProviderDescriptor() payments.Descriptor {
 			PartialRefund:  true,
 			// A refund is usually settled at once, but Stripe may answer
 			// `pending` and finish it through refund.updated.
-			AsyncRefund:  true,
-			RefundLookup: true,
+			AsyncRefund:     true,
+			RefundLookup:    true,
+			ProviderReceipt: true,
 		},
 	}
 }
