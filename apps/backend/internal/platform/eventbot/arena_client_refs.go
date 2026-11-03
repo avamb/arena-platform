@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -270,6 +271,10 @@ type ImportResult struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
 	} `json:"warnings"`
+	// EventUpdatedAt is the event's updated_at as this import left it; the
+	// edit wizard takes it as its new "seen" mark, so its own write is never
+	// reported as an edit made elsewhere. Nil from an older server.
+	EventUpdatedAt *time.Time `json:"event_updated_at"`
 }
 
 // ImportEventBundle posts one date of the event.
