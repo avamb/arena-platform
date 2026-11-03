@@ -67,7 +67,7 @@ export interface ReferralSectionProps {
 
 type Busy = ReferralAction | "save" | null;
 
-const RULES: readonly MessageKey[] = ["referral.rules.paidAtOnce", "referral.rules.cardClosed", "referral.rules.fee", "referral.rules.automatic"];
+const RULES: readonly MessageKey[] = ["referral.rules.payout", "referral.rules.cardClosed", "referral.rules.fee", "referral.rules.automatic"];
 
 export function ReferralSection({ orgId, target, canManage, timezone }: ReferralSectionProps) {
   const { t: translate, locale } = useI18n();

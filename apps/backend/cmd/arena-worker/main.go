@@ -684,6 +684,14 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		DB:        pool,
 		Logger:    logger,
 	}))
+	// referral.organizer_email: the owners hear that cashbacks wait for the
+	// Stripe balance, that Stripe holds them, or that one was not paid.
+	reg.Register(referral.JobTypeOrganizerEmail, delivery.NewReferralPayoutEmailHandler(delivery.ReferralPayoutEmailOptions{
+		Sender:    deliveryOpts.Sender,
+		Templates: deliveryOpts.Templates,
+		DB:        pool,
+		Logger:    logger,
+	}))
 	// guest_list.schedule writes the due guest lists and mails the ones of
 	// members without the bot (package guestlist).
 	registerGuestListSchedule(reg, pool, deliveryOpts.Sender, logger)

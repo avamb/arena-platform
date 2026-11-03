@@ -1,0 +1,31 @@
+{{define "subject"}}{{if eq .Referral.Notice "balance"}}Freunde werben: Der Cashback wartet auf Ihr Stripe-Guthaben{{else if eq .Referral.Notice "pending"}}Freunde werben: Stripe hält den Cashback zurück{{else}}Freunde werben: Der Cashback für Bestellung {{.Referral.Order}} wurde nicht ausgezahlt{{end}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="de" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{if eq .Referral.Notice "balance"}}Der Cashback wartet auf Ihr Stripe-Guthaben{{else if eq .Referral.Notice "pending"}}Stripe hält den Cashback zurück{{else}}Der Cashback wurde nicht ausgezahlt{{end}}</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  <tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">{{if eq .Referral.Notice "balance"}}Der Cashback wartet auf Ihr Stripe-Guthaben{{else if eq .Referral.Notice "pending"}}Stripe hält den Cashback zurück{{else}}Der Cashback wurde nicht ausgezahlt{{end}}</h1>
+  {{if eq .Referral.Notice "balance"}}<p style="margin:0 0 12px 0;">Um den Cashback an {{.Referral.Count}} Käufer auszuzahlen, braucht Ihr Stripe-Guthaben {{.Referral.Amount}} verfügbar. Arena prüft das Guthaben alle paar Stunden und zahlt, sobald es da ist. Ist es nach 30 Tagen nicht da, wird der Cashback nicht ausgezahlt und wir bitten die Käufer, sich an Sie zu wenden.</p>{{else if eq .Referral.Notice "pending"}}<p style="margin:0 0 12px 0;">Stripe hat die Cashback-Rückerstattung an {{.Referral.Count}} Käufer über insgesamt {{.Referral.Amount}} angenommen, aber noch nicht ausgezahlt. Meist reicht dann Ihr Stripe-Guthaben nicht. Laden Sie es auf: Eine ungedeckte Rückerstattung storniert Stripe nach 45 Tagen.</p>{{else}}<p style="margin:0 0 12px 0;">{{if .Referral.BalanceTimeout}}Der Cashback von {{.Referral.Amount}} für die Bestellung des Freundes {{.Referral.Order}} (Code <strong>{{.Referral.Code}}</strong>) wurde nicht ausgezahlt: 30 Tage lang hat Ihr Stripe-Guthaben ihn nicht gedeckt.{{else}}Der Cashback von {{.Referral.Amount}} für die Bestellung des Freundes {{.Referral.Order}} (Code <strong>{{.Referral.Code}}</strong>) wurde nicht ausgezahlt: Der Zahlungsanbieter hat die Rückerstattung abgelehnt.{{end}}</p>
+  <p style="margin:0 0 12px 0;">Wir haben den Käufer, der den Freund geworben hat, gebeten, sich an Sie zu wenden. Einigen Sie sich direkt mit ihm, zum Beispiel mit einem Gutscheincode.</p>{{end}}
+  </td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — automatische Nachricht</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}
+
+{{if eq .Referral.Notice "balance"}}Der Cashback wartet auf Ihr Stripe-Guthaben{{else if eq .Referral.Notice "pending"}}Stripe hält den Cashback zurück{{else}}Der Cashback wurde nicht ausgezahlt{{end}}
+
+{{if eq .Referral.Notice "balance"}}Um den Cashback an {{.Referral.Count}} Käufer auszuzahlen, braucht Ihr Stripe-Guthaben {{.Referral.Amount}} verfügbar. Arena prüft das Guthaben alle paar Stunden und zahlt, sobald es da ist. Ist es nach 30 Tagen nicht da, wird der Cashback nicht ausgezahlt und wir bitten die Käufer, sich an Sie zu wenden.{{else if eq .Referral.Notice "pending"}}Stripe hat die Cashback-Rückerstattung an {{.Referral.Count}} Käufer über insgesamt {{.Referral.Amount}} angenommen, aber noch nicht ausgezahlt. Meist reicht dann Ihr Stripe-Guthaben nicht. Laden Sie es auf: Eine ungedeckte Rückerstattung storniert Stripe nach 45 Tagen.{{else}}{{if .Referral.BalanceTimeout}}Der Cashback von {{.Referral.Amount}} für die Bestellung des Freundes {{.Referral.Order}} (Code {{.Referral.Code}}) wurde nicht ausgezahlt: 30 Tage lang hat Ihr Stripe-Guthaben ihn nicht gedeckt.{{else}}Der Cashback von {{.Referral.Amount}} für die Bestellung des Freundes {{.Referral.Order}} (Code {{.Referral.Code}}) wurde nicht ausgezahlt: Der Zahlungsanbieter hat die Rückerstattung abgelehnt.{{end}}
+
+Wir haben den Käufer, der den Freund geworben hat, gebeten, sich an Sie zu wenden. Einigen Sie sich direkt mit ihm, zum Beispiel mit einem Gutscheincode.{{end}}
+
+Arena Platform — automatische Nachricht
+{{end}}

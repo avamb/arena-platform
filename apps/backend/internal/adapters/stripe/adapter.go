@@ -656,6 +656,38 @@ func (a *Adapter) VerifyCredentials(ctx context.Context) error {
 	}
 }
 
+// AvailableBalance reads GET /v1/balance (the call VerifyCredentials makes)
+// and sums the "available" amounts in currency. Stripe's amounts are already
+// the currency's smallest unit, which is arena's minor unit (providerAmount).
+//
+// Implements payments.BalanceReader.
+func (a *Adapter) AvailableBalance(ctx context.Context, currency string) (int64, error) {
+	cur := strings.ToLower(strings.TrimSpace(currency))
+	if cur == "" {
+		return 0, fmt.Errorf("stripe: AvailableBalance: currency is required")
+	}
+	raw, _, err := a.doRequest(ctx, http.MethodGet, a.cfg.BaseURL+"/balance", nil, "")
+	if err != nil {
+		return 0, fmt.Errorf("stripe: AvailableBalance: %w", err)
+	}
+	var bal struct {
+		Available []struct {
+			Amount   int64  `json:"amount"`
+			Currency string `json:"currency"`
+		} `json:"available"`
+	}
+	if err := json.Unmarshal(raw, &bal); err != nil {
+		return 0, fmt.Errorf("stripe: AvailableBalance: unmarshal response: %w", err)
+	}
+	var sum int64
+	for _, b := range bal.Available {
+		if strings.EqualFold(b.Currency, cur) {
+			sum += b.Amount
+		}
+	}
+	return sum, nil
+}
+
 // receivesRefundEvents reports whether an endpoint's event list covers every
 // way a refund reaches arena: its creation (a refund made in the dashboard is
 // usually born succeeded and only sends refund.created), its updates

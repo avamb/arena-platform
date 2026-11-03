@@ -5119,6 +5119,27 @@ other = "A friend who used code <b>{{.Code}}</b> opened a dispute on order {{.Nu
 ["salesnotify.referral.code_paused"]
 other = "The code <b>{{.Code}}</b> is stopped: it gives no new discounts. Payouts already made stay as they are."
 
+["salesnotify.referral.balance_title"]
+other = "💳 <b>Refer a friend: the cashback waits for your Stripe balance</b> — {{.Org}}"
+
+["salesnotify.referral.balance_body"]
+other = "To pay the cashback to {{.Count}} buyer(s), your Stripe balance needs {{.Amount}} available. Arena checks the balance every few hours and pays as soon as it is there. If it is not there within 30 days, the cashback is not paid and the buyers are asked to contact you."
+
+["salesnotify.referral.pending_title"]
+other = "⏳ <b>Refer a friend: Stripe holds the cashback</b> — {{.Org}}"
+
+["salesnotify.referral.pending_body"]
+other = "Stripe accepted the cashback refund for {{.Count}} buyer(s), {{.Amount}} in total, but has not paid it out yet. Usually this means your Stripe balance is too low. Top it up: Stripe cancels a refund it cannot fund within 45 days."
+
+["salesnotify.referral.unpaid_title"]
+other = "❌ <b>Refer a friend: the cashback was not paid</b> — {{.Org}}"
+
+["salesnotify.referral.unpaid_body_balance"]
+other = "The cashback of {{.Amount}} for the friend's order №{{.Number}} (code <b>{{.Code}}</b>) was not paid: for 30 days your Stripe balance did not cover it. The buyer who brought the friend was asked to contact you. Settle with them yourself, for example with a promo code."
+
+["salesnotify.referral.unpaid_body_provider"]
+other = "The cashback of {{.Amount}} for the friend's order №{{.Number}} (code <b>{{.Code}}</b>) was not paid: the payment provider refused the refund. The buyer who brought the friend was asked to contact you. Settle with them yourself, for example with a promo code."
+
 ["bot.rfp.btn"]
 other = "🤝 Refer a friend"
 
@@ -5264,7 +5285,7 @@ other = "No limit"
 other = "Cancel"
 
 ["bot.rfp.rules"]
-other = "<b>Check and turn on</b>\n\nA friend gets {{.Friend}} % off. The buyer who brought them gets {{.Cashback}} % of the friend's ticket price back (after the discount, without the service charge), at most {{.Cap}} % of the price of their own tickets. Friends per code: {{.Max}}.\n\n<b>Rules</b>\n1. The cashback is paid at once, after the friend pays.\n2. If the friend returns the ticket later, the cashback stays paid. It is not taken back.\n3. The fee of the payment provider is not returned.\n4. The money goes back to the card the buyer paid with. If that is not possible, nothing is paid and the money stays with you. Arena tells the buyer to contact you.\n5. Payouts are automatic. To stop new discounts and new cashback, press Pause."
+other = "<b>Check and turn on</b>\n\nA friend gets {{.Friend}} % off. The buyer who brought them gets {{.Cashback}} % of the friend's ticket price back (after the discount, without the service charge), at most {{.Cap}} % of the price of their own tickets. Friends per code: {{.Max}}.\n\n<b>Rules</b>\n1. The cashback is paid after the event: a day after the friend's session ends.\n2. If the friend gets the money back or opens a dispute before that, there is no cashback. Once paid, it is not taken back.\n3. The cashback is paid from your Stripe balance. If the balance is too low, Arena tells you and waits up to 30 days. After that the cashback is not paid, and you settle with the buyer yourself.\n4. The fee of the payment provider is not returned.\n5. The money goes back to the card the buyer paid with. If that is not possible, nothing is paid and the money stays with you. Arena tells the buyer to contact you.\n6. Payouts are automatic. To stop new discounts and new cashback, press Pause."
 
 ["bot.rfp.edit_confirm"]
 other = "<b>Check and save</b>\n\nA friend gets {{.Friend}} % off. The buyer who brought them gets {{.Cashback}} % of the friend's ticket price back (after the discount, without the service charge), at most {{.Cap}} % of the price of their own tickets. Friends per code: {{.Max}}.\n\nNew values apply to new codes. Codes already issued keep theirs."

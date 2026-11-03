@@ -96,3 +96,41 @@ func TestReferralCodePausedPromisesNoReturn(t *testing.T) {
 		}
 	}
 }
+
+func TestReferralPayoutTexts_EveryLocaleEveryKind(t *testing.T) {
+	for _, loc := range referralLocales {
+		raw, err := os.ReadFile("../i18n/locales/" + loc + ".toml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, k := range referralPayoutKeys {
+			if !strings.Contains(string(raw), "[\""+k+"\"]") {
+				t.Errorf("%s.toml lacks %s", loc, k)
+			}
+		}
+		for _, in := range []ReferralPayoutInfo{
+			{Kind: "balance", Count: 3, AmountMinor: 4500},
+			{Kind: "pending", Count: 2, AmountMinor: 4500},
+			{Kind: "unpaid", Count: 1, AmountMinor: 4500, Code: "ANA-7K2P", FriendOrderNumber: 1043, BalanceTimeout: true},
+			{Kind: "unpaid", Count: 1, AmountMinor: 4500, Code: "ANA-7K2P", FriendOrderNumber: 1043},
+		} {
+			in.Locale, in.OrgName, in.Currency = loc, "Org <b>", "EUR"
+			got := FormatReferralPayout(in)
+			if strings.Contains(got, "{{") || strings.Contains(got, "<no value>") || strings.Contains(got, "salesnotify.") {
+				t.Errorf("%s %s: %q", loc, in.Kind, got)
+			}
+			if !strings.Contains(got, "45.00") && !strings.Contains(got, "45,00") {
+				t.Errorf("%s %s: the amount is missing:\n%s", loc, in.Kind, got)
+			}
+			if !strings.Contains(got, "Org &lt;b&gt;") || strings.Contains(got, "@") {
+				t.Errorf("%s %s: name not escaped or an address leaked:\n%s", loc, in.Kind, got)
+			}
+			if in.Kind == "unpaid" && (!strings.Contains(got, "ANA-7K2P") || !strings.Contains(got, "1043")) {
+				t.Errorf("%s unpaid: the code or the order is missing:\n%s", loc, got)
+			}
+			if in.Kind != "unpaid" && !strings.Contains(got, "3") && !strings.Contains(got, "2") {
+				t.Errorf("%s %s: the count is missing:\n%s", loc, in.Kind, got)
+			}
+		}
+	}
+}

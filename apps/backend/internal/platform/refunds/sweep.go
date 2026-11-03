@@ -78,6 +78,17 @@ const (
 	// PendingParkAfter: a refund the provider accepted as pending is looked
 	// up for this long before it is parked for a human.
 	PendingParkAfter = 7 * 24 * time.Hour
+	// CashbackPendingParkAfter: a "refer a friend" cashback (money only) the
+	// provider accepted as pending waits this long instead. Stripe holds a
+	// refund it cannot fund from the organizer's balance for up to 45 days
+	// and then cancels it (failure_reason insufficient_funds); the cashback
+	// must hear that verdict, not be parked for a person on day 7 (spec 52
+	// section 6.2).
+	CashbackPendingParkAfter = 50 * 24 * time.Hour
+	// CashbackLookupEvery: after its first day such a cashback is read back
+	// this often, not every LookupAfter: the webhook brings the verdict, the
+	// read-back is the safety net over weeks.
+	CashbackLookupEvery = 6 * time.Hour
 	// DefaultSweepPassTimeout sizes a pass's sections (see the file comment)
 	// so that a pass, with every section's overrun (SweepWorstCase, about
 	// 290 s with the defaults), stays under the worker's 5-minute
@@ -269,8 +280,10 @@ func (e *Engine) lookupPass(ctx context.Context, now time.Time, rep *SweepReport
 		       row_number() OVER (PARTITION BY payment_intent_id ORDER BY updated_at) AS rn
 		FROM refunds
 		WHERE settlement = 'provider' AND provider IS NOT NULL AND state = 'provider_pending'
-		  AND provider_refund_id IS NOT NULL AND updated_at <= $1
-		  AND COALESCE(approved_at, created_at) > $3`+scopeSQL+`) c
+		  AND provider_refund_id IS NOT NULL
+		  AND updated_at <= CASE WHEN `+cashbackOnlySQL+` AND COALESCE(approved_at, created_at) <= $1::timestamptz - interval '1 day'
+		                         THEN $1::timestamptz - `+cashbackLookupExtraSQL+` ELSE $1 END
+		  AND COALESCE(approved_at, created_at) > $3::timestamptz - CASE WHEN `+cashbackOnlySQL+` THEN `+cashbackParkExtraSQL+` ELSE interval '0' END`+scopeSQL+`) c
 		WHERE rn <= `+strconv.Itoa(lookupsPerPayment)+` ORDER BY updated_at LIMIT `+strconv.Itoa(sweepBatch),
 		now.Add(-LookupAfter), e.scopeOrgs(), now.Add(-PendingParkAfter))
 	if err != nil {
@@ -329,11 +342,22 @@ func (e *Engine) refundAndPayment(ctx context.Context, id uuid.UUID) (Refund, Pa
 
 // stuckWhere selects the refunds parkStuck parks. $1 = now - StuckAfter
 // (measured from the FIRST attempt, else the approval), $2 = organization
-// scope, $3 = CallStaleAfter, $4 = now - PendingParkAfter (from approval).
+// scope, $3 = CallStaleAfter, $4 = now - PendingParkAfter (from approval; a
+// money-only cashback waits CashbackPendingParkAfter instead).
 const stuckWhere = `settlement = 'provider' AND provider IS NOT NULL AND state = 'provider_pending'
 	AND ((provider_refund_id IS NULL AND COALESCE(first_attempted_at, approved_at, created_at) <= $1
 	      AND (provider_attempted_at IS NULL OR provider_attempted_at <= now() - $3::interval))
-	  OR (provider_refund_id IS NOT NULL AND COALESCE(approved_at, created_at) <= $4))` + scopeSQL
+	  OR (provider_refund_id IS NOT NULL AND COALESCE(approved_at, created_at)
+	      <= $4::timestamptz - CASE WHEN ` + cashbackOnlySQL + ` THEN ` + cashbackParkExtraSQL + ` ELSE interval '0' END))` + scopeSQL
+
+// cashbackOnlySQL is Refund.cashbackOnly in SQL; the two extras turn the
+// ordinary windows into the cashback's (CashbackPendingParkAfter,
+// CashbackLookupEvery).
+const (
+	cashbackOnlySQL        = `(origin = 'referral_cashback' AND NOT cancel_ticket)`
+	cashbackParkExtraSQL   = `interval '43 days'`
+	cashbackLookupExtraSQL = `interval '350 minutes'`
+)
 
 // parkStuck moves overdue engine refunds (stuckWhere) to manual_review, one
 // row at a time under its payment's advisory lock, skipping any whose
@@ -367,6 +391,8 @@ func (e *Engine) parkStuck(ctx context.Context, now time.Time) (int, error) {
 				        THEN 'this refund was approved more than 23 hours ago but never sent to the provider: no call was made, so no money moved through it. It no longer counts against the payment and no longer holds its ticket, and arena will never send it. The ticket is unchanged. If the buyer is still owed this money, create a new refund of the ticket or order; otherwise nothing else needs doing'
 				        WHEN provider_refund_id IS NULL
 				        THEN 'the provider did not confirm this refund within 23 hours of its first attempt, and it may not be sent again (idempotency window); last answer: ' || COALESCE(failure_code, 'none')
+				        WHEN origin = 'referral_cashback' AND NOT cancel_ticket
+				        THEN 'the provider accepted this cashback but has not completed it within 50 days'
 				        ELSE 'the provider accepted this refund but has not completed it within 7 days' END
 				WHERE id = $5 AND `+stuckWhere+`
 				RETURNING `+refundColumns, append(args, id)...))
@@ -825,11 +851,6 @@ func (e *Engine) applyStatus(ctx context.Context, id uuid.UUID, pay Payment, res
 			sql = `UPDATE refunds SET state = 'succeeded', succeeded_at = now(), provider_status = $2, settled_at = NULL, updated_at = now()
 			       WHERE id = $1 RETURNING ` + refundColumns
 		case payments.RefundFailed:
-			// The ticket was cancelled when the provider accepted; the money
-			// did not go back after all. An operator decides — and is told
-			// (alertReviews), review M1.
-			sql = `UPDATE refunds SET state = 'manual_review', provider_status = $2, failure_code = $3,
-			       failure_reason = $4, ` + reviewAlertSQL + `, updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
 			reason := "the provider reported the refund failed after accepting it"
 			if res.FailureCode != "" {
 				reason += " (" + res.FailureCode + ")"
@@ -837,6 +858,27 @@ func (e *Engine) applyStatus(ctx context.Context, id uuid.UUID, pay Payment, res
 			if res.FailureMessage != "" {
 				reason += ": " + res.FailureMessage
 			}
+			if cur.cashbackOnly() {
+				// A "refer a friend" cashback cancels no ticket, so there is
+				// nothing for an operator to put right: the provider's failure
+				// is final (Stripe cancels a refund it held for lack of
+				// balance after 45 days, failure_reason insufficient_funds).
+				// The reward reads the provider's code from the row (spec 52
+				// section 6.2).
+				code := res.FailureCode
+				if code == "" {
+					code = failureFailedAfterAcceptance
+				}
+				sql = `UPDATE refunds SET state = 'failed', failed_at = now(), provider_status = $2, failure_code = $3,
+				       failure_reason = $4, updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
+				args = append(args, truncate(code, 100), truncate(reason, 500))
+				break
+			}
+			// The ticket was cancelled when the provider accepted; the money
+			// did not go back after all. An operator decides — and is told
+			// (alertReviews), review M1.
+			sql = `UPDATE refunds SET state = 'manual_review', provider_status = $2, failure_code = $3,
+			       failure_reason = $4, ` + reviewAlertSQL + `, updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
 			args = append(args, failureFailedAfterAcceptance, truncate(reason, 500))
 		default:
 			sql = `UPDATE refunds SET provider_status = $2, updated_at = now() WHERE id = $1 RETURNING ` + refundColumns
@@ -847,6 +889,13 @@ func (e *Engine) applyStatus(ctx context.Context, id uuid.UUID, pay Payment, res
 		changed = updated.State != cur.State
 		if !changed {
 			return nil
+		}
+		if updated.State == StateFailed {
+			// The money never moved: a scan exception it spent comes back,
+			// as for a refund the provider refused outright.
+			if err := ReleaseScanExceptionsTx(ctx, tx, updated.ID, false); err != nil {
+				return err
+			}
 		}
 		return e.writeAudit(ctx, tx, audit.Event{ActorType: "system", Action: "v1.refund.provider_status",
 			ResourceType: "refund", ResourceID: id.String(),
@@ -862,6 +911,8 @@ func (e *Engine) applyStatus(ctx context.Context, id uuid.UUID, pay Payment, res
 		e.settle(ctx, updated, pay)
 	case changed && updated.State == StateManualReview:
 		e.logReview(updated)
+	case changed && updated.State == StateFailed:
+		e.observe(outcomeDeclined)
 	}
 	return nil
 }

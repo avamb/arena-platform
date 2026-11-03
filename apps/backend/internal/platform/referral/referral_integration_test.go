@@ -37,6 +37,31 @@ type fakeModule struct {
 	mu      sync.Mutex
 	calls   []payments.RefundRequest
 	answers []func(payments.RefundRequest) (payments.RefundResult, error)
+	// balance is the organizer's available Stripe balance (nil: plenty);
+	// balanceErr makes the balance call fail.
+	balance      *int64
+	balanceErr   error
+	balanceReads int
+}
+
+// AvailableBalance makes the fake a payments.BalanceReader, like Stripe.
+func (m *fakeModule) AvailableBalance(context.Context, string) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.balanceReads++
+	if m.balanceErr != nil {
+		return 0, m.balanceErr
+	}
+	if m.balance == nil {
+		return 1 << 40, nil
+	}
+	return *m.balance, nil
+}
+
+func (m *fakeModule) setBalance(v int64, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.balance, m.balanceErr = &v, err
 }
 
 func (m *fakeModule) Descriptor() payments.Descriptor {
@@ -88,8 +113,28 @@ func declinedAnswer(payments.RefundRequest) (payments.RefundResult, error) {
 // ─── recording notifier ─────────────────────────────────────────────────────
 
 type recordingNotifier struct {
-	mu   sync.Mutex
-	seen []gen.ReferralRewardRow
+	mu      sync.Mutex
+	seen    []gen.ReferralRewardRow
+	notices []referral.PayoutNotice
+}
+
+func (n *recordingNotifier) PayoutNotice(_ context.Context, p referral.PayoutNotice) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.notices = append(n.notices, p)
+	return nil
+}
+
+func (n *recordingNotifier) noticesOf(kind string) []referral.PayoutNotice {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	var out []referral.PayoutNotice
+	for _, p := range n.notices {
+		if p.Kind == kind {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func (n *recordingNotifier) FriendReversed(_ context.Context, r gen.ReferralRewardRow) error {
@@ -140,6 +185,9 @@ func (f *fixture) exec(t *testing.T, sql string, args ...any) {
 // newFixture seeds a published event with one session and a programme, and a
 // paid referrer order of two 2500-minor tickets paid by a 5000 payment of
 // the fake provider. cap/cashback/friend discount are the programme's percents.
+// The session ended three days ago: a cashback is paid only after the event
+// (owner decision 03.11.2026), and most tests are about the payment itself.
+// moveSession puts it elsewhere in time.
 func newFixture(t *testing.T, friendPct, cashbackPct, capPct int) *fixture {
 	t.Helper()
 	pool := testPool(t)
@@ -156,7 +204,7 @@ func newFixture(t *testing.T, friendPct, cashbackPct, capPct int) *fixture {
 		module: &fakeModule{}, notifier: &recordingNotifier{}}
 	f.tickets = [2]uuid.UUID{uuid.New(), uuid.New()}
 	venue := uuid.New()
-	start := time.Now().UTC().Add(30 * 24 * time.Hour).Truncate(time.Minute)
+	start := time.Now().UTC().Add(-3 * 24 * time.Hour).Truncate(time.Minute)
 	t.Cleanup(func() { f.cleanup(t) })
 	for _, s := range []struct {
 		sql  string
@@ -226,6 +274,7 @@ func (f *fixture) cleanup(t *testing.T) {
 		`UPDATE tickets SET refund_id = NULL WHERE session_id IN (SELECT id FROM sessions WHERE event_id IN (SELECT id FROM events WHERE org_id = $1))`,
 		`DELETE FROM worker_jobs WHERE job_type IN ('referral.payout', 'referral.cashback_email', 'referral.reversal_email', 'refund.buyer_email', 'refund.sweep')
 		   AND (payload->>'reward_id' IS NOT NULL OR payload->>'batch_id' IN (SELECT id::text FROM refund_batches WHERE org_id = $1))`,
+		`DELETE FROM worker_jobs WHERE job_type = 'referral.organizer_email' AND payload->>'org_id' = $1::text`,
 		`DELETE FROM refunds WHERE org_id = $1`,
 		`DELETE FROM email_letters WHERE org_id = $1`,
 		`DELETE FROM refund_batches WHERE org_id = $1`,

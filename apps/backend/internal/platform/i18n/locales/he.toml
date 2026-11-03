@@ -299,3 +299,24 @@ other = "חבר שהשתמש בקוד <b>{{.Code}}</b> פתח מחלוקת על 
 
 ["salesnotify.referral.code_paused"]
 other = "הקוד <b>{{.Code}}</b> נעצר: לא יינתנו בעזרתו הנחות חדשות. תשלומים שכבר שולמו נשארים."
+
+["salesnotify.referral.balance_title"]
+other = "💳 <b>הבא חבר: ההחזר ממתין ליתרת Stripe</b> — {{.Org}}"
+
+["salesnotify.referral.balance_body"]
+other = "כדי לשלם את ההחזר ל-{{.Count}} קונים, ביתרת Stripe שלכם צריכים להיות זמינים {{.Amount}}. Arena בודקת את היתרה כל כמה שעות ומשלמת ברגע שהכסף שם. אם הוא לא יהיה שם תוך 30 יום, ההחזר לא ישולם ונבקש מהקונים לפנות אליכם."
+
+["salesnotify.referral.pending_title"]
+other = "⏳ <b>הבא חבר: Stripe מעכבת את ההחזר</b> — {{.Org}}"
+
+["salesnotify.referral.pending_body"]
+other = "Stripe קיבלה את החזר הכסף ל-{{.Count}} קונים, {{.Amount}} בסך הכול, אך עדיין לא שילמה אותו. בדרך כלל זה אומר שאין מספיק כסף ביתרת Stripe. הטעינו אותה: Stripe מבטלת החזר ללא כיסוי אחרי 45 יום."
+
+["salesnotify.referral.unpaid_title"]
+other = "❌ <b>הבא חבר: ההחזר לא שולם</b> — {{.Org}}"
+
+["salesnotify.referral.unpaid_body_balance"]
+other = "ההחזר של {{.Amount}} על הזמנת החבר מס׳ {{.Number}} (קוד <b>{{.Code}}</b>) לא שולם: במשך 30 יום יתרת Stripe שלכם לא כיסתה אותו. ביקשנו מהקונה שהביא את החבר לפנות אליכם. הסדירו איתו בעצמכם, למשל בקוד הנחה."
+
+["salesnotify.referral.unpaid_body_provider"]
+other = "ההחזר של {{.Amount}} על הזמנת החבר מס׳ {{.Number}} (קוד <b>{{.Code}}</b>) לא שולם: ספק התשלומים סירב להחזר. ביקשנו מהקונה שהביא את החבר לפנות אליכם. הסדירו איתו בעצמכם, למשל בקוד הנחה."

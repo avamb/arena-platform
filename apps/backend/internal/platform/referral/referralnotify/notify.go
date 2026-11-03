@@ -94,3 +94,34 @@ func (n *OrganizerNotifier) queueLetter(ctx context.Context, rw gen.ReferralRewa
 	}
 	return nil
 }
+
+// PayoutNotice implements referral.PayoutNotifier: the chat message about
+// cashbacks waiting for the organizer's Stripe balance, refunds Stripe holds,
+// or a cashback that was not paid (owner decision 03.11.2026). The owners'
+// letter is queued by the referral sweep itself, with the mark that makes the
+// notice go once. With no sales bot nothing is posted.
+func (n *OrganizerNotifier) PayoutNotice(ctx context.Context, p referral.PayoutNotice) error {
+	if n.announcer == nil {
+		return nil
+	}
+	var name, locale string
+	if err := n.pool.QueryRow(ctx, `SELECT name, COALESCE(default_locale, '') FROM organizations WHERE id = $1`, p.OrgID).
+		Scan(&name, &locale); err != nil {
+		return fmt.Errorf("referral: organization of a payout notice: %w", err)
+	}
+	text := salesnotify.FormatReferralPayout(salesnotify.ReferralPayoutInfo{
+		Locale: locale, OrgName: name, Kind: p.Kind, Count: p.Count,
+		AmountMinor: p.AmountMinor, Currency: p.Currency, Code: p.Code,
+		FriendOrderNumber: p.FriendOrderNumber, BalanceTimeout: p.Reason == referral.ReasonBalanceTimeout,
+	})
+	chats, delivered, err := n.announcer.AnnounceToOrg(ctx, p.OrgID.String(), text)
+	if err != nil {
+		return fmt.Errorf("referral: announce payout notice: %w", err)
+	}
+	if chats > 0 && delivered == 0 {
+		return errors.New("referral: no sales chat took the payout notice")
+	}
+	return nil
+}
+
+var _ referral.PayoutNotifier = (*OrganizerNotifier)(nil)

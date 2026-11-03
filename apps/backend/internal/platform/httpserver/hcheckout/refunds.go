@@ -956,8 +956,12 @@ type refundWebhookRequest struct {
 }
 
 // refundWebhookEventTypeToState maps normalized provider event types to refund states.
+// "charge.refund.updated" (Stripe) is an UPDATE, not a success: Stripe sends it
+// for a refund that went pending (no balance), failed or was cancelled too, so
+// its target is read from the refund's own status in the payload
+// (refundUpdatedTarget); the "succeeded" here is only what that status must say.
 var refundWebhookEventTypeToState = map[string]string{
-	"charge.refund.updated": "succeeded", // Stripe: refund succeeded
+	"charge.refund.updated": "succeeded", // only when the payload says status=succeeded
 	"refund.succeeded":      "succeeded",
 	"refund.failed":         "failed",
 	"refund.manual_review":  "manual_review",
@@ -1063,6 +1067,21 @@ func (h *Handler) HandleRefundWebhook(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		targetState = mapped
+		if req.EventType == "charge.refund.updated" {
+			target, known := refundUpdatedTarget(req.EventPayload)
+			if !known {
+				// Pending, requires_action, or no status at all: nothing has
+				// happened to the money yet.
+				httputil.WriteJSON(w, http.StatusOK, map[string]any{
+					"acknowledged": true,
+					"event_type":   req.EventType,
+					"processed":    false,
+					"reason":       "the refund is not finished at the provider; no state transition performed",
+				})
+				return
+			}
+			targetState = target
+		}
 	}
 
 	// Look up the refund by ID.
@@ -1359,4 +1378,40 @@ func (h *Handler) applyPartialInboundRefundHold(ctx context.Context, refund gen.
 		slog.String("currency", refund.Currency),
 		slog.Int64("tickets_on_hold", held),
 	)
+}
+
+// refundUpdatedTarget reads the refund's status from a Stripe
+// charge.refund.updated payload (a whole event, its data.object, or a bare
+// refund object): "succeeded" for a refund that succeeded, "failed" for one
+// that failed or was cancelled (Stripe cancels a refund it held 45 days for
+// lack of balance). known is false for any other status (pending,
+// requires_action) and for a payload without one: such an update must never
+// mark the refund succeeded.
+func refundUpdatedTarget(payload json.RawMessage) (target string, known bool) {
+	if len(payload) == 0 {
+		return "", false
+	}
+	var p struct {
+		Status string `json:"status"`
+		Data   struct {
+			Object struct {
+				Status string `json:"status"`
+			} `json:"object"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return "", false
+	}
+	status := p.Data.Object.Status
+	if status == "" {
+		status = p.Status
+	}
+	switch status {
+	case "succeeded":
+		return "succeeded", true
+	case "failed", "canceled":
+		return "failed", true
+	default:
+		return "", false
+	}
 }

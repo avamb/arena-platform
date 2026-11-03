@@ -299,3 +299,24 @@ other = "Kamarád s kódem <b>{{.Code}}</b> zahájil spor u objednávky č. {{.N
 
 ["salesnotify.referral.code_paused"]
 other = "Kód <b>{{.Code}}</b> je zastaven: nové slevy už nedá. Již vyplacené odměny zůstávají."
+
+["salesnotify.referral.balance_title"]
+other = "💳 <b>Přiveď kamaráda: odměna čeká na zůstatek Stripe</b> — {{.Org}}"
+
+["salesnotify.referral.balance_body"]
+other = "K vyplacení odměny kupujícím ({{.Count}}) potřebuje váš zůstatek Stripe k dispozici {{.Amount}}. Arena zůstatek kontroluje každých pár hodin a vyplatí, jakmile tam peníze budou. Pokud tam nebudou do 30 dnů, odměna se nevyplatí a kupující požádáme, aby se obrátili na vás."
+
+["salesnotify.referral.pending_title"]
+other = "⏳ <b>Přiveď kamaráda: Stripe zadržuje odměnu</b> — {{.Org}}"
+
+["salesnotify.referral.pending_body"]
+other = "Stripe přijal vrácení odměny kupujícím ({{.Count}}), celkem {{.Amount}}, ale zatím ho nevyplatil. Obvykle to znamená, že na zůstatku Stripe chybí peníze. Doplňte ho: vrácení bez krytí Stripe po 45 dnech zruší."
+
+["salesnotify.referral.unpaid_title"]
+other = "❌ <b>Přiveď kamaráda: odměna nebyla vyplacena</b> — {{.Org}}"
+
+["salesnotify.referral.unpaid_body_balance"]
+other = "Odměna {{.Amount}} za objednávku kamaráda č. {{.Number}} (kód <b>{{.Code}}</b>) nebyla vyplacena: 30 dní ji váš zůstatek Stripe nepokryl. Kupujícího, který kamaráda přivedl, jsme požádali, aby se obrátil na vás. Vyrovnejte se s ním sami, například promo kódem."
+
+["salesnotify.referral.unpaid_body_provider"]
+other = "Odměna {{.Amount}} za objednávku kamaráda č. {{.Number}} (kód <b>{{.Code}}</b>) nebyla vyplacena: platební poskytovatel vrácení odmítl. Kupujícího, který kamaráda přivedl, jsme požádali, aby se obrátil na vás. Vyrovnejte se s ním sami, například promo kódem."

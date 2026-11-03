@@ -516,6 +516,17 @@ type RefundLookup interface {
 	RefundStatus(ctx context.Context, providerRefundID string) (RefundResult, error)
 }
 
+// BalanceReader reads what the organizer's provider account can spend right
+// now (Stripe: GET /v1/balance). A refund is paid from that balance; with too
+// little on it Stripe holds the refund pending and cancels it after 45 days.
+// Only Stripe implements it: AllPay and PayPlus offer no such call.
+type BalanceReader interface {
+	// AvailableBalance is the available balance in currency (ISO 4217, upper
+	// case), in arena's minor units. A currency the account holds none of is
+	// 0, not an error. An error means the balance is not known.
+	AvailableBalance(ctx context.Context, currency string) (int64, error)
+}
+
 // Receipt is the provider's own receipt of one payment (spec 51 section 2):
 // the link the provider gave the buyer, its number when the provider printed
 // one, and a copy of the document itself. A Stripe receipt link expires in 30

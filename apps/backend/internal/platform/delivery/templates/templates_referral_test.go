@@ -1,6 +1,7 @@
 package templates
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -229,6 +230,56 @@ func TestReferralReversalOrganizer_PauseIsFinalInEveryLocale(t *testing.T) {
 			if strings.Contains(out.HTMLBody, bad) || strings.Contains(out.TextBody, bad) {
 				t.Errorf("%s: the letter promises the code can be switched on again (%q)", loc, bad)
 			}
+		}
+	}
+}
+
+// The payout letter to the owners (owner decision 03.11.2026): each notice
+// says its own news with its figures, the unpaid one tells the organizer to
+// settle with the referrer, no notice carries a buyer's address, and Hebrew
+// reads right to left.
+func TestReferralPayoutOrganizer_EveryNoticeInEveryLocale(t *testing.T) {
+	r, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, loc := range SupportedLocales {
+		subjects := map[string]bool{}
+		for _, c := range []ReferralData{
+			{Notice: ReferralNoticeBalance, Count: 3, Amount: "45.00 EUR"},
+			{Notice: ReferralNoticePending, Count: 2, Amount: "45.00 EUR"},
+			{Notice: ReferralNoticeUnpaid, Count: 1, Amount: "45.00 EUR", Code: "ANA-7K2P", Order: "1043", BalanceTimeout: true},
+			{Notice: ReferralNoticeUnpaid, Count: 1, Amount: "45.00 EUR", Code: "ANA-7K2P", Order: "1043"},
+		} {
+			c := c
+			out, err := r.Render(TemplateKindReferralPayoutOrganizer, loc, Data{Branding: Branding{OrgName: "Org"}, Referral: &c})
+			if err != nil {
+				t.Fatalf("%s/%s: %v", loc, c.Notice, err)
+			}
+			for _, body := range []string{out.HTMLBody, out.TextBody} {
+				if !strings.Contains(body, "45.00 EUR") || strings.Contains(body, "<no value>") || strings.Contains(body, "@") {
+					t.Errorf("%s/%s: amount missing or junk:\n%s", loc, c.Notice, body)
+				}
+				if c.Notice == ReferralNoticeUnpaid && (!strings.Contains(body, "ANA-7K2P") || !strings.Contains(body, "1043")) {
+					t.Errorf("%s/unpaid: code or order missing:\n%s", loc, body)
+				}
+				if c.Notice != ReferralNoticeUnpaid && !strings.Contains(body, strconv.Itoa(c.Count)) {
+					t.Errorf("%s/%s: the count is missing", loc, c.Notice)
+				}
+				if (c.Notice == ReferralNoticeBalance || c.BalanceTimeout) && !strings.Contains(body, "30") {
+					t.Errorf("%s/%s: the 30 days are not said", loc, c.Notice)
+				}
+				if c.Notice == ReferralNoticePending && !strings.Contains(strings.ReplaceAll(body, "45.00", ""), "45") {
+					t.Errorf("%s/pending: Stripe's 45 days are not said", loc)
+				}
+			}
+			subjects[out.Subject] = true
+			if loc == "he" && !strings.Contains(out.HTMLBody, `<html lang="he" dir="rtl">`) {
+				t.Errorf("he/%s: the page is not marked right-to-left", c.Notice)
+			}
+		}
+		if len(subjects) < 3 {
+			t.Errorf("%s: the notices share a subject: %v", loc, subjects)
 		}
 	}
 }

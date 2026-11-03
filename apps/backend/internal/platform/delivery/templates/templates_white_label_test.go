@@ -57,7 +57,7 @@ func TestTemplates_EveryBuyerPlatformLineFollowsWhiteLabel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	organizer := []string{"refund_blocked.", "refund_scan_exception.", "sales_alert.", "referral_reversal_organizer."}
+	organizer := []string{"refund_blocked.", "refund_scan_exception.", "sales_alert.", "referral_reversal_organizer.", "referral_payout_organizer."}
 	for _, f := range files {
 		raw, err := os.ReadFile(f)
 		if err != nil {

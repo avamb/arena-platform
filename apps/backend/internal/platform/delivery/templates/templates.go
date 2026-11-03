@@ -311,6 +311,18 @@ const (
 	// that a friend got money back or opened a dispute after the cashback was
 	// paid.
 	TemplateKindReferralReversalOrganizer = "referral_reversal_organizer"
+	// TemplateKindReferralPayoutOrganizer tells an organization's owners about
+	// cashback payouts (owner decision 03.11.2026): they wait for the Stripe
+	// balance, Stripe holds them pending, or one was not paid
+	// (ReferralData.Notice).
+	TemplateKindReferralPayoutOrganizer = "referral_payout_organizer"
+)
+
+// Payout notice kinds (ReferralData.Notice).
+const (
+	ReferralNoticeBalance = "balance"
+	ReferralNoticePending = "pending"
+	ReferralNoticeUnpaid  = "unpaid"
 )
 
 // Referral reversal kinds (ReferralData.Reversal).
@@ -335,6 +347,13 @@ type ReferralData struct {
 	Reversal string
 	// CodePaused says the code was put on pause (organizer letter only).
 	CodePaused bool
+	// Notice is ReferralNoticeBalance, ReferralNoticePending or
+	// ReferralNoticeUnpaid (payout letter only); Count is how many cashbacks
+	// it speaks of and Amount their sum; BalanceTimeout says an unpaid one
+	// was never covered by the balance (else the provider refused it).
+	Notice         string
+	Count          int
+	BalanceTimeout bool
 }
 
 // ScanAlertData is the content of a refund-blocked notice.

@@ -39,6 +39,12 @@ func NewPayoutHandler(s *Service) func(ctx context.Context, payload []byte) erro
 // organizer (owner decision R-RF4). Anything but 'due' is left alone, so a
 // repeated job is a no-op.
 //
+// A ticket cashback leaves only after the friend's event and only when the
+// organizer's balance covers it (wait.go, owner decision 03.11.2026): until
+// then the reward stays due with a wait reason and the sweep queues it again
+// when next_attempt_at comes. A shop cashback is paid at once (it has no
+// session).
+//
 // The decision is taken under the payment's advisory lock, inside the engine's
 // own transaction (BatchInput.Prepare): the reward is still due, the friend's
 // order is still paid, and the cap is applied to what the payment's refunds
@@ -96,6 +102,9 @@ func (s *Service) Payout(ctx context.Context, rewardID uuid.UUID) error {
 	if disputed {
 		return s.applyOutcome(ctx, rw.ID, &outcome{state: StateCancelled, reason: "friend_disputed"})
 	}
+	if ok, err := s.gateEvent(ctx, rw, friend.ID); !ok {
+		return err
+	}
 
 	budgets, err := ticketBudgets(ctx, s.pool, referrer.ID)
 	if err != nil {
@@ -104,6 +113,12 @@ func (s *Service) Payout(ctx context.Context, rewardID uuid.UUID) error {
 	initial := SplitOverTickets(rw.AmountMinor, budgets)
 	if len(initial) == 0 {
 		return s.end(ctx, rw.ID, StateNotPossible, "no_refundable_ticket")
+	}
+	if ok, err := s.gateBalance(ctx, rw, referrer.ID); !ok {
+		return err
+	}
+	if err := s.clearWait(ctx, rw.ID); err != nil {
+		return s.retryLater(ctx, rw.ID, err)
 	}
 
 	res, err := s.engine.CreateBatch(ctx, refunds.BatchInput{
@@ -280,7 +295,7 @@ func (s *Service) setState(ctx context.Context, id uuid.UUID, from []string, c s
 	err = tx.QueryRow(ctx, `UPDATE referral_rewards
 		SET state = $3, reason = COALESCE(NULLIF($4, ''), reason),
 		    amount_minor = COALESCE($5, amount_minor), refund_id = COALESCE($6, refund_id),
-		    refund_batch_id = COALESCE($7, refund_batch_id), next_attempt_at = NULL, updated_at = now(),
+		    refund_batch_id = COALESCE($7, refund_batch_id), next_attempt_at = NULL, wait_reason = NULL, updated_at = now(),
 		    provider_code = CASE WHEN $8::text IS NULL THEN provider_code ELSE NULLIF($8::text, '') END
 		WHERE id = $1 AND state = ANY($2)
 		RETURNING COALESCE(reason, ''), COALESCE(provider_code, ''),
