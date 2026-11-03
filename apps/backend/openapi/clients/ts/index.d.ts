@@ -3901,11 +3901,16 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Switch the Telegram leg of the sales page's contact form
+         * Change the organization-wide sales page and payment switches
          * @description `contact_form_to_telegram` decides whether buyers' messages from the
          *     sales page's contact form also go to the organization's own sales
-         *     Telegram chat (the e-mail always goes). Requires `org.update`.
-         *     Audited as `v1.organization.contact_form_update`.
+         *     Telegram chat (the e-mail always goes). `provider_receipt_enabled` and
+         *     `provider_receipt_forced` decide whether the payment provider e-mails
+         *     its own receipt to the buyer; only a platform superadmin changes the
+         *     forced flag. Requires `org.update`. Audited as
+         *     `v1.organization.contact_form_update` (only the contact form),
+         *     `v1.organization.provider_receipt_update` (only the receipt) or
+         *     `v1.organization.settings_update` (both).
          */
         patch: operations["updateSellerProfile"];
         trace?: never;
@@ -18807,16 +18812,45 @@ export interface components {
             channels: components["schemas"]["SellerProfileChannel"][];
             /** @description Buyers' messages from the sales page's contact form also go to the organization's sales Telegram chat (default true). */
             contact_form_to_telegram?: boolean;
+            /** @description Whether the payment provider e-mails its own receipt of the payment to the buyer (spec 51, migration 0185). */
+            provider_receipt: components["schemas"]["SellerProviderReceipt"];
+        };
+        /**
+         * @description The provider-receipt setting of the organization. When `effective` is
+         *     true, checkout asks the payment provider to e-mail its own receipt to
+         *     the buyer (Stripe `payment_intent_data.receipt_email`, PayPlus
+         *     `sendEmailApproval`). Off cannot promise that no receipt is sent: the
+         *     organizer's own provider account may send one by itself.
+         */
+        SellerProviderReceipt: {
+            /** @description The owner's choice (default true). */
+            enabled: boolean;
+            /** @description The platform operator's "always send"; overrides `enabled`. Only a platform superadmin changes it. */
+            forced: boolean;
+            /** @description What checkout does now (`enabled` or `forced`). */
+            effective: boolean;
         };
         /** @description Envelope of the seller-profile routes. */
         SellerProfileEnvelope: {
             /** @description The profile as stored after the call. */
             seller_profile: components["schemas"]["SellerProfile"];
         };
-        /** @description The organization-wide switch of the contact form's Telegram leg. */
+        /**
+         * @description The organization-wide switches. Every key is optional; at least one is
+         *     required (400 `seller.invalid_body` otherwise).
+         */
         UpdateSellerProfileRequest: {
             /** @description Post buyers' messages to the organization's sales Telegram chat too. */
-            contact_form_to_telegram: boolean;
+            contact_form_to_telegram?: boolean;
+            /** @description The owner's choice, the payment provider e-mails its own receipt to the buyer. */
+            provider_receipt_enabled?: boolean;
+            /**
+             * @description "Always send the provider receipt", overriding the owner. Only a
+             *     platform superadmin (with `X-Admin-Reason`) changes it; anyone else
+             *     gets 403 `seller.provider_receipt_forced_superadmin_only` unless the
+             *     value repeats the stored one.
+             */
+            provider_receipt_forced?: boolean;
         };
         /** @description Tri-state contact change; an absent key keeps, null or "" clears. */
         SellerDisplayContactPatch: {
@@ -46234,7 +46268,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks `org.update` in the organization. */
+            /** @description Caller lacks `org.update` in the organization, is an API key, or changed `provider_receipt_forced` without being a platform superadmin (`seller.provider_receipt_forced_superadmin_only`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -54479,6 +54513,19 @@ export interface operations {
              *     organization the caller does not belong to (`media.not_found`).
              */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The object is an archived payment provider receipt (owner type
+             *     `payment_receipt`), kept as dispute evidence; it is never deleted
+             *     (`media.receipt_not_deletable`).
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

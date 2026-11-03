@@ -432,10 +432,10 @@ type Branding struct {
 
 	// Footer / EU minimum-identification fields.
 
-	// LegalName is the registered juridical name of the organisation.
-	// Required for the footer's commercial-communications block; empty
-	// falls back to PlatformLegalName so the footer still identifies a
-	// real legal entity.
+	// LegalName is the registered juridical name of the organisation: the
+	// SELLER, whose provider account took the money. Empty falls back to the
+	// organisation's display name (resolveBranding), never to the platform:
+	// the platform is not the seller (spec 51 section 2).
 	LegalName              string
 	LegalAddressLine1      string
 	LegalAddressLine2      string
@@ -461,6 +461,43 @@ type Branding struct {
 	// letter's language ("Registration no. 123 · VAT ID CZ123"). Render
 	// fills it; empty prints no line.
 	SellerIDs string
+	// PaymentProvider is the human name of the payment provider the buyer's
+	// money went through ("Stripe"), empty when the letter belongs to no
+	// payment (an invitation, a free order, an order paid on a selling site).
+	PaymentProvider string
+	// SellerLabel ("Seller:") and PaymentLine ("Payment processed by
+	// Stripe") are the footer words in the letter's language (spec 51
+	// section 2: the letter names the organization that received the money
+	// as the seller, and the provider). Render fills them; a letter without
+	// PaymentProvider prints no payment line.
+	SellerLabel string
+	PaymentLine string
+}
+
+// sellerFooterWords are the footer words of every buyer letter, by locale.
+// The payment line takes the provider's name.
+var sellerFooterWords = map[string]struct{ seller, payment string }{
+	"en": {"Seller:", "Payment processed by %s"},
+	"ru": {"Продавец:", "Оплата проведена через %s"},
+	"cs": {"Prodávající:", "Platbu zpracovává %s"},
+	"de": {"Verkäufer:", "Zahlung abgewickelt über %s"},
+	"es": {"Vendedor:", "Pago procesado por %s"},
+	"fr": {"Vendeur :", "Paiement traité par %s"},
+	"he": {"המוכר:", "התשלום בוצע באמצעות %s"},
+}
+
+// fillSellerFooter sets the seller label and the payment line in locale.
+func fillSellerFooter(b *Branding, locale string) {
+	words, ok := sellerFooterWords[locale]
+	if !ok {
+		words = sellerFooterWords["en"]
+	}
+	if b.SellerLabel == "" {
+		b.SellerLabel = words.seller
+	}
+	if p := strings.TrimSpace(b.PaymentProvider); p != "" && b.PaymentLine == "" {
+		b.PaymentLine = fmt.Sprintf(words.payment, p)
+	}
 }
 
 // Platform defaults used by the worker handler when the organisation
@@ -633,6 +670,7 @@ func (r *Renderer) Render(kind, locale string, data Data) (Rendered, error) {
 	if data.Branding.SellerIDs == "" {
 		data.Branding.SellerIDs = sellerinfo.IDsLine(resolved, data.Branding.RegistrationNumber, data.Branding.TaxID, data.Branding.TaxIDScheme)
 	}
+	fillSellerFooter(&data.Branding, resolved)
 
 	if _, ok := r.known[key]; !ok {
 		return Rendered{}, fmt.Errorf(

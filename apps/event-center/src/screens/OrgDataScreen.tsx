@@ -75,6 +75,7 @@ function OrgDataBody({ orgId, canReadPayments }: { orgId: string; canReadPayment
           <OrgDataForm orgId={orgId} org={org.data.organization} profile={profile.data} />
           <SalesPages orgId={orgId} profile={profile.data} />
           <ContactFormSwitch orgId={orgId} profile={profile.data} />
+          <ProviderReceiptSwitch orgId={orgId} profile={profile.data} />
         </>
       )}
     </section>
@@ -140,7 +141,7 @@ function ContactFormSwitch({ orgId, profile }: { orgId: string; profile: SellerP
   // An older server that does not answer the switch means the default, on.
   const on = profile.contact_form_to_telegram !== false;
   const toggle = useMutation({
-    mutationFn: (next: boolean) => patchSellerProfile(orgId, next),
+    mutationFn: (next: boolean) => patchSellerProfile(orgId, { contact_form_to_telegram: next }),
     onSuccess: (p) => queryClient.setQueryData(["sellerProfile", orgId], p),
   });
   return (
@@ -153,6 +154,44 @@ function ContactFormSwitch({ orgId, profile }: { orgId: string; profile: SellerP
           {on ? t("orgData.tg.btnOff") : t("orgData.tg.btnOn")}
         </button>
       </p>
+    </section>
+  );
+}
+
+/**
+ * Spec 51, decision R-6: whether the payment provider e-mails its own receipt
+ * to the buyer. The owner switches it; when the platform team set "always
+ * send", the owner sees why and cannot turn it off. Off cannot promise that
+ * no receipt is sent: the provider account may send one by itself.
+ */
+function ProviderReceiptSwitch({ orgId, profile }: { orgId: string; profile: SellerProfile }) {
+  const { t } = useI18n();
+  const queryClient = useQueryClient();
+  // An older server that does not answer the setting means the default, on.
+  const setting = profile.provider_receipt ?? { enabled: true, forced: false, effective: true };
+  const toggle = useMutation({
+    mutationFn: (next: boolean) => patchSellerProfile(orgId, { provider_receipt_enabled: next }),
+    onSuccess: (p) => queryClient.setQueryData(["sellerProfile", orgId], p),
+  });
+  const state = setting.forced ? "forced" : setting.effective ? "on" : "off";
+  return (
+    <section aria-labelledby="org-data-receipt-title" data-testid="org-data-receipt" data-state={state}>
+      <h2 id="org-data-receipt-title">{t("orgData.receipt.title")}</h2>
+      <p data-testid="org-data-receipt-state">{t(`orgData.receipt.${state}`)}</p>
+      {toggle.error !== null && <SellerErrorNotice error={toggle.error} testId="org-data-receipt-error" />}
+      {!setting.forced && (
+        <p>
+          <button
+            type="button"
+            className="btn"
+            disabled={toggle.isPending}
+            onClick={() => toggle.mutate(!setting.enabled)}
+            data-testid="org-data-receipt-toggle"
+          >
+            {setting.enabled ? t("orgData.receipt.btnOff") : t("orgData.receipt.btnOn")}
+          </button>
+        </p>
+      )}
     </section>
   );
 }

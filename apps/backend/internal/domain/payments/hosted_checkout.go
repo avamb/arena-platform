@@ -29,6 +29,12 @@ type CreateHostedCheckoutRequest struct {
 	ProductName string
 	// CustomerEmail pre-fills the buyer's email on the hosted page. Optional.
 	CustomerEmail string
+	// ReceiptEmail, when set, asks the provider to e-mail its own receipt of
+	// the payment to this address (spec 51 section 2, decision R-6: the
+	// organization's setting, or the platform operator's "always send").
+	// Empty sends no such request; the provider's own account settings may
+	// still send one, which arena cannot prevent.
+	ReceiptEmail string
 	// CustomerName and CustomerPhone pre-fill the buyer's name and phone when
 	// the checkout collected them. Optional; a provider that has no such
 	// fields ignores them (AllPay also decides from the phone whether to ask
