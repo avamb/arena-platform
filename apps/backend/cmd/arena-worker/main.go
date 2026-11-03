@@ -943,6 +943,7 @@ func buildDeliveryHandlerOptions(cfg *config.Config, queries *gen.Queries, media
 		Media:              media,
 		TicketsBaseURL:     cfg.PublicTicketsBaseURL,
 		ContactFormEnabled: cfg.ContactFormReady(),
+		APIBaseURL:         cfg.APIPublicBaseURL(),
 		Logger:             logger,
 	}
 }
