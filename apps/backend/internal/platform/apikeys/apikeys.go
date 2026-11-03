@@ -83,7 +83,7 @@ var ForbiddenScopeExact = map[string]bool{
 	// venue.curate verifies a venue for every organization (migration 0182):
 	// platform superadmin only.
 	"venue.curate": true,
-	// dispute.respond submits or accepts a payment dispute (migration 0189,
+	// dispute.respond submits or accepts a payment dispute (migration 0186,
 	// spec 51.3): a site must never answer a dispute without a person.
 	"dispute.respond": true,
 }

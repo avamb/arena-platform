@@ -1,4 +1,4 @@
--- 0189_payment_disputes.sql — disputes and chargebacks (spec 51.3, PAY-16).
+-- 0186_payment_disputes.sql — disputes and chargebacks (spec 51.3, PAY-16).
 --
 -- A buyer disputes a card payment at their bank; the organizer has days to
 -- answer with evidence. Arena records the dispute when the provider tells it

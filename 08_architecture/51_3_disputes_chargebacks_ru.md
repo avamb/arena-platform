@@ -1,7 +1,7 @@
 # 51.3. Споры и чарджбэки: автоматическая подготовка ответа
 
 Статус: согласовано владельцем 02.11.2026 (все предложения §12 приняты как есть).
-Реализация: миграция 0189, пакет `internal/platform/disputes`; отличия от
+Реализация: миграция 0186, пакет `internal/platform/disputes`; отличия от
 текста ниже — в §14 «Как построено».
 Дата: 2026-11-01.
 Текст написан по `docs/text_style_standard_ru.md`.
@@ -564,7 +564,7 @@ ABH TEAM на стенде (§5.7); AllPay, Flitt, PayPlus заводят спо
 
 ## 14. Как построено (02.11.2026)
 
-Код: миграция `0189_payment_disputes.sql`, пакет
+Код: миграция `0186_payment_disputes.sql`, пакет
 `internal/platform/disputes`, маршруты `httpserver/disputes_routes.go`,
 приём вебхука `hcheckout/dispute_webhook.go`, задания в
 `cmd/arena-worker/disputes.go`, Stripe — `adapters/stripe/dispute.go`.
