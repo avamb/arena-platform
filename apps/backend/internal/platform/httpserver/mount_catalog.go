@@ -175,6 +175,20 @@ func (s *Server) mountTierRoutes(r chi.Router) {
 			pr.Delete("/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}", s.handleDeleteTier)
 		})
 	}
+	// Smart price presets (spec 51 §4.2): written through the event-bundle
+	// import, so they need the import's handles.
+	if s.authEnabled() && s.eventQueries != nil && s.pool != nil {
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "tier.read", "tiers")
+			pr.Get("/organizations/{org_id}/sessions/{session_id}/smart-price", s.handleSmartPriceList)
+		})
+		r.Group(func(pr chi.Router) {
+			s.applyAuth(pr, "tier.update", "tiers")
+			pr.Post("/organizations/{org_id}/sessions/{session_id}/smart-price/preview", s.handleSmartPricePreview)
+			pr.Post("/organizations/{org_id}/sessions/{session_id}/smart-price", s.handleSmartPriceEnable)
+			pr.Post("/organizations/{org_id}/sessions/{session_id}/smart-price/{rule_id}/stop", s.handleSmartPriceStop)
+		})
+	}
 }
 
 // mountPublicationRoutes mounts event publication endpoints (feature #151).

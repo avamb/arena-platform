@@ -68,6 +68,9 @@ type importPlan struct {
 	// transaction that is rolled back, and skips every step whose effect
 	// would outlive it (dry_run.go).
 	Mode importMode
+	// SmartPriceWrite marks the import a smart price write (smart_price.go):
+	// it changes preset prices on purpose, so it never ends a preset.
+	SmartPriceWrite bool
 }
 
 // importResult is the identifier set the response is built from.

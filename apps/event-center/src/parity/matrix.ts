@@ -457,6 +457,21 @@ export const PARITY: readonly ParityRow[] = [
       `PUT ${O}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule`,
     ],
   },
+  {
+    area: "Категории",
+    fn: "Умная цена: пресет роста цены",
+    bot: "smart_price.go, `sp:`",
+    web: "R4",
+    // spec 51 §4.2
+    ready: { twin: "live/smart-price.spec.ts" },
+    routes: [
+      `GET ${O}/sessions/{session_id}/smart-price`,
+      `POST ${O}/sessions/{session_id}/smart-price/preview`,
+      `POST ${O}/sessions/{session_id}/smart-price`,
+      `POST ${O}/sessions/{session_id}/smart-price/{rule_id}/stop`,
+    ],
+    note: "Ступени по продажам или окна цен по дням, через импорт мероприятия; ручная правка цены выключает пресет.",
+  },
   // ── Заказы ──────────────────────────────────────────────────────────
   {
     area: "Заказы",

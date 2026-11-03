@@ -92,6 +92,11 @@ import type {
   SeatLayoutSuggestResponse,
 } from "@/lib/api/types";
 import type {
+  SmartPricePreviewResponse,
+  SmartPriceRequest,
+  SmartPriceRulesResponse,
+} from "@/lib/api/types";
+import type {
   StaffInvitationCancelRequest,
   StaffInvitationCancelResponse,
   InvitationBatch,
@@ -812,6 +817,31 @@ export function updateTier(ref: TierRef, body: UpdateTicketTierRequest): Promise
 /** The category's price windows, to find the one in force now. */
 export function fetchTierSchedule(ref: TierRef): Promise<TierPriceScheduleEnvelope> {
   return call<TierPriceScheduleEnvelope>({ route: API.tierSchedule, params: tierParams(ref) });
+}
+
+// ─── Smart price (spec 51 §4.2) ─────────────────────────────────────────────
+
+/** The session's smart price presets, with where an active one stands now. */
+export function listSmartPrice(orgId: string, sessionId: string): Promise<SmartPriceRulesResponse> {
+  return call<SmartPriceRulesResponse>({ route: API.smartPriceList, params: { org_id: orgId, session_id: sessionId } });
+}
+
+/** The steps or price windows a preset would write. Writes nothing. */
+export function previewSmartPrice(orgId: string, sessionId: string, body: SmartPriceRequest): Promise<SmartPricePreviewResponse> {
+  return call<SmartPricePreviewResponse>({ route: API.smartPricePreview, params: { org_id: orgId, session_id: sessionId }, body });
+}
+
+/** Turns a preset on. The server writes it through the event-bundle import. */
+export function enableSmartPrice(orgId: string, sessionId: string, body: SmartPriceRequest): Promise<SmartPriceRulesResponse> {
+  return call<SmartPriceRulesResponse>({ route: API.smartPriceEnable, params: { org_id: orgId, session_id: sessionId }, body });
+}
+
+/** Freezes the price where it is now. */
+export function stopSmartPrice(orgId: string, sessionId: string, ruleId: string): Promise<SmartPriceRulesResponse> {
+  return call<SmartPriceRulesResponse>({
+    route: API.smartPriceStop,
+    params: { org_id: orgId, session_id: sessionId, rule_id: ruleId },
+  });
 }
 
 /** Replaces the whole schedule. Send every window back, the changed one included. */

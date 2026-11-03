@@ -109,6 +109,7 @@ func run(args []string) error {
 	saleTimesOp := fs.String("sale-times-op", "", "5-3 twin helper: reset or inspect")
 	salesStateOp := fs.String("sales-state-op", "", "sales state twin helper: reset (see sales_state_fixture.go)")
 	growthOp := fs.String("growth-op", "", "spec 51-1 twin helper: reset (see growth_fixture.go)")
+	smartPriceOp := fs.String("smart-price-op", "", "smart price twin helper: reset or sell (see smart_price_fixture.go)")
 	categoriesOp := fs.String("categories-op", "", "5-4 twin helper: reset or inspect")
 	refundOp := fs.String("refund-op", "", "8-1 twin helper: reset, inspect or scan (see refund_fixture.go)")
 	seatsOp := fs.String("seats-op", "", "S2b twin helper: reset, inspect or sell (see seats_fixture.go)")
@@ -142,6 +143,9 @@ func run(args []string) error {
 	}
 	if *saleTimesOp != "" {
 		return runSaleTimesOp(*saleTimesOp)
+	}
+	if *smartPriceOp != "" {
+		return runSmartPriceOp(*smartPriceOp)
 	}
 	if *salesStateOp != "" {
 		return runSalesStateOp(*salesStateOp)
@@ -305,6 +309,10 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	}
 	// 5-3: the date of the sales end and doors-open twin test (sale_times_fixture.go).
 	if err := applySaleTimesFixture(ctx, tx); err != nil {
+		return err
+	}
+	// Spec 51 §4.2: the smart price twin test's date (smart_price_fixture.go).
+	if err := applySmartPriceFixture(ctx, tx); err != nil {
 		return err
 	}
 	// Migration 0183: the sales state twin test's date (sales_state_fixture.go).

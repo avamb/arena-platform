@@ -163,6 +163,13 @@ export interface Tier {
   current_price?: number;
   /** AB-48: when the price next changes ("price rises on <date>"). */
   next_price_change_at?: string | null;
+  /** The price from next_price_change_at on (smart price, spec 51 §4.2). */
+  next_price?: number | null;
+  /**
+   * A category that sells in steps by tickets sold: the tickets left at this
+   * price and the next step's price. Only set when the next step is dearer.
+   */
+  price_step?: { remaining_at_price: number | null; next_price: number } | null;
   currency: string;
   pwyw_min?: number | null;
   pwyw_max?: number | null;
