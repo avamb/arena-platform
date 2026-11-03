@@ -7643,6 +7643,126 @@ type EventMapPoint struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// EventPageDate One date of the event as the page writes it.
+type EventPageDate struct {
+	// Date The day, `YYYY-MM-DD`.
+	Date string `json:"date"`
+
+	// Doors The doors-open time of the same day, `HH:MM`, or empty.
+	Doors string `json:"doors"`
+
+	// Time The start time as written, `HH:MM` 24-hour, or empty when the page gives only the day.
+	Time string `json:"time"`
+
+	// UtcOffset The UTC offset the page wrote next to the time (`+01:00`), or empty. The time is never converted.
+	UtcOffset string `json:"utc_offset"`
+}
+
+// EventPageFacts What an organizer's event page says, normalized. An empty string, or
+// an empty list, means "not on the page". Every value is a HINT for a
+// wizard to offer as a button; nothing is written from it. The fields
+// of `PosterFacts` mean the same here (`date` and `time` repeat the
+// first entry of `dates`), so a client of the poster reading reads this
+// too.
+type EventPageFacts struct {
+	// Age Age rating, one of `0+`, `6+`, `12+`, `16+`, `18+`, or empty.
+	Age string `json:"age"`
+
+	// Categories The ticket prices the page lists, at most 10; empty when there are none.
+	Categories []PosterFactsCategory `json:"categories"`
+
+	// City City, or empty.
+	City string `json:"city"`
+
+	// Country ISO 3166-1 alpha-2 code when the page gives one, else empty.
+	Country string `json:"country"`
+
+	// Date First date, `YYYY-MM-DD`, or empty.
+	Date string `json:"date"`
+
+	// Dates The future dates the page lists, oldest first, at most 10; past, cancelled and postponed dates are left out.
+	Dates []EventPageDate `json:"dates"`
+
+	// Description The page's description as plain text with line breaks, at most 4000 characters, or empty.
+	Description string `json:"description"`
+
+	// Image The page's picture, or null when the page has none or it could not be downloaded.
+	Image *EventPageImage `json:"image"`
+
+	// Name Event name.
+	Name string `json:"name"`
+
+	// Street Street address of the venue, or empty.
+	Street string `json:"street"`
+
+	// Time Start time of the first date, `HH:MM`, or empty.
+	Time string `json:"time"`
+
+	// VenueName Venue name, or empty.
+	VenueName string `json:"venue_name"`
+}
+
+// EventPageFactsRequest The address of the organizer's own event page.
+type EventPageFactsRequest struct {
+	// Url A full `http` or `https` address of a public web page. A page of a ticketing platform is refused.
+	Url string `json:"url"`
+}
+
+// EventPageFactsResponse The answer of the event-page reading.
+type EventPageFactsResponse struct {
+	// Facts What the page says.
+	Facts EventPageFacts `json:"facts"`
+
+	// FinalUrl The page's address after redirects.
+	FinalUrl string `json:"final_url"`
+
+	// Language The page's language (`es`, `ru`), or empty. It does not change the draft.
+	Language string `json:"language"`
+
+	// Sources Where each found value came from, by field (`name`, `dates`,
+	// `venue`, `description`, `age`, `categories`, `image`):
+	// `json_ld`, `open_graph` or `model`. A value read by the model must
+	// be shown as such.
+	Sources map[string]string `json:"sources"`
+
+	// Warnings Facts about the reading; empty when there are none.
+	Warnings []EventPageWarning `json:"warnings"`
+}
+
+// EventPageImage The page's picture, stored as an `event_poster` media object of the
+// organization and attached to nothing until the organizer chooses it.
+type EventPageImage struct {
+	// FitsPoster True when the picture passes the poster rules of the Telegram bot (4:5 or square, at least 1000 px wide).
+	FitsPoster bool `json:"fits_poster"`
+
+	// Height Height in pixels.
+	Height int `json:"height"`
+
+	// MediaId Id of the stored media object.
+	MediaId openapi_types.UUID `json:"media_id"`
+
+	// Width Width in pixels.
+	Width int `json:"width"`
+}
+
+// EventPageWarning A fact about the reading the organizer should know.
+type EventPageWarning struct {
+	// Code Stable code: `event_page.some_dates_skipped`, `event_page.past_dates_skipped`,
+	// `event_page.cancelled_dates_skipped`, `event_page.online_event`,
+	// `event_page.price_range_only`, `event_page.read_by_model`,
+	// `event_page.model_unavailable`, `event_page.model_quota`,
+	// `event_page.image_not_poster`, `event_page.image_unavailable`,
+	// `event_page.no_dates`, `event_page.no_prices`,
+	// `event_page.javascript_page`. The list may grow.
+	Code string `json:"code"`
+
+	// Count How many dates a skipping warning is about.
+	Count *int `json:"count,omitempty"`
+
+	// Values Short page values the text needs (the low and high price and the currency of a price range, a picture's size).
+	Values *[]string `json:"values,omitempty"`
+}
+
 // EventPartnerLink One "where else to buy" link of an event.
 type EventPartnerLink struct {
 	// CreatedAt When the link was added.
@@ -22035,6 +22155,9 @@ type CreateOrgCityJSONRequestBody = CreateOrgCityRequest
 
 // CreateComplimentaryIssuanceJSONRequestBody defines body for CreateComplimentaryIssuance for application/json ContentType.
 type CreateComplimentaryIssuanceJSONRequestBody = ComplimentaryCreateRequest
+
+// PostV1OrganizationsOrgIdEventPageFactsJSONRequestBody defines body for PostV1OrganizationsOrgIdEventPageFacts for application/json ContentType.
+type PostV1OrganizationsOrgIdEventPageFactsJSONRequestBody = EventPageFactsRequest
 
 // CreateEventJSONRequestBody defines body for CreateEvent for application/json ContentType.
 type CreateEventJSONRequestBody = CreateEventRequest

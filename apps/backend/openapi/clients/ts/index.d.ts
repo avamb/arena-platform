@@ -6169,6 +6169,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/event-page-facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read the organizer's own event page
+         * @description Downloads the organizer's OWN event page and answers what it says
+         *     about the event: the name, the dates, the venue, the description, the
+         *     ticket prices and a picture (spec 59). The values are hints for an
+         *     event wizard (the Telegram bot, the web event center) to offer as
+         *     buttons; nothing is created but the page's picture, stored as an
+         *     unattached `event_poster` media object the organizer may choose as
+         *     the poster.
+         *
+         *     Sources by trust: a schema.org `Event` in JSON-LD, then Open Graph and
+         *     the meta tags, and only when those leave the dates or the prices
+         *     missing, a text model reading the page's visible text (`sources` says
+         *     which). Model readings are capped at `EVENT_PAGE_READS_PER_ORG_PER_DAY`
+         *     (default 30) per organization in a sliding 24 hours; past the cap, or
+         *     without a model key, the reading answers without them and says so in
+         *     `warnings`. Page reads are capped at 20 an hour per organization. Both
+         *     counters live in the memory of one arena-api process.
+         *
+         *     The page is fetched only on the public internet (no private, loopback
+         *     or metadata address, also after a redirect), http or https, within 10
+         *     seconds and 2 MiB. A page of a ticketing platform (Ticketmaster,
+         *     Eventbrite and others) is refused before it is read: their terms forbid
+         *     automated collection. The call may take up to a minute.
+         *
+         *     Requires the `event.update` permission in the path organization (the
+         *     owner and the manager hold it).
+         */
+        post: operations["postV1OrganizationsOrgIdEventPageFacts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/texts/format": {
         parameters: {
             query?: never;
@@ -11414,6 +11458,110 @@ export interface components {
         PosterFactsResponse: {
             /** @description What the model read from the poster. */
             facts: components["schemas"]["PosterFacts"];
+        };
+        /** @description One date of the event as the page writes it. */
+        EventPageDate: {
+            /** @description The day, `YYYY-MM-DD`. */
+            date: string;
+            /** @description The start time as written, `HH:MM` 24-hour, or empty when the page gives only the day. */
+            time: string;
+            /** @description The doors-open time of the same day, `HH:MM`, or empty. */
+            doors: string;
+            /** @description The UTC offset the page wrote next to the time (`+01:00`), or empty. The time is never converted. */
+            utc_offset: string;
+        };
+        /**
+         * @description The page's picture, stored as an `event_poster` media object of the
+         *     organization and attached to nothing until the organizer chooses it.
+         */
+        EventPageImage: {
+            /**
+             * Format: uuid
+             * @description Id of the stored media object.
+             */
+            media_id: string;
+            /** @description Width in pixels. */
+            width: number;
+            /** @description Height in pixels. */
+            height: number;
+            /** @description True when the picture passes the poster rules of the Telegram bot (4:5 or square, at least 1000 px wide). */
+            fits_poster: boolean;
+        };
+        /**
+         * @description What an organizer's event page says, normalized. An empty string, or
+         *     an empty list, means "not on the page". Every value is a HINT for a
+         *     wizard to offer as a button; nothing is written from it. The fields
+         *     of `PosterFacts` mean the same here (`date` and `time` repeat the
+         *     first entry of `dates`), so a client of the poster reading reads this
+         *     too.
+         */
+        EventPageFacts: {
+            /** @description Event name. */
+            name: string;
+            /** @description First date, `YYYY-MM-DD`, or empty. */
+            date: string;
+            /** @description Start time of the first date, `HH:MM`, or empty. */
+            time: string;
+            /** @description Venue name, or empty. */
+            venue_name: string;
+            /** @description City, or empty. */
+            city: string;
+            /** @description ISO 3166-1 alpha-2 code when the page gives one, else empty. */
+            country: string;
+            /** @description Street address of the venue, or empty. */
+            street: string;
+            /** @description Age rating, one of `0+`, `6+`, `12+`, `16+`, `18+`, or empty. */
+            age: string;
+            /** @description The page's description as plain text with line breaks, at most 4000 characters, or empty. */
+            description: string;
+            /** @description The future dates the page lists, oldest first, at most 10; past, cancelled and postponed dates are left out. */
+            dates: components["schemas"]["EventPageDate"][];
+            /** @description The ticket prices the page lists, at most 10; empty when there are none. */
+            categories: components["schemas"]["PosterFactsCategory"][];
+            /** @description The page's picture, or null when the page has none or it could not be downloaded. */
+            image: components["schemas"]["EventPageImage"] | null;
+        };
+        /** @description A fact about the reading the organizer should know. */
+        EventPageWarning: {
+            /**
+             * @description Stable code: `event_page.some_dates_skipped`, `event_page.past_dates_skipped`,
+             *     `event_page.cancelled_dates_skipped`, `event_page.online_event`,
+             *     `event_page.price_range_only`, `event_page.read_by_model`,
+             *     `event_page.model_unavailable`, `event_page.model_quota`,
+             *     `event_page.image_not_poster`, `event_page.image_unavailable`,
+             *     `event_page.no_dates`, `event_page.no_prices`,
+             *     `event_page.javascript_page`. The list may grow.
+             */
+            code: string;
+            /** @description How many dates a skipping warning is about. */
+            count?: number;
+            /** @description Short page values the text needs (the low and high price and the currency of a price range, a picture's size). */
+            values?: string[];
+        };
+        /** @description The address of the organizer's own event page. */
+        EventPageFactsRequest: {
+            /** @description A full `http` or `https` address of a public web page. A page of a ticketing platform is refused. */
+            url: string;
+        };
+        /** @description The answer of the event-page reading. */
+        EventPageFactsResponse: {
+            /** @description What the page says. */
+            facts: components["schemas"]["EventPageFacts"];
+            /**
+             * @description Where each found value came from, by field (`name`, `dates`,
+             *     `venue`, `description`, `age`, `categories`, `image`):
+             *     `json_ld`, `open_graph` or `model`. A value read by the model must
+             *     be shown as such.
+             */
+            sources: {
+                [key: string]: string;
+            };
+            /** @description The page's address after redirects. */
+            final_url: string;
+            /** @description The page's language (`es`, `ru`), or empty. It does not change the draft. */
+            language: string;
+            /** @description Facts about the reading; empty when there are none. */
+            warnings: components["schemas"]["EventPageWarning"][];
         };
         /**
          * @description Which text is formatted. It picks the tags the model may add and the
@@ -54574,6 +54722,102 @@ export interface operations {
                 };
             };
             /** @description Poster reading is not configured (`media.poster_reader_not_configured`), the model could not be reached (`media.poster_read_failed`), or media storage is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdEventPageFacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventPageFactsRequest"];
+            };
+        };
+        responses: {
+            /** @description What the page says. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPageFactsResponse"];
+                };
+            };
+            /** @description org_id is not a UUID, the body is not JSON with `url` (`event_page.invalid_request`), or the address is not a full http(s) address (`event_page.invalid_url`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization is not found or not the caller's (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description A ticketing platform's page (`event_page.ticketing_platform`), an
+             *     address not on the public internet (`event_page.destination_not_allowed`),
+             *     not a web page (`event_page.not_html`), a page larger than 2 MiB
+             *     (`event_page.too_large`), or a page that says nothing about an event
+             *     (`event_page.nothing_found`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization read 20 pages in the last hour (`event_page.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The site did not answer or answered with an error (`event_page.fetch_failed`, the site's status in `details.status`), or the organization guard is not configured. */
             503: {
                 headers: {
                     [name: string]: unknown;
