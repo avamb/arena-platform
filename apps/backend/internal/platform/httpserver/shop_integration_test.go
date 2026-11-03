@@ -157,6 +157,9 @@ func (f *shopFixture) cleanup() {
 		`UPDATE shop_orders SET payment_intent_id = NULL WHERE org_id = ANY($1)`,
 		`DELETE FROM refunds WHERE org_id = ANY($1)`,
 		`DELETE FROM payment_intent_events WHERE payment_intent_id IN (SELECT id FROM payment_intents WHERE org_id = ANY($1))`,
+		// A paid Stripe payment queues payment.receipt_archive (no FK either).
+		`DELETE FROM worker_jobs WHERE job_type = 'payment.receipt_archive' AND payload->>'payment_intent_id' IN (
+		   SELECT id::text FROM payment_intents WHERE org_id = ANY($1))`,
 		`DELETE FROM payment_intents WHERE org_id = ANY($1)`,
 		`DELETE FROM shop_orders WHERE org_id = ANY($1)`,
 		`DELETE FROM customer_org_links WHERE org_id = ANY($1)`,

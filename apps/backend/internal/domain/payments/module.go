@@ -84,6 +84,11 @@ type Capabilities struct {
 	AsyncRefund bool
 	// RefundLookup: the module can read a refund's status by its id.
 	RefundLookup bool
+	// ProviderReceipt: the module can read and download the provider's own
+	// receipt of a paid payment (ReceiptFetcher), so arena archives it. Any
+	// hosted-checkout module may honour CreateHostedCheckoutRequest.
+	// ReceiptEmail on its own; this flag is about the archive only.
+	ProviderReceipt bool
 	// BuyerReturnsByPOST: the provider may bring the buyer back to the
 	// return URL with a POST, so the hosted checkout must route the return
 	// through arena's own GET|POST payment-return hop rather than straight
@@ -95,6 +100,11 @@ type Capabilities struct {
 	// per-merchant key the config alone holds. The legacy un-suffixed route
 	// refuses such a body outright.
 	WebhookConfigRouteOnly bool
+	// Disputes: arena can read a dispute and answer it through the
+	// provider's API (DisputeResponder). A provider without it still tells
+	// arena about a chargeback by webhook (EventDisputeOpened); the answer
+	// then goes by e-mail (spec 51.3).
+	Disputes bool
 	// Currencies lists the ISO 4217 codes (upper case) the provider can
 	// charge in. Empty means the provider states no limit, so arena refuses
 	// nothing on its behalf (the provider's own answer is the verdict).
@@ -113,6 +123,10 @@ type Descriptor struct {
 	Secrets []SecretField
 	// Capabilities is what the module can do.
 	Capabilities Capabilities
+	// DisputeEmail is where a chargeback answer goes by e-mail when the
+	// provider has no dispute API (spec 51.3); empty when the provider
+	// publishes none (the organizer enters it).
+	DisputeEmail string
 }
 
 // Module is the one thing every provider package must implement.
@@ -273,6 +287,9 @@ const (
 	EventRefundUpdated EventKind = "refund_updated"
 	// EventDisputeOpened: a chargeback / dispute was opened (PAY-16).
 	EventDisputeOpened EventKind = "dispute_opened"
+	// EventDisputeUpdated: an open dispute changed (status, evidence,
+	// money withdrawn or reinstated, closed, a chargeback reverted).
+	EventDisputeUpdated EventKind = "dispute_updated"
 )
 
 // NormalizedEvent is a verified delivery in arena's own vocabulary.
@@ -311,6 +328,10 @@ type NormalizedEvent struct {
 	// FailureCode / FailureMessage, when the delivery explains a failure.
 	FailureCode    string
 	FailureMessage string
+	// Dispute is set on dispute events (Kind EventDisputeOpened or
+	// EventDisputeUpdated): the dispute as the delivery states it. A module
+	// with Capabilities.Disputes reads it back before arena acts on it.
+	Dispute *Dispute
 	// Raw is the body as received, for the audit trail.
 	Raw json.RawMessage
 }
@@ -494,3 +515,42 @@ type ChargeRefResolver interface {
 type RefundLookup interface {
 	RefundStatus(ctx context.Context, providerRefundID string) (RefundResult, error)
 }
+
+// Receipt is the provider's own receipt of one payment (spec 51 section 2):
+// the link the provider gave the buyer, its number when the provider printed
+// one, and a copy of the document itself. A Stripe receipt link expires in 30
+// days while a dispute may come 120 days after the event, so arena keeps the
+// copy in its own storage.
+type Receipt struct {
+	// URL is the provider's receipt page (Stripe charge.receipt_url).
+	URL string
+	// Number is the receipt number the provider printed; empty when the
+	// provider has not sent a receipt e-mail (Stripe fills receipt_number
+	// only then).
+	Number string
+	// File and ContentType are the downloaded document (application/pdf
+	// when the provider serves one, else text/html). File is nil when the
+	// document could not be fetched; URL and Number are still worth storing.
+	File        []byte
+	ContentType string
+}
+
+// ReceiptFetcher reads the receipt of a paid payment and downloads it. The
+// argument is what arena stored as payment_intents.provider_charge_ref, else
+// provider_payment_id. A payment the provider has no receipt for yet is
+// ErrReceiptNotReady, so the caller retries later.
+type ReceiptFetcher interface {
+	FetchReceipt(ctx context.Context, paymentRef string) (Receipt, error)
+}
+
+// ErrReceiptNotReady means the provider has no receipt for the payment yet.
+var ErrReceiptNotReady = errors.New("payments: the provider has no receipt for this payment yet")
+
+// ErrReceiptNotFound means the provider does not know the payment (the
+// configuration asked is not the account that took it). Retrying cannot help.
+var ErrReceiptNotFound = errors.New("payments: the provider does not know this payment")
+
+// ErrReceiptDownload wraps a failed download of a receipt whose link the
+// provider did answer. FetchReceipt then returns the Receipt with URL and
+// Number but no File, so the caller can store the link and try the copy again.
+var ErrReceiptDownload = errors.New("payments: the receipt could not be downloaded")

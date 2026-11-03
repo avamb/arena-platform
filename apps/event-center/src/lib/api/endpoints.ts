@@ -409,11 +409,17 @@ export async function fetchSellerProfile(orgId: string): Promise<SellerProfile> 
 }
 
 /** Buyers' messages from the sales page's contact form also go to the sales chat. */
-export async function patchSellerProfile(orgId: string, contactFormToTelegram: boolean): Promise<SellerProfile> {
+/** The organization-wide switches of the seller profile; send only what changes. */
+export type SellerProfilePatch = {
+  contact_form_to_telegram?: boolean;
+  provider_receipt_enabled?: boolean;
+};
+
+export async function patchSellerProfile(orgId: string, patch: SellerProfilePatch): Promise<SellerProfile> {
   const out = await call<{ seller_profile: SellerProfile }>({
     route: API.sellerProfileUpdate,
     params: { org_id: orgId },
-    body: { contact_form_to_telegram: contactFormToTelegram },
+    body: patch,
   });
   return out.seller_profile;
 }

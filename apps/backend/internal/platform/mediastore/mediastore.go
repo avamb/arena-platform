@@ -63,6 +63,12 @@ var AllowedOwnerTypes = map[string]struct{}{
 	"shop_digital":     {}, // shop (0172): the file a digital product sells, never a picture
 }
 
+// OwnerPaymentReceipt is the owner type of an archived payment provider
+// receipt (migration 0185). It is in the CHECK constraint but deliberately NOT
+// in AllowedOwnerTypes: no upload route may create one, only the archive job
+// (internal/platform/paymentreceipts).
+const OwnerPaymentReceipt = "payment_receipt"
+
 // Repo is the persistence + storage facade used by HTTP handlers and the
 // worker GC job. A single Repo is safe for concurrent use.
 type Repo struct {

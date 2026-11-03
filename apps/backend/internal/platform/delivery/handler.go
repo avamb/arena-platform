@@ -528,6 +528,11 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		// for any blank fields.
 		brand := resolveBranding(ctx, opts.Media, p, logger)
 		branding := brand.Branding
+		// The seller is the organization; the provider only processed the
+		// payment (spec 51 section 2). An invitation names no provider.
+		if p.Template != TemplateInvitation {
+			branding.PaymentProvider = ticketPaymentProvider(ctx, opts.TicketQueries, ticketID, logger)
+		}
 
 		// ── 8b–9. Every ticket of the letter ─────────────────────────────────
 		// The EAN-13 credential, the presentation values the buyer reads and
@@ -944,8 +949,9 @@ type resolveBrandingResult struct {
 //   - On a non-not-found resolver error (e.g. media-store outage), the
 //     handler logs a warning and falls back to the platform logo URL
 //     too — never blocks delivery on a media failure.
-//   - An empty name or legal name falls back to the platform default so
-//     the email footer always identifies a legal entity (EU rule). An
+//   - An empty legal name falls back to the organization's display name
+//     (the seller), and only an organization without any name to the
+//     platform default, so the footer always names the seller. An
 //     empty contact e-mail does NOT: no contact line is printed rather
 //     than a placeholder address nobody reads.
 //
@@ -953,9 +959,11 @@ type resolveBrandingResult struct {
 // the optional org-logo bytes for PDF embedding.
 func resolveBranding(ctx context.Context, m MediaResolver, p Payload, logger *slog.Logger) resolveBrandingResult {
 	b := templates.Branding{
-		OrgName:                defaultStr(p.OrgName, templates.PlatformOrgName),
-		WebsiteURL:             p.OrgWebsiteURL,
-		LegalName:              defaultStr(p.OrgLegalName, templates.PlatformLegalName),
+		OrgName:    defaultStr(p.OrgName, templates.PlatformOrgName),
+		WebsiteURL: p.OrgWebsiteURL,
+		// The seller is the organization: without a legal name its display
+		// name stands in, never the platform's (spec 51 section 2).
+		LegalName:              defaultStr(p.OrgLegalName, defaultStr(p.OrgName, templates.PlatformLegalName)),
 		LegalAddressLine1:      p.OrgLegalAddressLine1,
 		LegalAddressLine2:      p.OrgLegalAddressLine2,
 		LegalAddressPostalCode: p.OrgLegalAddressPostal,

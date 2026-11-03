@@ -5166,3 +5166,347 @@ other = "The page's picture does not fit a poster: it must be 4:5 or square, at 
 
 ["bot.wz.page_note_model"]
 other = "AI read part of this from the page's text. Check it carefully."
+["bot.dp.btn"]
+other = "⚠️ Disputes"
+
+["bot.dp.title"]
+other = "<b>Disputes · {{.Filter}}</b> ({{.Count}})"
+
+["bot.dp.open_line"]
+other = "Waiting for an answer from you: {{.Count}}."
+
+["bot.dp.f_open"]
+other = "Need an answer"
+
+["bot.dp.f_review"]
+other = "Under review"
+
+["bot.dp.f_closed"]
+other = "Closed"
+
+["bot.dp.empty"]
+other = "No disputes here. You are all caught up."
+
+["bot.dp.row"]
+other = "{{.Chip}} <b>{{.Order}}</b> · {{.Amount}} · {{.Reason}}{{.Event}}"
+
+["bot.dp.row_due"]
+other = "Answer by {{.When}}"
+
+["bot.dp.open_btn"]
+other = "Open dispute {{.Order}}"
+
+["bot.dp.when_madrid"]
+other = "{{.When}} Madrid time"
+
+["bot.dp.when_venue"]
+other = "{{.When}} venue time ({{.Zone}})"
+
+["bot.dp.reason_fraud"]
+other = "The cardholder says they did not pay"
+
+["bot.dp.reason_not_received"]
+other = "Service not received"
+
+["bot.dp.reason_not_recognized"]
+other = "Charge not recognized"
+
+["bot.dp.reason_refund"]
+other = "Refund expected"
+
+["bot.dp.reason_quality"]
+other = "Quality of the service"
+
+["bot.dp.reason_duplicate"]
+other = "Charged twice"
+
+["bot.dp.reason_other"]
+other = "Other reason"
+
+["bot.dp.state_needs_response"]
+other = "Needs your answer"
+
+["bot.dp.state_draft_ready"]
+other = "Evidence ready, waiting for your answer"
+
+["bot.dp.state_submitted"]
+other = "Answer sent"
+
+["bot.dp.state_under_review"]
+other = "Under review by the bank"
+
+["bot.dp.state_accepted"]
+other = "Accepted by you"
+
+["bot.dp.state_expired"]
+other = "Deadline passed, no answer"
+
+["bot.dp.state_closed"]
+other = "Closed"
+
+["bot.dp.outcome_won"]
+other = "You won, the amount stays with you"
+
+["bot.dp.outcome_lost"]
+other = "You lost, the amount went to the buyer"
+
+["bot.dp.outcome_accepted"]
+other = "You accepted, the amount went to the buyer"
+
+["bot.dp.outcome_withdrawn"]
+other = "The buyer withdrew the dispute"
+
+["bot.dp.outcome_expired"]
+other = "Closed without an answer"
+
+["bot.dp.card_title"]
+other = "<b>Dispute · order {{.Order}}</b>"
+
+["bot.dp.card_event"]
+other = "Event: {{.Event}}"
+
+["bot.dp.card_amount"]
+other = "Amount: <b>{{.Amount}}</b>"
+
+["bot.dp.card_reason"]
+other = "Reason: {{.Reason}}"
+
+["bot.dp.card_state"]
+other = "State: {{.State}}"
+
+["bot.dp.card_outcome"]
+other = "Result: {{.State}}"
+
+["bot.dp.card_buyer"]
+other = "Buyer: {{.Name}}, {{.Email}}"
+
+["bot.dp.card_due"]
+other = "Answer by: <b>{{.When}}</b>"
+
+["bot.dp.card_due_estimate"]
+other = "Answer by: <b>{{.When}}</b>. This is an estimate: the provider named no date, so Arena counts 7 days. Check the real date with the provider."
+
+["bot.dp.card_overdue"]
+other = "⚠️ The deadline has passed. Answer now or accept the dispute."
+
+["bot.dp.card_lowvalue"]
+other = "Advice: this amount is under your small-amount limit of {{.Amount}}. Contesting costs about €20, returned only if you win. Accepting may cost less."
+
+["bot.dp.card_gaps_head"]
+other = "What Arena could not find for the evidence:"
+
+["bot.dp.card_files_head"]
+other = "Files of the package:"
+
+["bot.dp.card_file"]
+other = "• {{.Name}} · {{.Pages}} p. · {{.Size}}{{.Tag}}"
+
+["bot.dp.file_full_tag"]
+other = "(full copy for you, not sent to the provider)"
+
+["bot.dp.card_owner_only"]
+other = "Only the owner of the organization answers a dispute. You can read it and prepare. Ask the owner to send the answer."
+
+["bot.dp.no_package"]
+other = "The evidence package is not ready yet. Press Rebuild, or open the dispute again in a minute."
+
+["bot.dp.gap_no_order"]
+other = "• This dispute has no linked order."
+
+["bot.dp.gap_no_letters"]
+other = "• We found no e-mail to the buyer."
+
+["bot.dp.gap_no_opens"]
+other = "• We found no opens or clicks of the e-mails."
+
+["bot.dp.gap_no_access"]
+other = "• We found no ticket download or view."
+
+["bot.dp.gap_access_off"]
+other = "• Ticket downloads were not recorded when the order was made."
+
+["bot.dp.gap_no_scans"]
+other = "• We found no entry scan."
+
+["bot.dp.gap_no_consent"]
+other = "• The buyer's acceptance of the terms is not recorded for this order."
+
+["bot.dp.gap_no_terms"]
+other = "• The text of the terms is not stored for this order."
+
+["bot.dp.gap_no_refunds"]
+other = "• No refund was made."
+
+["bot.dp.gap_reissued"]
+other = "• Arena issued the ticket PDF again after a change of the date."
+
+["bot.dp.gap_other"]
+other = "• {{.Code}}"
+
+["bot.dp.package_btn"]
+other = "📄 Package"
+
+["bot.dp.order_btn"]
+other = "Open order"
+
+["bot.dp.submit_btn"]
+other = "Submit answer"
+
+["bot.dp.accept_btn"]
+other = "Accept dispute"
+
+["bot.dp.own_btn"]
+other = "I answered myself"
+
+["bot.dp.rebuild_btn"]
+other = "🔄 Rebuild"
+
+["bot.dp.back_card_btn"]
+other = "To the dispute"
+
+["bot.dp.back_list_btn"]
+other = "To the list"
+
+["bot.dp.cancel_btn"]
+other = "Cancel"
+
+["bot.dp.submit_yes_btn"]
+other = "Yes, submit the answer"
+
+["bot.dp.accept_yes_btn"]
+other = "Yes, accept the dispute"
+
+["bot.dp.test_win_btn"]
+other = "Test: win"
+
+["bot.dp.test_lose_btn"]
+other = "Test: lose"
+
+["bot.dp.own_yes_btn"]
+other = "Yes, I answered"
+
+["bot.dp.own_no_btn"]
+other = "No, back"
+
+["bot.dp.file_caption"]
+other = "Dispute {{.Order}} · {{.Name}}"
+
+["bot.dp.file_caption_full"]
+other = "Dispute {{.Order}} · {{.Name}} · full copy for you"
+
+["bot.dp.files_sent"]
+other = "Sent {{.Count}} files. Keep them: they hold the buyer's data."
+
+["bot.dp.files_failed"]
+other = "The files did not arrive. Nothing changed in the dispute. Try again in a minute."
+
+["bot.dp.rebuilding"]
+other = "Building the evidence package…"
+
+["bot.dp.rebuilt"]
+other = "The package is built again."
+
+["bot.dp.rebuilt_draft"]
+other = "The package is built again and saved as a draft at the provider. Nothing is sent to the bank yet."
+
+["bot.dp.rebuilt_nodraft"]
+other = "Arena built the package again. It did not save at the provider, so submit from here or send the files yourself."
+
+["bot.dp.submit_word"]
+other = "SUBMIT"
+
+["bot.dp.accept_word"]
+other = "ACCEPT"
+
+["bot.dp.submit_ask_api"]
+other = "You are about to answer dispute {{.Order}} ({{.Amount}}). Arena sends the evidence package to the bank once, and you cannot change the answer afterwards. To confirm, type {{.Word}}. To stop, press Cancel."
+
+["bot.dp.submit_ask_email"]
+other = "You are about to answer dispute {{.Order}} ({{.Amount}}). Arena sends a letter with the PDF files to the provider and a copy to you. To confirm, type {{.Word}}. To stop, press Cancel."
+
+["bot.dp.accept_ask"]
+other = "You are about to accept dispute {{.Order}} ({{.Amount}}). You stop contesting it. The amount stays with the buyer, and this cannot be undone. To confirm, type {{.Word}}. To stop, press Cancel."
+
+["bot.dp.word_wrong"]
+other = "The text does not match, so nothing was sent. Type {{.Word}} to confirm, or press Cancel."
+
+["bot.dp.submit_final_api"]
+other = "<b>Last check.</b> Dispute {{.Order}}, {{.Amount}}. The button sends the answer to the bank once. You cannot change it afterwards."
+
+["bot.dp.submit_final_email"]
+other = "<b>Last check.</b> Dispute {{.Order}}, {{.Amount}}. The button sends the letter with the PDF files to the provider and a copy to you."
+
+["bot.dp.accept_final"]
+other = "<b>Last check.</b> Dispute {{.Order}}, {{.Amount}}. The button accepts the dispute. The amount stays with the buyer and this cannot be undone."
+
+["bot.dp.stale_btn"]
+other = "That button belongs to an older screen, so nothing was sent."
+
+["bot.dp.sending"]
+other = "Sending… This can take a minute."
+
+["bot.dp.done_submit_api"]
+other = "Done. The answer went to the bank. You cannot change it now. Arena writes here when the bank decides."
+
+["bot.dp.done_submit_email"]
+other = "Done. The letter with the PDF files is on its way to the provider. A copy comes to your e-mail."
+
+["bot.dp.done_accept"]
+other = "Done. You accepted the dispute. The amount stays with the buyer."
+
+["bot.dp.done_own"]
+other = "Noted. Arena recorded that you answered yourself."
+
+["bot.dp.own_ask"]
+other = "Did you already answer dispute {{.Order}} yourself, outside Arena? Arena will only record it and will not send anything."
+
+["bot.dp.cancelled"]
+other = "Canceled. Nothing was sent."
+
+["bot.dp.gone"]
+other = "This confirmation is no longer open, so nothing was sent. Open the dispute again to continue."
+
+["bot.dp.expired"]
+other = "This confirmation expired, so nothing was sent. Open the dispute again to continue."
+
+["bot.dp.not_open"]
+other = "This dispute no longer waits for an answer. Here is its current state."
+
+["bot.dp.private_only"]
+other = "Open this in a private chat with the bot: the dispute holds the buyer's data."
+
+["bot.dp.err_forbidden"]
+other = "Only the owner of the organization answers a dispute. Ask the owner to do it."
+
+["bot.dp.err_package_changed"]
+other = "The evidence was rebuilt after you opened it, so nothing was sent. Open the dispute, look at the new package and send again."
+
+["bot.dp.err_already"]
+other = "This dispute was already answered, so nothing was sent again. Open it to see its state."
+
+["bot.dp.err_closed"]
+other = "The provider no longer accepts an answer to this dispute. Open it to see its state."
+
+["bot.dp.err_no_package"]
+other = "The evidence package is not ready, so nothing was sent. Press Rebuild and try again."
+
+["bot.dp.err_key"]
+other = "The payment key of this organization cannot answer disputes. Answer in the provider dashboard and send the package files yourself."
+
+["bot.dp.err_recipient"]
+other = "Arena has no address to send the answer to. Add the provider's address in the web event center, then try again."
+
+["bot.dp.err_test_live"]
+other = "A test outcome works only with a test payment key. Nothing was sent."
+
+["bot.dp.err_channel"]
+other = "This action does not fit this dispute. Open the dispute to see what you can do."
+
+["bot.dp.err_unknown"]
+other = "No clear answer came back. The answer may have gone through. Do not press again: open the dispute in a minute to see its state."
+
+["bot.dp.err_refused"]
+other = "Arena could not do this. Nothing was sent. Open the dispute and try again, or write to support."
+
+["bot.dp.err_unavailable"]
+other = "Arena could not save this step, so nothing was sent. Try again in a minute."

@@ -3901,11 +3901,16 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Switch the Telegram leg of the sales page's contact form
+         * Change the organization-wide sales page and payment switches
          * @description `contact_form_to_telegram` decides whether buyers' messages from the
          *     sales page's contact form also go to the organization's own sales
-         *     Telegram chat (the e-mail always goes). Requires `org.update`.
-         *     Audited as `v1.organization.contact_form_update`.
+         *     Telegram chat (the e-mail always goes). `provider_receipt_enabled` and
+         *     `provider_receipt_forced` decide whether the payment provider e-mails
+         *     its own receipt to the buyer; only a platform superadmin changes the
+         *     forced flag. Requires `org.update`. Audited as
+         *     `v1.organization.contact_form_update` (only the contact form),
+         *     `v1.organization.provider_receipt_update` (only the receipt) or
+         *     `v1.organization.settings_update` (both).
          */
         patch: operations["updateSellerProfile"];
         trace?: never;
@@ -9717,6 +9722,218 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/disputes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the organization's payment disputes
+         * @description Lists chargebacks and bank inquiries of the organization's payments,
+         *     open ones first by deadline. Requires `dispute.read`. An organization API
+         *     key is refused: the list carries buyers' names and addresses.
+         */
+        get: operations["getV1OrganizationsOrgIdDisputes"];
+        put?: never;
+        /**
+         * Enter a dispute from a provider's letter
+         * @description For a provider that reports chargebacks by e-mail or not at all (PayPlus,
+         *     Flitt until its callback is proven), the organizer enters the dispute from
+         *     the provider's letter: the order, the reason and the deadline. The evidence
+         *     package is then built like for any other dispute. Requires
+         *     `dispute.respond`.
+         */
+        post: operations["postV1OrganizationsOrgIdDisputes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/disputes/{dispute_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one dispute with its package
+         * @description The dispute, its evidence package (fields, files, gaps, e-mail draft), its
+         *     journal and the low-value advice. Requires `dispute.read`.
+         */
+        get: operations["getV1OrganizationsOrgIdDisputesDisputeId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/disputes/{dispute_id}/files/{file_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download one PDF of the evidence package
+         * @description One PDF of the dispute's evidence package. Requires `dispute.read`.
+         */
+        get: operations["getV1OrganizationsOrgIdDisputesDisputeIdFilesFileId"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/disputes/{dispute_id}/package": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Build the evidence package again
+         * @description Collects the facts again and stores a new version of the package. For a
+         *     dispute answered through the provider's API it also saves the evidence as
+         *     a draft at the provider (never the final answer). Requires
+         *     `dispute.respond`.
+         */
+        post: operations["postV1OrganizationsOrgIdDisputesDisputeIdPackage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/disputes/{dispute_id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send the answer to the dispute
+         * @description A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+         *     The organizer's one press that answers the bank. For a dispute answered
+         *     through the provider's API the evidence is sent once and cannot be changed
+         *     afterwards; for an e-mail dispute the letter with the package is queued to
+         *     the provider, with a copy to the owner. Nothing is sent without this call.
+         *     Requires `dispute.respond`.
+         */
+        post: operations["postV1OrganizationsOrgIdDisputesDisputeIdSubmit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/disputes/{dispute_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept the dispute
+         * @description A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+         *     Gives up the disputed amount: for a dispute answered through the provider's
+         *     API the provider closes it now; for another provider the dispute is marked
+         *     accepted in arena. Requires `dispute.respond`.
+         */
+        post: operations["postV1OrganizationsOrgIdDisputesDisputeIdAccept"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/disputes/{dispute_id}/deadline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record the deadline from the provider's letter
+         * @description For a dispute that is not answered through the provider's API: the
+         *     deadline and the answer address the organizer read in the provider's
+         *     letter. Requires `dispute.respond`.
+         */
+        post: operations["postV1OrganizationsOrgIdDisputesDisputeIdDeadline"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/disputes/{dispute_id}/sent-by-organizer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record that the organizer answered outside arena
+         * @description The organizer sent the answer themself (from their own mailbox or the
+         *     provider's dashboard); the dispute waits for the bank. Requires
+         *     `dispute.respond`.
+         */
+        post: operations["postV1OrganizationsOrgIdDisputesDisputeIdSentByOrganizer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/dispute-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the low-value dispute rule
+         * @description Below the threshold of its currency the card advises accepting a dispute
+         *     instead of contesting it. Requires `dispute.read`.
+         */
+        get: operations["getV1OrganizationsOrgIdDisputeSettings"];
+        /**
+         * Change the low-value dispute rule
+         * @description Stores the organization's own rule: whether the advice is shown and the
+         *     threshold per currency, in minor units. Requires `dispute.respond`.
+         */
+        put: operations["putV1OrganizationsOrgIdDisputeSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/refunds/{refund_id}/retry": {
         parameters: {
             query?: never;
@@ -15085,6 +15302,249 @@ export interface components {
             /** @description Send the buyer a letter about the refund. Defaults to true. */
             notify_buyer?: boolean;
         };
+        /** @description A chargeback or bank inquiry of one of the organization's payments. */
+        Dispute: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the dispute.
+             */
+            id: string;
+            /** @description Payment module name. */
+            provider: string;
+            /** @description The provider's own dispute id; for a dispute entered by hand, the reference from the provider's letter. */
+            provider_dispute_id?: string | null;
+            /** @description api (answered through the provider's API), email (answered by e-mail), manual (entered by the organizer). */
+            channel: string;
+            /** @description UUID of the disputed order. */
+            order_id?: string | null;
+            /**
+             * Format: int64
+             * @description The order number the buyer sees; 0 when unknown.
+             */
+            order_number: number;
+            /** @description Name of the event. */
+            event_name: string;
+            /** @description Start of the session, RFC 3339. */
+            session_start_at?: string | null;
+            /** @description IANA zone of the venue. */
+            venue_timezone: string;
+            /** @description The buyer's name from the order. */
+            buyer_name: string;
+            /** @description The buyer's e-mail from the order. */
+            buyer_email: string;
+            /**
+             * Format: int64
+             * @description Disputed amount in minor units.
+             */
+            amount: number;
+            /** @description ISO 4217 code. */
+            currency: string;
+            /** @description The provider's reason code. */
+            reason: string;
+            /** @description fraud, not_received, not_recognized, refund, quality, duplicate or other. */
+            reason_group: string;
+            /** @description The provider's last status. */
+            provider_status: string;
+            /** @description needs_response, draft_ready, submitted, under_review, accepted, expired or closed. */
+            state: string;
+            /** @description won, lost, accepted, withdrawn or expired once the dispute ends. */
+            outcome?: string | null;
+            /** @description A bank inquiry (no money withdrawn yet). */
+            is_inquiry: boolean;
+            /** @description The charge can still be refunded instead of contested. */
+            is_charge_refundable: boolean;
+            /** @description Deadline of the answer, RFC 3339. */
+            due_by?: string | null;
+            /** @description provider, organizer (from the provider's letter) or default (7 days, an estimate). */
+            due_by_source: string;
+            /** @description Address an e-mail answer goes to; empty when the provider's default is used. */
+            respond_to: string;
+            /** @description The amount is below the low-value threshold of its currency. */
+            low_value: boolean;
+            /** @description When the provider withdrew the amount, RFC 3339. */
+            funds_withdrawn_at?: string | null;
+            /** @description When the provider returned the amount, RFC 3339. */
+            funds_reinstated_at?: string | null;
+            /** @description When the dispute was opened, RFC 3339. */
+            opened_at: string;
+            /** @description When the answer was sent, RFC 3339. */
+            submitted_at?: string | null;
+            /** @description When the organizer accepted the dispute, RFC 3339. */
+            accepted_at?: string | null;
+            /** @description When the dispute ended, RFC 3339. */
+            closed_at?: string | null;
+        };
+        /** @description One page of the organization's disputes. */
+        DisputeList: {
+            /** @description The disputes of the page. */
+            disputes: components["schemas"]["Dispute"][];
+            /** @description Disputes matching the filter. */
+            total: number;
+            /** @description Disputes that wait for the organizer. */
+            open_count: number;
+        };
+        /** @description One PDF of an evidence package. */
+        DisputeFile: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the file.
+             */
+            id: string;
+            /** @description receipt, service_documentation, customer_communication, refund_policy, uncategorized_file or full. */
+            kind: string;
+            /** @description File name. */
+            filename: string;
+            /** @description Size in bytes. */
+            bytes: number;
+            /** @description Pages. */
+            pages: number;
+            /** @description SHA-256 of the file, hex. */
+            sha256: string;
+            /** @description Sent to the provider (false for the full file in the organization's language). */
+            for_provider: boolean;
+        };
+        /** @description The letter of an e-mail answer. */
+        DisputeEmailDraft: {
+            /** @description Recipient address. */
+            to: string;
+            /** @description Subject of the letter. */
+            subject: string;
+            /** @description Plain-text body of the letter. */
+            body: string;
+        };
+        /** @description One version of a dispute's evidence package. */
+        DisputePackage: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the package.
+             */
+            id: string;
+            /** @description Version number, from 1. */
+            version: number;
+            /** @description Language of the full file. */
+            locale: string;
+            /** @description Text fields of the evidence as they are sent to the provider. */
+            fields: {
+                [key: string]: string;
+            };
+            /** @description Codes of facts arena does not have for this order. */
+            gaps: string[];
+            /** @description The files were uploaded to the provider. */
+            uploaded: boolean;
+            /** @description The letter of an e-mail answer; null for an API answer. */
+            email_draft?: components["schemas"]["DisputeEmailDraft"] | null;
+            /** @description Size of the files sent to the provider. */
+            total_bytes: number;
+            /** @description Pages of the files sent to the provider. */
+            total_pages: number;
+            /** @description When it was built, RFC 3339. */
+            built_at: string;
+            /** @description The PDF files. */
+            files: components["schemas"]["DisputeFile"][];
+        };
+        /** @description One line of a dispute's journal. */
+        DisputeEvent: {
+            /** @description What happened (opened, package_built, draft_saved, submitted, email_sent, accepted, ...). */
+            kind: string;
+            /** @description The provider's status at that moment, if any. */
+            provider_status: string;
+            /** @description The person who acted, if any. */
+            actor_user_id?: string | null;
+            /** @description user, system or the provider. */
+            actor_label: string;
+            /** @description Details of the line. */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** @description When, RFC 3339. */
+            created_at: string;
+        };
+        /** @description The low-value advice for one dispute. */
+        DisputeLowValue: {
+            /** @description The advice is switched on. */
+            enabled: boolean;
+            /**
+             * Format: int64
+             * @description Threshold of the dispute's currency in minor units; 0 when none.
+             */
+            threshold: number;
+            /** @description The card advises accepting this dispute. */
+            advised: boolean;
+        };
+        /** @description One dispute with its newest package and its journal. */
+        DisputeCard: {
+            /** @description The dispute. */
+            dispute: components["schemas"]["Dispute"];
+            /** @description The newest evidence package; null while it is being built. */
+            package?: components["schemas"]["DisputePackage"] | null;
+            /** @description The journal, oldest first. */
+            events: components["schemas"]["DisputeEvent"][];
+            /** @description The low-value advice. */
+            low_value: components["schemas"]["DisputeLowValue"];
+            /** @description The payment key is a test one, so submit may ask for a test outcome. */
+            test_outcome_available: boolean;
+            /** @description Set by the rebuild route — the evidence was saved as a draft at the provider. */
+            draft_saved?: boolean;
+            /** @description Set by the rebuild route — why the draft was not saved (key_not_writable, closed_for_evidence, provider_unavailable). */
+            draft_error?: string | null;
+        };
+        /** @description The organizer's answer. */
+        SubmitDisputeRequest: {
+            /** @description win or lose: with a test payment key the provider decides the dispute that way; refused for a live key. */
+            test_outcome?: string;
+            /** @description The package version the organizer looked at. When a newer version was built since, the answer is refused with 409 dispute.package_changed. Absent sends the newest. */
+            package_version?: number;
+            /** @description The letter as the organizer edited it; absent takes the package draft. E-mail disputes only. */
+            email?: components["schemas"]["DisputeEmailDraft"];
+        };
+        /** @description A dispute entered from a provider's letter. */
+        CreateManualDisputeRequest: {
+            /**
+             * Format: uuid
+             * @description UUID of the disputed order.
+             */
+            order_id: string;
+            /** @description Reason from the letter (fraudulent, product_not_received, ...). */
+            reason: string;
+            /** @description Deadline from the letter, RFC 3339 with a zone. */
+            due_by?: string;
+            /** @description Address the answer goes to. */
+            respond_to?: string;
+            /** @description The provider's own reference, if the letter has one. */
+            provider_dispute_id?: string;
+            /**
+             * Format: int64
+             * @description Disputed amount in minor units; 0 takes the order's total.
+             */
+            amount?: number;
+        };
+        /** @description The deadline and address from the provider's letter. */
+        DisputeDeadlineRequest: {
+            /** @description Deadline, RFC 3339 with a zone. */
+            due_by?: string;
+            /** @description Address the answer goes to. */
+            respond_to?: string;
+        };
+        /** @description The low-value rule in force. */
+        DisputeSettings: {
+            /** @description The advice to accept small disputes is shown. */
+            low_value_enabled: boolean;
+            /** @description Threshold per currency in minor units. */
+            low_value_thresholds: {
+                [key: string]: number;
+            };
+            /** @description The organization has its own rule (else the platform default). */
+            own: boolean;
+        };
+        /** @description The organization's own low-value rule. */
+        DisputeSettingsRequest: {
+            /** @description Show the advice to accept small disputes. */
+            low_value_enabled: boolean;
+            /** @description Threshold per currency in minor units. */
+            low_value_thresholds: {
+                [key: string]: number;
+            };
+        };
         /** @description The refund operation as recorded, one refund per ticket. */
         CreateOrderRefundsResponse: {
             /**
@@ -18955,16 +19415,45 @@ export interface components {
             channels: components["schemas"]["SellerProfileChannel"][];
             /** @description Buyers' messages from the sales page's contact form also go to the organization's sales Telegram chat (default true). */
             contact_form_to_telegram?: boolean;
+            /** @description Whether the payment provider e-mails its own receipt of the payment to the buyer (spec 51, migration 0185). */
+            provider_receipt: components["schemas"]["SellerProviderReceipt"];
+        };
+        /**
+         * @description The provider-receipt setting of the organization. When `effective` is
+         *     true, checkout asks the payment provider to e-mail its own receipt to
+         *     the buyer (Stripe `payment_intent_data.receipt_email`, PayPlus
+         *     `sendEmailApproval`). Off cannot promise that no receipt is sent: the
+         *     organizer's own provider account may send one by itself.
+         */
+        SellerProviderReceipt: {
+            /** @description The owner's choice (default true). */
+            enabled: boolean;
+            /** @description The platform operator's "always send"; overrides `enabled`. Only a platform superadmin changes it. */
+            forced: boolean;
+            /** @description What checkout does now (`enabled` or `forced`). */
+            effective: boolean;
         };
         /** @description Envelope of the seller-profile routes. */
         SellerProfileEnvelope: {
             /** @description The profile as stored after the call. */
             seller_profile: components["schemas"]["SellerProfile"];
         };
-        /** @description The organization-wide switch of the contact form's Telegram leg. */
+        /**
+         * @description The organization-wide switches. Every key is optional; at least one is
+         *     required (400 `seller.invalid_body` otherwise).
+         */
         UpdateSellerProfileRequest: {
             /** @description Post buyers' messages to the organization's sales Telegram chat too. */
-            contact_form_to_telegram: boolean;
+            contact_form_to_telegram?: boolean;
+            /** @description The owner's choice, the payment provider e-mails its own receipt to the buyer. */
+            provider_receipt_enabled?: boolean;
+            /**
+             * @description "Always send the provider receipt", overriding the owner. Only a
+             *     platform superadmin (with `X-Admin-Reason`) changes it; anyone else
+             *     gets 403 `seller.provider_receipt_forced_superadmin_only` unless the
+             *     value repeats the stored one.
+             */
+            provider_receipt_forced?: boolean;
         };
         /** @description Tri-state contact change; an absent key keeps, null or "" clears. */
         SellerDisplayContactPatch: {
@@ -46382,7 +46871,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks `org.update` in the organization. */
+            /** @description Caller lacks `org.update` in the organization, is an API key, or changed `provider_receipt_forced` without being a platform superadmin (`seller.provider_receipt_forced_superadmin_only`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -54627,6 +55116,19 @@ export interface operations {
              *     organization the caller does not belong to (`media.not_found`).
              */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The object is an archived payment provider receipt (owner type
+             *     `payment_receipt`), kept as dispute evidence; it is never deleted
+             *     (`media.receipt_not_deletable`).
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -65827,6 +66329,885 @@ export interface operations {
                 };
             };
             /** @description Refunds are not available (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdDisputes: {
+        parameters: {
+            query?: {
+                /** @description open (waiting for the organizer), review (answered, waiting for the bank) or closed; absent lists all. */
+                group?: string;
+                /** @description Only the disputes of this order. */
+                order_id?: string;
+                /** @description Page size, 1-100, default 50. */
+                limit?: number;
+                /** @description Rows to skip. */
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The disputes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeList"];
+                };
+            };
+            /** @description A filter is not valid (dispute.invalid_request). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.read, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdDisputes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateManualDisputeRequest"];
+            };
+        };
+        responses: {
+            /** @description The new dispute's card. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeCard"];
+                };
+            };
+            /** @description The body is not valid (dispute.invalid_request). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order is not one of this organization's (dispute.order_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description This dispute was already entered (dispute.duplicate). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order was not paid through a payment provider (dispute.order_not_paid) or a field is refused. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdDisputesDisputeId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the dispute */
+                dispute_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dispute's card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeCard"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.read, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Dispute not found in this organization (dispute.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdDisputesDisputeIdFilesFileId: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the dispute */
+                dispute_id: string;
+                /** @description UUIDv7 of the file */
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The PDF. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.read, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Dispute or file not found in this organization (dispute.not_found, dispute.file_not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdDisputesDisputeIdPackage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the dispute */
+                dispute_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dispute's card with draft_saved and draft_error. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeCard"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Dispute not found in this organization (dispute.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdDisputesDisputeIdSubmit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the dispute */
+                dispute_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SubmitDisputeRequest"];
+            };
+        };
+        responses: {
+            /** @description The dispute's card after the answer. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeCard"];
+                };
+            };
+            /** @description The body is not valid (dispute.invalid_request). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Dispute not found in this organization (dispute.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The dispute was already answered or closed (dispute.already_submitted), or the provider no longer accepts an answer (dispute.closed_for_evidence). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No package yet (dispute.package_missing), the payment key cannot answer disputes (dispute.key_not_writable), no recipient address (dispute.recipient_required), or a test outcome with a live key (dispute.test_outcome_live). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdDisputesDisputeIdAccept: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the dispute */
+                dispute_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dispute's card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeCard"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Dispute not found in this organization (dispute.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The dispute was already answered or closed (dispute.already_submitted). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The payment key cannot close disputes (dispute.key_not_writable). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdDisputesDisputeIdDeadline: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the dispute */
+                dispute_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisputeDeadlineRequest"];
+            };
+        };
+        responses: {
+            /** @description The dispute's card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeCard"];
+                };
+            };
+            /** @description The body is not valid (dispute.invalid_request). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Dispute not found in this organization (dispute.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The dispute keeps the provider's own deadline (dispute.wrong_channel) or a field is refused. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdDisputesDisputeIdSentByOrganizer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the dispute */
+                dispute_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dispute's card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeCard"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Dispute not found in this organization (dispute.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The dispute was already answered or closed (dispute.already_submitted). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdDisputeSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rule in force. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeSettings"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.read, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putV1OrganizationsOrgIdDisputeSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisputeSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description The stored rule. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DisputeSettings"];
+                };
+            };
+            /** @description The body is not valid (dispute.invalid_request). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable). */
             503: {
                 headers: {
                     [name: string]: unknown;
