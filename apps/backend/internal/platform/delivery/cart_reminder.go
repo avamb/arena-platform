@@ -133,10 +133,12 @@ func NewCartReminderHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 		if locale == "" {
 			locale = in.OrgLocale
 		}
+		whiteLabel, brand := whiteLabelForSession(ctx, opts.DB, logger, o.SessionID)
 		data := templates.Data{
 			EventName:      in.EventName,
 			RecipientEmail: o.BuyerEmail,
 			Branding:       templates.Branding{OrgName: in.OrgName},
+			WhiteLabel:     whiteLabel,
 			CartReminder: templates.CartReminderData{
 				URL:         base + ResumePath(o.CheckoutToken),
 				When:        in.When(),
@@ -160,6 +162,7 @@ func NewCartReminderHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 			TemplateVersion: templateVersion(r, templates.TemplateKindCheckoutReminder, locale),
 		}
 		msg := email.Message{To: o.BuyerEmail, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}
+		applyWhiteLabelSender(&msg, whiteLabel, brand)
 		// The reminder is taken before it is sent, so a retry or a second
 		// claim of this job never sends it twice (the letter says it is the
 		// only one). A refused send gives it back for the retry.
@@ -206,11 +209,12 @@ func NewMarketingConfirmHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 		}
 		var (
 			addr, locale, status, withdraw, orgName, orgLocale string
+			orgID                                              uuid.UUID
 		)
 		err = opts.DB.QueryRow(ctx, `
-			SELECT s.email, s.locale, s.status, s.unsubscribe_token, o.name, COALESCE(o.default_locale, '')
+			SELECT s.email, s.locale, s.status, s.unsubscribe_token, o.name, COALESCE(o.default_locale, ''), s.org_id
 			FROM   marketing_subscriptions s JOIN organizations o ON o.id = s.org_id
-			WHERE  s.id = $1`, id).Scan(&addr, &locale, &status, &withdraw, &orgName, &orgLocale)
+			WHERE  s.id = $1`, id).Scan(&addr, &locale, &status, &withdraw, &orgName, &orgLocale, &orgID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
@@ -240,9 +244,13 @@ func NewMarketingConfirmHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 		if err != nil {
 			return err
 		}
+		// The consent is given to the organization, so its own white label
+		// decides (a promoter's period does not cover it).
+		whiteLabel := whiteLabelForOrg(ctx, whiteLabelResolver(opts.DB), logger, orgID)
 		out, err := r.Render(templates.TemplateKindMarketingConfirm, locale, templates.Data{
 			RecipientEmail: addr,
 			Branding:       templates.Branding{OrgName: orgName},
+			WhiteLabel:     whiteLabel,
 			Marketing: templates.MarketingConfirmData{
 				ConfirmURL:  base + marketing.ConfirmPath(url.QueryEscape(token)),
 				WithdrawURL: base + marketing.WithdrawPath(url.QueryEscape(withdraw)),
@@ -251,6 +259,8 @@ func NewMarketingConfirmHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 		if err != nil {
 			return err
 		}
-		return opts.Sender.Send(ctx, email.Message{To: addr, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody})
+		msg := email.Message{To: addr, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}
+		applyWhiteLabelSender(&msg, whiteLabel, orgName)
+		return opts.Sender.Send(ctx, msg)
 	}
 }

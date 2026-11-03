@@ -16,7 +16,7 @@
   <p style="margin:0 0 12px 0;">Если вы этого не просили, ничего не делайте: рассылок не будет. Ссылка работает 7 дней.</p>
   <p style="margin:0 0 12px 0;">Передумали? Отказаться от рассылки можно в любой момент: <a href="{{.Marketing.WithdrawURL}}" style="color:#46555f;">Отказаться от рассылки</a></p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — автоматическое сообщение<br>Если вы нажмёте «Отписаться», письма от нас на этот адрес больше никогда не придут, в том числе билеты.</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}Arena Platform — автоматическое сообщение<br>{{end}}Если вы нажмёте «Отписаться», письма от нас на этот адрес больше никогда не придут, в том числе билеты.</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -34,7 +34,7 @@
 
 Передумали? Отказаться от рассылки можно в любой момент: {{.Marketing.WithdrawURL}}
 
-Arena Platform — автоматическое сообщение
+{{if not .WhiteLabel}}Arena Platform — автоматическое сообщение{{end}}
 
 Если вы нажмёте «Отписаться», письма от нас на этот адрес больше никогда не придут, в том числе билеты.
 {{end}}

@@ -16,7 +16,7 @@
   <p style="margin:0 0 12px 0;">Pokud jste o to nežádali, nic nedělejte: žádné e-maily nedostanete. Odkaz platí 7 dní.</p>
   <p style="margin:0 0 12px 0;">Rozmysleli jste si to? Zasílání novinek můžete kdykoli ukončit: <a href="{{.Marketing.WithdrawURL}}" style="color:#46555f;">Ukončit zasílání novinek</a></p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — automatická zpráva<br>Pokud kliknete na „Odhlásit odběr“, e-maily od nás už na tuto adresu nikdy nepřijdou, ani vstupenky.</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}Arena Platform — automatická zpráva<br>{{end}}Pokud kliknete na „Odhlásit odběr“, e-maily od nás už na tuto adresu nikdy nepřijdou, ani vstupenky.</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -34,7 +34,7 @@ Pokud jste o to nežádali, nic nedělejte: žádné e-maily nedostanete. Odkaz 
 
 Rozmysleli jste si to? Zasílání novinek můžete kdykoli ukončit: {{.Marketing.WithdrawURL}}
 
-Arena Platform — automatická zpráva
+{{if not .WhiteLabel}}Arena Platform — automatická zpráva{{end}}
 
 Pokud kliknete na „Odhlásit odběr“, e-maily od nás už na tuto adresu nikdy nepřijdou, ani vstupenky.
 {{end}}

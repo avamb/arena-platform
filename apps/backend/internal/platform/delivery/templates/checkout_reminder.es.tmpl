@@ -18,7 +18,7 @@
   <p style="margin:0 0 12px 0;"><span style="color:#93a0a8;font-size:12px;word-break:break-all;">Enlace: {{.CartReminder.URL}}</span></p>
   <p style="margin:0 0 12px 0;">Si ya no quieres estas entradas, no hagas nada: la reserva termina sola. Este es el único recordatorio sobre este pedido.</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — mensaje automático<br>Si pulsas «Cancelar suscripción», dejarás de recibir los correos con tus entradas y los correos importantes sobre tu pedido. No enviamos correos publicitarios sin tu consentimiento.</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}Arena Platform — mensaje automático<br>{{end}}Si pulsas «Cancelar suscripción», dejarás de recibir los correos con tus entradas y los correos importantes sobre tu pedido. No enviamos correos publicitarios sin tu consentimiento.</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -37,7 +37,7 @@ Continuar con el pago: {{.CartReminder.URL}}
 
 Si ya no quieres estas entradas, no hagas nada: la reserva termina sola. Este es el único recordatorio sobre este pedido.
 
-Arena Platform — mensaje automático
+{{if not .WhiteLabel}}Arena Platform — mensaje automático{{end}}
 
 Si pulsas «Cancelar suscripción», dejarás de recibir los correos con tus entradas y los correos importantes sobre tu pedido. No enviamos correos publicitarios sin tu consentimiento.
 {{end}}
