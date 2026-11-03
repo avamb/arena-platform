@@ -53,6 +53,17 @@ type WebhookSubscription struct {
 	// event arena needs (created, updated, failed); meaningful only when
 	// EndpointFound.
 	RefundEventsSubscribed bool
+	// DisputeEventsSubscribed is true when the endpoint receives the dispute
+	// events arena needs (created, updated, closed; spec 51.3); meaningful
+	// only when EndpointFound.
+	DisputeEventsSubscribed bool
+}
+
+// DisputeAccessChecker is implemented by providers whose dispute API can be
+// probed with the stored credential (spec 51.3 section 10). Advisory: an
+// error other than ErrCredentialRefused means "unknown".
+type DisputeAccessChecker interface {
+	CheckDisputeAccess(ctx context.Context) error
 }
 
 // WebhookSubscriptionChecker is implemented by providers whose registered

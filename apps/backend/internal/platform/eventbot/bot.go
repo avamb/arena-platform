@@ -608,6 +608,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.inviteCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "iv:"))
 	case "rq":
 		b.queueCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "rq:"))
+	case "dp":
+		b.disputeCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "dp:"))
 	case "pm":
 		b.promoCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pm:"))
 	case "pr":
@@ -813,6 +815,9 @@ func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *model
 		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.ord.btn", nil), CallbackData: "or:new"}})
 	}
 	if row := b.queueMenuRow(loc, id); row != nil { // refunds (EC-23)
+		rows = append(rows, row)
+	}
+	if row := b.disputeMenuRow(loc, id); row != nil { // disputes (spec 51.3, DS-11)
 		rows = append(rows, row)
 	}
 	if canInvite(id) {

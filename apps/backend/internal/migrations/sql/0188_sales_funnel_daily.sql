@@ -1,4 +1,4 @@
--- 0187_sales_funnel_daily.sql — the buyer funnel counters of an event (spec 50,
+-- 0188_sales_funnel_daily.sql — the buyer funnel counters of an event (spec 50,
 -- stage A7, section 6.1).
 --
 -- The widget, the hosted event page and the promoter page send an anonymous
