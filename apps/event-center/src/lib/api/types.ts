@@ -23,6 +23,7 @@ export type TicketTierListResponse = S["TicketTierListResponse"];
 export type EventSummary = S["EventSummary"];
 export type EventSummarySession = S["EventSummarySession"];
 export type SessionSummary = S["SessionSummary"];
+export type GuestListSubscription = S["GuestListSubscription"];
 export type SessionPlaceCounts = S["SessionPlaceCounts"];
 export type SummaryMoneyItem = S["SummaryMoneyItem"];
 export type OrderListItem = S["OrderListItem"];

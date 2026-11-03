@@ -1,4 +1,4 @@
--- 0187_analytics.sql — schema `analytics` of the platform's own product
+-- 0188_analytics.sql — schema `analytics` of the platform's own product
 -- analytics (spec 08_architecture/50_product_analytics_ru.md, stage A1).
 --
 -- The schema lives in the same database as the business tables so goose,

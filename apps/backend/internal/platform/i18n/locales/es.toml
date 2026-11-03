@@ -4935,6 +4935,72 @@ other = "Google Maps: {{.Url}}"
 ["salesnotify.shop.courier_map_waze"]
 other = "Waze: {{.Url}}"
 
+["bot.gl.btn"]
+other = "👥 Lista de invitados"
+
+["bot.gl.private_only"]
+other = "La lista de invitados tiene los contactos de los compradores. Ábrela en tu chat privado con el bot."
+
+["bot.gl.empty"]
+other = "Esta sesión aún no tiene entradas activas. La lista de invitados está vacía."
+
+["bot.gl.caption"]
+other = "<b>{{.Name}}</b>, {{.When}}\nLista de invitados. Entradas en la lista: {{.Rows}}. El archivo tiene los contactos de los compradores: no lo reenvíes a personas ajenas."
+
+["bot.gl.auto_hint"]
+other = "El bot puede enviarte esta lista por sí mismo: 24 horas antes del inicio, 3 horas antes y al abrir las puertas. Actívalo en «☰ Menú» y luego «🔔 Notificaciones»."
+
+["bot.gl.notif_text"]
+other = "<b>Lista de invitados</b>\nEste bot envía a este chat un CSV con la lista de invitados de cada sesión: 24 horas antes del inicio, 3 horas antes y al abrir las puertas. El archivo llega solo a ti, nunca a un grupo: tiene los contactos de los compradores."
+
+["bot.gl.toggle_on"]
+other = "☑ Enviarme la lista de invitados"
+
+["bot.gl.toggle_off"]
+other = "☐ No enviarme la lista de invitados"
+
+["bot.gl.toggle_failed"]
+other = "No hemos podido cambiar el ajuste. Inténtalo de nuevo en un minuto."
+
+["bot.gl.auto_caption_h24"]
+other = "<b>{{.Name}}</b>, {{.When}}\nLista de invitados, 24 horas antes del inicio. Entradas en la lista: {{.Rows}}."
+
+["bot.gl.auto_caption_h3"]
+other = "<b>{{.Name}}</b>, {{.When}}\nLista de invitados, 3 horas antes del inicio. Entradas en la lista: {{.Rows}}."
+
+["bot.gl.auto_caption_doors"]
+other = "<b>{{.Name}}</b>, {{.When}}\nLista de invitados para la apertura de puertas. Entradas en la lista: {{.Rows}}."
+
+["bot.gl.auto_stop"]
+other = "El archivo tiene los contactos de los compradores: no lo reenvíes a personas ajenas. Para dejar de recibirlo, abre «☰ Menú» y luego «🔔 Notificaciones»."
+
+["guestlist.email.subject"]
+other = "Lista de invitados: {{.Event}}, {{.When}}"
+
+["guestlist.email.greeting"]
+other = "¡Hola!"
+
+["guestlist.email.attached"]
+other = "Te adjuntamos la lista de invitados de «{{.Event}}» del {{.When}}. Entradas en la lista: {{.Rows}}."
+
+["guestlist.email.slot_h24"]
+other = "La sesión empieza dentro de 24 horas."
+
+["guestlist.email.slot_h3"]
+other = "La sesión empieza dentro de 3 horas."
+
+["guestlist.email.slot_doors"]
+other = "Se abren las puertas de la sesión."
+
+["guestlist.email.slot_manual"]
+other = "Esta es una copia actualizada de la lista."
+
+["guestlist.email.why"]
+other = "Recibes este correo porque activaste «Enviarme la lista de invitados» en el centro de eventos. El archivo tiene los contactos de los compradores: no lo reenvíes a personas ajenas."
+
+["guestlist.email.stop"]
+other = "Para dejar de recibir estos correos, desmarca «Enviarme la lista de invitados» en la sección «Notificaciones» del centro de eventos."
+
 ["bot.dp.btn"]
 other = "⚠️ Disputas"
 
