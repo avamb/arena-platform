@@ -16,6 +16,8 @@
 //	GET /v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf
 //
 // which returns the raw PDF bytes for a ticket that belongs to the given checkout.
+//
+// Both record the buyer's access in ticket_access_events (ticket_access.go).
 package hfeed
 
 import (
@@ -374,6 +376,9 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 				ticketResps = append(ticketResps, tr)
 			}
 			resp.Tickets = ticketResps
+			if len(ticketResps) > 0 {
+				h.recordTicketsView(r, cs.ID, cs.OrgID)
+			}
 		}
 	}
 
@@ -527,6 +532,8 @@ func (h *Handler) HandleGetPublicTicketPDF(w http.ResponseWriter, r *http.Reques
 		))
 		return
 	}
+
+	h.recordPDFDownload(r, cs.ID, cs.OrgID, ticketID)
 
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", "inline; filename=\"ticket-"+ticketID.String()+".pdf\"")

@@ -21547,6 +21547,14 @@ type CreatePaymentIntentParams struct {
 	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
 }
 
+// GetPublicTicketPdfParams defines parameters for GetPublicTicketPdf.
+type GetPublicTicketPdfParams struct {
+	// Src Where the link was followed from, only for the access log:
+	// `email` is the ticket e-mail's download link; anything else,
+	// or no value, is recorded as `web`. Never an error.
+	Src *string `form:"src,omitempty" json:"src,omitempty"`
+}
+
 // ListPublicFeedEventsParams defines parameters for ListPublicFeedEvents.
 type ListPublicFeedEventsParams struct {
 	// CityId Optional filter by publication city scope.
