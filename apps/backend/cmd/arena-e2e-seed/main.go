@@ -286,6 +286,10 @@ func apply(ctx context.Context, tx pgx.Tx) error {
 	if err := applyResendOrders(ctx, tx); err != nil {
 		return err
 	}
+	// Spec 52: "Refer a friend" cashback in the reports (uses the resend channel).
+	if err := applyReferralCashbackFixture(ctx, tx); err != nil {
+		return err
+	}
 	if err := applyTeamFixture(ctx, tx); err != nil {
 		return err
 	}

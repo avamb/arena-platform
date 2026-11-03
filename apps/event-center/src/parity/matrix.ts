@@ -603,6 +603,15 @@ export const PARITY: readonly ParityRow[] = [
   },
   {
     area: "Приведи друга",
+    fn: "Кэшбэк в цифрах продаж и в карточке заказа",
+    bot: "sales_text.go, event_summary.go (`bot.ec.refunds_line`, `bot.ec.sum_money`), order_referral.go (`bot.ord.ref_*`)",
+    web: "R3",
+    ready: { twin: "live/referral-cashback.spec.ts" },
+    routes: [`GET ${O}/sessions/{session_id}/summary`, `GET ${O}/events/{event_id}/summary`, `GET ${O}/orders/{id}`],
+    note: "Кэшбэк пригласившему — отдельная строка «Кэшбэк «Приведи друга»: N на сумму X», он уменьшает нетто; возвраты покупателям его не включают. В карточке заказа пригласившего — выплаченный кэшбэк с датой и заказом друга, в заказе друга — код пригласившего (решение владельца 03.11).",
+  },
+  {
+    area: "Приведи друга",
     fn: "Программа магазина: настройки, пауза, завершение",
     bot: "в работе (спека 52, раздел 7.1)",
     web: "R3",

@@ -58,6 +58,9 @@ export interface SummaryMoney {
   readonly service_charge: number;
   readonly discount: number;
   readonly refunded: number;
+  /** "Refer a friend" cashback paid back to referrers (spec 52); already off `net`. Absent on an older API. */
+  readonly cashback_refunds?: number;
+  readonly cashback?: number;
   readonly net: number;
   readonly pending_orders: number;
   readonly pending: number;
@@ -400,6 +403,14 @@ function MoneySection({ money }: { money: readonly SummaryMoney[] }): JSX.Elemen
         <div key={m.currency} style={statRowStyle} data-testid={`session-overview-money-${m.currency}`}>
           <Stat label={`Paid · ${m.paid_orders} orders`} value={formatMoneyMinor(m.paid, m.currency)} />
           <Stat label="Refunded" value={formatMoneyMinor(m.refunded, m.currency)} tone={m.refunded > 0 ? "warn" : "muted"} />
+          {(m.cashback ?? 0) > 0 ? (
+            <Stat
+              label={`Refer a friend cashback · ${m.cashback_refunds ?? 0}`}
+              value={formatMoneyMinor(m.cashback ?? 0, m.currency)}
+              tone="warn"
+              testId={`session-overview-cashback-${m.currency}`}
+            />
+          ) : null}
           <Stat label="Net" value={formatMoneyMinor(m.net, m.currency)} tone="good" testId={`session-overview-net-${m.currency}`} />
           <Stat label="Service charge inside" value={formatMoneyMinor(m.service_charge, m.currency)} tone="muted" />
           <Stat label="Discounts given" value={formatMoneyMinor(m.discount, m.currency)} tone="muted" />
