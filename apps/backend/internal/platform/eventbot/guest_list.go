@@ -5,7 +5,7 @@ package eventbot
 //
 // Three ways in:
 //   - "👥 Guest list" on a date's card (ses:gl): the bot downloads
-//     GET .../sessions/{id}/guest-list.csv as the person and sends it as a
+//     GET .../sessions/{id}/guest-list.xlsx as the person and sends it as a
 //     document;
 //   - the toggle on the Notifications screen (gl:on / gl:off, the WANTED value
 //     so an old button never flips it back): PUT .../guest-list-subscription;
@@ -65,9 +65,11 @@ const (
 // its 10-minute lease, so the person would get the same list twice.
 var guestListFinishRetries = []time.Duration{time.Second, 3 * time.Second, 10 * time.Second}
 
-// SessionGuestListCSV downloads the guest list of a session.
-func (c *ArenaClient) SessionGuestListCSV(ctx context.Context, jwt string, orgID, sessionID uuid.UUID, locale string) (CSVFile, error) {
-	return c.DownloadCSV(ctx, jwt, "/v1/organizations/"+orgID.String()+"/sessions/"+sessionID.String()+"/guest-list.csv", locale)
+// SessionGuestList downloads the guest list of a session as an Excel
+// workbook: a CSV lands in one column when Excel runs with regional settings
+// whose list separator is not ";".
+func (c *ArenaClient) SessionGuestList(ctx context.Context, jwt string, orgID, sessionID uuid.UUID, locale string) (CSVFile, error) {
+	return c.DownloadXLSX(ctx, jwt, "/v1/organizations/"+orgID.String()+"/sessions/"+sessionID.String()+"/guest-list.xlsx", locale)
 }
 
 // GuestListSubscription reads the person's automatic guest list setting.
@@ -131,7 +133,7 @@ func (b *Bot) sendGuestList(ctx context.Context, chatID int64, from *models.User
 	if sum.Session.VenueTimezone != nil {
 		tz = *sum.Session.VenueTimezone
 	}
-	file, err := b.arena.SessionGuestListCSV(ctx, jwt, id.Current.OrgID, sessionID, loc)
+	file, err := b.arena.SessionGuestList(ctx, jwt, id.Current.OrgID, sessionID, loc)
 	if err != nil {
 		b.csvFailed(ctx, chatID, loc, csvSessionSales, err)
 		return
@@ -152,7 +154,7 @@ func (b *Bot) sendGuestList(ctx context.Context, chatID int64, from *models.User
 func (b *Bot) sendGuestListDocument(ctx context.Context, chatID int64, file CSVFile, caption string) error {
 	name := file.Name
 	if name == "" {
-		name = "guests.csv"
+		name = "guests.xlsx"
 	}
 	_, err := b.tg.SendDocument(ctx, &tgbot.SendDocumentParams{
 		ChatID:    chatID,
@@ -280,7 +282,7 @@ func (b *Bot) deliverGuestList(ctx context.Context, d GuestListDelivery) (outcom
 		return guestListFailed, "mint_failed"
 	}
 	loc := NormalizeLocale(link.Locale)
-	file, err := b.arena.SessionGuestListCSV(ctx, jwt, d.OrgID, d.SessionID, loc)
+	file, err := b.arena.SessionGuestList(ctx, jwt, d.OrgID, d.SessionID, loc)
 	switch {
 	case IsAPIError(err, http.StatusForbidden), IsAPIError(err, http.StatusNotFound):
 		return guestListSkipped, "no_access"
