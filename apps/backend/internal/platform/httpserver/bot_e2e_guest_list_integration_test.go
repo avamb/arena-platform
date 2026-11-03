@@ -3,7 +3,7 @@
 package httpserver
 
 // The guest list of a session (owner decision 2026-11-02, package guestlist,
-// migration 0188), through the real bot against the stub Telegram:
+// migration 0187), through the real bot against the stub Telegram:
 //
 //   - "👥 Список гостей" on a date's card sends guest-list.csv as a document,
 //     one row per active ticket, sorted by the guest's name;

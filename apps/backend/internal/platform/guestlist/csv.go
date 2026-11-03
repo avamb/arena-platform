@@ -1,5 +1,5 @@
 // Package guestlist is the organizer's guest list of a session (owner
-// decision 2026-11-02, spec 51 section 4.4, migration 0188).
+// decision 2026-11-02, spec 51 section 4.4, migration 0187).
 //
 // The list is a CSV of the session's ACTIVE tickets, one row per ticket,
 // sorted by the guest's name: guest, category, seat, ticket number, barcode,

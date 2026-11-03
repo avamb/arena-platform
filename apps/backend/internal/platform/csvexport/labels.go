@@ -47,7 +47,7 @@ const (
 	ColEnteredAt
 	ColEnteredSource
 	ColEnteredScanner
-	// The guest list of a session (migration 0188).
+	// The guest list of a session (migration 0187).
 	ColGuest
 	ColSeat
 	ColTicket

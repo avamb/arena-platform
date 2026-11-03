@@ -1,7 +1,7 @@
 //go:build integration
 
 // guest_list_integration_test.go — the guest list of a session (owner
-// decision 2026-11-02, package guestlist, migration 0188) through the REAL
+// decision 2026-11-02, package guestlist, migration 0187) through the REAL
 // router, on the EC-07 export fixture (two active tickets of one order).
 //
 //   - the file: active tickets only (a cancelled one is left out), sorted by

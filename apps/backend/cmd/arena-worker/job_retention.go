@@ -23,7 +23,7 @@ func registerJobRetentionHandler(reg *worker.Registry, pool *pgxpool.Pool, logge
 		Scheduler: jobretention.NewPGScheduler(pool),
 		Logger:    logger,
 		// promo_code_attempts older than 90 days (migration 0166) and guest
-		// list deliveries whose moment is older than 90 days (migration 0188).
+		// list deliveries whose moment is older than 90 days (migration 0187).
 		Extra: func(ctx context.Context, now time.Time) (string, int64, error) {
 			n, err := promoattempts.Purge(ctx, pool, now)
 			if err != nil {

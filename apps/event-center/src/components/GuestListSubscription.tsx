@@ -1,6 +1,6 @@
 /**
  * "Send me the guest list before every session" (owner decision 2026-11-02,
- * migration 0188). The caller's OWN setting in this organization: when it is
+ * migration 0187). The caller's OWN setting in this organization: when it is
  * on, the guest list of every session comes 24 hours before the start, 3 hours
  * before it and at doors open, to the caller's private chat with the event
  * center bot, or by e-mail without the bot. Never to a group: the file holds

@@ -1,5 +1,5 @@
 // Hand-maintained typed query wrapper; follows sqlc output conventions.
-// source: guest_list.sql (migration 0188, owner decision 2026-11-02)
+// source: guest_list.sql (migration 0187, owner decision 2026-11-02)
 
 package gen
 

@@ -1,7 +1,7 @@
 package eventbot
 
 // guest_list.go — the guest list of a session (owner decision 2026-11-02,
-// spec 51 section 4.4, migration 0188).
+// spec 51 section 4.4, migration 0187).
 //
 // Three ways in:
 //   - "👥 Guest list" on a date's card (ses:gl): the bot downloads

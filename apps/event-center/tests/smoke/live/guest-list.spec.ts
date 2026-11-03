@@ -1,6 +1,6 @@
 /**
  * Twin test "Guest list" on the three roles of one organization, against a
- * REAL arena-api (owner decision 2026-11-02, migration 0188). It walks the
+ * REAL arena-api (owner decision 2026-11-02, migration 0187). It walks the
  * scenario of the bot's e2e (httpserver/bot_e2e_guest_list_integration_test.go):
  * the date's guest list downloads as a CSV of its active tickets, and the
  * person turns "send me the guest list before every session" on (on the date)

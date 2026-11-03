@@ -1,4 +1,4 @@
--- 0188_guest_lists.sql — the organizer's guest list of a session (owner
+-- 0187_guest_lists.sql — the organizer's guest list of a session (owner
 -- decision 2026-11-02, spec 51 section 4.4).
 --
 -- A guest list is a CSV of the session's active tickets: guest, category,

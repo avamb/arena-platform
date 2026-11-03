@@ -1,7 +1,7 @@
 package hbot
 
 // guest_list.go — the bot's side of the automatic guest list (owner decision
-// 2026-11-02, package guestlist, migration 0188):
+// 2026-11-02, package guestlist, migration 0187):
 //
 //	POST /v1/bot/guest-list-deliveries/claim
 //	POST /v1/bot/guest-list-deliveries/{id}/finish
