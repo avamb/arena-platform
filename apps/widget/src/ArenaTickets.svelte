@@ -1152,8 +1152,8 @@
         onApplyPromo={(code) => void promoCtl.apply(code)}
         onRemovePromo={() => {
           promoCtl.remove();
-          forgetPromoFromLink();
           noteCheckoutChange({ type: 'promo_removed' });
+          forgetPromoFromLink();
         }}
         onEmailChange={(email) => noteCheckoutChange({ type: 'email_changed', email })}
         onContinue={() => promoCtl.cancelPending()}
