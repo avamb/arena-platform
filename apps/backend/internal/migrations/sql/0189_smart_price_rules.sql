@@ -1,4 +1,4 @@
--- 0190_smart_price_rules.sql — the "smart price" presets (spec
+-- 0189_smart_price_rules.sql — the "smart price" presets (spec
 -- 08_architecture/51_4_2_smart_price_ru.md, owner decisions 2026-11-02).
 --
 -- A preset is NOT a price engine: enabling it writes ordinary categories,

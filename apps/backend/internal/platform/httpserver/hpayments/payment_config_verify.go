@@ -226,6 +226,13 @@ const (
 	// receive every refund event (created, updated, failed), so some refunds
 	// made or changed at the provider never reach arena.
 	WarningRefundEventsNotSubscribed = "refund_events_not_subscribed"
+	// WarningDisputeEventsNotSubscribed: the endpoint does not receive the
+	// dispute events (created, updated, closed), so chargebacks never reach
+	// arena (spec 51.3).
+	WarningDisputeEventsNotSubscribed = "dispute_events_not_subscribed"
+	// WarningDisputeAccessMissing: the key cannot read disputes, so arena
+	// cannot prepare or send an answer through the provider (spec 51.3).
+	WarningDisputeAccessMissing = "dispute_access_missing"
 )
 
 // webhookWarnings asks the provider whether its webhook endpoint for this
@@ -247,12 +254,17 @@ func (h *Handler) webhookWarnings(ctx context.Context, row gen.PaymentProviderCo
 	if err != nil {
 		return out
 	}
+	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), verifyTimeout)
+	defer cancel()
+	if dc, ok := module.(payments.DisputeAccessChecker); ok && d.Capabilities.Disputes {
+		if err := dc.CheckDisputeAccess(callCtx); errors.Is(err, payments.ErrCredentialRefused) {
+			out = append(out, WarningDisputeAccessMissing)
+		}
+	}
 	checker, ok := module.(payments.WebhookSubscriptionChecker)
 	if !ok {
 		return out
 	}
-	callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), verifyTimeout)
-	defer cancel()
 	sub, err := checker.CheckWebhookSubscription(callCtx, h.callbackBase+"/v1/payment-intents/webhook/"+row.ID.String())
 	if err != nil {
 		return out
@@ -260,8 +272,13 @@ func (h *Handler) webhookWarnings(ctx context.Context, row gen.PaymentProviderCo
 	switch {
 	case !sub.EndpointFound:
 		out = append(out, WarningWebhookEndpointNotFound)
-	case !sub.RefundEventsSubscribed:
-		out = append(out, WarningRefundEventsNotSubscribed)
+	default:
+		if !sub.RefundEventsSubscribed {
+			out = append(out, WarningRefundEventsNotSubscribed)
+		}
+		if d.Capabilities.Disputes && !sub.DisputeEventsSubscribed {
+			out = append(out, WarningDisputeEventsNotSubscribed)
+		}
 	}
 	return out
 }

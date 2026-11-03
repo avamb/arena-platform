@@ -18,7 +18,7 @@
   <tr><td style="padding:8px 32px;">
     <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">{{if gt (len .Tickets) 1}}Tickets ({{len .Tickets}}){{else}}Ticket{{end}}</div>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
-    {{range .Tickets}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">No. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td>{{with .Price}}<td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td>{{end}}</tr>
+    {{range .Tickets}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">No. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .DownloadURL}}<br><a href="{{.}}" style="color:{{$.Accent}};font-size:13px;">Download PDF</a>{{end}}</td>{{with .Price}}<td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td>{{end}}</tr>
     {{else}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">No. {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · Sector {{.}}{{end}}{{with .SeatRow}} · Row {{.}}{{end}}{{with .SeatNumber}} · Seat {{.}}{{end}}</td></tr>
     {{end}}</table>
   </td></tr>
@@ -44,15 +44,15 @@
     Delivered to: {{.RecipientEmail}}<br><br>
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
-    <strong>{{.Branding.LegalName}}</strong>
+    {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
     {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
     {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
     {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
     {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
-    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
     {{with .Branding.ContactEmail}}<br>Contact: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Contact: <a href="{{.}}" style="color:#666">Write to the organizer</a>{{end}}{{end}}
   </p>
-  <p style="font-size:11px;color:#999">Arena Platform — automated delivery</p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}Arena Platform — automated delivery{{end}}</p>
   <p style="font-size:11px;color:#999;line-height:1.5">If you click “Unsubscribe”, the letters with your tickets and the important letters about your order will no longer reach you. We do not send marketing mailings without your consent.</p>
   </td></tr>
 </table>
@@ -72,7 +72,8 @@ Hello{{with .HolderName}} {{.}}{{end}}!
 {{end}}{{with .VenueName}}{{.}}
 {{end}}
 {{if gt (len .Tickets) 1}}Tickets ({{len .Tickets}}){{else}}Ticket{{end}}:
-{{range .Tickets}}- No. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .Price}} · {{.}}{{end}}
+{{range .Tickets}}- No. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .Price}} · {{.}}{{end}}{{with .DownloadURL}}
+  Download PDF: {{.}}{{end}}
 {{else}}- No. {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · Sector {{.}}{{end}}{{with .SeatRow}} · Row {{.}}{{end}}{{with .SeatNumber}} · Seat {{.}}{{end}}
 {{end}}{{with .Payment}}
 Payment:
@@ -94,17 +95,18 @@ Payment:
 Delivered to: {{.RecipientEmail}}
 
 --
-{{.Branding.LegalName}}
+{{.Branding.SellerLabel}} {{.Branding.LegalName}}
 {{with .Branding.LegalAddressLine1}}{{.}}
 {{end}}{{with .Branding.LegalAddressLine2}}{{.}}
 {{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
 {{else}}{{with .Branding.LegalAddressCity}}{{.}}
 {{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
 {{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.PaymentLine}}{{.}}
 {{end}}{{with .Branding.ContactEmail}}Contact: {{.}}
 {{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Contact: {{.}}
 {{end}}{{end}}
-Arena Platform — automated delivery
+{{if not .WhiteLabel}}Arena Platform — automated delivery{{end}}
 
 If you click “Unsubscribe”, the letters with your tickets and the important letters about your order will no longer reach you. We do not send marketing mailings without your consent.
 {{end}}

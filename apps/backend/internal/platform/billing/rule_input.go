@@ -43,6 +43,7 @@ var ruleShapes = map[RuleType]ruleShape{
 	RuleCreditPack:            {lines: []string{lineStandard}, kind: KindTicketSold},
 	RulePercentOfPriceWithCap: {lines: []string{lineVenue}, kind: KindTicketSold},
 	RuleFixedPerEvent:         {lines: []string{lineStandard, lineVenue}, kind: KindEventPublished},
+	RuleSubscription:          {lines: []string{lineStandard}, kind: KindWhiteLabelMonth},
 }
 
 // CheckRuleInput validates one rule of a NEW version against priceListCurrency
@@ -54,7 +55,7 @@ func CheckRuleInput(in RuleInput, priceListCurrency string) (Rule, error) {
 	typ := RuleType(in.RuleType)
 	shape, known := ruleShapes[typ]
 	if !known {
-		if typ == RuleVolumeAboveBaseline || typ == RuleSubscription || typ == RuleGeneratorRun {
+		if typ == RuleVolumeAboveBaseline || typ == RuleGeneratorRun {
 			return Rule{}, fmt.Errorf("%w: rule type %q is not computed by the rating engine yet", ErrRuleInput, in.RuleType)
 		}
 		return Rule{}, fmt.Errorf("%w: unknown rule type %q", ErrRuleInput, in.RuleType)

@@ -27,3 +27,10 @@ func (s *Server) handleGetEventBillingSummary(w http.ResponseWriter, r *http.Req
 	}
 	s.billingChargesHandler().HandleEventSummary(w, r)
 }
+
+func (s *Server) handleGetOrgWhiteLabel(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.billingChargesHandler().HandleOrgWhiteLabel(w, r)
+}

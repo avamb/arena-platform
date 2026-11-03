@@ -53,6 +53,19 @@ export const FIELD_LABEL: Record<string, MessageKey> = {
   price: "wizard.poster.fld.price",
 };
 
+/** The texts that name the poster, and their wording for an event page (spec 59). */
+const PAGE_TEXT: Partial<Record<MessageKey, MessageKey>> = {
+  "wizard.poster.review.title": "wizard.page.review.title",
+  "wizard.poster.review.dateNote": "wizard.page.review.dateNote",
+  "wizard.poster.review.venue.intro": "wizard.page.review.venue.intro",
+  "wizard.poster.review.empty": "wizard.page.review.empty",
+  "wizard.poster.review.note.venueName": "wizard.page.review.note.venueName",
+  "wizard.poster.review.note.city": "wizard.page.review.note.city",
+  "wizard.poster.review.note.priceCurrencyDiffers": "wizard.page.review.note.priceCurrencyDiffers",
+  "wizard.poster.review.note.priceNoCurrency": "wizard.page.review.note.priceNoCurrency",
+  "wizard.poster.review.note.moreCategories": "wizard.page.review.note.moreCategories",
+};
+
 function noteText(n: PlanNote, t: (k: MessageKey, p?: Record<string, string | number>) => string): string {
   switch (n.code) {
     case "venueName":
@@ -76,6 +89,7 @@ export function WizardPosterReview({
   defaultCategoryName,
   dispatch,
   onDone,
+  source = "poster",
 }: {
   facts: PosterFacts;
   draft: WizardDraft;
@@ -83,8 +97,12 @@ export function WizardPosterReview({
   dispatch: (action: DraftAction) => void;
   /** Called with what was filled in (empty = nothing). */
   onDone: (applied: readonly string[]) => void;
+  /** Where the facts come from: the texts name the poster or the event page. */
+  source?: "poster" | "page";
 }) {
-  const { t, locale } = useI18n();
+  const { t: tr, locale } = useI18n();
+  const t = (key: MessageKey, params?: Record<string, string | number>): string =>
+    tr(source === "page" ? (PAGE_TEXT[key] ?? key) : key, params);
   const { orgId, access } = useOrg();
   const ids = useId();
   // The poster's day as a person reads it ("5 March 2031"); the form itself keeps the ISO day.

@@ -397,7 +397,10 @@ func (f *hostedOrgFixture) cleanup() {
 		{`DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE org_id = $1)`, f.orgID},
 		{`DELETE FROM payment_intent_events WHERE payment_intent_id IN
 		   (SELECT id FROM payment_intents WHERE org_id = $1)`, f.orgID},
+		{`DELETE FROM worker_jobs WHERE job_type = 'payment.receipt_archive' AND payload->>'payment_intent_id' IN
+		   (SELECT id::text FROM payment_intents WHERE org_id = $1)`, f.orgID},
 		{`DELETE FROM payment_intents WHERE org_id = $1`, f.orgID},
+		{`DELETE FROM media_objects WHERE org_id = $1 AND owner_type = 'payment_receipt'`, f.orgID},
 		{`DELETE FROM orders WHERE org_id = $1`, f.orgID},
 		// worker_jobs rows are keyed only by their JSON payload — no FK — so
 		// they MUST be swept BEFORE their parents are deleted, or they leak
@@ -1330,6 +1333,8 @@ func TestHostedCheckout_ConfigRoute_AllPayEventsDecidedByKind(t *testing.T) {
 
 	f := newHostedOrgFixture(t, ctx, pool, "cfgallpay")
 	defer f.cleanup()
+	// The chargeback is recorded as a dispute (spec 51.3); its rows go first.
+	defer cleanupDisputes(pool, f.orgID)
 
 	srv := buildHostedCheckoutServer(t, pool, newStubStripe(t).baseURL())
 	q := gen.New(pool)
@@ -1393,8 +1398,13 @@ func TestHostedCheckout_ConfigRoute_AllPayEventsDecidedByKind(t *testing.T) {
 		t.Fatalf("a wrong AllPay signature = %d, state %q; want 401 and no change", c, state())
 	}
 	c, resp := post(map[string]any{"type": "chargeback", "status": json.Number("3")}, allpayKey)
-	if c != http.StatusOK || resp["processed"] == true || state() != "created" {
-		t.Fatalf("chargeback = %d %v, state %q; want 200, not processed, no change", c, resp, state())
+	if c != http.StatusOK || state() != "created" {
+		t.Fatalf("chargeback = %d %v, state %q; want 200 and no change of the payment", c, resp, state())
+	}
+	// The chargeback becomes an e-mail channel dispute of the payment.
+	var disputeChannel string
+	if err := pool.QueryRow(ctx, `SELECT channel FROM payment_disputes WHERE org_id = $1 AND provider = 'allpay'`, f.orgID).Scan(&disputeChannel); err != nil || disputeChannel != "email" {
+		t.Fatalf("chargeback dispute: channel %q, %v; want one email dispute", disputeChannel, err)
 	}
 	c, resp = post(map[string]any{"status": json.Number("0"), "decline_code": json.Number("20004")}, allpayKey)
 	if c != http.StatusOK || resp["processed"] == true || state() != "created" {

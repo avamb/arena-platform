@@ -52,6 +52,8 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		"Step": 1, "Steps": 4, "Every": 30, "Cap": 50, "Rule": "r",
 		// the sales state of a session (sessions_sales_state.go)
 		"Free": 4, "Sites": 1, "Attempts": 2,
+		// the Disputes screens (disputes_keys.go)
+		"Size": "12 KB", "Tag": " (t)",
 	}
 	for _, loc := range SupportedLocales {
 		for _, key := range MessageKeys {

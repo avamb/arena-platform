@@ -3,6 +3,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   downloadCsv,
+  downloadGuestListXlsx,
   downloadSampleTicket,
   fetchSessionSummary,
   listSessions,
@@ -18,6 +19,7 @@ import { SessionSaleTimes } from "@/components/SessionSaleTimes";
 import { SessionSalesState } from "@/components/SessionSalesState";
 import { SessionChange } from "@/components/SessionChange";
 import { SessionTickets } from "@/components/SessionTickets";
+import { GuestListSubscription } from "@/components/GuestListSubscription";
 import { useOrg } from "@/screens/OrgLayout";
 
 function tierPrice(tier: TicketTierItem, locale: string, t: ReturnType<typeof useI18n>["t"]): string {
@@ -169,6 +171,18 @@ export function SessionScreen() {
               label="session.csvSummary"
               testId="csv-session-summary"
               fetchFile={() => downloadCsv(orgId, "sessionSummary", sessionId, locale)}
+            />
+            <DownloadButton
+              label="guestList.download"
+              testId="xlsx-session-guest-list"
+              variant="primary"
+              fetchFile={() => downloadGuestListXlsx(orgId, sessionId, locale)}
+            />
+            <DownloadButton
+              label="guestList.downloadCsv"
+              testId="csv-session-guest-list"
+              variant="link"
+              fetchFile={() => downloadCsv(orgId, "sessionGuestList", sessionId, locale)}
             />
           </>
         )}
@@ -331,6 +345,7 @@ export function SessionScreen() {
       )}
       {/* M2 */}
       {canSales && <SessionTickets orgId={orgId} sessionId={sessionId} tz={tz} />}
+      {canSales && <GuestListSubscription orgId={orgId} />}
     </article>
   );
 }

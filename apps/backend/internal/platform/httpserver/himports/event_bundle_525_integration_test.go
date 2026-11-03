@@ -28,6 +28,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -250,6 +251,15 @@ func TestEventBundle525_CreateMintsArenaIdentity(t *testing.T) {
 	if res.ExternalRef == nil || *res.ExternalRef != f.externalRef {
 		t.Errorf("create: external_ref = %v, want %q", res.ExternalRef, f.externalRef)
 	}
+	// event_updated_at is the event's updated_at exactly as this import left
+	// it: the Telegram bot compares it with a later read of the event.
+	var stored time.Time
+	if err := pool.QueryRow(ctx, `SELECT updated_at FROM events WHERE id = $1`, res.EventID).Scan(&stored); err != nil {
+		t.Fatalf("read events.updated_at: %v", err)
+	}
+	if res.EventUpdatedAt == nil || !res.EventUpdatedAt.Equal(stored) {
+		t.Errorf("create: event_updated_at = %v, want the stored %v", res.EventUpdatedAt, stored)
+	}
 
 	// §4: every id arena hands back must be one it minted itself.
 	const ceiling int64 = 1_000_000_000
@@ -421,6 +431,14 @@ func TestEventBundle525_EditByExternalRef(t *testing.T) {
 	}
 	if edited.SessionID != first.SessionID {
 		t.Errorf("edit bundle: session_id = %s, want %s", edited.SessionID, first.SessionID)
+	}
+	// A repeat import moves the mark forward and still answers the stored one.
+	var stored time.Time
+	if err := pool.QueryRow(ctx, `SELECT updated_at FROM events WHERE id = $1`, edited.EventID).Scan(&stored); err != nil {
+		t.Fatalf("read events.updated_at: %v", err)
+	}
+	if edited.EventUpdatedAt == nil || !edited.EventUpdatedAt.Equal(stored) || first.EventUpdatedAt == nil || !stored.After(*first.EventUpdatedAt) {
+		t.Errorf("edit bundle: event_updated_at = %v (first %v), want the stored %v, later than the first", edited.EventUpdatedAt, first.EventUpdatedAt, stored)
 	}
 	if hasWarning(edited.Warnings, WarnTierNotInPayload) {
 		t.Errorf("edit bundle: unexpected %s warning: %+v", WarnTierNotInPayload, edited.Warnings)

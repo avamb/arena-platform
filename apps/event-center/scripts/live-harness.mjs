@@ -257,6 +257,10 @@ const apiEnv = {
   API_PUBLIC_URL: apiBase,
   E2E_POSTER_SCRIPT: posterScript,
   E2E_POSTER_CALLS: posterCalls,
+  // Spec 59: the "fill in from your event page" twin serves the organizer's page on
+  // 127.0.0.1; the egress guard refuses local addresses unless this local-stand
+  // setting is on (config.Validate refuses it in production).
+  EGRESS_ALLOW_PRIVATE_TARGETS: process.env.EGRESS_ALLOW_PRIVATE_TARGETS ?? "true",
   // Every Stripe call goes to the stub above, never to Stripe (task 8-1).
   STRIPE_API_BASE_URL: `${stripeBase}/v1`,
 };

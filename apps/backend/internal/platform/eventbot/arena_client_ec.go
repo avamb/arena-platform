@@ -9,12 +9,14 @@ package eventbot
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -70,6 +72,21 @@ func (c *ArenaClient) SessionSummaryCSV(ctx context.Context, jwt string, orgID, 
 // non-2xx answer is an *APIError — 413 export.too_many_rows when the file
 // would exceed the server's row cap, 404 for a row of another organization.
 func (c *ArenaClient) DownloadCSV(ctx context.Context, jwt, path, locale string) (CSVFile, error) {
+	return c.downloadExport(ctx, jwt, path, locale, "text/csv", ".csv")
+}
+
+// DownloadXLSX fetches an export served as an Excel workbook (the guest
+// list). A workbook cannot be counted by reading it, so the number of data
+// rows comes from the X-Row-Count header the API sets; an answer without it
+// is an error rather than a file the bot would call empty.
+func (c *ArenaClient) DownloadXLSX(ctx context.Context, jwt, path, locale string) (CSVFile, error) {
+	return c.downloadExport(ctx, jwt, path, locale, xlsxContentType, ".xlsx")
+}
+
+// xlsxContentType is the media type of an .xlsx file.
+const xlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+func (c *ArenaClient) downloadExport(ctx context.Context, jwt, path, locale, accept, ext string) (CSVFile, error) {
 	if locale != "" {
 		path += "?locale=" + url.QueryEscape(locale)
 	}
@@ -77,7 +94,7 @@ func (c *ArenaClient) DownloadCSV(ctx context.Context, jwt, path, locale string)
 	if err != nil {
 		return CSVFile{}, err
 	}
-	req.Header.Set("Accept", "text/csv")
+	req.Header.Set("Accept", accept)
 	req.Header.Set("X-Admin-Reason", AdminReason)
 	req.Header.Set(audit.HeaderClientChannel, ClientChannel)
 	req.Header.Set("Authorization", "Bearer "+jwt)
@@ -98,11 +115,17 @@ func (c *ArenaClient) DownloadCSV(ctx context.Context, jwt, path, locale string)
 	if len(raw) > csvMaxBytes {
 		return CSVFile{}, errCSVTooLarge
 	}
-	return CSVFile{
-		Name: safeFileName(res.Header.Get("Content-Disposition")),
-		Body: raw,
-		Rows: CSVRows(raw),
-	}, nil
+	file := CSVFile{Name: safeFileName(res.Header.Get("Content-Disposition"), ext), Body: raw}
+	if ext == ".csv" {
+		file.Rows = CSVRows(raw)
+		return file, nil
+	}
+	n, err := strconv.Atoi(res.Header.Get("X-Row-Count"))
+	if err != nil || n < 0 {
+		return CSVFile{}, errors.New("eventbot: export answer has no row count")
+	}
+	file.Rows = n
+	return file, nil
 }
 
 // apiErrorFrom builds the APIError of a non-2xx answer whose body is the
@@ -124,21 +147,21 @@ func apiErrorFrom(status int, raw []byte) *APIError {
 var unsafeFileChars = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
 // safeFileName takes the filename of a Content-Disposition header and keeps
-// only characters that are safe in a document name; the fallback is
-// "export.csv".
-func safeFileName(disposition string) string {
+// only characters that are safe in a document name, ending in ext (".csv",
+// ".xlsx"); the fallback is "export" + ext.
+func safeFileName(disposition, ext string) string {
 	name := ""
 	if _, params, err := mime.ParseMediaType(disposition); err == nil {
 		name = params["filename"]
 	}
-	if strings.HasSuffix(strings.ToLower(name), ".csv") {
-		name = name[:len(name)-len(".csv")]
+	if strings.HasSuffix(strings.ToLower(name), ext) {
+		name = name[:len(name)-len(ext)]
 	}
 	name = strings.Trim(unsafeFileChars.ReplaceAllString(name, "_"), "._-")
 	if name == "" {
 		name = "export"
 	}
-	return name + ".csv"
+	return name + ext
 }
 
 // CSVRows counts the data rows of an export: records end with a newline that

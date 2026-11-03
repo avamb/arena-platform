@@ -23,6 +23,7 @@ export type TicketTierListResponse = S["TicketTierListResponse"];
 export type EventSummary = S["EventSummary"];
 export type EventSummarySession = S["EventSummarySession"];
 export type SessionSummary = S["SessionSummary"];
+export type GuestListSubscription = S["GuestListSubscription"];
 export type SessionPlaceCounts = S["SessionPlaceCounts"];
 export type SummaryMoneyItem = S["SummaryMoneyItem"];
 export type OrderListItem = S["OrderListItem"];
@@ -109,6 +110,8 @@ export type ImportBil24SessionResponse = S["ImportBil24SessionResponse"];
 export type MediaObject = S["MediaObject"];
 // Poster-first creation: what the vision model read from an uploaded poster (hints only).
 export type PosterFactsResponse = S["PosterFactsResponse"];
+// Spec 59: what the organizer's own event page said (hints only).
+export type EventPageFactsResponse = S["EventPageFactsResponse"];
 // 5-2: move or cancel a session, the organizer contact, the venues list.
 export type SessionChangeImpact = S["SessionChangeImpact"];
 export type SessionChangeSummary = S["SessionChangeSummary"];

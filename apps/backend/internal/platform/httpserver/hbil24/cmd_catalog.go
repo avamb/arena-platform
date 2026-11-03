@@ -23,6 +23,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/compatids"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/whitelabel"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -200,6 +201,17 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Spec 08_architecture/53: an action whose brand has white label today
+	// carries whiteLabel=true, so the site hides its "Tickets: Arena Sold
+	// Out" badge. Best effort: a failed lookup keeps the badge (the field is
+	// left out), it never fails the catalog.
+	whiteLabels, wlErr := whitelabel.New(h.eventQueries).Events(ctx, actionIDs)
+	if wlErr != nil {
+		h.logger.Warn("bil24_compat: GET_ALL_ACTIONS: white label lookup failed",
+			slog.String("error", wlErr.Error()),
+		)
+	}
+
 	actionList := make([]map[string]any, 0, len(events))
 	for _, e := range events {
 		// Spec §7.1: only status='published' events appear in the catalog.
@@ -210,6 +222,7 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 		}
 		ae := byEvent[e.ID]
 		ae.descriptionFormat = descFormats[e.ID]
+		ae.whiteLabel = whiteLabels[e.ID]
 		actionList = append(actionList, h.buildActionEntry(ctx, e, organizerID, organizerName, ae))
 	}
 
@@ -308,6 +321,11 @@ func (h *Handler) buildActionEntry(
 		// "from {minPrice}" template would print "from" alone.
 		"minPrice": money.Major(ae.minPrice),
 		"maxPrice": money.Major(ae.maxPrice),
+	}
+	// Arena extension (spec 08_architecture/53): present only when the
+	// action's brand has white label today; absent means false.
+	if ae.whiteLabel {
+		action["whiteLabel"] = true
 	}
 	// firstEventDate / lastEventDate — spec §7.1 wants DD.MM.YYYY, and the
 	// only correct calendar day is the one at the VENUE. So they are read off

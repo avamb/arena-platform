@@ -18,7 +18,7 @@
   <tr><td style="padding:8px 32px;">
     <div style="font-size:12px;color:#93a0a8;text-transform:uppercase;letter-spacing:0.04em;padding-bottom:4px;">{{if gt (len .Tickets) 1}}Billets ({{len .Tickets}}){{else}}Billet{{end}}</div>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;line-height:1.5;border-collapse:collapse;">
-    {{range .Tickets}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">N° {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td>{{with .Price}}<td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td>{{end}}</tr>
+    {{range .Tickets}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">N° {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .DownloadURL}}<br><a href="{{.}}" style="color:{{$.Accent}};font-size:13px;">Télécharger le PDF</a>{{end}}</td>{{with .Price}}<td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;white-space:nowrap;text-align:right;">{{.}}</td>{{end}}</tr>
     {{else}}<tr><td style="padding:7px 0;border-bottom:1px solid #eceff1;color:#22333D;">N° {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · Secteur {{.}}{{end}}{{with .SeatRow}} · Rang {{.}}{{end}}{{with .SeatNumber}} · Place {{.}}{{end}}</td></tr>
     {{end}}</table>
   </td></tr>
@@ -44,15 +44,15 @@
     Envoyé à: {{.RecipientEmail}}<br><br>
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
-    <strong>{{.Branding.LegalName}}</strong>
+    {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
     {{with .Branding.LegalAddressLine1}}<br>{{.}}{{end}}
     {{with .Branding.LegalAddressLine2}}<br>{{.}}{{end}}
     {{with .Branding.LegalAddressPostalCode}}<br>{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}{{else}}{{with .Branding.LegalAddressCity}}<br>{{.}}{{end}}{{end}}
     {{with .Branding.LegalAddressCountry}}<br>{{.}}{{end}}
-    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
+    {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
     {{with .Branding.ContactEmail}}<br>Contact : <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Contact : <a href="{{.}}" style="color:#666">Écrire à l'organisateur</a>{{end}}{{end}}
   </p>
-  <p style="font-size:11px;color:#999">Arena Platform — envoi automatique</p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}Arena Platform — envoi automatique{{end}}</p>
   <p style="font-size:11px;color:#999;line-height:1.5">Si vous cliquez sur « Se désabonner », vous ne recevrez plus les e-mails contenant vos billets ni les e-mails importants concernant votre commande. Nous n’envoyons pas de communications commerciales sans votre consentement.</p>
   </td></tr>
 </table>
@@ -72,7 +72,8 @@ Bonjour{{with .HolderName}} {{.}}{{end}} !
 {{end}}{{with .VenueName}}{{.}}
 {{end}}
 {{if gt (len .Tickets) 1}}Billets ({{len .Tickets}}){{else}}Billet{{end}}:
-{{range .Tickets}}- N° {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .Price}} · {{.}}{{end}}
+{{range .Tickets}}- N° {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .Price}} · {{.}}{{end}}{{with .DownloadURL}}
+  Télécharger le PDF: {{.}}{{end}}
 {{else}}- N° {{.TicketID}}{{with .TierName}} · {{.}}{{end}}{{with .SeatSector}} · Secteur {{.}}{{end}}{{with .SeatRow}} · Rang {{.}}{{end}}{{with .SeatNumber}} · Place {{.}}{{end}}
 {{end}}{{with .Payment}}
 Paiement:
@@ -94,17 +95,18 @@ Paiement:
 Envoyé à: {{.RecipientEmail}}
 
 --
-{{.Branding.LegalName}}
+{{.Branding.SellerLabel}} {{.Branding.LegalName}}
 {{with .Branding.LegalAddressLine1}}{{.}}
 {{end}}{{with .Branding.LegalAddressLine2}}{{.}}
 {{end}}{{with .Branding.LegalAddressPostalCode}}{{.}}{{with $.Branding.LegalAddressCity}} {{.}}{{end}}
 {{else}}{{with .Branding.LegalAddressCity}}{{.}}
 {{end}}{{end}}{{with .Branding.LegalAddressCountry}}{{.}}
 {{end}}{{with .Branding.SellerIDs}}{{.}}
+{{end}}{{with .Branding.PaymentLine}}{{.}}
 {{end}}{{with .Branding.ContactEmail}}Contact: {{.}}
 {{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Contact: {{.}}
 {{end}}{{end}}
-Arena Platform — envoi automatique
+{{if not .WhiteLabel}}Arena Platform — envoi automatique{{end}}
 
 Si vous cliquez sur « Se désabonner », vous ne recevrez plus les e-mails contenant vos billets ni les e-mails importants concernant votre commande. Nous n’envoyons pas de communications commerciales sans votre consentement.
 {{end}}

@@ -447,7 +447,7 @@ other = "Empezar de nuevo"
 other = "Borrador eliminado. No se ha guardado nada."
 
 ["bot.wz.ask_name"]
-other = "¿Cómo se llama el evento? Los compradores verán este nombre, por ejemplo “Concierto en Madrid” o “Taller en Roma”.\n\nEscribe el nombre en un mensaje{{if .Poster}} o, si el cartel está listo, pulsa “Rellenar desde un cartel”: leeré el nombre, la fecha y los precios, y tú confirmas cada valor{{end}}."
+other = "¿Cómo se llama el evento? Los compradores verán este nombre, por ejemplo “Concierto en Madrid” o “Taller en Roma”.\n\nEscribe el nombre en un mensaje{{if .Poster}} o, si el cartel está listo, pulsa “Rellenar desde un cartel”: leeré el nombre, la fecha y los precios, y tú confirmas cada valor{{end}}.{{if .Link}}\n\n¿Tienes una página del evento en tu sitio web? Pulsa “Rellenar desde un enlace” o envía su dirección.{{end}}"
 
 ["bot.wz.err_name"]
 other = "Ponle un nombre al evento, de hasta 200 caracteres."
@@ -876,7 +876,25 @@ other = "Categorías"
 other = "¿Añadir otra sesión a este evento?"
 
 ["bot.wz.edit_changed_meanwhile"]
-other = "«{{.Name}}» se ha modificado en otro sitio (la web o la administración) después de que lo abrieras. ¿Guardar tu versión por encima?"
+other = "«{{.Name}}» se ha modificado en otro sitio después de que lo abrieras: en el centro de eventos, la administración o el bot. ¿Guardar tu versión por encima?"
+
+["bot.wz.elsewhere_list"]
+other = "Qué se cambió allí desde que abriste la edición:\n{{.List}}"
+
+["bot.wz.elsewhere_part"]
+other = "{{.What}}: con cambios"
+
+["bot.wz.elsewhere_unknown"]
+other = "El nombre, la descripción, el cartel, la edad y el promotor siguen como al abrirlos. Ha cambiado otra parte, por ejemplo las fechas o los precios."
+
+["bot.wz.preview_conflict_footer"]
+other = "«Guardar igualmente» escribe tu versión encima de sus cambios. Para empezar desde la nueva versión, pulsa «Cancelar», luego «Eliminar los cambios», y abre el evento de nuevo."
+
+["bot.wz.preview_check_failed"]
+other = "⚠ No hemos podido comprobar si el evento se ha modificado en otro sitio. El bot lo comprobará de nuevo cuando pulses «Publicar»."
+
+["bot.wz.edit_check_failed"]
+other = "No hemos podido comprobar si «{{.Name}}» se ha modificado en otro sitio. Por eso no hemos guardado nada. Pulsa «Reintentar» dentro de un minuto. Si estás seguro de tu versión, pulsa «Guardar igualmente»."
 
 ["bot.wz.edit_saved"]
 other = "<b>Guardado.</b> «{{.Name}}» está actualizado.{{.Link}}{{.Warnings}}"
@@ -5051,3 +5069,479 @@ other = "El precio inteligente ya está desactivado."
 
 ["bot.sp.price_warn"]
 other = "📈 Esta categoría sigue el precio inteligente. Un precio puesto a mano lo desactiva: después el precio ya no sube."
+
+["bot.wz.link_first_btn"]
+other = "🔗 Rellenar desde un enlace"
+
+["bot.wz.ask_link_first"]
+other = "Envía el enlace a la página de este evento en tu sitio web. Leeré el nombre, las fechas, el recinto, los precios y la imagen y te los propondré. Confirmas cada valor con un botón.\n\nNo leo páginas de servicios de venta de entradas (Ticketmaster, Eventbrite y similares). Sus normas lo prohíben.\n\n¿Cambiaste de idea? Pulsa “Atrás” y escribe el nombre."
+
+["bot.wz.err_link_first"]
+other = "Espero el enlace a la página del evento. Empieza por https://. Para escribir el nombre, pulsa “Atrás”."
+
+["bot.wz.hint_btn_page"]
+other = "De la página: {{.Value}}"
+
+["bot.wz.page_reading"]
+other = "Leyendo la página…"
+
+["bot.wz.page_read"]
+other = "En la página encontré:\n{{.List}}\n\nTe los propondré como sugerencias. En cada paso pulsa “De la página” si es correcto, o escribe tu valor."
+
+["bot.wz.page_ack_image"]
+other = "Imagen para el cartel"
+
+["bot.wz.page_err_ticketing"]
+other = "Es una página de un servicio de venta de entradas. No la leo: sus normas lo prohíben. Envía el enlace a la página del evento en tu sitio web, o pulsa “Atrás” y escribe el nombre."
+
+["bot.wz.page_err_invalid"]
+other = "No parece la dirección de una página. Envía el enlace completo. Empieza por https://."
+
+["bot.wz.page_err_not_public"]
+other = "No se puede acceder a esta página desde internet, así que no puedo abrirla. Envía un enlace a una página pública de tu sitio web."
+
+["bot.wz.page_err_not_page"]
+other = "Este enlace no es una página web, o la página es demasiado grande. Envía el enlace a la página del evento."
+
+["bot.wz.page_err_nothing"]
+other = "No encontré ni el nombre ni la fecha del evento en esta página. Puede que la página la genere un script. Envía el cartel, o pulsa “Atrás” y escribe el nombre."
+
+["bot.wz.page_err_fetch"]
+other = "El sitio web no respondió o respondió con un error. Comprueba que la página se abre en el navegador y envía el enlace otra vez."
+
+["bot.wz.page_err_rate"]
+other = "Se leyeron muchas páginas en la última hora. Inténtalo más tarde o responde tú a las preguntas."
+
+["bot.wz.page_err_unavailable"]
+other = "Ahora no pude leer la página. Inténtalo dentro de un minuto, o pulsa “Atrás” y escribe el nombre."
+
+["bot.wz.page_note_no_dates"]
+other = "La página no tiene fecha. Te la preguntaré."
+
+["bot.wz.page_note_no_prices"]
+other = "La página no indica precios por categoría. Te preguntaré por las entradas."
+
+["bot.wz.page_note_more_dates"]
+other = "La página tiene más fechas ({{.Count}}). Tomé las 10 más próximas. Añade tú las demás."
+
+["bot.wz.page_note_online"]
+other = "La página dice que el evento es en línea. Te preguntaré el recinto."
+
+["bot.wz.page_note_image_not_poster"]
+other = "La imagen de la página no sirve como cartel: debe ser 4:5 o cuadrada, de al menos 1000 px de ancho. Puedes enviar un cartel en el paso “Cartel”."
+
+["bot.wz.page_note_model"]
+other = "La IA leyó parte de esto del texto de la página. Revísalo con atención."
+["bot.gl.btn"]
+other = "👥 Lista de invitados"
+
+["bot.gl.private_only"]
+other = "La lista de invitados tiene los contactos de los compradores. Ábrela en tu chat privado con el bot."
+
+["bot.gl.empty"]
+other = "Esta sesión aún no tiene entradas activas. La lista de invitados está vacía."
+
+["bot.gl.caption"]
+other = "<b>{{.Name}}</b>, {{.When}}\nLista de invitados. Entradas en la lista: {{.Rows}}. El archivo tiene los contactos de los compradores: no lo reenvíes a personas ajenas."
+
+["bot.gl.auto_hint"]
+other = "El bot puede enviarte esta lista por sí mismo: 24 horas antes del inicio, 3 horas antes y al abrir las puertas. Actívalo en «☰ Menú» y luego «🔔 Notificaciones»."
+
+["bot.gl.notif_text"]
+other = "<b>Lista de invitados</b>\nEste bot envía a este chat un archivo de Excel con la lista de invitados de cada sesión: 24 horas antes del inicio, 3 horas antes y al abrir las puertas. El archivo llega solo a ti, nunca a un grupo: tiene los contactos de los compradores."
+
+["bot.gl.toggle_on"]
+other = "☑ Enviarme la lista de invitados"
+
+["bot.gl.toggle_off"]
+other = "☐ No enviarme la lista de invitados"
+
+["bot.gl.toggle_failed"]
+other = "No hemos podido cambiar el ajuste. Inténtalo de nuevo en un minuto."
+
+["bot.gl.auto_caption_h24"]
+other = "<b>{{.Name}}</b>, {{.When}}\nLista de invitados, 24 horas antes del inicio. Entradas en la lista: {{.Rows}}."
+
+["bot.gl.auto_caption_h3"]
+other = "<b>{{.Name}}</b>, {{.When}}\nLista de invitados, 3 horas antes del inicio. Entradas en la lista: {{.Rows}}."
+
+["bot.gl.auto_caption_doors"]
+other = "<b>{{.Name}}</b>, {{.When}}\nLista de invitados para la apertura de puertas. Entradas en la lista: {{.Rows}}."
+
+["bot.gl.auto_stop"]
+other = "El archivo tiene los contactos de los compradores: no lo reenvíes a personas ajenas. Para dejar de recibirlo, abre «☰ Menú» y luego «🔔 Notificaciones»."
+
+["guestlist.sheet_name"]
+other = "Invitados"
+
+["guestlist.email.subject"]
+other = "Lista de invitados: {{.Event}}, {{.When}}"
+
+["guestlist.email.greeting"]
+other = "¡Hola!"
+
+["guestlist.email.attached"]
+other = "Te adjuntamos la lista de invitados de «{{.Event}}» del {{.When}}. Entradas en la lista: {{.Rows}}."
+
+["guestlist.email.slot_h24"]
+other = "La sesión empieza dentro de 24 horas."
+
+["guestlist.email.slot_h3"]
+other = "La sesión empieza dentro de 3 horas."
+
+["guestlist.email.slot_doors"]
+other = "Se abren las puertas de la sesión."
+
+["guestlist.email.slot_manual"]
+other = "Esta es una copia actualizada de la lista."
+
+["guestlist.email.why"]
+other = "Recibes este correo porque activaste «Enviarme la lista de invitados» en el centro de eventos. El archivo tiene los contactos de los compradores: no lo reenvíes a personas ajenas."
+
+["guestlist.email.stop"]
+other = "Para dejar de recibir estos correos, desmarca «Enviarme la lista de invitados» en la sección «Notificaciones» del centro de eventos."
+
+["bot.dp.btn"]
+other = "⚠️ Disputas"
+
+["bot.dp.title"]
+other = "<b>Disputas · {{.Filter}}</b> ({{.Count}})"
+
+["bot.dp.open_line"]
+other = "Esperan tu respuesta: {{.Count}}."
+
+["bot.dp.f_open"]
+other = "Necesitan respuesta"
+
+["bot.dp.f_review"]
+other = "En revisión"
+
+["bot.dp.f_closed"]
+other = "Cerradas"
+
+["bot.dp.empty"]
+other = "No hay disputas aquí. Todo está al día."
+
+["bot.dp.row"]
+other = "{{.Chip}} <b>{{.Order}}</b> · {{.Amount}} · {{.Reason}}{{.Event}}"
+
+["bot.dp.row_due"]
+other = "Responder antes del {{.When}}"
+
+["bot.dp.open_btn"]
+other = "Abrir disputa {{.Order}}"
+
+["bot.dp.when_madrid"]
+other = "{{.When}} hora de Madrid"
+
+["bot.dp.when_venue"]
+other = "{{.When}} hora del recinto ({{.Zone}})"
+
+["bot.dp.reason_fraud"]
+other = "El titular de la tarjeta dice que no pagó"
+
+["bot.dp.reason_not_received"]
+other = "Servicio no recibido"
+
+["bot.dp.reason_not_recognized"]
+other = "Cargo no reconocido"
+
+["bot.dp.reason_refund"]
+other = "Esperaba una devolución"
+
+["bot.dp.reason_quality"]
+other = "Calidad del servicio"
+
+["bot.dp.reason_duplicate"]
+other = "Cobrado dos veces"
+
+["bot.dp.reason_other"]
+other = "Otro motivo"
+
+["bot.dp.state_needs_response"]
+other = "Necesita tu respuesta"
+
+["bot.dp.state_draft_ready"]
+other = "Pruebas listas, esperan tu respuesta"
+
+["bot.dp.state_submitted"]
+other = "Respuesta enviada"
+
+["bot.dp.state_under_review"]
+other = "En revisión en el banco"
+
+["bot.dp.state_accepted"]
+other = "La aceptaste"
+
+["bot.dp.state_expired"]
+other = "Plazo vencido, sin respuesta"
+
+["bot.dp.state_closed"]
+other = "Cerrada"
+
+["bot.dp.outcome_won"]
+other = "Ganaste, el importe se queda contigo"
+
+["bot.dp.outcome_lost"]
+other = "Perdiste, el importe fue al comprador"
+
+["bot.dp.outcome_accepted"]
+other = "La aceptaste, el importe fue al comprador"
+
+["bot.dp.outcome_withdrawn"]
+other = "El comprador retiró la disputa"
+
+["bot.dp.outcome_expired"]
+other = "Cerrada sin respuesta"
+
+["bot.dp.card_title"]
+other = "<b>Disputa · pedido {{.Order}}</b>"
+
+["bot.dp.card_event"]
+other = "Evento: {{.Event}}"
+
+["bot.dp.card_amount"]
+other = "Importe: <b>{{.Amount}}</b>"
+
+["bot.dp.card_reason"]
+other = "Motivo: {{.Reason}}"
+
+["bot.dp.card_state"]
+other = "Estado: {{.State}}"
+
+["bot.dp.card_outcome"]
+other = "Resultado: {{.State}}"
+
+["bot.dp.card_buyer"]
+other = "Comprador: {{.Name}}, {{.Email}}"
+
+["bot.dp.card_due"]
+other = "Responder antes del: <b>{{.When}}</b>"
+
+["bot.dp.card_due_estimate"]
+other = "Responder antes del: <b>{{.When}}</b>. Es una estimación: el proveedor no indicó fecha, así que Arena cuenta 7 días. Confirma la fecha real con el proveedor."
+
+["bot.dp.card_overdue"]
+other = "⚠️ El plazo ya pasó. Responde ahora o acepta la disputa."
+
+["bot.dp.card_lowvalue"]
+other = "Consejo: el importe está por debajo de tu límite de disputas pequeñas ({{.Amount}}). Disputarla cuesta unos 20 € en el banco, que solo se devuelven si ganas. Aceptarla puede salir más barato."
+
+["bot.dp.card_gaps_head"]
+other = "Lo que Arena no encontró para las pruebas:"
+
+["bot.dp.card_files_head"]
+other = "Archivos del paquete:"
+
+["bot.dp.card_file"]
+other = "• {{.Name}} · {{.Pages}} pág. · {{.Size}}{{.Tag}}"
+
+["bot.dp.file_full_tag"]
+other = "(copia completa para ti, no se envía al proveedor)"
+
+["bot.dp.card_owner_only"]
+other = "Solo el propietario de la organización responde una disputa. Tú puedes leerla y prepararla. Pide al propietario que envíe la respuesta."
+
+["bot.dp.no_package"]
+other = "El paquete de pruebas aún no está listo. Pulsa «Reconstruir» o abre la disputa en un minuto."
+
+["bot.dp.gap_no_order"]
+other = "• No hay pedido vinculado a esta disputa."
+
+["bot.dp.gap_no_letters"]
+other = "• No consta ningún correo al comprador."
+
+["bot.dp.gap_no_opens"]
+other = "• No constan aperturas ni clics de los correos."
+
+["bot.dp.gap_no_access"]
+other = "• No constan descargas ni vistas de las entradas."
+
+["bot.dp.gap_access_off"]
+other = "• Al hacer el pedido aún no se registraban las descargas de entradas."
+
+["bot.dp.gap_no_scans"]
+other = "• No consta ningún escaneo en la entrada."
+
+["bot.dp.gap_no_consent"]
+other = "• No consta la aceptación de las condiciones por parte del comprador."
+
+["bot.dp.gap_no_terms"]
+other = "• El texto de las condiciones no está guardado para este pedido."
+
+["bot.dp.gap_no_refunds"]
+other = "• No hubo devoluciones."
+
+["bot.dp.gap_reissued"]
+other = "• El PDF de la entrada se emitió de nuevo tras cambiar la fecha."
+
+["bot.dp.gap_other"]
+other = "• {{.Code}}"
+
+["bot.dp.package_btn"]
+other = "📄 Paquete"
+
+["bot.dp.order_btn"]
+other = "Abrir pedido"
+
+["bot.dp.submit_btn"]
+other = "Enviar respuesta"
+
+["bot.dp.accept_btn"]
+other = "Aceptar disputa"
+
+["bot.dp.own_btn"]
+other = "Ya respondí yo"
+
+["bot.dp.rebuild_btn"]
+other = "🔄 Reconstruir"
+
+["bot.dp.back_card_btn"]
+other = "A la disputa"
+
+["bot.dp.back_list_btn"]
+other = "A la lista"
+
+["bot.dp.cancel_btn"]
+other = "Cancelar"
+
+["bot.dp.submit_yes_btn"]
+other = "Sí, enviar la respuesta"
+
+["bot.dp.accept_yes_btn"]
+other = "Sí, aceptar la disputa"
+
+["bot.dp.test_win_btn"]
+other = "Prueba: ganar"
+
+["bot.dp.test_lose_btn"]
+other = "Prueba: perder"
+
+["bot.dp.own_yes_btn"]
+other = "Sí, ya respondí"
+
+["bot.dp.own_no_btn"]
+other = "No, volver"
+
+["bot.dp.file_caption"]
+other = "Disputa {{.Order}} · {{.Name}}"
+
+["bot.dp.file_caption_full"]
+other = "Disputa {{.Order}} · {{.Name}} · copia completa para ti"
+
+["bot.dp.files_sent"]
+other = "Archivos enviados: {{.Count}}. Guárdalos: contienen datos del comprador."
+
+["bot.dp.files_failed"]
+other = "Los archivos no llegaron. La disputa no ha cambiado. Inténtalo en un minuto."
+
+["bot.dp.rebuilding"]
+other = "Reconstruyendo el paquete de pruebas…"
+
+["bot.dp.rebuilt"]
+other = "El paquete se reconstruyó."
+
+["bot.dp.rebuilt_draft"]
+other = "El paquete se reconstruyó y se guardó como borrador en el proveedor. Al banco aún no se ha enviado nada."
+
+["bot.dp.rebuilt_nodraft"]
+other = "El paquete se reconstruyó. No se pudo guardar en el proveedor: envía la respuesta desde aquí o manda tú los archivos."
+
+["bot.dp.submit_word"]
+other = "ENVIAR"
+
+["bot.dp.accept_word"]
+other = "ACEPTAR"
+
+["bot.dp.submit_ask_api"]
+other = "Vas a responder la disputa {{.Order}} ({{.Amount}}). Arena envía el paquete de pruebas al banco una sola vez y después la respuesta no se puede cambiar. Para confirmar, escribe {{.Word}}. Para parar, pulsa «Cancelar»."
+
+["bot.dp.submit_ask_email"]
+other = "Vas a responder la disputa {{.Order}} ({{.Amount}}). Arena envía al proveedor un correo con los archivos PDF y te llega una copia. Para confirmar, escribe {{.Word}}. Para parar, pulsa «Cancelar»."
+
+["bot.dp.accept_ask"]
+other = "Vas a aceptar la disputa {{.Order}} ({{.Amount}}). Dejas de disputarla. El importe se queda con el comprador y no se puede deshacer. Para confirmar, escribe {{.Word}}. Para parar, pulsa «Cancelar»."
+
+["bot.dp.word_wrong"]
+other = "El texto no coincide, así que no se envió nada. Escribe {{.Word}} o pulsa «Cancelar»."
+
+["bot.dp.submit_final_api"]
+other = "<b>Última comprobación.</b> Disputa {{.Order}}, {{.Amount}}. El botón envía la respuesta al banco una sola vez. Después no se puede cambiar."
+
+["bot.dp.submit_final_email"]
+other = "<b>Última comprobación.</b> Disputa {{.Order}}, {{.Amount}}. El botón envía al proveedor el correo con los archivos PDF y tú recibes una copia."
+
+["bot.dp.accept_final"]
+other = "<b>Última comprobación.</b> Disputa {{.Order}}, {{.Amount}}. El botón acepta la disputa. El importe se queda con el comprador y no se puede deshacer."
+
+["bot.dp.stale_btn"]
+other = "Ese botón es de una pantalla antigua, así que no se envió nada."
+
+["bot.dp.sending"]
+other = "Enviando… Puede tardar un minuto."
+
+["bot.dp.done_submit_api"]
+other = "Listo. La respuesta fue al banco. Ya no se puede cambiar. Arena escribirá aquí cuando el banco decida."
+
+["bot.dp.done_submit_email"]
+other = "Listo. El correo con los archivos PDF va de camino al proveedor. Recibirás una copia en tu correo."
+
+["bot.dp.done_accept"]
+other = "Listo. Aceptaste la disputa. El importe se queda con el comprador."
+
+["bot.dp.done_own"]
+other = "Anotado. Arena registró que respondiste tú."
+
+["bot.dp.own_ask"]
+other = "¿Ya respondiste tú la disputa {{.Order}}, fuera de Arena? Arena solo lo anotará y no enviará nada."
+
+["bot.dp.cancelled"]
+other = "Cancelado. No se envió nada."
+
+["bot.dp.gone"]
+other = "Esta confirmación ya no está abierta, así que no se envió nada. Abre la disputa de nuevo para continuar."
+
+["bot.dp.expired"]
+other = "Esta confirmación caducó, así que no se envió nada. Abre la disputa de nuevo para continuar."
+
+["bot.dp.not_open"]
+other = "Esta disputa ya no espera respuesta. Este es su estado actual."
+
+["bot.dp.private_only"]
+other = "Ábrelo en un chat privado con el bot: la disputa contiene datos del comprador."
+
+["bot.dp.err_forbidden"]
+other = "Solo el propietario de la organización responde una disputa. Pídeselo."
+
+["bot.dp.err_package_changed"]
+other = "Las pruebas se volvieron a preparar después de que las abrieras, así que no se envió nada. Abre la disputa, revisa el paquete nuevo y envíalo otra vez."
+
+["bot.dp.err_already"]
+other = "Esta disputa ya se respondió, así que no se envió nada otra vez. Ábrela para ver su estado."
+
+["bot.dp.err_closed"]
+other = "El proveedor ya no acepta respuesta a esta disputa. Ábrela para ver su estado."
+
+["bot.dp.err_no_package"]
+other = "El paquete de pruebas no está listo, así que no se envió nada. Pulsa «Reconstruir» e inténtalo de nuevo."
+
+["bot.dp.err_key"]
+other = "La clave de pago de la organización no puede responder disputas. Responde en el panel del proveedor y envía tú los archivos del paquete."
+
+["bot.dp.err_recipient"]
+other = "Arena no tiene una dirección a la que enviar la respuesta. Añade la dirección del proveedor en el centro de eventos web e inténtalo de nuevo."
+
+["bot.dp.err_test_live"]
+other = "Un resultado de prueba solo funciona con una clave de pago de prueba. No se envió nada."
+
+["bot.dp.err_channel"]
+other = "Esta acción no encaja con esta disputa. Abre la disputa para ver qué puedes hacer."
+
+["bot.dp.err_unknown"]
+other = "No llegó una respuesta clara. Puede que la respuesta ya haya salido. No vuelvas a pulsar: abre la disputa en un minuto para ver su estado."
+
+["bot.dp.err_refused"]
+other = "Arena no pudo hacerlo. No se envió nada. Abre la disputa e inténtalo de nuevo, o escribe a soporte."
+
+["bot.dp.err_unavailable"]
+other = "Arena no pudo guardar este paso, así que no se envió nada. Inténtalo en un minuto."

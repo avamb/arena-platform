@@ -270,6 +270,14 @@ func (b *Bot) wizardText(ctx context.Context, chatID int64, from *models.User, t
 		d.Step == stPreview || d.Step == stSConfirm {
 		return false
 	}
+	// "Fill in from a link" (spec 59): the address on its own question, or
+	// pasted as the name of a new event — nobody names an event https://….
+	if d.Mode == ModeCreate && (d.Step == stEvLinkAsk || (d.Step == stEvName && looksLikePageURL(text))) {
+		if b.readPageHints(ctx, chatID, ws.Locale, jwt, ws.OrgID, text, d) {
+			b.wizardApply(ctx, chatID, nil, from, ws, d, WizInput{PageRead: true})
+		}
+		return true
+	}
 	if d.Step == stXDescription {
 		// The description is formatted and shown first; the wizard gets it
 		// only when the organizer presses a button under the preview
@@ -495,6 +503,14 @@ func (b *Bot) wizardApply(ctx context.Context, chatID int64, editMsgID *int, fro
 }
 
 func (b *Bot) wizardRender(ctx context.Context, chatID int64, editMsgID *int, ws WizSession, d *Draft, note string) {
+	if d.Mode == ModeEdit && d.Step == stPreview {
+		// The preview is where the organizer decides: a change made elsewhere
+		// is said here, not only after «Publish» (wizard_conflict.go).
+		var drawn bool
+		if note, drawn = b.renderCheckedPreview(ctx, chatID, editMsgID, ws, d, note); drawn {
+			return
+		}
+	}
 	screen, err := b.wizard.Render(ctx, ws, d)
 	if err != nil {
 		b.wizardFail(ctx, chatID, editMsgID, ws.Locale, err)
@@ -546,22 +562,15 @@ func wizardKeyboard(s Screen) *models.InlineKeyboardMarkup {
 }
 
 // wizardSave runs the save and reports the outcome. For an edited event it
-// first checks that nobody changed the event elsewhere since it was loaded;
-// force skips that check ("save anyway").
+// first checks that nobody changed the event elsewhere since it was loaded,
+// and does not save when that cannot be checked; force skips the check
+// ("save anyway").
 func (b *Bot) wizardSave(ctx context.Context, chatID int64, editMsgID *int, from *models.User, ws WizSession, d *Draft, draftID string, force bool) {
 	loc := ws.Locale
-	if d.Mode == ModeEdit && !force && d.Event.UpdatedAt != "" {
-		if eventID, err := uuid.Parse(d.Event.EventID); err == nil {
-			ev, err := b.arena.GetEvent(ctx, ws.JWT, eventID)
-			if err == nil && ev.UpdatedAt.UTC().Format(time.RFC3339Nano) != d.Event.UpdatedAt {
-				b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.wz.edit_changed_meanwhile", map[string]any{"Name": Esc(d.Event.Name)}),
-					&models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{
-						{Text: b.texts.T(loc, "bot.wz.force_btn", nil), CallbackData: "wz:publish:force"},
-						{Text: b.texts.T(loc, "bot.wz.cancel_btn", nil), CallbackData: "wz:cancel"},
-					}}})
-				return
-			}
-		}
+	if !force && !b.saveGate(ctx, chatID, editMsgID, ws, d) {
+		// Changed elsewhere, or the check could not read the event: nothing
+		// is saved until the person decides (wizard_conflict.go).
+		return
 	}
 	if ask, err := b.wizard.EnsureChannels(ctx, ws, d); err != nil {
 		b.wizardFail(ctx, chatID, editMsgID, loc, err)

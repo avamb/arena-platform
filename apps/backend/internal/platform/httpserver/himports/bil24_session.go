@@ -128,6 +128,18 @@ func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request, forcedSou
 		h.writeImportError(w, r, err)
 		return
 	}
+	// The event's updated_at as this import left it. Both executors bump it
+	// in SetEventImportMetadata and the row stays locked until the commit, so
+	// a client (the Telegram bot) can tell its own write from somebody else's
+	// edit made later.
+	eventUpdatedAt, err := gen.New(tx).GetEventUpdatedAtForImport(ctx, result.EventID, orgID)
+	if err != nil {
+		h.logger.Error("import: read event updated_at failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"import.transaction_failed", "failed to read the imported event", r,
+		))
+		return
+	}
 	if err := tx.Commit(ctx); err != nil {
 		h.logger.Error("import: commit failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -166,6 +178,7 @@ func (h *Handler) handleImport(w http.ResponseWriter, r *http.Request, forcedSou
 		CompatIDs:            result.CompatIDs,
 		Publication:          result.Publication,
 		Publications:         nonNilPublications(result.Publications),
+		EventUpdatedAt:       &eventUpdatedAt,
 	})
 }
 

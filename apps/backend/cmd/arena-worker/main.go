@@ -64,6 +64,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/egress"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventnote"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventwatch"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/guestlist"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
@@ -286,6 +287,8 @@ func run() error {
 	registerContactFormHandler(registry, pool.Pool, cfg, salesNotifier, opsNotifier, logger)
 	registerOnboardingHandlers(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerRefundSweepHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
+	registerDisputeHandlers(registry, pool.Pool, cfg, salesNotifier, opsNotifier, buildEmailSender(cfg, logger), logger)
+	registerPaymentReceiptHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerBillingReconcileHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 	registerJobRetentionHandler(registry, pool.Pool, logger)
 
@@ -330,6 +333,7 @@ func run() error {
 		logger.Info("reservation expire sweep job scheduled at startup")
 	}
 	scheduleRefundSweep(rootCtx, pool.Pool, logger)
+	scheduleDisputeWatch(rootCtx, pool.Pool, logger)
 	scheduleShopSweep(rootCtx, pool.Pool, logger)
 
 	// billing.collect writes the billable events the rate job turns into
@@ -367,6 +371,10 @@ func run() error {
 	if err := salesalert.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: the organizer hears about a sell-out a little later.
 		logger.Warn("could not schedule initial sales state watch job", "error", err.Error())
+	}
+	if err := guestlist.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
+		// Non-fatal: the first guest list goes out a minute later.
+		logger.Warn("could not schedule initial guest list job", "error", err.Error())
 	}
 
 	// 7e. Ops watchdog startup scheduling -------------------------------------
@@ -653,6 +661,10 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	// sales_state.alert_email tells the owners and managers that a session
 	// sold out, or the owners that the sites did not take a sales state
 	// change (salesalert queues it).
+	// guest_list.schedule writes the due guest lists and mails the ones of
+	// members without the bot (package guestlist).
+	registerGuestListSchedule(reg, pool, deliveryOpts.Sender, logger)
+
 	reg.Register(salesalert.JobTypeAlertEmail, delivery.NewSalesAlertHandler(delivery.SalesAlertOptions{
 		Sender:    deliveryOpts.Sender,
 		Templates: deliveryOpts.Templates,
@@ -943,6 +955,7 @@ func buildDeliveryHandlerOptions(cfg *config.Config, queries *gen.Queries, media
 		Media:              media,
 		TicketsBaseURL:     cfg.PublicTicketsBaseURL,
 		ContactFormEnabled: cfg.ContactFormReady(),
+		APIBaseURL:         cfg.APIPublicBaseURL(),
 		Logger:             logger,
 	}
 }

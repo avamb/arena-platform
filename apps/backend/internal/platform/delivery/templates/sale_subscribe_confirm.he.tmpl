@@ -16,7 +16,7 @@
   <p style="margin:0 0 12px 0;"><span style="color:#93a0a8;font-size:12px;word-break:break-all;">קישור: {{.SaleNotice.URL}}</span></p>
   <p style="margin:0 0 12px 0;">אם לא ביקשתם זאת, התעלמו מהמייל: לא נכתוב לכם בנושא. הקישור תקף 7 ימים.</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — הודעה אוטומטית<br>אם תלחצו על ״ביטול הרשמה״, המיילים שלנו לא יגיעו יותר לעולם לכתובת הזאת, גם לא כרטיסים.</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}Arena Platform — הודעה אוטומטית<br>{{end}}אם תלחצו על ״ביטול הרשמה״, המיילים שלנו לא יגיעו יותר לעולם לכתובת הזאת, גם לא כרטיסים.</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -33,7 +33,7 @@
 
 אם לא ביקשתם זאת, התעלמו מהמייל: לא נכתוב לכם בנושא. הקישור תקף 7 ימים.
 
-Arena Platform — הודעה אוטומטית
+{{if not .WhiteLabel}}Arena Platform — הודעה אוטומטית{{end}}
 
 אם תלחצו על ״ביטול הרשמה״, המיילים שלנו לא יגיעו יותר לעולם לכתובת הזאת, גם לא כרטיסים.
 {{end}}
