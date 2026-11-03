@@ -122,7 +122,7 @@ type Profile struct {
 	// form also go to the organization's sales Telegram chat (migration 0148).
 	ContactFormToTelegram bool `json:"contact_form_to_telegram"`
 	// ProviderReceipt is whether the payment provider e-mails its own receipt
-	// to the buyer (spec 51, decision R-6, migration 0184).
+	// to the buyer (spec 51, decision R-6, migration 0185).
 	ProviderReceipt ProviderReceipt `json:"provider_receipt"`
 }
 

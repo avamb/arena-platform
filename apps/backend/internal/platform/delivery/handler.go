@@ -284,6 +284,10 @@ type HandlerOptions struct {
 	// contact form. When false a letter never links the form (the page would
 	// open without it); a public e-mail is still printed.
 	ContactFormEnabled bool
+	// APIBaseURL is the public API origin (config.APIPublicBaseURL). The ticket
+	// e-mail links each ticket's PDF on it (download_links.go); empty prints
+	// no links.
+	APIBaseURL string
 	// Logger receives structured log entries. Defaults to slog.Default() when nil.
 	Logger *slog.Logger
 }
@@ -587,6 +591,9 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 
 		withdrawalNotice := withdrawalNoticeFor(ctx, opts, logger, ticketID, kind, complimentaryOrder)
 
+		lines := ticketLinesFor(kind, members, p.Locale, payment == nil)
+		attachDownloadLinks(ctx, opts, logger, kind, members, lines)
+
 		var htmlBody, textBody, subject string
 		if renderer != nil {
 			out, rErr := renderer.Render(kind, p.Locale, templates.Data{
@@ -602,7 +609,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				SeatRow:        p.SeatRow,
 				SeatNumber:     p.SeatNumber,
 				Branding:       branding,
-				Tickets:        ticketLinesFor(kind, members, p.Locale, payment == nil),
+				Tickets:        lines,
 				Payment:        payment,
 
 				WithdrawalNotice: withdrawalNotice,

@@ -137,6 +137,9 @@ type Handler struct {
 	metrics *observability.Metrics
 	// promoRec journals every promo-code check (migration 0166); nil = off.
 	promoRec *promoattempts.Recorder
+	// accessLog records ticket downloads and views (migration 0184,
+	// WithTicketAccessLog); nil = off.
+	accessLog TicketAccessRecorder
 }
 
 // WithContactForm configures the hosted page's "Write to the organizer" form:

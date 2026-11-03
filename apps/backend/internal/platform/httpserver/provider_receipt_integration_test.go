@@ -2,7 +2,7 @@
 
 package httpserver
 
-// Spec 51 section 2 (decision R-6, migration 0184): the provider's own
+// Spec 51 section 2 (decision R-6, migration 0185): the provider's own
 // receipt for the buyer. The owner switches it, only a platform superadmin
 // sets "always send", Stripe's Checkout Session carries
 // payment_intent_data[receipt_email] by that rule, and a paid payment queues

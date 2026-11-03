@@ -64,7 +64,7 @@ var AllowedOwnerTypes = map[string]struct{}{
 }
 
 // OwnerPaymentReceipt is the owner type of an archived payment provider
-// receipt (migration 0184). It is in the CHECK constraint but deliberately NOT
+// receipt (migration 0185). It is in the CHECK constraint but deliberately NOT
 // in AllowedOwnerTypes: no upload route may create one, only the archive job
 // (internal/platform/paymentreceipts).
 const OwnerPaymentReceipt = "payment_receipt"

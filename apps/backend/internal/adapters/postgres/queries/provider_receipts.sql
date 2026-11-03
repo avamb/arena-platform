@@ -1,5 +1,5 @@
 -- provider_receipts.sql — the payment provider's own receipt for the buyer
--- (spec 51 section 2, migration 0184): the organization's setting, the
+-- (spec 51 section 2, migration 0185): the organization's setting, the
 -- archive of a paid payment's receipt, and the provider a ticket was paid
 -- through (the letters name it).
 

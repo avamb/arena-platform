@@ -876,7 +876,25 @@ other = "Categorías"
 other = "¿Añadir otra sesión a este evento?"
 
 ["bot.wz.edit_changed_meanwhile"]
-other = "«{{.Name}}» se ha modificado en otro sitio (la web o la administración) después de que lo abrieras. ¿Guardar tu versión por encima?"
+other = "«{{.Name}}» se ha modificado en otro sitio después de que lo abrieras: en el centro de eventos, la administración o el bot. ¿Guardar tu versión por encima?"
+
+["bot.wz.elsewhere_list"]
+other = "Qué se cambió allí desde que abriste la edición:\n{{.List}}"
+
+["bot.wz.elsewhere_part"]
+other = "{{.What}}: con cambios"
+
+["bot.wz.elsewhere_unknown"]
+other = "El nombre, la descripción, el cartel, la edad y el promotor siguen como al abrirlos. Ha cambiado otra parte, por ejemplo las fechas o los precios."
+
+["bot.wz.preview_conflict_footer"]
+other = "«Guardar igualmente» escribe tu versión encima de sus cambios. Para empezar desde la nueva versión, pulsa «Cancelar», luego «Eliminar los cambios», y abre el evento de nuevo."
+
+["bot.wz.preview_check_failed"]
+other = "⚠ No hemos podido comprobar si el evento se ha modificado en otro sitio. El bot lo comprobará de nuevo cuando pulses «Publicar»."
+
+["bot.wz.edit_check_failed"]
+other = "No hemos podido comprobar si «{{.Name}}» se ha modificado en otro sitio. Por eso no hemos guardado nada. Pulsa «Reintentar» dentro de un minuto. Si estás seguro de tu versión, pulsa «Guardar igualmente»."
 
 ["bot.wz.edit_saved"]
 other = "<b>Guardado.</b> «{{.Name}}» está actualizado.{{.Link}}{{.Warnings}}"

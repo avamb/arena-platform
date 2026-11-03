@@ -1,5 +1,5 @@
 // Package paymentreceipts archives the payment provider's own receipt of a
-// paid payment (spec 51 section 2, migration 0184).
+// paid payment (spec 51 section 2, migration 0185).
 //
 // A Stripe receipt link (charge.receipt_url) lives 30 days, while a dispute
 // may come 120 days after the event, so when a payment succeeds the payment

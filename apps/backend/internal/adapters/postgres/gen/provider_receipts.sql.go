@@ -11,7 +11,7 @@ import (
 )
 
 // OrgProviderReceiptSettings is the organization's provider-receipt setting
-// (migration 0184): the owner's choice and the operator's "always send".
+// (migration 0185): the owner's choice and the operator's "always send".
 type OrgProviderReceiptSettings struct {
 	Enabled bool
 	Forced  bool

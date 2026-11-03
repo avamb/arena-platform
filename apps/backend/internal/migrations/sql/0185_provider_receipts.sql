@@ -1,4 +1,4 @@
--- 0184_provider_receipts.sql — the payment provider's own receipt for the
+-- 0185_provider_receipts.sql — the payment provider's own receipt for the
 -- buyer (spec 51 section 2, owner decisions R-6 and 2026-11-01).
 --
 -- organizations.provider_receipt_enabled is the owner's choice: ask the
