@@ -215,6 +215,7 @@ func (h *referralCashbackEmail) buildMessage(ctx context.Context, rw gen.Referra
 	// the referrer's order: the same resolution, the same contact rule, as
 	// the ticket letters.
 	var first Payload
+	whiteLabel := false
 	if rw.ReferrerShopOrderID != nil {
 		// A shop order: the organization's own branding and the SHOP's contact
 		// address, the same the shop letters print.
@@ -224,12 +225,14 @@ func (h *referralCashbackEmail) buildMessage(ctx context.Context, rw gen.Referra
 		}
 		p.Locale = locale
 		first = p
+		whiteLabel = whiteLabelForOrg(ctx, whiteLabelResolver(h.opts.DB), h.logger, rw.OrgID)
 	} else {
 		var ticketID uuid.UUID
 		if err := h.opts.DB.QueryRow(ctx, `SELECT ticket_id FROM order_items
 			WHERE order_id = $1 AND ticket_id IS NOT NULL ORDER BY ordinal LIMIT 1`, *rw.ReferrerOrderID).
 			Scan(&ticketID); err == nil {
 			first = h.payloads.ticketPayload(ctx, ticketID, locale)
+			whiteLabel = whiteLabelForTicket(ctx, whiteLabelResolver(h.opts.DB), h.logger, ticketID.String())
 		} else {
 			first = Payload{Locale: locale}
 		}
@@ -245,6 +248,7 @@ func (h *referralCashbackEmail) buildMessage(ctx context.Context, rw gen.Referra
 		HolderName:     to.Name,
 		EventName:      first.EventName,
 		Branding:       branding,
+		WhiteLabel:     whiteLabel,
 		Referral: &templates.ReferralData{
 			Code:   code,
 			Amount: formatMoney(rw.AmountMinor, rw.Currency),
@@ -256,6 +260,7 @@ func (h *referralCashbackEmail) buildMessage(ctx context.Context, rw gen.Referra
 		return email.Message{}, emailstatus.NewLetter{}, fmt.Errorf("delivery: render referral cashback e-mail: %w", err)
 	}
 	msg := ticketEmailMessage(first, to.Email, out.Subject, out.HTMLBody, out.TextBody)
+	applyWhiteLabelSender(&msg, whiteLabel, brandSenderName(first))
 
 	lkind := emailstatus.KindReferralCashback
 	if kind == referral.LetterUnavailable {
