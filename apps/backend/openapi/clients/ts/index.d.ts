@@ -6593,6 +6593,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/event-page-facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read the organizer's own event page
+         * @description Downloads the organizer's OWN event page and answers what it says
+         *     about the event: the name, the dates, the venue, the description, the
+         *     ticket prices and a picture (spec 59). The values are hints for an
+         *     event wizard (the Telegram bot, the web event center) to offer as
+         *     buttons; nothing is created but the page's picture, stored as an
+         *     unattached `event_poster` media object the organizer may choose as
+         *     the poster.
+         *
+         *     Sources by trust: a schema.org `Event` in JSON-LD, then Open Graph and
+         *     the meta tags, and only when those leave the dates or the prices
+         *     missing, a text model reading the page's visible text (`sources` says
+         *     which). Model readings are capped at `EVENT_PAGE_READS_PER_ORG_PER_DAY`
+         *     (default 30) per organization in a sliding 24 hours; past the cap, or
+         *     without a model key, the reading answers without them and says so in
+         *     `warnings`. Page reads are capped at 20 an hour per organization. Both
+         *     counters live in the memory of one arena-api process.
+         *
+         *     The page is fetched only on the public internet (no private, loopback
+         *     or metadata address, also after a redirect), http or https, within 10
+         *     seconds and 2 MiB. A page of a ticketing platform (Ticketmaster,
+         *     Eventbrite and others) is refused before it is read: their terms forbid
+         *     automated collection. The call may take up to a minute.
+         *
+         *     Requires the `event.update` permission in the path organization (the
+         *     owner and the manager hold it).
+         */
+        post: operations["postV1OrganizationsOrgIdEventPageFacts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/texts/format": {
         parameters: {
             query?: never;
@@ -9803,6 +9847,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/sessions/{session_id}/smart-price": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the session's smart price presets
+         * @description Every smart price preset of the session (spec 51 §4.2), newest first,
+         *     with where an active one stands now: the current price, the step,
+         *     the next price and how many tickets are left at this price (a rise
+         *     by tickets sold) or when the next price starts (a rise by days).
+         *     Requires the `tier.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdSessionsSessionIdSmartPrice"];
+        put?: never;
+        /**
+         * Enable a smart price preset
+         * @description Enables a preset on one or more categories of the session. The
+         *     preset is NOT a price engine: the session is read back as its
+         *     event-bundle, the category becomes a chain of steps with sell limits
+         *     (`by_sales`) or gets price windows (`by_days`, `last_days`), and the
+         *     bundle is written through the event-bundle import. The chain sweep
+         *     and the price schedule then decide every price. Every step adds the
+         *     same percentage of the starting price, rounded up to a whole unit of
+         *     the currency, and never goes over the cap. A preset never overwrites
+         *     a chain or future price changes typed by hand. A price edited by
+         *     hand later ends the preset. Requires the `tier.update` permission.
+         */
+        post: operations["postV1OrganizationsOrgIdSessionsSessionIdSmartPrice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/smart-price/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview a smart price preset
+         * @description The steps or price windows a preset would write, with their prices.
+         *     Nothing is written. Requires the `tier.update` permission.
+         */
+        post: operations["postV1OrganizationsOrgIdSessionsSessionIdSmartPricePreview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/sessions/{session_id}/smart-price/{rule_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop a smart price preset
+         * @description Freezes the price where it is now. The later steps of a chain take
+         *     the current step's price (no place moves). The future price windows
+         *     are removed. Requires the `tier.update` permission.
+         */
+        post: operations["postV1OrganizationsOrgIdSessionsSessionIdSmartPriceRuleIdStop"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/sessions/{session_id}/sales-state": {
         parameters: {
             query?: never;
@@ -12277,6 +12401,110 @@ export interface components {
         PosterFactsResponse: {
             /** @description What the model read from the poster. */
             facts: components["schemas"]["PosterFacts"];
+        };
+        /** @description One date of the event as the page writes it. */
+        EventPageDate: {
+            /** @description The day, `YYYY-MM-DD`. */
+            date: string;
+            /** @description The start time as written, `HH:MM` 24-hour, or empty when the page gives only the day. */
+            time: string;
+            /** @description The doors-open time of the same day, `HH:MM`, or empty. */
+            doors: string;
+            /** @description The UTC offset the page wrote next to the time (`+01:00`, `Z` for UTC), or empty. The time is never converted. */
+            utc_offset: string;
+        };
+        /**
+         * @description The page's picture, stored as an `event_poster` media object of the
+         *     organization and attached to nothing until the organizer chooses it.
+         */
+        EventPageImage: {
+            /**
+             * Format: uuid
+             * @description Id of the stored media object.
+             */
+            media_id: string;
+            /** @description Width in pixels. */
+            width: number;
+            /** @description Height in pixels. */
+            height: number;
+            /** @description True when the picture passes the poster rules of the Telegram bot (4:5 or square, at least 1000 px wide). */
+            fits_poster: boolean;
+        };
+        /**
+         * @description What an organizer's event page says, normalized. An empty string, or
+         *     an empty list, means "not on the page". Every value is a HINT for a
+         *     wizard to offer as a button; nothing is written from it. The fields
+         *     of `PosterFacts` mean the same here (`date` and `time` repeat the
+         *     first entry of `dates`), so a client of the poster reading reads this
+         *     too.
+         */
+        EventPageFacts: {
+            /** @description Event name. */
+            name: string;
+            /** @description First date, `YYYY-MM-DD`, or empty. */
+            date: string;
+            /** @description Start time of the first date, `HH:MM`, or empty. */
+            time: string;
+            /** @description Venue name, or empty. */
+            venue_name: string;
+            /** @description City, or empty. */
+            city: string;
+            /** @description ISO 3166-1 alpha-2 code when the page gives one, else empty. */
+            country: string;
+            /** @description Street address of the venue, or empty. */
+            street: string;
+            /** @description Age rating, one of `0+`, `6+`, `12+`, `16+`, `18+`, or empty. */
+            age: string;
+            /** @description The page's description as plain text with line breaks, at most 4000 characters, or empty. */
+            description: string;
+            /** @description The future dates the page lists, oldest first, at most 10; past, cancelled and postponed dates are left out. */
+            dates: components["schemas"]["EventPageDate"][];
+            /** @description The ticket prices the page lists, at most 10; empty when there are none. */
+            categories: components["schemas"]["PosterFactsCategory"][];
+            /** @description The page's picture, or null when the page has none or it could not be downloaded. */
+            image: components["schemas"]["EventPageImage"] | null;
+        };
+        /** @description A fact about the reading the organizer should know. */
+        EventPageWarning: {
+            /**
+             * @description Stable code: `event_page.some_dates_skipped`, `event_page.past_dates_skipped`,
+             *     `event_page.cancelled_dates_skipped`, `event_page.online_event`,
+             *     `event_page.price_range_only`, `event_page.read_by_model`,
+             *     `event_page.model_unavailable`, `event_page.model_quota`,
+             *     `event_page.image_not_poster`, `event_page.image_unavailable`,
+             *     `event_page.no_dates`, `event_page.no_prices`,
+             *     `event_page.javascript_page`. The list may grow.
+             */
+            code: string;
+            /** @description How many dates a skipping warning is about. */
+            count?: number;
+            /** @description Short page values the text needs (the low and high price and the currency of a price range, a picture's size). */
+            values?: string[];
+        };
+        /** @description The address of the organizer's own event page. */
+        EventPageFactsRequest: {
+            /** @description A full `http` or `https` address of a public web page. A page of a ticketing platform is refused. */
+            url: string;
+        };
+        /** @description The answer of the event-page reading. */
+        EventPageFactsResponse: {
+            /** @description What the page says. */
+            facts: components["schemas"]["EventPageFacts"];
+            /**
+             * @description Where each found value came from, by field (`name`, `dates`,
+             *     `venue`, `description`, `age`, `categories`, `image`):
+             *     `json_ld`, `open_graph` or `model`. A value read by the model must
+             *     be shown as such.
+             */
+            sources: {
+                [key: string]: string;
+            };
+            /** @description The page's address after redirects. */
+            final_url: string;
+            /** @description The page's language (`es`, `ru`), or empty. It does not change the draft. */
+            language: string;
+            /** @description Facts about the reading; empty when there are none. */
+            warnings: components["schemas"]["EventPageWarning"][];
         };
         /**
          * @description Which text is formatted. It picks the tags the model may add and the
@@ -21996,6 +22224,153 @@ export interface components {
             attempts: number;
             /** @description The last delivery error while not delivered, else null. */
             last_error: string | null;
+        };
+        /** @description A smart price preset to preview or enable (spec 51 §4.2). */
+        SmartPriceRequest: {
+            /** @description The categories the preset applies to. Exactly one for by_sales. */
+            tier_ids: string[];
+            /** @description by_sales (every N tickets), by_days (every N days) or last_days (once, N days before the session). */
+            kind: string;
+            /** @description The rise of every step, a percentage of the starting price (1-100). */
+            step_percent: number;
+            /** @description Tickets per step (by_sales), days per step (by_days) or days before the session (last_days). */
+            every: number;
+            /** @description The highest rise over the starting price (by_sales, by_days), at least step_percent and at most 500. */
+            cap_percent?: number;
+            /** @description The calendar day (YYYY-MM-DD, venue calendar) a by_days preset counts from. Empty counts from today. */
+            start_date?: string;
+        };
+        /** @description The parameters a preset was enabled with. */
+        SmartPriceParams: {
+            /** @description by_sales, by_days or last_days. */
+            kind?: string;
+            /** @description The rise of every step, a percentage of the starting price. */
+            step_percent?: number;
+            /** @description Tickets per step, days per step or days before the session. */
+            every?: number;
+            /** @description The highest rise over the starting price. */
+            cap_percent?: number;
+            /** @description The day a by_days preset counts from. */
+            start_date?: string;
+        };
+        /** @description One row of a preset's table, a chain step or a price window. */
+        SmartPriceStep: {
+            /** @description How many tickets the step sells (by_sales). */
+            places?: number;
+            /**
+             * Format: date-time
+             * @description When the price window starts (by_days, last_days).
+             */
+            from?: string;
+            /**
+             * Format: int64
+             * @description The price of the step in minor units.
+             */
+            price: number;
+        };
+        /** @description What a preset would write for one category. */
+        SmartPricePreviewCategory: {
+            /**
+             * Format: uuid
+             * @description The category.
+             */
+            tier_id: string;
+            /** @description The category name. */
+            name: string;
+            /** @description ISO 4217 currency of the category. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description The starting price in minor units.
+             */
+            base_price: number;
+            /**
+             * Format: int64
+             * @description The highest price the preset reaches, in minor units.
+             */
+            cap_price: number;
+            /** @description The steps (by_sales, the first is the category itself) or the price windows (by_days, last_days). */
+            steps: components["schemas"]["SmartPriceStep"][];
+        };
+        /** @description The table a preset would write. Nothing is written. */
+        SmartPricePreviewResponse: {
+            /** @description The preset kind. */
+            kind: string;
+            /** @description One entry per category. */
+            categories: components["schemas"]["SmartPricePreviewCategory"][];
+        };
+        /** @description Where an active preset stands at the moment of the read. */
+        SmartPriceNow: {
+            /**
+             * Format: int64
+             * @description The price buyers pay now, in minor units.
+             */
+            price: number;
+            /** @description The current step, starting at 1. */
+            step: number;
+            /** @description How many steps there are. */
+            steps: number;
+            /**
+             * Format: int64
+             * @description The next price in minor units, null at the last step.
+             */
+            next_price?: number | null;
+            /** @description How many tickets are left at the current price (by_sales), null at the last step. */
+            remaining_at_price?: number | null;
+            /**
+             * Format: date-time
+             * @description When the next price starts (by_days, last_days).
+             */
+            next_at?: string | null;
+        };
+        /** @description One smart price preset of a session. */
+        SmartPriceRule: {
+            /**
+             * Format: uuid
+             * @description The preset.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The category the preset was applied to (the first step of a chain).
+             */
+            tier_id: string;
+            /** @description The later steps the preset created (by_sales). A price edited by hand on any of them, or on tier_id, turns the preset off. */
+            step_tier_ids: string[];
+            /** @description The category name. */
+            tier_name: string;
+            /** @description by_sales, by_days or last_days. */
+            kind: string;
+            /** @description The parameters the preset was enabled with. */
+            params: components["schemas"]["SmartPriceParams"];
+            /**
+             * Format: int64
+             * @description The starting price in minor units.
+             */
+            base_price: number;
+            /** @description ISO 4217 currency of the category. */
+            currency: string;
+            /** @description active, stopped (the organizer froze the price) or overridden (a price was edited by hand). */
+            status: string;
+            /**
+             * Format: date-time
+             * @description When the preset was enabled.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the preset was stopped or overridden.
+             */
+            stopped_at?: string | null;
+            /** @description Where an active preset stands now, null otherwise. */
+            now?: components["schemas"]["SmartPriceNow"] | null;
+        };
+        /** @description The smart price presets of a session. */
+        SmartPriceRulesResponse: {
+            /** @description The presets, newest first. */
+            rules: components["schemas"]["SmartPriceRule"][];
+            /** @description Advisory warnings of the import that wrote the change. */
+            warnings: components["schemas"]["ImportWarning"][];
         };
         /**
          * @description One sales state per session for EVERY sales channel (migration 0183).
@@ -57463,6 +57838,102 @@ export interface operations {
             };
         };
     };
+    postV1OrganizationsOrgIdEventPageFacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventPageFactsRequest"];
+            };
+        };
+        responses: {
+            /** @description What the page says. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventPageFactsResponse"];
+                };
+            };
+            /** @description org_id is not a UUID, the body is not JSON with `url` (`event_page.invalid_request`), or the address is not a full http(s) address (`event_page.invalid_url`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.update` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization is not found or not the caller's (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description A ticketing platform's page (`event_page.ticketing_platform`), an
+             *     address not on the public internet (`event_page.destination_not_allowed`),
+             *     not a web page (`event_page.not_html`), a page larger than 2 MiB
+             *     (`event_page.too_large`), or a page that says nothing about an event
+             *     (`event_page.nothing_found`).
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization read 20 pages in the last hour (`event_page.rate_limited`). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The site did not answer or answered with an error (`event_page.fetch_failed`, the site's status in `details.status`), many pages are being read at once (`event_page.busy`, try again in a minute), or the organization guard is not configured. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     postV1OrganizationsOrgIdTextsFormat: {
         parameters: {
             query?: never;
@@ -67229,6 +67700,386 @@ export interface operations {
                 };
             };
             /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSessionsSessionIdSmartPrice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The presets of the session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartPriceRulesResponse"];
+                };
+            };
+            /** @description Invalid body (`smart_price.invalid_body`) or path parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`tier.read`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, deleted, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`smart_price.read_failed`, `smart_price.write_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdSessionsSessionIdSmartPrice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmartPriceRequest"];
+            };
+        };
+        responses: {
+            /** @description The presets of the session after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartPriceRulesResponse"];
+                };
+            };
+            /** @description Invalid body (`smart_price.invalid_body`) or path parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`tier.update`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, deleted, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The category already follows a smart price or sells in steps, already has future price changes, or the smart price is already off (`smart_price.already_on`, `smart_price.category_in_chain`, `smart_price.schedule_exists`, `smart_price.not_active`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preset cannot be applied (`smart_price.invalid_kind`, `smart_price.invalid_step`, `smart_price.invalid_every`, `smart_price.invalid_cap`, `smart_price.invalid_start`, `smart_price.no_category`, `smart_price.one_category`, `smart_price.seated_by_sales`, `smart_price.category_not_found`, `smart_price.free_category`, `smart_price.not_enough_places`, `smart_price.no_room`, `smart_price.too_late`, `smart_price.session_unsupported`) or the import refused the result (`import.*`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`smart_price.read_failed`, `smart_price.write_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdSessionsSessionIdSmartPricePreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmartPriceRequest"];
+            };
+        };
+        responses: {
+            /** @description What the preset would write. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartPricePreviewResponse"];
+                };
+            };
+            /** @description Invalid body (`smart_price.invalid_body`) or path parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`tier.update`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, deleted, or not part of this organization (`session.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The category already follows a smart price or sells in steps, already has future price changes, or the smart price is already off (`smart_price.already_on`, `smart_price.category_in_chain`, `smart_price.schedule_exists`, `smart_price.not_active`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preset cannot be applied (`smart_price.invalid_kind`, `smart_price.invalid_step`, `smart_price.invalid_every`, `smart_price.invalid_cap`, `smart_price.invalid_start`, `smart_price.no_category`, `smart_price.one_category`, `smart_price.seated_by_sales`, `smart_price.category_not_found`, `smart_price.free_category`, `smart_price.not_enough_places`, `smart_price.no_room`, `smart_price.too_late`, `smart_price.session_unsupported`) or the import refused the result (`import.*`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`smart_price.read_failed`, `smart_price.write_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdSessionsSessionIdSmartPriceRuleIdStop: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the session */
+                session_id: string;
+                /** @description UUID of the preset */
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The presets of the session after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartPriceRulesResponse"];
+                };
+            };
+            /** @description Invalid body (`smart_price.invalid_body`) or path parameter. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`tier.update`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Session not found, deleted, or not part of this organization (`session.not_found`) or the preset is unknown (`smart_price.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The category already follows a smart price or sells in steps, already has future price changes, or the smart price is already off (`smart_price.already_on`, `smart_price.category_in_chain`, `smart_price.schedule_exists`, `smart_price.not_active`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The preset cannot be applied (`smart_price.invalid_kind`, `smart_price.invalid_step`, `smart_price.invalid_every`, `smart_price.invalid_cap`, `smart_price.invalid_start`, `smart_price.no_category`, `smart_price.one_category`, `smart_price.seated_by_sales`, `smart_price.category_not_found`, `smart_price.free_category`, `smart_price.not_enough_places`, `smart_price.no_room`, `smart_price.too_late`, `smart_price.session_unsupported`) or the import refused the result (`import.*`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`smart_price.read_failed`, `smart_price.write_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

@@ -145,6 +145,8 @@ export const API = {
   // Poster-first creation: reads the uploaded poster with the vision model on the
   // server (the model key never reaches the browser). Costs a daily slot of the organization.
   posterFacts: { method: "POST", path: "/v1/organizations/{org_id}/media/{media_id}/poster-facts" },
+  // Spec 59: reads the organizer's OWN event page on the server (egress-guarded) into hints.
+  eventPageFacts: { method: "POST", path: "/v1/organizations/{org_id}/event-page-facts" },
   eventUpdate: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{id}" },
   // RT-11 (spec 44): the editor's "Format" button (a model adds the marks, the code keeps the words) and
   // the test letter of the organizer's own text. The text itself is saved with eventUpdate.
@@ -174,6 +176,12 @@ export const API = {
     method: "PUT",
     path: "/v1/organizations/{org_id}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule",
   },
+  // Smart price (spec 51 §4.2): a preset the server writes through the
+  // event-bundle import as steps or price windows. Preview writes nothing.
+  smartPriceList: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/smart-price" },
+  smartPricePreview: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/smart-price/preview" },
+  smartPriceEnable: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/smart-price" },
+  smartPriceStop: { method: "POST", path: "/v1/organizations/{org_id}/sessions/{session_id}/smart-price/{rule_id}/stop" },
   // 6-1a: the event wizard. The check (?dry_run=true) writes nothing; the
   // geo reads are public and feed the venue form.
   eventBundleCheck: { method: "POST", path: "/v1/organizations/{org_id}/imports/event-bundle" },

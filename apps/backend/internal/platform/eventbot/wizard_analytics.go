@@ -21,6 +21,7 @@ import (
 var wizardReasonCodes = map[string]string{
 	"err_name":                 "name_invalid",
 	"err_poster_first":         "poster_required",
+	"err_link_first":           "link_required",
 	"err_promoter_name":        "promoter_name_empty",
 	"err_promoter_dup":         "promoter_duplicate",
 	"err_date":                 "date_unparsed",

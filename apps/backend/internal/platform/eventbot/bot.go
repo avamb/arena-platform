@@ -301,7 +301,7 @@ func New(opts Options) (*Bot, error) {
 	if opts.Refs != nil {
 		refs = opts.Refs
 	}
-	b.wizard = NewWizard(b.texts, refs).WithPosterHints(true)
+	b.wizard = NewWizard(b.texts, refs).WithPosterHints(true).WithPageHints(true)
 	tgOpts := []tgbot.Option{
 		tgbot.WithDefaultHandler(b.handleUpdate),
 		tgbot.WithSkipGetMe(),

@@ -20,6 +20,7 @@ import { posterApi } from "@/components/EventPoster";
 import { usePosterPicker } from "@/components/PosterPicker";
 import { useWizardPoster } from "@/components/useWizardPoster";
 import { WizardPosterSection } from "@/components/WizardPosterSection";
+import { WizardPageLink } from "@/components/WizardPageLink";
 import { attachPoster, createWithPoster, type Failure } from "@/lib/posterFlow";
 import { posterCapabilities, posterStepSettled } from "@/lib/posters";
 import { wizardGate } from "@/lib/features";
@@ -448,6 +449,14 @@ function Wizard() {
           draft={draft}
           dispatch={dispatch}
           defaultCategoryName={defaultName}
+        />
+        <WizardPageLink
+          poster={poster}
+          canUsePicture={posterCan.canChange}
+          draft={draft}
+          dispatch={dispatch}
+          defaultCategoryName={defaultName}
+          busy={saving || created}
         />
         <WizardEventSection draft={draft} dispatch={dispatch} touch={touch} errorOf={errorOf} />
         <WizardVenueSection draft={draft} dispatch={dispatch} touch={touch} errorOf={errorOf} />

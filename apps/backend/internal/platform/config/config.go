@@ -649,6 +649,13 @@ type Config struct {
 	// counter lives in the memory of one arena-api process, so with several
 	// replicas the ceiling is this value times the replica count.
 	PosterReadsPerOrgPerDay int `env:"POSTER_READS_PER_ORG_PER_DAY" required:"false" default:"50"`
+	// EventPageReadsPerOrgPerDay caps the MODEL readings of an organizer's
+	// event page (POST .../event-page-facts, spec 59): a model is asked only
+	// when the page's JSON-LD and Open Graph leave the dates or the prices
+	// missing, and only those calls count. 0 switches the cap off. The model
+	// and its key are the text-formatting ones (TEXT_FORMAT_LLM_MODEL,
+	// POSTER_LLM_API_KEY).
+	EventPageReadsPerOrgPerDay int `env:"EVENT_PAGE_READS_PER_ORG_PER_DAY" required:"false" default:"30"`
 	// TextFormatLLMModel is the model that adds markup to an organizer's text
 	// (internal/platform/textformat, POST .../texts/format, spec 44 RT-04). It
 	// uses the same key and base URL as the poster reading (POSTER_LLM_API_KEY,
@@ -1037,6 +1044,7 @@ func LoadFor(role Role) (*Config, error) {
 
 	// TEXT_FORMATS_PER_USER_PER_DAY / TEXT_FORMATS_PER_ORG_PER_DAY: model calls of
 	// the text-formatting route per person and per organization per day.
+	// EVENT_PAGE_READS_PER_ORG_PER_DAY: model readings of event pages.
 	for _, capEnv := range []struct {
 		name string
 		def  int
@@ -1044,6 +1052,7 @@ func LoadFor(role Role) (*Config, error) {
 	}{
 		{"TEXT_FORMATS_PER_USER_PER_DAY", 100, &cfg.TextFormatsPerUserPerDay},
 		{"TEXT_FORMATS_PER_ORG_PER_DAY", 500, &cfg.TextFormatsPerOrgPerDay},
+		{"EVENT_PAGE_READS_PER_ORG_PER_DAY", 30, &cfg.EventPageReadsPerOrgPerDay},
 	} {
 		v, err := getenvInt(capEnv.name, capEnv.def)
 		if err != nil {

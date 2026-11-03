@@ -253,6 +253,15 @@ export const PARITY: readonly ParityRow[] = [
   },
   {
     area: "Мероприятия",
+    fn: "Заполнить мероприятие по ссылке на свою страницу (спека 59)",
+    bot: "wizard_page.go (readPageHints), wizard_hints.go",
+    web: "R4",
+    ready: { twin: "live/page-link.spec.ts" },
+    routes: [`POST ${O}/event-page-facts`],
+    note: "Организатор даёт адрес СВОЕЙ страницы мероприятия, страницу читает сервер через защиту исходящих запросов (браузер её не открывает). Страницы билетных сервисов отклоняются по списку доменов. Источники по порядку: JSON-LD Event, Open Graph, текстовая модель только если нет даты или цены (лимит на организацию в сутки). Результат — те же подсказки на проверку, что у афиши: ничего не подставляется без подтверждения, первая дата страницы идёт в первую дату, остальные показаны списком. Картинка страницы сохраняется сервером без привязки и предлагается афишей отдельной кнопкой. Бот предлагает картинку только когда она проходит правила афиши.",
+  },
+  {
+    area: "Мероприятия",
     fn: "Материалы страницы продаж: галерея, видео, где ещё купить, адрес и точка, фотоотчёт",
     bot: "— (редакторы бота: PR #171, не слит)",
     web: "R4",
@@ -447,6 +456,21 @@ export const PARITY: readonly ParityRow[] = [
       `GET ${O}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule`,
       `PUT ${O}/events/{event_id}/sessions/{session_id}/tiers/{id}/price-schedule`,
     ],
+  },
+  {
+    area: "Категории",
+    fn: "Умная цена: пресет роста цены",
+    bot: "smart_price.go, `sp:`",
+    web: "R4",
+    // spec 51 §4.2
+    ready: { twin: "live/smart-price.spec.ts" },
+    routes: [
+      `GET ${O}/sessions/{session_id}/smart-price`,
+      `POST ${O}/sessions/{session_id}/smart-price/preview`,
+      `POST ${O}/sessions/{session_id}/smart-price`,
+      `POST ${O}/sessions/{session_id}/smart-price/{rule_id}/stop`,
+    ],
+    note: "Ступени по продажам или окна цен по дням, через импорт мероприятия; ручная правка цены выключает пресет.",
   },
   // ── Заказы ──────────────────────────────────────────────────────────
   {

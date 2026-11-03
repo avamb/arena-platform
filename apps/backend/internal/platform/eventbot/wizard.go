@@ -41,6 +41,7 @@ const (
 	stPromoterLegal = "promoter_legal"
 	stEvPoster      = "ev_poster"
 	stEvPosterAsk   = "ev_poster_ask"
+	stEvLinkAsk     = "ev_link_ask"
 	stSDate         = "s_date"
 	stSTime         = "s_time"
 	stSSalesEnd     = "s_sales_end"
@@ -437,6 +438,9 @@ type WizInput struct {
 	// Plan is a hall plan the bot stored from a file the person sent
 	// (wizard_plan_upload.go).
 	Plan *PlanUploaded
+	// PageRead says the bot read the organizer's event page into the
+	// draft's hints (wizard_page.go): the wizard goes back to the name.
+	PageRead bool
 }
 
 // PosterAccepted is a poster the bot already validated and uploaded.
@@ -477,6 +481,9 @@ type Wizard struct {
 	// posterHints is set when a poster reader is wired: the first question
 	// then invites the poster and says where it goes.
 	posterHints bool
+	// pageHints is set when the event-page reading is offered: the first
+	// question then offers "Fill in from a link" (spec 59).
+	pageHints bool
 }
 
 // NewWizard builds a wizard over the given references.
@@ -489,6 +496,14 @@ func NewWizard(texts *Texts, refs RefIO) *Wizard {
 // whether it is set; a poster read that the API cannot do is simply skipped.
 func (w *Wizard) WithPosterHints(on bool) *Wizard {
 	w.posterHints = on
+	return w
+}
+
+// WithPageHints tells the wizard that reading the organizer's event page
+// is offered. Like the poster, the API may answer that it cannot: the
+// wizard then simply asks every question.
+func (w *Wizard) WithPageHints(on bool) *Wizard {
+	w.pageHints = on
 	return w
 }
 
@@ -898,6 +913,15 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 			d.goTo(stEvPosterAsk)
 			return "", nil
 		}
+		if data == "link" && w.pageHints && d.Mode == ModeCreate {
+			d.goTo(stEvLinkAsk)
+			return "", nil
+		}
+		if in.PageRead {
+			// The page came first: stay on the name question, whose hints
+			// now read the page's answer.
+			return "", nil
+		}
 		if in.Poster != nil {
 			// The poster came first: keep it, stay on the name question —
 			// its hints now sit on the questions that follow.
@@ -909,6 +933,14 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		}
 		d.Event.Name = text
 		d.next(stEvAge)
+
+	case stEvLinkAsk:
+		if !in.PageRead {
+			return d.reject("err_link_first", t("bot.wz.err_link_first", nil)), nil
+		}
+		// The page is read: back to the name question with its hints.
+		d.back()
+		return "", nil
 
 	case stEvPosterAsk:
 		if in.Poster == nil {
@@ -1007,6 +1039,12 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		case in.Poster != nil:
 			d.Event.PosterMediaID, d.Event.PosterW, d.Event.PosterH = in.Poster.MediaID, in.Poster.W, in.Poster.H
 			note = t("bot.wz.poster_ok", map[string]any{"W": in.Poster.W, "H": in.Poster.H})
+			d.nextSection(stSDate)
+		case data == pageImageData && d.Hints.Image != nil:
+			// The page's picture, pressed on purpose (spec 59 §7).
+			img := d.Hints.Image
+			d.Event.PosterMediaID, d.Event.PosterW, d.Event.PosterH = img.MediaID, img.W, img.H
+			note = t("bot.wz.poster_ok", map[string]any{"W": img.W, "H": img.H})
 			d.nextSection(stSDate)
 		case data == "keep" && d.Event.PosterMediaID != "":
 			d.nextSection(stSDate)

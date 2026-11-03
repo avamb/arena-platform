@@ -181,6 +181,14 @@ type publicFeedTierResponse struct {
 	// changes ("price rises on <date>"), nil when no change is known.
 	CurrentPrice      int64   `json:"current_price"`
 	NextPriceChangeAt *string `json:"next_price_change_at"`
+	// NextPrice is the price from NextPriceChangeAt on ("the price rises to
+	// 22 EUR on 10.11"), omitted when no change is known.
+	NextPrice *int64 `json:"next_price,omitempty"`
+	// PriceStep is set on a category that sells in steps by tickets sold
+	// (a chain with a dearer next step, spec 51 §4.2): how many tickets are
+	// left at this price and what the next step costs. The numbers are the
+	// real ones; the widget never makes up a "few left".
+	PriceStep *publicFeedPriceStep `json:"price_step,omitempty"`
 	// IsOpen is false for a category an operator closed: it accepts no new
 	// holds, so the widget must not offer it (migration 0101, plan
 	// 08_architecture/23 step 5).
@@ -902,13 +910,23 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 							placeStats = nil
 						}
 						now := time.Now().UTC()
+						steps := h.loadChainView(ctx, sess.ID, tiers)
 						for _, tier := range tiers {
+							if steps.hide[tier.ID] {
+								// A step of a chain that does not sell now:
+								// one card per chain, never a false "sold out".
+								continue
+							}
 							tr := publicFeedTierFromRow(tier)
+							if name, ok := steps.name[tier.ID]; ok {
+								tr.Name = name
+							}
 							if eff, ok := effPrices[tier.ID]; ok {
 								tr.CurrentPrice = eff.Amount
 								if eff.NextChangeAt != nil {
 									s := eff.NextChangeAt.UTC().Format(time.RFC3339)
 									tr.NextPriceChangeAt = &s
+									tr.NextPrice = eff.NextAmount
 								}
 							}
 							if sessionWithdrawn {
@@ -920,6 +938,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 							} else {
 								tr.Available = publicFeedTierAvailable(hcheckout.CapSaleWindow(tier, salesEndOf(sess)), placeStats, now)
 							}
+							tr.PriceStep = steps.priceStep(tier.ID, tr, effPrices, tiers)
 							sessResp.Tiers = append(sessResp.Tiers, tr)
 						}
 					}

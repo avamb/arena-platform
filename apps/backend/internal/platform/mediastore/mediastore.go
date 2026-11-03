@@ -211,6 +211,38 @@ func (r *Repo) GetByID(ctx context.Context, id uuid.UUID) (Object, error) {
 	return obj, nil
 }
 
+// FindByChecksum returns the newest ACTIVE row of the organization with this
+// owner type and content checksum, or ErrNotFound. The event-page reading
+// (spec 59) uses it so a page read twice stores its picture once.
+func (r *Repo) FindByChecksum(ctx context.Context, orgID uuid.UUID, ownerType, sha256Hex string) (Object, error) {
+	const q = `
+		SELECT id, org_id, owner_type, owner_id, storage_backend, storage_key,
+		       content_type, byte_size, checksum_sha256, width, height,
+		       created_at, deleted_at
+		FROM   media_objects
+		WHERE  org_id = $1
+		  AND  owner_type = $2
+		  AND  checksum_sha256 = $3
+		  AND  deleted_at IS NULL
+		ORDER  BY created_at DESC
+		LIMIT  1
+	`
+	var obj Object
+	err := r.pool.QueryRow(ctx, q, orgID, ownerType, sha256Hex).Scan(
+		&obj.ID, &obj.OrgID, &obj.OwnerType, &obj.OwnerID,
+		&obj.StorageBackend, &obj.StorageKey, &obj.ContentType, &obj.ByteSize,
+		&obj.ChecksumSHA256, &obj.Width, &obj.Height,
+		&obj.CreatedAt, &obj.DeletedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Object{}, ErrNotFound
+		}
+		return Object{}, fmt.Errorf("mediastore: find by checksum: %w", err)
+	}
+	return obj, nil
+}
+
 // SoftDelete sets deleted_at = now() on an active row. Returns ErrNotFound
 // when the row does not exist or was already soft-deleted.
 func (r *Repo) SoftDelete(ctx context.Context, id uuid.UUID) error {

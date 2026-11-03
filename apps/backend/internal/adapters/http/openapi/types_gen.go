@@ -8456,6 +8456,126 @@ type EventMapPoint struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// EventPageDate One date of the event as the page writes it.
+type EventPageDate struct {
+	// Date The day, `YYYY-MM-DD`.
+	Date string `json:"date"`
+
+	// Doors The doors-open time of the same day, `HH:MM`, or empty.
+	Doors string `json:"doors"`
+
+	// Time The start time as written, `HH:MM` 24-hour, or empty when the page gives only the day.
+	Time string `json:"time"`
+
+	// UtcOffset The UTC offset the page wrote next to the time (`+01:00`, `Z` for UTC), or empty. The time is never converted.
+	UtcOffset string `json:"utc_offset"`
+}
+
+// EventPageFacts What an organizer's event page says, normalized. An empty string, or
+// an empty list, means "not on the page". Every value is a HINT for a
+// wizard to offer as a button; nothing is written from it. The fields
+// of `PosterFacts` mean the same here (`date` and `time` repeat the
+// first entry of `dates`), so a client of the poster reading reads this
+// too.
+type EventPageFacts struct {
+	// Age Age rating, one of `0+`, `6+`, `12+`, `16+`, `18+`, or empty.
+	Age string `json:"age"`
+
+	// Categories The ticket prices the page lists, at most 10; empty when there are none.
+	Categories []PosterFactsCategory `json:"categories"`
+
+	// City City, or empty.
+	City string `json:"city"`
+
+	// Country ISO 3166-1 alpha-2 code when the page gives one, else empty.
+	Country string `json:"country"`
+
+	// Date First date, `YYYY-MM-DD`, or empty.
+	Date string `json:"date"`
+
+	// Dates The future dates the page lists, oldest first, at most 10; past, cancelled and postponed dates are left out.
+	Dates []EventPageDate `json:"dates"`
+
+	// Description The page's description as plain text with line breaks, at most 4000 characters, or empty.
+	Description string `json:"description"`
+
+	// Image The page's picture, or null when the page has none or it could not be downloaded.
+	Image *EventPageImage `json:"image"`
+
+	// Name Event name.
+	Name string `json:"name"`
+
+	// Street Street address of the venue, or empty.
+	Street string `json:"street"`
+
+	// Time Start time of the first date, `HH:MM`, or empty.
+	Time string `json:"time"`
+
+	// VenueName Venue name, or empty.
+	VenueName string `json:"venue_name"`
+}
+
+// EventPageFactsRequest The address of the organizer's own event page.
+type EventPageFactsRequest struct {
+	// Url A full `http` or `https` address of a public web page. A page of a ticketing platform is refused.
+	Url string `json:"url"`
+}
+
+// EventPageFactsResponse The answer of the event-page reading.
+type EventPageFactsResponse struct {
+	// Facts What the page says.
+	Facts EventPageFacts `json:"facts"`
+
+	// FinalUrl The page's address after redirects.
+	FinalUrl string `json:"final_url"`
+
+	// Language The page's language (`es`, `ru`), or empty. It does not change the draft.
+	Language string `json:"language"`
+
+	// Sources Where each found value came from, by field (`name`, `dates`,
+	// `venue`, `description`, `age`, `categories`, `image`):
+	// `json_ld`, `open_graph` or `model`. A value read by the model must
+	// be shown as such.
+	Sources map[string]string `json:"sources"`
+
+	// Warnings Facts about the reading; empty when there are none.
+	Warnings []EventPageWarning `json:"warnings"`
+}
+
+// EventPageImage The page's picture, stored as an `event_poster` media object of the
+// organization and attached to nothing until the organizer chooses it.
+type EventPageImage struct {
+	// FitsPoster True when the picture passes the poster rules of the Telegram bot (4:5 or square, at least 1000 px wide).
+	FitsPoster bool `json:"fits_poster"`
+
+	// Height Height in pixels.
+	Height int `json:"height"`
+
+	// MediaId Id of the stored media object.
+	MediaId openapi_types.UUID `json:"media_id"`
+
+	// Width Width in pixels.
+	Width int `json:"width"`
+}
+
+// EventPageWarning A fact about the reading the organizer should know.
+type EventPageWarning struct {
+	// Code Stable code: `event_page.some_dates_skipped`, `event_page.past_dates_skipped`,
+	// `event_page.cancelled_dates_skipped`, `event_page.online_event`,
+	// `event_page.price_range_only`, `event_page.read_by_model`,
+	// `event_page.model_unavailable`, `event_page.model_quota`,
+	// `event_page.image_not_poster`, `event_page.image_unavailable`,
+	// `event_page.no_dates`, `event_page.no_prices`,
+	// `event_page.javascript_page`. The list may grow.
+	Code string `json:"code"`
+
+	// Count How many dates a skipping warning is about.
+	Count *int `json:"count,omitempty"`
+
+	// Values Short page values the text needs (the low and high price and the currency of a price range, a picture's size).
+	Values *[]string `json:"values,omitempty"`
+}
+
 // EventPartnerLink One "where else to buy" link of an event.
 type EventPartnerLink struct {
 	// CreatedAt When the link was added.
@@ -19058,6 +19178,156 @@ type ShopVariantsReplaceRequest struct {
 	Variants []ShopVariantInput `json:"variants"`
 }
 
+// SmartPriceNow Where an active preset stands at the moment of the read.
+type SmartPriceNow struct {
+	// NextAt When the next price starts (by_days, last_days).
+	NextAt *time.Time `json:"next_at"`
+
+	// NextPrice The next price in minor units, null at the last step.
+	NextPrice *int64 `json:"next_price"`
+
+	// Price The price buyers pay now, in minor units.
+	Price int64 `json:"price"`
+
+	// RemainingAtPrice How many tickets are left at the current price (by_sales), null at the last step.
+	RemainingAtPrice *int `json:"remaining_at_price"`
+
+	// Step The current step, starting at 1.
+	Step int `json:"step"`
+
+	// Steps How many steps there are.
+	Steps int `json:"steps"`
+}
+
+// SmartPriceParams The parameters a preset was enabled with.
+type SmartPriceParams struct {
+	// CapPercent The highest rise over the starting price.
+	CapPercent *int `json:"cap_percent,omitempty"`
+
+	// Every Tickets per step, days per step or days before the session.
+	Every *int `json:"every,omitempty"`
+
+	// Kind by_sales, by_days or last_days.
+	Kind *string `json:"kind,omitempty"`
+
+	// StartDate The day a by_days preset counts from.
+	StartDate *string `json:"start_date,omitempty"`
+
+	// StepPercent The rise of every step, a percentage of the starting price.
+	StepPercent *int `json:"step_percent,omitempty"`
+}
+
+// SmartPricePreviewCategory What a preset would write for one category.
+type SmartPricePreviewCategory struct {
+	// BasePrice The starting price in minor units.
+	BasePrice int64 `json:"base_price"`
+
+	// CapPrice The highest price the preset reaches, in minor units.
+	CapPrice int64 `json:"cap_price"`
+
+	// Currency ISO 4217 currency of the category.
+	Currency string `json:"currency"`
+
+	// Name The category name.
+	Name string `json:"name"`
+
+	// Steps The steps (by_sales, the first is the category itself) or the price windows (by_days, last_days).
+	Steps []SmartPriceStep `json:"steps"`
+
+	// TierId The category.
+	TierId openapi_types.UUID `json:"tier_id"`
+}
+
+// SmartPricePreviewResponse The table a preset would write. Nothing is written.
+type SmartPricePreviewResponse struct {
+	// Categories One entry per category.
+	Categories []SmartPricePreviewCategory `json:"categories"`
+
+	// Kind The preset kind.
+	Kind string `json:"kind"`
+}
+
+// SmartPriceRequest A smart price preset to preview or enable (spec 51 §4.2).
+type SmartPriceRequest struct {
+	// CapPercent The highest rise over the starting price (by_sales, by_days), at least step_percent and at most 500.
+	CapPercent *int `json:"cap_percent,omitempty"`
+
+	// Every Tickets per step (by_sales), days per step (by_days) or days before the session (last_days).
+	Every int `json:"every"`
+
+	// Kind by_sales (every N tickets), by_days (every N days) or last_days (once, N days before the session).
+	Kind string `json:"kind"`
+
+	// StartDate The calendar day (YYYY-MM-DD, venue calendar) a by_days preset counts from. Empty counts from today.
+	StartDate *string `json:"start_date,omitempty"`
+
+	// StepPercent The rise of every step, a percentage of the starting price (1-100).
+	StepPercent int `json:"step_percent"`
+
+	// TierIds The categories the preset applies to. Exactly one for by_sales.
+	TierIds []openapi_types.UUID `json:"tier_ids"`
+}
+
+// SmartPriceRule One smart price preset of a session.
+type SmartPriceRule struct {
+	// BasePrice The starting price in minor units.
+	BasePrice int64 `json:"base_price"`
+
+	// CreatedAt When the preset was enabled.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 currency of the category.
+	Currency string `json:"currency"`
+
+	// Id The preset.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind by_sales, by_days or last_days.
+	Kind string `json:"kind"`
+
+	// Now Where an active preset stands now, null otherwise.
+	Now *SmartPriceNow `json:"now"`
+
+	// Params The parameters the preset was enabled with.
+	Params SmartPriceParams `json:"params"`
+
+	// Status active, stopped (the organizer froze the price) or overridden (a price was edited by hand).
+	Status string `json:"status"`
+
+	// StepTierIds The later steps the preset created (by_sales). A price edited by hand on any of them, or on tier_id, turns the preset off.
+	StepTierIds []openapi_types.UUID `json:"step_tier_ids"`
+
+	// StoppedAt When the preset was stopped or overridden.
+	StoppedAt *time.Time `json:"stopped_at"`
+
+	// TierId The category the preset was applied to (the first step of a chain).
+	TierId openapi_types.UUID `json:"tier_id"`
+
+	// TierName The category name.
+	TierName string `json:"tier_name"`
+}
+
+// SmartPriceRulesResponse The smart price presets of a session.
+type SmartPriceRulesResponse struct {
+	// Rules The presets, newest first.
+	Rules []SmartPriceRule `json:"rules"`
+
+	// Warnings Advisory warnings of the import that wrote the change.
+	Warnings []ImportWarning `json:"warnings"`
+}
+
+// SmartPriceStep One row of a preset's table, a chain step or a price window.
+type SmartPriceStep struct {
+	// From When the price window starts (by_days, last_days).
+	From *time.Time `json:"from,omitempty"`
+
+	// Places How many tickets the step sells (by_sales).
+	Places *int `json:"places,omitempty"`
+
+	// Price The price of the step in minor units.
+	Price int64 `json:"price"`
+}
+
 // StaffInvitationCancelRequest Which tickets to cancel; an empty body cancels them all.
 type StaffInvitationCancelRequest struct {
 	// NotifyGuest Send the guest the cancellation letter when the invitation has the guest's e-mail (default true).
@@ -23318,6 +23588,9 @@ type PostV1OrganizationsOrgIdDisputesDisputeIdDeadlineJSONRequestBody = DisputeD
 // PostV1OrganizationsOrgIdDisputesDisputeIdSubmitJSONRequestBody defines body for PostV1OrganizationsOrgIdDisputesDisputeIdSubmit for application/json ContentType.
 type PostV1OrganizationsOrgIdDisputesDisputeIdSubmitJSONRequestBody = SubmitDisputeRequest
 
+// PostV1OrganizationsOrgIdEventPageFactsJSONRequestBody defines body for PostV1OrganizationsOrgIdEventPageFacts for application/json ContentType.
+type PostV1OrganizationsOrgIdEventPageFactsJSONRequestBody = EventPageFactsRequest
+
 // CreateEventJSONRequestBody defines body for CreateEvent for application/json ContentType.
 type CreateEventJSONRequestBody = CreateEventRequest
 
@@ -23515,6 +23788,12 @@ type PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody = SeatB
 
 // PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest for application/json ContentType.
 type PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody = SeatLayoutSuggestRequest
+
+// PostV1OrganizationsOrgIdSessionsSessionIdSmartPriceJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSmartPrice for application/json ContentType.
+type PostV1OrganizationsOrgIdSessionsSessionIdSmartPriceJSONRequestBody = SmartPriceRequest
+
+// PostV1OrganizationsOrgIdSessionsSessionIdSmartPricePreviewJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSmartPricePreview for application/json ContentType.
+type PostV1OrganizationsOrgIdSessionsSessionIdSmartPricePreviewJSONRequestBody = SmartPriceRequest
 
 // SearchShopOrdersJSONRequestBody defines body for SearchShopOrders for application/json ContentType.
 type SearchShopOrdersJSONRequestBody = ShopOrderSearchRequest

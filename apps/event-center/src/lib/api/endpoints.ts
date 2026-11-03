@@ -3,7 +3,7 @@
  * from the API table (routes.ts), which the parity test checks against
  * openapi.yaml.
  */
-import { ApiError, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
+import { ApiError, PAGE_READ_TIMEOUT_MS, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
 import type { PageStatsResponse, SalesFunnelResponse } from "@/lib/api/types";
 import type {
@@ -32,6 +32,7 @@ import type {
   EventEnvelope,
   MediaObject,
   PosterFactsResponse,
+  EventPageFactsResponse,
   EventContactResponse,
   EventListResponse,
   EventSummary,
@@ -86,6 +87,11 @@ import type {
   SeatLayoutAlgorithmsResponse,
   SeatLayoutSuggestRequest,
   SeatLayoutSuggestResponse,
+} from "@/lib/api/types";
+import type {
+  SmartPricePreviewResponse,
+  SmartPriceRequest,
+  SmartPriceRulesResponse,
 } from "@/lib/api/types";
 import type {
   StaffInvitationCancelRequest,
@@ -783,6 +789,31 @@ export function fetchTierSchedule(ref: TierRef): Promise<TierPriceScheduleEnvelo
   return call<TierPriceScheduleEnvelope>({ route: API.tierSchedule, params: tierParams(ref) });
 }
 
+// ─── Smart price (spec 51 §4.2) ─────────────────────────────────────────────
+
+/** The session's smart price presets, with where an active one stands now. */
+export function listSmartPrice(orgId: string, sessionId: string): Promise<SmartPriceRulesResponse> {
+  return call<SmartPriceRulesResponse>({ route: API.smartPriceList, params: { org_id: orgId, session_id: sessionId } });
+}
+
+/** The steps or price windows a preset would write. Writes nothing. */
+export function previewSmartPrice(orgId: string, sessionId: string, body: SmartPriceRequest): Promise<SmartPricePreviewResponse> {
+  return call<SmartPricePreviewResponse>({ route: API.smartPricePreview, params: { org_id: orgId, session_id: sessionId }, body });
+}
+
+/** Turns a preset on. The server writes it through the event-bundle import. */
+export function enableSmartPrice(orgId: string, sessionId: string, body: SmartPriceRequest): Promise<SmartPriceRulesResponse> {
+  return call<SmartPriceRulesResponse>({ route: API.smartPriceEnable, params: { org_id: orgId, session_id: sessionId }, body });
+}
+
+/** Freezes the price where it is now. */
+export function stopSmartPrice(orgId: string, sessionId: string, ruleId: string): Promise<SmartPriceRulesResponse> {
+  return call<SmartPriceRulesResponse>({
+    route: API.smartPriceStop,
+    params: { org_id: orgId, session_id: sessionId, rule_id: ruleId },
+  });
+}
+
 /** Replaces the whole schedule. Send every window back, the changed one included. */
 export function putTierSchedule(ref: TierRef, windows: TierPriceWindowInput[]): Promise<TierPriceScheduleEnvelope> {
   return call<TierPriceScheduleEnvelope>({
@@ -892,6 +923,22 @@ export function readPosterFacts(orgId: string, mediaId: string, signal?: AbortSi
     params: { org_id: orgId, media_id: mediaId },
     signal,
     timeoutMs: POSTER_READ_TIMEOUT_MS,
+  });
+}
+
+/**
+ * Asks the server to read the organizer's OWN event page (`event.update`, spec 59).
+ * The server fetches the address, never the browser. ONE request on its own long
+ * timeout, never repeated by itself: a lost answer may have used a daily reading.
+ * The answer is only a set of hints; the page's picture is stored unattached.
+ */
+export function readEventPageFacts(orgId: string, url: string, signal?: AbortSignal): Promise<EventPageFactsResponse> {
+  return call<EventPageFactsResponse>({
+    route: API.eventPageFacts,
+    params: { org_id: orgId },
+    body: { url },
+    signal,
+    timeoutMs: PAGE_READ_TIMEOUT_MS,
   });
 }
 

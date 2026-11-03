@@ -27,6 +27,11 @@ export interface WizardPoster {
   read: () => void;
   /** Dismiss or finish the review (nothing filled in when `applied` is empty). */
   finishRead: (applied: readonly string[]) => void;
+  /**
+   * A picture the server already stored (the event page's, spec 59) becomes the poster:
+   * no upload, the draft keeps its id and "Create event" attaches it like an uploaded one.
+   */
+  adoptStored: (mediaId: string) => void;
 }
 
 export function useWizardPoster(args: {
@@ -113,6 +118,16 @@ export function useWizardPoster(args: {
     void intakeRef.current?.read();
   }, [locked]);
   const finishRead = useCallback((applied: readonly string[]) => intakeRef.current?.finishRead(applied), []);
+  const adoptStored = useCallback(
+    (mediaId: string) => {
+      if (locked || mediaId === "") return;
+      picker.clear();
+      intakeRef.current?.adopt(mediaId);
+      recordPosterProgress(orgId, latest.current.draftId, { mediaId });
+      dispatch({ type: "posterUploaded", mediaId });
+    },
+    [locked, picker, orgId, dispatch],
+  );
 
-  return { view, choose, remove, skip, retryUpload, read, finishRead };
+  return { view, choose, remove, skip, retryUpload, read, finishRead, adoptStored };
 }
