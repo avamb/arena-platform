@@ -77,6 +77,67 @@ func (s *stubTelegram) countSince(mark int, needle string) int {
 	return n
 }
 
+// A draft whose event an operator finished by hand must not be announced as
+// "unfinished": its Save button would create the event a second time. The
+// sweep drops it without a word, while a neighbour that has no such event is
+// left alone.
+func TestBotE2E_DraftWhoseEventWasMadeByHandGetsNoReminder(t *testing.T) {
+	pool := onboardingIntegrationPool(t)
+	f := newBotInviteFixture(t, pool)
+	srv := buildBotIntegrationServer(t, pool)
+	api := httptest.NewServer(srv.router)
+	defer api.Close()
+	const ownerTG = int64(784)
+	linkDialogTestOwner(t, f, srv, ownerTG)
+
+	ctx := context.Background()
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM bot_drafts WHERE telegram_user_id = $1`, ownerTG)
+		_, _ = pool.Exec(ctx, `DELETE FROM events WHERE org_id = $1 AND name = 'Ordinary miracle'`, f.orgID)
+	})
+
+	// The wizard's name is longer than the event an operator made later.
+	d := eventbot.NewDraft()
+	d.Event.Name = `Play "Ordinary miracle" · Evgeny Schwartz · Vega theatre`
+	state, err := json.Marshal(d)
+	if err != nil {
+		t.Fatalf("encode draft: %v", err)
+	}
+	if _, err := gen.New(pool).UpsertBotDraft(ctx, ownerTG, f.orgID, eventbot.ModeCreate, nil, d.Step, int32(d.Version), state, nil); err != nil {
+		t.Fatalf("store draft: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`UPDATE bot_drafts SET updated_at = now() - interval '25 hours' WHERE telegram_user_id = $1`, ownerTG); err != nil {
+		t.Fatalf("age the draft: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO events (org_id, name) VALUES ($1, 'Ordinary miracle')`, f.orgID); err != nil {
+		t.Fatalf("make the event by hand: %v", err)
+	}
+
+	tg := newStubTelegram(t)
+	m := tg.mark()
+	startDraftTestBot(t, pool, api, tg)
+
+	var left int
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM bot_drafts WHERE telegram_user_id = $1`, ownerTG).Scan(&left); err == nil && left == 0 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if left != 0 {
+		t.Fatalf("the draft of a hand-made event must be dropped, %d rows left", left)
+	}
+	time.Sleep(800 * time.Millisecond) // four more sweeps
+	if n := tg.countSince(m, "Вы не закончили мероприятие"); n != 0 {
+		t.Fatalf("no reminder may be sent for a finished event, %d were sent", n)
+	}
+	if n := tg.countSince(m, "Черновик мероприятия удалён"); n != 0 {
+		t.Fatalf("the draft goes without a goodbye, %d were sent", n)
+	}
+}
+
 func TestBotE2E_DraftReminderThenExpiry(t *testing.T) {
 	pool := onboardingIntegrationPool(t)
 	f := newBotInviteFixture(t, pool)
