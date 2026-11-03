@@ -20055,6 +20055,15 @@ components:
             `publication` is its first element.
           items:
             $ref: "#/components/schemas/ImportPublication"
+        event_updated_at:
+          type: string
+          format: date-time
+          description: |
+            The event's `updated_at` as this import left it, read inside the
+            import transaction while it still held the event's row lock. A
+            client that edits the event in several calls (one date per call)
+            compares it with a later read of the event to tell its own write
+            from somebody else's edit. Absent from a dry run.
 
     # ---------------------------------------------------------------
     # Bil24-compatible gateway: POST /compat/bil24/json request/response

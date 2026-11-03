@@ -30,6 +30,14 @@
   import type { BuyerFormValues } from './lib/checkout.js';
   import { buildCheckoutPayload, buildQuotePayload, getCheckoutI18n, parseConflictsFromApiError, conflictKeySet, filterCartWithoutConflicts } from './lib/checkout.js';
   import { cartQuoteKey, promoErrorMessage, isPromoErrorCode } from './lib/promo.js';
+  import {
+    afterCheckoutErrorChange,
+    checkoutError as makeCheckoutError,
+    promoRefusal,
+    promoCodeChange,
+    type CheckoutError,
+    type CheckoutErrorChange,
+  } from './lib/checkoutError.js';
   import { createPromoController, initialPromoState, promoPayBlocked } from './lib/promoController.js';
   import type { PromoState } from './lib/promoController.js';
   import { getPromoStrings } from './lib/promoI18n.js';
@@ -257,7 +265,13 @@
    */
   let holdExpiresAt = $state<string | null>(null);
   let checkoutSubmitting = $state(false);
-  let checkoutError = $state<string | null>(null);
+  // The message above the buyer form after checkout/start refused, with its
+  // kind: a promo refusal goes away by itself once the buyer applies or takes
+  // off a code or types another e-mail (lib/checkoutError.ts).
+  let checkoutError = $state<CheckoutError | null>(null);
+  function noteCheckoutChange(change: CheckoutErrorChange): void {
+    checkoutError = afterCheckoutErrorChange(checkoutError, change);
+  }
   // P2: the session the platform said needs the consent although the feed
   // session did not ask for it (the switch was turned on after the page
   // loaded). The checkbox is shown for it instead of a dead end.
@@ -333,7 +347,9 @@
     conflictText: (err) => (parseConflictsFromApiError(err).length > 0 ? t.conflict_notice : null),
     errorCode: (err) => (err instanceof ApiError ? err.code : undefined),
     onChange: (next) => {
+      const change = promoCodeChange(promo.code, next.code);
       promo = next;
+      if (change) noteCheckoutChange(change);
     },
   });
 
@@ -604,6 +620,7 @@
 
   function closeCartSheet(): void {
     cartSheetOpen = false;
+    noteCheckoutChange({ type: 'cart_left' });
   }
 
   function handleRemoveLine(idx: number): void {
@@ -655,7 +672,7 @@
     // ahead without a code, and its answer can no longer change the total.
     promoCtl.cancelPending();
     if (promoPayBlocked(promo, cartKey)) {
-      checkoutError = promoStrings.error_generic;
+      checkoutError = makeCheckoutError('other', promoStrings.error_generic);
       return;
     }
     checkoutSubmitting = true;
@@ -719,14 +736,21 @@
       const conflicts = parseConflictsFromApiError(err);
       if (conflicts.length > 0) {
         conflictKeys = conflictKeySet(conflicts);
-        checkoutError = t.conflict_notice;
+        checkoutError = makeCheckoutError('conflict', t.conflict_notice);
       } else if (err instanceof ApiError && isPromoErrorCode(err.code)) {
         // The quote said yes but start says no (a cap was used up in between,
         // or the buyer's e-mail is over the per-customer limit, which a quote
         // cannot know before the e-mail is typed). The code comes off so the
         // total on the sheet is the total the buyer will pay.
         conflictKeys = new Set();
-        checkoutError = `${promoErrorMessage(err.code, promoStrings)} ${promoStrings.removed}`;
+        // Another e-mail ends the reason but keeps "code removed, price
+        // without the discount" (the form view shows no total); applying a
+        // code again, taking it off or leaving the cart ends it all.
+        checkoutError = promoRefusal(
+          promoErrorMessage(err.code, promoStrings),
+          promoStrings.removed_full_price,
+          values.email,
+        );
         promoCtl.drop();
         forgetPromoFromLink();
       } else if (err instanceof ApiError && consentErrorMessage(err.code, normLocale) !== null) {
@@ -734,15 +758,15 @@
         // If the box was not on screen (the feed said "not required"), show
         // it now so the buyer can tick it and pay.
         conflictKeys = new Set();
-        checkoutError = consentErrorMessage(err.code, normLocale);
+        checkoutError = makeCheckoutError('consent', consentErrorMessage(err.code, normLocale) ?? '');
         consentForcedFor = selectedSession?.id ?? null;
       } else if (err instanceof ApiError && cartLimitMessage(err.code, normLocale) !== null) {
         // The platform refused the size of the cart: say so in the buyer's language.
         conflictKeys = new Set();
-        checkoutError = cartLimitMessage(err.code, normLocale);
+        checkoutError = makeCheckoutError('cart_limit', cartLimitMessage(err.code, normLocale) ?? '');
       } else {
         conflictKeys = new Set();
-        checkoutError = buyerErrorText(err, normLocale, t.error_checkout);
+        checkoutError = makeCheckoutError('other', buyerErrorText(err, normLocale, t.error_checkout));
       }
     } finally {
       checkoutSubmitting = false;
@@ -1118,7 +1142,7 @@
         consent={forceConsent(selectedSession.consent, consentForcedFor === selectedSession.id)}
         locale={normLocale}
         submitting={checkoutSubmitting}
-        submitError={checkoutError}
+        submitError={checkoutError?.text ?? null}
         promoCode={promo.code}
         promoQuote={promo.quote}
         {cartKey}
@@ -1129,7 +1153,9 @@
         onRemovePromo={() => {
           promoCtl.remove();
           forgetPromoFromLink();
+          noteCheckoutChange({ type: 'promo_removed' });
         }}
+        onEmailChange={(email) => noteCheckoutChange({ type: 'email_changed', email })}
         onContinue={() => promoCtl.cancelPending()}
         {conflictKeys}
         onContinueWithoutConflicts={handleContinueWithoutConflicts}

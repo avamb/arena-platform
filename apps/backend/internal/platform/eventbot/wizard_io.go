@@ -278,6 +278,11 @@ func (w *Wizard) Save(ctx context.Context, io SaveIO, ws WizSession, d *Draft, d
 			// later retry re-sends it by that id, never under a second key.
 			d.Sessions[i].SessionID = res.SessionID
 			d.recordSaved(i, posterURL != "")
+			// This write moved the event's updated_at. Take the server's
+			// own mark of it, so a retry or the preview after a save that
+			// stopped half way does not take it for an edit made elsewhere;
+			// an edit made after it still differs and is still caught.
+			d.recordSavedStamp(res.EventUpdatedAt)
 		}
 		for _, wn := range res.Warnings {
 			if text := w.warningText(ws.Locale, wn.Code); text != "" && !contains(d.Saved.Warnings, text) {

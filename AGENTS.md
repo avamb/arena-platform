@@ -1762,7 +1762,27 @@ entries short and factual.
   (`now() + interval '1 minute'`), never a plain `now()`: on a fast runner
   the whole edit flow fits in one second and `TestBotE2E_WizardCreatesAnEvent`
   failed three times in a row on CI (2026-09-29) while passing in earlier,
-  slower runs.
+  slower runs. Since 2026-11-02 the check runs when the preview of «Publish
+  changes» is DRAWN (`wizardRender` -> `renderCheckedPreview`,
+  `eventbot/wizard_conflict.go`, naming what changed through
+  `elsewhereChanges`) and again when the save starts (`saveGate`); a failed
+  read never saves (retry / save anyway), on the preview it is only a note.
+  So an e2e that moves `updated_at` before «Publish changes» sees the
+  warning on the `wz:publish` press, not only after `wz:publish:go`.
+  Each date the edit posts moves `updated_at` itself, so the event-bundle
+  import answers `event_updated_at` (read inside its transaction, after
+  `SetEventImportMetadata` took the row lock) and `Wizard.Save` takes it as
+  the draft's new mark (`recordSavedStamp`): after a save that stopped half
+  way, «Retry» and the preview no longer report the bot's own write, while an
+  edit made after it still differs. The import answers the mark to the
+  microsecond and the GET to the second, so every mark the draft stores or
+  compares goes through `editStamp` / `sameEditStamp` (UTC, cut to the
+  second); a raw `RFC3339Nano` comparison made the first version of this fix
+  report a conflict after EVERY partial save
+  (`TestBotE2E_WizardRetryAfterAPartialSave` drives it through the real
+  router; a fake that prints both marks alike cannot see it). Never "fix" this by re-reading the event
+  after a save (that would adopt a foreign edit) or by skipping the check once
+  `Saved.EventID` is set.
 - **`cmd/arena-bot` (package `internal/platform/eventbot`) is the fourth
   binary of the image and polls Telegram with `github.com/go-telegram/bot`;
   handlers of DIFFERENT accounts run concurrently, one account's updates run

@@ -79,13 +79,15 @@
     onClose: () => void;
     onRemoveLine: (idx: number) => void;
     onCheckout: (values: BuyerFormValues) => void;
+    /** The buyer edited the e-mail field (a promo refusal for the old address goes stale). */
+    onEmailChange?: (email: string) => void;
   }
   const {
     cart, buyerFields, locale = 'en', serviceFeePercent = null, showWithdrawalNotice = false, consent = null, submitting = false, submitError = null,
     promoCode = null, promoQuote = null, cartKey = '', promoAvailable = false, promoExpanded = false, promoPrefill = '', promoBusy = false, promoError = null, promoNote = null,
     onApplyPromo, onRemovePromo, onContinue,
     conflictKeys, onContinueWithoutConflicts,
-    onClose, onRemoveLine, onCheckout,
+    onClose, onRemoveLine, onCheckout, onEmailChange,
   }: Props = $props();
 
   const t = $derived(getCheckoutI18n(locale));
@@ -296,6 +298,7 @@
         withdrawalNotice={shouldShowWithdrawalNotice(showWithdrawalNotice, payTotal)}
         {consent}
         onSubmit={onCheckout}
+        {onEmailChange}
       />
     </div>
   {/if}
