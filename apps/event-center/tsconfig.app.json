@@ -24,7 +24,8 @@
     "paths": {
       "@/*": ["src/*"],
       "@openapi/*": ["../backend/openapi/clients/ts/*"],
-      "@seatmap/*": ["../widget/src/*"]
+      "@seatmap/*": ["../widget/src/*"],
+      "@arena-track": ["../../packages/arena-track/src/index.ts"]
     },
     "types": ["vite/client"]
   },

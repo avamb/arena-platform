@@ -527,6 +527,12 @@ type Config struct {
 	// outside a linked user's identity: POST /v1/bot/invitations/accept.
 	// Empty leaves that route answering 503, never open.
 	BotServiceToken string `env:"BOT_SERVICE_TOKEN" required:"false" default:""`
+	// AnalyticsSyncToken authenticates the n8n CRM sync on the two
+	// /v1/service/analytics routes (spec 50 section 9): issuing contact codes
+	// and reading changed profiles. Empty leaves them answering 503, never
+	// open. In production it must be at least 32 characters and differ from
+	// BOT_SERVICE_TOKEN (Validate). Read by arena-api only.
+	AnalyticsSyncToken string `env:"ANALYTICS_SYNC_TOKEN" required:"false" default:""`
 	// TelegramMiniappSecretKey verifies the signed launch data (initData) of
 	// the Telegram Mini App on POST /v1/auth/telegram-miniapp. It is the
 	// DERIVED key Telegram signs with, HMAC-SHA256("WebAppData", bot token),
@@ -534,6 +540,14 @@ type Config struct {
 	// be able to speak as the bot. Empty leaves the route answering 503. How
 	// to derive it: deploy/DOKPLOY.md section 2.6.
 	TelegramMiniappSecretKey string `env:"TELEGRAM_MINIAPP_SECRET_KEY" required:"false" default:""`
+	// AnalyticsTGHashSecret is the key of analytics.TGHasher, the keyed hash
+	// that stands for a Telegram id in product analytics (spec 50 section 3).
+	// arena-bot and arena-worker MUST hold the same value; empty disables the
+	// "tg" identifier (the bot writes no tg events, the rollup skips the
+	// Telegram join) and each binary warns once at start. Deliberately not
+	// JWT_SIGNING_SECRET: the worker never receives that one, and a key shared
+	// with token signing should not also be an analytics hashing key.
+	AnalyticsTGHashSecret string `env:"ANALYTICS_TG_HASH_SECRET" required:"false" default:""`
 	// BotSelfOnboardingEnabled (read by arena-bot) lets a stranger who opens
 	// the event-center bot apply for an organization instead of being told
 	// to ask for an invitation. It needs ONBOARDING_ENABLED and
@@ -877,6 +891,8 @@ func LoadFor(role Role) (*Config, error) {
 		EventsTelegramBotToken:      getenv("EVENTS_TELEGRAM_BOT_TOKEN", ""),
 		EventsTelegramBotUsername:   getenv("EVENTS_TELEGRAM_BOT_USERNAME", ""),
 		BotServiceToken:             getenv("BOT_SERVICE_TOKEN", ""),
+		AnalyticsSyncToken:          strings.TrimSpace(getenv("ANALYTICS_SYNC_TOKEN", "")),
+		AnalyticsTGHashSecret:       getenv("ANALYTICS_TG_HASH_SECRET", ""),
 		TelegramMiniappSecretKey:    strings.TrimSpace(getenv("TELEGRAM_MINIAPP_SECRET_KEY", "")),
 		BillingStripeSecretKey:      getenv("BILLING_STRIPE_SECRET_KEY", ""),
 		BillingStripeWebhookSecret:  getenv("BILLING_STRIPE_WEBHOOK_SECRET", ""),
@@ -1404,6 +1420,16 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.New(
 			"TELEGRAM_MINIAPP_SECRET_KEY must be 64 hexadecimal characters:"+
 				" the derived key HMAC-SHA256(\"WebAppData\", bot token), not the bot token itself"))
+	}
+
+	if c.IsProduction() && c.AnalyticsSyncToken != "" {
+		if len(c.AnalyticsSyncToken) < 32 {
+			errs = append(errs, fmt.Errorf(
+				"ANALYTICS_SYNC_TOKEN must be at least 32 characters in production (got %d)", len(c.AnalyticsSyncToken)))
+		}
+		if c.BotServiceToken != "" && c.AnalyticsSyncToken == c.BotServiceToken {
+			errs = append(errs, errors.New("ANALYTICS_SYNC_TOKEN must differ from BOT_SERVICE_TOKEN"))
+		}
 	}
 
 	// --- Database -------------------------------------------------------------

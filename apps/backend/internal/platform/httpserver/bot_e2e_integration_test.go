@@ -30,6 +30,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/analytics"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventbot"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 )
@@ -686,14 +687,17 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 	}
 	tg := newStubTelegram(t)
 	tg.restartGap()
+	aw := newBotAnalyticsWriter(pool)
 	bot, err := eventbot.New(eventbot.Options{
-		Token:             "123:test-token",
-		Queries:           gen.New(pool),
-		Arena:             eventbot.NewArenaClient(api.URL, botTestServiceToken, api.Client()),
-		Minter:            eventbot.NewTokenMinter(botTestJWTSecret, botTestJWTIssuer, botTestJWTAudience),
-		Texts:             eventbot.NewTexts(bundle),
-		TelegramServerURL: tg.srv.URL,
-		HTTPClient:        tg.srv.Client(),
+		Analytics:             aw,
+		AnalyticsTGHashSecret: botTestJWTSecret,
+		Token:                 "123:test-token",
+		Queries:               gen.New(pool),
+		Arena:                 eventbot.NewArenaClient(api.URL, botTestServiceToken, api.Client()),
+		Minter:                eventbot.NewTokenMinter(botTestJWTSecret, botTestJWTIssuer, botTestJWTAudience),
+		Texts:                 eventbot.NewTexts(bundle),
+		TelegramServerURL:     tg.srv.URL,
+		HTTPClient:            tg.srv.Client(),
 	})
 	if err != nil {
 		t.Fatalf("eventbot.New: %v", err)
@@ -840,6 +844,47 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("bot did not stop after cancel")
 	}
+
+	// ── Product analytics (spec 50 §4.4): the stranger's first updates carry
+	// the keyed hash of the Telegram id, the linked manager's carry the user
+	// id, and the team dialog's step shows on the owner's e-mail message.
+	hasher := analytics.NewTGHasher(botTestJWTSecret)
+	tgHash := hasher.Hash(777)
+	ids := []string{tgHash, managerUserID.String(), hasher.Hash(779), hasher.Hash(780)}
+	for _, linkedTG := range []int64{ownerTG, colleagueTG} {
+		var uid uuid.UUID
+		if err := pool.QueryRow(context.Background(), `SELECT user_id FROM bot_telegram_links WHERE telegram_user_id = $1`, linkedTG).Scan(&uid); err != nil {
+			t.Fatalf("link of %d: %v", linkedTG, err)
+		}
+		ids = append(ids, uid.String())
+	}
+	rows := closeAndReadBotAnalytics(t, pool, aw, ids...)
+	var stranger, linked []botAnalyticsRow
+	for _, r := range rows {
+		switch r.IDKind {
+		case "tg":
+			if r.IDValue == tgHash {
+				stranger = append(stranger, r)
+			}
+		case "user":
+			if r.IDValue == managerUserID.String() {
+				linked = append(linked, r)
+			}
+		}
+	}
+	if len(stranger) < 3 {
+		t.Errorf("events of the stranger (tg hash) = %d, want the first updates before the link exists", len(stranger))
+	}
+	if !botAnalyticsHas(stranger, "bot_update", map[string]any{"kind": "command", "prefix": "start"}) {
+		t.Error("no bot_update for the stranger's /start")
+	}
+	if !botAnalyticsHas(linked, "bot_update", map[string]any{"kind": "callback", "prefix": "events"}) {
+		t.Errorf("no bot_update of the linked manager for the events button: %v", linked)
+	}
+	if !botAnalyticsHas(rows, "bot_update", map[string]any{"kind": "message", "step": "team:email"}) {
+		t.Error("the team dialog's step (team:email) is not on the owner's e-mail message")
+	}
+	assertNoneContain(t, rows, "777", managerEmail, newEmail, "not an email", "not-an-email", code)
 }
 
 // stubReplyKeyboard is a reply keyboard as the bot sent it.

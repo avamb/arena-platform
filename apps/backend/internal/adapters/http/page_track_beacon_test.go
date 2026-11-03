@@ -26,3 +26,22 @@ func TestIsPageTrackBeacon(t *testing.T) {
 		}
 	}
 }
+
+func TestIsAnalyticsReceiver(t *testing.T) {
+	cases := []struct {
+		method, path string
+		want         bool
+	}{
+		{http.MethodPost, "/v1/t", true},
+		{http.MethodPost, "/v1/me/t", true},
+		{http.MethodGet, "/v1/t", false},
+		{http.MethodPost, "/v1/t/x", false},
+		{http.MethodPost, "/v1/me", false},
+	}
+	for _, c := range cases {
+		r := httptest.NewRequest(c.method, c.path, nil)
+		if got := isAnalyticsReceiver(r); got != c.want {
+			t.Errorf("%s %s = %v, want %v", c.method, c.path, got, c.want)
+		}
+	}
+}

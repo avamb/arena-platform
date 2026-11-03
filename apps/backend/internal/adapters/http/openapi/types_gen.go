@@ -1339,6 +1339,411 @@ type AdminUserNameResponse struct {
 	UserId openapi_types.UUID `json:"user_id"`
 }
 
+// AnalyticsArticleRead A blog article the person read (engaged for at least 30 seconds and scrolled at least 75 percent).
+type AnalyticsArticleRead struct {
+	// At When the person last read it.
+	At time.Time `json:"at"`
+
+	// Path Site path of the article without the language prefix.
+	Path string `json:"path"`
+
+	// Seconds Engaged seconds in that visit.
+	Seconds int `json:"seconds"`
+}
+
+// AnalyticsBatchRequest Body of POST /v1/t and POST /v1/me/t, the product analytics receivers
+// (spec 50, section 4.2). Unknown fields are ignored: a client cannot name
+// its own user, surface or time of storage.
+type AnalyticsBatchRequest struct {
+	// Aid Optional visitor id of arenasoldout.com, sent only after the
+	// visitor consented to analytics: 8 to 40 characters of `A-Za-z0-9_-`.
+	// Ignored by POST /v1/me/t.
+	Aid *string `json:"aid,omitempty"`
+
+	// Cid Optional contact code of the link in one of our e-mails, only in the
+	// first batch after the visit started from it. Ignored by POST /v1/me/t.
+	Cid *string `json:"cid,omitempty"`
+
+	// Events At most 50 events; further ones are ignored.
+	Events []AnalyticsEvent `json:"events"`
+
+	// OrgId POST /v1/me/t only: id of the organization of the current screen.
+	// Stored only when the caller is a member of it or a platform
+	// superadmin, otherwise stored as empty.
+	OrgId *string `json:"org_id,omitempty"`
+
+	// Pv Id of the current page view, kept in the tab's memory only: 4 to 40
+	// characters of `A-Za-z0-9_-`. It identifies an anonymous visitor
+	// (one without `aid`) and is ignored by POST /v1/me/t.
+	Pv *string `json:"pv,omitempty"`
+}
+
+// AnalyticsContactCode The code of one CRM contact.
+type AnalyticsContactCode struct {
+	// Code The 10-character `cid` code to append to links to the website.
+	Code string `json:"code"`
+
+	// TwentyPersonId The CRM person id the code belongs to, as sent.
+	TwentyPersonId string `json:"twenty_person_id"`
+}
+
+// AnalyticsContactCodesRequest Body of POST /v1/admin/analytics/contact-codes.
+type AnalyticsContactCodesRequest struct {
+	// TwentyPersonIds Ids of the CRM (Twenty) people to issue codes for: 1 to 500 distinct
+	// ids, each 1 to 64 characters of letters, digits and `_ . : -`.
+	// Repeated ids are answered once.
+	TwentyPersonIds []string `json:"twenty_person_ids"`
+}
+
+// AnalyticsContactCodesResponse Answer of POST /v1/admin/analytics/contact-codes.
+type AnalyticsContactCodesResponse struct {
+	// Codes One entry per distinct id, in the order the ids were sent.
+	Codes []AnalyticsContactCode `json:"codes"`
+}
+
+// AnalyticsErrorItem One repeating error or rage-click place.
+type AnalyticsErrorItem struct {
+	// ChangePct Change of `count` against `previous_count` in percent. Null when the previous count is zero.
+	ChangePct *float32 `json:"change_pct"`
+
+	// Count Occurrences in the period.
+	Count int `json:"count"`
+
+	// Key The error code, the reason or the screen, depending on `kind`.
+	Key string `json:"key"`
+
+	// Kind Which event it is: `ui_error` (key is the error code, place the
+	// screen), `wizard_input_error` (key is the reason, place the wizard
+	// step) or `rage_click` (key is the screen, place empty).
+	Kind string `json:"kind"`
+
+	// Place The screen or the step the key happened on, empty for a rage click.
+	Place string `json:"place"`
+
+	// PreviousCount Occurrences in the previous period of equal length.
+	PreviousCount int `json:"previous_count"`
+
+	// Surface Where it happened - `event_center` or `bot`.
+	Surface string `json:"surface"`
+}
+
+// AnalyticsErrorsResponse Answer of the errors dashboard.
+type AnalyticsErrorsResponse struct {
+	// From First day of the period, YYYY-MM-DD (UTC).
+	From string `json:"from"`
+
+	// Items At most 100 rows, most frequent first.
+	Items []AnalyticsErrorItem `json:"items"`
+
+	// PreviousFrom First day of the previous period of equal length.
+	PreviousFrom string `json:"previous_from"`
+
+	// PreviousTo Last day of the previous period.
+	PreviousTo string `json:"previous_to"`
+
+	// Surface The surface filter that was applied, empty for all.
+	Surface string `json:"surface"`
+
+	// To Last day of the period, YYYY-MM-DD (UTC).
+	To string `json:"to"`
+}
+
+// AnalyticsEvent One behaviour event of a batch.
+type AnalyticsEvent struct {
+	// At Client time in RFC 3339. It only keeps the order of the events
+	// inside the batch; the server time is stored. Ignored when more than
+	// a day from the server's time.
+	At *string `json:"at,omitempty"`
+
+	// Name Event name from the dictionary: `page_view`, `engaged`, `scroll`,
+	// `click`, `consent` (website), `screen_view`, `flow_step`,
+	// `ui_error`, `rage_click` (event center, plus `engaged` and `click`).
+	// An unknown name drops the event.
+	Name string `json:"name"`
+
+	// Props Properties of the event, a flat object. Only the properties the
+	// dictionary lists for the event are kept (for example `path`, `lang`,
+	// `utm_source` for `page_view`; `flow` and `step` for `flow_step`);
+	// strings are cut to 200 characters. Never put an e-mail, a phone, a
+	// name, a text typed by a person or an id of an entity here.
+	Props *map[string]interface{} `json:"props,omitempty"`
+}
+
+// AnalyticsFlow One flow of one surface with its steps.
+type AnalyticsFlow struct {
+	// Flow Name of the flow. The bot's wizard is `wizard`.
+	Flow string `json:"flow"`
+
+	// Steps The steps, most entered first.
+	Steps []AnalyticsFlowStep `json:"steps"`
+
+	// Surface Where the flow runs - `bot` or `event_center`.
+	Surface string `json:"surface"`
+}
+
+// AnalyticsFlowNumbers The numbers of one flow step over one period.
+type AnalyticsFlowNumbers struct {
+	// DropOffPct `left_here` as a share of `entered`, in percent with one decimal,
+	// at most 100. Null when nobody entered the step.
+	DropOffPct *float32 `json:"drop_off_pct"`
+
+	// Entered How many times the step was entered.
+	Entered int `json:"entered"`
+
+	// Errors Errors booked on the step.
+	Errors int `json:"errors"`
+
+	// LeftHere How many runs (event center) or exits (bot) stopped at this step.
+	LeftHere int `json:"left_here"`
+
+	// MedianSeconds Median seconds spent on the step (the median of the daily medians). Null when unknown.
+	MedianSeconds *int `json:"median_seconds"`
+}
+
+// AnalyticsFlowStep One step of a flow, with the numbers of the period and of the previous period.
+type AnalyticsFlowStep struct {
+	// DropOffPct Share of `entered` that left here, in percent with one decimal. Null when nobody entered.
+	DropOffPct *float32 `json:"drop_off_pct"`
+
+	// Entered How many times the step was entered in the period.
+	Entered int `json:"entered"`
+
+	// Errors Errors booked on the step in the period.
+	Errors int `json:"errors"`
+
+	// LeftHere How many runs or exits stopped at this step in the period.
+	LeftHere int `json:"left_here"`
+
+	// MedianSeconds Median seconds spent on the step in the period. Null when unknown.
+	MedianSeconds *int `json:"median_seconds"`
+
+	// Previous The same numbers for the previous period of equal length.
+	Previous AnalyticsFlowNumbers `json:"previous"`
+
+	// Step Name of the step as the event center or the bot reports it.
+	Step string `json:"step"`
+}
+
+// AnalyticsFlowsResponse Answer of the flows dashboard.
+type AnalyticsFlowsResponse struct {
+	// Flows The flows, by surface and name.
+	Flows []AnalyticsFlow `json:"flows"`
+
+	// From First day of the period, YYYY-MM-DD (UTC).
+	From string `json:"from"`
+
+	// PreviousFrom First day of the previous period of equal length.
+	PreviousFrom string `json:"previous_from"`
+
+	// PreviousTo Last day of the previous period.
+	PreviousTo string `json:"previous_to"`
+
+	// Surface The surface filter that was applied, empty for all.
+	Surface string `json:"surface"`
+
+	// To Last day of the period, YYYY-MM-DD (UTC).
+	To string `json:"to"`
+}
+
+// AnalyticsPersonTimeline One page of a person's timeline.
+type AnalyticsPersonTimeline struct {
+	// CreatedAt When analytics first saw the person.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Events One page of events, newest first.
+	Events []AnalyticsTimelineEvent `json:"events"`
+
+	// FirstTouch First marketing touch (source, medium, campaign, ref_host, at). Empty when unknown.
+	FirstTouch map[string]interface{} `json:"first_touch"`
+
+	// LastTouch Latest marketing touch, same shape as `first_touch`.
+	LastTouch map[string]interface{} `json:"last_touch"`
+
+	// NextCursor Pass it as `cursor` to get the next, older page. Null on the last page.
+	NextCursor *string `json:"next_cursor"`
+
+	// PersonId Id of the analytics person.
+	PersonId openapi_types.UUID `json:"person_id"`
+
+	// Profile The profile, null until the rollup has written one. Only on the first page.
+	Profile *AnalyticsTimelineProfile `json:"profile"`
+
+	// Sessions The newest sessions (at most 100), newest first. Only on the first page, empty on the others.
+	Sessions []AnalyticsTimelineSession `json:"sessions"`
+
+	// TwentyPersonId The CRM contact this person is linked to, null when none.
+	TwentyPersonId *string `json:"twenty_person_id"`
+
+	// UserId The platform user this person is linked to, null when none.
+	UserId *openapi_types.UUID `json:"user_id"`
+}
+
+// AnalyticsProfile One person's profile as the CRM sync needs it (spec 50, section 9).
+// Built hourly by the analytics rollup; the e-mail is looked up while the
+// request is served.
+type AnalyticsProfile struct {
+	// ActivityExplanation One line that explains the index, for example `article x1 = 3.0 + visit x2 = 1.8 (half-life 14 days)`.
+	ActivityExplanation string `json:"activity_explanation"`
+
+	// ActivityScore The activity index (visits, articles, price page, e-mail clicks, application steps, halved every 14 days).
+	ActivityScore int `json:"activity_score"`
+
+	// Articles Articles read, newest first, at most 20.
+	Articles []AnalyticsArticleRead `json:"articles"`
+
+	// ChangedAt When the profile last changed; the client keeps the greatest as its next `changed_since`.
+	ChangedAt time.Time `json:"changed_at"`
+
+	// Email The person's address from their user or organizer application; null when none is known.
+	Email *string `json:"email"`
+
+	// EngagedMinutes30d Engaged minutes in the last 30 UTC days.
+	EngagedMinutes30d int `json:"engaged_minutes_30d"`
+
+	// FirstSource Short text of the first touch for a CRM field (`email / outreach`, `google`); empty when none.
+	FirstSource string `json:"first_source"`
+
+	// FirstTouch How the person first reached us.
+	FirstTouch AnalyticsTouch `json:"first_touch"`
+
+	// Gmv30d Currency code to minor units sold in the last 30 days; empty when nothing sold.
+	Gmv30d map[string]int64 `json:"gmv_30d"`
+
+	// LastSeenAt Time of the person's latest recorded event; null when there is none.
+	LastSeenAt *time.Time `json:"last_seen_at"`
+
+	// LastSource Short text of the last touch for a CRM field; empty when none.
+	LastSource string `json:"last_source"`
+
+	// LastTouch How the person last reached us.
+	LastTouch AnalyticsTouch `json:"last_touch"`
+
+	// MayCreateContact True when the CRM sync may create a contact for this person if none is found (organizer application or an existing CRM contact); false for an account-only user.
+	MayCreateContact bool `json:"may_create_contact"`
+
+	// Milestones Milestones reached, name to time: `application_started`,
+	// `application_submitted`, `application_approved`,
+	// `application_rejected`, `org_created`, `payment_connected`,
+	// `first_event_created`, `first_event_published`, `first_sale`,
+	// `sales_100`, `member_invited`. A key is present only once reached.
+	Milestones map[string]time.Time `json:"milestones"`
+
+	// PersonId The person in the analytics schema.
+	PersonId openapi_types.UUID `json:"person_id"`
+
+	// Stage `lead`, `applicant`, `organizer` or `selling`.
+	Stage string `json:"stage"`
+
+	// TimelineUrl Link to the person's timeline in the admin console (`/analytics/people/<person_id>`); null when the console address is not configured.
+	TimelineUrl *string `json:"timeline_url"`
+
+	// TwentyPersonId The CRM person id; null until the person is tied to a CRM contact.
+	TwentyPersonId *string `json:"twenty_person_id"`
+
+	// Visits30d Visits (sessions) in the last 30 UTC days.
+	Visits30d int `json:"visits_30d"`
+}
+
+// AnalyticsProfilesResponse One page of changed profiles.
+type AnalyticsProfilesResponse struct {
+	// NextCursor Cursor to send as `after` for the next page. Always present; on an empty page it is the cursor the caller sent.
+	NextCursor string `json:"next_cursor"`
+
+	// Profiles Profiles ordered by `changed_at`, then `person_id`.
+	Profiles []AnalyticsProfile `json:"profiles"`
+}
+
+// AnalyticsTimelineEvent One raw event of a person.
+type AnalyticsTimelineEvent struct {
+	// At Server time of the event.
+	At time.Time `json:"at"`
+
+	// Name Event name from the dictionary.
+	Name string `json:"name"`
+
+	// Props The properties the dictionary allows for the event.
+	Props map[string]interface{} `json:"props"`
+
+	// Surface `site`, `event_center` or `bot`.
+	Surface string `json:"surface"`
+}
+
+// AnalyticsTimelineProfile The profile the hourly rollup built for a person.
+type AnalyticsTimelineProfile struct {
+	// ActivityScore The activity index stored by the last rollup.
+	ActivityScore int `json:"activity_score"`
+
+	// Articles The latest articles read (path, time, seconds).
+	Articles []map[string]interface{} `json:"articles"`
+
+	// ChangedAt When the profile last changed.
+	ChangedAt time.Time `json:"changed_at"`
+
+	// EngagedMinutes30d Engaged minutes of the last 30 days.
+	EngagedMinutes30d int `json:"engaged_minutes_30d"`
+
+	// LastSeenAt Time of the person's latest event, null when there is none.
+	LastSeenAt *time.Time `json:"last_seen_at"`
+
+	// Milestones Milestone name to the time it happened; `gmv_30d` maps a currency to minor units.
+	Milestones map[string]interface{} `json:"milestones"`
+
+	// ScoreExplanation The one line that explains the index, recomputed now (count and decayed weight of each kind of activity).
+	ScoreExplanation string `json:"score_explanation"`
+
+	// Stage `lead`, `applicant`, `organizer` or `selling`.
+	Stage string `json:"stage"`
+
+	// Visits30d Sessions of the last 30 days.
+	Visits30d int `json:"visits_30d"`
+}
+
+// AnalyticsTimelineSession One session of a person.
+type AnalyticsTimelineSession struct {
+	// EndedAt Last event of the session.
+	EndedAt time.Time `json:"ended_at"`
+
+	// EngagedSeconds Active time in seconds.
+	EngagedSeconds int `json:"engaged_seconds"`
+
+	// Entry Entry path and source of the session (path, source, medium, campaign, ref_host).
+	Entry map[string]interface{} `json:"entry"`
+
+	// Id Session id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Pages Pages or screens viewed.
+	Pages int `json:"pages"`
+
+	// StartedAt First event of the session.
+	StartedAt time.Time `json:"started_at"`
+
+	// Surface `site`, `event_center` or `bot`.
+	Surface string `json:"surface"`
+}
+
+// AnalyticsTouch Where a visit came from. Every field is left out when unknown; an empty
+// object means the person has no touch yet.
+type AnalyticsTouch struct {
+	// At When the touch happened.
+	At *time.Time `json:"at,omitempty"`
+
+	// Campaign The `utm_campaign` of the visit.
+	Campaign *string `json:"campaign,omitempty"`
+
+	// Kind How the touch was recognised: `email_click`, `utm`, `organic` or `referral`.
+	Kind *string `json:"kind,omitempty"`
+
+	// Medium `email`, a `utm_medium`, `organic` or `referral`.
+	Medium *string `json:"medium,omitempty"`
+
+	// RefHost Host the visitor came from.
+	RefHost *string `json:"ref_host,omitempty"`
+
+	// Source `email`, a `utm_source`, a search engine, `direct` or a referrer host.
+	Source *string `json:"source,omitempty"`
+}
+
 // ApiKeyItem A single organization API key row. Never includes the secret or
 // its hash — only the non-secret `key_prefix` used to identify
 // the key in logs and audit events. The full secret is returned
@@ -11639,6 +12044,9 @@ type OnboardingSettingsRequest struct {
 
 // OnboardingStartRequest Body of POST /v1/onboarding/applications: the first step of the form.
 type OnboardingStartRequest struct {
+	// Aid Optional visitor id of arenasoldout.com (cookie aso_aid, set only after the analytics consent): 8-40 characters of A-Z a-z 0-9 _ -. Anything else is ignored. Product analytics joins the visit with the application through it.
+	Aid *string `json:"aid,omitempty"`
+
 	// Email Contact e-mail; a confirmation link is sent to it.
 	Email openapi_types.Email `json:"email"`
 
@@ -15499,6 +15907,195 @@ type RevokeMembershipRequest struct {
 
 // RevokeMembershipRequestRole The specific role binding to revoke. org_admin is the organization owner; the last active owner cannot be revoked (409 `membership.last_owner`).
 type RevokeMembershipRequestRole string
+
+// SalesFunnelGateway The sites that sell through the Bil24 gateway protocol (WordPress
+// plugins, channels with a gateway credential). They have no client
+// steps, so their funnel starts at the cart: `seats_chosen` (carts taken),
+// `checkout_start` (orders created) and `paid`. Their share of a step is
+// taken against the step before in this list.
+type SalesFunnelGateway struct {
+	// Revenue The total of the paid orders of these sites minus their succeeded refunds, per currency.
+	Revenue []SalesFunnelMoney `json:"revenue"`
+
+	// Steps Three steps, in order, `seats_chosen`, `checkout_start` and `paid`.
+	Steps []SalesFunnelStep `json:"steps"`
+}
+
+// SalesFunnelMoney An amount in one currency.
+type SalesFunnelMoney struct {
+	// AmountMinor The amount in minor units (cents).
+	AmountMinor int64 `json:"amount_minor"`
+
+	// Currency ISO 4217 code.
+	Currency string `json:"currency"`
+}
+
+// SalesFunnelPage A hosted event page, named the way its address names it.
+type SalesFunnelPage struct {
+	// EventSlug The event's slug (the second address segment), matched case-insensitively.
+	EventSlug string `json:"event_slug"`
+
+	// Slug The organization's or the promoter's slug (the first address segment), matched case-insensitively.
+	Slug string `json:"slug"`
+}
+
+// SalesFunnelRequest Body of POST /v1/public/funnel, the buyer funnel beacon (spec 50, stage
+// A7). Name the event EITHER with `feed_token` and `event_id` (the widget)
+// OR with `page` (a page Arena hosts); sending both, or neither, is not
+// counted. The surface follows the addressing: `feed_token` is the
+// `widget` surface only, `page` is `hosted_page` or `tickets_page`. A body
+// that disagrees with itself is not counted (the answer is still 204).
+// Unknown fields are ignored.
+type SalesFunnelRequest struct {
+	// EventId The event. Required with `feed_token`, absent with `page`.
+	EventId *openapi_types.UUID `json:"event_id,omitempty"`
+
+	// FeedToken The active feed token the event is published to. Required with `event_id`, absent with `page`.
+	FeedToken *string `json:"feed_token,omitempty"`
+
+	// Page The hosted page of the event, instead of `feed_token` and `event_id`.
+	Page *SalesFunnelPage `json:"page,omitempty"`
+
+	// SessionId The session the step was taken in. Optional; a session that is not a
+	// live session of the event is not counted. `session_open` and
+	// `seats_chosen` should carry it, `view` never does.
+	SessionId *openapi_types.UUID `json:"session_id,omitempty"`
+
+	// Step How far the visitor got: `view` (the event was shown),
+	// `session_open` (a session was opened) or `seats_chosen` (seats or
+	// tickets were put in the cart). Any other value is not counted.
+	Step string `json:"step"`
+
+	// Surface Where the visitor was: `widget` (the embedded widget on a seller's
+	// own site), `hosted_page` (the hosted event page) or `tickets_page`
+	// (the promoter page that lists events). `widget` goes with
+	// `feed_token`, the other two with `page`. Any other value, or one that
+	// does not fit the addressing, is not counted.
+	Surface string `json:"surface"`
+
+	// UtmCampaign Optional `utm_campaign` of the page address, cleaned like `utm_source`.
+	UtmCampaign *string `json:"utm_campaign,omitempty"`
+
+	// UtmSource Optional `utm_source` of the page address. Only the characters
+	// `A-Z a-z 0-9 . _ ~ -` are kept (a value with any other character is
+	// counted as empty) and it is cut to 64 characters.
+	UtmSource *string `json:"utm_source,omitempty"`
+}
+
+// SalesFunnelResponse The sales funnel of an event for a window of days: view, session_open,
+// seats_chosen, checkout_start, payment_open, paid. The first three come
+// from the anonymous beacon of the widget and the pages, the last three
+// from the orders. A guide for the organizer, not proof for an advertising
+// account: a bot may look like a person and a person may block the beacon.
+type SalesFunnelResponse struct {
+	// EventId The event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// From First day of the window, `YYYY-MM-DD`.
+	From string `json:"from"`
+
+	// Gateway The sites on the Bil24 gateway protocol; null when the event has no cart or order from them in the window.
+	Gateway *SalesFunnelGateway `json:"gateway"`
+
+	// Revenue The total of the paid orders of those sites minus their succeeded refunds, per currency.
+	Revenue []SalesFunnelMoney `json:"revenue"`
+
+	// SalesLinks The orders by tracked sales link, the most paid first.
+	SalesLinks []SalesFunnelSalesLink `json:"sales_links"`
+
+	// SessionId The session the answer is limited to, null for the whole event.
+	SessionId *openapi_types.UUID `json:"session_id"`
+
+	// Sessions The live sessions of the event, for the session picker, each with the zone of its own venue.
+	Sessions []SalesFunnelSession `json:"sessions"`
+
+	// Sources The funnel by utm pair, the biggest first, at most 50.
+	Sources []SalesFunnelSource `json:"sources"`
+
+	// Steps The six steps of the sites that sell through the widget, the hosted pages or the API, in funnel order.
+	Steps []SalesFunnelStep `json:"steps"`
+
+	// Timezone IANA zone of the event's venue that decides which day a step belongs to; null (UTC days) while the event has no session.
+	Timezone *string `json:"timezone"`
+
+	// To Last day of the window (inclusive), `YYYY-MM-DD`.
+	To string `json:"to"`
+}
+
+// SalesFunnelSalesLink What the orders that came through one tracked sales link did (spec 43).
+type SalesFunnelSalesLink struct {
+	// CheckoutStart Orders that took a hold through the link.
+	CheckoutStart int64 `json:"checkout_start"`
+
+	// Code The link's short code.
+	Code *string `json:"code"`
+
+	// Label The label the organizer gave the link.
+	Label *string `json:"label"`
+
+	// Paid Orders through the link that were paid.
+	Paid int64 `json:"paid"`
+
+	// Revenue The total of the paid orders through the link minus their succeeded refunds, per currency.
+	Revenue []SalesFunnelMoney `json:"revenue"`
+
+	// SalesLinkId The sales link.
+	SalesLinkId openapi_types.UUID `json:"sales_link_id"`
+}
+
+// SalesFunnelSession A live session of the event with the zone of its venue.
+type SalesFunnelSession struct {
+	// Id The session.
+	Id openapi_types.UUID `json:"id"`
+
+	// StartAt Start of the session, RFC 3339 in UTC.
+	StartAt string `json:"start_at"`
+
+	// Status The session's status, such as `scheduled` or `cancelled`.
+	Status string `json:"status"`
+
+	// Timezone IANA zone of the session's venue, null when the venue has none on record.
+	Timezone *string `json:"timezone"`
+}
+
+// SalesFunnelSource The funnel of one source, the pair of `utm_source` and `utm_campaign`
+// the visit carried. The server steps take the pair from the checkout's
+// attribution. Visits that carried no utm are the pair of two empty strings.
+type SalesFunnelSource struct {
+	// Revenue The total of the paid orders of this source minus their succeeded refunds, per currency. A currency whose net is 0 is left out.
+	Revenue []SalesFunnelMoney `json:"revenue"`
+
+	// Steps The six steps, in funnel order.
+	Steps []SalesFunnelStep `json:"steps"`
+
+	// UtmCampaign The cleaned `utm_campaign`, empty when none.
+	UtmCampaign string `json:"utm_campaign"`
+
+	// UtmSource The cleaned `utm_source`, empty when none.
+	UtmSource string `json:"utm_source"`
+}
+
+// SalesFunnelStep One step of a sales funnel.
+type SalesFunnelStep struct {
+	// Count People who reached the step. The steps counted from the orders count
+	// buyers, not attempts: a buyer who retries the checkout is one
+	// (a buyer is the customer or the order's e-mail, per session and
+	// day in the venue's zone), so a share of the previous step cannot
+	// pass 1 through retries. Null when the step cannot be read for
+	// this request: `view` when one session is asked for, because a view
+	// belongs to the event, not to a session. Probable bots are not in it.
+	Count *int64 `json:"count"`
+
+	// ShareOfPrevious The count divided by the previous step's count, 0 to 1 and sometimes above 1 (the view counters are a guide). Null for the first step, and when either count is unknown or the previous one is 0.
+	ShareOfPrevious *float64 `json:"share_of_previous"`
+
+	// Step `view`, `session_open`, `seats_chosen` (counted by the beacon),
+	// `checkout_start`, `payment_open` or `paid` (counted from the orders).
+	Step string `json:"step"`
+
+	// SuspectCount Hits of the beacon counted apart because the browser looked like a bot. Always 0 for the steps counted from the orders.
+	SuspectCount int64 `json:"suspect_count"`
+}
 
 // SalesLink A tracked sales link (spec 43).
 type SalesLink struct {
@@ -21262,6 +21859,57 @@ type PostBil24CommandJSONBody struct {
 	union json.RawMessage
 }
 
+// PostV1AdminAnalyticsContactCodesParams defines parameters for PostV1AdminAnalyticsContactCodes.
+type PostV1AdminAnalyticsContactCodesParams struct {
+	// XAdminReason Human-readable business reason for the call (recorded in the audit log).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// GetAdminAnalyticsErrorsParams defines parameters for GetAdminAnalyticsErrors.
+type GetAdminAnalyticsErrorsParams struct {
+	// Surface Only this surface - `bot`, `event_center` or `site`. Empty or absent means all.
+	Surface *string `form:"surface,omitempty" json:"surface,omitempty"`
+
+	// From First day of the period, YYYY-MM-DD (UTC). Default is six days before `to`.
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day of the period, YYYY-MM-DD (UTC). Default is today. At most 180 days after `from`.
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+}
+
+// GetAdminAnalyticsFlowsParams defines parameters for GetAdminAnalyticsFlows.
+type GetAdminAnalyticsFlowsParams struct {
+	// Surface Only this surface - `bot`, `event_center` or `site`. Empty or absent means all.
+	Surface *string `form:"surface,omitempty" json:"surface,omitempty"`
+
+	// From First day of the period, YYYY-MM-DD (UTC). Default is six days before `to`.
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day of the period, YYYY-MM-DD (UTC). Default is today. At most 180 days after `from`.
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+}
+
+// GetAdminAnalyticsPersonTimelineParams defines parameters for GetAdminAnalyticsPersonTimeline.
+type GetAdminAnalyticsPersonTimelineParams struct {
+	// Limit Events per page, 1 to 200. Default 50. A value outside the range is refused with 400 `analytics.invalid_limit`.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The `next_cursor` of the previous page. Absent for the first page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// GetV1AdminAnalyticsProfilesParams defines parameters for GetV1AdminAnalyticsProfiles.
+type GetV1AdminAnalyticsProfilesParams struct {
+	// ChangedSince RFC 3339 time. Only profiles changed at or after it are returned (a lower bound for a client without a cursor); absent means all.
+	ChangedSince *time.Time `form:"changed_since,omitempty" json:"changed_since,omitempty"`
+
+	// Limit Page size, 1 to 200 (default 100).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// After Opaque cursor, the `next_cursor` of the previous page; the page starts strictly after it.
+	After *string `form:"after,omitempty" json:"after,omitempty"`
+}
+
 // GetV1AdminBillingAccountsParams defines parameters for GetV1AdminBillingAccounts.
 type GetV1AdminBillingAccountsParams struct {
 	// OrgId Only accounts of this organization.
@@ -22245,6 +22893,18 @@ type GetV1OrganizationsOrgIdEventsSalesSummaryParams struct {
 	Ids string `form:"ids" json:"ids"`
 }
 
+// GetV1OrganizationsOrgIdEventsEventIdFunnelParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdFunnel.
+type GetV1OrganizationsOrgIdEventsEventIdFunnelParams struct {
+	// From First day, `YYYY-MM-DD`. Default 29 days before `to`.
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day (inclusive), `YYYY-MM-DD`. Default today in the venue's zone.
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+
+	// SessionId Limit the answer to one session of the event.
+	SessionId *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdEventsEventIdPageStatsParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdPageStats.
 type GetV1OrganizationsOrgIdEventsEventIdPageStatsParams struct {
 	// From First day, `YYYY-MM-DD`. Default 29 days before `to`.
@@ -22994,6 +23654,24 @@ type GetScannerSnapshotParams struct {
 	PerPage *int `form:"per_page,omitempty" json:"per_page,omitempty"`
 }
 
+// PostV1ServiceAnalyticsContactCodesParams defines parameters for PostV1ServiceAnalyticsContactCodes.
+type PostV1ServiceAnalyticsContactCodesParams struct {
+	// XAdminReason Human-readable business reason for the call (recorded in the audit log).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// GetV1ServiceAnalyticsProfilesParams defines parameters for GetV1ServiceAnalyticsProfiles.
+type GetV1ServiceAnalyticsProfilesParams struct {
+	// ChangedSince RFC 3339 time. Only profiles changed at or after it are returned (a lower bound for a client without a cursor); absent means all.
+	ChangedSince *time.Time `form:"changed_since,omitempty" json:"changed_since,omitempty"`
+
+	// Limit Page size, 1 to 200 (default 100).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// After Opaque cursor, the `next_cursor` of the previous page; the page starts strictly after it.
+	After *string `form:"after,omitempty" json:"after,omitempty"`
+}
+
 // StripeConnectCallbackParams defines parameters for StripeConnectCallback.
 type StripeConnectCallbackParams struct {
 	// Code OAuth authorization code returned by Stripe.
@@ -23055,6 +23733,9 @@ type UpdateWebhookSubscriberJSONBody struct {
 
 // PostBil24CommandJSONRequestBody defines body for PostBil24Command for application/json ContentType.
 type PostBil24CommandJSONRequestBody PostBil24CommandJSONBody
+
+// PostV1AdminAnalyticsContactCodesJSONRequestBody defines body for PostV1AdminAnalyticsContactCodes for application/json ContentType.
+type PostV1AdminAnalyticsContactCodesJSONRequestBody = AnalyticsContactCodesRequest
 
 // PostV1AdminBillingAccountInvoicesJSONRequestBody defines body for PostV1AdminBillingAccountInvoices for application/json ContentType.
 type PostV1AdminBillingAccountInvoicesJSONRequestBody = BillingCreateUsageInvoiceRequest
@@ -23283,6 +23964,9 @@ type PostMACSScanEventsJSONRequestBody = MACSScanBatchRequest
 
 // RecordConsentJSONRequestBody defines body for RecordConsent for application/json ContentType.
 type RecordConsentJSONRequestBody RecordConsentJSONBody
+
+// PostAnalyticsMeJSONRequestBody defines body for PostAnalyticsMe for application/json ContentType.
+type PostAnalyticsMeJSONRequestBody = AnalyticsBatchRequest
 
 // PostV1MediaMultipartRequestBody defines body for PostV1Media for multipart/form-data ContentType.
 type PostV1MediaMultipartRequestBody PostV1MediaMultipartBody
@@ -23659,6 +24343,9 @@ type PostPublicFeedFunnelEventsJSONRequestBody = WidgetFunnelEventsBatch
 // CreatePublicSaleSubscriptionJSONRequestBody defines body for CreatePublicSaleSubscription for application/json ContentType.
 type CreatePublicSaleSubscriptionJSONRequestBody = PublicSaleSubscriptionRequest
 
+// PostPublicFunnelJSONRequestBody defines body for PostPublicFunnel for application/json ContentType.
+type PostPublicFunnelJSONRequestBody = SalesFunnelRequest
+
 // SendOrganizerContactJSONRequestBody defines body for SendOrganizerContact for application/json ContentType.
 type SendOrganizerContactJSONRequestBody = OrganizerContactRequest
 
@@ -23710,8 +24397,14 @@ type ForkSeatingPlanJSONRequestBody = ForkSeatingPlanRequest
 // CreateSeatingPlanVersionJSONRequestBody defines body for CreateSeatingPlanVersion for application/json ContentType.
 type CreateSeatingPlanVersionJSONRequestBody = CreateSeatingPlanVersionRequest
 
+// PostV1ServiceAnalyticsContactCodesJSONRequestBody defines body for PostV1ServiceAnalyticsContactCodes for application/json ContentType.
+type PostV1ServiceAnalyticsContactCodesJSONRequestBody = AnalyticsContactCodesRequest
+
 // ReplaceSessionMediaJSONRequestBody defines body for ReplaceSessionMedia for application/json ContentType.
 type ReplaceSessionMediaJSONRequestBody = SessionMediaReplaceRequest
+
+// PostAnalyticsSiteJSONRequestBody defines body for PostAnalyticsSite for application/json ContentType.
+type PostAnalyticsSiteJSONRequestBody = AnalyticsBatchRequest
 
 // CancelTicketJSONRequestBody defines body for CancelTicket for application/json ContentType.
 type CancelTicketJSONRequestBody = CancelTicketRequest

@@ -8,6 +8,7 @@ import { useEmbedded } from "@/lib/seatManager/embed";
 import { ErrorBox, ErrorScope, Loading } from "@/components/ui";
 import { RequireSignIn } from "@/screens/RequireSignIn";
 import { LanguageSelect } from "@/screens/LanguageSelect";
+import { AnalyticsOptOut } from "@/lib/analytics/AnalyticsOptOut";
 import { roleKey } from "@/screens/OrgsScreen";
 
 export interface OrgContextValue {
@@ -170,6 +171,7 @@ function OrgShell() {
           </nav>
           <div className="topbar-tools">
             <LanguageSelect />
+            <AnalyticsOptOut />
             <button type="button" className="btn btn-link" onClick={() => void logout()} data-testid="logout">
               {t("nav.logout")}
             </button>

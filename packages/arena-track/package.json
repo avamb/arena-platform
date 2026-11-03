@@ -1,0 +1,22 @@
+{
+  "name": "@arena/track",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Arena product analytics tracker: one tiny dependency-free browser module for the site and the web event center (spec 50, 4.1).",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "sideEffects": false,
+  "scripts": {
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "type-check": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0",
+    "typescript": "5.9.3",
+    "vite": "5.4.21",
+    "vitest": "2.1.9"
+  }
+}

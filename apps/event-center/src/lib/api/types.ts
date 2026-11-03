@@ -143,6 +143,13 @@ export type EventEmailNoteTestRequest = S["EventEmailNoteTestRequest"];
 export type EventEmailNoteTestResponse = S["EventEmailNoteTestResponse"];
 // 2-3: statistics of the hosted page (beacon counters).
 export type PageStatsResponse = S["PageStatsResponse"];
+// A7: the buyer sales funnel of an event (spec 50).
+export type SalesFunnelResponse = S["SalesFunnelResponse"];
+export type SalesFunnelStep = S["SalesFunnelStep"];
+export type SalesFunnelMoney = S["SalesFunnelMoney"];
+export type SalesFunnelSource = S["SalesFunnelSource"];
+export type SalesFunnelSalesLink = S["SalesFunnelSalesLink"];
+export type SalesFunnelGateway = S["SalesFunnelGateway"];
 export type PageStatsCounts = S["PageStatsCounts"];
 // M2: door scans on the order card, the session's ticket list.
 export type TicketScan = S["TicketScan"];

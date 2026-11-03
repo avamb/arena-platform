@@ -107,6 +107,8 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/me/consent", flatOwnAccount, "the caller's own data requests"},
 	{"POST", "/v1/me/data-delete", flatOwnAccount, "the caller's own data requests"},
 	{"POST", "/v1/me/data-export", flatOwnAccount, "the caller's own data requests"},
+	{"POST", "/v1/me/t", flatRowGuard, "own events only (user from the token); the body's org_id is kept only for a member or a superadmin, else stored empty (hanalytics, TestAnalytics_EventCenterUserFromTokenAndOrgChecked)"},
+	{"POST", "/v1/t", flatPublic, "no credential; writes anonymous website events through the dictionary, answers nothing about why (spec 50)"},
 
 	// ── anonymous buyer and widget flows ────────────────────────────────────
 	// /v1/public/*  (flatPublic): feed token or checkout token in the URL
@@ -118,6 +120,7 @@ var flatRouteFamilies = []flatFamily{
 	{"GET", "/v1/public/pages/{org_slug}/{event_slug}", flatPublic, "feed token or checkout token in the URL"},
 	{"GET", "/v1/public/pages/{org_slug}/terms", flatPublic, "public page slug; the organizer's published terms, a feed token of another organization answers 404 (hlegal)"},
 	{"POST", "/v1/public/pages/{org_slug}/{event_slug}/track", flatPublic, "public page slugs; writes one anonymous counter, answers nothing about the event (HP-2a)"},
+	{"POST", "/v1/public/funnel", flatPublic, "feed token or public page slugs; writes one anonymous counter, answers nothing about the event (spec 50 A7)"},
 	{"GET", "/v1/public/payment-return", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/checkout/{checkout_token}/recover", flatPublic, "feed token or checkout token in the URL"},
 	{"GET", "/v1/public/checkout/{checkout_token}/referral", flatPublic, "feed token or checkout token in the URL"},
@@ -174,6 +177,9 @@ var flatRouteFamilies = []flatFamily{
 
 	// ── platform operators, service tokens ──────────────────────────────────
 	{"GET", "/v1/admin/tickets", flatPlatform, "superadmin.read"},
+	{"GET", "/v1/admin/analytics/flows", flatPlatform, "superadmin.read; counts of dictionary steps, no organization data (hanalytics.AdminHandler)"},
+	{"GET", "/v1/admin/analytics/errors", flatPlatform, "superadmin.read; counts of dictionary errors, no organization data (hanalytics.AdminHandler)"},
+	{"GET", "/v1/admin/analytics/people/{person_id}/timeline", flatPlatform, "superadmin.read; one analytics person, no organization data (hanalytics.AdminHandler)"},
 	// /v1/admin/tickets/*  (flatRowGuard): htickets.RowOrgAccess
 	{"GET", "/v1/admin/tickets/{id}/delivery", flatRowGuard, "htickets.RowOrgAccess"},
 	{"GET", "/v1/admin/tickets/{id}/scans", flatRowGuard, "htickets.RowOrgAccess"},
@@ -208,6 +214,10 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/admin/geo/cities", flatPlatform, "superadmin or platform permission"},
 	{"POST", "/v1/admin/geo/countries", flatPlatform, "superadmin or platform permission"},
 	{"POST", "/v1/admin/impersonate", flatPlatform, "superadmin or platform permission"},
+	{"POST", "/v1/admin/analytics/contact-codes", flatPlatform, "superadmin.read + X-Admin-Reason, audited; CRM contact codes are platform-wide (hanalytics.CRMHandler)"},
+	{"GET", "/v1/admin/analytics/profiles", flatPlatform, "superadmin.read; platform-wide profiles for the CRM sync (hanalytics.CRMHandler)"},
+	{"POST", "/v1/service/analytics/contact-codes", flatPlatform, "static ANALYTICS_SYNC_TOKEN (httputil.RequireStaticBearer, 503 while unset); platform-wide, audited as actor type service (hanalytics.CRMHandler)"},
+	{"GET", "/v1/service/analytics/profiles", flatPlatform, "static ANALYTICS_SYNC_TOKEN (httputil.RequireStaticBearer, 503 while unset); platform-wide (hanalytics.CRMHandler)"},
 	// /v1/admin/billing/*  (flatPlatform): billing.admin AND a platform superadmin
 	{"GET", "/v1/admin/billing/accounts", flatPlatform, "billing.admin and platform superadmin"},
 	{"POST", "/v1/admin/billing/accounts/{account_id}/terms", flatPlatform, "billing.admin and platform superadmin"},

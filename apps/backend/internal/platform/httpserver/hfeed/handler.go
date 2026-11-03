@@ -32,6 +32,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesfunnel"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesubscribe"
 )
 
@@ -137,6 +138,9 @@ type Handler struct {
 	metrics *observability.Metrics
 	// promoRec journals every promo-code check (migration 0166); nil = off.
 	promoRec *promoattempts.Recorder
+	// funnelDedupe drops a repeated funnel beacon of the same visitor and day
+	// (WithFunnelDeduper); nil counts every beacon.
+	funnelDedupe *salesfunnel.Deduper
 	// accessLog records ticket downloads and views (migration 0184,
 	// WithTicketAccessLog); nil = off.
 	accessLog TicketAccessRecorder

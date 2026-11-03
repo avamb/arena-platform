@@ -420,6 +420,17 @@ label {
   font-weight: 400;
 }
 
+.analytics-opt {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.analytics-opt label {
+  margin: 0;
+  font-weight: 400;
+}
+
 .page {
   max-width: 960px;
   margin: 0 auto;

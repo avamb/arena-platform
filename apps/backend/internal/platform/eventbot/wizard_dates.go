@@ -286,11 +286,11 @@ func (w *Wizard) dateInput(loc string, d *Draft, text, data string) (outText str
 	outOfRange := func(iso string) string {
 		switch {
 		case iso < w.today(d).Format(isoLayout):
-			return t("bot.wz.err_date_past", nil)
+			return d.reject("err_date_past", t("bot.wz.err_date_past", nil))
 		case iso < min:
-			return t("bot.wz.err_date_early", map[string]any{"Date": fmtDate(min)})
+			return d.reject("err_date_early", t("bot.wz.err_date_early", map[string]any{"Date": fmtDate(min)}))
 		default:
-			return t("bot.wz.err_date_late", map[string]any{"Date": fmtDate(max)})
+			return d.reject("err_date_late", t("bot.wz.err_date_late", map[string]any{"Date": fmtDate(max)}))
 		}
 	}
 

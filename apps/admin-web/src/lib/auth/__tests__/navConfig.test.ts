@@ -184,6 +184,8 @@ describe("visibleNavEntries -- /v1/me role fixtures", () => {
       "billing_invoices",
       "billing_payment_fees",
       "billing_bank",
+      "analytics_flows",
+      "analytics_errors",
     ]);
   });
 

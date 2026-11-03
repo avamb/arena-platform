@@ -295,6 +295,7 @@ func run() error {
 	registerPaymentReceiptHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerBillingReconcileHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 	registerJobRetentionHandler(registry, pool.Pool, logger)
+	registerAnalyticsHandlers(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 
 	// 7b. Idempotency cleanup startup scheduling (feature #48) ---------------
 	// Enqueue an idempotency.cleanup job immediately if none is already
@@ -337,6 +338,7 @@ func run() error {
 		logger.Info("reservation expire sweep job scheduled at startup")
 	}
 	scheduleRefundSweep(rootCtx, pool.Pool, logger)
+	scheduleAnalyticsJobs(rootCtx, pool.Pool, logger)
 	scheduleReferralSweep(rootCtx, pool.Pool, logger)
 	if err := cartreminder.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
 		logger.Warn("could not schedule initial cart reminder sweep job", "error", err.Error())

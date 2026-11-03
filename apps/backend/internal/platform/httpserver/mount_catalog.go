@@ -262,6 +262,9 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		// Page statistics beacon (HP-2a): counts a page view, a video play
 		// or a partner click. No login, no cookie, no stored address.
 		r.Post("/public/pages/{org_slug}/{event_slug}/track", s.handlePublicPageTrack)
+		// Buyer funnel beacon (spec 50 A7): counts view / session_open /
+		// seats_chosen per event and day. No login, no cookie, no stored address.
+		r.Post("/public/funnel", s.handlePublicFunnel)
 	}
 	// "Write to the organizer" form of the hosted page (HP contact form).
 	// Always mounted; the handler answers 503 without a database.

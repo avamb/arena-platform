@@ -64,6 +64,9 @@ func (b *Bot) loadDraft(ctx context.Context, tgID int64, ws WizSession) (*Draft,
 }
 
 func (b *Bot) storeDraft(ctx context.Context, tgID int64, ws WizSession, d *Draft) (string, error) {
+	if d.StepSince == 0 {
+		d.StepSince = b.clock().Unix() // the draft reaches its first step now
+	}
 	state, err := json.Marshal(d)
 	if err != nil {
 		return "", err
@@ -81,6 +84,7 @@ func (b *Bot) storeDraft(ctx context.Context, tgID int64, ws WizSession, d *Draf
 	if err != nil {
 		return "", err
 	}
+	b.an.noteDraft(tgID, d.Step)
 	return row.ID.String(), nil
 }
 
@@ -325,6 +329,7 @@ func (b *Bot) wizardPoster(ctx context.Context, chatID int64, from *models.User,
 		return false
 	}
 	if fileSize > posterMaxBytes {
+		b.trackPosterRefusal(ctx, from.ID, ws.OrgID, d, "poster_too_big")
 		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_too_big", nil), nil)
 		return true
 	}
@@ -335,6 +340,7 @@ func (b *Bot) wizardPoster(ctx context.Context, chatID int64, from *models.User,
 		return true
 	}
 	if len(data) > posterMaxBytes {
+		b.trackPosterRefusal(ctx, from.ID, ws.OrgID, d, "poster_too_big")
 		b.send(ctx, chatID, b.texts.T(loc, "bot.wz.poster_too_big", nil), nil)
 		return true
 	}
@@ -344,10 +350,12 @@ func (b *Bot) wizardPoster(ctx context.Context, chatID int64, from *models.User,
 		if bytes.HasPrefix(data, []byte("%PDF-")) {
 			key = "bot.wz.poster_is_pdf"
 		}
+		b.trackPosterRefusal(ctx, from.ID, ws.OrgID, d, key)
 		b.send(ctx, chatID, b.texts.T(loc, key, nil), nil)
 		return true
 	}
 	if key := PosterCheck(cfg.Width, cfg.Height); key != "" {
+		b.trackPosterRefusal(ctx, from.ID, ws.OrgID, d, key)
 		b.send(ctx, chatID, b.texts.T(loc, key, map[string]any{"W": cfg.Width, "H": cfg.Height}), nil)
 		return true
 	}
@@ -475,10 +483,13 @@ func (b *Bot) downloadTelegramFile(ctx context.Context, fileID string) ([]byte, 
 // wizardApply feeds one answer, stores the draft and shows the next screen.
 func (b *Bot) wizardApply(ctx context.Context, chatID int64, editMsgID *int, from *models.User, ws WizSession, d *Draft, in WizInput) {
 	loc := ws.Locale
+	turn := newWizardTurn(d)
 	note, err := b.wizard.Apply(ctx, ws, d, in)
+	b.trackWizard(ctx, from.ID, ws.OrgID, turn, d, err)
 	if err != nil {
 		if errors.Is(err, ErrCancelled) {
 			_ = b.queries.DeleteBotDraft(ctx, from.ID, ws.OrgID)
+			b.an.clearDraft(from.ID)
 			b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.wz.cancelled", nil), nil)
 			b.showHome(ctx, chatID, nil, from, "")
 			return
@@ -597,6 +608,8 @@ func (b *Bot) wizardSave(ctx context.Context, chatID int64, editMsgID *int, from
 		return
 	}
 	_ = b.queries.DeleteBotDraft(ctx, from.ID, ws.OrgID)
+	b.an.clearDraft(from.ID)
+	b.an.track(ctx, from.ID, &ws.OrgID, "wizard_exit", map[string]any{"step": d.Step, "how": "done"})
 	if raw, err := json.Marshal(RememberDefaults(ws.Defaults, d)); err == nil {
 		_ = b.queries.UpdateBotTelegramLinkDefaults(ctx, from.ID, raw)
 	}

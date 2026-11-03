@@ -69,6 +69,8 @@ export type NavRoutePath =
   | "/billing/invoices"
   | "/billing/payment-fees"
   | "/billing/bank"
+  | "/analytics/flows"
+  | "/analytics/errors"
   | "/organizations/$orgId/promo-codes";
 
 export type PermissionRule =
@@ -399,6 +401,24 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     scopeKinds: ["global", "platform"],
     purpose:
       "Billing: incoming bank payments. Match a payment the bank feed could not match to an invoice, ignore it with a reason, or import a statement by hand. Requires billing.admin and a platform superadmin; every change asks for a reason and is audited.",
+  },
+  {
+    id: "analytics_flows",
+    label: "Analytics: flows",
+    to: "/analytics/flows",
+    permission: { anyOf: ["superadmin.read"] },
+    scopeKinds: ["global", "platform"],
+    purpose:
+      "Own product analytics: where people leave the bot wizard and the event center flows, step by step, with the previous period for comparison. Read-only. Requires superadmin.read.",
+  },
+  {
+    id: "analytics_errors",
+    label: "Analytics: errors",
+    to: "/analytics/errors",
+    permission: { anyOf: ["superadmin.read"] },
+    scopeKinds: ["global", "platform"],
+    purpose:
+      "Own product analytics: the most frequent screen errors, bot input errors and rage clicks, with the previous period for comparison. Read-only. Requires superadmin.read.",
   },
 ];
 

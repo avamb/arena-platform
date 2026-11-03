@@ -313,6 +313,24 @@ type Metrics struct {
 	// Metric name: arena_auth_telegram_miniapp_login_total.
 	TelegramMiniappLoginTotal *prometheus.CounterVec
 
+	// AnalyticsDroppedTotal counts product-analytics events thrown away
+	// because the writer's buffer (10 000 events) was full. The request that
+	// produced the event is never slowed or failed by it (spec 50 section 4.3).
+	//
+	// Metric name: arena_analytics_dropped_total.
+	AnalyticsDroppedTotal prometheus.Counter
+
+	// AnalyticsFlushFailedTotal counts product-analytics events lost because
+	// the batched COPY into analytics.events failed (a missing partition, the
+	// database down). Metric name: arena_analytics_flush_failed_total.
+	AnalyticsFlushFailedTotal prometheus.Counter
+
+	// AnalyticsRollupFailedTotal counts failures of the hourly
+	// analytics.rollup job: one per person that could not be recomputed and
+	// one per run that failed as a whole. Metric name:
+	// arena_analytics_rollup_failed_total.
+	AnalyticsRollupFailedTotal prometheus.Counter
+
 	// IdempotencyCleanupDeletedTotal counts idempotency_keys rows deleted by
 	// the scheduled maintenance job (job_type='idempotency.cleanup'). Each
 	// cleanup run adds the number of rows purged. A rising value confirms the
@@ -525,6 +543,27 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 			[]string{LabelKind, LabelOutcome},
 		),
 
+		AnalyticsDroppedTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: MetricsNamespace,
+			Subsystem: "analytics",
+			Name:      "dropped_total",
+			Help:      "Total product-analytics events dropped because the writer buffer was full.",
+		}),
+
+		AnalyticsFlushFailedTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: MetricsNamespace,
+			Subsystem: "analytics",
+			Name:      "flush_failed_total",
+			Help:      "Total product-analytics events lost because the batched write to analytics.events failed.",
+		}),
+
+		AnalyticsRollupFailedTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: MetricsNamespace,
+			Subsystem: "analytics",
+			Name:      "rollup_failed_total",
+			Help:      "Total failures of the hourly analytics rollup (a person that could not be recomputed or a failed run).",
+		}),
+
 		ShortLinkTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: MetricsNamespace,
@@ -577,6 +616,9 @@ func New(reg *prometheus.Registry) (*Metrics, error) {
 		m.EmailWebhookEventsTotal,
 		m.EmailWebhookRejectedTotal,
 		m.PageTrackTotal,
+		m.AnalyticsDroppedTotal,
+		m.AnalyticsFlushFailedTotal,
+		m.AnalyticsRollupFailedTotal,
 		m.ShortLinkTotal,
 		m.TelegramMiniappLoginTotal,
 	} {

@@ -134,6 +134,11 @@ export class TabSession {
     return this.access?.token ?? null;
   }
 
+  /** When the access token stops working (ms since the epoch), or null without one. */
+  getAccessExpiresAt(): number | null {
+    return this.access?.expiresAt ?? null;
+  }
+
   getUserId(): string | null {
     return this.access?.userId ?? this.deps.store.get()?.userId ?? null;
   }

@@ -17,6 +17,7 @@ import { OrgsScreen } from "@/screens/OrgsScreen";
 import { OrgLayout } from "@/screens/OrgLayout";
 import { EventsScreen } from "@/screens/EventsScreen";
 import { EventScreen } from "@/screens/EventScreen";
+import { EventFunnelScreen } from "@/screens/EventFunnelScreen";
 import { SessionScreen } from "@/screens/SessionScreen";
 import { SessionInvitationsScreen } from "@/screens/SessionInvitationsScreen";
 import { SessionSeatsScreen } from "@/screens/SessionSeatsScreen";
@@ -148,6 +149,13 @@ const eventRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/events/$eventId",
   component: EventScreen,
+});
+
+// Spec 50, A7: the sales funnel of an event. Reached from the event's page, not from the menu.
+const eventFunnelRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/events/$eventId/funnel",
+  component: EventFunnelScreen,
 });
 
 const sessionRoute = createRoute({
@@ -372,6 +380,7 @@ export const routeTree = rootRoute.addChildren([
     orgIndexRoute,
     eventsRoute,
     eventRoute,
+    eventFunnelRoute,
     sessionRoute,
     sessionSeatsRoute,
     sessionInvitationsRoute,
