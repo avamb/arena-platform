@@ -1,5 +1,5 @@
 -- sales_funnel.sql — the buyer sales funnel of an event (spec 50, stage A7).
--- Table sales_funnel_daily comes from migration 0185.
+-- Table sales_funnel_daily comes from migration 0186.
 --
 -- The public beacon writes ONE counter row per (event, day, step, surface,
 -- session, utm_source, utm_campaign): no IP, no User-Agent, no country, no

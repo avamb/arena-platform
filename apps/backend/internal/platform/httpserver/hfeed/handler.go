@@ -141,6 +141,9 @@ type Handler struct {
 	// funnelDedupe drops a repeated funnel beacon of the same visitor and day
 	// (WithFunnelDeduper); nil counts every beacon.
 	funnelDedupe *salesfunnel.Deduper
+	// accessLog records ticket downloads and views (migration 0184,
+	// WithTicketAccessLog); nil = off.
+	accessLog TicketAccessRecorder
 }
 
 // WithContactForm configures the hosted page's "Write to the organizer" form:
