@@ -32,6 +32,32 @@ func TestCashbackAmount(t *testing.T) {
 	}
 }
 
+// The owner's example from the stand (2026-11-03): two tickets of 250 CZK,
+// 10 % friend discount, 4.50 service charge. The friend pays 454.50, the
+// cashback is 10 % of the tickets after the discount: 45.00, not 45.45.
+func TestItemsBase_ServiceChargeIsNotPartOfTheCashback(t *testing.T) {
+	subtotal, discount, charge := int64(50000), int64(5000), int64(450)
+	total := subtotal - discount + charge
+	if total != 45450 {
+		t.Fatalf("fixture total = %d", total)
+	}
+	base := ItemsBase(subtotal, discount)
+	if base != 45000 {
+		t.Fatalf("ItemsBase = %d; want 45000", base)
+	}
+	if got := CashbackAmount(base, 10); got != 4500 {
+		t.Fatalf("cashback = %d; want 4500 (45.00 CZK)", got)
+	}
+	// The referrer's cap follows the same base: 10 % of their tickets after
+	// discount (45000), not of their payment with the charge (45450).
+	if pay, capped := ApplyCap(5000, ItemsBase(subtotal, discount), 0, 0, 10); pay != 4500 || !capped {
+		t.Fatalf("cap = (%d, %v); want (4500, true)", pay, capped)
+	}
+	if got := ItemsBase(100, 300); got != 0 {
+		t.Fatalf("ItemsBase of an over-discounted order = %d; want 0", got)
+	}
+}
+
 func TestApplyCap(t *testing.T) {
 	for _, tc := range []struct {
 		name                                  string

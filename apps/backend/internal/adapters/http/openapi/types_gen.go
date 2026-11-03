@@ -15094,7 +15094,7 @@ type PublicMaterialVideo struct {
 
 // PublicReferralCode A buyer's personal "Refer a friend" code with the link to share.
 type PublicReferralCode struct {
-	// CashbackPct Percent of the friend's payment that goes back to the buyer.
+	// CashbackPct Percent of the friend's tickets (or shop goods) after the discount, without the service charge, delivery or other fees, that goes back to the buyer.
 	CashbackPct int `json:"cashback_pct"`
 
 	// Code The personal code, such as ANNA-7K2QX9.
@@ -15355,10 +15355,10 @@ type ReferralMoney struct {
 // shop (spec 52). `status` is `active`, `paused` or `ended`; ended is
 // final. Percentages are whole numbers of percent.
 type ReferralProgram struct {
-	// CashbackCapPct The cashback to one referrer never exceeds this percent of their own payment (minus what already went back to them), 1 to 100.
+	// CashbackCapPct The cashback to one referrer never exceeds this percent of their own tickets (or shop goods) after the discount, without fees (minus what already went back to them), 1 to 100.
 	CashbackCapPct int `json:"cashback_cap_pct"`
 
-	// CashbackPct Percent of what the friend paid that goes back to the referrer, 1 to 100.
+	// CashbackPct Percent of the friend's tickets (or shop goods) after the discount, without the service charge, delivery or other fees, that goes back to the referrer, 1 to 100.
 	CashbackPct int `json:"cashback_pct"`
 
 	// CreatedAt When the programme was created.
@@ -15402,10 +15402,10 @@ type ReferralProgramRequest struct {
 	// AcceptTerms Must be true when this call starts a programme. The organizer accepts that the cashback is paid at once and is not taken back if the friend returns the ticket, and that the payment provider's fee is not returned.
 	AcceptTerms *bool `json:"accept_terms,omitempty"`
 
-	// CashbackCapPct Cap of the cashback to one referrer, in percent of their own payment. Default 100.
+	// CashbackCapPct Cap of the cashback to one referrer, in percent of their own tickets (or shop goods) after the discount, without fees. Default 100.
 	CashbackCapPct *int `json:"cashback_cap_pct,omitempty"`
 
-	// CashbackPct Percent of what the friend paid that goes back to the referrer.
+	// CashbackPct Percent of the friend's tickets (or shop goods) after the discount, without the service charge, delivery or other fees, that goes back to the referrer.
 	CashbackPct int `json:"cashback_pct"`
 
 	// EndsAt When the programme ends; null or absent for the end of sales. Must be in the future.

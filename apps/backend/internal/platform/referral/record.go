@@ -153,7 +153,7 @@ func RecordFriendOrderTx(ctx context.Context, tx pgx.Tx, ord gen.OrderRow) error
 		// ever promised that could be paid.
 		p.State, p.Reason = StateNotPossible, ReasonProviderUnsupported
 	default:
-		amount := CashbackAmount(ord.Total, int(cashbackPct))
+		amount := CashbackAmount(ItemsBase(ord.Subtotal, ord.Discount), int(cashbackPct))
 		cashback, err := q.SumReferrerLiveRewards(ctx, referrer.ID)
 		if err != nil {
 			return fmt.Errorf("referral: cashback sum: %w", err)
@@ -162,7 +162,7 @@ func RecordFriendOrderTx(ctx context.Context, tx pgx.Tx, ord gen.OrderRow) error
 		if err != nil {
 			return fmt.Errorf("referral: refund sum: %w", err)
 		}
-		pay, capped := ApplyCap(amount, referrer.Total, cashback, refunded, int(capPct))
+		pay, capped := ApplyCap(amount, ItemsBase(referrer.Subtotal, referrer.Discount), cashback, refunded, int(capPct))
 		switch {
 		case amount == 0:
 			p.State, p.Reason = StateCapped, "zero_amount"

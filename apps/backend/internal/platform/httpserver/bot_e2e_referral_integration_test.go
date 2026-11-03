@@ -136,7 +136,7 @@ func TestBotE2E_Referral(t *testing.T) {
 	owner.press(ev("n", eventA), "Сколько процентов скидки получает друг")
 	owner.say("150", "Напишите целое число от 1 до 100")
 	owner.say("десять", "Напишите целое число от 1 до 100")
-	owner.say("10", "Сколько процентов от платежа друга")
+	owner.say("10", "Сколько процентов от стоимости билетов друга")
 	owner.say("20 %", "самое большее")
 	owner.press("rf:c:cap100", "Сколько друзей может воспользоваться")
 	owner.say("0", "Напишите целое число от 1")
@@ -178,7 +178,7 @@ func TestBotE2E_Referral(t *testing.T) {
 	if !strings.Contains(text, "Выданные коды их не меняют") {
 		t.Errorf("edit dialog:\n%s", text)
 	}
-	owner.press("rf:c:keep", "Сколько процентов от платежа друга")
+	owner.press("rf:c:keep", "Сколько процентов от стоимости билетов друга")
 	owner.say("25", "самое большее")
 	owner.press("rf:c:keep", "Сколько друзей может воспользоваться")
 	owner.press("rf:c:nomax", "Проверьте и сохраните")
@@ -292,7 +292,7 @@ func TestBotE2E_Referral(t *testing.T) {
 	if strings.Contains(text, "Изменение") {
 		t.Errorf("an ended programme must start a new one:\n%s", text)
 	}
-	owner.say("5", "Сколько процентов от платежа друга")
+	owner.say("5", "Сколько процентов от стоимости билетов друга")
 	owner.say("5", "самое большее")
 	owner.say("40", "Сколько друзей может воспользоваться")
 	owner.press("rf:c:nomax", "Правила")
@@ -310,7 +310,7 @@ func TestBotE2E_Referral(t *testing.T) {
 	}
 	// A forced turn-on is refused by the server, in plain words.
 	owner.press(ev("n", eventB), "Сколько процентов скидки получает друг")
-	owner.say("10", "Сколько процентов от платежа друга")
+	owner.say("10", "Сколько процентов от стоимости билетов друга")
 	owner.say("10", "самое большее")
 	owner.press("rf:c:cap100", "Сколько друзей может воспользоваться")
 	owner.press("rf:c:nomax", "Правила")

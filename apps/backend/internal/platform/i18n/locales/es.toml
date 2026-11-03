@@ -4963,7 +4963,7 @@ other = "Esta pantalla ya no está al día. Abre el evento de nuevo y sigue desd
 other = "🤝 <b>Trae a un amigo</b> · {{.Name}}"
 
 ["bot.rfp.none"]
-other = "Este evento aún no tiene programa.\n\nCada comprador del evento recibe un código personal. El amigo que lo use obtiene un descuento. El comprador recupera en su tarjeta una parte del pago del amigo."
+other = "Este evento aún no tiene programa.\n\nCada comprador del evento recibe un código personal. El amigo que lo use obtiene un descuento. El comprador recupera en su tarjeta una parte del precio de las entradas del amigo (sin el cargo por servicio)."
 
 ["bot.rfp.st_active"]
 other = "🟢 Activado"
@@ -4975,7 +4975,7 @@ other = "⏸ En pausa. Los amigos nuevos no obtienen descuento y no se añade ca
 other = "⏹ Terminado. Para empezar de nuevo, activa un programa nuevo."
 
 ["bot.rfp.settings"]
-other = "El amigo obtiene un {{.Friend}} % de descuento.\nEl comprador que lo trajo recupera el {{.Cashback}} % del pago del amigo en su tarjeta. Un comprador recupera como máximo el {{.Cap}} % de su propio pago.\nAmigos por código: {{.Max}}."
+other = "El amigo obtiene un {{.Friend}} % de descuento.\nEl comprador que lo trajo recupera el {{.Cashback}} % del precio de las entradas del amigo en su tarjeta, con el descuento aplicado y sin el cargo por servicio. Un comprador recupera como máximo el {{.Cap}} % del precio de sus propias entradas.\nAmigos por código: {{.Max}}."
 
 ["bot.rfp.max_none"]
 other = "sin límite"
@@ -5074,7 +5074,7 @@ other = "🤝 <b>Cambiar Trae a un amigo</b> · {{.Name}}\nLos valores nuevos va
 other = "¿Qué porcentaje de descuento obtiene el amigo? Escribe un número del 1 al 100."
 
 ["bot.rfp.q_cashback"]
-other = "¿Qué porcentaje del pago del amigo se devuelve al comprador que lo trajo? Escribe un número del 1 al 100."
+other = "¿Qué porcentaje del precio de las entradas del amigo (con el descuento, sin el cargo por servicio) se devuelve al comprador que lo trajo? Escribe un número del 1 al 100."
 
 ["bot.rfp.q_cap"]
 other = "¿Cuánto puede recuperar como máximo un comprador, en porcentaje de su propio pago? Escribe un número del 1 al 100 o pulsa 100 %."
@@ -5095,10 +5095,10 @@ other = "Sin límite"
 other = "Cancelar"
 
 ["bot.rfp.rules"]
-other = "<b>Revisa y activa</b>\n\nEl amigo obtiene un {{.Friend}} % de descuento. El comprador que lo trajo recupera el {{.Cashback}} % del pago del amigo, como máximo el {{.Cap}} % de su propio pago. Amigos por código: {{.Max}}.\n\n<b>Reglas</b>\n1. El cashback se paga enseguida, cuando el amigo paga.\n2. Si el amigo devuelve la entrada después, el cashback sigue pagado. No se retira.\n3. La comisión del proveedor de pago no se devuelve.\n4. El dinero vuelve a la tarjeta con la que pagó el comprador. Si no es posible, no se paga nada y el dinero se queda contigo. Arena dice al comprador que te contacte.\n5. Los pagos son automáticos. Para detener los descuentos y el cashback nuevos, pulsa Pausa."
+other = "<b>Revisa y activa</b>\n\nEl amigo obtiene un {{.Friend}} % de descuento. El comprador que lo trajo recupera el {{.Cashback}} % del precio de las entradas del amigo (con el descuento, sin el cargo por servicio), como máximo el {{.Cap}} % del precio de sus propias entradas. Amigos por código: {{.Max}}.\n\n<b>Reglas</b>\n1. El cashback se paga enseguida, cuando el amigo paga.\n2. Si el amigo devuelve la entrada después, el cashback sigue pagado. No se retira.\n3. La comisión del proveedor de pago no se devuelve.\n4. El dinero vuelve a la tarjeta con la que pagó el comprador. Si no es posible, no se paga nada y el dinero se queda contigo. Arena dice al comprador que te contacte.\n5. Los pagos son automáticos. Para detener los descuentos y el cashback nuevos, pulsa Pausa."
 
 ["bot.rfp.edit_confirm"]
-other = "<b>Revisa y guarda</b>\n\nEl amigo obtiene un {{.Friend}} % de descuento. El comprador que lo trajo recupera el {{.Cashback}} % del pago del amigo, como máximo el {{.Cap}} % de su propio pago. Amigos por código: {{.Max}}.\n\nLos valores nuevos valen para los códigos nuevos. Los códigos ya emitidos conservan los suyos."
+other = "<b>Revisa y guarda</b>\n\nEl amigo obtiene un {{.Friend}} % de descuento. El comprador que lo trajo recupera el {{.Cashback}} % del precio de las entradas del amigo (con el descuento, sin el cargo por servicio), como máximo el {{.Cap}} % del precio de sus propias entradas. Amigos por código: {{.Max}}.\n\nLos valores nuevos valen para los códigos nuevos. Los códigos ya emitidos conservan los suyos."
 
 ["bot.rfp.go_btn"]
 other = "Entendido, activar"

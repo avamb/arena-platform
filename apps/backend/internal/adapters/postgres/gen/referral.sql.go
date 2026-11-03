@@ -76,20 +76,22 @@ type ReferralOrderFacts struct {
 	Status     string     `json:"status"`
 	Source     string     `json:"source"`
 	Currency   string     `json:"currency"`
+	Subtotal   int64      `json:"subtotal"`
+	Discount   int64      `json:"discount"`
 	Total      int64      `json:"total"`
 	BuyerName  string     `json:"buyer_name"`
 }
 
 const getReferralOrderFacts = `-- name: GetReferralOrderFacts :one
-SELECT id, system_id, org_id, event_id, customer_id, status, source, currency::text, total,
-       COALESCE(buyer_name, '')
+SELECT id, system_id, org_id, event_id, customer_id, status, source, currency::text,
+       subtotal, discount, total, COALESCE(buyer_name, '')
 FROM orders WHERE id = $1`
 
 // GetReferralOrderFacts reads one order. pgx.ErrNoRows when it does not exist.
 func (q *Queries) GetReferralOrderFacts(ctx context.Context, orderID uuid.UUID) (ReferralOrderFacts, error) {
 	var o ReferralOrderFacts
 	err := q.db.QueryRow(ctx, getReferralOrderFacts, orderID).Scan(
-		&o.ID, &o.SystemID, &o.OrgID, &o.EventID, &o.CustomerID, &o.Status, &o.Source, &o.Currency, &o.Total, &o.BuyerName)
+		&o.ID, &o.SystemID, &o.OrgID, &o.EventID, &o.CustomerID, &o.Status, &o.Source, &o.Currency, &o.Subtotal, &o.Discount, &o.Total, &o.BuyerName)
 	return o, err
 }
 
