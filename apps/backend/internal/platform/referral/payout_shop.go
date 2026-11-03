@@ -143,7 +143,7 @@ func (s *Service) writeShopCashback(ctx context.Context, rw gen.ReferralRewardRo
 		return uuid.Nil, err
 	}
 	paid := min(referrer.Total, pi.Amount)
-	amount, _ := ApplyCap(cur.AmountMinor, paid, cashback, other, int(cur.CapPct))
+	amount, _ := ApplyCap(cur.AmountMinor, min(ItemsBase(referrer.Subtotal, referrer.Discount), paid), cashback, other, int(cur.CapPct))
 	// The payment can never give back more than it took, cashback included.
 	amount = min(amount, paid-cashback-other)
 	if amount <= 0 {

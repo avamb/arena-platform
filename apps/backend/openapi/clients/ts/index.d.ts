@@ -9428,9 +9428,10 @@ export interface paths {
          * @description Replaces the settings of the event's live programme (200), or starts a new
          *     one when it has none or the last one ended (201). A buyer of the event who
          *     paid gets a personal code; a friend who uses it gets `friend_discount_pct`
-         *     off, and the referrer gets `cashback_pct` of what the friend paid back on the
-         *     card they paid with, at once, capped at `cashback_cap_pct` of the referrer's
-         *     own payment.
+         *     off, and the referrer gets `cashback_pct` of the friend's tickets (or goods)
+         *     after the discount, without the service charge, delivery or other fees, back
+         *     on the card they paid with, at once, capped at `cashback_cap_pct` of the
+         *     referrer's own tickets (or goods) on the same base.
          *
          *     Changing the percentages affects NEW codes only: a code already issued keeps
          *     its discount, and a reward keeps the cashback it was written with. Starting
@@ -9587,9 +9588,10 @@ export interface paths {
          * @description Replaces the settings of the shop's live programme (200), or starts a new
          *     one when it has none or the last one ended (201); a shop has one live
          *     programme at a time. A buyer who paid for a shop order gets a personal code; a friend who uses it gets `friend_discount_pct`
-         *     off, and the referrer gets `cashback_pct` of what the friend paid back on the
-         *     card they paid with, at once, capped at `cashback_cap_pct` of the referrer's
-         *     own payment.
+         *     off, and the referrer gets `cashback_pct` of the friend's tickets (or goods)
+         *     after the discount, without the service charge, delivery or other fees, back
+         *     on the card they paid with, at once, capped at `cashback_cap_pct` of the
+         *     referrer's own tickets (or goods) on the same base.
          *
          *     Changing the percentages affects NEW codes only: a code already issued keeps
          *     its discount, and a reward keeps the cashback it was written with. Starting
@@ -15957,9 +15959,9 @@ export interface components {
             status: string;
             /** @description Percent off the friend gets, 1 to 100. */
             friend_discount_pct: number;
-            /** @description Percent of what the friend paid that goes back to the referrer, 1 to 100. */
+            /** @description Percent of the friend's tickets (or shop goods) after the discount, without the service charge, delivery or other fees, that goes back to the referrer, 1 to 100. */
             cashback_pct: number;
-            /** @description The cashback to one referrer never exceeds this percent of their own payment (minus what already went back to them), 1 to 100. */
+            /** @description The cashback to one referrer never exceeds this percent of their own tickets (or shop goods) after the discount, without fees (minus what already went back to them), 1 to 100. */
             cashback_cap_pct: number;
             /** @description How many friends one code serves; null for no limit. */
             max_friends: number | null;
@@ -15997,9 +15999,9 @@ export interface components {
         ReferralProgramRequest: {
             /** @description Percent off the friend gets. */
             friend_discount_pct: number;
-            /** @description Percent of what the friend paid that goes back to the referrer. */
+            /** @description Percent of the friend's tickets (or shop goods) after the discount, without the service charge, delivery or other fees, that goes back to the referrer. */
             cashback_pct: number;
-            /** @description Cap of the cashback to one referrer, in percent of their own payment. Default 100. */
+            /** @description Cap of the cashback to one referrer, in percent of their own tickets (or shop goods) after the discount, without fees. Default 100. */
             cashback_cap_pct?: number;
             /** @description How many friends one code serves; null or absent for no limit. */
             max_friends?: number | null;
@@ -16203,7 +16205,7 @@ export interface components {
             code: string;
             /** @description Percent off a friend gets. */
             friend_discount_pct: number;
-            /** @description Percent of the friend's payment that goes back to the buyer. */
+            /** @description Percent of the friend's tickets (or shop goods) after the discount, without the service charge, delivery or other fees, that goes back to the buyer. */
             cashback_pct: number;
             /** @description The event's page with `?promo=<code>&utm_source=referral&utm_medium=friend&utm_campaign=<event slug>`; for a shop order the storefront with `?promo=<code>&utm_source=referral&utm_medium=friend`. Null when the page address is not known. */
             share_url: string | null;
