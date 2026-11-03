@@ -272,6 +272,7 @@ var inPlaceToggles = []string{
 	"pm:k:t:",  // promo code: a session
 	"onb:ct:",  // application: a consent
 	"onb:m:",   // application: an option of a multiple choice
+	"gl:",      // notifications: the automatic guest list
 }
 
 // inPlacePress reports the presses that may redraw their own message: a tick

@@ -35,6 +35,14 @@ func (s *Server) handleClaimInvitationPDFNotices(w http.ResponseWriter, r *http.
 	s.botHandler().HandleClaimInvitationPDFNotices(w, r)
 }
 
+func (s *Server) handleClaimGuestListDeliveries(w http.ResponseWriter, r *http.Request) {
+	s.botHandler().HandleClaimGuestListDeliveries(w, r)
+}
+
+func (s *Server) handleFinishGuestListDelivery(w http.ResponseWriter, r *http.Request) {
+	s.botHandler().HandleFinishGuestListDelivery(w, r)
+}
+
 func (s *Server) handleCreateBotInvitation(w http.ResponseWriter, r *http.Request) {
 	s.botHandler().HandleCreateInvitation(w, r)
 }

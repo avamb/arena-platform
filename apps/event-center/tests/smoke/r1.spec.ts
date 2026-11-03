@@ -149,7 +149,8 @@ test.describe("R1 read-only event center", () => {
     await page.getByTestId("session-row").getByRole("link").click();
     await expect(page.getByRole("heading", { level: 1 })).toContainText("20:00");
     await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
-    await expect(page.getByText("Doors open")).toBeVisible();
+    // The guest list box below also says "when doors open": match the session line only.
+    await expect(page.getByText(/^Doors open /)).toBeVisible();
     await expect(page.getByTestId("tiers-table")).toContainText("Parter");
     const pdf = page.waitForEvent("download");
     await page.getByTestId("sample-ticket").click();

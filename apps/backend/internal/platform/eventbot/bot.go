@@ -333,6 +333,7 @@ func (b *Bot) Run(ctx context.Context) error {
 	}
 	go b.webNoticeLoop(ctx)
 	go b.invPDFLoop(ctx)
+	go b.guestListLoop(ctx)
 	go b.dialogSweepLoop(ctx)
 	go b.draftSweepLoop(ctx)
 	go b.recoverLostRefundSends(ctx)
@@ -582,6 +583,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.ecCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ec:"))
 	case "web":
 		b.webCallback(ctx, chatID, from, strings.TrimPrefix(cq.Data, "web:"))
+	case "gl":
+		b.guestListCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "gl:"))
 	case "or":
 		b.ordersCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "or:"))
 	case "iv":

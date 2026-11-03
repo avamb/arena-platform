@@ -47,6 +47,13 @@ type ec07Fixture struct {
 func newEC07Fixture(t *testing.T) *ec07Fixture {
 	t.Helper()
 	srv, secret := productionIntegrationServer(t)
+	return newEC07FixtureOn(t, srv, secret)
+}
+
+// newEC07FixtureOn seeds the fixture behind a server the caller built (a test
+// that needs another config, e.g. a bot service token).
+func newEC07FixtureOn(t *testing.T, srv *Server, secret string) *ec07Fixture {
+	t.Helper()
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)
 	// One server for the requests AND for the row-cap knob (exportMaxRows),
