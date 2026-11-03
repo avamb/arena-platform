@@ -11,7 +11,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api/http";
-import { fetchTierSchedule, putTierSchedule, updateTier, type TierRef } from "@/lib/api/endpoints";
+import { fetchTierSchedule, listSmartPrice, putTierSchedule, updateTier, type TierRef } from "@/lib/api/endpoints";
 import type { TicketTierItem } from "@/lib/api/types";
 import {
   categoryCaps,
@@ -34,6 +34,7 @@ import { DateField } from "@/components/DateField";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { TextField } from "@/components/FormField";
 import { Badge } from "@/components/ui";
+import { SmartPriceSection, smartPriceQueryKey } from "@/components/SmartPriceSection";
 
 interface Notice {
   key: MessageKey;
@@ -84,6 +85,11 @@ export function CategoryCard({ orgId, eventId, sessionId, tierId, tiers, timezon
 
   const caps = tier !== undefined ? categoryCaps(tier, tiers) : null;
 
+  // A price set by hand turns an active smart price off (its own step or a later one).
+  const smart = useQuery({ queryKey: smartPriceQueryKey(orgId, sessionId), queryFn: () => listSmartPrice(orgId, sessionId) });
+  const followsSmart =
+    smart.data?.rules.some((r) => r.status === "active" && (r.tier_id === tierId || (r.step_tier_ids ?? []).includes(tierId))) === true;
+
   // The schedule is read to say, before the press, WHICH price will change.
   const followsSchedule = caps?.price === true && (mode === "price" || mode === "priceConfirm");
   const schedule = useQuery({
@@ -126,6 +132,7 @@ export function CategoryCard({ orgId, eventId, sessionId, tierId, tiers, timezon
       setPickedDay(null);
       void queryClient.invalidateQueries({ queryKey: ["tiers", orgId, eventId, sessionId] });
       void queryClient.invalidateQueries({ queryKey: ["tierSchedule", orgId, eventId, sessionId, tierId] });
+      void queryClient.invalidateQueries({ queryKey: smartPriceQueryKey(orgId, sessionId) });
       void queryClient.invalidateQueries({ queryKey: ["sessionSummary", orgId, sessionId] });
     },
     onError: () => {
@@ -396,6 +403,7 @@ export function CategoryCard({ orgId, eventId, sessionId, tierId, tiers, timezon
               </p>
               <p>{t("categories.price.confirmNext")}</p>
               {priceRule === "window" && <p data-testid="price-confirm-window">{t("categories.price.confirmWindow")}</p>}
+              {followsSmart && <p data-testid="price-confirm-smart">{t("categories.price.smartWarn")}</p>}
               <div className="actions">
                 <button
                   type="button"
@@ -413,6 +421,19 @@ export function CategoryCard({ orgId, eventId, sessionId, tierId, tiers, timezon
             </div>
           )}
         </div>
+      )}
+
+      {/* Smart price: a preset over steps or price windows. */}
+      {!caps.notFixed && (
+        <SmartPriceSection
+          orgId={orgId}
+          eventId={eventId}
+          sessionId={sessionId}
+          tier={tier}
+          inChain={caps.chain}
+          seated={caps.seated}
+          timezone={timezone}
+        />
       )}
 
       {/* Sale dates: the venue's days. */}

@@ -10976,6 +10976,199 @@ components:
         last_error:
           type: [string, "null"]
           description: The last delivery error while not delivered, else null.
+    SmartPriceRequest:
+      type: object
+      description: A smart price preset to preview or enable (spec 51 §4.2).
+      required: [tier_ids, kind, step_percent, every]
+      properties:
+        tier_ids:
+          type: array
+          description: The categories the preset applies to. Exactly one for by_sales.
+          items: { type: string, format: uuid }
+        kind:
+          type: string
+          description: by_sales (every N tickets), by_days (every N days) or last_days (once, N days before the session).
+        step_percent:
+          type: integer
+          description: The rise of every step, a percentage of the starting price (1-100).
+        every:
+          type: integer
+          description: Tickets per step (by_sales), days per step (by_days) or days before the session (last_days).
+        cap_percent:
+          type: integer
+          description: The highest rise over the starting price (by_sales, by_days), at least step_percent and at most 500.
+        start_date:
+          type: string
+          description: The calendar day (YYYY-MM-DD, venue calendar) a by_days preset counts from. Empty counts from today.
+    SmartPriceParams:
+      type: object
+      description: The parameters a preset was enabled with.
+      properties:
+        kind:
+          type: string
+          description: by_sales, by_days or last_days.
+        step_percent:
+          type: integer
+          description: The rise of every step, a percentage of the starting price.
+        every:
+          type: integer
+          description: Tickets per step, days per step or days before the session.
+        cap_percent:
+          type: integer
+          description: The highest rise over the starting price.
+        start_date:
+          type: string
+          description: The day a by_days preset counts from.
+    SmartPriceStep:
+      type: object
+      description: One row of a preset's table, a chain step or a price window.
+      required: [price]
+      properties:
+        places:
+          type: integer
+          description: How many tickets the step sells (by_sales).
+        from:
+          type: string
+          format: date-time
+          description: When the price window starts (by_days, last_days).
+        price:
+          type: integer
+          format: int64
+          description: The price of the step in minor units.
+    SmartPricePreviewCategory:
+      type: object
+      description: What a preset would write for one category.
+      required: [tier_id, name, currency, base_price, cap_price, steps]
+      properties:
+        tier_id:
+          type: string
+          format: uuid
+          description: The category.
+        name:
+          type: string
+          description: The category name.
+        currency:
+          type: string
+          description: ISO 4217 currency of the category.
+        base_price:
+          type: integer
+          format: int64
+          description: The starting price in minor units.
+        cap_price:
+          type: integer
+          format: int64
+          description: The highest price the preset reaches, in minor units.
+        steps:
+          type: array
+          description: The steps (by_sales, the first is the category itself) or the price windows (by_days, last_days).
+          items:
+            $ref: "#/components/schemas/SmartPriceStep"
+    SmartPricePreviewResponse:
+      type: object
+      description: The table a preset would write. Nothing is written.
+      required: [kind, categories]
+      properties:
+        kind:
+          type: string
+          description: The preset kind.
+        categories:
+          type: array
+          description: One entry per category.
+          items:
+            $ref: "#/components/schemas/SmartPricePreviewCategory"
+    SmartPriceNow:
+      type: object
+      description: Where an active preset stands at the moment of the read.
+      required: [price, step, steps]
+      properties:
+        price:
+          type: integer
+          format: int64
+          description: The price buyers pay now, in minor units.
+        step:
+          type: integer
+          description: The current step, starting at 1.
+        steps:
+          type: integer
+          description: How many steps there are.
+        next_price:
+          type: [integer, "null"]
+          format: int64
+          description: The next price in minor units, null at the last step.
+        remaining_at_price:
+          type: [integer, "null"]
+          description: How many tickets are left at the current price (by_sales), null at the last step.
+        next_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the next price starts (by_days, last_days).
+    SmartPriceRule:
+      type: object
+      description: One smart price preset of a session.
+      required: [id, tier_id, tier_name, kind, params, base_price, currency, status, created_at, step_tier_ids]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The preset.
+        tier_id:
+          type: string
+          format: uuid
+          description: The category the preset was applied to (the first step of a chain).
+        step_tier_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: The later steps the preset created (by_sales). A price edited by hand on any of them, or on tier_id, turns the preset off.
+        tier_name:
+          type: string
+          description: The category name.
+        kind:
+          type: string
+          description: by_sales, by_days or last_days.
+        params:
+          allOf:
+            - $ref: "#/components/schemas/SmartPriceParams"
+          description: The parameters the preset was enabled with.
+        base_price:
+          type: integer
+          format: int64
+          description: The starting price in minor units.
+        currency:
+          type: string
+          description: ISO 4217 currency of the category.
+        status:
+          type: string
+          description: active, stopped (the organizer froze the price) or overridden (a price was edited by hand).
+        created_at:
+          type: string
+          format: date-time
+          description: When the preset was enabled.
+        stopped_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the preset was stopped or overridden.
+        now:
+          oneOf:
+            - $ref: "#/components/schemas/SmartPriceNow"
+            - type: "null"
+          description: Where an active preset stands now, null otherwise.
+    SmartPriceRulesResponse:
+      type: object
+      description: The smart price presets of a session.
+      required: [rules, warnings]
+      properties:
+        rules:
+          type: array
+          description: The presets, newest first.
+          items:
+            $ref: "#/components/schemas/SmartPriceRule"
+        warnings:
+          type: array
+          description: Advisory warnings of the import that wrote the change.
+          items:
+            $ref: "#/components/schemas/ImportWarning"
     SessionSalesState:
       type: object
       required: [session_id, event_id, manual, effective, total_places, free_places, held_places, sales_end_at, changed_at, changed_by, site_sync, external_allocations, org_sales_chat]
@@ -56926,6 +57119,326 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/sessions/{session_id}/smart-price:
+    get:
+      operationId: getV1OrganizationsOrgIdSessionsSessionIdSmartPrice
+      summary: List the session's smart price presets
+      description: |
+        Every smart price preset of the session (spec 51 §4.2), newest first,
+        with where an active one stands now: the current price, the step,
+        the next price and how many tickets are left at this price (a rise
+        by tickets sold) or when the next price starts (a rise by days).
+        Requires the `tier.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The presets of the session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmartPriceRulesResponse"
+        "400":
+          description: Invalid body (`smart_price.invalid_body`) or path parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`tier.read`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, deleted, or not part of this organization (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`smart_price.read_failed`, `smart_price.write_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: postV1OrganizationsOrgIdSessionsSessionIdSmartPrice
+      summary: Enable a smart price preset
+      description: |
+        Enables a preset on one or more categories of the session. The
+        preset is NOT a price engine: the session is read back as its
+        event-bundle, the category becomes a chain of steps with sell limits
+        (`by_sales`) or gets price windows (`by_days`, `last_days`), and the
+        bundle is written through the event-bundle import. The chain sweep
+        and the price schedule then decide every price. Every step adds the
+        same percentage of the starting price, rounded up to a whole unit of
+        the currency, and never goes over the cap. A preset never overwrites
+        a chain or future price changes typed by hand. A price edited by
+        hand later ends the preset. Requires the `tier.update` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SmartPriceRequest"
+      responses:
+        "200":
+          description: The presets of the session after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmartPriceRulesResponse"
+        "400":
+          description: Invalid body (`smart_price.invalid_body`) or path parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`tier.update`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, deleted, or not part of this organization (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The category already follows a smart price or sells in steps, already has future price changes, or the smart price is already off (`smart_price.already_on`, `smart_price.category_in_chain`, `smart_price.schedule_exists`, `smart_price.not_active`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The preset cannot be applied (`smart_price.invalid_kind`, `smart_price.invalid_step`, `smart_price.invalid_every`, `smart_price.invalid_cap`, `smart_price.invalid_start`, `smart_price.no_category`, `smart_price.one_category`, `smart_price.seated_by_sales`, `smart_price.category_not_found`, `smart_price.free_category`, `smart_price.not_enough_places`, `smart_price.no_room`, `smart_price.too_late`, `smart_price.session_unsupported`) or the import refused the result (`import.*`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`smart_price.read_failed`, `smart_price.write_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/sessions/{session_id}/smart-price/preview:
+    post:
+      operationId: postV1OrganizationsOrgIdSessionsSessionIdSmartPricePreview
+      summary: Preview a smart price preset
+      description: |
+        The steps or price windows a preset would write, with their prices.
+        Nothing is written. Requires the `tier.update` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SmartPriceRequest"
+      responses:
+        "200":
+          description: What the preset would write.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmartPricePreviewResponse"
+        "400":
+          description: Invalid body (`smart_price.invalid_body`) or path parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`tier.update`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, deleted, or not part of this organization (`session.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The category already follows a smart price or sells in steps, already has future price changes, or the smart price is already off (`smart_price.already_on`, `smart_price.category_in_chain`, `smart_price.schedule_exists`, `smart_price.not_active`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The preset cannot be applied (`smart_price.invalid_kind`, `smart_price.invalid_step`, `smart_price.invalid_every`, `smart_price.invalid_cap`, `smart_price.invalid_start`, `smart_price.no_category`, `smart_price.one_category`, `smart_price.seated_by_sales`, `smart_price.category_not_found`, `smart_price.free_category`, `smart_price.not_enough_places`, `smart_price.no_room`, `smart_price.too_late`, `smart_price.session_unsupported`) or the import refused the result (`import.*`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`smart_price.read_failed`, `smart_price.write_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/sessions/{session_id}/smart-price/{rule_id}/stop:
+    post:
+      operationId: postV1OrganizationsOrgIdSessionsSessionIdSmartPriceRuleIdStop
+      summary: Stop a smart price preset
+      description: |
+        Freezes the price where it is now. The later steps of a chain take
+        the current step's price (no place moves). The future price windows
+        are removed. Requires the `tier.update` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: session_id
+          in: path
+          required: true
+          description: UUIDv7 of the session
+          schema: { type: string, format: uuid }
+        - name: rule_id
+          in: path
+          required: true
+          description: UUID of the preset
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The presets of the session after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmartPriceRulesResponse"
+        "400":
+          description: Invalid body (`smart_price.invalid_body`) or path parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`tier.update`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Session not found, deleted, or not part of this organization (`session.not_found`) or the preset is unknown (`smart_price.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The category already follows a smart price or sells in steps, already has future price changes, or the smart price is already off (`smart_price.already_on`, `smart_price.category_in_chain`, `smart_price.schedule_exists`, `smart_price.not_active`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The preset cannot be applied (`smart_price.invalid_kind`, `smart_price.invalid_step`, `smart_price.invalid_every`, `smart_price.invalid_cap`, `smart_price.invalid_start`, `smart_price.no_category`, `smart_price.one_category`, `smart_price.seated_by_sales`, `smart_price.category_not_found`, `smart_price.free_category`, `smart_price.not_enough_places`, `smart_price.no_room`, `smart_price.too_late`, `smart_price.session_unsupported`) or the import refused the result (`import.*`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`smart_price.read_failed`, `smart_price.write_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/organizations/{org_id}/sessions/{session_id}/sales-state:
     get:
       operationId: getV1OrganizationsOrgIdSessionsSessionIdSalesState

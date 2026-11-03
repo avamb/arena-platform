@@ -18581,6 +18581,156 @@ type ShopVariantsReplaceRequest struct {
 	Variants []ShopVariantInput `json:"variants"`
 }
 
+// SmartPriceNow Where an active preset stands at the moment of the read.
+type SmartPriceNow struct {
+	// NextAt When the next price starts (by_days, last_days).
+	NextAt *time.Time `json:"next_at"`
+
+	// NextPrice The next price in minor units, null at the last step.
+	NextPrice *int64 `json:"next_price"`
+
+	// Price The price buyers pay now, in minor units.
+	Price int64 `json:"price"`
+
+	// RemainingAtPrice How many tickets are left at the current price (by_sales), null at the last step.
+	RemainingAtPrice *int `json:"remaining_at_price"`
+
+	// Step The current step, starting at 1.
+	Step int `json:"step"`
+
+	// Steps How many steps there are.
+	Steps int `json:"steps"`
+}
+
+// SmartPriceParams The parameters a preset was enabled with.
+type SmartPriceParams struct {
+	// CapPercent The highest rise over the starting price.
+	CapPercent *int `json:"cap_percent,omitempty"`
+
+	// Every Tickets per step, days per step or days before the session.
+	Every *int `json:"every,omitempty"`
+
+	// Kind by_sales, by_days or last_days.
+	Kind *string `json:"kind,omitempty"`
+
+	// StartDate The day a by_days preset counts from.
+	StartDate *string `json:"start_date,omitempty"`
+
+	// StepPercent The rise of every step, a percentage of the starting price.
+	StepPercent *int `json:"step_percent,omitempty"`
+}
+
+// SmartPricePreviewCategory What a preset would write for one category.
+type SmartPricePreviewCategory struct {
+	// BasePrice The starting price in minor units.
+	BasePrice int64 `json:"base_price"`
+
+	// CapPrice The highest price the preset reaches, in minor units.
+	CapPrice int64 `json:"cap_price"`
+
+	// Currency ISO 4217 currency of the category.
+	Currency string `json:"currency"`
+
+	// Name The category name.
+	Name string `json:"name"`
+
+	// Steps The steps (by_sales, the first is the category itself) or the price windows (by_days, last_days).
+	Steps []SmartPriceStep `json:"steps"`
+
+	// TierId The category.
+	TierId openapi_types.UUID `json:"tier_id"`
+}
+
+// SmartPricePreviewResponse The table a preset would write. Nothing is written.
+type SmartPricePreviewResponse struct {
+	// Categories One entry per category.
+	Categories []SmartPricePreviewCategory `json:"categories"`
+
+	// Kind The preset kind.
+	Kind string `json:"kind"`
+}
+
+// SmartPriceRequest A smart price preset to preview or enable (spec 51 §4.2).
+type SmartPriceRequest struct {
+	// CapPercent The highest rise over the starting price (by_sales, by_days), at least step_percent and at most 500.
+	CapPercent *int `json:"cap_percent,omitempty"`
+
+	// Every Tickets per step (by_sales), days per step (by_days) or days before the session (last_days).
+	Every int `json:"every"`
+
+	// Kind by_sales (every N tickets), by_days (every N days) or last_days (once, N days before the session).
+	Kind string `json:"kind"`
+
+	// StartDate The calendar day (YYYY-MM-DD, venue calendar) a by_days preset counts from. Empty counts from today.
+	StartDate *string `json:"start_date,omitempty"`
+
+	// StepPercent The rise of every step, a percentage of the starting price (1-100).
+	StepPercent int `json:"step_percent"`
+
+	// TierIds The categories the preset applies to. Exactly one for by_sales.
+	TierIds []openapi_types.UUID `json:"tier_ids"`
+}
+
+// SmartPriceRule One smart price preset of a session.
+type SmartPriceRule struct {
+	// BasePrice The starting price in minor units.
+	BasePrice int64 `json:"base_price"`
+
+	// CreatedAt When the preset was enabled.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 currency of the category.
+	Currency string `json:"currency"`
+
+	// Id The preset.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind by_sales, by_days or last_days.
+	Kind string `json:"kind"`
+
+	// Now Where an active preset stands now, null otherwise.
+	Now *SmartPriceNow `json:"now"`
+
+	// Params The parameters the preset was enabled with.
+	Params SmartPriceParams `json:"params"`
+
+	// Status active, stopped (the organizer froze the price) or overridden (a price was edited by hand).
+	Status string `json:"status"`
+
+	// StepTierIds The later steps the preset created (by_sales). A price edited by hand on any of them, or on tier_id, turns the preset off.
+	StepTierIds []openapi_types.UUID `json:"step_tier_ids"`
+
+	// StoppedAt When the preset was stopped or overridden.
+	StoppedAt *time.Time `json:"stopped_at"`
+
+	// TierId The category the preset was applied to (the first step of a chain).
+	TierId openapi_types.UUID `json:"tier_id"`
+
+	// TierName The category name.
+	TierName string `json:"tier_name"`
+}
+
+// SmartPriceRulesResponse The smart price presets of a session.
+type SmartPriceRulesResponse struct {
+	// Rules The presets, newest first.
+	Rules []SmartPriceRule `json:"rules"`
+
+	// Warnings Advisory warnings of the import that wrote the change.
+	Warnings []ImportWarning `json:"warnings"`
+}
+
+// SmartPriceStep One row of a preset's table, a chain step or a price window.
+type SmartPriceStep struct {
+	// From When the price window starts (by_days, last_days).
+	From *time.Time `json:"from,omitempty"`
+
+	// Places How many tickets the step sells (by_sales).
+	Places *int `json:"places,omitempty"`
+
+	// Price The price of the step in minor units.
+	Price int64 `json:"price"`
+}
+
 // StaffInvitationCancelRequest Which tickets to cancel; an empty body cancels them all.
 type StaffInvitationCancelRequest struct {
 	// NotifyGuest Send the guest the cancellation letter when the invitation has the guest's e-mail (default true).
@@ -22954,6 +23104,12 @@ type PostV1OrganizationsOrgIdSessionsSessionIdSeatBatchesJSONRequestBody = SeatB
 
 // PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggest for application/json ContentType.
 type PostV1OrganizationsOrgIdSessionsSessionIdSeatLayoutSuggestJSONRequestBody = SeatLayoutSuggestRequest
+
+// PostV1OrganizationsOrgIdSessionsSessionIdSmartPriceJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSmartPrice for application/json ContentType.
+type PostV1OrganizationsOrgIdSessionsSessionIdSmartPriceJSONRequestBody = SmartPriceRequest
+
+// PostV1OrganizationsOrgIdSessionsSessionIdSmartPricePreviewJSONRequestBody defines body for PostV1OrganizationsOrgIdSessionsSessionIdSmartPricePreview for application/json ContentType.
+type PostV1OrganizationsOrgIdSessionsSessionIdSmartPricePreviewJSONRequestBody = SmartPriceRequest
 
 // SearchShopOrdersJSONRequestBody defines body for SearchShopOrders for application/json ContentType.
 type SearchShopOrdersJSONRequestBody = ShopOrderSearchRequest

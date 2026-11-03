@@ -1070,6 +1070,8 @@
                 {tier}
                 quantity={gaQuantities.get(tier.id) ?? 0}
                 onQuantityChange={onGaQuantityChange}
+                locale={normLocale}
+                timeZone={selectedSession?.timezone ?? null}
               />
             {/each}
           </div>

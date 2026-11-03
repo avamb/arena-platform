@@ -49,6 +49,23 @@ func (s *Server) handleEventBundleRead(w http.ResponseWriter, r *http.Request) {
 	s.importsHandler().HandleEventBundleRead(w, r)
 }
 
+// Smart price presets (spec 51 §4.2), mounted with the tier routes.
+func (s *Server) handleSmartPriceList(w http.ResponseWriter, r *http.Request) {
+	s.importsHandler().HandleSmartPriceList(w, r)
+}
+
+func (s *Server) handleSmartPricePreview(w http.ResponseWriter, r *http.Request) {
+	s.importsHandler().HandleSmartPricePreview(w, r)
+}
+
+func (s *Server) handleSmartPriceEnable(w http.ResponseWriter, r *http.Request) {
+	s.importsHandler().HandleSmartPriceEnable(w, r)
+}
+
+func (s *Server) handleSmartPriceStop(w http.ResponseWriter, r *http.Request) {
+	s.importsHandler().HandleSmartPriceStop(w, r)
+}
+
 // mountImportRoutes mounts the operator-facing bulk import surface
 // (spec §13.2, event-bundle spec §2):
 //
