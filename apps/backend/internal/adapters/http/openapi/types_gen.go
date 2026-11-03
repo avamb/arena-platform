@@ -21966,6 +21966,12 @@ type GetV1OrganizationsOrgIdSessionsSessionIdGuestListCsvParams struct {
 	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdSessionsSessionIdGuestListXlsxParams defines parameters for GetV1OrganizationsOrgIdSessionsSessionIdGuestListXlsx.
+type GetV1OrganizationsOrgIdSessionsSessionIdGuestListXlsxParams struct {
+	// Locale Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
 // CreateInvitationBatchParams defines parameters for CreateInvitationBatch.
 type CreateInvitationBatchParams struct {
 	// DryRun true validates the file and writes nothing (answers the report, 200). Default false.

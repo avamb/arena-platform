@@ -64,6 +64,15 @@ type Cell struct {
 	kind cellKind
 }
 
+// Value is the cell's value as text, before any CSV rule is applied; the
+// empty Cell answers "". Other file formats (the XLSX guest list) render the
+// same cells from it.
+func (c Cell) Value() string { return c.raw }
+
+// Numeric reports whether the cell is a bare number (money, a short count),
+// which a spreadsheet may sum; every other non-empty cell is text.
+func (c Cell) Numeric() bool { return c.kind == kindNumeric }
+
 type cellKind uint8
 
 const (

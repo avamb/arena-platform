@@ -109,3 +109,8 @@ func slotKey(slot string) string {
 	}
 	return "manual"
 }
+
+// SheetName is the tab name of the workbook in the list's language.
+func SheetName(locale string) string {
+	return say(localizer(NormalizeLocale(locale)), "guestlist.sheet_name", nil)
+}
