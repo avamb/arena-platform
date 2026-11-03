@@ -12,6 +12,11 @@ import "strings"
 const (
 	sesCancelWordKey = "bot.ses.cancel_word"
 	ordCancelWordKey = "bot.ord.cancel_word"
+	// The two phrases of the Disputes screens (spec 51.3 section 9.2): each
+	// answer to a dispute has its own, so a word typed for one never confirms
+	// the other.
+	disputeSubmitWordKey = "bot.dp.submit_word"
+	disputeAcceptWordKey = "bot.dp.accept_word"
 )
 
 // ordCancelWord is the phrase the organizer types to cancel an unpaid order.

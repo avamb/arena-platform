@@ -172,6 +172,9 @@ var stepUpMoneyRoutes = []string{
 	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/cancel",
 	// Resolving a late payment may return the whole payment (SB-04).
 	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/resolve",
+	// Disputes (spec 51.3): the answer and the acceptance decide the money.
+	"POST /v1/organizations/{org_id}/disputes/{dispute_id}/submit",
+	"POST /v1/organizations/{org_id}/disputes/{dispute_id}/accept",
 }
 
 // stepUpExempt are writes whose path looks like money but which are not a

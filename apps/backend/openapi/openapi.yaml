@@ -4256,6 +4256,373 @@ components:
           type: boolean
           description: Send the buyer a letter about the refund. Defaults to true.
 
+    Dispute:
+      type: object
+      description: A chargeback or bank inquiry of one of the organization's payments.
+      required: [id, provider, channel, amount, currency, reason, reason_group, provider_status, state, is_inquiry, low_value, opened_at, due_by_source, respond_to, order_number, event_name, venue_timezone, buyer_name, buyer_email, is_charge_refundable]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "UUIDv7 of the dispute."
+        provider:
+          type: string
+          description: "Payment module name."
+        provider_dispute_id:
+          type: [string, "null"]
+          description: "The provider's own dispute id; for a dispute entered by hand, the reference from the provider's letter."
+        channel:
+          type: string
+          description: "api (answered through the provider's API), email (answered by e-mail), manual (entered by the organizer)."
+        order_id:
+          type: [string, "null"]
+          description: "UUID of the disputed order."
+        order_number:
+          type: integer
+          format: int64
+          description: "The order number the buyer sees; 0 when unknown."
+        event_name:
+          type: string
+          description: "Name of the event."
+        session_start_at:
+          type: [string, "null"]
+          description: "Start of the session, RFC 3339."
+        venue_timezone:
+          type: string
+          description: "IANA zone of the venue."
+        buyer_name:
+          type: string
+          description: "The buyer's name from the order."
+        buyer_email:
+          type: string
+          description: "The buyer's e-mail from the order."
+        amount:
+          type: integer
+          format: int64
+          description: "Disputed amount in minor units."
+        currency:
+          type: string
+          description: "ISO 4217 code."
+        reason:
+          type: string
+          description: "The provider's reason code."
+        reason_group:
+          type: string
+          description: "fraud, not_received, not_recognized, refund, quality, duplicate or other."
+        provider_status:
+          type: string
+          description: "The provider's last status."
+        state:
+          type: string
+          description: "needs_response, draft_ready, submitted, under_review, accepted, expired or closed."
+        outcome:
+          type: [string, "null"]
+          description: "won, lost, accepted, withdrawn or expired once the dispute ends."
+        is_inquiry:
+          type: boolean
+          description: "A bank inquiry (no money withdrawn yet)."
+        is_charge_refundable:
+          type: boolean
+          description: "The charge can still be refunded instead of contested."
+        due_by:
+          type: [string, "null"]
+          description: "Deadline of the answer, RFC 3339."
+        due_by_source:
+          type: string
+          description: "provider, organizer (from the provider's letter) or default (7 days, an estimate)."
+        respond_to:
+          type: string
+          description: "Address an e-mail answer goes to; empty when the provider's default is used."
+        low_value:
+          type: boolean
+          description: "The amount is below the low-value threshold of its currency."
+        funds_withdrawn_at:
+          type: [string, "null"]
+          description: "When the provider withdrew the amount, RFC 3339."
+        funds_reinstated_at:
+          type: [string, "null"]
+          description: "When the provider returned the amount, RFC 3339."
+        opened_at:
+          type: string
+          description: "When the dispute was opened, RFC 3339."
+        submitted_at:
+          type: [string, "null"]
+          description: "When the answer was sent, RFC 3339."
+        accepted_at:
+          type: [string, "null"]
+          description: "When the organizer accepted the dispute, RFC 3339."
+        closed_at:
+          type: [string, "null"]
+          description: "When the dispute ended, RFC 3339."
+
+    DisputeList:
+      type: object
+      description: One page of the organization's disputes.
+      required: [disputes, total, open_count]
+      properties:
+        disputes:
+          type: array
+          description: The disputes of the page.
+          items:
+            $ref: "#/components/schemas/Dispute"
+        total:
+          type: integer
+          description: Disputes matching the filter.
+        open_count:
+          type: integer
+          description: Disputes that wait for the organizer.
+
+    DisputeFile:
+      type: object
+      description: One PDF of an evidence package.
+      required: [id, kind, filename, bytes, pages, sha256, for_provider]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "UUIDv7 of the file."
+        kind:
+          type: string
+          description: "receipt, service_documentation, customer_communication, refund_policy, uncategorized_file or full."
+        filename:
+          type: string
+          description: "File name."
+        bytes:
+          type: integer
+          description: "Size in bytes."
+        pages:
+          type: integer
+          description: "Pages."
+        sha256:
+          type: string
+          description: "SHA-256 of the file, hex."
+        for_provider:
+          type: boolean
+          description: "Sent to the provider (false for the full file in the organization's language)."
+
+    DisputeEmailDraft:
+      type: object
+      description: The letter of an e-mail answer.
+      required: [to, subject, body]
+      properties:
+        to:
+          type: string
+          description: Recipient address.
+        subject:
+          type: string
+          description: Subject of the letter.
+        body:
+          type: string
+          description: Plain-text body of the letter.
+
+    DisputePackage:
+      type: object
+      description: One version of a dispute's evidence package.
+      required: [id, version, locale, fields, gaps, uploaded, total_bytes, total_pages, built_at, files]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "UUIDv7 of the package."
+        version:
+          type: integer
+          description: "Version number, from 1."
+        locale:
+          type: string
+          description: "Language of the full file."
+        fields:
+          type: object
+          description: Text fields of the evidence as they are sent to the provider.
+          additionalProperties:
+            type: string
+        gaps:
+          type: array
+          description: Codes of facts arena does not have for this order.
+          items:
+            type: string
+        uploaded:
+          type: boolean
+          description: "The files were uploaded to the provider."
+        email_draft:
+          description: The letter of an e-mail answer; null for an API answer.
+          oneOf:
+            - $ref: "#/components/schemas/DisputeEmailDraft"
+            - type: "null"
+        total_bytes:
+          type: integer
+          description: "Size of the files sent to the provider."
+        total_pages:
+          type: integer
+          description: "Pages of the files sent to the provider."
+        built_at:
+          type: string
+          description: "When it was built, RFC 3339."
+        files:
+          type: array
+          description: The PDF files.
+          items:
+            $ref: "#/components/schemas/DisputeFile"
+
+    DisputeEvent:
+      type: object
+      description: One line of a dispute's journal.
+      required: [kind, provider_status, actor_label, payload, created_at]
+      properties:
+        kind:
+          type: string
+          description: "What happened (opened, package_built, draft_saved, submitted, email_sent, accepted, ...)."
+        provider_status:
+          type: string
+          description: "The provider's status at that moment, if any."
+        actor_user_id:
+          type: [string, "null"]
+          description: "The person who acted, if any."
+        actor_label:
+          type: string
+          description: "user, system or the provider."
+        payload:
+          type: object
+          description: Details of the line.
+          additionalProperties: true
+        created_at:
+          type: string
+          description: "When, RFC 3339."
+
+    DisputeLowValue:
+      type: object
+      description: The low-value advice for one dispute.
+      required: [enabled, threshold, advised]
+      properties:
+        enabled:
+          type: boolean
+          description: The advice is switched on.
+        threshold:
+          type: integer
+          format: int64
+          description: Threshold of the dispute's currency in minor units; 0 when none.
+        advised:
+          type: boolean
+          description: The card advises accepting this dispute.
+
+    DisputeCard:
+      type: object
+      description: One dispute with its newest package and its journal.
+      required: [dispute, events, low_value, test_outcome_available]
+      properties:
+        dispute:
+          description: The dispute.
+          allOf:
+            - $ref: "#/components/schemas/Dispute"
+        package:
+          description: The newest evidence package; null while it is being built.
+          oneOf:
+            - $ref: "#/components/schemas/DisputePackage"
+            - type: "null"
+        events:
+          type: array
+          description: The journal, oldest first.
+          items:
+            $ref: "#/components/schemas/DisputeEvent"
+        low_value:
+          description: The low-value advice.
+          allOf:
+            - $ref: "#/components/schemas/DisputeLowValue"
+        test_outcome_available:
+          type: boolean
+          description: The payment key is a test one, so submit may ask for a test outcome.
+        draft_saved:
+          type: boolean
+          description: Set by the rebuild route — the evidence was saved as a draft at the provider.
+        draft_error:
+          type: [string, "null"]
+          description: Set by the rebuild route — why the draft was not saved (key_not_writable, closed_for_evidence, provider_unavailable).
+
+    SubmitDisputeRequest:
+      type: object
+      description: The organizer's answer.
+      properties:
+        test_outcome:
+          type: string
+          description: "win or lose: with a test payment key the provider decides the dispute that way; refused for a live key."
+        package_version:
+          type: integer
+          minimum: 1
+          description: The package version the organizer looked at. When a newer version was built since, the answer is refused with 409 dispute.package_changed. Absent sends the newest.
+        email:
+          description: The letter as the organizer edited it; absent takes the package draft. E-mail disputes only.
+          allOf:
+            - $ref: "#/components/schemas/DisputeEmailDraft"
+
+    CreateManualDisputeRequest:
+      type: object
+      description: A dispute entered from a provider's letter.
+      required: [order_id, reason]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+          description: UUID of the disputed order.
+        reason:
+          type: string
+          description: Reason from the letter (fraudulent, product_not_received, ...).
+        due_by:
+          type: string
+          description: Deadline from the letter, RFC 3339 with a zone.
+        respond_to:
+          type: string
+          description: Address the answer goes to.
+        provider_dispute_id:
+          type: string
+          description: The provider's own reference, if the letter has one.
+        amount:
+          type: integer
+          format: int64
+          description: Disputed amount in minor units; 0 takes the order's total.
+
+    DisputeDeadlineRequest:
+      type: object
+      description: The deadline and address from the provider's letter.
+      properties:
+        due_by:
+          type: string
+          description: Deadline, RFC 3339 with a zone.
+        respond_to:
+          type: string
+          description: Address the answer goes to.
+
+    DisputeSettings:
+      type: object
+      description: The low-value rule in force.
+      required: [low_value_enabled, low_value_thresholds, own]
+      properties:
+        low_value_enabled:
+          type: boolean
+          description: The advice to accept small disputes is shown.
+        low_value_thresholds:
+          type: object
+          description: Threshold per currency in minor units.
+          additionalProperties:
+            type: integer
+            format: int64
+        own:
+          type: boolean
+          description: The organization has its own rule (else the platform default).
+
+    DisputeSettingsRequest:
+      type: object
+      description: The organization's own low-value rule.
+      required: [low_value_enabled, low_value_thresholds]
+      properties:
+        low_value_enabled:
+          type: boolean
+          description: Show the advice to accept small disputes.
+        low_value_thresholds:
+          type: object
+          description: Threshold per currency in minor units.
+          additionalProperties:
+            type: integer
+            format: int64
+
     CreateOrderRefundsResponse:
       type: object
       description: The refund operation as recorded, one refund per ticket.
@@ -57404,6 +57771,745 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/disputes:
+    get:
+      operationId: getV1OrganizationsOrgIdDisputes
+      summary: List the organization's payment disputes
+      description: |
+        Lists chargebacks and bank inquiries of the organization's payments,
+        open ones first by deadline. Requires `dispute.read`. An organization API
+        key is refused: the list carries buyers' names and addresses.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: group
+          in: query
+          required: false
+          description: "open (waiting for the organizer), review (answered, waiting for the bank) or closed; absent lists all."
+          schema: { type: string }
+        - name: order_id
+          in: query
+          required: false
+          description: Only the disputes of this order.
+          schema: { type: string, format: uuid }
+        - name: limit
+          in: query
+          required: false
+          description: Page size, 1-100, default 50.
+          schema: { type: integer }
+        - name: offset
+          in: query
+          required: false
+          description: Rows to skip.
+          schema: { type: integer }
+      responses:
+        "200":
+          description: "The disputes."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisputeList"
+        "400":
+          description: "A filter is not valid (dispute.invalid_request)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Actor does not hold dispute.read, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    post:
+      operationId: postV1OrganizationsOrgIdDisputes
+      summary: Enter a dispute from a provider's letter
+      description: |
+        For a provider that reports chargebacks by e-mail or not at all (PayPlus,
+        Flitt until its callback is proven), the organizer enters the dispute from
+        the provider's letter: the order, the reason and the deadline. The evidence
+        package is then built like for any other dispute. Requires
+        `dispute.respond`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateManualDisputeRequest"
+      responses:
+        "201":
+          description: "The new dispute's card."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisputeCard"
+        "400":
+          description: "The body is not valid (dispute.invalid_request)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "The order is not one of this organization's (dispute.order_not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "This dispute was already entered (dispute.duplicate)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "The order was not paid through a payment provider (dispute.order_not_paid) or a field is refused."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/disputes/{dispute_id}:
+    get:
+      operationId: getV1OrganizationsOrgIdDisputesDisputeId
+      summary: Read one dispute with its package
+      description: |
+        The dispute, its evidence package (fields, files, gaps, e-mail draft), its
+        journal and the low-value advice. Requires `dispute.read`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: dispute_id
+          in: path
+          required: true
+          description: UUIDv7 of the dispute
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: "The dispute's card."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisputeCard"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Actor does not hold dispute.read, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Dispute not found in this organization (dispute.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/disputes/{dispute_id}/files/{file_id}:
+    get:
+      operationId: getV1OrganizationsOrgIdDisputesDisputeIdFilesFileId
+      summary: Download one PDF of the evidence package
+      description: |
+        One PDF of the dispute's evidence package. Requires `dispute.read`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: dispute_id
+          in: path
+          required: true
+          description: UUIDv7 of the dispute
+          schema: { type: string, format: uuid }
+        - name: file_id
+          in: path
+          required: true
+          description: UUIDv7 of the file
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: "The PDF."
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Actor does not hold dispute.read, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Dispute or file not found in this organization (dispute.not_found, dispute.file_not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/disputes/{dispute_id}/package:
+    post:
+      operationId: postV1OrganizationsOrgIdDisputesDisputeIdPackage
+      summary: Build the evidence package again
+      description: |
+        Collects the facts again and stores a new version of the package. For a
+        dispute answered through the provider's API it also saves the evidence as
+        a draft at the provider (never the final answer). Requires
+        `dispute.respond`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: dispute_id
+          in: path
+          required: true
+          description: UUIDv7 of the dispute
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: "The dispute's card with draft_saved and draft_error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisputeCard"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Dispute not found in this organization (dispute.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/disputes/{dispute_id}/submit:
+    post:
+      operationId: postV1OrganizationsOrgIdDisputesDisputeIdSubmit
+      summary: Send the answer to the dispute
+      description: |
+        A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+        The organizer's one press that answers the bank. For a dispute answered
+        through the provider's API the evidence is sent once and cannot be changed
+        afterwards; for an e-mail dispute the letter with the package is queued to
+        the provider, with a copy to the owner. Nothing is sent without this call.
+        Requires `dispute.respond`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: dispute_id
+          in: path
+          required: true
+          description: UUIDv7 of the dispute
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitDisputeRequest"
+      responses:
+        "200":
+          description: "The dispute's card after the answer."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisputeCard"
+        "400":
+          description: "The body is not valid (dispute.invalid_request)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Dispute not found in this organization (dispute.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The dispute was already answered or closed (dispute.already_submitted), or the provider no longer accepts an answer (dispute.closed_for_evidence)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "No package yet (dispute.package_missing), the payment key cannot answer disputes (dispute.key_not_writable), no recipient address (dispute.recipient_required), or a test outcome with a live key (dispute.test_outcome_live)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/disputes/{dispute_id}/accept:
+    post:
+      operationId: postV1OrganizationsOrgIdDisputesDisputeIdAccept
+      summary: Accept the dispute
+      description: |
+        A request from the web event center (`X-Client-Channel: event_center_web`) must carry `X-Step-Up-Token` from `POST /v1/auth/step-up`, or it is 403 `auth.step_up_required`.
+        Gives up the disputed amount: for a dispute answered through the provider's
+        API the provider closes it now; for another provider the dispute is marked
+        accepted in arena. Requires `dispute.respond`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: dispute_id
+          in: path
+          required: true
+          description: UUIDv7 of the dispute
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: "The dispute's card."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisputeCard"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Dispute not found in this organization (dispute.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The dispute was already answered or closed (dispute.already_submitted)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "The payment key cannot close disputes (dispute.key_not_writable)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/disputes/{dispute_id}/deadline:
+    post:
+      operationId: postV1OrganizationsOrgIdDisputesDisputeIdDeadline
+      summary: Record the deadline from the provider's letter
+      description: |
+        For a dispute that is not answered through the provider's API: the
+        deadline and the answer address the organizer read in the provider's
+        letter. Requires `dispute.respond`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: dispute_id
+          in: path
+          required: true
+          description: UUIDv7 of the dispute
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DisputeDeadlineRequest"
+      responses:
+        "200":
+          description: "The dispute's card."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisputeCard"
+        "400":
+          description: "The body is not valid (dispute.invalid_request)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Dispute not found in this organization (dispute.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "The dispute keeps the provider's own deadline (dispute.wrong_channel) or a field is refused."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/disputes/{dispute_id}/sent-by-organizer:
+    post:
+      operationId: postV1OrganizationsOrgIdDisputesDisputeIdSentByOrganizer
+      summary: Record that the organizer answered outside arena
+      description: |
+        The organizer sent the answer themself (from their own mailbox or the
+        provider's dashboard); the dispute waits for the bank. Requires
+        `dispute.respond`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: dispute_id
+          in: path
+          required: true
+          description: UUIDv7 of the dispute
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: "The dispute's card."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisputeCard"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Dispute not found in this organization (dispute.not_found)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The dispute was already answered or closed (dispute.already_submitted)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/dispute-settings:
+    get:
+      operationId: getV1OrganizationsOrgIdDisputeSettings
+      summary: Read the low-value dispute rule
+      description: |
+        Below the threshold of its currency the card advises accepting a dispute
+        instead of contesting it. Requires `dispute.read`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: "The rule in force."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisputeSettings"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Actor does not hold dispute.read, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      operationId: putV1OrganizationsOrgIdDisputeSettings
+      summary: Change the low-value dispute rule
+      description: |
+        Stores the organization's own rule: whether the advice is shown and the
+        threshold per currency, in minor units. Requires `dispute.respond`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DisputeSettingsRequest"
+      responses:
+        "200":
+          description: "The stored rule."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisputeSettings"
+        "400":
+          description: "The body is not valid (dispute.invalid_request)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Authorization header missing or JWT verification failed."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Actor does not hold dispute.respond, is not a member of the organization, or is an organization API key (dispute.api_key_forbidden)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Disputes are not available on this server (dispute.unavailable), or the payment provider did not answer (dispute.provider_unavailable)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/organizations/{org_id}/refunds/{refund_id}/retry:
     post:
       operationId: postV1OrganizationsOrgIdRefundsRefundIdRetry

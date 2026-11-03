@@ -6021,6 +6021,27 @@ type CreateLegalDocumentRequest struct {
 	Locale string `json:"locale"`
 }
 
+// CreateManualDisputeRequest A dispute entered from a provider's letter.
+type CreateManualDisputeRequest struct {
+	// Amount Disputed amount in minor units; 0 takes the order's total.
+	Amount *int64 `json:"amount,omitempty"`
+
+	// DueBy Deadline from the letter, RFC 3339 with a zone.
+	DueBy *string `json:"due_by,omitempty"`
+
+	// OrderId UUID of the disputed order.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// ProviderDisputeId The provider's own reference, if the letter has one.
+	ProviderDisputeId *string `json:"provider_dispute_id,omitempty"`
+
+	// Reason Reason from the letter (fraudulent, product_not_received, ...).
+	Reason string `json:"reason"`
+
+	// RespondTo Address the answer goes to.
+	RespondTo *string `json:"respond_to,omitempty"`
+}
+
 // CreateOperatorNetworkRequest defines model for CreateOperatorNetworkRequest.
 type CreateOperatorNetworkRequest struct {
 	// Name Human-readable network name (trimmed server-side)
@@ -7052,6 +7073,270 @@ type DevTokenResponse struct {
 
 	// Token Signed JWT (HS256) that can be used in Authorization headers
 	Token string `json:"token"`
+}
+
+// Dispute A chargeback or bank inquiry of one of the organization's payments.
+type Dispute struct {
+	// AcceptedAt When the organizer accepted the dispute, RFC 3339.
+	AcceptedAt *string `json:"accepted_at"`
+
+	// Amount Disputed amount in minor units.
+	Amount int64 `json:"amount"`
+
+	// BuyerEmail The buyer's e-mail from the order.
+	BuyerEmail string `json:"buyer_email"`
+
+	// BuyerName The buyer's name from the order.
+	BuyerName string `json:"buyer_name"`
+
+	// Channel api (answered through the provider's API), email (answered by e-mail), manual (entered by the organizer).
+	Channel string `json:"channel"`
+
+	// ClosedAt When the dispute ended, RFC 3339.
+	ClosedAt *string `json:"closed_at"`
+
+	// Currency ISO 4217 code.
+	Currency string `json:"currency"`
+
+	// DueBy Deadline of the answer, RFC 3339.
+	DueBy *string `json:"due_by"`
+
+	// DueBySource provider, organizer (from the provider's letter) or default (7 days, an estimate).
+	DueBySource string `json:"due_by_source"`
+
+	// EventName Name of the event.
+	EventName string `json:"event_name"`
+
+	// FundsReinstatedAt When the provider returned the amount, RFC 3339.
+	FundsReinstatedAt *string `json:"funds_reinstated_at"`
+
+	// FundsWithdrawnAt When the provider withdrew the amount, RFC 3339.
+	FundsWithdrawnAt *string `json:"funds_withdrawn_at"`
+
+	// Id UUIDv7 of the dispute.
+	Id openapi_types.UUID `json:"id"`
+
+	// IsChargeRefundable The charge can still be refunded instead of contested.
+	IsChargeRefundable bool `json:"is_charge_refundable"`
+
+	// IsInquiry A bank inquiry (no money withdrawn yet).
+	IsInquiry bool `json:"is_inquiry"`
+
+	// LowValue The amount is below the low-value threshold of its currency.
+	LowValue bool `json:"low_value"`
+
+	// OpenedAt When the dispute was opened, RFC 3339.
+	OpenedAt string `json:"opened_at"`
+
+	// OrderId UUID of the disputed order.
+	OrderId *string `json:"order_id"`
+
+	// OrderNumber The order number the buyer sees; 0 when unknown.
+	OrderNumber int64 `json:"order_number"`
+
+	// Outcome won, lost, accepted, withdrawn or expired once the dispute ends.
+	Outcome *string `json:"outcome"`
+
+	// Provider Payment module name.
+	Provider string `json:"provider"`
+
+	// ProviderDisputeId The provider's own dispute id; for a dispute entered by hand, the reference from the provider's letter.
+	ProviderDisputeId *string `json:"provider_dispute_id"`
+
+	// ProviderStatus The provider's last status.
+	ProviderStatus string `json:"provider_status"`
+
+	// Reason The provider's reason code.
+	Reason string `json:"reason"`
+
+	// ReasonGroup fraud, not_received, not_recognized, refund, quality, duplicate or other.
+	ReasonGroup string `json:"reason_group"`
+
+	// RespondTo Address an e-mail answer goes to; empty when the provider's default is used.
+	RespondTo string `json:"respond_to"`
+
+	// SessionStartAt Start of the session, RFC 3339.
+	SessionStartAt *string `json:"session_start_at"`
+
+	// State needs_response, draft_ready, submitted, under_review, accepted, expired or closed.
+	State string `json:"state"`
+
+	// SubmittedAt When the answer was sent, RFC 3339.
+	SubmittedAt *string `json:"submitted_at"`
+
+	// VenueTimezone IANA zone of the venue.
+	VenueTimezone string `json:"venue_timezone"`
+}
+
+// DisputeCard One dispute with its newest package and its journal.
+type DisputeCard struct {
+	// Dispute The dispute.
+	Dispute Dispute `json:"dispute"`
+
+	// DraftError Set by the rebuild route — why the draft was not saved (key_not_writable, closed_for_evidence, provider_unavailable).
+	DraftError *string `json:"draft_error"`
+
+	// DraftSaved Set by the rebuild route — the evidence was saved as a draft at the provider.
+	DraftSaved *bool `json:"draft_saved,omitempty"`
+
+	// Events The journal, oldest first.
+	Events []DisputeEvent `json:"events"`
+
+	// LowValue The low-value advice.
+	LowValue DisputeLowValue `json:"low_value"`
+
+	// Package The newest evidence package; null while it is being built.
+	Package *DisputePackage `json:"package"`
+
+	// TestOutcomeAvailable The payment key is a test one, so submit may ask for a test outcome.
+	TestOutcomeAvailable bool `json:"test_outcome_available"`
+}
+
+// DisputeDeadlineRequest The deadline and address from the provider's letter.
+type DisputeDeadlineRequest struct {
+	// DueBy Deadline, RFC 3339 with a zone.
+	DueBy *string `json:"due_by,omitempty"`
+
+	// RespondTo Address the answer goes to.
+	RespondTo *string `json:"respond_to,omitempty"`
+}
+
+// DisputeEmailDraft The letter of an e-mail answer.
+type DisputeEmailDraft struct {
+	// Body Plain-text body of the letter.
+	Body string `json:"body"`
+
+	// Subject Subject of the letter.
+	Subject string `json:"subject"`
+
+	// To Recipient address.
+	To string `json:"to"`
+}
+
+// DisputeEvent One line of a dispute's journal.
+type DisputeEvent struct {
+	// ActorLabel user, system or the provider.
+	ActorLabel string `json:"actor_label"`
+
+	// ActorUserId The person who acted, if any.
+	ActorUserId *string `json:"actor_user_id"`
+
+	// CreatedAt When, RFC 3339.
+	CreatedAt string `json:"created_at"`
+
+	// Kind What happened (opened, package_built, draft_saved, submitted, email_sent, accepted, ...).
+	Kind string `json:"kind"`
+
+	// Payload Details of the line.
+	Payload map[string]interface{} `json:"payload"`
+
+	// ProviderStatus The provider's status at that moment, if any.
+	ProviderStatus string `json:"provider_status"`
+}
+
+// DisputeFile One PDF of an evidence package.
+type DisputeFile struct {
+	// Bytes Size in bytes.
+	Bytes int `json:"bytes"`
+
+	// Filename File name.
+	Filename string `json:"filename"`
+
+	// ForProvider Sent to the provider (false for the full file in the organization's language).
+	ForProvider bool `json:"for_provider"`
+
+	// Id UUIDv7 of the file.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind receipt, service_documentation, customer_communication, refund_policy, uncategorized_file or full.
+	Kind string `json:"kind"`
+
+	// Pages Pages.
+	Pages int `json:"pages"`
+
+	// Sha256 SHA-256 of the file, hex.
+	Sha256 string `json:"sha256"`
+}
+
+// DisputeList One page of the organization's disputes.
+type DisputeList struct {
+	// Disputes The disputes of the page.
+	Disputes []Dispute `json:"disputes"`
+
+	// OpenCount Disputes that wait for the organizer.
+	OpenCount int `json:"open_count"`
+
+	// Total Disputes matching the filter.
+	Total int `json:"total"`
+}
+
+// DisputeLowValue The low-value advice for one dispute.
+type DisputeLowValue struct {
+	// Advised The card advises accepting this dispute.
+	Advised bool `json:"advised"`
+
+	// Enabled The advice is switched on.
+	Enabled bool `json:"enabled"`
+
+	// Threshold Threshold of the dispute's currency in minor units; 0 when none.
+	Threshold int64 `json:"threshold"`
+}
+
+// DisputePackage One version of a dispute's evidence package.
+type DisputePackage struct {
+	// BuiltAt When it was built, RFC 3339.
+	BuiltAt string `json:"built_at"`
+
+	// EmailDraft The letter of an e-mail answer; null for an API answer.
+	EmailDraft *DisputeEmailDraft `json:"email_draft"`
+
+	// Fields Text fields of the evidence as they are sent to the provider.
+	Fields map[string]string `json:"fields"`
+
+	// Files The PDF files.
+	Files []DisputeFile `json:"files"`
+
+	// Gaps Codes of facts arena does not have for this order.
+	Gaps []string `json:"gaps"`
+
+	// Id UUIDv7 of the package.
+	Id openapi_types.UUID `json:"id"`
+
+	// Locale Language of the full file.
+	Locale string `json:"locale"`
+
+	// TotalBytes Size of the files sent to the provider.
+	TotalBytes int `json:"total_bytes"`
+
+	// TotalPages Pages of the files sent to the provider.
+	TotalPages int `json:"total_pages"`
+
+	// Uploaded The files were uploaded to the provider.
+	Uploaded bool `json:"uploaded"`
+
+	// Version Version number, from 1.
+	Version int `json:"version"`
+}
+
+// DisputeSettings The low-value rule in force.
+type DisputeSettings struct {
+	// LowValueEnabled The advice to accept small disputes is shown.
+	LowValueEnabled bool `json:"low_value_enabled"`
+
+	// LowValueThresholds Threshold per currency in minor units.
+	LowValueThresholds map[string]int64 `json:"low_value_thresholds"`
+
+	// Own The organization has its own rule (else the platform default).
+	Own bool `json:"own"`
+}
+
+// DisputeSettingsRequest The organization's own low-value rule.
+type DisputeSettingsRequest struct {
+	// LowValueEnabled Show the advice to accept small disputes.
+	LowValueEnabled bool `json:"low_value_enabled"`
+
+	// LowValueThresholds Threshold per currency in minor units.
+	LowValueThresholds map[string]int64 `json:"low_value_thresholds"`
 }
 
 // EchoRequest Strict schema — the server rejects any field not defined here with
@@ -18461,6 +18746,18 @@ type StartCheckoutRequest struct {
 	UserId *openapi_types.UUID `json:"user_id"`
 }
 
+// SubmitDisputeRequest The organizer's answer.
+type SubmitDisputeRequest struct {
+	// Email The letter as the organizer edited it; absent takes the package draft. E-mail disputes only.
+	Email *DisputeEmailDraft `json:"email,omitempty"`
+
+	// PackageVersion The package version the organizer looked at. When a newer version was built since, the answer is refused with 409 dispute.package_changed. Absent sends the newest.
+	PackageVersion *int `json:"package_version,omitempty"`
+
+	// TestOutcome win or lose: with a test payment key the provider decides the dispute that way; refused for a live key.
+	TestOutcome *string `json:"test_outcome,omitempty"`
+}
+
 // SummaryAdmission The admitted scans of one source (scan_events.source, migration 0154).
 type SummaryAdmission struct {
 	// Scans Every admitted scan of this source, repeat scans and scans of tickets cancelled since included.
@@ -21197,6 +21494,21 @@ type GetV1OrganizationsOrgIdCustomersParams struct {
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdDisputesParams defines parameters for GetV1OrganizationsOrgIdDisputes.
+type GetV1OrganizationsOrgIdDisputesParams struct {
+	// Group open (waiting for the organizer), review (answered, waiting for the bank) or closed; absent lists all.
+	Group *string `form:"group,omitempty" json:"group,omitempty"`
+
+	// OrderId Only the disputes of this order.
+	OrderId *openapi_types.UUID `form:"order_id,omitempty" json:"order_id,omitempty"`
+
+	// Limit Page size, 1-100, default 50.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Rows to skip.
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // ListOrgEventsParams defines parameters for ListOrgEvents.
 type ListOrgEventsParams struct {
 	// Lang BCP-47 locale override.
@@ -22228,6 +22540,18 @@ type CreateOrgCityJSONRequestBody = CreateOrgCityRequest
 
 // CreateComplimentaryIssuanceJSONRequestBody defines body for CreateComplimentaryIssuance for application/json ContentType.
 type CreateComplimentaryIssuanceJSONRequestBody = ComplimentaryCreateRequest
+
+// PutV1OrganizationsOrgIdDisputeSettingsJSONRequestBody defines body for PutV1OrganizationsOrgIdDisputeSettings for application/json ContentType.
+type PutV1OrganizationsOrgIdDisputeSettingsJSONRequestBody = DisputeSettingsRequest
+
+// PostV1OrganizationsOrgIdDisputesJSONRequestBody defines body for PostV1OrganizationsOrgIdDisputes for application/json ContentType.
+type PostV1OrganizationsOrgIdDisputesJSONRequestBody = CreateManualDisputeRequest
+
+// PostV1OrganizationsOrgIdDisputesDisputeIdDeadlineJSONRequestBody defines body for PostV1OrganizationsOrgIdDisputesDisputeIdDeadline for application/json ContentType.
+type PostV1OrganizationsOrgIdDisputesDisputeIdDeadlineJSONRequestBody = DisputeDeadlineRequest
+
+// PostV1OrganizationsOrgIdDisputesDisputeIdSubmitJSONRequestBody defines body for PostV1OrganizationsOrgIdDisputesDisputeIdSubmit for application/json ContentType.
+type PostV1OrganizationsOrgIdDisputesDisputeIdSubmitJSONRequestBody = SubmitDisputeRequest
 
 // CreateEventJSONRequestBody defines body for CreateEvent for application/json ContentType.
 type CreateEventJSONRequestBody = CreateEventRequest

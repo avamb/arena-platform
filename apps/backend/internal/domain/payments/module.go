@@ -100,6 +100,11 @@ type Capabilities struct {
 	// per-merchant key the config alone holds. The legacy un-suffixed route
 	// refuses such a body outright.
 	WebhookConfigRouteOnly bool
+	// Disputes: arena can read a dispute and answer it through the
+	// provider's API (DisputeResponder). A provider without it still tells
+	// arena about a chargeback by webhook (EventDisputeOpened); the answer
+	// then goes by e-mail (spec 51.3).
+	Disputes bool
 	// Currencies lists the ISO 4217 codes (upper case) the provider can
 	// charge in. Empty means the provider states no limit, so arena refuses
 	// nothing on its behalf (the provider's own answer is the verdict).
@@ -118,6 +123,10 @@ type Descriptor struct {
 	Secrets []SecretField
 	// Capabilities is what the module can do.
 	Capabilities Capabilities
+	// DisputeEmail is where a chargeback answer goes by e-mail when the
+	// provider has no dispute API (spec 51.3); empty when the provider
+	// publishes none (the organizer enters it).
+	DisputeEmail string
 }
 
 // Module is the one thing every provider package must implement.
@@ -278,6 +287,9 @@ const (
 	EventRefundUpdated EventKind = "refund_updated"
 	// EventDisputeOpened: a chargeback / dispute was opened (PAY-16).
 	EventDisputeOpened EventKind = "dispute_opened"
+	// EventDisputeUpdated: an open dispute changed (status, evidence,
+	// money withdrawn or reinstated, closed, a chargeback reverted).
+	EventDisputeUpdated EventKind = "dispute_updated"
 )
 
 // NormalizedEvent is a verified delivery in arena's own vocabulary.
@@ -316,6 +328,10 @@ type NormalizedEvent struct {
 	// FailureCode / FailureMessage, when the delivery explains a failure.
 	FailureCode    string
 	FailureMessage string
+	// Dispute is set on dispute events (Kind EventDisputeOpened or
+	// EventDisputeUpdated): the dispute as the delivery states it. A module
+	// with Capabilities.Disputes reads it back before arena acts on it.
+	Dispute *Dispute
 	// Raw is the body as received, for the audit trail.
 	Raw json.RawMessage
 }

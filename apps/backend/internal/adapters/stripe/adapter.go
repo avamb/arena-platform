@@ -671,6 +671,35 @@ func receivesRefundEvents(events []string) bool {
 	return has["refund.created"] && (has["refund.updated"] || has["charge.refund.updated"]) && has["refund.failed"]
 }
 
+// receivesDisputeEvents reports whether an endpoint's event list covers the
+// dispute events arena needs: the opening, its updates and its end.
+func receivesDisputeEvents(events []string) bool {
+	has := map[string]bool{}
+	for _, ev := range events {
+		has[ev] = true
+	}
+	if has["*"] {
+		return true
+	}
+	return has["charge.dispute.created"] && has["charge.dispute.updated"] && has["charge.dispute.closed"]
+}
+
+// CheckDisputeAccess lists one dispute (GET /v1/disputes?limit=1): a
+// restricted key without Disputes access is refused with 401/403, which is
+// reported as payments.ErrCredentialRefused.
+//
+// Implements payments.DisputeAccessChecker.
+func (a *Adapter) CheckDisputeAccess(ctx context.Context) error {
+	_, status, err := a.doRequest(ctx, http.MethodGet, a.cfg.BaseURL+"/disputes?limit=1", nil, "")
+	if err == nil {
+		return nil
+	}
+	if status == http.StatusUnauthorized || status == http.StatusForbidden {
+		return fmt.Errorf("%w: %s", payments.ErrCredentialRefused, err.Error())
+	}
+	return fmt.Errorf("%w: %s", payments.ErrProviderUnreachable, err.Error())
+}
+
 // CheckWebhookSubscription reads the account's webhook endpoints
 // (GET /v1/webhook_endpoints) and reports whether the one with callbackURL
 // receives refund updates. A restricted key without the right to read
@@ -699,6 +728,7 @@ func (a *Adapter) CheckWebhookSubscription(ctx context.Context, callbackURL stri
 		}
 		out.EndpointFound = true
 		out.RefundEventsSubscribed = out.RefundEventsSubscribed || receivesRefundEvents(ep.EnabledEvents)
+		out.DisputeEventsSubscribed = out.DisputeEventsSubscribed || receivesDisputeEvents(ep.EnabledEvents)
 	}
 	return out, nil
 }
