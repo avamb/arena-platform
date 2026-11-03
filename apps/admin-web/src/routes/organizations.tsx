@@ -3822,7 +3822,98 @@ function PaymentsTab({ org }: { org: AdminOrganization }) {
           </table>
         </div>
       )}
+      <ProviderReceiptSection orgId={org.id} />
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Provider receipt (spec 51 section 2, decision R-6)
+//
+// The organization's owner decides in the event center whether the payment
+// provider e-mails its own receipt to the buyer. Only a platform superadmin
+// sets "always send", which overrides the owner: PATCH
+// /v1/organizations/{org_id}/seller-profile with provider_receipt_forced
+// (the server answers 403 seller.provider_receipt_forced_superadmin_only to
+// anyone else).
+// ---------------------------------------------------------------------------
+
+interface ProviderReceiptSetting {
+  readonly enabled: boolean;
+  readonly forced: boolean;
+  readonly effective: boolean;
+}
+interface SellerProfileReceiptEnvelope {
+  readonly seller_profile: { readonly provider_receipt?: ProviderReceiptSetting };
+}
+
+function ProviderReceiptSection({ orgId }: { orgId: string }) {
+  const { permissions } = useAuth();
+  const isSuperadmin = permissions.has("superadmin.read");
+  const queryClient = useQueryClient();
+  const key = ["admin", "organizations", orgId, "seller-profile"];
+  const query = useQuery<SellerProfileReceiptEnvelope, ApiError>({
+    queryKey: key,
+    queryFn: () =>
+      authedFetch<SellerProfileReceiptEnvelope>({
+        method: "GET",
+        path: `/v1/organizations/${orgId}/seller-profile`,
+      }),
+    enabled: isSuperadmin,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const forceMut = useMutation<SellerProfileReceiptEnvelope, ApiError, boolean>({
+    mutationFn: (forced) =>
+      authedFetch<SellerProfileReceiptEnvelope>({
+        method: "PATCH",
+        path: `/v1/organizations/${orgId}/seller-profile`,
+        body: { provider_receipt_forced: forced },
+      }),
+    onSuccess: (data) => queryClient.setQueryData(key, data),
+  });
+  if (!isSuperadmin) return null;
+  const setting = query.data?.seller_profile.provider_receipt;
+  return (
+    <section data-testid="orgs-drawer-provider-receipt" style={{ marginTop: 16 }}>
+      <h3 style={drawerSectionTitleStyle}>Provider receipt to the buyer</h3>
+      <p style={drawerHelpStyle}>
+        When on, checkout asks the payment provider (Stripe receipt_email,
+        PayPlus sendEmailApproval) to e-mail its own receipt to the buyer.
+        &quot;Off&quot; cannot promise that no receipt is sent: the
+        organizer&apos;s provider account may send one itself.
+      </p>
+      {query.isPending ? (
+        <div style={tabStatusStyle} role="status">Loading…</div>
+      ) : query.isError || !setting ? (
+        <TabError
+          error={query.error ?? new ApiError(0, { code: "unknown", message: "No provider receipt setting in the answer" })}
+          retry={() => query.refetch()}
+          testid="orgs-drawer-provider-receipt-error"
+        />
+      ) : (
+        <>
+          <p style={tabStatusStyle} data-testid="orgs-drawer-provider-receipt-state">
+            Owner&apos;s choice: {setting.enabled ? "send" : "do not send"}.
+            Always send (platform): {setting.forced ? "on" : "off"}. Checkout
+            now: {setting.effective ? "asks for the receipt" : "does not ask"}.
+          </p>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={setting.forced}
+              disabled={forceMut.isPending}
+              onChange={(e) => forceMut.mutate(e.target.checked)}
+              data-testid="orgs-drawer-provider-receipt-forced"
+            />
+            Always send the provider receipt (overrides the owner)
+          </label>
+          {forceMut.isError ? (
+            <div style={tabStatusStyle} role="alert">{forceMut.error.message}</div>
+          ) : null}
+        </>
+      )}
+    </section>
   );
 }
 

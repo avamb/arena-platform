@@ -129,6 +129,9 @@ const REASON_REQUIRED_REGEX: readonly RegExp[] = [
   // orders/customers above.
   /^\/v1\/organizations\/[^/]+\/promo-codes(?:\/.*)?$/,
   /^\/v1\/organizations\/[^/]+\/promo-code-redemptions(?:\/.*)?$/,
+  // The organization's seller profile, read and written from the Payments tab
+  // for the provider-receipt switch (spec 51, decision R-6).
+  /^\/v1\/organizations\/[^/]+\/seller-profile$/,
   // The session gallery carries no org in its URL; hcatalog resolves the
   // session's org and demands the header from a superadmin on GET and PUT
   // (F-40, functional run 2026-09-19 — every read went out bare and 400'd).

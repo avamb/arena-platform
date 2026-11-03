@@ -286,6 +286,7 @@ func run() error {
 	registerContactFormHandler(registry, pool.Pool, cfg, salesNotifier, opsNotifier, logger)
 	registerOnboardingHandlers(registry, pool.Pool, cfg, opsNotifier, logger)
 	registerRefundSweepHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
+	registerPaymentReceiptHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerBillingReconcileHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
 	registerJobRetentionHandler(registry, pool.Pool, logger)
 	registerAnalyticsHandlers(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
