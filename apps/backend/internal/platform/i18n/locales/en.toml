@@ -1045,7 +1045,25 @@ other = "Categories"
 other = "Add another date to this event?"
 
 ["bot.wz.edit_changed_meanwhile"]
-other = "Someone changed «{{.Name}}» elsewhere (on the site or in the admin) after you opened it. Save your version over it?"
+other = "Someone changed «{{.Name}}» elsewhere after you opened it: in the event center, the admin or the bot. Save your version over it?"
+
+["bot.wz.elsewhere_list"]
+other = "What changed there since you opened the edit:\n{{.List}}"
+
+["bot.wz.elsewhere_part"]
+other = "{{.What}}: changed"
+
+["bot.wz.elsewhere_unknown"]
+other = "The name, description, poster, age and promoter are as you opened them. Another part changed, for example the dates or prices."
+
+["bot.wz.preview_conflict_footer"]
+other = "“Save anyway” writes your version over their changes. To start from the new version, press “Cancel”, then “Delete the changes”, and open the event again."
+
+["bot.wz.preview_check_failed"]
+other = "⚠ We could not check whether someone changed the event elsewhere. The bot checks again when you press “Publish”."
+
+["bot.wz.edit_check_failed"]
+other = "We could not check whether someone changed «{{.Name}}» elsewhere. So we saved nothing. Press “Retry” in a minute. If you are sure about your version, press “Save anyway”."
 
 ["bot.wz.edit_saved"]
 other = "<b>Saved.</b> «{{.Name}}» is updated.{{.Link}}{{.Warnings}}"

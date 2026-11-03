@@ -6999,6 +6999,11 @@ export interface paths {
          *
          *     Rate-limited per-token and per-IP using the shared public-feed
          *     rate limiter (`publicFeedRL`).
+         *
+         *     An answer that lists a paid order's tickets is recorded in the
+         *     buyer's ticket access log (client IP, browser string, time); a repeat
+         *     from the same IP within ten minutes is not recorded again, so polling
+         *     does not multiply rows.
          */
         get: operations["getPublicCheckoutStatus"];
         put?: never;
@@ -7095,6 +7100,11 @@ export interface paths {
          *
          *     Rate-limited per-token and per-IP using the shared public-feed
          *     rate limiter.
+         *
+         *     Every successful download is recorded in the buyer's ticket access
+         *     log (checkout, ticket, client IP, browser string, time) — the
+         *     evidence a chargeback answer quotes. The ticket e-mail links each
+         *     ticket here with `src=email`.
          */
         get: operations["getPublicTicketPdf"];
         put?: never;
@@ -28331,6 +28341,15 @@ export interface components {
              *     `publication` is its first element.
              */
             publications?: components["schemas"]["ImportPublication"][];
+            /**
+             * Format: date-time
+             * @description The event's `updated_at` as this import left it, read inside the
+             *     import transaction while it still held the event's row lock. A
+             *     client that edits the event in several calls (one date per call)
+             *     compares it with a later read of the event to tell its own write
+             *     from somebody else's edit. Absent from a dry run.
+             */
+            event_updated_at?: string;
         };
         /**
          * @description Fields common to every `/compat/bil24/json` command. `fid` and
@@ -56590,7 +56609,14 @@ export interface operations {
     };
     getPublicTicketPdf: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description Where the link was followed from, only for the access log:
+                 *     `email` is the ticket e-mail's download link; anything else,
+                 *     or no value, is recorded as `web`. Never an error.
+                 */
+                src?: string;
+            };
             header?: never;
             path: {
                 /** @description Opaque checkout token identifying the session. */

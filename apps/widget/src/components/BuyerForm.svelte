@@ -55,6 +55,8 @@
      */
     consent?: SessionConsent | null;
     onSubmit: (values: BuyerFormValues) => void;
+    /** Called with the new value whenever the buyer edits the e-mail field. */
+    onEmailChange?: (email: string) => void;
   }
 
   const {
@@ -65,6 +67,7 @@
     withdrawalNotice = false,
     consent = null,
     onSubmit,
+    onEmailChange,
   }: Props = $props();
 
   // The checkout consent (P2). The tick lives in this component only: it is
@@ -95,6 +98,7 @@
   function onEmailInput(e: Event): void {
     email = (e.target as HTMLInputElement).value;
     emailSuggestion = suggestEmailFix(email);
+    onEmailChange?.(email);
     if (touched) {
       errors = validateBuyerForm({ email, name, phone }, buyerFields, locale as never);
     }
@@ -103,6 +107,7 @@
   function acceptSuggestion(): void {
     email = emailSuggestion ?? email;
     emailSuggestion = null;
+    onEmailChange?.(email);
     if (touched) {
       errors = validateBuyerForm({ email, name, phone }, buyerFields, locale as never);
     }
