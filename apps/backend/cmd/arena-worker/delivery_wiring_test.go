@@ -101,6 +101,15 @@ func TestBuildDeliveryHandlerOptions_CarriesTheTicketsOrigin(t *testing.T) {
 	}
 }
 
+// The ticket e-mail links each ticket's PDF on the public API (spec 51, R-13);
+// without the API origin it links nothing, so the worker must pass it on.
+func TestBuildDeliveryHandlerOptions_CarriesTheAPIOrigin(t *testing.T) {
+	cfg := &config.Config{APIPublicURL: "https://api.example/"}
+	if got := buildDeliveryHandlerOptions(cfg, nil, nil, testLogger()).APIBaseURL; got != "https://api.example" {
+		t.Errorf("APIBaseURL = %q", got)
+	}
+}
+
 // A letter links the contact form only when the page shows it: the worker
 // decides with the same config.ContactFormReady as arena-api, so in production
 // without the Turnstile keys no letter points to a page without a form.

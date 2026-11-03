@@ -383,6 +383,11 @@ type TicketLine struct {
 	// Void marks a ticket the refund letter reports as no longer valid for
 	// entry (its real state is cancelled).
 	Void bool
+	// DownloadURL is the ticket's own PDF on arena's public route, marked
+	// ?src=email so the download is logged as coming from the letter
+	// (migration 0184); empty prints no link. The PDF stays attached either
+	// way.
+	DownloadURL string
 }
 
 // PaymentData is the "Payment" block of the ticket e-mail: the numbers of the
