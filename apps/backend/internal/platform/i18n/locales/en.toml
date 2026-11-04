@@ -1796,7 +1796,7 @@ other = "✖ Clear search"
 other = "Sold {{.Sold}} of {{.Total}}, available {{.Available}}{{if .Held}}, held {{.Held}}{{end}}"
 
 ["bot.ec.refunds_line"]
-other = "Refunds: {{.Count}} for {{.Amount}}, net {{.Net}}"
+other = "Refunds: {{.Count}} for {{.Amount}}{{if .Cashback}}, cashback \"Refer a friend\": {{.CashbackCount}} for {{.Cashback}}{{end}}, net {{.Net}}"
 
 ["bot.ec.entered_line"]
 other = "Entered: {{.Used}} of {{.Total}}"
@@ -1859,7 +1859,7 @@ other = "Orders: paid {{.Paid}}, awaiting payment {{.Pending}}"
 other = "Places: sold {{.Sold}}, available {{.Available}}, held {{.Held}}, withheld {{.Unavailable}}, total {{.Total}}"
 
 ["bot.ec.sum_money"]
-other = "Paid {{.Paid}} in {{.Orders}} orders (discounts {{.Discount}}, service charge {{.Charge}})\nRefunds: {{.RefundCount}} for {{.Refunded}}{{if .External}}, of which {{.External}} outside the system{{end}}\nNet: <b>{{.Net}}</b>{{if .Pending}}\nAwaiting payment: {{.Pending}} in {{.PendingOrders}} orders{{end}}"
+other = "Paid {{.Paid}} in {{.Orders}} orders (discounts {{.Discount}}, service charge {{.Charge}})\nRefunds: {{.RefundCount}} for {{.Refunded}}{{if .External}}, of which {{.External}} outside the system{{end}}{{if .Cashback}}\nCashback \"Refer a friend\": {{.CashbackCount}} for {{.Cashback}}{{end}}\nNet: <b>{{.Net}}</b>{{if .Pending}}\nAwaiting payment: {{.Pending}} in {{.PendingOrders}} orders{{end}}"
 
 ["bot.ec.scope_all"]
 other = "All dates ({{.N}})"
@@ -5987,3 +5987,20 @@ other = "Arena could not do this. Nothing was sent. Open the dispute and try aga
 
 ["bot.dp.err_unavailable"]
 other = "Arena could not save this step, so nothing was sent. Try again in a minute."
+
+# "Refer a friend" on the order card (spec 52): the cashback this order earned
+# as a referrer's order, and the code it used as a friend's order.
+["bot.ord.ref_paid"]
+other = "\n🤝 Cashback \"Refer a friend\": {{.Amount}} paid on {{.When}}, friend's order {{.Friend}}"
+
+["bot.ord.ref_pending"]
+other = "\n🤝 Cashback \"Refer a friend\": {{.Amount}} on its way, friend's order {{.Friend}}"
+
+["bot.ord.ref_unpaid"]
+other = "\n🤝 Cashback \"Refer a friend\" for friend's order {{.Friend}} was not paid"
+
+["bot.ord.ref_code"]
+other = "\n🤝 Bought with the referrer's code <b>{{.Code}}</b>{{if .Referrer}}, referrer's order {{.Referrer}}{{end}}"
+
+["bot.ord.ref_more"]
+other = "\n…and {{.N}} more friends' orders"

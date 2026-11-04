@@ -128,7 +128,8 @@ ON CONFLICT (sales_link_id, day, country) DO UPDATE
 
 -- name: SalesLinkOrdersAggregate :many
 -- Per currency: orders that were ever paid, their tickets, and the revenue =
--- sum of orders.total minus the SUCCEEDED refunds of those orders. A refund
+-- sum of orders.total minus the SUCCEEDED refunds of those orders, the "Refer
+-- a friend" cashback paid on them included (it left the organizer too). A refund
 -- reaches exactly ONE order: order_id, else its ticket's order, else the order
 -- of its payment intent (the COALESCE order of ListSessionSummaryRefunds). The
 -- link must belong to the organization or the answer is empty. A refund is
@@ -154,7 +155,6 @@ refunded AS (
                 LIMIT  1))
     WHERE  r.state  = 'succeeded'
       AND  r.org_id = $2
-      AND  r.origin <> 'referral_cashback'
     GROUP  BY r.currency
 ),
 lines AS (

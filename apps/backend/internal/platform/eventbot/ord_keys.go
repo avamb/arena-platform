@@ -17,6 +17,7 @@ var ordKeys = []string{
 	"bot.ord.scan_gate", "bot.ord.scan_denied", "bot.ord.tk_active", "bot.ord.tk_cancelled", "bot.ord.tk_transferred",
 	"bot.ord.channel_line", "bot.ord.channel_hosted_page", "bot.ord.channel_widget", "bot.ord.channel_site",
 	"bot.ord.channel_other", "bot.ord.payment_line",
+	"bot.ord.ref_paid", "bot.ord.ref_pending", "bot.ord.ref_unpaid", "bot.ord.ref_code", "bot.ord.ref_more",
 	"bot.ord.letter_tickets_none", "bot.ord.letter_tickets_queued", "bot.ord.letter_tickets_partial_queued",
 	"bot.ord.letter_tickets_sent", "bot.ord.letter_tickets_delivered", "bot.ord.letter_tickets_opened",
 	"bot.ord.letter_tickets_partial", "bot.ord.letter_tickets_failed",

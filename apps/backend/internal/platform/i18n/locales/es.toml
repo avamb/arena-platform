@@ -1627,7 +1627,7 @@ other = "✖ Borrar búsqueda"
 other = "Vendidas {{.Sold}} de {{.Total}}, libres {{.Available}}{{if .Held}}, reservadas {{.Held}}{{end}}"
 
 ["bot.ec.refunds_line"]
-other = "Devoluciones: {{.Count}} por {{.Amount}}, neto {{.Net}}"
+other = "Devoluciones: {{.Count}} por {{.Amount}}{{if .Cashback}}, cashback «Trae a un amigo»: {{.CashbackCount}} por {{.Cashback}}{{end}}, neto {{.Net}}"
 
 ["bot.ec.entered_line"]
 other = "Han entrado: {{.Used}} de {{.Total}}"
@@ -1690,7 +1690,7 @@ other = "Pedidos: pagados {{.Paid}}, pendientes de pago {{.Pending}}"
 other = "Plazas: vendidas {{.Sold}}, libres {{.Available}}, reservadas {{.Held}}, bloqueadas {{.Unavailable}}, total {{.Total}}"
 
 ["bot.ec.sum_money"]
-other = "Pagado {{.Paid}} en {{.Orders}} pedidos (descuentos {{.Discount}}, gastos de gestión {{.Charge}})\nDevoluciones: {{.RefundCount}} por {{.Refunded}}{{if .External}}, de ellas {{.External}} fuera del sistema{{end}}\nNeto: <b>{{.Net}}</b>{{if .Pending}}\nPendiente de pago: {{.Pending}} en {{.PendingOrders}} pedidos{{end}}"
+other = "Pagado {{.Paid}} en {{.Orders}} pedidos (descuentos {{.Discount}}, gastos de gestión {{.Charge}})\nDevoluciones: {{.RefundCount}} por {{.Refunded}}{{if .External}}, de ellas {{.External}} fuera del sistema{{end}}{{if .Cashback}}\nCashback «Trae a un amigo»: {{.CashbackCount}} por {{.Cashback}}{{end}}\nNeto: <b>{{.Net}}</b>{{if .Pending}}\nPendiente de pago: {{.Pending}} en {{.PendingOrders}} pedidos{{end}}"
 
 ["bot.ec.scope_all"]
 other = "Todas las fechas ({{.N}})"
@@ -5818,3 +5818,19 @@ other = "Arena no pudo hacerlo. No se envió nada. Abre la disputa e inténtalo 
 
 ["bot.dp.err_unavailable"]
 other = "Arena no pudo guardar este paso, así que no se envió nada. Inténtalo en un minuto."
+
+# «Trae a un amigo» en la ficha del pedido (spec 52).
+["bot.ord.ref_paid"]
+other = "\n🤝 Cashback «Trae a un amigo»: {{.Amount}} pagado el {{.When}}, pedido del amigo {{.Friend}}"
+
+["bot.ord.ref_pending"]
+other = "\n🤝 Cashback «Trae a un amigo»: {{.Amount}} en camino, pedido del amigo {{.Friend}}"
+
+["bot.ord.ref_unpaid"]
+other = "\n🤝 Cashback «Trae a un amigo» del pedido del amigo {{.Friend}}: no se pagó"
+
+["bot.ord.ref_code"]
+other = "\n🤝 Comprado con el código de quien invitó: <b>{{.Code}}</b>{{if .Referrer}}, su pedido {{.Referrer}}{{end}}"
+
+["bot.ord.ref_more"]
+other = "\n…y {{.N}} pedidos de amigos más"

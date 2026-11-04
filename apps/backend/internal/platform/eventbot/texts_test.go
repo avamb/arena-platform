@@ -53,7 +53,7 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		// the sales state of a session (sessions_sales_state.go)
 		"Free": 4, "Sites": 1, "Attempts": 2,
 		// the Refer a friend screens (referral_dialog.go)
-		"Friend": "№1", "Referrer": "№2", "Cashback": 20, "Codes": 3, "Friends": 2,
+		"Friend": "№1", "Referrer": "№2", "Cashback": 20, "Codes": 3, "Friends": 2, "CashbackCount": 1,
 		// the Disputes screens (disputes_keys.go)
 		"Size": "12 KB", "Tag": " (t)",
 	}

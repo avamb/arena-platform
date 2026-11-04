@@ -17779,6 +17779,57 @@ export interface components {
              */
             stuck: boolean;
         };
+        /** @description An order's part in "Refer a friend" (spec 52). No buyer data, only order numbers and amounts. */
+        OrderReferral: {
+            /** @description One entry per friend order whose purchase earned this (the referrer's) order a cashback, oldest first; empty for an order that referred nobody. */
+            cashback: components["schemas"]["OrderReferralCashback"][];
+            /** @description The referrer's personal code this (a friend's) order used; null when it used none. */
+            used_code: components["schemas"]["OrderReferralCode"] | null;
+        };
+        /** @description The cashback one friend order earned the referrer. */
+        OrderReferralCashback: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the friend's order.
+             */
+            friend_order_id: string | null;
+            /**
+             * Format: int64
+             * @description The friend's order number (`orders.system_id`).
+             */
+            friend_order_number: number | null;
+            /** @description The reward state: due, sent (with the payment provider), paid (the money went back), capped, not_possible, failed or cancelled. */
+            state: string;
+            /**
+             * Format: int64
+             * @description The cashback, minor units of currency.
+             */
+            amount: number;
+            /** @description ISO 4217 currency. */
+            currency: string;
+            /** @description Set when the friend's order was refunded, partially refunded or disputed after the cashback; null otherwise. */
+            friend_reversal: string | null;
+            /**
+             * Format: date-time
+             * @description When the cashback refund succeeded, RFC 3339 in UTC; null until the money went back.
+             */
+            paid_at: string | null;
+        };
+        /** @description The personal code a friend's order used and the referrer's order behind it. */
+        OrderReferralCode: {
+            /** @description The personal code. */
+            code: string;
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the referrer's order the code was issued for.
+             */
+            referrer_order_id: string | null;
+            /**
+             * Format: int64
+             * @description The referrer's order number (`orders.system_id`).
+             */
+            referrer_order_number: number | null;
+        };
         /**
          * @description Order detail returned by GET
          *     /v1/organizations/{org_id}/orders/{id} (feature #489, W1-A6d, spec
@@ -17812,6 +17863,13 @@ export interface components {
              *     skipped/disabled ones).
              */
             delivery_state: string;
+            /**
+             * @description The order's part in "Refer a friend" (spec 52): the cashback
+             *     it earned as a referrer's order and the personal code it used
+             *     as a friend's order. Null when it has neither, or when the
+             *     lookup failed (the card still renders).
+             */
+            referral: components["schemas"]["OrderReferral"] | null;
             /** @description The buyer letter of the order's refund operations; null when the order has none. */
             refund_letter?: components["schemas"]["OrderRefundLetter"] | null;
             /** @description The payment intent behind the order (see OrderPaymentSummary for which one); null when the order has none — a gateway order paid on the selling site, an invitation, a free order. */
@@ -18509,12 +18567,22 @@ export interface components {
                 discount: number;
                 /**
                  * Format: int64
-                 * @description Succeeded refunds.
+                 * @description Succeeded refunds to buyers. The "Refer a friend" cashback is not one of them, see cashback.
                  */
                 refunded: number;
                 /**
                  * Format: int64
-                 * @description paid minus refunded.
+                 * @description Succeeded "Refer a friend" cashback refunds (spec 52), paid back to referrers out of their own payments.
+                 */
+                cashback_refunds: number;
+                /**
+                 * Format: int64
+                 * @description Their sum, minor units. Money the organizer returned, so it comes off net.
+                 */
+                cashback: number;
+                /**
+                 * Format: int64
+                 * @description paid minus refunded minus cashback, what the organizer kept.
                  */
                 net: number;
                 /**
@@ -18681,7 +18749,7 @@ export interface components {
             currency: string;
             /**
              * Format: int64
-             * @description Order totals minus succeeded refunds, in minor units.
+             * @description Order totals minus succeeded refunds, the "Refer a friend" cashback paid on these orders included, in minor units.
              */
             amount_minor: number;
         };
@@ -18795,12 +18863,22 @@ export interface components {
             discount: number;
             /**
              * Format: int64
-             * @description Succeeded refunds.
+             * @description Succeeded refunds to buyers. The "Refer a friend" cashback is not one of them, see cashback.
              */
             refunded: number;
             /**
              * Format: int64
-             * @description paid minus refunded.
+             * @description Succeeded "Refer a friend" cashback refunds (spec 52), paid back to referrers out of their own payments.
+             */
+            cashback_refunds: number;
+            /**
+             * Format: int64
+             * @description Their sum, minor units. Money the organizer returned, so it comes off net.
+             */
+            cashback: number;
+            /**
+             * Format: int64
+             * @description paid minus refunded minus cashback, what the organizer kept.
              */
             net: number;
             /**
@@ -25884,7 +25962,7 @@ export interface components {
             currency: string;
             /**
              * Format: int64
-             * @description Paid totals minus succeeded refunds, in minor units.
+             * @description Paid totals minus succeeded refunds, the "Refer a friend" cashback paid on these orders included, in minor units.
              */
             amount_minor: number;
         };

@@ -109,6 +109,17 @@ describe("SessionOverviewBody", () => {
     expect(html).toContain("Paid · 1 orders");
   });
 
+  it("shows Refer a friend cashback on its own only when there is some", () => {
+    expect(markup()).not.toContain("session-overview-cashback-CZK");
+    const withCashback: SessionSummary = {
+      ...summary,
+      money: [{ ...summary.money[0], cashback_refunds: 1, cashback: 4545, net: 104455 }],
+    };
+    const html = markup(withCashback);
+    expect(html).toContain('data-testid="session-overview-cashback-CZK"');
+    expect(html).toContain("Refer a friend cashback · 1");
+  });
+
   it("tells a seat sold here from one sold upstream", () => {
     const cells = tierRow(markup(), SEATED).match(/<td[^>]*>([^<]*)/g)?.map((c) => c.replace(/<td[^>]*>/, ""));
     // Category, Type, Price, Places, Free, Held, Sold here, Sold upstream, Withheld, Paid lines, Revenue

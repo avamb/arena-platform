@@ -12349,6 +12349,12 @@ type OrderDetail struct {
 	// PromoCodeId Promo code applied to this order, if any.
 	PromoCodeId *openapi_types.UUID `json:"promo_code_id"`
 
+	// Referral The order's part in "Refer a friend" (spec 52): the cashback
+	// it earned as a referrer's order and the personal code it used
+	// as a friend's order. Null when it has neither, or when the
+	// lookup failed (the card still renders).
+	Referral *OrderReferral `json:"referral"`
+
 	// RefundLetter The buyer letter of the order's refund operations; null when the order has none.
 	RefundLetter *OrderRefundLetter `json:"refund_letter"`
 
@@ -12684,6 +12690,39 @@ type OrderPaymentSummary struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// OrderReferral An order's part in "Refer a friend" (spec 52). No buyer data, only order numbers and amounts.
+type OrderReferral struct {
+	// Cashback One entry per friend order whose purchase earned this (the referrer's) order a cashback, oldest first; empty for an order that referred nobody.
+	Cashback []OrderReferralCashback `json:"cashback"`
+
+	// UsedCode The referrer's personal code this (a friend's) order used; null when it used none.
+	UsedCode *OrderReferralCode `json:"used_code"`
+}
+
+// OrderReferralCashback The cashback one friend order earned the referrer.
+type OrderReferralCashback struct {
+	// Amount The cashback, minor units of currency.
+	Amount int64 `json:"amount"`
+
+	// Currency ISO 4217 currency.
+	Currency string `json:"currency"`
+
+	// FriendOrderId UUIDv7 of the friend's order.
+	FriendOrderId *openapi_types.UUID `json:"friend_order_id"`
+
+	// FriendOrderNumber The friend's order number (`orders.system_id`).
+	FriendOrderNumber *int64 `json:"friend_order_number"`
+
+	// FriendReversal Set when the friend's order was refunded, partially refunded or disputed after the cashback; null otherwise.
+	FriendReversal *string `json:"friend_reversal"`
+
+	// PaidAt When the cashback refund succeeded, RFC 3339 in UTC; null until the money went back.
+	PaidAt *time.Time `json:"paid_at"`
+
+	// State The reward state: due, sent (with the payment provider), paid (the money went back), capped, not_possible, failed or cancelled.
+	State string `json:"state"`
+}
+
 // OrderReferralCashbackPaid Present on an order that is a friend's, when the referrer has been given
 // (or is being given) cashback for it. A refund to the friend does not
 // take that money back from the referrer.
@@ -12696,6 +12735,18 @@ type OrderReferralCashbackPaid struct {
 
 	// Currency Currency of the cashback.
 	Currency string `json:"currency"`
+}
+
+// OrderReferralCode The personal code a friend's order used and the referrer's order behind it.
+type OrderReferralCode struct {
+	// Code The personal code.
+	Code string `json:"code"`
+
+	// ReferrerOrderId UUIDv7 of the referrer's order the code was issued for.
+	ReferrerOrderId *openapi_types.UUID `json:"referrer_order_id"`
+
+	// ReferrerOrderNumber The referrer's order number (`orders.system_id`).
+	ReferrerOrderNumber *int64 `json:"referrer_order_number"`
 }
 
 // OrderRefundDetail A refund with its history.
@@ -16229,7 +16280,7 @@ type SalesLinkOrderStats struct {
 
 // SalesLinkRevenue Revenue of a sales link in one currency.
 type SalesLinkRevenue struct {
-	// AmountMinor Paid totals minus succeeded refunds, in minor units.
+	// AmountMinor Paid totals minus succeeded refunds, the "Refer a friend" cashback paid on these orders included, in minor units.
 	AmountMinor int64 `json:"amount_minor"`
 
 	// Currency ISO 4217 currency code.
@@ -18207,13 +18258,19 @@ type SessionSummary struct {
 
 	// Money The bottom line, one entry per currency.
 	Money []struct {
+		// Cashback Their sum, minor units. Money the organizer returned, so it comes off net.
+		Cashback int64 `json:"cashback"`
+
+		// CashbackRefunds Succeeded "Refer a friend" cashback refunds (spec 52), paid back to referrers out of their own payments.
+		CashbackRefunds int64 `json:"cashback_refunds"`
+
 		// Currency ISO 4217 currency.
 		Currency string `json:"currency"`
 
 		// Discount Discounts already deducted from paid.
 		Discount int64 `json:"discount"`
 
-		// Net paid minus refunded.
+		// Net paid minus refunded minus cashback, what the organizer kept.
 		Net int64 `json:"net"`
 
 		// Paid Total of those orders.
@@ -18228,7 +18285,7 @@ type SessionSummary struct {
 		// PendingOrders Orders still waiting for payment.
 		PendingOrders int64 `json:"pending_orders"`
 
-		// Refunded Succeeded refunds.
+		// Refunded Succeeded refunds to buyers. The "Refer a friend" cashback is not one of them, see cashback.
 		Refunded int64 `json:"refunded"`
 
 		// ServiceCharge Service charge included in paid.
@@ -18428,7 +18485,7 @@ type SessionSummarySource struct {
 
 // SessionSummarySourceRevenue The revenue of one source in one currency.
 type SessionSummarySourceRevenue struct {
-	// AmountMinor Order totals minus succeeded refunds, in minor units.
+	// AmountMinor Order totals minus succeeded refunds, the "Refer a friend" cashback paid on these orders included, in minor units.
 	AmountMinor int64 `json:"amount_minor"`
 
 	// Currency ISO 4217 currency code.
@@ -20119,13 +20176,19 @@ type SummaryEntered struct {
 
 // SummaryMoneyItem Money of one currency in minor units.
 type SummaryMoneyItem struct {
+	// Cashback Their sum, minor units. Money the organizer returned, so it comes off net.
+	Cashback int64 `json:"cashback"`
+
+	// CashbackRefunds Succeeded "Refer a friend" cashback refunds (spec 52), paid back to referrers out of their own payments.
+	CashbackRefunds int64 `json:"cashback_refunds"`
+
 	// Currency ISO 4217 currency.
 	Currency string `json:"currency"`
 
 	// Discount Discounts already deducted from paid.
 	Discount int64 `json:"discount"`
 
-	// Net paid minus refunded.
+	// Net paid minus refunded minus cashback, what the organizer kept.
 	Net int64 `json:"net"`
 
 	// Paid Total of those orders.
@@ -20140,7 +20203,7 @@ type SummaryMoneyItem struct {
 	// PendingOrders Orders still waiting for payment.
 	PendingOrders int64 `json:"pending_orders"`
 
-	// Refunded Succeeded refunds.
+	// Refunded Succeeded refunds to buyers. The "Refer a friend" cashback is not one of them, see cashback.
 	Refunded int64 `json:"refunded"`
 
 	// ServiceCharge Service charge included in paid.

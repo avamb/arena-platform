@@ -5931,6 +5931,70 @@ components:
             letters: the buyer most likely has no letter. letter_failed is
             also true then.
 
+    OrderReferral:
+      type: object
+      required: [cashback, used_code]
+      description: An order's part in "Refer a friend" (spec 52). No buyer data, only order numbers and amounts.
+      properties:
+        cashback:
+          type: array
+          description: One entry per friend order whose purchase earned this (the referrer's) order a cashback, oldest first; empty for an order that referred nobody.
+          items:
+            $ref: "#/components/schemas/OrderReferralCashback"
+        used_code:
+          description: The referrer's personal code this (a friend's) order used; null when it used none.
+          oneOf:
+            - $ref: "#/components/schemas/OrderReferralCode"
+            - type: "null"
+
+    OrderReferralCashback:
+      type: object
+      required: [friend_order_id, friend_order_number, state, amount, currency, friend_reversal, paid_at]
+      description: The cashback one friend order earned the referrer.
+      properties:
+        friend_order_id:
+          type: [string, "null"]
+          format: uuid
+          description: UUIDv7 of the friend's order.
+        friend_order_number:
+          type: [integer, "null"]
+          format: int64
+          description: The friend's order number (`orders.system_id`).
+        state:
+          type: string
+          description: "The reward state: due, sent (with the payment provider), paid (the money went back), capped, not_possible, failed or cancelled."
+        amount:
+          type: integer
+          format: int64
+          description: The cashback, minor units of currency.
+        currency:
+          type: string
+          description: ISO 4217 currency.
+        friend_reversal:
+          type: [string, "null"]
+          description: Set when the friend's order was refunded, partially refunded or disputed after the cashback; null otherwise.
+        paid_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the cashback refund succeeded, RFC 3339 in UTC; null until the money went back.
+
+    OrderReferralCode:
+      type: object
+      required: [code, referrer_order_id, referrer_order_number]
+      description: The personal code a friend's order used and the referrer's order behind it.
+      properties:
+        code:
+          type: string
+          description: The personal code.
+        referrer_order_id:
+          type: [string, "null"]
+          format: uuid
+          description: UUIDv7 of the referrer's order the code was issued for.
+        referrer_order_number:
+          type: [integer, "null"]
+          format: int64
+          description: The referrer's order number (`orders.system_id`).
+
     OrderDetail:
       description: |
         Order detail returned by GET
@@ -5941,7 +6005,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/OrderSummary"
         - type: object
-          required: [event_name, session_start_at, venue_timezone, items, tickets, events, delivery, delivery_state, payment, unpaid_reason, channel, letters, letter_failed]
+          required: [event_name, session_start_at, venue_timezone, items, tickets, events, delivery, delivery_state, payment, unpaid_reason, channel, letters, letter_failed, referral]
           properties:
             event_name:
               type: string
@@ -5981,6 +6045,15 @@ components:
                 pending or processing; `failed` when a job failed and none
                 is pending; `none` otherwise (no tickets, no jobs, or only
                 skipped/disabled ones).
+            referral:
+              description: |
+                The order's part in "Refer a friend" (spec 52): the cashback
+                it earned as a referrer's order and the personal code it used
+                as a friend's order. Null when it has neither, or when the
+                lookup failed (the card still renders).
+              oneOf:
+                - $ref: "#/components/schemas/OrderReferral"
+                - type: "null"
             refund_letter:
               description: The buyer letter of the order's refund operations; null when the order has none.
               oneOf:
@@ -6843,7 +6916,7 @@ components:
           description: The bottom line, one entry per currency.
           items:
             type: object
-            required: [currency, paid_orders, paid, service_charge, discount, refunded, net, pending_orders, pending]
+            required: [currency, paid_orders, paid, service_charge, discount, refunded, cashback_refunds, cashback, net, pending_orders, pending]
             description: Money of one currency in minor units.
             properties:
               currency:
@@ -6868,11 +6941,19 @@ components:
               refunded:
                 type: integer
                 format: int64
-                description: Succeeded refunds.
+                description: Succeeded refunds to buyers. The "Refer a friend" cashback is not one of them, see cashback.
+              cashback_refunds:
+                type: integer
+                format: int64
+                description: Succeeded "Refer a friend" cashback refunds (spec 52), paid back to referrers out of their own payments.
+              cashback:
+                type: integer
+                format: int64
+                description: Their sum, minor units. Money the organizer returned, so it comes off net.
               net:
                 type: integer
                 format: int64
-                description: paid minus refunded.
+                description: paid minus refunded minus cashback, what the organizer kept.
               pending_orders:
                 type: integer
                 format: int64
@@ -7063,7 +7144,7 @@ components:
         amount_minor:
           type: integer
           format: int64
-          description: Order totals minus succeeded refunds, in minor units.
+          description: Order totals minus succeeded refunds, the "Refer a friend" cashback paid on these orders included, in minor units.
 
     SummaryEntered:
       type: object
@@ -7153,7 +7234,7 @@ components:
 
     SummaryMoneyItem:
       type: object
-      required: [currency, paid_orders, paid, service_charge, discount, refunded, net, pending_orders, pending]
+      required: [currency, paid_orders, paid, service_charge, discount, refunded, cashback_refunds, cashback, net, pending_orders, pending]
       description: Money of one currency in minor units.
       properties:
         currency:
@@ -7178,11 +7259,19 @@ components:
         refunded:
           type: integer
           format: int64
-          description: Succeeded refunds.
+          description: Succeeded refunds to buyers. The "Refer a friend" cashback is not one of them, see cashback.
+        cashback_refunds:
+          type: integer
+          format: int64
+          description: Succeeded "Refer a friend" cashback refunds (spec 52), paid back to referrers out of their own payments.
+        cashback:
+          type: integer
+          format: int64
+          description: Their sum, minor units. Money the organizer returned, so it comes off net.
         net:
           type: integer
           format: int64
-          description: paid minus refunded.
+          description: paid minus refunded minus cashback, what the organizer kept.
         pending_orders:
           type: integer
           format: int64
@@ -15473,7 +15562,7 @@ components:
         amount_minor:
           type: integer
           format: int64
-          description: Paid totals minus succeeded refunds, in minor units.
+          description: Paid totals minus succeeded refunds, the "Refer a friend" cashback paid on these orders included, in minor units.
 
     SalesLinkOrderStats:
       type: object

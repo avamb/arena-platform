@@ -406,6 +406,7 @@ type Querier interface {
 	AggregateSalesForEvent(ctx context.Context, eventID uuid.UUID) (EventReportAggRow, error)
 	AggregateComplimentaryForEvent(ctx context.Context, eventID uuid.UUID) (EventReportAggRow, error)
 	AggregateRefundsForEvent(ctx context.Context, eventID uuid.UUID) (EventReportAggRow, error)
+	AggregateReferralCashbackForEvent(ctx context.Context, eventID uuid.UUID) (EventReportAggRow, error)
 	AggregateScansForEvent(ctx context.Context, eventID uuid.UUID) (EventReportAggRow, error)
 
 	// Report delivery recipient resolution — dedup by email (feature #160)

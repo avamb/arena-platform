@@ -67,9 +67,12 @@ export function placeFigures(places: { seats: SessionPlaceCounts; ga: SessionPla
   };
 }
 
-/** Money lines worth showing: something was paid, is pending or was refunded. */
+/**
+ * Money lines worth showing: something was paid, is pending, was refunded or
+ * went back as "Refer a friend" cashback (which the server already took off net).
+ */
 export function moneyLines(money: readonly SummaryMoneyItem[]): SummaryMoneyItem[] {
-  return money.filter((m) => m.paid_orders > 0 || m.paid > 0 || m.refunded > 0 || m.pending > 0);
+  return money.filter((m) => m.paid_orders > 0 || m.paid > 0 || m.refunded > 0 || m.cashback > 0 || m.pending > 0);
 }
 
 /** The server's sales states, in the bot's order. Unknown values stay as they are. */

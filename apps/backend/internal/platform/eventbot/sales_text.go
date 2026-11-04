@@ -130,12 +130,23 @@ func (b *Bot) moneyBlock(loc string, m openapi.SummaryMoneyItem, refunds []opena
 		"Paid": FormatMoney(m.Paid, m.Currency, loc), "Orders": m.PaidOrders,
 	}) + "\n" + b.texts.T(loc, "bot.ec.refunds_line", map[string]any{
 		"Count": count, "Amount": FormatMoney(m.Refunded, m.Currency, loc), "Net": FormatMoney(m.Net, m.Currency, loc),
+		"Cashback": cashbackText(m, loc), "CashbackCount": m.CashbackRefunds,
 	})
+}
+
+// cashbackText is the "Refer a friend" cashback of a currency (spec 52),
+// formatted; "" when there is none, so the templates leave the part out.
+// It is money the organizer returned, already taken off m.Net.
+func cashbackText(m openapi.SummaryMoneyItem, loc string) string {
+	if m.Cashback == 0 {
+		return ""
+	}
+	return FormatMoney(m.Cashback, m.Currency, loc)
 }
 
 // hasMoney reports whether a currency's figures say anything.
 func hasMoney(m openapi.SummaryMoneyItem) bool {
-	return m.PaidOrders > 0 || m.Paid > 0 || m.Refunded > 0
+	return m.PaidOrders > 0 || m.Paid > 0 || m.Refunded > 0 || m.Cashback > 0
 }
 
 // totalsText is the numbers block of the event card: places, money by
