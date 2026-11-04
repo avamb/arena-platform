@@ -95,6 +95,13 @@ describe('product', () => {
       expect(box.classList.contains('constrain-height')).toBe(true);
     }
   });
+  it('keeps related cards square but fits their photos whole', () => {
+    const doc = dom(productView(ctx(), shop.products[6]));
+    const cards = doc.querySelectorAll('.related-products .card[data-square]');
+    expect(cards.length).toBeGreaterThan(0);
+    const css = readFileSync(join(__dirname, '../theme/arena-custom.css'), 'utf8');
+    expect(css).toMatch(/\.card\[data-square\] \.card__media \.media > img \{ object-fit: contain; \}/);
+  });
   it('strips scripts out of the description', () => {
     const p = { ...shop.products[1], body_html: '<p>ok</p><script>alert(1)</script>' };
     expect(productView(ctx(), p)).not.toContain('alert(1)');
