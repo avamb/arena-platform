@@ -24,3 +24,8 @@
 /* variant picker: the live page's <variant-radios> element is a plain block here */
 .variant-radios { display: block; }
 .quick-add__opener { display: contents; }
+
+/* "You may also like" keeps the live theme's square cards (one even row), but the
+   photo is fitted whole inside the square instead of cropped: a tall bottle lost
+   its neck and label, the landscape gift-set photo lost its sides. */
+.card[data-square] .card__media .media > img { object-fit: contain; }
