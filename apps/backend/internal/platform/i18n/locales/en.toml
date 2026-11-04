@@ -5003,6 +5003,9 @@ other = "Venues marked ✓ belong to other organizers and were checked by the pl
 ["shop.payment.description"]
 other = "{{.Org}}, order {{.Number}}"
 
+["shop.payment.shipping"]
+other = "Delivery"
+
 # --- salesnotify.shop.*: Telegram announcements of the merchandise shop ---
 ["salesnotify.shop.new_order"]
 other = "🛍 <b>New shop order</b> — {{.Org}}"

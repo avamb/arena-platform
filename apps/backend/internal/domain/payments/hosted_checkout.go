@@ -13,7 +13,33 @@
 //	if !ok { /* this provider cannot host a checkout page */ }
 package payments
 
-import "context"
+import (
+	"context"
+	"strings"
+)
+
+// HostedCheckoutLine is one receipt line of a hosted checkout: a label and
+// its amount in minor units. See CreateHostedCheckoutRequest.Lines.
+type HostedCheckoutLine struct {
+	Name   string
+	Amount int64
+}
+
+// LinesMatch reports whether lines can replace a single line of amount:
+// at least one line, every line positive and named, and the sum exactly amount.
+func LinesMatch(lines []HostedCheckoutLine, amount int64) bool {
+	if len(lines) == 0 {
+		return false
+	}
+	var sum int64
+	for _, l := range lines {
+		if l.Amount <= 0 || strings.TrimSpace(l.Name) == "" {
+			return false
+		}
+		sum += l.Amount
+	}
+	return sum == amount
+}
 
 // CreateHostedCheckoutRequest holds the parameters for creating a
 // provider-hosted checkout page.
@@ -27,6 +53,13 @@ type CreateHostedCheckoutRequest struct {
 	// ProductName is the buyer-facing label of the single line item, e.g.
 	// the event title. Providers usually require a non-empty value.
 	ProductName string
+	// Lines, when set, splits Amount into the lines a provider that prints
+	// line items on its receipt should show (AllPay: one items[] entry each,
+	// so a shop order's paid delivery is its own line on the tax document).
+	// The lines must be positive and sum to exactly Amount; otherwise, and for
+	// every provider that does not print lines, Amount is charged as ONE line
+	// named ProductName, as before.
+	Lines []HostedCheckoutLine
 	// CustomerEmail pre-fills the buyer's email on the hosted page. Optional.
 	CustomerEmail string
 	// ReceiptEmail, when set, asks the provider to e-mail its own receipt of

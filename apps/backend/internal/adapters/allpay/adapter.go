@@ -295,6 +295,31 @@ func (a *Adapter) vatCode() (string, error) {
 	return "", fmt.Errorf("allpay: vat code %q is not one of 0, 1, 3", a.cfg.VAT)
 }
 
+// checkoutItems is the items[] AllPay prints on the page and on the receipt it
+// issues through the connected accounting service. By default it is ONE line for
+// the whole cart: arena has already done every sum, discount and service charge,
+// and the price includes them. When the caller split the amount into lines that
+// add up to it exactly (a shop order's goods and its paid delivery), each line is
+// its own item with the same VAT code; lines that do not add up are ignored.
+func checkoutItems(name string, amount int64, lines []payments.HostedCheckoutLine, vat string) []any {
+	item := func(label string, minor int64) map[string]any {
+		return map[string]any{
+			"name":  truncateRunes(label, maxItemNameRunes),
+			"qty":   json.Number("1"),
+			"price": json.Number(MinorToMajor(minor)),
+			"vat":   json.Number(vat),
+		}
+	}
+	if !payments.LinesMatch(lines, amount) {
+		return []any{item(name, amount)}
+	}
+	out := make([]any, 0, len(lines))
+	for _, l := range lines {
+		out = append(out, item(strings.TrimSpace(l.Name), l.Amount))
+	}
+	return out
+}
+
 // CreateCheckoutSession creates the payment page and returns its URL.
 //
 // SessionID in the response is the order_id (arena's checkout session id):
@@ -326,14 +351,7 @@ func (a *Adapter) CreateCheckoutSession(ctx context.Context, req payments.Create
 
 	params := map[string]any{
 		"order_id": orderID,
-		// ONE line for the whole cart: arena has already done every per-ticket
-		// sum, discount and service charge, and the price includes them.
-		"items": []any{map[string]any{
-			"name":  truncateRunes(name, maxItemNameRunes),
-			"qty":   json.Number("1"),
-			"price": json.Number(MinorToMajor(req.Amount)),
-			"vat":   json.Number(vat),
-		}},
+		"items":    checkoutItems(name, req.Amount, req.Lines, vat),
 		// mode=api15 (AllPay API reference, getpayment): `currency_display` is
 		// REQUIRED and is "the currency of all amounts in the request"; the
 		// optional `currency_payment` is "the currency the card is charged in

@@ -161,9 +161,13 @@ func TestShopAllPay_CheckoutCallbackAndPartialRefund(t *testing.T) {
 	if ord["login"] != f.login || ord["order_id"] != o.ID.String() || ord["currency_display"] != "ILS" {
 		t.Fatalf("getpayment login %v order_id %v currency %v; want %s, the shop order %s, ILS", ord["login"], ord["order_id"], ord["currency_display"], f.login, o.ID)
 	}
+	// The paid delivery is its own receipt line: the goods (2 x 45) and the
+	// delivery (50), which add up to the charged total of 140.
 	items, _ := ord["items"].([]any)
-	if len(items) != 1 || fmt.Sprint(items[0].(map[string]any)["price"]) != allpay.MinorToMajor(o.Total) {
-		t.Fatalf("getpayment items = %v; want one line of %s", ord["items"], allpay.MinorToMajor(o.Total))
+	line := func(i int, key string) string { return fmt.Sprint(items[i].(map[string]any)[key]) }
+	if len(items) != 2 || line(0, "price") != allpay.MinorToMajor(o.Total-5000) || line(1, "price") != allpay.MinorToMajor(5000) ||
+		!strings.Contains(line(0, "name"), "order") || line(1, "name") != "Delivery" {
+		t.Fatalf("getpayment items = %v; want the goods line of %s and a Delivery line of 50", ord["items"], allpay.MinorToMajor(o.Total-5000))
 	}
 	if ord["webhook_url"] != shopAllPayAPIBase+f.webhookPath() {
 		t.Fatalf("webhook_url = %v; want %s", ord["webhook_url"], shopAllPayAPIBase+f.webhookPath())
