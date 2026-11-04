@@ -17,6 +17,15 @@ const SID = 'product__main';
 const MEDIA_SIZES =
   '(min-width: 1600px) 825px, (min-width: 990px) calc(55.0vw - 10rem), (min-width: 750px) calc((100vw - 11.5rem) / 2), calc(100vw / 1 - 4rem)';
 
+/**
+ * The live storefront's theme uses media_fit "cover" with "constrain to screen
+ * height": on a laptop screen the box is shorter than a tall bottle photo and the
+ * photo is cut at the top and bottom (2 Cats: a 824x780 box for a 0.64 photo).
+ * "contain" narrows the box to the photo's own ratio inside the same height, so
+ * the whole bottle is always visible. The owner asked for this over a 1:1 copy.
+ */
+export const MEDIA_FIT = 'media-fit-contain';
+
 function sectionPadding(cls: string, top: number, bottom: number): string {
   return `<style data-shopify>.${cls} {
       padding-top: ${Math.round(top * 0.75)}px;
@@ -48,7 +57,7 @@ function gallery(p: ShopProduct): string {
             data-media-id="${SID}-${mid}"
           >
 <div
-  class="product-media-container media-type-image media-fit-cover global-media-settings gradient constrain-height"
+  class="product-media-container media-type-image ${MEDIA_FIT} global-media-settings gradient constrain-height"
   style="--ratio: ${ratio}; --preview-ratio: ${ratio};"
 >
   <modal-opener class="product__modal-opener product__modal-opener--image no-js-hidden" data-modal="#ProductModal-${SID}">

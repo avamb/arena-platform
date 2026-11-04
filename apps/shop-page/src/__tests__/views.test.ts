@@ -85,6 +85,16 @@ describe('product', () => {
     expect(plain.length).toBe(4);
     expect(plain).not.toContain('/einatwinery/products/' + p.slug);
   });
+  it('fits the whole photo into the gallery box instead of cropping it', () => {
+    const doc = dom(productView(ctx(), shop.products[1]));
+    const boxes = Array.from(doc.querySelectorAll('.product__media-item .product-media-container'));
+    expect(boxes.length).toBeGreaterThan(0);
+    for (const box of boxes) {
+      expect(box.classList.contains('media-fit-contain')).toBe(true);
+      expect(box.classList.contains('media-fit-cover')).toBe(false);
+      expect(box.classList.contains('constrain-height')).toBe(true);
+    }
+  });
   it('strips scripts out of the description', () => {
     const p = { ...shop.products[1], body_html: '<p>ok</p><script>alert(1)</script>' };
     expect(productView(ctx(), p)).not.toContain('alert(1)');
