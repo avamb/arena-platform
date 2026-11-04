@@ -13,6 +13,11 @@ func TestLetterKindFor(t *testing.T) {
 		// The provider received the refund and refused it.
 		{StateNotPossible, "provider_declined", "", LetterUnavailable, true},
 		{StateNotPossible, "card_closed", "card_closed", LetterUnavailable, true},
+		// Stripe cancelled a refund it held 45 days for lack of balance.
+		{StateNotPossible, "insufficient_funds", "insufficient_funds", LetterUnavailable, true},
+		// The organizer's balance never covered it for 30 days (owner 03.11).
+		{StateNotPossible, ReasonBalanceTimeout, "", LetterUnavailable, true},
+		{StateCancelled, ReasonSessionCancelled, "", "", false},
 		// Nothing was promised, or the outcome is not final.
 		{StateSent, "", "", "", false},
 		{StateDue, "", "", "", false},

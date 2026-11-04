@@ -62,3 +62,54 @@ func FormatReferralReversal(in ReferralReversalInfo) string {
 	}
 	return b.String()
 }
+
+// ReferralPayoutInfo is what a payout notice says (spec 52 section 6.2, owner
+// decision 03.11.2026): cashbacks waiting for the organizer's Stripe balance
+// ("balance"), refunds Stripe holds pending ("pending"), or one cashback that
+// was not paid ("unpaid", with Code and FriendOrderNumber).
+type ReferralPayoutInfo struct {
+	Locale  string
+	OrgName string
+	// Kind is "balance", "pending" or "unpaid".
+	Kind        string
+	Count       int
+	AmountMinor int64
+	Currency    string
+	Code        string
+	// FriendOrderNumber is the friend's order number (orders.system_id).
+	FriendOrderNumber int64
+	// BalanceTimeout: an unpaid cashback the balance never covered (else the
+	// provider refused it).
+	BalanceTimeout bool
+}
+
+// referralPayoutKeys lists the payout notice keys, for the completeness test.
+var referralPayoutKeys = []string{
+	"salesnotify.referral.balance_title",
+	"salesnotify.referral.balance_body",
+	"salesnotify.referral.pending_title",
+	"salesnotify.referral.pending_body",
+	"salesnotify.referral.unpaid_title",
+	"salesnotify.referral.unpaid_body_balance",
+	"salesnotify.referral.unpaid_body_provider",
+}
+
+// FormatReferralPayout renders a payout notice (HTML parse mode).
+func FormatReferralPayout(in ReferralPayoutInfo) string {
+	data := map[string]any{
+		"Org":    esc(in.OrgName),
+		"Count":  in.Count,
+		"Code":   esc(in.Code),
+		"Number": in.FriendOrderNumber,
+		"Amount": esc(formatShopMoney(in.AmountMinor, in.Currency, in.Locale)),
+	}
+	body := in.Kind + "_body"
+	if in.Kind == "unpaid" {
+		body = "unpaid_body_provider"
+		if in.BalanceTimeout {
+			body = "unpaid_body_balance"
+		}
+	}
+	return say(in.Locale, "salesnotify.referral."+in.Kind+"_title", data) + "\n\n" +
+		say(in.Locale, "salesnotify.referral."+body, data)
+}

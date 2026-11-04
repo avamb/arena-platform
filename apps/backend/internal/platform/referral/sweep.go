@@ -39,12 +39,21 @@ type SweepReport struct {
 	Notified    int
 	Paused      int
 	Deactivated int
+	// Cancelled: due rewards whose friend got the money back first.
+	Cancelled int
+	// Told: payout notices to organizers (balance, pending, unpaid).
+	Told int
 }
 
 // Sweep is one pass. Each section runs even when an earlier one failed; the
 // errors are joined.
 //
-//  1. due rewards older than dueGrace with no live payout job are queued again;
+//  0. due ticket rewards whose friend already got the money back or opened a
+//     dispute are cancelled at once (the payout would cancel them after the
+//     event anyway);
+//  1. due rewards older than dueGrace with no live payout job are queued again
+//     once their next_attempt_at has come (a reward waiting for the event or
+//     for the organizer's balance carries it, wait.go);
 //  2. sent rewards (and those parked in manual review) are read back from
 //     their refunds: succeeded becomes paid, a refusal becomes not_possible.
 //     A PAID reward whose refund the provider or an operator later turned
@@ -56,7 +65,10 @@ type SweepReport struct {
 //     dispute, after the cashback was paid, is recorded on the reward
 //     (friend_reversal) and the organizer is told through the Notifier;
 //  4. a code with two such friends is paused for good (no route switches a code on),
-//     and a code whose referrer order is refunded or cancelled is deactivated.
+//     and a code whose referrer order is refunded or cancelled is deactivated;
+//  5. the organizer is told, once each, about cashbacks waiting for its
+//     balance, refunds the provider holds pending, and cashbacks that ended
+//     unpaid (notices.go).
 func (s *Service) Sweep(ctx context.Context) (SweepReport, error) {
 	var rep SweepReport
 	var errs []error
@@ -64,12 +76,16 @@ func (s *Service) Sweep(ctx context.Context) (SweepReport, error) {
 		name string
 		fn   func() error
 	}{
+		{"cancel due", func() (err error) { rep.Cancelled, err = s.cancelDueReversed(ctx); return }},
 		{"requeue", func() (err error) { rep.Requeued, err = s.requeueDue(ctx); return }},
 		{"read back", func() (err error) { rep.ReadBack, err = s.readBackSent(ctx); return }},
 		{"reversals", func() (err error) { rep.Reversed, err = s.markReversals(ctx); return }},
 		{"notify", func() (err error) { rep.Notified, err = s.notifyReversals(ctx); return }},
 		{"pause", func() (err error) { rep.Paused, err = s.pauseReversedCodes(ctx); return }},
 		{"deactivate", func() (err error) { rep.Deactivated, err = s.deactivateDeadCodes(ctx); return }},
+		{"balance notices", func() error { n, err := s.notifyBalanceWaits(ctx); rep.Told += n; return err }},
+		{"pending notices", func() error { n, err := s.notifyProviderPending(ctx); rep.Told += n; return err }},
+		{"unpaid notices", func() error { n, err := s.notifyUnpaid(ctx); rep.Told += n; return err }},
 	} {
 		if err := step.fn(); err != nil {
 			errs = append(errs, fmt.Errorf("referral sweep %s: %w", step.name, err))
@@ -315,7 +331,8 @@ func NewSweepHandler(s *Service, sched Scheduler) func(ctx context.Context, payl
 		rep, err := s.Sweep(ctx)
 		if (rep != SweepReport{}) {
 			s.logger.Info("referral sweep complete", "requeued", rep.Requeued, "read_back", rep.ReadBack,
-				"reversed", rep.Reversed, "notified", rep.Notified, "paused", rep.Paused, "deactivated", rep.Deactivated)
+				"reversed", rep.Reversed, "notified", rep.Notified, "paused", rep.Paused, "deactivated", rep.Deactivated,
+				"cancelled", rep.Cancelled, "told", rep.Told)
 		}
 		if err != nil {
 			// The next pass is already queued; do not make the worker retry

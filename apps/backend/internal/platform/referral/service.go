@@ -35,11 +35,15 @@ type Service struct {
 	pool     *pgxpool.Pool
 	engine   *refunds.Engine
 	notifier Notifier
-	logger   *slog.Logger
-	now      func() time.Time
+	// payoutNotifier is notifier when it also tells payout notices
+	// (notices.go), else a no-op.
+	payoutNotifier PayoutNotifier
+	logger         *slog.Logger
+	now            func() time.Time
 }
 
-// Options wires a Service. Notifier, Logger and Now are optional.
+// Options wires a Service. Notifier, Logger and Now are optional. A Notifier
+// that also implements PayoutNotifier posts the payout notices too.
 type Options struct {
 	Pool     *pgxpool.Pool
 	Engine   *refunds.Engine
@@ -53,6 +57,10 @@ func NewService(o Options) *Service {
 	s := &Service{pool: o.Pool, engine: o.Engine, notifier: o.Notifier, logger: o.Logger, now: o.Now}
 	if s.notifier == nil {
 		s.notifier = NopNotifier{}
+	}
+	s.payoutNotifier = nopPayoutNotifier{}
+	if pn, ok := s.notifier.(PayoutNotifier); ok {
+		s.payoutNotifier = pn
 	}
 	if s.logger == nil {
 		s.logger = slog.Default()

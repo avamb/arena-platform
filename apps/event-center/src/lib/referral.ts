@@ -49,6 +49,8 @@ export const SHOP_TEXT_KEYS = [
   "referral.reason.other",
   "referral.reason.no_refundable_ticket",
   "referral.reason.shop_not_supported",
+  // The shop still pays right after the friend pays; an event pays after the event.
+  "referral.rules.payout",
 ] as const;
 
 /** The default target of the helpers: an event (its words are the shared ones). */
@@ -295,6 +297,9 @@ const REWARD_REASONS = [
   "card_closed",
   "card_unavailable",
   "friend_refunded",
+  "session_cancelled",
+  "balance_timeout",
+  "insufficient_funds",
   "friend_disputed",
   "friend_not_paid",
   "shop_not_supported",

@@ -64,7 +64,9 @@ const ReasonProviderDeclined = "provider_declined"
 // reason except these": it goes out only when the refund really reached the
 // provider and the provider refused it. That is, the reason is
 // ReasonProviderDeclined, or it is the provider's own failure code
-// (providerCode, which resultOf sets to the reason in that case). Every reason
+// (providerCode, which resultOf sets to the reason in that case), or the
+// organizer's balance never covered the cashback for 30 days
+// (ReasonBalanceTimeout: owed, but never sent). Every other reason
 // the platform itself decided without asking the provider gets NO letter: no
 // ticket to take the money from, nothing to refund, the payment not succeeded,
 // no payment, the order not found, an unsupported provider, another currency,
@@ -76,7 +78,10 @@ func LetterKindFor(state, reason, providerCode string) (string, bool) {
 	case StatePaid:
 		return LetterSent, true
 	case StateNotPossible:
-		if reason == ReasonProviderDeclined || (providerCode != "" && reason == providerCode) {
+		// ReasonBalanceTimeout: the organizer's balance never covered the
+		// cashback (wait.go). The refund never reached the provider, but the
+		// referrer was owed it and is sent to the organizer all the same.
+		if reason == ReasonProviderDeclined || reason == ReasonBalanceTimeout || (providerCode != "" && reason == providerCode) {
 			return LetterUnavailable, true
 		}
 	}

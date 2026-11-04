@@ -376,3 +376,90 @@ func NewReferralReversalEmailHandler(opts ReferralReversalEmailOptions) worker.H
 		return nil
 	}
 }
+
+// ReferralPayoutEmailOptions are the dependencies of referral.organizer_email.
+type ReferralPayoutEmailOptions = ReferralReversalEmailOptions
+
+// NewReferralPayoutEmailHandler builds the worker handler of
+// referral.JobTypeOrganizerEmail: the letter to an organization's owners about
+// cashback payouts (owner decision 03.11.2026) — they wait for the Stripe
+// balance, Stripe holds them pending, or one was not paid and the organizer
+// settles with the referrer directly. The payload carries the figures the
+// sweep counted when it marked the rewards as told, so the letter says what
+// the chat said.
+func NewReferralPayoutEmailHandler(opts ReferralPayoutEmailOptions) worker.HandlerFunc {
+	logger := opts.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	renderer := opts.Templates
+	if renderer == nil {
+		r, err := templates.New()
+		if err != nil {
+			return func(context.Context, []byte) error {
+				return fmt.Errorf("delivery: referral payout templates unavailable: %w", err)
+			}
+		}
+		renderer = r
+	}
+	return func(ctx context.Context, payload []byte) error {
+		var p referral.PayoutNotice
+		if err := json.Unmarshal(payload, &p); err != nil || p.OrgID == uuid.Nil {
+			return nil // a payload nobody can read is never going to work
+		}
+		switch p.Kind {
+		case referral.NoticeBalance, referral.NoticePending, referral.NoticeUnpaid:
+		default:
+			return nil
+		}
+		if opts.Sender == nil || email.IsDevOnly(opts.Sender) {
+			logger.Info("delivery: referral payout e-mail skipped, no production e-mail sender configured")
+			return nil
+		}
+		var orgName string
+		if err := opts.DB.QueryRow(ctx, `SELECT name FROM organizations WHERE id = $1`, p.OrgID).Scan(&orgName); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil
+			}
+			return err
+		}
+		recipients, err := salesAlertRecipients(ctx, opts.DB, p.OrgID, false)
+		if err != nil {
+			return err
+		}
+		if len(recipients) == 0 {
+			logger.Error("delivery: referral payout notice has no recipient in the organization", slog.String("org_id", p.OrgID.String()))
+			return nil
+		}
+		data := templates.Data{
+			Branding: templates.Branding{OrgName: orgName},
+			Referral: &templates.ReferralData{
+				Notice: p.Kind, Count: p.Count, Amount: formatMoney(p.AmountMinor, p.Currency),
+				Code: p.Code, Order: strconv.FormatInt(p.FriendOrderNumber, 10),
+				BalanceTimeout: p.Reason == referral.ReasonBalanceTimeout,
+			},
+		}
+		sent := 0
+		var firstErr error
+		for _, rc := range recipients {
+			data.RecipientEmail = rc.email
+			out, rerr := renderer.Render(templates.TemplateKindReferralPayoutOrganizer, rc.locale, data)
+			if rerr != nil {
+				return rerr
+			}
+			if serr := opts.Sender.Send(ctx, email.Message{To: rc.email, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}); serr != nil {
+				logger.Warn("delivery: referral payout e-mail not sent", slog.String("org_id", p.OrgID.String()))
+				if firstErr == nil {
+					firstErr = serr
+				}
+				continue
+			}
+			sent++
+		}
+		// A retry would mail again everybody who already has it.
+		if sent == 0 {
+			return firstErr
+		}
+		return nil
+	}
+}

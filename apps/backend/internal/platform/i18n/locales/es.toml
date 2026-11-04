@@ -4950,6 +4950,27 @@ other = "Un amigo que usó el código <b>{{.Code}}</b> abrió una disputa por el
 ["salesnotify.referral.code_paused"]
 other = "El código <b>{{.Code}}</b> está detenido: no dará nuevos descuentos. Los pagos ya realizados se mantienen."
 
+["salesnotify.referral.balance_title"]
+other = "💳 <b>Trae a un amigo: el cashback espera tu saldo de Stripe</b> — {{.Org}}"
+
+["salesnotify.referral.balance_body"]
+other = "Para pagar el cashback a {{.Count}} comprador(es), tu saldo de Stripe necesita {{.Amount}} disponibles. Arena revisa el saldo cada pocas horas y paga en cuanto lo hay. Si no lo hay en 30 días, el cashback no se paga y pedimos a los compradores que te contacten."
+
+["salesnotify.referral.pending_title"]
+other = "⏳ <b>Trae a un amigo: Stripe retiene el cashback</b> — {{.Org}}"
+
+["salesnotify.referral.pending_body"]
+other = "Stripe aceptó el reembolso del cashback a {{.Count}} comprador(es), {{.Amount}} en total, pero aún no lo ha pagado. Normalmente significa que tu saldo de Stripe es insuficiente. Recárgalo: Stripe cancela un reembolso sin fondos a los 45 días."
+
+["salesnotify.referral.unpaid_title"]
+other = "❌ <b>Trae a un amigo: el cashback no se pagó</b> — {{.Org}}"
+
+["salesnotify.referral.unpaid_body_balance"]
+other = "El cashback de {{.Amount}} del pedido del amigo №{{.Number}} (código <b>{{.Code}}</b>) no se pagó: durante 30 días tu saldo de Stripe no lo cubrió. Pedimos al comprador que trajo al amigo que te contacte. Arréglalo tú con él, por ejemplo con un código promocional."
+
+["salesnotify.referral.unpaid_body_provider"]
+other = "El cashback de {{.Amount}} del pedido del amigo №{{.Number}} (código <b>{{.Code}}</b>) no se pagó: el proveedor de pago rechazó el reembolso. Pedimos al comprador que trajo al amigo que te contacte. Arréglalo tú con él, por ejemplo con un código promocional."
+
 ["bot.rfp.btn"]
 other = "🤝 Trae a un amigo"
 
@@ -5095,7 +5116,7 @@ other = "Sin límite"
 other = "Cancelar"
 
 ["bot.rfp.rules"]
-other = "<b>Revisa y activa</b>\n\nEl amigo obtiene un {{.Friend}} % de descuento. El comprador que lo trajo recupera el {{.Cashback}} % del precio de las entradas del amigo (con el descuento, sin el cargo por servicio), como máximo el {{.Cap}} % del precio de sus propias entradas. Amigos por código: {{.Max}}.\n\n<b>Reglas</b>\n1. El cashback se paga enseguida, cuando el amigo paga.\n2. Si el amigo devuelve la entrada después, el cashback sigue pagado. No se retira.\n3. La comisión del proveedor de pago no se devuelve.\n4. El dinero vuelve a la tarjeta con la que pagó el comprador. Si no es posible, no se paga nada y el dinero se queda contigo. Arena dice al comprador que te contacte.\n5. Los pagos son automáticos. Para detener los descuentos y el cashback nuevos, pulsa Pausa."
+other = "<b>Revisa y activa</b>\n\nEl amigo obtiene un {{.Friend}} % de descuento. El comprador que lo trajo recupera el {{.Cashback}} % del precio de las entradas del amigo (con el descuento, sin el cargo por servicio), como máximo el {{.Cap}} % del precio de sus propias entradas. Amigos por código: {{.Max}}.\n\n<b>Reglas</b>\n1. El cashback se paga después del evento: un día después de que termine la sesión del amigo.\n2. Si el amigo recupera su dinero o abre una disputa antes, no hay cashback. Una vez pagado, no se retira.\n3. El cashback sale de tu saldo de Stripe. Si no alcanza, Arena te avisa y espera hasta 30 días. Después el cashback no se paga y lo arreglas tú con el comprador.\n4. La comisión del proveedor de pago no se devuelve.\n5. El dinero vuelve a la tarjeta con la que pagó el comprador. Si no es posible, no se paga nada y el dinero se queda contigo. Arena dice al comprador que te contacte.\n6. Los pagos son automáticos. Para detener los descuentos y el cashback nuevos, pulsa Pausa."
 
 ["bot.rfp.edit_confirm"]
 other = "<b>Revisa y guarda</b>\n\nEl amigo obtiene un {{.Friend}} % de descuento. El comprador que lo trajo recupera el {{.Cashback}} % del precio de las entradas del amigo (con el descuento, sin el cargo por servicio), como máximo el {{.Cap}} % del precio de sus propias entradas. Amigos por código: {{.Max}}.\n\nLos valores nuevos valen para los códigos nuevos. Los códigos ya emitidos conservan los suyos."

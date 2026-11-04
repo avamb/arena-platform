@@ -51,6 +51,13 @@ func (r Refund) Accepted() bool {
 	return r.State == StateSucceeded || (r.State == StateProviderPending && r.ProviderRefundID != nil)
 }
 
+// cashbackOnly reports a "refer a friend" cashback that cancels no ticket
+// (spec 52): money only, so a provider's later failure has nothing for an
+// operator to undo, and a pending one may wait for the organizer's balance.
+func (r Refund) cashbackOnly() bool {
+	return r.Origin == OriginReferralCashback && !r.CancelTicket
+}
+
 // fromTicketCancel reports a ticket-less refund written by POST
 // /v1/tickets/{id}/cancel with refund_mode=automatic: it speaks for the one
 // ticket the operator already cancelled (linked through tickets.refund_id),
