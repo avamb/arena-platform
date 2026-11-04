@@ -4834,6 +4834,9 @@ other = "Los recintos con ✓ son de otros organizadores y los ha comprobado la 
 ["shop.payment.description"]
 other = "{{.Org}}, pedido n.º {{.Number}}"
 
+["shop.payment.shipping"]
+other = "Envío"
+
 # --- salesnotify.shop.*: Telegram announcements of the merchandise shop ---
 ["salesnotify.shop.new_order"]
 other = "🛍 <b>Nuevo pedido de la tienda</b> — {{.Org}}"

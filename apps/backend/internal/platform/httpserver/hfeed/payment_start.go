@@ -196,7 +196,9 @@ type HostedCheckoutRequest struct {
 	Amount            int64
 	Currency          string
 	ProductName       string
-	BuyerEmail        string
+	// Lines optionally splits Amount into receipt lines (payments.CreateHostedCheckoutRequest.Lines).
+	Lines      []payments.HostedCheckoutLine
+	BuyerEmail string
 	// BuyerName and BuyerPhone are what the buyer typed, if anything. A
 	// provider may pre-fill its page with them (AllPay also hides its
 	// Israeli ID field for a foreign phone).
@@ -496,6 +498,7 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 		Amount:            req.Amount,
 		Currency:          req.Currency,
 		ProductName:       req.ProductName,
+		Lines:             req.Lines,
 		CustomerEmail:     req.BuyerEmail,
 		ReceiptEmail:      s.receiptEmail(ctx, req.OrgID, req.BuyerEmail),
 		CustomerName:      strings.TrimSpace(req.BuyerName),

@@ -6,6 +6,7 @@ import (
 
 	goi18n "github.com/nicksnyder/go-i18n/v2/i18n"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/domain/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 )
@@ -35,6 +36,44 @@ func paymentDescription(b *i18n.Bundle, locale, org string, number int64) string
 		MessageID:    paymentDescriptionKey,
 		TemplateData: map[string]any{"Org": org, "Number": n},
 	})
+	if err != nil || msg == "" {
+		return fallback
+	}
+	return msg
+}
+
+// paymentShippingKey is the catalog key of the delivery line on the receipt.
+const paymentShippingKey = "shop.payment.shipping"
+
+// receiptLines splits a shop order's total into the receipt lines a provider
+// that prints them shows: the goods (the purpose line, with every discount
+// already applied) and, when the order carries a paid delivery, the delivery as
+// its own line. Without a paid delivery, or when the delivery is not smaller than
+// the total, it is nil and the provider charges one line as before.
+func receiptLines(b *i18n.Bundle, locale, org string, number, total, shipping int64) []payments.HostedCheckoutLine {
+	if shipping <= 0 || shipping >= total {
+		return nil
+	}
+	return []payments.HostedCheckoutLine{
+		{Name: paymentDescription(b, locale, org, number), Amount: total - shipping},
+		{Name: localizeOr(b, locale, paymentShippingKey, nil, "Delivery"), Amount: shipping},
+	}
+}
+
+// localizeOr is the catalog message in the buyer's language, or fallback when
+// there is no bundle or the lookup fails.
+func localizeOr(b *i18n.Bundle, locale, key string, data map[string]any, fallback string) string {
+	if b == nil {
+		return fallback
+	}
+	tag := strings.ToLower(strings.TrimSpace(locale))
+	if i := strings.IndexAny(tag, "-_"); i > 0 {
+		tag = tag[:i]
+	}
+	if tag == "" {
+		tag = "en"
+	}
+	msg, err := b.LocalizerFor(tag).Localize(&goi18n.LocalizeConfig{MessageID: key, TemplateData: data})
 	if err != nil || msg == "" {
 		return fallback
 	}

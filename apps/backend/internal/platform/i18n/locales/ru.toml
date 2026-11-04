@@ -4997,6 +4997,9 @@ other = "Площадки с отметкой ✓ принадлежат дру�
 ["shop.payment.description"]
 other = "{{.Org}}, заказ № {{.Number}}"
 
+["shop.payment.shipping"]
+other = "Доставка"
+
 # --- salesnotify.shop.*: Telegram announcements of the merchandise shop ---
 ["salesnotify.shop.new_order"]
 other = "🛍 <b>Новый заказ в магазине</b> — {{.Org}}"

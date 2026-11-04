@@ -295,6 +295,7 @@ func (h *Handler) HandlePublicCheckout(w http.ResponseWriter, r *http.Request) {
 		Amount:        o.Total,
 		Currency:      o.Currency,
 		ProductName:   paymentDescription(h.o.Bundle, b.Locale, sf.Org.Name, int64(o.Number)),
+		Lines:         receiptLines(h.o.Bundle, b.Locale, sf.Org.Name, int64(o.Number), o.Total, o.ShippingFee),
 		BuyerEmail:    o.BuyerEmail,
 		BuyerName:     o.BuyerName,
 		BuyerPhone:    o.BuyerPhone,

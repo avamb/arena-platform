@@ -184,6 +184,9 @@ other = "Naskenujte a kupte si vstupenky"
 ["shop.payment.description"]
 other = "{{.Org}}, objednávka č. {{.Number}}"
 
+["shop.payment.shipping"]
+other = "Doprava"
+
 # --- salesnotify.shop.*: Telegram announcements of the merchandise shop ---
 ["salesnotify.shop.new_order"]
 other = "🛍 <b>Nová objednávka v obchodě</b> — {{.Org}}"
