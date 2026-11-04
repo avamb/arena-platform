@@ -117,4 +117,9 @@ describe("order card", () => {
   it("draws nothing for an order with no part in the programme", async () => {
     expect(await renderInRouter(<OrderReferral orgId="org" order={order(null)} />)).toBe("");
   });
+
+  it("draws nothing for a card from a server that sends no referral field", async () => {
+    const old = { venue_timezone: "Europe/Madrid" } as unknown as OrderDetail;
+    expect(await renderInRouter(<OrderReferral orgId="org" order={old} />)).toBe("");
+  });
 });

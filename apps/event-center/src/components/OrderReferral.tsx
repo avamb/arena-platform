@@ -19,8 +19,11 @@ interface Props {
  */
 export function OrderReferral({ orgId, order }: Props) {
   const { t, locale } = useI18n();
+  // A server older than this field, and the mocked card, send no referral at all.
   const r = order.referral;
-  if (r === null || (r.cashback.length === 0 && r.used_code === null)) return null;
+  const cashback = r?.cashback ?? [];
+  const usedCode = r?.used_code ?? null;
+  if (cashback.length === 0 && usedCode === null) return null;
   const tz = order.venue_timezone;
   const friendOrder = (id: string | null, num: number | null) => {
     if (num === null) return null;
@@ -37,7 +40,7 @@ export function OrderReferral({ orgId, order }: Props) {
     <section className="ord-card" aria-labelledby="order-referral" data-testid="order-referral">
       <h2 id="order-referral">{t("order.referral.title")}</h2>
       <ul className="plain-list">
-        {r.cashback.map((c, i) => {
+        {cashback.map((c, i) => {
           const amount = formatMoney(c.amount, c.currency, locale);
           const kind = cashbackRowKind(c.state);
           const text =
@@ -57,17 +60,17 @@ export function OrderReferral({ orgId, order }: Props) {
             </li>
           );
         })}
-        {r.used_code !== null && (
+        {usedCode !== null && (
           <li data-testid="order-referral-code">
-            {t("order.referral.usedCode", { code: r.used_code.code })}
-            {r.used_code.referrer_order_number !== null && (
+            {t("order.referral.usedCode", { code: usedCode.code })}
+            {usedCode.referrer_order_number !== null && (
               <>
                 {" · "}
-                {r.used_code.referrer_order_id === null ? (
-                  t("order.referral.referrerOrder", { number: orderNumber(r.used_code.referrer_order_number) })
+                {usedCode.referrer_order_id === null ? (
+                  t("order.referral.referrerOrder", { number: orderNumber(usedCode.referrer_order_number) })
                 ) : (
-                  <Link to="/o/$orgId/orders/$orderId" params={{ orgId, orderId: r.used_code.referrer_order_id }}>
-                    {t("order.referral.referrerOrder", { number: orderNumber(r.used_code.referrer_order_number) })}
+                  <Link to="/o/$orgId/orders/$orderId" params={{ orgId, orderId: usedCode.referrer_order_id }}>
+                    {t("order.referral.referrerOrder", { number: orderNumber(usedCode.referrer_order_number) })}
                   </Link>
                 )}
               </>

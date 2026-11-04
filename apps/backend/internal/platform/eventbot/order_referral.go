@@ -29,15 +29,15 @@ func (b *Bot) referralLines(loc string, r *openapi.OrderReferral, tz string) str
 			"Amount": FormatMoney(c.Amount, c.Currency, loc),
 			"Friend": orderNumberText(c.FriendOrderNumber),
 		}
-		switch {
-		case c.State == "paid":
+		switch c.State {
+		case "paid":
 			when := ""
 			if c.PaidAt != nil {
 				when = Esc(FormatWhen(*c.PaidAt, tz))
 			}
 			args["When"] = when
 			out += b.texts.T(loc, "bot.ord.ref_paid", args)
-		case c.State == "due" || c.State == "sent":
+		case "due", "sent":
 			out += b.texts.T(loc, "bot.ord.ref_pending", args)
 		default:
 			out += b.texts.T(loc, "bot.ord.ref_unpaid", args)
