@@ -141,6 +141,11 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			return markFailed(ctx, opts, reportID, fmt.Errorf("aggregate refunds: %w", err), logger)
 		}
 
+		cashback, err := opts.ReportQueries.AggregateReferralCashbackForEvent(ctx, eventID)
+		if err != nil {
+			return markFailed(ctx, opts, reportID, fmt.Errorf("aggregate referral cashback: %w", err), logger)
+		}
+
 		scans, err := opts.ReportQueries.AggregateScansForEvent(ctx, eventID)
 		if err != nil {
 			return markFailed(ctx, opts, reportID, fmt.Errorf("aggregate scans: %w", err), logger)
@@ -169,6 +174,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		}{
 			{"sales", sales},
 			{"refunds", refunds},
+			{"referral_cashback", cashback},
 			{"complimentary", complimentary},
 			{"scans", scans},
 			{"commissions", commissions},

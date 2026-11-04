@@ -409,7 +409,7 @@ func (q *Queries) ListSessionSummaryTickets(ctx context.Context, sessionIDs []uu
 
 const listSessionSummaryRefunds = `-- name: ListSessionSummaryRefunds :many
 SELECT COALESCE(ro.session_id, rt.session_id, po.session_id) AS session_id,
-       r.settlement, r.state, r.currency,
+       r.settlement, r.state, r.currency, r.origin,
        count(*)                   AS refunds,
        COALESCE(sum(r.amount), 0)::bigint AS amount
 FROM   refunds r
@@ -418,16 +418,17 @@ LEFT JOIN tickets         rt ON rt.id = r.ticket_id
 LEFT JOIN payment_intents pi ON pi.id = r.payment_intent_id
 LEFT JOIN orders          po ON po.checkout_session_id = pi.checkout_session_id
 WHERE  COALESCE(ro.session_id, rt.session_id, po.session_id) = ANY($1::uuid[])
-  AND  r.origin <> 'referral_cashback'
-GROUP  BY COALESCE(ro.session_id, rt.session_id, po.session_id), r.settlement, r.state, r.currency`
+GROUP  BY COALESCE(ro.session_id, rt.session_id, po.session_id), r.settlement, r.state, r.currency, r.origin`
 
 // SessionSummaryRefundsRow totals the refunds of one (session, settlement,
-// state, currency) group. Amount is in minor units.
+// state, currency, origin) group. Amount is in minor units. Origin is
+// refunds.origin: referral_cashback rows are the "Refer a friend" cashback.
 type SessionSummaryRefundsRow struct {
 	SessionID  uuid.UUID `json:"session_id"`
 	Settlement string    `json:"settlement"`
 	State      string    `json:"state"`
 	Currency   string    `json:"currency"`
+	Origin     string    `json:"origin"`
 	Refunds    int64     `json:"refunds"`
 	Amount     int64     `json:"amount"`
 }
@@ -442,7 +443,7 @@ func (q *Queries) ListSessionSummaryRefunds(ctx context.Context, sessionIDs []uu
 	var items []SessionSummaryRefundsRow
 	for rows.Next() {
 		var i SessionSummaryRefundsRow
-		if err := rows.Scan(&i.SessionID, &i.Settlement, &i.State, &i.Currency, &i.Refunds, &i.Amount); err != nil {
+		if err := rows.Scan(&i.SessionID, &i.Settlement, &i.State, &i.Currency, &i.Origin, &i.Refunds, &i.Amount); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -602,7 +603,8 @@ const listSessionSummarySources = `-- name: ListSessionSummarySources :many
 -- (direct). One row per group and
 -- currency: orders and tickets count the orders of that currency, amount is
 -- sum(orders.total) minus the SUCCEEDED refunds of those orders in that
--- currency (minor units). A refund belongs to the order it names, else the
+-- currency, the "Refer a friend" cashback paid on them included (minor
+-- units), so the sources add up to the summary's net. A refund belongs to the order it names, else the
 -- order of the ticket it names, else the order of its payment intent's
 -- checkout session — the rule of SalesLinkOrdersAggregate.
 WITH paid AS (
@@ -629,7 +631,6 @@ refunded AS (
                 LIMIT  1))
     WHERE  r.state  = 'succeeded'
       AND  r.org_id = $2
-      AND  r.origin <> 'referral_cashback'
     GROUP  BY p.id, r.currency
 ),
 lines AS (

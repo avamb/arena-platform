@@ -394,6 +394,37 @@ func (q *Queries) AggregateRefundsForEvent(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// AggregateReferralCashbackForEvent
+// ─────────────────────────────────────────────────────────────────────────────
+
+const aggregateReferralCashbackForEvent = `-- name: AggregateReferralCashbackForEvent :one
+-- The "Refer a friend" cashback (spec 52) of an event: succeeded refunds of
+-- origin referral_cashback paid on the orders of its sessions. They are money
+-- the organizer returned to referrers, kept apart from the refunds to buyers
+-- (AggregateRefundsForEvent leaves them out).
+SELECT
+    COUNT(*)::bigint                                   AS quantity,
+    COALESCE(SUM(r.amount), 0)::bigint                 AS gross_amount,
+    COALESCE(SUM(r.amount), 0)::bigint                 AS net_amount,
+    COALESCE(MAX(r.currency), 'usd')                   AS currency
+FROM   refunds r
+JOIN   orders   o ON o.id = COALESCE(r.order_id, (SELECT t.order_id FROM tickets t WHERE t.id = r.ticket_id))
+JOIN   sessions s ON s.id = o.session_id
+WHERE  s.event_id = $1
+  AND  r.state    = 'succeeded'
+  AND  r.origin   = 'referral_cashback'`
+
+// AggregateReferralCashbackForEvent computes the succeeded "Refer a friend"
+// cashback refunds of an event. gross_amount = net_amount = their sum.
+func (q *Queries) AggregateReferralCashbackForEvent(
+	ctx context.Context,
+	eventID uuid.UUID,
+) (EventReportAggRow, error) {
+	row := q.db.QueryRow(ctx, aggregateReferralCashbackForEvent, eventID)
+	return scanEventReportAggRow(row)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // AggregateScansForEvent
 // ─────────────────────────────────────────────────────────────────────────────
 

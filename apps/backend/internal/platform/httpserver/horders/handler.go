@@ -325,7 +325,8 @@ func (h *Handler) HandleGet(w http.ResponseWriter, r *http.Request) {
 	resp["channel"] = extras.channel
 	resp["letters"] = extras.letters
 	resp["letter_failed"] = anyLetterFailed(extras.letters)
-	h.addRecipients(r.Context(), order.ID, extras.delivery) // letters.go
+	resp["referral"] = h.loadOrderReferral(r.Context(), order) // referral.go
+	h.addRecipients(r.Context(), order.ID, extras.delivery)    // letters.go
 	resp["refund_letter"] = h.refundLetter(r.Context(), order.ID)
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }

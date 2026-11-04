@@ -158,6 +158,8 @@ func (f *fakeDB) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
 		return &fakeRow{vals: []any{int64(1)}}
 	case strings.Contains(sql, "FROM   sales_channels"):
 		return &fakeRow{err: pgx.ErrNoRows}
+	case strings.Contains(sql, "-- name: GetOrderReferralCode"):
+		return &fakeRow{err: pgx.ErrNoRows}
 	case strings.Contains(sql, "-- name: GetOrderEventFacts"):
 		// 0-2: event name, session start, venue zone; same org predicate.
 		orgID, _ := args[1].(uuid.UUID)
@@ -190,6 +192,8 @@ func (f *fakeDB) Query(_ context.Context, sql string, _ ...any) (pgx.Rows, error
 		return &fakeRows{data: f.ticketDetailRows}, nil
 	case strings.Contains(sql, "FROM   payment_intents"):
 		return &fakeRows{data: f.intentRows}, nil
+	case strings.Contains(sql, "-- name: ListOrderReferralCashback"):
+		return &fakeRows{}, nil
 	case strings.Contains(sql, "-- name: ListSessionSummarySources"):
 		// Spec 43 section 4.5: selects FROM orders, so it must be matched
 		// before the generic orders case below swallows it.

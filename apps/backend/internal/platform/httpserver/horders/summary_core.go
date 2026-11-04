@@ -65,18 +65,27 @@ type summaryTier struct {
 
 // summaryMoney is the bottom line of one currency, in minor units. Paid covers
 // every order that was paid at some point (paid, partially_refunded,
-// refunded); Refunded counts succeeded refunds only; Net = Paid - Refunded.
+// refunded); Refunded counts succeeded refunds to buyers only; Cashback is
+// the succeeded "Refer a friend" cashback returned to referrers (spec 52,
+// refunds.origin = referral_cashback), CashbackRefunds how many such
+// refunds; Net = Paid - Refunded - Cashback, what the organizer kept.
 type summaryMoney struct {
-	Currency      string `json:"currency"`
-	PaidOrders    int64  `json:"paid_orders"`
-	Paid          int64  `json:"paid"`
-	ServiceCharge int64  `json:"service_charge"`
-	Discount      int64  `json:"discount"`
-	Refunded      int64  `json:"refunded"`
-	Net           int64  `json:"net"`
-	PendingOrders int64  `json:"pending_orders"`
-	Pending       int64  `json:"pending"`
+	Currency        string `json:"currency"`
+	PaidOrders      int64  `json:"paid_orders"`
+	Paid            int64  `json:"paid"`
+	ServiceCharge   int64  `json:"service_charge"`
+	Discount        int64  `json:"discount"`
+	Refunded        int64  `json:"refunded"`
+	CashbackRefunds int64  `json:"cashback_refunds"`
+	Cashback        int64  `json:"cashback"`
+	Net             int64  `json:"net"`
+	PendingOrders   int64  `json:"pending_orders"`
+	Pending         int64  `json:"pending"`
 }
+
+// originReferralCashback is refunds.origin of a "Refer a friend" cashback
+// (spec 52): money returned to the referrer, never a refund to a buyer.
+const originReferralCashback = "referral_cashback"
 
 type summaryOrders struct {
 	Status   string `json:"status"`
@@ -418,6 +427,16 @@ func foldMoney(orders []gen.SessionSummaryOrdersRow, refunds []gen.SessionSummar
 	type refundKey struct{ settlement, state, currency string }
 	refundGroups := map[refundKey]*summaryRefunds{}
 	for _, r := range refunds {
+		if r.Origin == originReferralCashback {
+			// Not a refund to a buyer: its own line, and only money that
+			// actually went back counts.
+			if r.State == "succeeded" {
+				m := moneyFor(r.Currency)
+				m.CashbackRefunds += r.Refunds
+				m.Cashback += r.Amount
+			}
+			continue
+		}
 		k := refundKey{r.Settlement, r.State, r.Currency}
 		g := refundGroups[k]
 		if g == nil {
@@ -461,7 +480,7 @@ func foldMoney(orders []gen.SessionSummaryOrdersRow, refunds []gen.SessionSummar
 	})
 	outMoney := make([]summaryMoney, 0, len(money))
 	for _, m := range money {
-		m.Net = m.Paid - m.Refunded
+		m.Net = m.Paid - m.Refunded - m.Cashback
 		outMoney = append(outMoney, *m)
 	}
 	sort.Slice(outMoney, func(i, j int) bool { return outMoney[i].Currency < outMoney[j].Currency })

@@ -6,6 +6,7 @@ import { useI18n, type MessageKey } from "@/lib/i18n";
 import { UNPAID_REASONS, orderNumber } from "@/lib/orders";
 import { BuyerContact } from "@/components/BuyerContact";
 import { OrderLetters } from "@/components/OrderLetters";
+import { OrderReferral } from "@/components/OrderReferral";
 import { OrderTickets } from "@/components/OrderTickets";
 import { CancelOrder } from "@/components/CancelOrder";
 import { RefundOrder } from "@/components/RefundOrder";
@@ -144,6 +145,8 @@ export function OrderScreen() {
           </dl>
         </div>
       </section>
+
+      <OrderReferral orgId={orgId} order={o} />
     </article>
   );
 }

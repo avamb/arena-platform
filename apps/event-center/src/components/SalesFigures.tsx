@@ -31,6 +31,12 @@ export function SalesFigures({ places, money, entered, invitations, compact = fa
               {" · "}
               {t("figures.orders", { count: n(m.paid_orders) })}
               {m.refunded > 0 && <> · {t("figures.refunded", { amount: formatMoney(m.refunded, m.currency, locale) })}</>}
+              {m.cashback > 0 && (
+                <>
+                  {" · "}
+                  {t("figures.cashback", { count: n(m.cashback_refunds), amount: formatMoney(m.cashback, m.currency, locale) })}
+                </>
+              )}
               {" · "}
               {t("figures.net", { amount: formatMoney(m.net, m.currency, locale) })}
               {m.pending > 0 && <> · {t("figures.pending", { amount: formatMoney(m.pending, m.currency, locale) })}</>}

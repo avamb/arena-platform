@@ -9,6 +9,7 @@ func TestAllLineCategories_HasCanonicalOrderAndIsExhaustive(t *testing.T) {
 	expected := []string{
 		CategorySales,
 		CategoryRefunds,
+		CategoryReferralCashback,
 		CategoryComplimentary,
 		CategoryScans,
 		CategoryCommissions,
@@ -54,20 +55,22 @@ func TestIsKnownLineCategory_Unknown(t *testing.T) {
 func TestCategoryStringConstants_AreStableWireStrings(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
-		"CategorySales":         CategorySales,
-		"CategoryRefunds":       CategoryRefunds,
-		"CategoryComplimentary": CategoryComplimentary,
-		"CategoryScans":         CategoryScans,
-		"CategoryCommissions":   CategoryCommissions,
-		"CategoryPayouts":       CategoryPayouts,
+		"CategorySales":            CategorySales,
+		"CategoryRefunds":          CategoryRefunds,
+		"CategoryReferralCashback": CategoryReferralCashback,
+		"CategoryComplimentary":    CategoryComplimentary,
+		"CategoryScans":            CategoryScans,
+		"CategoryCommissions":      CategoryCommissions,
+		"CategoryPayouts":          CategoryPayouts,
 	}
 	want := map[string]string{
-		"CategorySales":         "sales",
-		"CategoryRefunds":       "refunds",
-		"CategoryComplimentary": "complimentary",
-		"CategoryScans":         "scans",
-		"CategoryCommissions":   "commissions",
-		"CategoryPayouts":       "payouts",
+		"CategorySales":            "sales",
+		"CategoryRefunds":          "refunds",
+		"CategoryReferralCashback": "referral_cashback",
+		"CategoryComplimentary":    "complimentary",
+		"CategoryScans":            "scans",
+		"CategoryCommissions":      "commissions",
+		"CategoryPayouts":          "payouts",
 	}
 	for name, got := range cases {
 		if got != want[name] {

@@ -367,7 +367,6 @@ refunded AS (
                 LIMIT  1))
     WHERE  r.state  = 'succeeded'
       AND  r.org_id = $2
-      AND  r.origin <> 'referral_cashback'
     GROUP  BY r.currency
 ),
 lines AS (
@@ -398,8 +397,8 @@ type SalesLinkCurrencyTotals struct {
 
 // SalesLinkOrdersAggregate sums the orders that came through the link and
 // were ever paid, per currency: their count, their tickets, and the revenue =
-// sum of orders.total minus the SUCCEEDED refunds of those orders (minor
-// units). A refund is subtracted in its own currency. A link of another
+// sum of orders.total minus the SUCCEEDED refunds of those orders, the "Refer
+// a friend" cashback included (minor units). A refund is subtracted in its own currency. A link of another
 // organization gives no rows.
 func (q *Queries) SalesLinkOrdersAggregate(ctx context.Context, id, orgID uuid.UUID) ([]SalesLinkCurrencyTotals, error) {
 	rows, err := q.db.Query(ctx, salesLinkOrdersAggregate, id, orgID)
