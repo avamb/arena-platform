@@ -27,6 +27,15 @@ type settingsJSON struct {
 	MaxLineQty       int32      `json:"max_line_qty"`
 	Enabled          bool       `json:"enabled"`
 	UpdatedAt        *time.Time `json:"updated_at"`
+	// ModuleActive: the shop module is connected today (spec 61 4.3).
+	ModuleActive bool `json:"module_active"`
+	// ShopMode is "full", "orders_only" or null.
+	ShopMode *string `json:"shop_mode"`
+	// CanOpen: the storefront may be opened now (module connected, nothing
+	// in OpenBlockers).
+	CanOpen bool `json:"can_open"`
+	// OpenBlockers lists what keeps the storefront from opening (never null).
+	OpenBlockers []string `json:"open_blockers"`
 }
 
 func uuidPtrStr(id *uuid.UUID) *string {
@@ -43,7 +52,7 @@ func toSettingsJSON(v shop.SettingsView) settingsJSON {
 		ShippingFeeMinor: v.ShippingFeeMinor, ShippingLabel: v.ShippingLabel, CountryISO2: v.CountryISO2,
 		AgeGateMinAge: v.AgeGateMinAge, AnnouncementText: v.AnnouncementText, ContactEmail: v.ContactEmail,
 		LogisticsNote: v.LogisticsNote, SalesChannelID: uuidPtrStr(v.SalesChannelID), ShopDomain: v.ShopDomain,
-		MaxLineQty: v.MaxLineQty, Enabled: v.Enabled,
+		MaxLineQty: v.MaxLineQty, Enabled: v.Enabled, OpenBlockers: []string{},
 	}
 	if v.Configured {
 		t := v.UpdatedAt

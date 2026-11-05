@@ -337,7 +337,8 @@ func TestShop_CheckoutHasItsOwnAddressBudget(t *testing.T) {
 }
 
 // TestShop_StorefrontOpensOnlyWhenEnabled: saved settings alone do not open
-// the storefront; the owner cannot flip the switch.
+// the storefront; the owner flips the switch (spec 61), and only once the
+// payment config is verified.
 func TestShop_StorefrontOpensOnlyWhenEnabled(t *testing.T) {
 	f := newShopFixture(t)
 	_, variant := f.openShop(4500, 2)
@@ -350,15 +351,19 @@ func TestShop_StorefrontOpensOnlyWhenEnabled(t *testing.T) {
 		t.Fatalf("checkout in a closed shop = %d %v; want 404", code, body)
 	}
 	code, body, _ := f.do(http.MethodPut, f.orgPath(f.orgA, "/settings"), f.ownerA, `{"currency":"ILS","enabled":true}`)
-	if code != http.StatusForbidden || shopErrCode(body) != "shop.enabled_superadmin_only" {
-		t.Fatalf("owner opening the shop = %d %v; want 403 shop.enabled_superadmin_only", code, body)
+	if code != http.StatusUnprocessableEntity || shopErrCode(body) != "shop.cannot_open" {
+		t.Fatalf("owner opening the shop with an unverified payment config = %d %v; want 422 shop.cannot_open", code, body)
 	}
 	// Repeating the current value is not a change.
 	code, body, _ = f.do(http.MethodPut, f.orgPath(f.orgA, "/settings"), f.ownerA, `{"currency":"ILS","enabled":false}`)
 	if code != http.StatusOK || body["enabled"] != false {
 		t.Fatalf("owner saving with the current switch = %d %v", code, body)
 	}
-	f.exec(`UPDATE shop_settings SET enabled = true WHERE org_id = $1`, f.orgA)
+	f.exec(`UPDATE payment_provider_configs SET verification_status = 'ok' WHERE id = $1`, f.configA)
+	code, body, _ = f.do(http.MethodPut, f.orgPath(f.orgA, "/settings"), f.ownerA, `{"currency":"ILS","enabled":true}`)
+	if code != http.StatusOK || body["enabled"] != true {
+		t.Fatalf("owner opening the shop = %d %v; want 200 enabled", code, body)
+	}
 	if code, _, _ := f.do(http.MethodGet, "/v1/public/shop/"+f.orgASlug, "", ""); code != http.StatusOK {
 		t.Fatalf("catalog of an open shop = %d; want 200", code)
 	}

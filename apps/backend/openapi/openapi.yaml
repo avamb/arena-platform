@@ -1048,7 +1048,7 @@ components:
 
     MeOrganizationMembership:
       type: object
-      required: [id, org_id, org_name, org_display_number, role, status, joined_at, archived]
+      required: [id, org_id, org_name, org_display_number, role, status, joined_at, archived, modules, shop_mode]
       properties:
         id:
           type: string
@@ -1080,6 +1080,21 @@ components:
             (organizations.deleted_at is set). The membership stays listed so a
             client can show the organization as archived, but it must not offer
             it as a working organization.
+        modules:
+          type: array
+          description: |
+            The paid modules the organization has today (UTC day), sorted; empty
+            when none (spec 61 section 4.3). Today the only module is `shop`.
+          items:
+            type: string
+        shop_mode:
+          type: [string, "null"]
+          description: |
+            How much of the shop the organization has: `full` while the shop
+            module is connected today; `orders_only` after the module ended
+            while the organization still has open shop orders (awaiting payment,
+            in manual review, or paid and not shipped), when only the order
+            routes work; null when it has no shop section at all.
 
     MeAssignedNetwork:
       type: object
@@ -2576,6 +2591,22 @@ components:
           format: date-time
           description: ISO 8601 / RFC 3339 timestamp of last update
           example: "2024-01-01T00:00:00Z"
+        modules:
+          type: array
+          description: |
+            Only on GET /v1/organizations (the list): the paid modules the
+            organization has today (UTC day), sorted, empty when none (spec 61
+            section 4.3). Today the only module is `shop`. The Telegram bot lists
+            a platform superadmin's organizations from it.
+          items:
+            type: string
+        shop_mode:
+          type: [string, "null"]
+          description: |
+            Only on GET /v1/organizations (the list): `full` while the shop
+            module is connected today, `orders_only` after it ended while open
+            shop orders remain (only the order routes work), null for no shop
+            section.
 
     OrganizationDetail:
       description: |
@@ -26145,7 +26176,7 @@ components:
     ShopSettings:
       type: object
       description: The shop settings of an organization (migration 0172). Money in minor units of `currency`.
-      required: [org_id, configured, currency, shipping_fee_minor, shipping_label, announcement_text, logistics_note, max_line_qty, enabled]
+      required: [org_id, configured, currency, shipping_fee_minor, shipping_label, announcement_text, logistics_note, max_line_qty, enabled, module_active, shop_mode, can_open, open_blockers]
       properties:
         org_id:
           type: string
@@ -26193,11 +26224,296 @@ components:
           description: How many units of one variant an order may hold (1-99, 24 by default).
         enabled:
           type: boolean
-          description: Whether the storefront and its checkout are open. Only the platform operator opens or closes a shop; it starts closed.
+          description: |
+            Whether the storefront and its checkout are open. It starts closed;
+            the organization opens and closes it itself (owner, manager or
+            platform superadmin, `PUT .../shop/storefront`). While the shop
+            module is not connected the storefront is closed whatever this says.
         updated_at:
           type: [string, "null"]
           format: date-time
           description: When the settings were last saved; null when never.
+        module_active:
+          type: boolean
+          description: |
+            True when the shop module is connected today (spec 61). The settings
+            routes answer 404 `shop.module_not_enabled` otherwise, so on them it
+            is true.
+        shop_mode:
+          type: [string, "null"]
+          description: The organization's shop mode, `full` or `orders_only`, or null for none.
+        can_open:
+          type: boolean
+          description: True when the storefront could be opened now, the module is connected and `open_blockers` is empty.
+        open_blockers:
+          type: array
+          description: |
+            What keeps the storefront from opening, in this order:
+            `settings_not_saved` (the settings were never saved),
+            `no_active_product` (no product has status active) and
+            `payment_not_configured` (the shop's sales channel, or the
+            organization's live channels when the settings name none, has no
+            active payment provider config the provider has verified). Empty when
+            it can be opened. Computed also while the storefront is open.
+          items:
+            type: string
+
+    ShopStorefrontRequest:
+      type: object
+      description: Opens or closes the storefront and its checkout.
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+          description: True opens the storefront, false closes it.
+
+    OrgModulePeriod:
+      type: object
+      description: |
+        One period of a paid module of an organization (org_module_periods,
+        migration 0198). The module is connected on every UTC day from
+        `starts_on` to `ends_on`, both inclusive. A period is ended, never
+        deleted. Admin answers carry every field.
+      required: [id, org_id, module, starts_on, ends_on, monthly_price_minor, currency, status, created_at, ended_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id of the period.
+        org_id:
+          type: string
+          format: uuid
+          description: The organization.
+        module:
+          type: string
+          description: The module, today always `shop`.
+        starts_on:
+          type: string
+          format: date
+          description: First day of the period (UTC calendar day).
+        ends_on:
+          type: [string, "null"]
+          format: date
+          description: Last day of the period (UTC, inclusive); null when it has no end.
+        monthly_price_minor:
+          type: [integer, "null"]
+          format: int64
+          description: Individual monthly price in minor units of `currency`; null means the price list, 0 is free.
+        currency:
+          type: [string, "null"]
+          description: ISO 4217 code of the individual price; null with a null price.
+        status:
+          type: string
+          description: "`scheduled` (starts later), `in_force` (covers today) or `ended`."
+        created_at:
+          type: string
+          format: date-time
+          description: When the period was created.
+        ended_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the period was last ended or cut short; null when never.
+        reason:
+          type: string
+          description: Why the period was created (admin answers only).
+        created_by:
+          type: [string, "null"]
+          format: uuid
+          description: Superadmin who created the period (admin answers only).
+        ended_by:
+          type: [string, "null"]
+          format: uuid
+          description: Superadmin who last ended the period (admin answers only).
+
+    OrgModuleShopState:
+      type: object
+      description: The state of an organization's shop today, for the superadmin.
+      required: [mode, module_active, open_shop_orders, enabled, shop_domain, effective_monthly_minor, currency, price_source]
+      properties:
+        mode:
+          type: [string, "null"]
+          description: "`full`, `orders_only` or null (no shop section)."
+        module_active:
+          type: boolean
+          description: True when a shop period covers today.
+        open_shop_orders:
+          type: boolean
+          description: True when the organization has an open shop order (awaiting payment, in manual review, or paid and not shipped).
+        enabled:
+          type: boolean
+          description: The storefront switch the organization controls (false when the settings were never saved).
+        shop_domain:
+          type: [string, "null"]
+          description: The storefront host, set by a platform superadmin; null when none.
+        effective_monthly_minor:
+          type: [integer, "null"]
+          format: int64
+          description: |
+            The monthly price that applies today, in minor units of `currency`: the
+            individual price of the period covering today, else the price list's
+            `subscription` rule for `shop_module_month` in the organization's billing
+            currency; null when neither is known.
+        currency:
+          type: [string, "null"]
+          description: Currency of `effective_monthly_minor`.
+        price_source:
+          type: [string, "null"]
+          description: "`individual` or `price_list`; null when no price is known."
+
+    AdminOrgModulesResponse:
+      type: object
+      description: Every module period of an organization and the state of its shop.
+      required: [org_id, modules, items, shop]
+      properties:
+        org_id:
+          type: string
+          format: uuid
+          description: The organization.
+        modules:
+          type: array
+          description: The modules connected today, sorted.
+          items:
+            type: string
+        items:
+          type: array
+          description: Every period, oldest first per module.
+          items:
+            $ref: "#/components/schemas/OrgModulePeriod"
+        shop:
+          description: The shop's mode, storefront and price today.
+          allOf:
+            - $ref: "#/components/schemas/OrgModuleShopState"
+
+    ConnectShopModuleRequest:
+      type: object
+      description: Connects the shop module for a period.
+      properties:
+        starts_on:
+          type: [string, "null"]
+          format: date
+          description: First day (UTC); absent or null is today.
+        ends_on:
+          type: [string, "null"]
+          format: date
+          description: Last day (UTC, inclusive); absent or null has no end.
+        monthly_price_minor:
+          type: [integer, "null"]
+          format: int64
+          description: Individual monthly price in minor units, 0 is free; absent or null is the price list (0 today).
+        currency:
+          type: [string, "null"]
+          description: Currency of the individual price; absent with a price means the organization's billing currency.
+        reason:
+          type: [string, "null"]
+          description: Why the module is connected, stored on the period; absent uses X-Admin-Reason.
+
+    EndOrgModuleRequest:
+      type: object
+      description: Sets the last day of a module period.
+      required: [ends_on]
+      properties:
+        ends_on:
+          type: string
+          format: date
+          description: The last day (UTC, inclusive). Never later than the current end; the day before the period starts ends it before it began.
+        reason:
+          type: [string, "null"]
+          description: Why the module is ended, recorded in the audit row; absent uses X-Admin-Reason.
+
+    RepriceOrgModuleRequest:
+      type: object
+      description: Changes the monthly price of a module from a day on.
+      required: [from]
+      properties:
+        from:
+          type: string
+          format: date
+          description: First day of the new price (UTC); not before the period starts.
+        monthly_price_minor:
+          type: [integer, "null"]
+          format: int64
+          description: New individual monthly price in minor units, 0 is free; absent or null returns to the price list.
+        currency:
+          type: [string, "null"]
+          description: Currency of the new price; absent with a price means the organization's billing currency.
+        reason:
+          type: [string, "null"]
+          description: Why the price changes, stored on the new period; absent uses X-Admin-Reason.
+
+    OrgBillingModulePeriod:
+      type: object
+      description: One module period as the organization sees it, with the price that applies to it.
+      required: [id, org_id, module, starts_on, ends_on, monthly_price_minor, currency, status, created_at, ended_at, effective_monthly_minor, effective_currency]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id of the period.
+        org_id:
+          type: string
+          format: uuid
+          description: The organization.
+        module:
+          type: string
+          description: The module, today always `shop`.
+        starts_on:
+          type: string
+          format: date
+          description: First day of the period (UTC calendar day).
+        ends_on:
+          type: [string, "null"]
+          format: date
+          description: Last day of the period (UTC, inclusive); null when it has no end.
+        monthly_price_minor:
+          type: [integer, "null"]
+          format: int64
+          description: Individual monthly price in minor units of `currency`; null means the price list.
+        currency:
+          type: [string, "null"]
+          description: Currency of the individual price.
+        status:
+          type: string
+          description: "`scheduled`, `in_force` or `ended`."
+        created_at:
+          type: string
+          format: date-time
+          description: When the period was created.
+        ended_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the period was last ended; null when never.
+        effective_monthly_minor:
+          type: [integer, "null"]
+          format: int64
+          description: The monthly price of this period, its individual price else the price list's; null when unknown.
+        effective_currency:
+          type: [string, "null"]
+          description: Currency of `effective_monthly_minor`.
+
+    OrgBillingModulesResponse:
+      type: object
+      description: The organization's module periods and the monthly price that applies today.
+      required: [items, price_list_monthly_minor, effective_monthly_minor, currency, price_source]
+      properties:
+        items:
+          type: array
+          description: Every period, oldest first.
+          items:
+            $ref: "#/components/schemas/OrgBillingModulePeriod"
+        price_list_monthly_minor:
+          type: [integer, "null"]
+          format: int64
+          description: The price list's monthly price of the shop module for the organization's billing account; null when unknown.
+        effective_monthly_minor:
+          type: [integer, "null"]
+          format: int64
+          description: The monthly price that applies today, the individual price of the period covering today else the price list's.
+        currency:
+          type: [string, "null"]
+          description: Currency of `effective_monthly_minor`.
+        price_source:
+          type: [string, "null"]
+          description: "`individual` or `price_list`; null when no price is known."
 
     ShopSettingsUpdateRequest:
       type: object
@@ -26243,7 +26559,7 @@ components:
           description: How many units of one variant an order may hold, 1-99; absent or null keeps the stored value (24 for a new shop).
         enabled:
           type: [boolean, "null"]
-          description: Opens (true) or closes (false) the storefront and its checkout, platform superadmin only; absent, null or the current value keeps it.
+          description: Opens (true) or closes (false) the storefront and its checkout under the rules of `PUT .../shop/storefront`; absent, null or the current value keeps it.
         expected_updated_at:
           type: [string, "null"]
           format: date-time
@@ -30539,7 +30855,7 @@ paths:
         - bearerAuth: []
       responses:
         "200":
-          description: Array of active organizations
+          description: Array of active organizations, each with its paid modules today
           content:
             application/json:
               schema:
@@ -32841,6 +33157,293 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/admin/organizations/{org_id}/modules:
+    get:
+      operationId: getV1AdminOrganizationModules
+      summary: Admin - list the modules of an organization
+      description: "Every module period of the organization with all its fields, and the shop's state today: mode (full, orders_only or none), whether open shop orders remain, the storefront switch and domain, and the monthly price that applies today (the individual price of the period covering today, else the price list's). Requires JWT, superadmin.read and a platform superadmin (spec 61 section 4.4)."
+      tags: [v1, admin]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema: {type: string, format: uuid}
+      responses:
+        "200":
+          description: "The periods and the shop state."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminOrgModulesResponse"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller is not a platform superadmin (`org_module.superadmin_only`), an organization owner included"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Organization not found (`org_module.organization_not_found`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`org_module.failed`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "The database is unavailable (`dependency.database_unavailable`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/organizations/{org_id}/modules/shop:
+    post:
+      operationId: postV1AdminOrganizationModuleShop
+      summary: Admin - connect the shop module
+      description: "Connects the shop module from starts_on (today, UTC, when absent) to ends_on (no end when absent). No price means the price list (0 today); a price without a currency is in the organization's billing currency. Two periods of one module never share a day. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the reason in the same transaction."
+      tags: [v1, admin]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log.
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectShopModuleRequest"
+      responses:
+        "201":
+          description: "The new period."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgModulePeriod"
+        "400":
+          description: "Missing X-Admin-Reason (`superadmin.missing_reason`), or the body is not valid JSON of the expected shape (`org_module.invalid_body`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller is not a platform superadmin (`org_module.superadmin_only`), an organization owner included"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Organization not found (`org_module.organization_not_found`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The organization already has the module on some of these days (`org_module.overlap`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "A date, price or currency is invalid (`org_module.invalid`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`org_module.failed`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "The database or the audit log is unavailable"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/org-modules/{id}/end:
+    post:
+      operationId: postV1AdminOrgModuleEnd
+      summary: Admin - end a module period
+      description: "Sets the last day of a module period, never later than its current end. From the next UTC day the storefront is closed and the shop falls to orders_only while open shop orders remain; products, pages and buyers are kept. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the reason."
+      tags: [v1, admin]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: "Id of the period."
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log.
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EndOrgModuleRequest"
+      responses:
+        "200":
+          description: "The period with its new end."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgModulePeriod"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is not valid JSON of the expected shape"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller is not a platform superadmin (`org_module.superadmin_only`), an organization owner included"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Period not found (`org_module.not_found`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The period already ends on or before that day (`org_module.already_ended`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "ends_on is not a date or is earlier than the day before the period starts (`org_module.invalid`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`org_module.failed`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "The database or the audit log is unavailable"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/org-modules/{id}/reprice:
+    post:
+      operationId: postV1AdminOrgModuleReprice
+      summary: Admin - change the price of a module period
+      description: "Ends the period on the day before `from` and opens a new one from `from` with the new price and the old end, in one transaction. No price returns to the price list. Answers the NEW period. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the reason."
+      tags: [v1, admin]
+      security: [{bearerAuth: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: "Id of the period to reprice."
+          schema: {type: string, format: uuid}
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log.
+          schema: {type: string, minLength: 1}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RepriceOrgModuleRequest"
+      responses:
+        "200":
+          description: "The new period."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgModulePeriod"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is not valid JSON of the expected shape"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller is not a platform superadmin (`org_module.superadmin_only`), an organization owner included"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Period not found (`org_module.not_found`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The period ends before `from` (`org_module.already_ended`) or the new period would overlap another (`org_module.overlap`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "from, price or currency is invalid, or from is before the period starts (`org_module.invalid`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`org_module.failed`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "The database or the audit log is unavailable"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/admin/billing/white-label:
     get:
       operationId: getV1AdminBillingWhiteLabel
@@ -56378,6 +56981,58 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/organizations/{org_id}/billing/modules:
+    get:
+      operationId: getV1OrganizationBillingModules
+      summary: The organization's paid module periods
+      description: |
+        Read-only for the organizer: every module period of the organization
+        without the operator-only fields (reason, created_by, ended_by), each
+        with the monthly price that applies to it, and the price that applies
+        today (spec 61). Requires JWT or API key + the `billing.read` permission
+        and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The periods and the price.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgBillingModulesResponse"
+        "401":
+          description: "Missing or invalid JWT or API key."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Caller lacks `billing.read` or is not a member of the organization."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`org_module.failed`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "The database is unavailable (`dependency.database_unavailable`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/organizations/{org_id}/billing/white-label:
     get:
       operationId: getOrgBillingWhiteLabel
@@ -59662,7 +60317,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: The shop has no programme (`referral.program_not_found`, with the capability in `error.details`).
+          description: The shop has no programme (`referral.program_not_found`, with the capability in `error.details`). Also `shop.module_not_enabled` when the organization does not have the shop module today (spec 61).
           content:
             application/json:
               schema:
@@ -59767,6 +60422,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+        "404":
+          description: "The organization has no shop here (`shop.module_not_enabled`): the shop module is not connected today, spec 61."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/organizations/{org_id}/shop/referral-program/pause:
     post:
       operationId: postV1OrganizationsOrgIdShopReferralProgramPause
@@ -59811,7 +60472,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: The shop has no programme (`referral.program_not_found`).
+          description: The shop has no programme (`referral.program_not_found`). Also `shop.module_not_enabled` when the organization does not have the shop module today (spec 61).
           content:
             application/json:
               schema:
@@ -59878,7 +60539,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: The shop has no programme (`referral.program_not_found`).
+          description: The shop has no programme (`referral.program_not_found`). Also `shop.module_not_enabled` when the organization does not have the shop module today (spec 61).
           content:
             application/json:
               schema:
@@ -59946,7 +60607,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: The shop has no programme (`referral.program_not_found`).
+          description: The shop has no programme (`referral.program_not_found`). Also `shop.module_not_enabled` when the organization does not have the shop module today (spec 61).
           content:
             application/json:
               schema:
@@ -60021,6 +60682,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+        "404":
+          description: "The organization has no shop here (`shop.module_not_enabled`): the shop module is not connected today, spec 61."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/organizations/{org_id}/shop/referral-rewards:
     get:
       operationId: getV1OrganizationsOrgIdShopReferralRewards
@@ -60094,6 +60761,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+        "404":
+          description: "The organization has no shop here (`shop.module_not_enabled`): the shop module is not connected today, spec 61."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/organizations/{org_id}/events/{event_id}/page-stats:
     get:
       operationId: getV1OrganizationsOrgIdEventsEventIdPageStats
@@ -66010,6 +66683,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "The organization has no shop here (`shop.module_not_enabled`): the shop module is not connected today, spec 61."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     put:
       operationId: putShopSettings
       summary: Replace the shop settings
@@ -66018,9 +66697,12 @@ paths:
         `sales_channel_id` names the channel whose payment provider and the
         organization's payment config take the shop's money (absent: the
         organization's oldest channel whose provider can host a payment page with a
-        configured provider account). `shop_domain` and `enabled` (the switch that
-        opens the storefront and its checkout) may be changed by a platform
-        superadmin only (absent keeps them, `""` clears the domain).
+        configured provider account). `shop_domain` may be changed by a platform
+        superadmin only (absent keeps it, `""` clears it). `enabled` (the switch
+        that opens the storefront and its checkout) follows the rules of
+        `PUT .../shop/storefront`: any caller of this route may change it, and
+        opening needs saved settings, an active product and a verified payment
+        config (422 `shop.cannot_open`).
 
         Requires JWT or API key + the `shop.manage` permission and membership of the organization.
       tags: [v1]
@@ -66060,7 +66742,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "422":
-          description: A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`, `shop.invalid_max_line_qty`) or the payment provider of the sales channel cannot charge in the currency (`shop.currency_unsupported`; AllPay charges ILS, USD and EUR only).
+          description: A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`, `shop.invalid_max_line_qty`), the payment provider of the sales channel cannot charge in the currency (`shop.currency_unsupported`; AllPay charges ILS, USD and EUR only), or `enabled` true cannot open the storefront yet (`shop.cannot_open`, `details.blockers` lists `no_active_product` and/or `payment_not_configured`).
           content:
             application/json:
               schema:
@@ -66072,7 +66754,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "403":
-          description: Caller lacks `shop.manage`, is not a member, or is not a platform superadmin and tried to change `shop_domain` (`shop.domain_superadmin_only`) or `enabled` (`shop.enabled_superadmin_only`).
+          description: Caller lacks `shop.manage`, is not a member, or is not a platform superadmin and tried to change `shop_domain` (`shop.domain_superadmin_only`).
           content:
             application/json:
               schema:
@@ -66085,6 +66767,93 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "The organization has no shop here (`shop.module_not_enabled`): the shop module is not connected today, spec 61."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/storefront:
+    put:
+      operationId: putShopStorefront
+      summary: Open or close the storefront
+      description: |
+        Opens (`enabled` true) or closes (false) the storefront and its checkout
+        without rewriting the other settings (spec 61 section 3.4). Any caller
+        with `shop.manage` in the organization (owner, manager, platform
+        superadmin) may do it while the shop module is connected. Opening needs
+        saved settings, at least one active product and an active payment
+        provider config, verified by the provider, on the shop's sales channel;
+        otherwise 422 `shop.cannot_open` with `details.blockers` (codes as in
+        `open_blockers`). Closing always succeeds. Answers the settings.
+
+        Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShopStorefrontRequest"
+      responses:
+        "200":
+          description: The settings with the new switch.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopSettings"
+        "400":
+          description: "The body is not valid JSON for this route or has no `enabled` (`shop.invalid_body`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Missing or invalid JWT or API key."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Caller lacks `shop.manage` or is not a member of the organization."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "The organization does not have the shop module (`shop.module_not_enabled`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "The storefront cannot be opened yet (`shop.cannot_open`, `details.blockers` lists `settings_not_saved`, `no_active_product` and/or `payment_not_configured`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`shop.failed`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "The database is unavailable (`dependency.database_unavailable`)."
           content:
             application/json:
               schema:
@@ -66148,6 +66917,12 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "The organization has no shop here (`shop.module_not_enabled`): the shop module is not connected today, spec 61."
           content:
             application/json:
               schema:
@@ -66229,6 +67004,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "The organization has no shop here (`shop.module_not_enabled`): the shop module is not connected today, spec 61."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/organizations/{org_id}/shop/products/{product_id}:
     get:
       operationId: getShopProduct
@@ -66263,7 +67044,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ShopProduct"
         "404":
-          description: No such product in this organization (`shop.product_not_found`).
+          description: No such product in this organization (`shop.product_not_found`). Also `shop.module_not_enabled` when the organization does not have the shop module today (spec 61).
           content:
             application/json:
               schema:
@@ -66339,7 +67120,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: No such product in this organization (`shop.product_not_found`).
+          description: No such product in this organization (`shop.product_not_found`). Also `shop.module_not_enabled` when the organization does not have the shop module today (spec 61).
           content:
             application/json:
               schema:
@@ -66410,7 +67191,7 @@ paths:
         "204":
           description: Done; no body.
         "404":
-          description: No such product in this organization (`shop.product_not_found`).
+          description: No such product in this organization (`shop.product_not_found`). Also `shop.module_not_enabled` when the organization does not have the shop module today (spec 61).
           content:
             application/json:
               schema:
@@ -66487,7 +67268,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: No such product in this organization (`shop.product_not_found`).
+          description: No such product in this organization (`shop.product_not_found`). Also `shop.module_not_enabled` when the organization does not have the shop module today (spec 61).
           content:
             application/json:
               schema:
@@ -66563,7 +67344,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ShopProduct"
         "404":
-          description: No such product (`shop.product_not_found`) or the picture is not attached to it (`shop.image_not_found`).
+          description: No such product (`shop.product_not_found`) or the picture is not attached to it (`shop.image_not_found`). Also `shop.module_not_enabled` when the organization does not have the shop module today (spec 61).
           content:
             application/json:
               schema:
@@ -66642,7 +67423,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: No such product in this organization (`shop.product_not_found`).
+          description: No such product in this organization (`shop.product_not_found`). Also `shop.module_not_enabled` when the organization does not have the shop module today (spec 61).
           content:
             application/json:
               schema:
@@ -66734,6 +67515,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "The organization has no shop here (`shop.module_not_enabled`): the shop module is not connected today, spec 61."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/organizations/{org_id}/shop/pages/{slug}:
     put:
       operationId: putShopPage
@@ -66809,6 +67596,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "The organization has no shop here (`shop.module_not_enabled`): the shop module is not connected today, spec 61."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
     delete:
       operationId: deleteShopPage
       summary: Delete a storefront page
@@ -66837,7 +67630,7 @@ paths:
         "204":
           description: Done; no body.
         "404":
-          description: No such page (`shop.page_not_found`).
+          description: No such page (`shop.page_not_found`). Also `shop.module_not_enabled` when the organization does not have the shop module today (spec 61).
           content:
             application/json:
               schema:
@@ -66968,6 +67761,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "The organization has no shop here (`shop.module_not_enabled`): neither the shop module today nor an open shop order, spec 61."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/organizations/{org_id}/shop/orders/search:
     post:
       operationId: searchShopOrders
@@ -67037,6 +67836,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "The organization has no shop here (`shop.module_not_enabled`): neither the shop module today nor an open shop order, spec 61."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/organizations/{org_id}/shop/orders/counts:
     get:
       operationId: getShopOrderCounts
@@ -67089,6 +67894,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "The organization has no shop here (`shop.module_not_enabled`): neither the shop module today nor an open shop order, spec 61."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/organizations/{org_id}/shop/orders/{order_id}:
     get:
       operationId: getShopOrder
@@ -67126,7 +67937,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ShopOrder"
         "404":
-          description: No such order in this organization (`shop.order_not_found`).
+          description: No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor an open shop order (spec 61).
           content:
             application/json:
               schema:
@@ -67203,7 +68014,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: No such order in this organization (`shop.order_not_found`).
+          description: No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor an open shop order (spec 61).
           content:
             application/json:
               schema:
@@ -67290,7 +68101,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: No such order in this organization (`shop.order_not_found`).
+          description: No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor an open shop order (spec 61).
           content:
             application/json:
               schema:
@@ -67382,7 +68193,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: No such order in this organization (`shop.order_not_found`).
+          description: No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor an open shop order (spec 61).
           content:
             application/json:
               schema:
@@ -67461,7 +68272,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ShopOrder"
         "404":
-          description: No such order in this organization (`shop.order_not_found`).
+          description: No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor an open shop order (spec 61).
           content:
             application/json:
               schema:
@@ -67569,7 +68380,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: No such order in this organization (`shop.order_not_found`).
+          description: No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor an open shop order (spec 61).
           content:
             application/json:
               schema:
@@ -67684,7 +68495,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "404":
-          description: No such order in this organization (`shop.order_not_found`).
+          description: No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor an open shop order (spec 61).
           content:
             application/json:
               schema:
@@ -67755,7 +68566,7 @@ paths:
               schema:
                 type: string
         "404":
-          description: No such order in this organization (`shop.order_not_found`).
+          description: No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor an open shop order (spec 61).
           content:
             application/json:
               schema:

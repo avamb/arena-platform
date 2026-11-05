@@ -411,6 +411,7 @@ func Reprice(ctx context.Context, tx pgx.Tx, periodID uuid.UUID, from time.Time,
 		return Period{}, err
 	}
 	if from.Before(old.StartsOn) {
+		// allow:timeformat: a calendar day in an error message, not a timestamp
 		return Period{}, invalid("from cannot be before the period starts (%s)", old.StartsOn.Format("2006-01-02"))
 	}
 	if old.EndsOn != nil && old.EndsOn.Before(from) {

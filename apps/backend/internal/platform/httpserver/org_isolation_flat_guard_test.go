@@ -231,6 +231,8 @@ var flatRouteFamilies = []flatFamily{
 	{"GET", "/v1/admin/billing/white-label", flatPlatform, "billing.admin and platform superadmin"},
 	{"POST", "/v1/admin/billing/white-label", flatPlatform, "billing.admin and platform superadmin"},
 	{"POST", "/v1/admin/billing/white-label/{id}/end", flatPlatform, "billing.admin and platform superadmin"},
+	{"POST", "/v1/admin/org-modules/{id}/end", flatPlatform, "superadmin.read and platform superadmin (spec 61 org modules)"},
+	{"POST", "/v1/admin/org-modules/{id}/reprice", flatPlatform, "superadmin.read and platform superadmin (spec 61 org modules)"},
 	{"POST", "/v1/admin/billing/rate-overrides/{id}/close", flatPlatform, "billing.admin and platform superadmin"},
 	{"POST", "/v1/admin/billing/accounts/{account_id}/invoices", flatPlatform, "billing.admin and platform superadmin"},
 	{"GET", "/v1/admin/billing/invoices", flatPlatform, "billing.admin and platform superadmin"},

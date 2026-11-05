@@ -47,6 +47,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgread"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/orgmodules"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
 )
 
@@ -360,7 +361,8 @@ func (h *Handler) HandleListOrgs(w http.ResponseWriter, r *http.Request) {
 	// platform superadmin sees all, an API key its own, a user the ones they
 	// belong to.
 	reader := orgread.New(ctx, h.membershipQueries)
-	result := make([]orgResponse, 0, len(rows))
+	result := make([]orgListItem, 0, len(rows))
+	ids := make([]uuid.UUID, 0, len(rows))
 	for _, o := range rows {
 		can, readErr := reader.Can(o.ID)
 		if readErr != nil {
@@ -371,8 +373,25 @@ func (h *Handler) HandleListOrgs(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if can {
-			result = append(result, responseFromOrganization(o))
+			result = append(result, orgListItem{OrgResponse: responseFromOrganization(o), Modules: []string{}})
+			ids = append(ids, o.ID)
 		}
+	}
+	// The modules of every listed organization, in one query (spec 61 4.3).
+	index := make(map[uuid.UUID]int, len(ids))
+	for i, id := range ids {
+		index[id] = i
+	}
+	if err := h.attachModules(ctx, ids, func(id uuid.UUID, st orgmodules.State) {
+		if i, ok := index[id]; ok {
+			result[i].Modules, result[i].ShopMode = moduleFields(st)
+		}
+	}); err != nil {
+		h.logger.Error("org: list modules failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"org.list_failed", "failed to list organizations", r,
+		))
+		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"organizations": result})
 }

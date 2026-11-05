@@ -26,7 +26,7 @@ func (h *Handler) HandleGetSettings(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, "read settings", err)
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, toSettingsJSON(st))
+	h.writeSettings(w, r, st)
 }
 
 type settingsBody struct {
@@ -48,7 +48,9 @@ type settingsBody struct {
 }
 
 // HandlePutSettings serves PUT .../shop/settings. shop_domain may be changed
-// by a platform superadmin only.
+// by a platform superadmin only; enabled by any caller the route lets through
+// (shop.manage while the shop module is connected), and opening follows the
+// storefront rules (storefront.go).
 func (h *Handler) HandlePutSettings(w http.ResponseWriter, r *http.Request) {
 	org, ok := orgID(w, r)
 	if !ok {
@@ -67,21 +69,41 @@ func (h *Handler) HandlePutSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		expected = &t
 	}
-	st, err := h.o.Service.PutSettings(r.Context(), org, shop.SettingsInput{
+	ctx := r.Context()
+	paymentReady := false
+	if b.Enabled != nil && *b.Enabled {
+		// Read on the pool before the settings transaction; only an opening
+		// looks at it.
+		ready, perr := h.paymentReady(ctx, org, b.SalesChannelID)
+		if perr != nil {
+			h.fail(w, r, "check payment", perr)
+			return
+		}
+		paymentReady = ready
+	}
+	before, err := h.o.Service.GetSettings(ctx, org)
+	if err != nil {
+		h.fail(w, r, "read settings", err)
+		return
+	}
+	st, err := h.o.Service.PutSettings(ctx, org, shop.SettingsInput{
 		Currency: b.Currency, ShippingFeeMinor: b.ShippingFeeMinor, ShippingLabel: b.ShippingLabel,
 		CountryISO2: b.CountryISO2, AgeGateMinAge: b.AgeGateMinAge, AnnouncementText: b.AnnouncementText,
 		ContactEmail: b.ContactEmail, LogisticsNote: b.LogisticsNote, SalesChannelID: b.SalesChannelID,
 		ShopDomain: b.ShopDomain, MayChangeDomain: auth.HasSuperadminOrgAccess(r.Context()),
 		MaxLineQty: b.MaxLineQty, Enabled: b.Enabled, ExpectedUpdatedAt: expected,
+		MayChangeEnabled: true, PaymentReady: paymentReady,
 	})
 	if err != nil {
 		h.fail(w, r, "write settings", err)
 		return
 	}
-	h.writeAudit(r, "v1.shop.settings.update", "shop_settings", org.String(), org, map[string]any{
-		"currency": st.Currency, "shipping_fee_minor": st.ShippingFeeMinor,
-	})
-	httputil.WriteJSON(w, http.StatusOK, toSettingsJSON(st))
+	meta := map[string]any{"currency": st.Currency, "shipping_fee_minor": st.ShippingFeeMinor}
+	if st.Enabled != before.Enabled {
+		meta["enabled_before"], meta["enabled"] = before.Enabled, st.Enabled
+	}
+	h.writeAudit(r, "v1.shop.settings.update", "shop_settings", org.String(), org, meta)
+	h.writeSettings(w, r, st)
 }
 
 // ─── products ────────────────────────────────────────────────────────────────

@@ -1160,6 +1160,21 @@ type AdminMemberItem struct {
 	UserId openapi_types.UUID `json:"user_id"`
 }
 
+// AdminOrgModulesResponse Every module period of an organization and the state of its shop.
+type AdminOrgModulesResponse struct {
+	// Items Every period, oldest first per module.
+	Items []OrgModulePeriod `json:"items"`
+
+	// Modules The modules connected today, sorted.
+	Modules []string `json:"modules"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Shop The shop's mode, storefront and price today.
+	Shop OrgModuleShopState `json:"shop"`
+}
+
 // AdminSeatRow AB-39 admin-only seat row: the fields the operator table
 // (`ID | Sector | Row | Seat | Category | Price | Status`) needs
 // to render the mandatory seat inventory. The public seat-status
@@ -6181,6 +6196,24 @@ type ConfirmCheckoutRequest struct {
 	TierId *openapi_types.UUID `json:"tier_id"`
 }
 
+// ConnectShopModuleRequest Connects the shop module for a period.
+type ConnectShopModuleRequest struct {
+	// Currency Currency of the individual price; absent with a price means the organization's billing currency.
+	Currency *string `json:"currency"`
+
+	// EndsOn Last day (UTC, inclusive); absent or null has no end.
+	EndsOn *openapi_types.Date `json:"ends_on"`
+
+	// MonthlyPriceMinor Individual monthly price in minor units, 0 is free; absent or null is the price list (0 today).
+	MonthlyPriceMinor *int64 `json:"monthly_price_minor"`
+
+	// Reason Why the module is connected, stored on the period; absent uses X-Admin-Reason.
+	Reason *string `json:"reason"`
+
+	// StartsOn First day (UTC); absent or null is today.
+	StartsOn *openapi_types.Date `json:"starts_on"`
+}
+
 // CopyEventMaterialsResponse What `POST .../materials/copy-from/{source_event_id}` copied.
 type CopyEventMaterialsResponse struct {
 	// EventId UUIDv7 of the event that received the materials.
@@ -7829,6 +7862,15 @@ type EchoResponse struct {
 
 	// TraceId Distributed trace ID
 	TraceId string `json:"trace_id"`
+}
+
+// EndOrgModuleRequest Sets the last day of a module period.
+type EndOrgModuleRequest struct {
+	// EndsOn The last day (UTC, inclusive). Never later than the current end; the day before the period starts ends it before it began.
+	EndsOn openapi_types.Date `json:"ends_on"`
+
+	// Reason Why the module is ended, recorded in the audit row; absent uses X-Admin-Reason.
+	Reason *string `json:"reason"`
 }
 
 // ErrorEnvelope defines model for ErrorEnvelope.
@@ -11069,6 +11111,10 @@ type MeOrganizationMembership struct {
 	// JoinedAt When the membership was granted
 	JoinedAt time.Time `json:"joined_at"`
 
+	// Modules The paid modules the organization has today (UTC day), sorted; empty
+	// when none (spec 61 section 4.3). Today the only module is `shop`.
+	Modules []string `json:"modules"`
+
 	// OrgDisplayNumber Short operator-facing org number (AB-31); UUID remains the API key
 	OrgDisplayNumber int64 `json:"org_display_number"`
 
@@ -11080,6 +11126,13 @@ type MeOrganizationMembership struct {
 
 	// Role Role name held by the user inside the organization
 	Role string `json:"role"`
+
+	// ShopMode How much of the shop the organization has: `full` while the shop
+	// module is connected today; `orders_only` after the module ended
+	// while the organization still has open shop orders (awaiting payment,
+	// in manual review, or paid and not shipped), when only the order
+	// routes work; null when it has no shop section at all.
+	ShopMode *string `json:"shop_mode"`
 
 	// Status Membership lifecycle status (always "active" in this response)
 	Status string `json:"status"`
@@ -13211,6 +13264,63 @@ type OrderTicketSummary struct {
 	Vip bool `json:"vip"`
 }
 
+// OrgBillingModulePeriod One module period as the organization sees it, with the price that applies to it.
+type OrgBillingModulePeriod struct {
+	// CreatedAt When the period was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency Currency of the individual price.
+	Currency *string `json:"currency"`
+
+	// EffectiveCurrency Currency of `effective_monthly_minor`.
+	EffectiveCurrency *string `json:"effective_currency"`
+
+	// EffectiveMonthlyMinor The monthly price of this period, its individual price else the price list's; null when unknown.
+	EffectiveMonthlyMinor *int64 `json:"effective_monthly_minor"`
+
+	// EndedAt When the period was last ended; null when never.
+	EndedAt *time.Time `json:"ended_at"`
+
+	// EndsOn Last day of the period (UTC, inclusive); null when it has no end.
+	EndsOn *openapi_types.Date `json:"ends_on"`
+
+	// Id Id of the period.
+	Id openapi_types.UUID `json:"id"`
+
+	// Module The module, today always `shop`.
+	Module string `json:"module"`
+
+	// MonthlyPriceMinor Individual monthly price in minor units of `currency`; null means the price list.
+	MonthlyPriceMinor *int64 `json:"monthly_price_minor"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// StartsOn First day of the period (UTC calendar day).
+	StartsOn openapi_types.Date `json:"starts_on"`
+
+	// Status `scheduled`, `in_force` or `ended`.
+	Status string `json:"status"`
+}
+
+// OrgBillingModulesResponse The organization's module periods and the monthly price that applies today.
+type OrgBillingModulesResponse struct {
+	// Currency Currency of `effective_monthly_minor`.
+	Currency *string `json:"currency"`
+
+	// EffectiveMonthlyMinor The monthly price that applies today, the individual price of the period covering today else the price list's.
+	EffectiveMonthlyMinor *int64 `json:"effective_monthly_minor"`
+
+	// Items Every period, oldest first.
+	Items []OrgBillingModulePeriod `json:"items"`
+
+	// PriceListMonthlyMinor The price list's monthly price of the shop module for the organization's billing account; null when unknown.
+	PriceListMonthlyMinor *int64 `json:"price_list_monthly_minor"`
+
+	// PriceSource `individual` or `price_list`; null when no price is known.
+	PriceSource *string `json:"price_source"`
+}
+
 // OrgCityResponse Response of POST /v1/organizations/{org_id}/cities. `city` has the
 // GET /v1/geo/cities item shape.
 type OrgCityResponse struct {
@@ -13261,6 +13371,81 @@ type OrgMeResponse struct {
 	// `platform_superadmin`) and any roles of the token. Empty for an
 	// API key.
 	Roles []string `json:"roles"`
+}
+
+// OrgModulePeriod One period of a paid module of an organization (org_module_periods,
+// migration 0198). The module is connected on every UTC day from
+// `starts_on` to `ends_on`, both inclusive. A period is ended, never
+// deleted. Admin answers carry every field.
+type OrgModulePeriod struct {
+	// CreatedAt When the period was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy Superadmin who created the period (admin answers only).
+	CreatedBy *openapi_types.UUID `json:"created_by"`
+
+	// Currency ISO 4217 code of the individual price; null with a null price.
+	Currency *string `json:"currency"`
+
+	// EndedAt When the period was last ended or cut short; null when never.
+	EndedAt *time.Time `json:"ended_at"`
+
+	// EndedBy Superadmin who last ended the period (admin answers only).
+	EndedBy *openapi_types.UUID `json:"ended_by"`
+
+	// EndsOn Last day of the period (UTC, inclusive); null when it has no end.
+	EndsOn *openapi_types.Date `json:"ends_on"`
+
+	// Id Id of the period.
+	Id openapi_types.UUID `json:"id"`
+
+	// Module The module, today always `shop`.
+	Module string `json:"module"`
+
+	// MonthlyPriceMinor Individual monthly price in minor units of `currency`; null means the price list, 0 is free.
+	MonthlyPriceMinor *int64 `json:"monthly_price_minor"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Reason Why the period was created (admin answers only).
+	Reason *string `json:"reason,omitempty"`
+
+	// StartsOn First day of the period (UTC calendar day).
+	StartsOn openapi_types.Date `json:"starts_on"`
+
+	// Status `scheduled` (starts later), `in_force` (covers today) or `ended`.
+	Status string `json:"status"`
+}
+
+// OrgModuleShopState The state of an organization's shop today, for the superadmin.
+type OrgModuleShopState struct {
+	// Currency Currency of `effective_monthly_minor`.
+	Currency *string `json:"currency"`
+
+	// EffectiveMonthlyMinor The monthly price that applies today, in minor units of `currency`: the
+	// individual price of the period covering today, else the price list's
+	// `subscription` rule for `shop_module_month` in the organization's billing
+	// currency; null when neither is known.
+	EffectiveMonthlyMinor *int64 `json:"effective_monthly_minor"`
+
+	// Enabled The storefront switch the organization controls (false when the settings were never saved).
+	Enabled bool `json:"enabled"`
+
+	// Mode `full`, `orders_only` or null (no shop section).
+	Mode *string `json:"mode"`
+
+	// ModuleActive True when a shop period covers today.
+	ModuleActive bool `json:"module_active"`
+
+	// OpenShopOrders True when the organization has an open shop order (awaiting payment, in manual review, or paid and not shipped).
+	OpenShopOrders bool `json:"open_shop_orders"`
+
+	// PriceSource `individual` or `price_list`; null when no price is known.
+	PriceSource *string `json:"price_source"`
+
+	// ShopDomain The storefront host, set by a platform superadmin; null when none.
+	ShopDomain *string `json:"shop_domain"`
 }
 
 // OrgWhiteLabelList The organization's white label periods and the price list's monthly price.
@@ -13386,6 +13571,12 @@ type OrganizationItem struct {
 	// free-form UUID.
 	LogoMediaId *openapi_types.UUID `json:"logo_media_id"`
 
+	// Modules Only on GET /v1/organizations (the list): the paid modules the
+	// organization has today (UTC day), sorted, empty when none (spec 61
+	// section 4.3). Today the only module is `shop`. The Telegram bot lists
+	// a platform superadmin's organizations from it.
+	Modules *[]string `json:"modules,omitempty"`
+
 	// Name Human-readable display name (unique among active organizations)
 	Name string `json:"name"`
 
@@ -13395,6 +13586,12 @@ type OrganizationItem struct {
 
 	// ReservationTtlSeconds Seat-hold expiry window in seconds (default 1200 = 20 minutes)
 	ReservationTtlSeconds int `json:"reservation_ttl_seconds"`
+
+	// ShopMode Only on GET /v1/organizations (the list): `full` while the shop
+	// module is connected today, `orders_only` after it ended while open
+	// shop orders remain (only the order routes work), null for no shop
+	// section.
+	ShopMode *string `json:"shop_mode"`
 
 	// Slug URL-safe identifier (unique among active organizations, lowercase)
 	Slug string `json:"slug"`
@@ -15853,6 +16050,21 @@ type RegisterWebhookSubscriberResponse struct {
 
 	// SubscriberId Newly assigned subscriber UUID.
 	SubscriberId openapi_types.UUID `json:"subscriber_id"`
+}
+
+// RepriceOrgModuleRequest Changes the monthly price of a module from a day on.
+type RepriceOrgModuleRequest struct {
+	// Currency Currency of the new price; absent with a price means the organization's billing currency.
+	Currency *string `json:"currency"`
+
+	// From First day of the new price (UTC); not before the period starts.
+	From openapi_types.Date `json:"from"`
+
+	// MonthlyPriceMinor New individual monthly price in minor units, 0 is free; absent or null returns to the price list.
+	MonthlyPriceMinor *int64 `json:"monthly_price_minor"`
+
+	// Reason Why the price changes, stored on the new period; absent uses X-Admin-Reason.
+	Reason *string `json:"reason"`
 }
 
 // Reservation A reservation holds capacity for a buyer within a session (and
@@ -19429,6 +19641,9 @@ type ShopSettings struct {
 	// AnnouncementText Text of the storefront's announcement bar.
 	AnnouncementText string `json:"announcement_text"`
 
+	// CanOpen True when the storefront could be opened now, the module is connected and `open_blockers` is empty.
+	CanOpen bool `json:"can_open"`
+
 	// Configured False while the settings were never saved (defaults are shown and the storefront is closed).
 	Configured bool `json:"configured"`
 
@@ -19441,7 +19656,10 @@ type ShopSettings struct {
 	// Currency ISO 4217 code of every price in the shop.
 	Currency string `json:"currency"`
 
-	// Enabled Whether the storefront and its checkout are open. Only the platform operator opens or closes a shop; it starts closed.
+	// Enabled Whether the storefront and its checkout are open. It starts closed;
+	// the organization opens and closes it itself (owner, manager or
+	// platform superadmin, `PUT .../shop/storefront`). While the shop
+	// module is not connected the storefront is closed whatever this says.
 	Enabled bool `json:"enabled"`
 
 	// LogisticsNote Internal note for whoever ships the orders.
@@ -19449,6 +19667,20 @@ type ShopSettings struct {
 
 	// MaxLineQty How many units of one variant an order may hold (1-99, 24 by default).
 	MaxLineQty int32 `json:"max_line_qty"`
+
+	// ModuleActive True when the shop module is connected today (spec 61). The settings
+	// routes answer 404 `shop.module_not_enabled` otherwise, so on them it
+	// is true.
+	ModuleActive bool `json:"module_active"`
+
+	// OpenBlockers What keeps the storefront from opening, in this order:
+	// `settings_not_saved` (the settings were never saved),
+	// `no_active_product` (no product has status active) and
+	// `payment_not_configured` (the shop's sales channel, or the
+	// organization's live channels when the settings name none, has no
+	// active payment provider config the provider has verified). Empty when
+	// it can be opened. Computed also while the storefront is open.
+	OpenBlockers []string `json:"open_blockers"`
 
 	// OrgId The organization.
 	OrgId openapi_types.UUID `json:"org_id"`
@@ -19464,6 +19696,9 @@ type ShopSettings struct {
 
 	// ShopDomain Host name of the storefront, set by the platform operator; null when none.
 	ShopDomain *string `json:"shop_domain"`
+
+	// ShopMode The organization's shop mode, `full` or `orders_only`, or null for none.
+	ShopMode *string `json:"shop_mode"`
 
 	// UpdatedAt When the settings were last saved; null when never.
 	UpdatedAt *time.Time `json:"updated_at"`
@@ -19486,7 +19721,7 @@ type ShopSettingsUpdateRequest struct {
 	// Currency ISO 4217 code, e.g. EUR or ILS.
 	Currency string `json:"currency"`
 
-	// Enabled Opens (true) or closes (false) the storefront and its checkout, platform superadmin only; absent, null or the current value keeps it.
+	// Enabled Opens (true) or closes (false) the storefront and its checkout under the rules of `PUT .../shop/storefront`; absent, null or the current value keeps it.
 	Enabled *bool `json:"enabled"`
 
 	// ExpectedUpdatedAt The `updated_at` the editor loaded the settings with, sent back unchanged.
@@ -19530,6 +19765,12 @@ type ShopStaffNote struct {
 
 	// Text The note, up to 2000 characters; empty when there is none.
 	Text string `json:"text"`
+}
+
+// ShopStorefrontRequest Opens or closes the storefront and its checkout.
+type ShopStorefrontRequest struct {
+	// Enabled True opens the storefront, false closes it.
+	Enabled bool `json:"enabled"`
 }
 
 // ShopVariant A variant as the organization sees it.
@@ -22338,6 +22579,18 @@ type SuperadminListOrdersParams struct {
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 }
 
+// PostV1AdminOrgModuleEndParams defines parameters for PostV1AdminOrgModuleEnd.
+type PostV1AdminOrgModuleEndParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminOrgModuleRepriceParams defines parameters for PostV1AdminOrgModuleReprice.
+type PostV1AdminOrgModuleRepriceParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // SuperadminListOrganizationsParams defines parameters for SuperadminListOrganizations.
 type SuperadminListOrganizationsParams struct {
 	// Q Case-insensitive substring search across organization name and slug.
@@ -22395,6 +22648,12 @@ type DeleteV1AdminOrganizationsOrgIdMembersMembershipIdParams struct {
 // PatchV1AdminOrganizationsOrgIdMembersMembershipIdParams defines parameters for PatchV1AdminOrganizationsOrgIdMembersMembershipId.
 type PatchV1AdminOrganizationsOrgIdMembersMembershipIdParams struct {
 	// XAdminReason Human-readable business reason for the admin write (audit trail).
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminOrganizationModuleShopParams defines parameters for PostV1AdminOrganizationModuleShop.
+type PostV1AdminOrganizationModuleShopParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
@@ -23914,6 +24173,12 @@ type RequestOnboardingInfoJSONRequestBody = OnboardingRequestInfoRequest
 // UpdateOnboardingSettingsJSONRequestBody defines body for UpdateOnboardingSettings for application/json ContentType.
 type UpdateOnboardingSettingsJSONRequestBody = OnboardingSettingsRequest
 
+// PostV1AdminOrgModuleEndJSONRequestBody defines body for PostV1AdminOrgModuleEnd for application/json ContentType.
+type PostV1AdminOrgModuleEndJSONRequestBody = EndOrgModuleRequest
+
+// PostV1AdminOrgModuleRepriceJSONRequestBody defines body for PostV1AdminOrgModuleReprice for application/json ContentType.
+type PostV1AdminOrgModuleRepriceJSONRequestBody = RepriceOrgModuleRequest
+
 // PostV1AdminOrganizationsJSONRequestBody defines body for PostV1AdminOrganizations for application/json ContentType.
 type PostV1AdminOrganizationsJSONRequestBody = CreateOrganizationRequest
 
@@ -23925,6 +24190,9 @@ type PostV1AdminOrganizationsOrgIdMembersJSONRequestBody = AdminAddMemberRequest
 
 // PatchV1AdminOrganizationsOrgIdMembersMembershipIdJSONRequestBody defines body for PatchV1AdminOrganizationsOrgIdMembersMembershipId for application/json ContentType.
 type PatchV1AdminOrganizationsOrgIdMembersMembershipIdJSONRequestBody = AdminChangeMemberRoleRequest
+
+// PostV1AdminOrganizationModuleShopJSONRequestBody defines body for PostV1AdminOrganizationModuleShop for application/json ContentType.
+type PostV1AdminOrganizationModuleShopJSONRequestBody = ConnectShopModuleRequest
 
 // PostV1AdminUsersJSONRequestBody defines body for PostV1AdminUsers for application/json ContentType.
 type PostV1AdminUsersJSONRequestBody = AdminCreateUserRequest
@@ -24390,6 +24658,9 @@ type PutV1OrganizationsOrgIdShopReferralProgramJSONRequestBody = ReferralProgram
 
 // PutShopSettingsJSONRequestBody defines body for PutShopSettings for application/json ContentType.
 type PutShopSettingsJSONRequestBody = ShopSettingsUpdateRequest
+
+// PutShopStorefrontJSONRequestBody defines body for PutShopStorefront for application/json ContentType.
+type PutShopStorefrontJSONRequestBody = ShopStorefrontRequest
 
 // PostV1OrganizationsOrgIdTextsFormatJSONRequestBody defines body for PostV1OrganizationsOrgIdTextsFormat for application/json ContentType.
 type PostV1OrganizationsOrgIdTextsFormatJSONRequestBody = TextFormatRequest

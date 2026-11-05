@@ -6,12 +6,21 @@ package httpserver
 // (requireWebStepUp, like every money route). Public routes need no login
 // and share the public feed's per-IP rate limit.
 //
+// The shop is a paid module (spec 08_architecture/61 section 4.1): every
+// organization route also passes the module gate (shopFull / shopOrders),
+// which answers 404 shop.module_not_enabled - to a platform superadmin too -
+// when the organization's shop mode does not allow the route. Catalog,
+// products, pages, settings and the storefront switch need the module today
+// (full); the order routes also work in orders_only, after the module ended
+// while open orders remain.
+//
 // The shop's payments arrive through the existing payment webhook routes:
 // checkoutHandler wires shopPayments into hcheckout, which hands a payment
 // intent without a checkout session to the shop on the webhook transaction.
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"time"
 
@@ -25,6 +34,8 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/honboarding"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hshop"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/orgmodules"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/shop"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/whitelabel"
 )
@@ -175,38 +186,41 @@ func (s *Server) mountShopRoutes(r chi.Router) {
 	const base = "/organizations/{org_id}/shop"
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "shop.read", "shop")
-		pr.Get(base+"/settings", s.orgGated(h.HandleGetSettings))
-		pr.Get(base+"/products", s.orgGated(h.HandleListProducts))
-		pr.Get(base+"/products/{product_id}", s.orgGated(h.HandleGetProduct))
-		pr.Get(base+"/pages", s.orgGated(h.HandleListPages))
-		pr.Get(base+"/orders", s.orgGated(h.HandleListOrders))
-		pr.Get(base+"/orders/counts", s.orgGated(h.HandleOrderCounts))
+		pr.Get(base+"/settings", s.orgGated(s.shopFull(h.HandleGetSettings)))
+		pr.Get(base+"/products", s.orgGated(s.shopFull(h.HandleListProducts)))
+		pr.Get(base+"/products/{product_id}", s.orgGated(s.shopFull(h.HandleGetProduct)))
+		pr.Get(base+"/pages", s.orgGated(s.shopFull(h.HandleListPages)))
+		pr.Get(base+"/orders", s.orgGated(s.shopOrders(h.HandleListOrders)))
+		pr.Get(base+"/orders/counts", s.orgGated(s.shopOrders(h.HandleOrderCounts)))
 		// A search is a read whose filters (a buyer's name or e-mail) travel in
 		// the body, out of the proxy and Cloudflare access logs (SA-17).
-		pr.Post(base+"/orders/search", s.orgGated(h.HandleSearchOrders))
-		pr.Get(base+"/orders/{order_id}", s.orgGated(h.HandleGetOrder))
-		pr.Get(base+"/orders/{order_id}/courier-text", s.orgGated(h.HandleCourierText))
+		pr.Post(base+"/orders/search", s.orgGated(s.shopOrders(h.HandleSearchOrders)))
+		pr.Get(base+"/orders/{order_id}", s.orgGated(s.shopOrders(h.HandleGetOrder)))
+		pr.Get(base+"/orders/{order_id}/courier-text", s.orgGated(s.shopOrders(h.HandleCourierText)))
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "shop.manage", "shop")
-		pr.Put(base+"/settings", s.orgGated(h.HandlePutSettings))
-		pr.Post(base+"/products", s.orgGated(h.HandleCreateProduct))
-		pr.Patch(base+"/products/{product_id}", s.orgGated(h.HandlePatchProduct))
-		pr.Delete(base+"/products/{product_id}", s.orgGated(h.HandleDeleteProduct))
-		pr.Post(base+"/products/{product_id}/images", s.orgGated(h.HandleAddImage))
-		pr.Delete(base+"/products/{product_id}/images/{media_id}", s.orgGated(h.HandleRemoveImage))
-		pr.Put(base+"/products/{product_id}/variants", s.orgGated(h.HandlePutVariants))
-		pr.Put(base+"/pages/{slug}", s.orgGated(h.HandlePutPage))
-		pr.Delete(base+"/pages/{slug}", s.orgGated(h.HandleDeletePage))
-		pr.Post(base+"/orders/{order_id}/ship", s.orgGated(h.HandleShipOrder))
-		pr.Patch(base+"/orders/{order_id}", s.orgGated(h.HandlePatchOrder))
-		pr.Post(base+"/orders/{order_id}/resend-email", s.orgGated(h.HandleResendEmail))
+		pr.Put(base+"/settings", s.orgGated(s.shopFull(h.HandlePutSettings)))
+		// The organization opens and closes its own storefront (spec 61
+		// section 3.4); the domain stays the superadmin's (PUT settings).
+		pr.Put(base+"/storefront", s.orgGated(s.shopFull(h.HandlePutStorefront)))
+		pr.Post(base+"/products", s.orgGated(s.shopFull(h.HandleCreateProduct)))
+		pr.Patch(base+"/products/{product_id}", s.orgGated(s.shopFull(h.HandlePatchProduct)))
+		pr.Delete(base+"/products/{product_id}", s.orgGated(s.shopFull(h.HandleDeleteProduct)))
+		pr.Post(base+"/products/{product_id}/images", s.orgGated(s.shopFull(h.HandleAddImage)))
+		pr.Delete(base+"/products/{product_id}/images/{media_id}", s.orgGated(s.shopFull(h.HandleRemoveImage)))
+		pr.Put(base+"/products/{product_id}/variants", s.orgGated(s.shopFull(h.HandlePutVariants)))
+		pr.Put(base+"/pages/{slug}", s.orgGated(s.shopFull(h.HandlePutPage)))
+		pr.Delete(base+"/pages/{slug}", s.orgGated(s.shopFull(h.HandleDeletePage)))
+		pr.Post(base+"/orders/{order_id}/ship", s.orgGated(s.shopOrders(h.HandleShipOrder)))
+		pr.Patch(base+"/orders/{order_id}", s.orgGated(s.shopOrders(h.HandlePatchOrder)))
+		pr.Post(base+"/orders/{order_id}/resend-email", s.orgGated(s.shopOrders(h.HandleResendEmail)))
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "shop.manage", "shop")
 		// Money: the web asks for the password again (spec 37 section 4.5).
 		pr.Use(s.requireWebStepUp)
-		pr.Post(base+"/orders/{order_id}/cancel", s.orgGated(h.HandleCancelOrder))
+		pr.Post(base+"/orders/{order_id}/cancel", s.orgGated(s.shopOrders(h.HandleCancelOrder)))
 	})
 	r.Group(func(pr chi.Router) {
 		// A refund writes and approves a refunds row in one step, so it
@@ -217,11 +231,58 @@ func (s *Server) mountShopRoutes(r chi.Router) {
 		pr.Use(s.orgScoped("refund.approve"))
 		pr.Use(permissions.RequirePermission(s.perms, "refund.approve", "refunds"))
 		pr.Use(s.requireWebStepUp)
-		pr.Post(base+"/orders/{order_id}/refund", s.orgGated(h.HandleRefundOrder))
+		pr.Post(base+"/orders/{order_id}/refund", s.orgGated(s.shopOrders(h.HandleRefundOrder)))
 		// Resolving a parked order may return the whole payment (SB-04), so
 		// it carries the refund permissions and the password check as well.
-		pr.Post(base+"/orders/{order_id}/resolve", s.orgGated(h.HandleResolveOrder))
+		pr.Post(base+"/orders/{order_id}/resolve", s.orgGated(s.shopOrders(h.HandleResolveOrder)))
 	})
+}
+
+// shopFull lets a shop route through only while the organization has the
+// shop module today (orgmodules.ModeFull).
+func (s *Server) shopFull(h http.HandlerFunc) http.HandlerFunc {
+	return s.shopModuleGate(false, h)
+}
+
+// shopOrders lets an order route through while the module is connected or
+// the organization still has open shop orders (orders_only).
+func (s *Server) shopOrders(h http.HandlerFunc) http.HandlerFunc {
+	return s.shopModuleGate(true, h)
+}
+
+// shopModuleGate resolves the organization's shop mode on the pool, BEFORE
+// any transaction of the handler, and answers 404 shop.module_not_enabled
+// when the mode does not allow the route: for the organization there is no
+// shop, and a platform superadmin gets the same answer (the module is
+// connected in the admin routes, not around them). The mode is parked on the
+// context for the settings answers. Without a database the handler runs and
+// answers 503 itself.
+func (s *Server) shopModuleGate(ordersOK bool, h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.pgxPool == nil {
+			h(w, r)
+			return
+		}
+		org, ok := httputil.UUIDPathParam(w, r, "org_id")
+		if !ok {
+			return
+		}
+		mode, err := orgmodules.ShopMode(r.Context(), gen.New(s.pgxPool), org, time.Now())
+		if err != nil {
+			if s.logger != nil {
+				s.logger.Error("shop: resolving the shop module failed", "org_id", org.String(), "error", err.Error())
+			}
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
+				"dependency.database_unavailable", "the shop is not available right now, please try again in a moment", r))
+			return
+		}
+		if mode != orgmodules.ModeFull && (!ordersOK || mode != orgmodules.ModeOrdersOnly) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"shop.module_not_enabled", "this organization has no shop: the shop module is not connected", r))
+			return
+		}
+		h(w, r.WithContext(hshop.WithShopMode(r.Context(), mode)))
+	}
 }
 
 // shopPublicBaseURL is SHOP_PUBLIC_BASE_URL ("" without a config).

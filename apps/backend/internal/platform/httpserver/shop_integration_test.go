@@ -88,6 +88,7 @@ func newShopFixture(t *testing.T) *shopFixture {
 	}
 	f.orgA, f.orgB = orgA.ID, orgB.ID
 	t.Cleanup(f.cleanup)
+	connectShopModuleForTest(t, f.pool, f.orgA, f.orgB)
 
 	mkUser := func(org uuid.UUID) string {
 		u, err := f.q.InsertUser(ctx, "shop-owner-"+uuid.NewString()+"@example.test", "x", "en")
