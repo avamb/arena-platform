@@ -24,6 +24,9 @@ const (
 	// KindWhiteLabelMonth is one calendar month (UTC) of a brand's white
 	// label period (spec 08_architecture/53).
 	KindWhiteLabelMonth EventKind = "white_label_month"
+	// KindShopModuleMonth is one calendar month (UTC) of an organization's
+	// paid shop module period (spec 08_architecture/61 section 3.2).
+	KindShopModuleMonth EventKind = "shop_module_month"
 )
 
 // Pricing classes a sale is snapshotted with (ClassifyLowPrice).
@@ -107,13 +110,14 @@ type Event struct {
 	// issued_via = staff_bulk, spec 46): always charged the standard rate
 	// (owner decision R-7).
 	Bulk bool
-	// DaysActive and DaysInMonth prorate a white_label_month: the days of
-	// the month the period covered, and the days the month has.
+	// DaysActive and DaysInMonth prorate a white_label_month or a
+	// shop_module_month: the days of the month the period covered, and the
+	// days the month has.
 	DaysActive  int64
 	DaysInMonth int64
-	// MonthlyPriceMinor is the individual monthly price of a white label
-	// period, in the account currency (Terms.Currency); nil means the price
-	// list. 0 is a free white label.
+	// MonthlyPriceMinor is the individual monthly price of a white label or
+	// shop module period, in the account currency (Terms.Currency); nil means
+	// the price list. 0 is a free month.
 	MonthlyPriceMinor *int64
 }
 
@@ -172,6 +176,8 @@ type Charge struct {
 //     subscription rule of the standard line for white_label_month, times
 //     DaysActive / DaysInMonth rounded down. The individual per-ticket rate
 //     does not apply: it is a ticket rate, not a subscription.
+//   - shop_module_month: the same, with the subscription rule for
+//     shop_module_month (a zero price is a zero charge, never "no charge").
 //
 // A line that carries a rule type Rate cannot compute yet
 // (volume_above_baseline, subscription, generator_run) for the event kind
@@ -206,7 +212,9 @@ func Rate(terms Terms, ev Event) (Charge, error) {
 	case KindTicketSold:
 		return rateTicketSold(terms, ev, c)
 	case KindWhiteLabelMonth:
-		return rateWhiteLabelMonth(terms, ev, c)
+		return rateSubscriptionMonth(terms, ev, c, "white label")
+	case KindShopModuleMonth:
+		return rateSubscriptionMonth(terms, ev, c, "shop module")
 	default:
 		return Charge{}, fmt.Errorf("%w: %q", ErrUnknownEventKind, ev.Kind)
 	}
@@ -440,13 +448,16 @@ func rateUnseatedAtOrgRate(terms Terms, c Charge) (Charge, error) {
 	return rateFixed(terms, false, c)
 }
 
-// rateWhiteLabelMonth charges one brand-month of white label, prorated by days
-// (owner decision 2026-11-02, spec 08_architecture/53): floor(monthly ×
-// DaysActive / DaysInMonth). A month without a rule for its account currency
-// is an error, never a free month.
-func rateWhiteLabelMonth(terms Terms, ev Event, c Charge) (Charge, error) {
+// rateSubscriptionMonth charges one month of a subscription-like service
+// (white label brand-month, shop module month) prorated by days (owner
+// decision 2026-11-02, spec 08_architecture/53): floor(monthly × DaysActive /
+// DaysInMonth). The rule is the subscription rule of the event's own kind. A
+// month without a rule for its account currency is an error, never a free
+// month. A price of 0 (individual or of the price list) is a zero charge
+// that is still written, with reason individual_price or free.
+func rateSubscriptionMonth(terms Terms, ev Event, c Charge, what string) (Charge, error) {
 	if ev.DaysInMonth < 28 || ev.DaysInMonth > 31 || ev.DaysActive < 0 || ev.DaysActive > ev.DaysInMonth {
-		return Charge{}, fmt.Errorf("%w: white label month of %d active days out of %d", ErrInconsistentEvent,
+		return Charge{}, fmt.Errorf("%w: %s month of %d active days out of %d", ErrInconsistentEvent, what,
 			ev.DaysActive, ev.DaysInMonth)
 	}
 	c.Inputs["days_active"] = ev.DaysActive
@@ -454,17 +465,17 @@ func rateWhiteLabelMonth(terms Terms, ev Event, c Charge) (Charge, error) {
 	monthly := int64(0)
 	if ev.MonthlyPriceMinor != nil {
 		if *ev.MonthlyPriceMinor < 0 || *ev.MonthlyPriceMinor > maxRuleAmountMinor {
-			return Charge{}, fmt.Errorf("%w: individual white label price %d", ErrInconsistentEvent, *ev.MonthlyPriceMinor)
+			return Charge{}, fmt.Errorf("%w: individual %s price %d", ErrInconsistentEvent, what, *ev.MonthlyPriceMinor)
 		}
 		monthly = *ev.MonthlyPriceMinor
 		c.RuleType = RuleSubscription
 		c.Reason = ReasonIndividualPrice
 		c.Inputs["individual_monthly_minor"] = monthly
 	} else {
-		r, ok := terms.rule(lineStandard, string(KindWhiteLabelMonth), RuleSubscription, "")
+		r, ok := terms.rule(lineStandard, string(ev.Kind), RuleSubscription, "")
 		if !ok {
-			return Charge{}, fmt.Errorf("%w: no subscription rule for white_label_month on price list %s",
-				ErrNoRule, terms.PriceList.ID)
+			return Charge{}, fmt.Errorf("%w: no subscription rule for %s on price list %s",
+				ErrNoRule, ev.Kind, terms.PriceList.ID)
 		}
 		setRule(&c, r)
 		monthly = r.Subscription.MonthlyMinor

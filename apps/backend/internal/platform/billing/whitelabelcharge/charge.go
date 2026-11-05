@@ -18,6 +18,9 @@
 //     not written and the pass reports it;
 //   - one broken period never holds back the others: its error is reported
 //     and the pass goes on (the next pass tries it again).
+//
+// The walk over months, the day count, the event insert and the worker job
+// are shared with the shop module charge (package monthcharge).
 package whitelabelcharge
 
 import (
@@ -33,6 +36,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/billing"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/billing/monthcharge"
 )
 
 // JobType is the worker_jobs.job_type of the charge job.
@@ -40,14 +44,10 @@ const JobType = "billing.white_label"
 
 // DefaultInterval is the gap between passes: a month closes once a day is
 // late enough to be seen.
-const DefaultInterval = 6 * time.Hour
+const DefaultInterval = monthcharge.DefaultInterval
 
-// maxMonthsBack bounds one pass, so a date X far in the past cannot make a
-// pass read years of months.
-const maxMonthsBack = 36
-
-// monthLayout is the YYYY-MM month key of a brand-month.
-const monthLayout = "2006-01"
+// logLabel names the job in log lines and errors.
+const logLabel = "billing white label"
 
 // subjectNamespace makes the subject id of a brand-month from its period and
 // month (uuid v5), the idempotency key of the event.
@@ -56,7 +56,7 @@ var subjectNamespace = uuid.MustParse("6b2d3c1e-5a0f-4f7e-9c3a-2f8e1b7d4a90")
 // SubjectID is the subject id of the white_label_month event of one period
 // and month.
 func SubjectID(periodID uuid.UUID, month time.Time) uuid.UUID {
-	return uuid.NewSHA1(subjectNamespace, []byte(periodID.String()+":"+billing.MonthStart(month).Format(monthLayout)))
+	return monthcharge.SubjectID(subjectNamespace, periodID, month)
 }
 
 // Store is the query set a Charger needs. *gen.Queries satisfies it.
@@ -97,30 +97,15 @@ func New(store Store, opts Options) *Charger {
 func (c *Charger) Enabled() bool { return c != nil && !c.opts.Since.IsZero() }
 
 // Run writes the events of every completed month from the month of the date
-// X (at most maxMonthsBack months back) and returns how many were new.
+// X (at most monthcharge.MaxMonthsBack months back) and returns how many were
+// new.
 func (c *Charger) Run(ctx context.Context) (int, error) {
 	if !c.Enabled() {
 		return 0, nil
 	}
-	current := billing.MonthStart(c.opts.Now())
-	first := billing.MonthStart(c.opts.Since)
-	if earliest := current.AddDate(0, -maxMonthsBack, 0); first.Before(earliest) {
-		first = earliest
-	}
-	sinceDay := dayOf(c.opts.Since)
-	inserted := 0
-	var errs []error
-	for m := first; m.Before(current); m = m.AddDate(0, 1, 0) {
-		n, err := c.month(ctx, m, sinceDay)
-		inserted += n
-		if err != nil {
-			errs = append(errs, fmt.Errorf("white label month %s: %w", m.Format(monthLayout), err))
-		}
-		if ctx.Err() != nil {
-			break
-		}
-	}
-	return inserted, errors.Join(errs...)
+	sinceDay := monthcharge.DayOf(c.opts.Since)
+	return monthcharge.Walk(ctx, "white label month", c.opts.Since, c.opts.Now(),
+		func(ctx context.Context, month time.Time) (int, error) { return c.month(ctx, month, sinceDay) })
 }
 
 // ErrCurrencyChanged is reported for a period whose non-zero individual price
@@ -154,95 +139,40 @@ func (c *Charger) month(ctx context.Context, month, sinceDay time.Time) (int, er
 // charge writes the event of one period and month and reports whether it was
 // new; a month without active days writes nothing.
 func (c *Charger) charge(ctx context.Context, p gen.WhiteLabelPeriodRow, month, sinceDay time.Time) (bool, error) {
-	start := p.StartsOn
-	if start.Before(sinceDay) {
-		start = sinceDay
-	}
-	days := billing.WhiteLabelActiveDays(start, p.EndsOn, month)
-	if days <= 0 {
-		return false, nil
-	}
-	country, err := c.store.GetOrgBillingCountry(ctx, p.OrgID)
-	if err != nil {
-		return false, fmt.Errorf("billing country of org %s: %w", p.OrgID, err)
-	}
-	acc, err := billing.EnsureAccount(ctx, c.store, p.OrgID, country)
-	if err != nil {
-		return false, err
-	}
-	if p.MonthlyPriceMinor != nil && *p.MonthlyPriceMinor > 0 &&
-		(p.Currency == nil || *p.Currency != acc.Currency) {
-		typed := ""
-		if p.Currency != nil {
-			typed = *p.Currency
-		}
-		return false, fmt.Errorf("%w: price in %q, account %s in %s (end the period and open a new one)",
-			ErrCurrencyChanged, typed, acc.ID, acc.Currency)
-	}
-	attrs, err := json.Marshal(billing.WhiteLabelMonth{
-		PeriodID: p.ID, PromoterID: p.PromoterID, Month: month.Format(monthLayout),
-		DaysActive: days, DaysInMonth: billing.DaysInMonth(month),
-		MonthlyPriceMinor: p.MonthlyPriceMinor, Currency: acc.Currency,
-	})
-	if err != nil {
-		return false, err
-	}
-	_, isNew, err := c.store.InsertBillableEvent(ctx, gen.InsertBillableEventParams{
-		Kind:       string(billing.KindWhiteLabelMonth),
-		SubjectID:  SubjectID(p.ID, month),
-		OccurredAt: billing.WhiteLabelMonthOccurredAt(month),
-		OrgID:      p.OrgID,
-		AccountID:  acc.ID,
-		Attributes: attrs,
-	})
-	if err != nil {
-		return false, fmt.Errorf("insert white label month: %w", err)
-	}
-	return isNew, nil
-}
-
-func dayOf(t time.Time) time.Time {
-	y, m, d := t.UTC().Date()
-	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	return monthcharge.ChargeMonth(ctx, c.store, monthcharge.Spec{
+		Kind:        billing.KindWhiteLabelMonth,
+		Namespace:   subjectNamespace,
+		ErrCurrency: ErrCurrencyChanged,
+		Attributes: func(_ monthcharge.Period, acc gen.BillingAccountRow, month time.Time, days int64) ([]byte, error) {
+			return json.Marshal(billing.WhiteLabelMonth{
+				PeriodID: p.ID, PromoterID: p.PromoterID, Month: month.Format(monthcharge.MonthLayout),
+				DaysActive: days, DaysInMonth: billing.DaysInMonth(month),
+				MonthlyPriceMinor: p.MonthlyPriceMinor, Currency: acc.Currency,
+			})
+		},
+	}, monthcharge.Period{
+		ID: p.ID, OrgID: p.OrgID, StartsOn: p.StartsOn, EndsOn: p.EndsOn,
+		MonthlyPriceMinor: p.MonthlyPriceMinor, Currency: p.Currency,
+	}, month, sinceDay)
 }
 
 // ── worker job ──────────────────────────────────────────────────────────
 
 // Scheduler enqueues the next pass.
-type Scheduler interface {
-	ScheduleNext(ctx context.Context, at time.Time) error
-}
+type Scheduler = monthcharge.Scheduler
 
 // PGScheduler is the production Scheduler backed by worker_jobs.
-type PGScheduler struct{ pool *pgxpool.Pool }
+type PGScheduler = monthcharge.PGScheduler
 
 // NewPGScheduler wraps a pool.
-func NewPGScheduler(pool *pgxpool.Pool) *PGScheduler { return &PGScheduler{pool: pool} }
-
-// ScheduleNext inserts a pending job due at `at` unless one is already
-// pending, so a retry never forks a second chain.
-func (s *PGScheduler) ScheduleNext(ctx context.Context, at time.Time) error {
-	const q = `
-		INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
-		SELECT $1, '{}', 3, 'pending', $2
-		WHERE  NOT EXISTS (SELECT 1 FROM worker_jobs WHERE job_type = $1 AND status = 'pending')`
-	if _, err := s.pool.Exec(ctx, q, JobType, at); err != nil {
-		return fmt.Errorf("billing white label: schedule next pass: %w", err)
-	}
-	return nil
+func NewPGScheduler(pool *pgxpool.Pool) *PGScheduler {
+	return monthcharge.NewPGScheduler(pool, JobType, logLabel)
 }
 
 // ScheduleInitialJob seeds the first pass at worker start unless a job is
 // already pending or running.
 func ScheduleInitialJob(ctx context.Context, pool *pgxpool.Pool) error {
-	const q = `
-		INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
-		SELECT $1, '{}', 3, 'pending', now() + interval '2 minutes'
-		WHERE  NOT EXISTS (SELECT 1 FROM worker_jobs WHERE job_type = $1 AND status IN ('pending', 'claimed'))`
-	if _, err := pool.Exec(ctx, q, JobType); err != nil {
-		return fmt.Errorf("billing white label: enqueue initial job: %w", err)
-	}
-	return nil
+	return monthcharge.ScheduleInitialJob(ctx, pool, JobType, logLabel)
 }
 
 // HandlerOptions configures NewHandler.
@@ -257,29 +187,8 @@ type HandlerOptions struct {
 // does nothing and does not schedule itself again. The next pass is
 // scheduled BEFORE the work, so a failed pass does not end the chain.
 func NewHandler(opts HandlerOptions) func(ctx context.Context, payload []byte) error {
-	if opts.Interval <= 0 {
-		opts.Interval = DefaultInterval
-	}
-	if opts.Logger == nil {
-		opts.Logger = slog.Default()
-	}
-	return func(ctx context.Context, _ []byte) error {
-		if !opts.Charger.Enabled() {
-			return nil
-		}
-		if opts.Scheduler != nil {
-			if err := opts.Scheduler.ScheduleNext(ctx, time.Now().Add(opts.Interval)); err != nil {
-				return err
-			}
-		}
-		n, err := opts.Charger.Run(ctx)
-		if err != nil {
-			opts.Logger.Error("billing white label pass failed", "error", err.Error(), "inserted", n)
-			return err
-		}
-		if n > 0 {
-			opts.Logger.Info("billing white label pass", "inserted", n)
-		}
-		return nil
-	}
+	return monthcharge.NewHandler(monthcharge.HandlerOptions{
+		Runner: opts.Charger, Scheduler: opts.Scheduler, Interval: opts.Interval, Logger: opts.Logger,
+		Label: logLabel,
+	})
 }
