@@ -5320,6 +5320,9 @@ type BotWebLoginCodeRequest struct {
 	// SessionId The session whose invitations the mini app opens. Required for `kind: invitations`, ignored otherwise.
 	SessionId *openapi_types.UUID `json:"session_id,omitempty"`
 
+	// Target Optional (spec 61 section 4.5), used only for `purpose: web`. A relative path of the web event center to open after the sign-in: `/o/{org_id}/shop` or `/o/{org_id}/shop/...` (letters, digits, `-` and `_` in the segments) where `org_id` is an organization the person works in. Anything else, or a path of an organization the person does not belong to, is ignored without an error and the link opens the home page. An accepted target is appended to the fragment of the link as `&next=<url-encoded path>`.
+	Target *string `json:"target,omitempty"`
+
 	// TelegramUserId The Telegram account that pressed "Open in browser" or "Edit in the editor".
 	TelegramUserId int64 `json:"telegram_user_id"`
 }
@@ -5329,7 +5332,7 @@ type BotWebLoginCodeResponse struct {
 	// ExpiresAt When the link stops working (5 minutes after it was issued).
 	ExpiresAt time.Time `json:"expires_at"`
 
-	// Url `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`, or for `purpose: miniapp` `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=<kind>&event=<event_id>`, or for `kind: invitations` `<EVENT_CENTER_PUBLIC_URL>/tg/invitations?session=<session_id>&event=<event_id>#code=<code>`. The code is after `#`, so it never reaches a server log.
+	// Url `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>` (with `&next=<url-encoded target>` when an accepted `target` was sent), or for `purpose: miniapp` `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=<kind>&event=<event_id>`, or for `kind: invitations` `<EVENT_CENTER_PUBLIC_URL>/tg/invitations?session=<session_id>&event=<event_id>#code=<code>`. The code is after `#`, so it never reaches a server log.
 	Url string `json:"url"`
 }
 
