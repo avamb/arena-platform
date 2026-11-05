@@ -20,6 +20,10 @@ export interface CartLimitStrings {
   cart_too_large: string;
   /** The platform refused a line over the per-category cap. {max} is the cap. */
   invalid_qty: string;
+  /** Beside an add-on category: it is sold only with a main ticket. */
+  addon_note: string;
+  /** The platform refused a cart of add-on tickets only. */
+  addon_only: string;
 }
 
 export const CART_LIMIT_I18N: Record<string, CartLimitStrings> = {
@@ -27,36 +31,50 @@ export const CART_LIMIT_I18N: Record<string, CartLimitStrings> = {
     too_many_seats: 'You can select at most {max} seats in one order.',
     cart_too_large: 'This order is too large. Split it into smaller orders.',
     invalid_qty: 'You can buy at most {max} tickets of one category in one order.',
+    addon_note: 'Only together with a main ticket.',
+    addon_only: 'This ticket is sold only together with a main ticket for the same date. Add a main ticket to the order.',
   },
   ru: {
     too_many_seats: 'В одном заказе можно выбрать не больше {max} мест.',
     cart_too_large: 'Заказ слишком большой. Разделите его на несколько заказов.',
     invalid_qty: 'В одном заказе можно взять не больше {max} билетов одной категории.',
+    addon_note: 'Только вместе с основным билетом.',
+    addon_only: 'Этот билет продаётся только вместе с основным билетом на ту же дату. Добавьте основной билет в заказ.',
   },
   cs: {
     too_many_seats: 'V jedné objednávce můžete vybrat nejvýše {max} míst.',
     cart_too_large: 'Objednávka je příliš velká. Rozdělte ji na menší objednávky.',
     invalid_qty: 'V jedné objednávce můžete koupit nejvýše {max} vstupenek jedné kategorie.',
+    addon_note: 'Jen společně s hlavní vstupenkou.',
+    addon_only: 'Tato vstupenka se prodává jen společně s hlavní vstupenkou na stejný termín. Přidejte do objednávky hlavní vstupenku.',
   },
   he: {
     too_many_seats: 'אפשר לבחור עד {max} מקומות בהזמנה אחת.',
     cart_too_large: 'ההזמנה גדולה מדי. חלקו אותה להזמנות קטנות יותר.',
     invalid_qty: 'אפשר לרכוש עד {max} כרטיסים מקטגוריה אחת בהזמנה אחת.',
+    addon_note: 'רק יחד עם כרטיס ראשי.',
+    addon_only: 'כרטיס זה נמכר רק יחד עם כרטיס ראשי לאותו מועד. הוסיפו כרטיס ראשי להזמנה.',
   },
   es: {
     too_many_seats: 'Puedes elegir como máximo {max} asientos en un pedido.',
     cart_too_large: 'El pedido es demasiado grande. Divídelo en pedidos más pequeños.',
     invalid_qty: 'Puedes comprar como máximo {max} entradas de una categoría en un pedido.',
+    addon_note: 'Solo junto con una entrada principal.',
+    addon_only: 'Esta entrada solo se vende junto con una entrada principal para la misma fecha. Añade una entrada principal al pedido.',
   },
   de: {
     too_many_seats: 'Sie können höchstens {max} Plätze in einer Bestellung wählen.',
     cart_too_large: 'Die Bestellung ist zu groß. Teilen Sie sie in kleinere Bestellungen auf.',
     invalid_qty: 'Sie können höchstens {max} Tickets einer Kategorie in einer Bestellung kaufen.',
+    addon_note: 'Nur zusammen mit einem Hauptticket.',
+    addon_only: 'Dieses Ticket wird nur zusammen mit einem Hauptticket für denselben Termin verkauft. Fügen Sie der Bestellung ein Hauptticket hinzu.',
   },
   fr: {
     too_many_seats: 'Vous pouvez choisir au maximum {max} places par commande.',
     cart_too_large: 'La commande est trop grande. Répartissez-la en plusieurs commandes.',
     invalid_qty: "Vous pouvez acheter au maximum {max} billets d'une catégorie par commande.",
+    addon_note: 'Uniquement avec un billet principal.',
+    addon_only: 'Ce billet est vendu uniquement avec un billet principal pour la même date. Ajoutez un billet principal à la commande.',
   },
 };
 
@@ -68,6 +86,11 @@ export function getCartLimitStrings(locale: string): CartLimitStrings {
 
 function fill(template: string, max: number): string {
   return template.replace('{max}', String(max));
+}
+
+/** The line beside an add-on category: it is sold only with a main ticket. */
+export function addonNote(locale: string): string {
+  return getCartLimitStrings(locale).addon_note;
 }
 
 /** The notice for a seat the buyer tried to add past the cap. */
@@ -86,6 +109,8 @@ export function cartLimitMessage(code: string | undefined, locale: string): stri
       return s.cart_too_large;
     case 'checkout.invalid_qty':
       return fill(s.invalid_qty, MAX_LINE_QUANTITY);
+    case 'tier.addon_requires_main':
+      return s.addon_only;
     default:
       return null;
   }

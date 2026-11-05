@@ -162,8 +162,13 @@ func (h *Handler) loadActionEvents(
 	if err != nil {
 		return nil, err
 	}
+	// Add-on categories (migration 0197) do not keep a session on sale.
+	addon, err := h.eventQueries.ListAddonTierIDsByOrg(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
 
-	return h.projectActionEvents(ctx, orgID, sessions, tiers, prices, feePercent, chain, manual), nil
+	return h.projectActionEvents(ctx, orgID, sessions, tiers, prices, feePercent, chain, manual, addon), nil
 }
 
 // catalogChain is the part of a chain of categories (migration 0112) the
@@ -187,6 +192,7 @@ func (h *Handler) projectActionEvents(
 	feePercent float64,
 	chain catalogChain,
 	manual map[uuid.UUID]string,
+	addon map[uuid.UUID]bool,
 ) map[uuid.UUID]catalogAction {
 	// One instant for the whole projection so a category's sale window
 	// cannot be judged "open" for its availability and "closed" for the
@@ -287,7 +293,7 @@ func (h *Handler) projectActionEvents(
 		// organizer's state is set the hold gate refuses every new hold, so
 		// the session and its categories advertise no place, like a closed
 		// category does on this wire.
-		entry["salesState"] = salesstate.Wire(actionEventSalesState(s, bySession[s.SessionID], manual[s.SessionID], now))
+		entry["salesState"] = salesstate.Wire(actionEventSalesState(s, bySession[s.SessionID], manual[s.SessionID], addon, now))
 		entry["arenaSessionId"] = s.SessionID.String()
 		// salesStateManual: the state above was set by hand (soon / soldout)
 		// and only the organizer lifts it; false = the platform derived it.

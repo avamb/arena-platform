@@ -10,6 +10,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesstate"
@@ -48,15 +50,27 @@ func salesStateRefusal(command, description string, err error) bil24Response {
 // catalog already loaded (no query of its own), by the same rule the event
 // center uses (salesstate.Effective). tiers must already carry the session's
 // sales end (hcheckout.CapSaleWindow). The catalog lists only sessions that
-// are on sale or about to be, so the status is "scheduled".
-func actionEventSalesState(s gen.ActionEventRow, tiers []gen.ActionEventTierRow, manual string, now time.Time) string {
+// are on sale or about to be, so the status is "scheduled". The places of an
+// add-on category (addon, migration 0197) count only when the session has no
+// main category, as in gen.ListSessionSalesFacts.
+func actionEventSalesState(s gen.ActionEventRow, tiers []gen.ActionEventTierRow, manual string, addon map[uuid.UUID]bool, now time.Time) string {
 	f := salesstate.Facts{Status: "scheduled", Categories: len(tiers)}
+	hasMain := false
+	for _, t := range tiers {
+		if !addon[t.Tier.ID] {
+			hasMain = true
+			break
+		}
+	}
 	if s.SellEndAt != nil {
 		f.SalesEnd = *s.SellEndAt
 	} else {
 		f.SalesEnd = s.StartAt
 	}
 	for _, t := range tiers {
+		if hasMain && addon[t.Tier.ID] {
+			continue
+		}
 		total := int(t.GAUnitsTotal) + int(t.SeatsTotal)
 		free := max(int(t.GAUnitsAvailable)+int(t.SeatsAvailable), 0)
 		f.TotalPlaces += total

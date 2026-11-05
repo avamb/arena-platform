@@ -140,6 +140,8 @@ type bundleSessionSource struct {
 	Tiers   []gen.TicketTierRow
 	Chain   []gen.TierChainRow
 	Stats   map[uuid.UUID]gaquota.Stats
+	// Addon holds the session's add-on categories (migration 0197).
+	Addon map[uuid.UUID]bool
 	// Geometry and Seats are loaded for a session bound to a seating plan
 	// version only (task S1b): they say which plan category each category
 	// prices and which categories are seated.
@@ -302,6 +304,9 @@ func loadBundleSource(ctx context.Context, q *gen.Queries, orgID, eventID uuid.U
 		ss.Venue = v
 		if ss.Tiers, err = q.ListTicketTiersBySession(ctx, s.ID); err != nil {
 			return bundleSource{}, fmt.Errorf("list ticket tiers: %w", err)
+		}
+		if ss.Addon, err = q.ListAddonTierIDsBySessions(ctx, []uuid.UUID{s.ID}); err != nil {
+			return bundleSource{}, err
 		}
 		if ss.Chain, err = q.ListTierChainForSession(ctx, s.ID); err != nil {
 			return bundleSource{}, fmt.Errorf("read category chain: %w", err)
@@ -580,6 +585,10 @@ func bundleCategories(
 			Price:             money.Major(t.PriceAmount),
 			Availability:      quantity(t),
 			Placement:         seatedTiers[t.ID],
+		}
+		if ss.Addon[t.ID] {
+			isAddon := true
+			c.IsAddon = &isAddon
 		}
 		if idx, ok := homes[t.ID]; ok {
 			c.PlanCategoryIndex = &idx

@@ -230,6 +230,10 @@ type ImportSessionCategory struct {
 	// Color (arena extension, source=arena only) is the category's #rrggbb
 	// colour on the seat map; empty keeps the stored one.
 	Color string `json:"color,omitempty"`
+	// IsAddon (arena extension, source=arena only, migration 0197) marks an
+	// add-on category, sold only together with a main category ticket of
+	// the same session: true sets it, false clears it, absent keeps it.
+	IsAddon *bool `json:"isAddon,omitempty"`
 }
 
 // ImportPriceWindow is one scheduled price: Price (MAJOR units, like the

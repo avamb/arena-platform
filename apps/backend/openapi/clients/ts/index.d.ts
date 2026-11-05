@@ -24085,6 +24085,16 @@ export interface components {
              */
             is_open?: boolean;
             /**
+             * @description An add-on category (migration 0197): sold only together with a
+             *     ticket of a main (non-add-on) category of the same session, in
+             *     the same purchase; a cart of add-on tickets only answers 409
+             *     `tier.addon_requires_main` (gateway: 101). Its free places do not
+             *     keep the session on sale: once every main category is gone the
+             *     session reads `sold_out` and the public feed offers the add-on
+             *     no place (`available` 0).
+             */
+            is_addon?: boolean;
+            /**
              * @description The category's own colour on the seat map, `#rrggbb` (lower-case),
              *     or null when it has none - then the colour of the geometry category
              *     is used (task S1d, migration 0171). Admin reads and writes only.
@@ -24341,6 +24351,12 @@ export interface components {
             sort_order?: number;
             /** @description Optional colour of the category on the seat map, `#rrggbb` (stored lower-case). Null or an empty string means none. Anything else answers 400 `tier.invalid_color`. */
             color?: string | null;
+            /**
+             * @description Create the category as an add-on (migration 0197): sold only
+             *     together with a main category ticket of the same session.
+             *     Defaults to false.
+             */
+            is_addon?: boolean;
         };
         /**
          * @description Partial update for PATCH
@@ -24437,6 +24453,13 @@ export interface components {
              *     `tier.invalid_color`.
              */
             color?: string | null;
+            /**
+             * @description Mark (`true`) or unmark (`false`) the category as an add-on
+             *     (migration 0197): sold only together with a main category ticket
+             *     of the same session, and its free places do not keep the session
+             *     on sale. Omitting the key leaves the flag unchanged.
+             */
+            is_addon?: boolean | null;
         };
         /** @description Single ticket-tier response envelope. */
         TicketTierEnvelope: {
@@ -30729,6 +30752,14 @@ export interface components {
              *     import.invalid_color.
              */
             color?: string;
+            /**
+             * @description Arena extension, source=arena only (migration 0197): `true` makes
+             *     the category an add-on, sold only together with a main category
+             *     ticket of the same session; `false` makes it a main category
+             *     again; absent keeps the stored flag. Written by GET
+             *     .../event-bundle only when true.
+             */
+            isAddon?: boolean;
             /**
              * Format: int64
              * @description Bil24 category-price identifier. Must be positive and below 1e9

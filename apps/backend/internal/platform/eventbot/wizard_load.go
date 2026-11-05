@@ -178,7 +178,7 @@ func loadSeatedTickets(tiers []openapi.TicketTierItem) DraftTickets {
 	sort.SliceStable(tiers, func(i, j int) bool { return tiers[i].SortOrder < tiers[j].SortOrder })
 	out := DraftTickets{Mode: ModeParallel}
 	for _, t := range tiers {
-		c := DraftCategory{TierID: t.Id.String(), Name: t.Name, PriceMinor: t.PriceAmount, GA: t.Kind == nil || *t.Kind != "seated"}
+		c := DraftCategory{TierID: t.Id.String(), Name: t.Name, PriceMinor: t.PriceAmount, GA: t.Kind == nil || *t.Kind != "seated", Addon: t.IsAddon != nil && *t.IsAddon}
 		if t.Capacity != nil {
 			c.Places = int(*t.Capacity)
 		}
@@ -219,7 +219,7 @@ func (w *Wizard) loadTickets(ctx context.Context, io EditIO, ws WizSession, even
 		out := DraftTickets{Mode: ModeParallel}
 		sort.SliceStable(tiers, func(i, j int) bool { return tiers[i].SortOrder < tiers[j].SortOrder })
 		for _, t := range tiers {
-			c := DraftCategory{TierID: t.Id.String(), Name: t.Name, PriceMinor: t.PriceAmount}
+			c := DraftCategory{TierID: t.Id.String(), Name: t.Name, PriceMinor: t.PriceAmount, Addon: t.IsAddon != nil && *t.IsAddon}
 			if t.Capacity != nil {
 				c.Places = int(*t.Capacity)
 			}

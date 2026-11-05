@@ -130,6 +130,8 @@ var Bil24DescriptionKeys = []string{
 	// The organizer's sales state of the session (migration 0183).
 	"bil24.sales_soon",
 	"bil24.session_sold_out",
+	// An add-on category without a main ticket (migration 0197).
+	"bil24.addon_requires_main",
 	"bil24.promo_invalid",
 	// Spec §7.6 (feature #491): ADD_PROMO_CODES / CHECK_KDP name the exact
 	// reason a code was refused, because the WordPress checkout renders the

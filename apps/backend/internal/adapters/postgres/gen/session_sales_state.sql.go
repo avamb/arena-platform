@@ -32,6 +32,10 @@ type SessionSalesFactsRow struct {
 // ListSessionSalesFacts
 // ─────────────────────────────────────────────────────────────────────────────
 
+// The places of an add-on category (migration 0197) count only when the
+// session has no main category at all: a free extra-child place must not keep
+// a session whose main tickets are gone "on sale".
+//
 // The categories' rule is the hold gate's (hcheckout.CategorySellable): open
 // and inside the sale window at $2. opens_later is a free place that may
 // still sell: a window that has not started, or a closed category whose
@@ -68,6 +72,9 @@ LEFT   JOIN LATERAL (
     JOIN   ticket_tiers  tt ON tt.id = ss.tier_id
     WHERE  ss.session_id = s.id
       AND  tt.deleted_at IS NULL
+      AND  (NOT tt.is_addon OR NOT EXISTS (
+                SELECT 1 FROM ticket_tiers m
+                 WHERE m.session_id = s.id AND m.deleted_at IS NULL AND NOT m.is_addon))
 ) p ON true
 WHERE  s.id = ANY($1::uuid[])
   AND  s.deleted_at IS NULL`

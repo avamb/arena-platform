@@ -60,6 +60,9 @@ other = "Prodej vstupenek na tento termín ještě nezačal."
 ["bil24.session_sold_out"]
 other = "Tento termín je vyprodaný."
 
+["bil24.addon_requires_main"]
+other = "Tuto vstupenku lze koupit jen společně s hlavní vstupenkou na stejný termín."
+
 ["bil24.subscription_invalid_email"]
 other = "Zkontrolujte e-mailovou adresu a odešlete ji znovu."
 

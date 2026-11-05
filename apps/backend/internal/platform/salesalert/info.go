@@ -61,9 +61,15 @@ type SessionInfo struct {
 	Start     time.Time
 	Venue     string
 	Timezone  string
-	// TotalPlaces / FreePlaces count the places of the live categories.
+	// TotalPlaces / FreePlaces count the places of the live main categories
+	// (every category when the session has no main one, migration 0197);
+	// AddonFree the free places of its add-on categories.
 	TotalPlaces int64
 	FreePlaces  int64
+	AddonFree   int64
+	// AllTotal / AllFree count every live category, add-ons included.
+	AllTotal int64
+	AllFree  int64
 }
 
 // ErrSessionGone: the session was deleted, or is not the organization's.
@@ -75,17 +81,28 @@ func LoadSessionInfo(ctx context.Context, q Querier, orgID, sessionID uuid.UUID)
 	err := q.QueryRow(ctx, `
 		SELECT o.id, o.name, COALESCE(o.default_locale, 'en'), e.name, s.start_at,
 		       COALESCE(v.name, ''), COALESCE(v.timezone, ''),
-		       (SELECT count(*) FROM session_seats ss JOIN ticket_tiers tt ON tt.id = ss.tier_id
-		         WHERE ss.session_id = s.id AND tt.deleted_at IS NULL),
-		       (SELECT count(*) FROM session_seats ss JOIN ticket_tiers tt ON tt.id = ss.tier_id
-		         WHERE ss.session_id = s.id AND tt.deleted_at IS NULL AND ss.status = 'available')
+		       COALESCE(p.main_total, 0), COALESCE(p.main_free, 0), COALESCE(p.addon_free, 0),
+		       COALESCE(p.total, 0), COALESCE(p.free, 0)
 		FROM   sessions s
 		JOIN   events e        ON e.id = s.event_id
 		JOIN   organizations o ON o.id = e.org_id
 		LEFT   JOIN venues v   ON v.id = s.venue_id
+		LEFT   JOIN LATERAL (
+		    SELECT count(*) AS total,
+		           count(*) FILTER (WHERE ss.status = 'available') AS free,
+		           count(*) FILTER (WHERE NOT tt.is_addon OR NOT x.has_main) AS main_total,
+		           count(*) FILTER (WHERE (NOT tt.is_addon OR NOT x.has_main) AND ss.status = 'available') AS main_free,
+		           count(*) FILTER (WHERE tt.is_addon AND x.has_main AND ss.status = 'available') AS addon_free
+		    FROM   session_seats ss
+		    JOIN   ticket_tiers tt ON tt.id = ss.tier_id
+		    CROSS  JOIN (SELECT EXISTS (SELECT 1 FROM ticket_tiers m
+		                  WHERE m.session_id = s.id AND m.deleted_at IS NULL AND NOT m.is_addon) AS has_main) x
+		    WHERE  ss.session_id = s.id AND tt.deleted_at IS NULL
+		) p ON true
 		WHERE  s.id = $1 AND e.org_id = $2 AND s.deleted_at IS NULL`, sessionID, orgID).Scan(
 		&in.OrgID, &in.OrgName, &in.OrgLocale, &in.EventName, &in.Start,
-		&in.Venue, &in.Timezone, &in.TotalPlaces, &in.FreePlaces)
+		&in.Venue, &in.Timezone, &in.TotalPlaces, &in.FreePlaces, &in.AddonFree,
+		&in.AllTotal, &in.AllFree)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return SessionInfo{}, ErrSessionGone
 	}

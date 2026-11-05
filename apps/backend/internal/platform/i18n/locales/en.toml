@@ -69,6 +69,9 @@ other = "Ticket sales for this session have not started yet."
 ["bil24.session_sold_out"]
 other = "This session is sold out."
 
+["bil24.addon_requires_main"]
+other = "This ticket can only be bought together with a main ticket for the same session."
+
 ["bil24.subscription_invalid_email"]
 other = "Check the e-mail address and send it again."
 
@@ -853,6 +856,18 @@ other = "Categories: {{.List}}. Add another?"
 
 ["bot.wz.t_cat_more_btn"]
 other = "+ Another category"
+
+["bot.wz.t_cat_addon_btn"]
+other = "Add-on categories…"
+
+["bot.wz.ask_t_cat_addon"]
+other = "Tick the add-on categories. Such a ticket is sold only together with a main ticket for the same date (for example, «Extra child» with «Child + adult»). When the main tickets run out, the date closes as sold out even if add-on places are left."
+
+["bot.wz.err_addon_all"]
+other = "At least one category must be a main one: add-ons are sold only together with it."
+
+["bot.wz.addon_mark"]
+other = "(add-on)"
 
 ["bot.wz.t_cat_done_btn"]
 other = "Done →"

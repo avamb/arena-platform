@@ -67,6 +67,36 @@ func TestTexts_EveryLocaleRendersEveryAlert(t *testing.T) {
 			t.Errorf("%q: manual text lacks the actor or the free places:\n%s", loc, m)
 		}
 	}
+	in.AddonFree, in.AllTotal, in.AllFree = 2, 130, 9
+	for _, loc := range []string{"en", "ru", "es", "cs", ""} {
+		in.OrgLocale = loc
+		rest := []CategoryLeft{{Name: "Extra <kid>", Free: 2}}
+		for _, text := range []string{
+			SoldOutText(in, false, ""),
+			CategorySoldOutText(in, "Main & Co", 11, rest),
+			CategorySoldOutText(in, "Main", 11, nil),
+			SalesEndedText(in),
+			ManualChangeText(in, "soon", "Vera", "telegram_bot"),
+			ManualChangeText(in, "open", "", "site_plugin"),
+			ManualChangeText(in, "open", "", "unknown"),
+		} {
+			if strings.Contains(text, "%!") || !strings.Contains(text, "Gala &lt;b&gt;") || strings.HasSuffix(text, "\n") {
+				t.Errorf("%q: bad text:\n%s", loc, text)
+			}
+		}
+		if m := CategorySoldOutText(in, "Main & Co", 11, rest); !strings.Contains(m, "Main &amp; Co") || !strings.Contains(m, "Extra &lt;kid&gt; — 2") {
+			t.Errorf("%q: category text lacks the category or what is left:\n%s", loc, m)
+		}
+		if m := SalesEndedText(in); !strings.Contains(m, "121") || !strings.Contains(m, "130") {
+			t.Errorf("%q: the tally is wrong:\n%s", loc, m)
+		}
+		if m := SoldOutText(in, false, ""); !strings.Contains(m, "2") {
+			t.Errorf("%q: the free add-on places are not said:\n%s", loc, m)
+		}
+	}
+	if ru := ManualChangeText(SessionInfo{OrgLocale: "ru"}, "soon", "Вера", "telegram_bot"); !strings.Contains(ru, "Вера · Telegram-бот") {
+		t.Errorf("ru manual change lacks who and through what:\n%s", ru)
+	}
 	if ru := SiteStaleText(SessionInfo{OrgLocale: "ru-RU"}, "sold_out", 20); !strings.Contains(ru, "Распродано") {
 		t.Errorf("ru-RU must use the Russian texts:\n%s", ru)
 	}
