@@ -33,8 +33,8 @@ const (
 var (
 	// ErrRuleNotImplemented: the rule type is known but this slice does not
 	// compute it (volume_above_baseline, generator_run, and subscription for
-	// any event kind but white_label_month). Rate
-	// refuses an event whose line carries such a rule rather than charging
+	// any event kind but white_label_month and
+	// shop_module_month). Rate refuses an event whose line carries such a rule rather than charging
 	// it by another rule.
 	ErrRuleNotImplemented = errors.New("billing: rule type not implemented")
 	// ErrBadRule: a rule row whose type is unknown or whose params do not
@@ -80,8 +80,9 @@ type CreditPackRule struct {
 	Currency             string
 }
 
-// SubscriptionRule is subscription for the event kind white_label_month: a
-// monthly amount, prorated by days by Rate (spec 08_architecture/53).
+// SubscriptionRule is subscription for the event kinds white_label_month and
+// shop_module_month: a monthly amount, prorated by days by Rate (specs
+// 08_architecture/53 and 61).
 type SubscriptionRule struct {
 	MonthlyMinor int64
 	Currency     string
@@ -96,7 +97,7 @@ type FixedPerEvent struct {
 // Rule is one parsed price_list_rules row. Exactly one of the typed params
 // pointers is set, matching Type; the types without a calculation
 // (volume_above_baseline, generator_run, and subscription for any event kind
-// but white_label_month) set none.
+// but white_label_month and shop_module_month) set none.
 type Rule struct {
 	ID           uuid.UUID
 	Type         RuleType
@@ -122,7 +123,7 @@ func (r Rule) Implemented() bool {
 	case RuleVolumeAboveBaseline, RuleGeneratorRun:
 		return false
 	case RuleSubscription:
-		return r.EventKind == string(KindWhiteLabelMonth)
+		return IsSubscriptionKind(r.EventKind)
 	}
 	return true
 }
@@ -237,7 +238,7 @@ func ParseRule(row gen.PriceListRuleRow, priceListCurrency string) (Rule, error)
 		}
 		r.PerEvent = &FixedPerEvent{AmountMinor: *p.AmountMinor, Currency: priceListCurrency}
 	case RuleSubscription:
-		if r.EventKind != string(KindWhiteLabelMonth) {
+		if !IsSubscriptionKind(r.EventKind) {
 			return parseUncomputed(row, r, bad)
 		}
 		var p struct {
@@ -300,4 +301,11 @@ func requireAmounts(fields map[string]*int64) error {
 		}
 	}
 	return nil
+}
+
+// IsSubscriptionKind reports whether the subscription rule type is computed
+// for the event kind: the monthly services white_label_month and
+// shop_module_month.
+func IsSubscriptionKind(kind string) bool {
+	return kind == string(KindWhiteLabelMonth) || kind == string(KindShopModuleMonth)
 }

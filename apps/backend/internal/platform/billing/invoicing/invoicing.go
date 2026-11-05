@@ -211,7 +211,8 @@ func GenerateUsage(ctx context.Context, q *gen.Queries, accountID uuid.UUID, per
 		if c.Currency != acc.Currency {
 			return nil, fmt.Errorf("%w: charge %s in %s on an account in %s", ErrBadInput, c.ChargeID, c.Currency, acc.Currency)
 		}
-		groups[c.RuleType] = append(groups[c.RuleType], c)
+		key := usageLineKey(c)
+		groups[key] = append(groups[key], c)
 	}
 	rules := make([]string, 0, len(groups))
 	for r := range groups {
@@ -221,6 +222,7 @@ func GenerateUsage(ctx context.Context, q *gen.Queries, accountID uuid.UUID, per
 	var subtotal int64
 	for _, rule := range rules {
 		list := groups[rule]
+		ruleOfLine := list[0].RuleType
 		var total int64
 		unit := list[0].UncoveredMinor
 		for _, c := range list {
@@ -229,10 +231,10 @@ func GenerateUsage(ctx context.Context, q *gen.Queries, accountID uuid.UUID, per
 				unit = 0
 			}
 		}
-		ruleType := rule
+		ruleType := ruleOfLine
 		line, err := q.InsertBillingInvoiceLine(ctx, gen.InsertBillingInvoiceLineParams{
 			InvoiceID: row.ID, Kind: LineUsage, RuleType: &ruleType,
-			Description: usageLineDescription(rule, len(list)),
+			Description: usageLineDescription(ruleOfLine, list[0].EventKind, len(list)),
 			Quantity:    int64(len(list)), UnitAmountMinor: unit, TotalAmountMinor: total, Currency: acc.Currency,
 		})
 		if err != nil {
@@ -572,10 +574,25 @@ func MatchBankPaymentTo(ctx context.Context, q *gen.Queries, txID, invoiceID uui
 	return MatchResult{Transaction: row, Invoice: &paid}, nil
 }
 
-// usageLineDescription names one usage line of an invoice. A white label
-// month (rule subscription) is named as such, one line per brand-month count.
-func usageLineDescription(rule string, n int) string {
+// usageLineKey is the group a charge's invoice line belongs to: its rule
+// type, and for the subscription rule also the event kind, because white
+// label months and shop module months are both subscription charges and each
+// gets its own line.
+func usageLineKey(c gen.UninvoicedChargeRow) string {
+	if c.RuleType == string(billing.RuleSubscription) {
+		return c.RuleType + ":" + c.EventKind
+	}
+	return c.RuleType
+}
+
+// usageLineDescription names one usage line of an invoice. A subscription
+// charge is named after its service, one line per month count: white label
+// brand-months, shop module months.
+func usageLineDescription(rule, eventKind string, n int) string {
 	if rule == string(billing.RuleSubscription) {
+		if eventKind == string(billing.KindShopModuleMonth) {
+			return fmt.Sprintf("Shop module: %d months", n)
+		}
 		return fmt.Sprintf("White label: %d brand-months", n)
 	}
 	return fmt.Sprintf("Platform service: %s, %d charges", rule, n)

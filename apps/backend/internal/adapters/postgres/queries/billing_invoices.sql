@@ -222,7 +222,8 @@ DELETE FROM invoice_lines WHERE invoice_id = $1 AND kind = 'card_fee';
 -- Returns the direct charges of an account whose event is in [from, to), not reversed,
 -- with an uncovered amount left to bill.
 SELECT c.id, c.rule_type, c.currency, c.amount_minor,
-       (c.amount_minor - COALESCE((SELECT SUM(a.amount_minor) FROM charge_allocations a WHERE a.charge_id = c.id), 0))::bigint
+       (c.amount_minor - COALESCE((SELECT SUM(a.amount_minor) FROM charge_allocations a WHERE a.charge_id = c.id), 0))::bigint,
+       be.kind
 FROM   charges c
 JOIN   billable_events be ON be.id = c.billable_event_id
 WHERE  c.account_id = $1
