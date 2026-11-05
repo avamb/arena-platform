@@ -5873,3 +5873,441 @@ other = "\n🤝 Comprado con el código de quien invitó: <b>{{.Code}}</b>{{if .
 
 ["bot.ord.ref_more"]
 other = "\n…y {{.N}} pedidos de amigos más"
+
+["bot.sh.btn"]
+other = "🛍 Tienda"
+
+["bot.sh.gone"]
+other = "La tienda no está conectada para esta organización. Vuelve al menú."
+
+["bot.sh.home_head"]
+other = "🛍 <b>Tienda</b> · {{.Org}}"
+
+["bot.sh.storefront_open"]
+other = "Escaparate: 🟢 abierto"
+
+["bot.sh.storefront_closed"]
+other = "Escaparate: 🔴 cerrado"
+
+["bot.sh.orders_only"]
+other = "La tienda está desactivada. El escaparate está cerrado. Los pedidos y las devoluciones siguen disponibles."
+
+["bot.sh.orders_only_only"]
+other = "Esto solo funciona mientras la tienda está conectada. Los pedidos y las devoluciones siguen disponibles."
+
+["bot.sh.home_counts"]
+other = "Por enviar: {{.ToShip}} · En revisión: {{.Review}} · Esperan el pago: {{.Unpaid}}"
+
+["bot.sh.orders_btn"]
+other = "📦 Pedidos"
+
+["bot.sh.open_btn"]
+other = "🔓 Abrir el escaparate"
+
+["bot.sh.close_btn"]
+other = "🔒 Cerrar el escaparate"
+
+["bot.sh.settings_btn"]
+other = "⚙️ Ajustes"
+
+["bot.sh.back_shop_btn"]
+other = "🛍 Tienda"
+
+["bot.sh.edit_web_btn"]
+other = "🌐 Editar en el navegador"
+
+["bot.sh.open_ask"]
+other = "¿Abrir el escaparate? Los compradores podrán hacer pedidos y pagar."
+
+["bot.sh.open_yes_btn"]
+other = "Sí, abrir"
+
+["bot.sh.close_ask"]
+other = "¿Cerrar el escaparate? Se dejan de aceptar pedidos nuevos. Los pedidos sin pagar se quedan como están: puedes esperar el pago o cancelarlos."
+
+["bot.sh.close_yes_btn"]
+other = "Sí, cerrar"
+
+["bot.sh.opened_done"]
+other = "✔ El escaparate está abierto."
+
+["bot.sh.closed_done"]
+other = "✔ El escaparate está cerrado."
+
+["bot.sh.cannot_open"]
+other = "Todavía no se puede abrir el escaparate:"
+
+["bot.sh.blocker_settings_not_saved"]
+other = "los ajustes de la tienda no se han guardado nunca"
+
+["bot.sh.blocker_no_active_product"]
+other = "no hay ningún producto activo"
+
+["bot.sh.blocker_payment_not_configured"]
+other = "el pago en línea no está conectado o no está verificado"
+
+["bot.sh.blocker_other"]
+other = "falta algo más"
+
+["bot.sh.cannot_open_hint"]
+other = "Corrígelo en el centro de eventos web y vuelve a intentarlo."
+
+["bot.sh.settings_text"]
+other = "⚙️ <b>Ajustes de la tienda</b> · {{.Org}}\n\n{{.State}}\nMoneda: {{.Currency}}\nEnvío: {{.Price}} · {{.Label}}\nPaís: {{.Country}}\nComprobación de edad: {{.Age}}\nE-mail de contacto: {{.Email}}\nCanal de ventas: {{.Channel}}\nDominio: {{.Domain}}\n\nPara cambiarlos, abre el navegador."
+
+["bot.sh.none"]
+other = "sin definir"
+
+["bot.sh.channel_default"]
+other = "el primer canal adecuado (por defecto)"
+
+["bot.sh.tab_to_ship"]
+other = "Por enviar"
+
+["bot.sh.tab_review"]
+other = "En revisión"
+
+["bot.sh.tab_unpaid"]
+other = "Esperan el pago"
+
+["bot.sh.tab_all"]
+other = "Todos"
+
+["bot.sh.list_title"]
+other = "📦 <b>Pedidos</b> · {{.Org}}\n{{.Tab}}{{.Total}} · pág. {{.Page}}/{{.Pages}}{{.Search}}"
+
+["bot.sh.list_total"]
+other = " · total: {{.Total}}"
+
+["bot.sh.search_line"]
+other = "🔎 Búsqueda: {{.Query}}"
+
+["bot.sh.search_none"]
+other = "No se encontró nada para «{{.Query}}». Escribe otra palabra o borra la búsqueda."
+
+["bot.sh.empty_to_ship"]
+other = "Ahora no hay nada que enviar."
+
+["bot.sh.empty_review"]
+other = "Ningún pedido necesita revisión."
+
+["bot.sh.empty_unpaid"]
+other = "Ningún pedido espera el pago."
+
+["bot.sh.empty_all"]
+other = "Todavía no hay pedidos."
+
+["bot.sh.list_hint"]
+other = "Abre un pedido de abajo o escribe un número, un nombre o un e-mail para buscar."
+
+["bot.sh.card_head"]
+other = "🛍 <b>Pedido №{{.Num}}</b> · {{.Chip}} {{.Status}}\n{{.Amount}} · {{.When}}"
+
+["bot.sh.st_pending_payment"]
+other = "Espera el pago"
+
+["bot.sh.st_paid"]
+other = "Pagado"
+
+["bot.sh.st_shipped"]
+other = "Enviado"
+
+["bot.sh.st_cancelled"]
+other = "Cancelado"
+
+["bot.sh.st_expired"]
+other = "No pagado a tiempo"
+
+["bot.sh.st_refunded"]
+other = "Devuelto"
+
+["bot.sh.st_partially_refunded"]
+other = "Devuelto en parte"
+
+["bot.sh.st_manual_review"]
+other = "Necesita revisión"
+
+["bot.sh.card_review_late"]
+other = "⚠️ El pago llegó cuando la reserva ya había terminado y el producto ya no estaba. Tramita el pedido si el producto está otra vez, o devuelve el dinero y cancélalo."
+
+["bot.sh.card_review_unconfirmed"]
+other = "⚠️ El pago todavía no está confirmado. El pedido sigue a su pago: por ahora no hay nada que decidir."
+
+["bot.sh.card_review_other"]
+other = "⚠️ El pedido espera una revisión."
+
+["bot.sh.card_buyer"]
+other = "\n\n👤 <b>{{.Name}}</b>{{.Contacts}}"
+
+["bot.sh.card_delivery"]
+other = "🚚 <b>Envío</b>"
+
+["bot.sh.delivery_none"]
+other = "🚚 Sin envío"
+
+["bot.sh.delivery_pickup"]
+other = "🚚 Recogida"
+
+["bot.sh.delivery_hidden"]
+other = "🚚 La dirección de envío solo se muestra en el chat privado con el bot."
+
+["bot.sh.card_comment"]
+other = "💬 {{.Text}}"
+
+["bot.sh.card_items"]
+other = "\n\n🧾 <b>Artículos</b>"
+
+["bot.sh.line_discount"]
+other = "Descuento: −{{.Amount}}"
+
+["bot.sh.line_shipping"]
+other = "Envío: {{.Amount}}"
+
+["bot.sh.line_total"]
+other = "<b>Total: {{.Amount}}</b>"
+
+["bot.sh.line_refunded"]
+other = "↩ Devuelto: {{.Amount}}"
+
+["bot.sh.card_payment"]
+other = "💳 {{.Provider}} · {{.State}}"
+
+["bot.sh.card_shipped"]
+other = "📦 Enviado {{.When}}"
+
+["bot.sh.card_tracking"]
+other = "Número de seguimiento: {{.Text}}"
+
+["bot.sh.card_note"]
+other = "📝 <b>Nota</b> ({{.By}}, {{.When}}): {{.Text}}"
+
+["bot.sh.ship_btn"]
+other = "📦 Enviado"
+
+["bot.sh.track_btn"]
+other = "✏️ Número de seguimiento"
+
+["bot.sh.courier_btn"]
+other = "📋 Texto para el mensajero"
+
+["bot.sh.note_btn"]
+other = "📝 Nota"
+
+["bot.sh.resend_btn"]
+other = "✉️ Enviar la carta otra vez"
+
+["bot.sh.refund_btn"]
+other = "↩ Devolución"
+
+["bot.sh.fulfil_btn"]
+other = "✅ Tramitar el pedido"
+
+["bot.sh.refund_cancel_btn"]
+other = "↩ Devolver y cancelar"
+
+["bot.sh.cancel_btn"]
+other = "✖ Cancelar el pedido"
+
+["bot.sh.to_list_btn"]
+other = "Pedidos"
+
+["bot.sh.ship_ask"]
+other = "📦 Pedido №{{.Num}}: escribe el número de seguimiento o pulsa «Sin número»."
+
+["bot.sh.no_number_btn"]
+other = "Sin número"
+
+["bot.sh.ship_done"]
+other = "✔ El pedido №{{.Num}} está marcado como enviado."
+
+["bot.sh.note_ask"]
+other = "📝 Pedido №{{.Num}}: escribe la nota. Solo la veis tú y tus compañeros, el comprador no."
+
+["bot.sh.note_current"]
+other = "Ahora: {{.Text}}"
+
+["bot.sh.note_erase_btn"]
+other = "Borrar la nota"
+
+["bot.sh.note_saved"]
+other = "✔ La nota está guardada."
+
+["bot.sh.note_erased"]
+other = "✔ La nota está borrada."
+
+["bot.sh.resend_ask"]
+other = "✉️ Pedido №{{.Num}}: ¿qué carta enviar otra vez a {{.Email}}?"
+
+["bot.sh.letter_received"]
+other = "Pedido recibido"
+
+["bot.sh.letter_shipped"]
+other = "Pedido enviado"
+
+["bot.sh.letter_refunded"]
+other = "Devolución"
+
+["bot.sh.resend_done"]
+other = "✔ La carta está en cola y llegará en menos de un minuto."
+
+["bot.sh.courier_head"]
+other = "📋 Texto para el mensajero (toca para copiar):"
+
+["bot.sh.courier_empty"]
+other = "No hay datos para el texto del mensajero."
+
+["bot.sh.courier_private"]
+other = "La dirección de envío solo se muestra en el chat privado con el bot."
+
+["bot.sh.cancel_word"]
+other = "CANCELAR PEDIDO"
+
+["bot.sh.cancel_ask"]
+other = "✖ ¿Cancelar el pedido №{{.Num}}? No está pagado. El pedido se cierra y su producto vuelve a la venta. No se puede deshacer.\n\nPara confirmar, escribe {{.Word}}."
+
+["bot.sh.cancel_wrong"]
+other = "El texto no coincide, así que no se ha cancelado nada. Para confirmar, escribe {{.Word}} o vuelve atrás."
+
+["bot.sh.cancel_done"]
+other = "✔ El pedido №{{.Num}} está cancelado."
+
+["bot.sh.cancel_changed"]
+other = "El pedido ya no espera el pago, así que no se ha cancelado nada."
+
+["bot.sh.refund_word"]
+other = "DEVOLVER"
+
+["bot.sh.fulfil_word"]
+other = "TRAMITAR PEDIDO"
+
+["bot.sh.refund_amount"]
+other = "↩ <b>Devolución · pedido №{{.Num}}</b>\nPuedes devolver hasta {{.Left}}. ¿Cuánto?"
+
+["bot.sh.refund_all_btn"]
+other = "Todo el importe ({{.Left}})"
+
+["bot.sh.refund_part_btn"]
+other = "Otro importe"
+
+["bot.sh.refund_cancel_dialog_btn"]
+other = "Cancelar"
+
+["bot.sh.refund_amount_text"]
+other = "Escribe el importe a devolver, no más de {{.Left}}, por ejemplo 12.50."
+
+["bot.sh.refund_amount_bad"]
+other = "Eso no es un importe de 0.01 a {{.Left}}. Escríbelo como número, por ejemplo 12.50."
+
+["bot.sh.refund_amount_changed"]
+other = "El importe que se puede devolver ha cambiado: ahora hasta {{.Left}}."
+
+["bot.sh.refund_reason"]
+other = "Escribe el motivo de la devolución (opcional) o pulsa «Sin motivo»."
+
+["bot.sh.refund_no_reason_btn"]
+other = "Sin motivo"
+
+["bot.sh.refund_reason_line"]
+other = "\nMotivo: {{.Reason}}"
+
+["bot.sh.refund_confirm"]
+other = "↩ <b>Devolución · pedido №{{.Num}}</b>\n{{.Amount}} vuelven al comprador a través del proveedor de pagos.{{.ReasonLine}}\n\nEl producto no vuelve solo al stock. No se puede deshacer.\n\nPara confirmar, escribe {{.Word}}."
+
+["bot.sh.fulfil_confirm"]
+other = "✅ <b>¿Tramitar el pedido №{{.Num}}?</b>\nEl pedido pasa a pagado y el producto sale de la estantería. El comprador recibe la confirmación del pedido. No se puede deshacer.\n\nPara confirmar, escribe {{.Word}}."
+
+["bot.sh.refund_cancel_confirm"]
+other = "↩ <b>¿Devolver el dinero y cancelar el pedido №{{.Num}}?</b>\nTodo el pago, {{.Amount}}, vuelve al comprador y el pedido se cancela. No se puede deshacer.\n\nPara confirmar, escribe {{.Word}}."
+
+["bot.sh.word_wrong"]
+other = "El texto no coincide, así que no se ha enviado nada. Para confirmar, escribe {{.Word}} o cancela."
+
+["bot.sh.refund_retry"]
+other = "⏳ <b>Pedido №{{.Num}}</b>: no hubo respuesta, la operación pudo empezar. Pulsa «Repetir»: el servidor no devolverá el dinero dos veces. O abre el pedido para comprobarlo."
+
+["bot.sh.refund_again_btn"]
+other = "Repetir"
+
+["bot.sh.refund_done"]
+other = "✔ Pedido №{{.Num}}: el dinero ha vuelto: {{.Amount}}."
+
+["bot.sh.refund_pending"]
+other = "⏳ Pedido №{{.Num}}: el proveedor aún no ha respondido. La devolución de {{.Amount}} está en camino y el pedido se actualiza solo."
+
+["bot.sh.refund_review"]
+other = "⚠️ Pedido №{{.Num}}: la devolución necesita una revisión manual. Escribe a soporte."
+
+["bot.sh.refund_failed"]
+other = "✖ Pedido №{{.Num}}: el proveedor no aceptó la devolución. No se devolvió nada. {{.Reason}}"
+
+["bot.sh.fulfil_done"]
+other = "✔ El pedido №{{.Num}} está tramitado y listo para enviar."
+
+["bot.sh.refund_cancel_done"]
+other = "✔ Pedido №{{.Num}}: el dinero ha vuelto ({{.Amount}}) y el pedido está cancelado."
+
+["bot.sh.refund_cancel_pending"]
+other = "⏳ Pedido №{{.Num}}: el dinero ({{.Amount}}) está en camino de vuelta. El pedido se cierra cuando el proveedor lo confirme."
+
+["bot.sh.refund_cancel_review"]
+other = "⚠️ Pedido №{{.Num}}: la devolución necesita una revisión manual. Escribe a soporte."
+
+["bot.sh.refund_cancel_failed"]
+other = "✖ Pedido №{{.Num}}: el proveedor no aceptó la devolución. El pedido sigue en revisión. {{.Reason}}"
+
+["bot.sh.refund_nothing"]
+other = "En este pedido no hay nada que devolver."
+
+["bot.sh.other_attempt"]
+other = "La devolución del pedido №{{.Num}} pudo empezar. Comprueba primero ese pedido: su ficha tiene el botón que la repite sin riesgo."
+
+["bot.sh.menu_back_btn"]
+other = "Volver a la devolución"
+
+["bot.sh.menu_leave_refund"]
+other = "La devolución del pedido №{{.Num}} espera tu palabra. Si sales, se descarta."
+
+["bot.sh.menu_leave_maybe"]
+other = "La operación del pedido №{{.Num}} pudo empezar. Si sales, se conserva y se puede repetir desde la ficha del pedido: el dinero no se devolverá dos veces."
+
+["bot.sh.err_not_refundable"]
+other = "Este pedido no se puede devolver aquí: no se pagó con el proveedor de pagos de la tienda."
+
+["bot.sh.err_out_of_stock"]
+other = "El producto todavía no está libre en el almacén, así que no ha cambiado nada."
+
+["bot.sh.err_payment_unconfirmed"]
+other = "El pago de este pedido todavía no está confirmado, así que no ha cambiado nada."
+
+["bot.sh.err_not_resolvable"]
+other = "Este pedido aún no tiene nada que decidir: sigue a su pago."
+
+["bot.sh.err_not_in_review"]
+other = "El pedido ya no espera una revisión."
+
+["bot.sh.err_money_failed"]
+other = "El servidor rechazó la operación, así que no se devolvió nada."
+
+["bot.sh.err_changed"]
+other = "El pedido ha cambiado desde que se mostró la pantalla. La ficha de abajo muestra su estado actual."
+
+["bot.sh.err_postal_required"]
+other = "Primero añade el código postal a la dirección de envío (en el navegador) y luego marca el pedido como enviado."
+
+["bot.sh.err_invalid_postal"]
+other = "El código postal de la dirección de envío no es válido. Corrígelo primero en el navegador."
+
+["bot.sh.err_too_long"]
+other = "El texto es demasiado largo. Usa hasta 2000 caracteres."
+
+["bot.sh.err_rate_limited"]
+other = "La carta de este pedido se puso en cola hace menos de un minuto. Inténtalo de nuevo en {{.Seconds}} s."
+
+["bot.sh.err_no_email"]
+other = "El pedido no tiene e-mail del comprador."
+
+["bot.sh.err_letter_unavailable"]
+other = "Este pedido no tiene esa carta."
+
+["bot.sh.err_unavailable"]
+other = "El bot no pudo guardar la operación, así que no se envió nada. Inténtalo de nuevo."

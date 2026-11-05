@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,6 +65,15 @@ type APIError struct {
 	// Capability is error.details.capability of a refused or missing
 	// referral programme: whether the event's channels can pay the cashback.
 	Capability *openapi.ReferralCapability
+	// Blockers is error.details.blockers of 422 shop.cannot_open: what keeps
+	// the storefront closed (settings_not_saved, no_active_product,
+	// payment_not_configured).
+	Blockers []string
+	// RefundableMinor is error.details.refundable_minor of a refused shop
+	// refund: what is really left to return, minor units.
+	RefundableMinor *int64
+	// RetryAfter is the Retry-After header of a 429, in seconds (0 when absent).
+	RetryAfter int
 }
 
 func (e *APIError) Error() string {
@@ -160,12 +170,33 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 				}
 			}
 		}
+		// The shop routes' extra details, read apart so that a shape the other
+		// routes use can never cost the fields above.
+		var extra struct {
+			Error struct {
+				Details struct {
+					Blockers        []string `json:"blockers"`
+					RefundableMinor *int64   `json:"refundable_minor"`
+				} `json:"details"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(raw, &extra) == nil {
+			ae.Blockers = extra.Error.Details.Blockers
+			ae.RefundableMinor = extra.Error.Details.RefundableMinor
+		}
+		if n, err := strconv.Atoi(strings.TrimSpace(res.Header.Get("Retry-After"))); err == nil && n > 0 {
+			ae.RetryAfter = n
+		}
 		if ae.Code == "" {
 			ae.Code = "http." + http.StatusText(res.StatusCode)
 		}
 		return ae
 	}
 	if out == nil || len(raw) == 0 {
+		return nil
+	}
+	if text, ok := out.(*rawText); ok {
+		*text = rawText(raw)
 		return nil
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
@@ -201,11 +232,20 @@ func (c *ArenaClient) AcceptInvitation(ctx context.Context, req AcceptInvitation
 	return out, err
 }
 
+// rawText is a destination of do for a plain-text answer (the courier text):
+// the body is stored as it is instead of being decoded as JSON.
+type rawText string
+
 // Membership is one organization the linked user belongs to (from /v1/me).
 type Membership struct {
 	OrgID   uuid.UUID
 	OrgName string
 	Role    string
+	// Modules are the paid modules the organization has today (spec 61); a
+	// connected shop is "shop". ShopMode is "full", "orders_only" or "" (none):
+	// "orders_only" is a disconnected shop whose orders and refunds stay open.
+	Modules  []string
+	ShopMode string
 	// Archived: a platform superadmin archived the organization. The person
 	// stays a member, but the bot must not offer it as a working organization.
 	Archived bool
@@ -252,6 +292,9 @@ func (c *ArenaClient) MeInfo(ctx context.Context, jwt string) (Me, error) {
 			Status  string `json:"status"`
 			// Archived is absent on an API older than the flag: false then.
 			Archived bool `json:"archived"`
+			// Modules and ShopMode are absent on an API older than spec 61.
+			Modules  []string `json:"modules"`
+			ShopMode *string  `json:"shop_mode"`
 		} `json:"organization_memberships"`
 	}
 	if err := c.do(ctx, http.MethodGet, "/v1/me", jwt, nil, &out); err != nil {
@@ -266,7 +309,11 @@ func (c *ArenaClient) MeInfo(ctx context.Context, jwt string) (Me, error) {
 		if err != nil {
 			continue
 		}
-		me.Memberships = append(me.Memberships, Membership{OrgID: id, OrgName: m.OrgName, Role: m.Role, Archived: m.Archived})
+		ms := Membership{OrgID: id, OrgName: m.OrgName, Role: m.Role, Archived: m.Archived, Modules: m.Modules}
+		if m.ShopMode != nil {
+			ms.ShopMode = *m.ShopMode
+		}
+		me.Memberships = append(me.Memberships, ms)
 	}
 	for _, r := range out.Roles {
 		if r == superadminRole {
@@ -283,8 +330,10 @@ func (c *ArenaClient) MeInfo(ctx context.Context, jwt string) (Me, error) {
 func (c *ArenaClient) AllOrganizations(ctx context.Context, jwt string) ([]Membership, error) {
 	var out struct {
 		Organizations []struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
+			ID       string   `json:"id"`
+			Name     string   `json:"name"`
+			Modules  []string `json:"modules"`
+			ShopMode *string  `json:"shop_mode"`
 		} `json:"organizations"`
 	}
 	if err := c.do(ctx, http.MethodGet, "/v1/organizations", jwt, nil, &out); err != nil {
@@ -296,7 +345,11 @@ func (c *ArenaClient) AllOrganizations(ctx context.Context, jwt string) ([]Membe
 		if err != nil {
 			continue
 		}
-		ms = append(ms, Membership{OrgID: id, OrgName: o.Name, Role: membershipRoleOwner})
+		m := Membership{OrgID: id, OrgName: o.Name, Role: membershipRoleOwner, Modules: o.Modules}
+		if o.ShopMode != nil {
+			m.ShopMode = *o.ShopMode
+		}
+		ms = append(ms, m)
 	}
 	sort.SliceStable(ms, func(i, j int) bool { return strings.ToLower(ms[i].OrgName) < strings.ToLower(ms[j].OrgName) })
 	return ms, nil
