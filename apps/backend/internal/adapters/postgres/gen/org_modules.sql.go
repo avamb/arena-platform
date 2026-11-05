@@ -222,21 +222,26 @@ type OrgModuleStateRow struct {
 	OrgID          uuid.UUID `json:"org_id"`
 	Modules        []string  `json:"modules"`
 	OpenShopOrders bool      `json:"open_shop_orders"`
+	// PaidShopOrders: the organization has at least one shop order that was
+	// ever paid (paid_at set), however closed it is now. Served by the partial
+	// index shop_orders_paid_idx (migration 0198).
+	PaidShopOrders bool `json:"paid_shop_orders"`
 }
 
 const orgModuleStates = `-- name: OrgModuleStates :many
 SELECT o.id,
        COALESCE(array_agg(DISTINCT m.module ORDER BY m.module) FILTER (WHERE m.module IS NOT NULL), '{}')::text[],
-       EXISTS (SELECT 1 FROM shop_orders so WHERE so.org_id = o.id AND (` + openShopOrderPredicate + `))
+       EXISTS (SELECT 1 FROM shop_orders so WHERE so.org_id = o.id AND (` + openShopOrderPredicate + `)),
+       EXISTS (SELECT 1 FROM shop_orders so WHERE so.org_id = o.id AND so.paid_at IS NOT NULL)
 FROM   unnest($1::uuid[]) AS o(id)
 LEFT   JOIN org_module_periods m
        ON  m.org_id = o.id AND m.starts_on <= $2::date AND (m.ends_on IS NULL OR m.ends_on >= $2::date)
 GROUP  BY o.id`
 
 // OrgModuleStates answers, in ONE round trip, for each organization in
-// orgIDs: its modules active on day and whether it has an open shop order. An
-// organization id that does not exist still gets a row (no modules, no open
-// orders). The /v1/me handler uses it for every membership at once.
+// orgIDs: its modules active on day, whether it has an open shop order and
+// whether it ever had a paid one. An organization id that does not exist still
+// gets a row (no modules, no orders). The /v1/me handler uses it for every membership at once.
 func (q *Queries) OrgModuleStates(ctx context.Context, orgIDs []uuid.UUID, day time.Time) ([]OrgModuleStateRow, error) {
 	if len(orgIDs) == 0 {
 		return nil, nil
@@ -249,7 +254,7 @@ func (q *Queries) OrgModuleStates(ctx context.Context, orgIDs []uuid.UUID, day t
 	var out []OrgModuleStateRow
 	for rows.Next() {
 		var r OrgModuleStateRow
-		if err := rows.Scan(&r.OrgID, &r.Modules, &r.OpenShopOrders); err != nil {
+		if err := rows.Scan(&r.OrgID, &r.Modules, &r.OpenShopOrders, &r.PaidShopOrders); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

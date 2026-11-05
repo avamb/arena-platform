@@ -355,19 +355,16 @@ func RouteShop(subs []Subscription, orgID string, trigger Trigger, ships bool) (
 }
 
 // shopAllowed reports whether the shop announcements go out for the order's
-// organization: its shop mode is full or orders only. A refund is the one
-// event that may arrive after the order has closed (the refund of the last
-// open order closes it), so a refund of an order that was still waiting to be
-// shipped counts as orders only.
-func (d *Dispatcher) shopAllowed(ctx context.Context, orgID string, trigger Trigger, o gen.ShopOrderRow) (bool, error) {
+// organization: its shop mode is full or orders only. Orders only has no end
+// date once an order was ever paid (spec 61 section 4.1), and every paid,
+// refund or review announcement concerns such an order, so no special case is
+// left for a refund that closes the last open order.
+func (d *Dispatcher) shopAllowed(ctx context.Context, orgID string) (bool, error) {
 	mode, err := d.store.ShopMode(ctx, orgID)
 	if err != nil {
 		return false, err
 	}
-	if mode != orgmodules.ModeNone {
-		return true, nil
-	}
-	return trigger == TriggerShopOrderRefunded && o.ShippedAt == nil && o.DeliveryKind != "none" && o.RefundedMinor > 0, nil
+	return mode != orgmodules.ModeNone, nil
 }
 
 // handleShop announces one shop event: it loads the order, checks the shop
@@ -420,7 +417,7 @@ func (d *Dispatcher) handleShop(ctx context.Context, ev outbox.Event) {
 		fullKey, fullText = fmt.Sprintf("shop_refund:%s:%d", id, so), FormatShopDeliveryRefund(order, now)
 	}
 
-	ok, err := d.shopAllowed(ctx, orgID, trigger, order.Order)
+	ok, err := d.shopAllowed(ctx, orgID)
 	if err != nil {
 		d.logger.Warn("sales.notify: shop mode", "org_id", orgID, "error", err.Error())
 		return
@@ -434,6 +431,13 @@ func (d *Dispatcher) handleShop(ctx context.Context, ev outbox.Event) {
 		return
 	}
 	sale, delivery := RouteShop(subs, orgID, trigger, order.Order.DeliveryKind != "none")
+	if trigger == TriggerShopOrderPaid && payloadBool(ev.Payload, "after_review") {
+		// The order was parked and a person settled it in favour of sending
+		// (review_reason is already cleared, so the event says so): the sales
+		// chats got the review notice and hear no second fact. The delivery
+		// cards still go.
+		sale = nil
+	}
 	// None of the shop messages carries the events-bot footer: the chats are
 	// a courier's and a sales desk's, and "create your events from Telegram"
 	// is noise there. Ticket sales keep it (compose).

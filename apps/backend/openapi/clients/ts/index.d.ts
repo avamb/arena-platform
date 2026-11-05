@@ -2217,7 +2217,7 @@ export interface paths {
         };
         /**
          * Admin - list the modules of an organization
-         * @description Every module period of the organization with all its fields, and the shop's state today: mode (full, orders_only or none), whether open shop orders remain, the storefront switch and domain, and the monthly price that applies today (the individual price of the period covering today, else the price list's). Requires JWT, superadmin.read and a platform superadmin (spec 61 section 4.4).
+         * @description Every module period of the organization with all its fields, and the shop's state today: mode (full, orders_only or none), whether open shop orders remain (`orders_only` also holds for good once any shop order was paid), the storefront switch and domain, and the monthly price that applies today (the individual price of the period covering today, else the price list's). Requires JWT, superadmin.read and a platform superadmin (spec 61 section 4.4).
          */
         get: operations["getV1AdminOrganizationModules"];
         put?: never;
@@ -2239,7 +2239,7 @@ export interface paths {
         put?: never;
         /**
          * Admin - connect the shop module
-         * @description Connects the shop module from starts_on (today, UTC, when absent) to ends_on (no end when absent). No price means the price list (0 today); a price without a currency is in the organization's billing currency. Two periods of one module never share a day. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the reason in the same transaction.
+         * @description Connects the shop module from starts_on (today, UTC, when absent) to ends_on (no end when absent). No price means the price list (0 today); a price without a currency is in the organization's billing currency. Two periods of one module never share a day. starts_on is today (UTC) or later, so a month already charged is never rewritten. When the organization had no period on the day before starts_on (a first connection or a reconnection after a gap), its storefront switch is set to closed in the same transaction and the organization opens it again itself through the normal checks; a period that continues the previous one leaves the switch alone. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the reason in the same transaction.
          */
         post: operations["postV1AdminOrganizationModuleShop"];
         delete?: never;
@@ -2259,7 +2259,7 @@ export interface paths {
         put?: never;
         /**
          * Admin - end a module period
-         * @description Sets the last day of a module period, never later than its current end. From the next UTC day the storefront is closed and the shop falls to orders_only while open shop orders remain; products, pages and buyers are kept. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the reason.
+         * @description Sets the last day of a module period, never later than its current end. From the next UTC day the storefront is closed and the shop falls to orders_only, which has no end once the organization has a paid or an open shop order; products, pages and buyers are kept. ends_on is yesterday (UTC) or later: a day already charged is never rewritten. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the reason.
          */
         post: operations["postV1AdminOrgModuleEnd"];
         delete?: never;
@@ -2279,7 +2279,7 @@ export interface paths {
         put?: never;
         /**
          * Admin - change the price of a module period
-         * @description Ends the period on the day before `from` and opens a new one from `from` with the new price and the old end, in one transaction. No price returns to the price list. Answers the NEW period. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the reason.
+         * @description Ends the period on the day before `from` and opens a new one from `from` with the new price and the old end, in one transaction. No price returns to the price list. `from` is today (UTC) or later: a month already charged is never rewritten. Answers the NEW period. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the reason.
          */
         post: operations["postV1AdminOrgModuleReprice"];
         delete?: never;
@@ -13888,10 +13888,11 @@ export interface components {
             modules: string[];
             /**
              * @description How much of the shop the organization has: `full` while the shop
-             *     module is connected today; `orders_only` after the module ended
-             *     while the organization still has open shop orders (awaiting payment,
-             *     in manual review, or paid and not shipped), when only the order
-             *     routes work; null when it has no shop section at all.
+             *     module is connected today; `orders_only` after the module ended,
+             *     for good, while the organization has at least one shop order that
+             *     was ever paid or any open one (awaiting payment or in manual
+             *     review), when only the order routes work (list, card, shipping and
+             *     refunds); null when it has no shop section at all.
              */
             shop_mode: string | null;
         };
@@ -15199,9 +15200,9 @@ export interface components {
             modules?: string[];
             /**
              * @description Only on GET /v1/organizations (the list): `full` while the shop
-             *     module is connected today, `orders_only` after it ended while open
-             *     shop orders remain (only the order routes work), null for no shop
-             *     section.
+             *     module is connected today, `orders_only` after it ended while the
+             *     organization has a paid or an open shop order, with no end date
+             *     (only the order routes work), null for no shop section.
              */
             shop_mode?: string | null;
         };
@@ -42084,7 +42085,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A date, price or currency is invalid (`org_module.invalid`) */
+            /** @description A date, price or currency is invalid (`org_module.invalid`), or starts_on is before today in UTC (`org_module.starts_on_in_past`) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -42186,7 +42187,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description ends_on is not a date or is earlier than the day before the period starts (`org_module.invalid`) */
+            /** @description ends_on is not a date or is earlier than the day before the period starts (`org_module.invalid`), or is before yesterday in UTC (`org_module.ends_on_in_past`) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -42288,7 +42289,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description from, price or currency is invalid, or from is before the period starts (`org_module.invalid`) */
+            /** @description from, price or currency is invalid, or from is before the period starts (`org_module.invalid`), or from is before today in UTC (`org_module.from_in_past`) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -66304,7 +66305,10 @@ export interface operations {
     getV1OrganizationBillingModules: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) for a platform superadmin reading an organization they are not a member of; ignored for everybody else. */
+                "X-Admin-Reason"?: string;
+            };
             path: {
                 /** @description UUID of the organization. */
                 org_id: string;
@@ -66320,6 +66324,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrgBillingModulesResponse"];
+                };
+            };
+            /** @description A platform superadmin called without `X-Admin-Reason` (`superadmin.missing_reason`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Missing or invalid JWT or API key. */
@@ -78228,7 +78241,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The organization has no shop here (`shop.module_not_enabled`): neither the shop module today nor an open shop order, spec 61. */
+            /** @description The organization has no shop here (`shop.module_not_enabled`): neither the shop module today nor a paid or an open shop order, spec 61. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -78309,7 +78322,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The organization has no shop here (`shop.module_not_enabled`): neither the shop module today nor an open shop order, spec 61. */
+            /** @description The organization has no shop here (`shop.module_not_enabled`): neither the shop module today nor a paid or an open shop order, spec 61. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -78377,7 +78390,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The organization has no shop here (`shop.module_not_enabled`): neither the shop module today nor an open shop order, spec 61. */
+            /** @description The organization has no shop here (`shop.module_not_enabled`): neither the shop module today nor a paid or an open shop order, spec 61. */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -78447,7 +78460,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor an open shop order (spec 61). */
+            /** @description No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor a paid or an open shop order (spec 61). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -78530,7 +78543,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor an open shop order (spec 61). */
+            /** @description No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor a paid or an open shop order (spec 61). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -78622,7 +78635,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor an open shop order (spec 61). */
+            /** @description No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor a paid or an open shop order (spec 61). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -78723,7 +78736,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor an open shop order (spec 61). */
+            /** @description No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor a paid or an open shop order (spec 61). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -78811,7 +78824,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor an open shop order (spec 61). */
+            /** @description No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor a paid or an open shop order (spec 61). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -78906,7 +78919,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor an open shop order (spec 61). */
+            /** @description No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor a paid or an open shop order (spec 61). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -79010,7 +79023,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor an open shop order (spec 61). */
+            /** @description No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor a paid or an open shop order (spec 61). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -79089,7 +79102,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor an open shop order (spec 61). */
+            /** @description No such order in this organization (`shop.order_not_found`). Also `shop.module_not_enabled` when the organization has neither the shop module today nor a paid or an open shop order (spec 61). */
             404: {
                 headers: {
                     [name: string]: unknown;

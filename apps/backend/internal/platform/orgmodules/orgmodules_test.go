@@ -94,7 +94,7 @@ func TestPeriodCoversUTCDays(t *testing.T) {
 
 func TestDecideShopMode(t *testing.T) {
 	for _, c := range []struct {
-		active, open bool
+		active, open bool // open: an open or an ever-paid order
 		want         Mode
 	}{
 		{true, false, ModeFull},

@@ -206,11 +206,29 @@ func TestShopModule_GateFollowsTheModule(t *testing.T) {
 		t.Fatalf("status page of an existing order = %d %v; want 200", code, body)
 	}
 
-	// The last open order closes: the section is gone.
+	// The only order expires without ever being paid: nothing to read or
+	// refund, the section is gone.
 	e.exec(`UPDATE shop_orders SET status = 'expired' WHERE org_id = $1`, e.orgA)
 	for _, c := range callers {
 		e.expectGate(http.StatusNotFound, http.MethodGet, orders, c.token, c.reason, "")
 		e.expectGate(http.StatusNotFound, http.MethodGet, settings, c.token, c.reason, "")
+	}
+
+	// An order that was paid and has long been shipped keeps the order routes
+	// open for good: the owner reads it and can still refund it (chargebacks,
+	// late refund requests). Catalog and settings stay closed.
+	e.exec(`UPDATE shop_orders SET status = 'shipped', paid_at = now(), shipped_at = now() WHERE org_id = $1`, e.orgA)
+	for _, c := range callers {
+		e.expectGate(http.StatusOK, http.MethodGet, orders, c.token, c.reason, "")
+		e.expectGate(http.StatusOK, http.MethodGet, orders+"/"+order.ID.String(), c.token, c.reason, "")
+		e.expectGate(http.StatusNotFound, http.MethodGet, settings, c.token, c.reason, "")
+		e.expectGate(http.StatusNotFound, http.MethodGet, e.orgPath(e.orgA, "/products"), c.token, c.reason, "")
+	}
+	// The refund route is past the module gate: whatever it answers for this
+	// order (here the payment is not a real one), it is not the gate's 404.
+	rcode, rbody, _ := e.do(http.MethodPost, orders+"/"+order.ID.String()+"/refund", e.ownerA, `{"reason":"late request"}`)
+	if shopErrCode(rbody) == "shop.module_not_enabled" {
+		t.Fatalf("refund of an old paid order hit the module gate: %d %v", rcode, rbody)
 	}
 }
 
@@ -481,6 +499,11 @@ func TestOrgModules_AdminRoutes(t *testing.T) {
 	e.expect(t, http.StatusForbidden, http.MethodPost, "/v1/admin/org-modules/"+periodID+"/end", ownerTok, reason,
 		fmt.Sprintf(`{"ends_on":%q}`, dayStr(today)))
 
+	// A platform superadmin reading the organizer's view needs a reason.
+	if body := e.expect(t, http.StatusBadRequest, http.MethodGet, "/v1/organizations/"+org.String()+"/billing/modules", super, "", ""); sec1Code(body) != "superadmin.missing_reason" {
+		t.Fatalf("superadmin without a reason: %s", body)
+	}
+
 	// The organizer's read-only view: no operator fields.
 	var mine map[string]any
 	_ = json.Unmarshal([]byte(e.expect(t, http.StatusOK, http.MethodGet,
@@ -500,5 +523,151 @@ func TestOrgModules_AdminRoutes(t *testing.T) {
 	}
 	if mine["effective_monthly_minor"] != float64(1500) {
 		t.Fatalf("organizer's price today: %v", mine)
+	}
+}
+
+// A month already charged is never rewritten, so the routes take no date in
+// the past: a start and a reprice from today, an end from yesterday (the
+// same rules as white label).
+func TestOrgModules_AdminRoutes_RefuseThePast(t *testing.T) {
+	e := newSec1Env(t)
+	_, super := e.superadmin(t)
+	org := e.org(t, "M1P")
+	t.Cleanup(func() {
+		_, _ = e.srv.pgxPool.Exec(context.Background(), `DELETE FROM org_module_periods WHERE org_id = $1`, org)
+	})
+	base := "/v1/admin/organizations/" + org.String() + "/modules"
+	const reason = "spec 61 past dates test"
+	today := time.Now().UTC()
+	periods := func() int {
+		t.Helper()
+		var n int
+		if err := e.srv.pgxPool.QueryRow(context.Background(), `SELECT count(*) FROM org_module_periods WHERE org_id = $1`, org).Scan(&n); err != nil {
+			t.Fatalf("count periods: %v", err)
+		}
+		return n
+	}
+
+	// Connect from yesterday: refused, nothing written.
+	if body := e.expect(t, http.StatusUnprocessableEntity, http.MethodPost, base+"/shop", super, reason,
+		fmt.Sprintf(`{"starts_on":%q,"monthly_price_minor":0,"currency":"EUR"}`, dayStr(today.AddDate(0, 0, -1)))); sec1Code(body) != "org_module.starts_on_in_past" {
+		t.Fatalf("connect in the past: %s", body)
+	}
+	if n := periods(); n != 0 {
+		t.Fatalf("a refused connect left %d periods", n)
+	}
+	// From today it works.
+	var created map[string]any
+	_ = json.Unmarshal([]byte(e.expect(t, http.StatusCreated, http.MethodPost, base+"/shop", super, reason,
+		fmt.Sprintf(`{"starts_on":%q,"monthly_price_minor":1500,"currency":"EUR"}`, dayStr(today)))), &created)
+	id, _ := created["id"].(string)
+
+	// Reprice from yesterday: refused. From today: allowed.
+	if body := e.expect(t, http.StatusUnprocessableEntity, http.MethodPost, "/v1/admin/org-modules/"+id+"/reprice", super, reason,
+		fmt.Sprintf(`{"from":%q,"monthly_price_minor":0,"currency":"EUR"}`, dayStr(today.AddDate(0, 0, -1)))); sec1Code(body) != "org_module.from_in_past" {
+		t.Fatalf("reprice in the past: %s", body)
+	}
+	if n := periods(); n != 1 {
+		t.Fatalf("a refused reprice changed the periods: %d", n)
+	}
+	var repriced map[string]any
+	_ = json.Unmarshal([]byte(e.expect(t, http.StatusOK, http.MethodPost, "/v1/admin/org-modules/"+id+"/reprice", super, reason,
+		fmt.Sprintf(`{"from":%q,"monthly_price_minor":0,"currency":"EUR"}`, dayStr(today)))), &repriced)
+	newID, _ := repriced["id"].(string)
+
+	// End two days ago: refused. Yesterday: allowed.
+	if body := e.expect(t, http.StatusUnprocessableEntity, http.MethodPost, "/v1/admin/org-modules/"+newID+"/end", super, reason,
+		fmt.Sprintf(`{"ends_on":%q}`, dayStr(today.AddDate(0, 0, -2)))); sec1Code(body) != "org_module.ends_on_in_past" {
+		t.Fatalf("end in the past: %s", body)
+	}
+	e.expect(t, http.StatusOK, http.MethodPost, "/v1/admin/org-modules/"+newID+"/end", super, reason,
+		fmt.Sprintf(`{"ends_on":%q}`, dayStr(today.AddDate(0, 0, -1))))
+}
+
+// Reconnecting after a gap must not reopen the storefront by itself: the
+// organization opens it again through the normal checks. A period that
+// continues the previous one leaves the switch alone.
+func TestOrgModules_ReconnectAfterGapClosesTheStorefront(t *testing.T) {
+	e := newShopModuleEnv(t)
+	storefront := e.orgPath(e.orgA, "/storefront")
+	e.openShop(4500, 3)
+	enabled := func() bool {
+		t.Helper()
+		var on bool
+		if err := e.pool.QueryRow(context.Background(), `SELECT enabled FROM shop_settings WHERE org_id = $1`, e.orgA).Scan(&on); err != nil {
+			t.Fatalf("read shop_settings: %v", err)
+		}
+		return on
+	}
+	if !enabled() {
+		t.Fatal("the fixture's storefront should be open")
+	}
+	base := "/v1/admin/organizations/" + e.orgA.String() + "/modules"
+	const reason = "spec 61 reconnect test"
+	today := time.Now().UTC()
+
+	// End the fixture's open period yesterday: the module is over.
+	_, list := e.doReason(http.MethodGet, base, e.super, "", "")
+	items, _ := list["items"].([]any)
+	if len(items) != 1 {
+		t.Fatalf("periods before: %v", list)
+	}
+	firstID, _ := items[0].(map[string]any)["id"].(string)
+	if code, body := e.doReason(http.MethodPost, "/v1/admin/org-modules/"+firstID+"/end",
+		e.super, fmt.Sprintf(`{"ends_on":%q}`, dayStr(today.AddDate(0, 0, -1))), reason); code != http.StatusOK {
+		t.Fatalf("end = %d %v", code, body)
+	}
+	if code, _, _ := e.do(http.MethodGet, "/v1/public/shop/"+e.orgASlug, "", ""); code != http.StatusNotFound {
+		t.Fatalf("catalog of an organization without the module = %d; want 404", code)
+	}
+	// A period that ended yesterday still covers the day before today, so a
+	// connection from today would continue it. Move its end back a few days to
+	// leave a real gap (the API only ends a period from yesterday on).
+	e.exec(`UPDATE org_module_periods SET ends_on = $2::date WHERE id = $1`, firstID, dayStr(today.AddDate(0, 0, -4)))
+
+	// Connect again from today: a gap, so the storefront is closed.
+	if code, body := e.doReason(http.MethodPost, base+"/shop", e.super,
+		fmt.Sprintf(`{"starts_on":%q,"monthly_price_minor":0,"currency":"EUR"}`, dayStr(today)), reason); code != http.StatusCreated {
+		t.Fatalf("reconnect = %d %v", code, body)
+	}
+	if enabled() {
+		t.Fatal("reconnecting after a gap reopened the storefront")
+	}
+	if code, body, _ := e.do(http.MethodGet, "/v1/public/shop/"+e.orgASlug, "", ""); code != http.StatusNotFound {
+		t.Fatalf("catalog right after the reconnection = %d %v; want 404", code, body)
+	}
+	// The organization opens it itself, through the blockers (its payment
+	// config is not verified in this fixture).
+	code, body := e.doReason(http.MethodPut, storefront, e.managerA, `{"enabled":true}`, "")
+	if code != http.StatusUnprocessableEntity || shopErrCode(body) != "shop.cannot_open" {
+		t.Fatalf("opening after the reconnection = %d %v; want 422 shop.cannot_open", code, body)
+	}
+	e.exec(`UPDATE payment_provider_configs SET verification_status = 'ok' WHERE id = $1`, e.configA)
+	if code, body := e.doReason(http.MethodPut, storefront, e.managerA, `{"enabled":true}`, ""); code != http.StatusOK || body["enabled"] != true {
+		t.Fatalf("opening once the checks pass = %d %v", code, body)
+	}
+
+	// A period that continues the previous one (starts the day after it ends)
+	// leaves the switch alone: end today's period tomorrow, connect from the
+	// day after.
+	_, cur := e.doReason(http.MethodGet, base, e.super, "", "")
+	var openID string
+	for _, raw := range cur["items"].([]any) {
+		it := raw.(map[string]any)
+		if it["ends_on"] == nil {
+			openID, _ = it["id"].(string)
+		}
+	}
+	tomorrow := today.AddDate(0, 0, 1)
+	if code, body := e.doReason(http.MethodPost, "/v1/admin/org-modules/"+openID+"/end", e.super,
+		fmt.Sprintf(`{"ends_on":%q}`, dayStr(tomorrow)), reason); code != http.StatusOK {
+		t.Fatalf("end tomorrow = %d %v", code, body)
+	}
+	if code, body := e.doReason(http.MethodPost, base+"/shop", e.super,
+		fmt.Sprintf(`{"starts_on":%q,"monthly_price_minor":0,"currency":"EUR"}`, dayStr(tomorrow.AddDate(0, 0, 1))), reason); code != http.StatusCreated {
+		t.Fatalf("continue = %d %v", code, body)
+	}
+	if !enabled() {
+		t.Fatal("a contiguous period closed the storefront")
 	}
 }

@@ -162,6 +162,11 @@ func (h *Handler) HandleConnectShop(w http.ResponseWriter, r *http.Request) {
 		}
 		startsOn = d
 	}
+	if startsOn.Before(orgmodules.Day(now)) {
+		writeErr(w, r, http.StatusUnprocessableEntity, "org_module.starts_on_in_past",
+			"starts_on must be today or later: a month already charged is never rewritten")
+		return
+	}
 	var endsOn *time.Time
 	if body.EndsOn != nil && strings.TrimSpace(*body.EndsOn) != "" {
 		d, ok := parseDay(*body.EndsOn)
@@ -198,6 +203,20 @@ func (h *Handler) HandleConnectShop(w http.ResponseWriter, r *http.Request) {
 		h.moduleErr(w, r, "connect", err)
 		return
 	}
+	contiguous, err := h.continuesPeriod(ctx, q, orgID, startsOn)
+	if err != nil {
+		h.fail(w, r, "check previous period", err)
+		return
+	}
+	if !contiguous {
+		// A fresh connection or a reconnection after a gap: the storefront
+		// stays closed until the organization opens it itself through the
+		// normal opening checks (spec 61 section 4.2).
+		if _, err := q.SetShopSettingsEnabled(ctx, orgID, false); err != nil {
+			h.fail(w, r, "close storefront", err)
+			return
+		}
+	}
 	if err := h.auditTx(r, tx, AuditConnect, created.ID, reason, map[string]any{
 		"org_id": orgID.String(), "module": created.Module,
 		"starts_on": created.StartsOn.Format(dateLayout), "ends_on": dateJSON(created.EndsOn),
@@ -214,6 +233,24 @@ func (h *Handler) HandleConnectShop(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusCreated, periodJSON(created, orgmodules.Day(now), true))
 }
 
+// continuesPeriod reports whether a period of the shop module covers the day
+// before day, i.e. a period starting on day continues an existing connection. It
+// runs after Connect, which holds the (organization, module) lock, and the
+// period just created starts on day, so it never matches itself.
+func (h *Handler) continuesPeriod(ctx context.Context, q *gen.Queries, orgID uuid.UUID, day time.Time) (bool, error) {
+	periods, err := orgmodules.List(ctx, q, orgID)
+	if err != nil {
+		return false, err
+	}
+	prev := day.AddDate(0, 0, -1)
+	for _, p := range periods {
+		if p.Module == orgmodules.ModuleShop && p.Covers(prev) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/admin/org-modules/{id}/end
 // ─────────────────────────────────────────────────────────────────────────────
@@ -225,7 +262,7 @@ type endBody struct {
 
 // HandleEnd sets the last day of a period (never later than its current
 // end). From the next UTC day the storefront is closed and the shop falls to
-// orders_only while open orders remain.
+// orders_only for good once the organization has a paid or an open order.
 func (h *Handler) HandleEnd(w http.ResponseWriter, r *http.Request) {
 	if !h.ready(w, r, true) {
 		return
@@ -245,6 +282,11 @@ func (h *Handler) HandleEnd(w http.ResponseWriter, r *http.Request) {
 	endsOn, ok := parseDay(body.EndsOn)
 	if !ok {
 		writeErr(w, r, http.StatusUnprocessableEntity, "org_module.invalid", "ends_on must be a date, for example 2026-12-31")
+		return
+	}
+	if endsOn.Before(orgmodules.Day(h.now()).AddDate(0, 0, -1)) {
+		writeErr(w, r, http.StatusUnprocessableEntity, "org_module.ends_on_in_past",
+			"ends_on must be yesterday or later: a month already charged is never rewritten")
 		return
 	}
 	ctx := r.Context()
@@ -312,6 +354,11 @@ func (h *Handler) HandleReprice(w http.ResponseWriter, r *http.Request) {
 	from, ok := parseDay(body.From)
 	if !ok {
 		writeErr(w, r, http.StatusUnprocessableEntity, "org_module.invalid", "from must be a date, for example 2026-12-01")
+		return
+	}
+	if from.Before(orgmodules.Day(h.now())) {
+		writeErr(w, r, http.StatusUnprocessableEntity, "org_module.from_in_past",
+			"from must be today or later: a month already charged is never rewritten")
 		return
 	}
 	ctx := r.Context()

@@ -227,6 +227,31 @@ func TestDispatcher_ShopPaid_FactToSalesCardToDelivery_RetryIsSilent(t *testing.
 	}
 }
 
+// An order settled out of manual review sends the delivery card only: the
+// sales chat already got the review notice and hears no second fact. A chat
+// holding both kinds still gets the card.
+func TestDispatcher_ShopPaidAfterReview_CardOnly(t *testing.T) {
+	subs := append(shopChats(),
+		Subscription{ID: "both", OrgID: orgVino, Name: "both", ChatID: "-3", OnOrderPaid: true, OnTicketRefunded: true, Kinds: []string{KindShopSale, KindShopDelivery}})
+	store := newFakeStore(subs...)
+	store.shopOrds["o-1"] = shopSample()
+	snd := &fakeSender{}
+	d := NewDispatcher(store, snd, nil)
+	d.Handle(context.Background(), shopEvent(EventShopOrderPaid, "o-1", map[string]any{"after_review": true}))
+	if got := sentTo(snd, "-1"); len(got) != 0 {
+		t.Errorf("the sales chat got a second fact after the review: %v", got)
+	}
+	for _, chat := range []string{"-2", "-3"} {
+		got := sentTo(snd, chat)
+		if len(got) != 1 || !strings.Contains(got[0], "New shop order") {
+			t.Errorf("chat %s should get the delivery card: %v", chat, got)
+		}
+	}
+	if store.claimed["shop_sale_paid:o-1"] {
+		t.Error("the sale fact was claimed for an order settled out of review")
+	}
+}
+
 // A retry after only ONE of the two claims survived still sends the other one
 // once and nothing twice: the keys are independent.
 func TestDispatcher_ShopPaid_KeysAreIndependent(t *testing.T) {
@@ -321,9 +346,11 @@ func TestDispatcher_ShopMode(t *testing.T) {
 		{"none, paid", orgmodules.ModeNone, EventShopOrderPaid, nil, 0},
 		{"none, review", orgmodules.ModeNone, EventShopOrderManualReview, nil, 0},
 		{"full, review", orgmodules.ModeFull, EventShopOrderManualReview, nil, 1},
-		{"none, refund of a parked parcel", orgmodules.ModeNone, EventShopOrderRefunded, func(o *ShopOrder) { o.Order.RefundedMinor = 23000 }, 2},
-		{"none, refund after shipping", orgmodules.ModeNone, EventShopOrderRefunded, func(o *ShopOrder) { o.Order.RefundedMinor = 23000; o.Order.ShippedAt = &shipped }, 0},
-		{"none, refund of a digital order", orgmodules.ModeNone, EventShopOrderRefunded, func(o *ShopOrder) { o.Order.RefundedMinor = 23000; o.Order.DeliveryKind = "none" }, 0},
+		// Orders only has no end date, so an old order's refund passes the gate
+		// with no special case; the mode "none" means no paid or open order.
+		{"none, refund", orgmodules.ModeNone, EventShopOrderRefunded, func(o *ShopOrder) { o.Order.RefundedMinor = 23000 }, 0},
+		{"orders only, refund after shipping", orgmodules.ModeOrdersOnly, EventShopOrderRefunded, func(o *ShopOrder) { o.Order.RefundedMinor = 23000; o.Order.ShippedAt = &shipped }, 2},
+		{"orders only, refund of a digital order", orgmodules.ModeOrdersOnly, EventShopOrderRefunded, func(o *ShopOrder) { o.Order.RefundedMinor = 23000; o.Order.DeliveryKind = "none" }, 1},
 	} {
 		store := newFakeStore(shopChats()...)
 		store.modes = map[string]orgmodules.Mode{orgVino: c.mode}

@@ -424,6 +424,11 @@ func payloadString(p map[string]any, key, fallback string) string {
 	return fallback
 }
 
+func payloadBool(p map[string]any, key string) bool {
+	v, _ := p[key].(bool)
+	return v
+}
+
 func payloadInt(p map[string]any, key string) (int64, bool) {
 	switch v := p[key].(type) {
 	case float64:

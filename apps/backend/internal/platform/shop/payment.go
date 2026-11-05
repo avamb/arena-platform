@@ -146,9 +146,14 @@ func (s *Service) markPaidTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, o g
 	if err := s.applySaleTx(ctx, q, o); err != nil {
 		return gen.ShopOrderRow{}, err
 	}
-	if err := s.appendEvent(ctx, tx, EventOrderPaid, paid, map[string]any{
-		"subtotal": paid.Subtotal, "shipping_fee": paid.ShippingFee,
-	}); err != nil {
+	extra := map[string]any{"subtotal": paid.Subtotal, "shipping_fee": paid.ShippingFee}
+	if o.Status == StatusManualReview {
+		// review_reason is cleared by the status change above, so the fact that
+		// the order was parked travels in the event: the sales chat already got
+		// the review notice and hears no second fact (spec 61 section 7a.2).
+		extra["after_review"] = true
+	}
+	if err := s.appendEvent(ctx, tx, EventOrderPaid, paid, extra); err != nil {
 		return gen.ShopOrderRow{}, err
 	}
 	s.enqueueOrderEmailTx(ctx, tx, EmailReceived, paid)

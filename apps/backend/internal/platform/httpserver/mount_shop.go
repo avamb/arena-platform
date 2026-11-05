@@ -11,8 +11,8 @@ package httpserver
 // which answers 404 shop.module_not_enabled - to a platform superadmin too -
 // when the organization's shop mode does not allow the route. Catalog,
 // products, pages, settings and the storefront switch need the module today
-// (full); the order routes also work in orders_only, after the module ended
-// while open orders remain.
+// (full); the order routes also work in orders_only, with no end date, after
+// the module ended, while the organization has a paid or an open order.
 //
 // The shop's payments arrive through the existing payment webhook routes:
 // checkoutHandler wires shopPayments into hcheckout, which hands a payment
@@ -245,7 +245,7 @@ func (s *Server) shopFull(h http.HandlerFunc) http.HandlerFunc {
 }
 
 // shopOrders lets an order route through while the module is connected or
-// the organization still has open shop orders (orders_only).
+// the organization has a paid or an open shop order (orders_only).
 func (s *Server) shopOrders(h http.HandlerFunc) http.HandlerFunc {
 	return s.shopModuleGate(true, h)
 }

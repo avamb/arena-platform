@@ -11128,10 +11128,11 @@ type MeOrganizationMembership struct {
 	Role string `json:"role"`
 
 	// ShopMode How much of the shop the organization has: `full` while the shop
-	// module is connected today; `orders_only` after the module ended
-	// while the organization still has open shop orders (awaiting payment,
-	// in manual review, or paid and not shipped), when only the order
-	// routes work; null when it has no shop section at all.
+	// module is connected today; `orders_only` after the module ended,
+	// for good, while the organization has at least one shop order that
+	// was ever paid or any open one (awaiting payment or in manual
+	// review), when only the order routes work (list, card, shipping and
+	// refunds); null when it has no shop section at all.
 	ShopMode *string `json:"shop_mode"`
 
 	// Status Membership lifecycle status (always "active" in this response)
@@ -13588,9 +13589,9 @@ type OrganizationItem struct {
 	ReservationTtlSeconds int `json:"reservation_ttl_seconds"`
 
 	// ShopMode Only on GET /v1/organizations (the list): `full` while the shop
-	// module is connected today, `orders_only` after it ended while open
-	// shop orders remain (only the order routes work), null for no shop
-	// section.
+	// module is connected today, `orders_only` after it ended while the
+	// organization has a paid or an open shop order, with no end date
+	// (only the order routes work), null for no shop section.
 	ShopMode *string `json:"shop_mode"`
 
 	// Slug URL-safe identifier (unique among active organizations, lowercase)
@@ -23099,6 +23100,12 @@ type GetV1OrgBillingLedgerParams struct {
 
 	// Limit Page size, 1 to 200. Default 50.
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetV1OrganizationBillingModulesParams defines parameters for GetV1OrganizationBillingModules.
+type GetV1OrganizationBillingModulesParams struct {
+	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) for a platform superadmin reading an organization they are not a member of; ignored for everybody else.
+	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
 }
 
 // PostV1OrgBillingPackOrderParams defines parameters for PostV1OrgBillingPackOrder.

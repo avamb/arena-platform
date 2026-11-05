@@ -68,9 +68,16 @@ func (f *fixture) shopOrder(t *testing.T, org uuid.UUID, status, delivery string
 	if shipped {
 		shippedAt = ptr(time.Now())
 	}
+	// paid_at is stamped once the money was taken: every status that comes after
+	// payment has it, an order that never got paid does not.
+	var paidAt *time.Time
+	switch status {
+	case "paid", "partially_refunded", "refunded", "shipped":
+		paidAt = ptr(time.Now())
+	}
 	if _, err := f.pool.Exec(context.Background(), `
-		INSERT INTO shop_orders (org_id, order_token, status, delivery_kind, currency, subtotal, total, shipped_at)
-		VALUES ($1, $2, $3, $4, 'EUR', 100, 100, $5)`, org, token[:64], status, delivery, shippedAt); err != nil {
+		INSERT INTO shop_orders (org_id, order_token, status, delivery_kind, currency, subtotal, total, shipped_at, paid_at)
+		VALUES ($1, $2, $3, $4, 'EUR', 100, 100, $5, $6)`, org, token[:64], status, delivery, shippedAt, paidAt); err != nil {
 		t.Fatalf("shop order %s/%s: %v", status, delivery, err)
 	}
 }
@@ -341,13 +348,23 @@ func TestActiveAndShopMode(t *testing.T) {
 		t.Error("a period is not active on its first day")
 	}
 
-	// Ended yesterday: orders-only exactly while an order is open.
+	// Ended yesterday: orders-only for good once an order was paid or is open.
 	off := f.org(t)
 	connect(off, day(2026, 10, 1), ptr(day(2026, 11, 14)))
 	if m := mode(off); m != orgmodules.ModeNone {
 		t.Errorf("ended, no orders: %q", m)
 	}
-	closed := []struct {
+	// Orders that were never paid and are closed leave nothing to read or
+	// refund: none.
+	for _, status := range []string{"cancelled", "expired"} {
+		f.shopOrder(t, off, status, "shipping", false)
+	}
+	if m := mode(off); m != orgmodules.ModeNone {
+		t.Errorf("only never-paid closed orders: %q", m)
+	}
+	// Any order that was ever paid keeps the order routes open for good (late
+	// refunds, chargebacks), however closed it is.
+	closedPaid := []struct {
 		status, delivery string
 		shipped          bool
 	}{
@@ -355,18 +372,17 @@ func TestActiveAndShopMode(t *testing.T) {
 		{"paid", "none", false}, // digital: nothing to ship
 		{"partially_refunded", "none", false},
 		{"paid", "shipping", true}, // shipped_at set
-		{"cancelled", "shipping", false},
-		{"expired", "shipping", false},
 		{"refunded", "shipping", false},
 	}
-	for _, c := range closed {
+	for i, c := range closedPaid {
+		f.clearOrders(t, off)
 		f.shopOrder(t, off, c.status, c.delivery, c.shipped)
-	}
-	if m := mode(off); m != orgmodules.ModeNone {
-		t.Errorf("only closed orders: %q", m)
-	}
-	if n, err := f.q.CountOpenShopOrders(ctx, off); err != nil || n != 0 {
-		t.Errorf("open count = %d %v", n, err)
+		if m := mode(off); m != orgmodules.ModeOrdersOnly {
+			t.Errorf("closed paid order #%d (%s/%s): %q", i, c.status, c.delivery, m)
+		}
+		if n, err := f.q.CountOpenShopOrders(ctx, off); err != nil || n != 0 {
+			t.Errorf("open count #%d = %d %v", i, n, err)
+		}
 	}
 	open := []struct{ status, delivery string }{
 		{"pending_payment", "shipping"}, {"manual_review", "shipping"}, {"paid", "shipping"},
@@ -382,24 +398,35 @@ func TestActiveAndShopMode(t *testing.T) {
 			t.Errorf("open count #%d = %d", i, n)
 		}
 	}
-	// The last open order closes: the section is gone.
+	// The last open order ships: it was paid, so orders-only stays.
 	f.clearOrders(t, off)
 	f.shopOrder(t, off, "paid", "shipping", false)
 	if _, err := f.pool.Exec(ctx, `UPDATE shop_orders SET status = 'shipped', shipped_at = now() WHERE org_id = $1`, off); err != nil {
 		t.Fatal(err)
 	}
-	if m := mode(off); m != orgmodules.ModeNone {
+	if m := mode(off); m != orgmodules.ModeOrdersOnly {
 		t.Errorf("after shipping the last order: %q", m)
+	}
+	// An open order that is then cancelled without ever being paid: none.
+	f.clearOrders(t, off)
+	f.shopOrder(t, off, "pending_payment", "shipping", false)
+	if _, err := f.pool.Exec(ctx, `UPDATE shop_orders SET status = 'cancelled' WHERE org_id = $1`, off); err != nil {
+		t.Fatal(err)
+	}
+	if m := mode(off); m != orgmodules.ModeNone {
+		t.Errorf("after cancelling the only, never-paid order: %q", m)
 	}
 
 	// The batch answers for everyone at once, including an unknown id.
 	f.shopOrder(t, none, "pending_payment", "shipping", false)
+	f.clearOrders(t, off)
+	f.shopOrder(t, off, "refunded", "shipping", false) // paid long ago
 	ghost := uuid.New()
 	states, err := orgmodules.States(ctx, f.q, []uuid.UUID{none, full, soon, off, ghost}, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[uuid.UUID]orgmodules.Mode{none: orgmodules.ModeOrdersOnly, full: orgmodules.ModeFull, soon: orgmodules.ModeNone, off: orgmodules.ModeNone, ghost: orgmodules.ModeNone}
+	want := map[uuid.UUID]orgmodules.Mode{none: orgmodules.ModeOrdersOnly, full: orgmodules.ModeFull, soon: orgmodules.ModeNone, off: orgmodules.ModeOrdersOnly, ghost: orgmodules.ModeNone}
 	if len(states) != len(want) {
 		t.Errorf("states = %d entries", len(states))
 	}
@@ -408,7 +435,7 @@ func TestActiveAndShopMode(t *testing.T) {
 			t.Errorf("%v: batch mode %q, want %q", id, states[id].ShopMode, m)
 		}
 	}
-	if !states[full].Has(orgmodules.ModuleShop) || states[none].Has(orgmodules.ModuleShop) || !states[none].OpenShopOrders {
+	if !states[full].Has(orgmodules.ModuleShop) || states[none].Has(orgmodules.ModuleShop) || !states[none].OpenShopOrders || states[none].PaidShopOrders || !states[off].PaidShopOrders || states[off].OpenShopOrders {
 		t.Errorf("states = %+v", states)
 	}
 }

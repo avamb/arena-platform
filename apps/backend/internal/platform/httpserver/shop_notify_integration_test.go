@@ -519,13 +519,21 @@ func TestShopNotify_DigitalOrder_FactToSalesChatNothingToDelivery(t *testing.T) 
 	}
 }
 
-// An organization without the shop module: nothing is announced, except while
-// it still has an open order (orders-only mode), when the order is announced
-// as before.
+// An organization whose shop module ended keeps its orders for good (orders
+// only has no end date once an order was paid): a paid order is announced as
+// before, parcel or file. Only an organization with no paid and no open order
+// is "none": nothing is announced and nothing is claimed.
 func TestShopNotify_ModuleLessOrganization(t *testing.T) {
-	f := newShopFixture(t) // no module period
+	f := newShopFixture(t)
 	f.cleanNotifyRows()
+	// Orders are made while the shared fixture's module is connected (the
+	// storefront and the settings routes are gated by it); the organization
+	// then loses every period. The periods go before the organization (no
+	// cascade); the fixture's own cleanup finds none.
 	f.openShop(4500, 3)
+	digital := f.paidDigitalOrder()
+	neverPaid := f.paidDigitalOrder()
+	f.exec(`DELETE FROM org_module_periods WHERE org_id = $1`, f.orgA)
 	nonce := uuid.NewString()[:8]
 	sales, group := "shopnotify-"+nonce+"-S", "shopnotify-"+nonce+"-G"
 	f.subscribe(sales, "{shop_sale}")
@@ -535,21 +543,24 @@ func TestShopNotify_ModuleLessOrganization(t *testing.T) {
 	d := salesnotify.NewDispatcher(salesnotify.NewPGStore(f.pool), tg, nil)
 	ctx := context.Background()
 
-	// A paid file closes at once: no open order, no module, no announcement.
-	digital := f.paidDigitalOrder()
+	// A paid file of a module-less organization: orders only, no end date.
 	d.Handle(ctx, f.paidEvent(digital.ID))
-	if len(tg.sent[sales])+len(tg.sent[group]) != 0 {
-		t.Fatalf("a module-less organization announced a closed order: %v", tg.sent)
+	if len(tg.sent[sales]) != 1 || len(tg.sent[group]) != 0 {
+		t.Fatalf("a paid file after the module ended: sales %d group %d, want the fact only", len(tg.sent[sales]), len(tg.sent[group]))
 	}
-	if n := f.claimCount("shop_sale_paid:" + digital.ID.String()); n != 0 {
-		t.Errorf("claims = %d; want 0", n)
+	if n := f.claimCount("shop_sale_paid:" + digital.ID.String()); n != 1 {
+		t.Errorf("claims = %d; want 1", n)
 	}
 
-	// A paid parcel waiting to be shipped is an open order: orders-only mode.
-	_, variant := f.openShop(4500, 3)
-	o := f.paidOrder(variant, 1)
-	d.Handle(ctx, f.paidEvent(o.ID))
-	if len(tg.sent[sales]) != 1 || len(tg.sent[group]) != 1 {
-		t.Fatalf("orders-only mode: sales %d group %d, want 1 each", len(tg.sent[sales]), len(tg.sent[group]))
+	// An organization with no paid and no open order: mode none. Leave one
+	// order that never got paid (the other paid one is removed).
+	f.exec(`DELETE FROM shop_orders WHERE id = $1`, digital.ID)
+	f.exec(`UPDATE shop_orders SET status = 'expired', paid_at = NULL WHERE id = $1`, neverPaid.ID)
+	d.Handle(ctx, f.paidEvent(neverPaid.ID))
+	if len(tg.sent[sales]) != 1 || len(tg.sent[group]) != 0 {
+		t.Fatalf("an organization with no paid order announced: %v", tg.sent)
+	}
+	if n := f.claimCount("shop_sale_paid:" + neverPaid.ID.String()); n != 0 {
+		t.Errorf("claims = %d; want 0", n)
 	}
 }

@@ -10,10 +10,12 @@
 // (organization, module) never share a day.
 //
 // The shop has a second state after its module is switched off: "orders
-// only" (ShopMode). While the organization still has an OPEN shop order
-// (awaiting payment, in manual review, or paid and not shipped - the single
-// definition is gen.openShopOrderPredicate) the order routes stay open so the
-// goods can be shipped or refunded; catalog, settings and pages are gone.
+// only" (ShopMode). It has no end: as long as the organization has at least
+// one shop order that was ever paid (paid_at set), or any OPEN order (awaiting
+// payment, in manual review, or paid and not shipped - the single definition
+// is gen.openShopOrderPredicate), the order routes stay open so orders can be
+// read, shipped and refunded (chargebacks and late refund requests); catalog,
+// settings, pages and the storefront are gone.
 //
 // Reads take a Querier (a *gen.Queries over a pool or a transaction); writes
 // take the caller's pgx.Tx and never commit.
@@ -43,8 +45,8 @@ type Mode string
 const (
 	// ModeFull: the module is connected today.
 	ModeFull Mode = "full"
-	// ModeOrdersOnly: the module is off, but open shop orders remain: only the
-	// order routes work.
+	// ModeOrdersOnly: the module is off, but the organization has a paid or an
+	// open shop order: only the order routes work, with no end date.
 	ModeOrdersOnly Mode = "orders_only"
 	// ModeNone: no shop section at all.
 	ModeNone Mode = ""
@@ -138,6 +140,8 @@ type State struct {
 	ShopMode Mode
 	// OpenShopOrders: the organization has an open shop order.
 	OpenShopOrders bool
+	// PaidShopOrders: the organization has a shop order that was ever paid.
+	PaidShopOrders bool
 }
 
 // Has reports whether module is connected in this state.
@@ -151,11 +155,11 @@ func (s State) Has(module string) bool {
 }
 
 // decideShopMode is the whole rule of the shop's mode.
-func decideShopMode(moduleActive, openOrders bool) Mode {
+func decideShopMode(moduleActive, hasOrders bool) Mode {
 	switch {
 	case moduleActive:
 		return ModeFull
-	case openOrders:
+	case hasOrders:
 		return ModeOrdersOnly
 	}
 	return ModeNone
@@ -173,8 +177,9 @@ func ActiveModules(ctx context.Context, q Querier, orgID uuid.UUID, now time.Tim
 }
 
 // ShopMode is full when the shop module is connected on the UTC day of now,
-// else orders_only when the organization has at least one OPEN shop order,
-// else none. "Open" is defined once, in gen.openShopOrderPredicate.
+// else orders_only when the organization has at least one shop order that was
+// ever paid or any OPEN one, else none. "Open" is defined once, in
+// gen.openShopOrderPredicate.
 func ShopMode(ctx context.Context, q Querier, orgID uuid.UUID, now time.Time) (Mode, error) {
 	states, err := States(ctx, q, []uuid.UUID{orgID}, now)
 	if err != nil {
@@ -196,8 +201,8 @@ func States(ctx context.Context, q Querier, orgIDs []uuid.UUID, now time.Time) (
 		return nil, err
 	}
 	for _, r := range rows {
-		s := State{Modules: r.Modules, OpenShopOrders: r.OpenShopOrders}
-		s.ShopMode = decideShopMode(s.Has(ModuleShop), r.OpenShopOrders)
+		s := State{Modules: r.Modules, OpenShopOrders: r.OpenShopOrders, PaidShopOrders: r.PaidShopOrders}
+		s.ShopMode = decideShopMode(s.Has(ModuleShop), r.OpenShopOrders || r.PaidShopOrders)
 		out[r.OrgID] = s
 	}
 	for _, id := range orgIDs {

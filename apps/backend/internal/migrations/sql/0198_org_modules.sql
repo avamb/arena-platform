@@ -65,6 +65,15 @@ CREATE INDEX shop_orders_open_idx ON shop_orders (org_id)
     WHERE status IN ('pending_payment', 'manual_review')
        OR (status IN ('paid', 'partially_refunded') AND shipped_at IS NULL AND delivery_kind <> 'none');
 
+-- "Did this organization ever sell something in the shop?" decides whether its
+-- orders stay reachable for refunds and chargebacks after the module ended
+-- (orders-only mode has no end date, spec 61 section 4.1). Asked on every
+-- /v1/me together with the open predicate above; paid_at is stamped when the
+-- money was taken and never cleared. Must match the paid_at IS NOT NULL test in
+-- OrgModuleStates (gen/org_modules.sql.go).
+CREATE INDEX shop_orders_paid_idx ON shop_orders (org_id)
+    WHERE paid_at IS NOT NULL;
+
 -- The billing event of one module-month.
 ALTER TABLE billable_events DROP CONSTRAINT billable_events_kind_check;
 -- The drop takes ACCESS EXCLUSIVE on billable_events until the migration
@@ -168,5 +177,6 @@ ALTER TABLE billable_events ADD CONSTRAINT billable_events_kind_check CHECK (kin
     'ticket_sold', 'ticket_refunded', 'ticket_cancelled',
     'session_cancelled', 'event_published',
     'ticket_complimentary', 'generator_run', 'white_label_month'));
+DROP INDEX IF EXISTS shop_orders_paid_idx;
 DROP INDEX IF EXISTS shop_orders_open_idx;
 DROP TABLE IF EXISTS org_module_periods;
