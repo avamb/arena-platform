@@ -1,26 +1,34 @@
 /**
  * The sections of the Shop area: products, orders, settings. Every one needs
  * `shop.read`, so the nav is drawn only on screens that already know the
- * person has it.
+ * person has it. When the shop module ended and only the orders are left
+ * (spec 61), the nav holds the orders alone.
  */
 import { Link } from "@tanstack/react-router";
 import { useI18n } from "@/lib/i18n";
 import { useOrg } from "@/screens/OrgLayout";
+import { useShopMode } from "@/screens/ShopGate";
 
 export function ShopNav({ orgId }: { orgId: string }) {
   const { t } = useI18n();
+  // After the module ended only the orders are left (spec 61, section 5).
+  const ordersOnly = useShopMode() === "orders_only";
   const active = { "aria-current": "page" as const, className: "tab active" };
   return (
     <nav aria-label={t("shop.nav.label")} className="tabs" data-testid="shop-nav">
-      <Link to="/o/$orgId/shop/products" params={{ orgId }} search={{}} className="tab" activeProps={active} data-testid="shop-nav-products">
-        {t("shop.nav.products")}
-      </Link>
+      {!ordersOnly && (
+        <Link to="/o/$orgId/shop/products" params={{ orgId }} search={{}} className="tab" activeProps={active} data-testid="shop-nav-products">
+          {t("shop.nav.products")}
+        </Link>
+      )}
       <Link to="/o/$orgId/shop/orders" params={{ orgId }} search={{}} className="tab" activeProps={active} data-testid="shop-nav-orders">
         {t("shop.nav.orders")}
       </Link>
-      <Link to="/o/$orgId/shop/settings" params={{ orgId }} className="tab" activeProps={active} data-testid="shop-nav-settings">
-        {t("shop.nav.settings")}
-      </Link>
+      {!ordersOnly && (
+        <Link to="/o/$orgId/shop/settings" params={{ orgId }} className="tab" activeProps={active} data-testid="shop-nav-settings">
+          {t("shop.nav.settings")}
+        </Link>
+      )}
     </nav>
   );
 }

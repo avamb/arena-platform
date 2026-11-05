@@ -5,6 +5,7 @@ import { ApiError } from "@/lib/api/http";
 import { wizardGate } from "@/lib/features";
 import { useI18n } from "@/lib/i18n";
 import { useEmbedded } from "@/lib/seatManager/embed";
+import { shopModeFor, shopNavTarget, showShopNav } from "@/lib/shopModule";
 import { ErrorBox, ErrorScope, Loading } from "@/components/ui";
 import { RequireSignIn } from "@/screens/RequireSignIn";
 import { LanguageSelect } from "@/screens/LanguageSelect";
@@ -34,6 +35,8 @@ function OrgShell() {
   const me = useMe();
   const embed = useEmbedded();
   const orgCount = me.data !== undefined ? organizationsOf(me.data.organization_memberships).length : 0;
+  // Spec 61: the shop is a paid module. No module (and no orders left from one) means no menu item at all.
+  const shopMode = shopModeFor(me.data?.organization_memberships, orgId);
 
   useEffect(() => {
     if (access.data !== undefined) rememberOrg(orgId);
@@ -119,11 +122,16 @@ function OrgShell() {
                 {t("nav.promo")}
               </Link>
             )}
-            {access.can("shop.read") && (
-              <Link to="/o/$orgId/shop" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }} data-testid="nav-shop">
-                {t("nav.shop")}
-              </Link>
-            )}
+            {showShopNav(shopMode, access.can("shop.read")) &&
+              (shopNavTarget(shopMode) === "orders" ? (
+                <Link to="/o/$orgId/shop/orders" params={{ orgId }} search={{}} activeProps={{ "aria-current": "page", className: "active" }} data-testid="nav-shop">
+                  {t("nav.shop")}
+                </Link>
+              ) : (
+                <Link to="/o/$orgId/shop" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }} data-testid="nav-shop">
+                  {t("nav.shop")}
+                </Link>
+              ))}
             {access.can("sales_link.read") && (
               <Link to="/o/$orgId/links" params={{ orgId }} search={{}} activeProps={{ "aria-current": "page", className: "active" }} data-testid="nav-links">
                 {t("nav.links")}

@@ -37,6 +37,14 @@ export function saveShopSettings(orgId: string, body: ShopSettingsUpdateRequest)
   return call<ShopSettings>({ route: API.shopSettingsPut, params: org(orgId), body });
 }
 
+/**
+ * Opens (true) or closes (false) the storefront without touching the other settings (spec 61). Opening a shop that
+ * is not ready answers 422 `shop.cannot_open` with `details.blockers`. The answer is the settings.
+ */
+export function setShopStorefront(orgId: string, enabled: boolean): Promise<ShopSettings> {
+  return call<ShopSettings>({ route: API.shopStorefront, params: org(orgId), body: { enabled } });
+}
+
 /** The channels of the organization (`channel.read`, the owner). */
 export function listSalesChannels(orgId: string): Promise<{ channels: SalesChannelItem[] }> {
   return call<{ channels: SalesChannelItem[] }>({ route: API.channels, params: org(orgId) });

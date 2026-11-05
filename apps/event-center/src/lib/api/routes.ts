@@ -130,6 +130,7 @@ export const API = {
   billingLedger: { method: "GET", path: "/v1/organizations/{org_id}/billing/ledger" },
   billingServiceFeeQuote: { method: "GET", path: "/v1/organizations/{org_id}/billing/service-fee-quote" },
   billingPayer: { method: "PUT", path: "/v1/organizations/{org_id}/billing/payer" },
+  billingModules: { method: "GET", path: "/v1/organizations/{org_id}/billing/modules" },
   // 4-4: invitations (free tickets for named guests).
   complimentaryList: { method: "GET", path: "/v1/organizations/{org_id}/complimentary" },
   complimentaryIssue: { method: "POST", path: "/v1/organizations/{org_id}/complimentary" },
@@ -286,6 +287,7 @@ export const API = {
   channels: { method: "GET", path: "/v1/organizations/{org_id}/channels" },
   shopSettings: { method: "GET", path: "/v1/organizations/{org_id}/shop/settings" },
   shopSettingsPut: { method: "PUT", path: "/v1/organizations/{org_id}/shop/settings" },
+  shopStorefront: { method: "PUT", path: "/v1/organizations/{org_id}/shop/storefront" },
   shopProducts: { method: "GET", path: "/v1/organizations/{org_id}/shop/products" },
   shopProductCreate: { method: "POST", path: "/v1/organizations/{org_id}/shop/products" },
   shopProduct: { method: "GET", path: "/v1/organizations/{org_id}/shop/products/{product_id}" },

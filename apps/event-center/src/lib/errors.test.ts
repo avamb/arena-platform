@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "@/lib/api/http";
-import { API_ERROR_ALL_STEMS, API_ERROR_STEMS, apiErrorStem, describeApiError } from "@/lib/errors";
+import { API_ERROR_ALL_STEMS, API_ERROR_STEMS, apiErrorStem, describeApiError, errorKey } from "@/lib/errors";
 import { CATALOGS, LOCALES, translate, type Locale, type MessageKey } from "@/lib/i18n";
 
 const err = (status: number, code: string) => new ApiError(status, code, "raw server text");
@@ -23,6 +23,15 @@ describe("apiErrorStem", () => {
     expect(apiErrorStem(err(422, "promo.minimum_not_reached"))).toBe("promoMinimum");
     expect(apiErrorStem(err(403, "auth.step_up_required"))).toBe("stepUpRequired");
     expect(apiErrorStem(err(403, "permissions.denied"))).toBe("forbidden");
+  });
+
+  it("maps the shop module codes (spec 61)", () => {
+    expect(apiErrorStem(err(404, "shop.module_not_enabled"))).toBe("shopModuleOff");
+    expect(apiErrorStem(err(422, "shop.cannot_open"))).toBe("shopCannotOpen");
+    expect(errorKey(err(404, "shop.module_not_enabled"))).toBe("shop.notConnected.body");
+    expect(errorKey(err(404, "order.not_found"))).toBe("common.error.notFound");
+    expect(translate("en", "apiError.shopModuleOff.title")).toContain("not connected");
+    expect(translate("ru", "apiError.shopCannotOpen.title")).toContain("Витрину");
   });
 
   it("a code beats the status", () => {

@@ -212,6 +212,10 @@ export async function mockShop(page: Page, permissions: string[] = MANAGER): Pro
       max_line_qty: 24,
       enabled: true,
       updated_at: "2026-10-01T10:00:00Z",
+      module_active: true,
+      shop_mode: "full",
+      can_open: true,
+      open_blockers: [],
     },
   };
 
@@ -249,6 +253,12 @@ export async function mockShop(page: Page, permissions: string[] = MANAGER): Pro
     if (!path.startsWith("/shop/")) return route.fallback();
     if (!state.permissions.includes("shop.read")) return json(route, 403, { error: { code: "permissions.denied", message: "no" } });
 
+    if (path === "/shop/storefront" && m === "PUT") {
+      const body = req.postDataJSON() as { enabled: boolean };
+      write(JSON.stringify(body));
+      state.settings = { ...state.settings, enabled: body.enabled, updated_at: "2026-10-06T10:00:00Z" };
+      return json(route, 200, state.settings);
+    }
     if (path === "/shop/settings") {
       if (m === "PUT") {
         const body = req.postDataJSON() as Record<string, unknown>;

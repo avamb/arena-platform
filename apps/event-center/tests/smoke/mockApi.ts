@@ -213,8 +213,8 @@ export async function mockApi(
         roles: ["agent", "organizer"],
         permissions: ["event.read", "order.read"],
         organization_memberships: [
-          { id: "m1", org_id: ORG_A, org_name: "Teatr Kolybel", org_display_number: 11, role: "organizer", status: "active", joined_at: "2026-01-01T00:00:00Z" },
-          { id: "m2", org_id: ORG_B, org_name: "Vino & Co", org_display_number: 12, role: "agent", status: "active", joined_at: "2026-01-01T00:00:00Z" },
+          { id: "m1", org_id: ORG_A, org_name: "Teatr Kolybel", org_display_number: 11, role: "organizer", status: "active", joined_at: "2026-01-01T00:00:00Z", modules: ["shop"], shop_mode: "full" },
+          { id: "m2", org_id: ORG_B, org_name: "Vino & Co", org_display_number: 12, role: "agent", status: "active", joined_at: "2026-01-01T00:00:00Z", modules: [], shop_mode: null },
         ],
         assigned_networks: [],
         available_scopes: [],
