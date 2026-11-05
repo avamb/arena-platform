@@ -6040,3 +6040,441 @@ other = "\n🤝 Куплено по коду пригласившего <b>{{.Co
 
 ["bot.ord.ref_more"]
 other = "\n…и ещё заказов друзей: {{.N}}"
+
+["bot.sh.btn"]
+other = "🛍 Магазин"
+
+["bot.sh.gone"]
+other = "Магазин не подключён. Вернитесь в главное меню."
+
+["bot.sh.home_head"]
+other = "🛍 <b>Магазин</b> · {{.Org}}"
+
+["bot.sh.storefront_open"]
+other = "Витрина: 🟢 открыта"
+
+["bot.sh.storefront_closed"]
+other = "Витрина: 🔴 закрыта"
+
+["bot.sh.orders_only"]
+other = "Магазин отключён. Витрина закрыта. Заказы и возвраты доступны."
+
+["bot.sh.orders_only_only"]
+other = "Это доступно, только пока магазин подключён. Заказы и возвраты остаются доступны."
+
+["bot.sh.home_counts"]
+other = "К отправке: {{.ToShip}} · На проверке: {{.Review}} · Ждут оплаты: {{.Unpaid}}"
+
+["bot.sh.orders_btn"]
+other = "📦 Заказы"
+
+["bot.sh.open_btn"]
+other = "🔓 Открыть витрину"
+
+["bot.sh.close_btn"]
+other = "🔒 Закрыть витрину"
+
+["bot.sh.settings_btn"]
+other = "⚙️ Настройки"
+
+["bot.sh.back_shop_btn"]
+other = "🛍 Магазин"
+
+["bot.sh.edit_web_btn"]
+other = "🌐 Править в браузере"
+
+["bot.sh.open_ask"]
+other = "Открыть витрину? Покупатели смогут оформлять заказы и платить."
+
+["bot.sh.open_yes_btn"]
+other = "Да, открыть"
+
+["bot.sh.close_ask"]
+other = "Закрыть витрину? Новые заказы перестанут приниматься. Неоплаченные заказы останутся как есть: их можно дождаться или отменить."
+
+["bot.sh.close_yes_btn"]
+other = "Да, закрыть"
+
+["bot.sh.opened_done"]
+other = "✔ Витрина открыта."
+
+["bot.sh.closed_done"]
+other = "✔ Витрина закрыта."
+
+["bot.sh.cannot_open"]
+other = "Витрину пока нельзя открыть:"
+
+["bot.sh.blocker_settings_not_saved"]
+other = "настройки магазина ещё не сохранены"
+
+["bot.sh.blocker_no_active_product"]
+other = "нет ни одного активного товара"
+
+["bot.sh.blocker_payment_not_configured"]
+other = "онлайн-оплата не подключена или не проверена"
+
+["bot.sh.blocker_other"]
+other = "не хватает чего-то ещё"
+
+["bot.sh.cannot_open_hint"]
+other = "Исправьте это в веб-ивент-центре и попробуйте снова."
+
+["bot.sh.settings_text"]
+other = "⚙️ <b>Настройки магазина</b> · {{.Org}}\n\n{{.State}}\nВалюта: {{.Currency}}\nДоставка: {{.Price}} · {{.Label}}\nСтрана: {{.Country}}\nПроверка возраста: {{.Age}}\nКонтактный e-mail: {{.Email}}\nКанал продаж: {{.Channel}}\nДомен: {{.Domain}}\n\nЧтобы изменить, откройте браузер."
+
+["bot.sh.none"]
+other = "не задано"
+
+["bot.sh.channel_default"]
+other = "первый подходящий канал (по умолчанию)"
+
+["bot.sh.tab_to_ship"]
+other = "К отправке"
+
+["bot.sh.tab_review"]
+other = "На проверке"
+
+["bot.sh.tab_unpaid"]
+other = "Ждут оплаты"
+
+["bot.sh.tab_all"]
+other = "Все"
+
+["bot.sh.list_title"]
+other = "📦 <b>Заказы</b> · {{.Org}}\n{{.Tab}}{{.Total}} · стр. {{.Page}}/{{.Pages}}{{.Search}}"
+
+["bot.sh.list_total"]
+other = " · всего: {{.Total}}"
+
+["bot.sh.search_line"]
+other = "🔎 Поиск: {{.Query}}"
+
+["bot.sh.search_none"]
+other = "По запросу «{{.Query}}» ничего не найдено. Напишите другое слово или сбросьте поиск."
+
+["bot.sh.empty_to_ship"]
+other = "Сейчас нечего отправлять."
+
+["bot.sh.empty_review"]
+other = "Нет заказов, которым нужна проверка."
+
+["bot.sh.empty_unpaid"]
+other = "Нет заказов, ожидающих оплаты."
+
+["bot.sh.empty_all"]
+other = "Заказов пока нет."
+
+["bot.sh.list_hint"]
+other = "Откройте заказ ниже или напишите номер, имя или e-mail для поиска."
+
+["bot.sh.card_head"]
+other = "🛍 <b>Заказ №{{.Num}}</b> · {{.Chip}} {{.Status}}\n{{.Amount}} · {{.When}}"
+
+["bot.sh.st_pending_payment"]
+other = "Ждёт оплаты"
+
+["bot.sh.st_paid"]
+other = "Оплачен"
+
+["bot.sh.st_shipped"]
+other = "Отправлен"
+
+["bot.sh.st_cancelled"]
+other = "Отменён"
+
+["bot.sh.st_expired"]
+other = "Не оплачен в срок"
+
+["bot.sh.st_refunded"]
+other = "Возвращён"
+
+["bot.sh.st_partially_refunded"]
+other = "Возвращён частично"
+
+["bot.sh.st_manual_review"]
+other = "Нужна проверка"
+
+["bot.sh.card_review_late"]
+other = "⚠️ Оплата пришла после того, как бронь закончилась, а товара уже не было. Проведите заказ, если товар снова есть, или верните деньги и отмените его."
+
+["bot.sh.card_review_unconfirmed"]
+other = "⚠️ Оплата ещё не подтверждена. Заказ следует за платежом: пока решать нечего."
+
+["bot.sh.card_review_other"]
+other = "⚠️ Заказ ждёт проверки."
+
+["bot.sh.card_buyer"]
+other = "\n\n👤 <b>{{.Name}}</b>{{.Contacts}}"
+
+["bot.sh.card_delivery"]
+other = "🚚 <b>Доставка</b>"
+
+["bot.sh.delivery_none"]
+other = "🚚 Без доставки"
+
+["bot.sh.delivery_pickup"]
+other = "🚚 Самовывоз"
+
+["bot.sh.delivery_hidden"]
+other = "🚚 Адрес доставки виден только в личном чате с ботом."
+
+["bot.sh.card_comment"]
+other = "💬 {{.Text}}"
+
+["bot.sh.card_items"]
+other = "\n\n🧾 <b>Состав</b>"
+
+["bot.sh.line_discount"]
+other = "Скидка: −{{.Amount}}"
+
+["bot.sh.line_shipping"]
+other = "Доставка: {{.Amount}}"
+
+["bot.sh.line_total"]
+other = "<b>Итого: {{.Amount}}</b>"
+
+["bot.sh.line_refunded"]
+other = "↩ Возвращено: {{.Amount}}"
+
+["bot.sh.card_payment"]
+other = "💳 {{.Provider}} · {{.State}}"
+
+["bot.sh.card_shipped"]
+other = "📦 Отправлен {{.When}}"
+
+["bot.sh.card_tracking"]
+other = "Номер отправления: {{.Text}}"
+
+["bot.sh.card_note"]
+other = "📝 <b>Заметка</b> ({{.By}}, {{.When}}): {{.Text}}"
+
+["bot.sh.ship_btn"]
+other = "📦 Отправлен"
+
+["bot.sh.track_btn"]
+other = "✏️ Номер отправления"
+
+["bot.sh.courier_btn"]
+other = "📋 Текст для курьера"
+
+["bot.sh.note_btn"]
+other = "📝 Заметка"
+
+["bot.sh.resend_btn"]
+other = "✉️ Письмо ещё раз"
+
+["bot.sh.refund_btn"]
+other = "↩ Возврат"
+
+["bot.sh.fulfil_btn"]
+other = "✅ Провести заказ"
+
+["bot.sh.refund_cancel_btn"]
+other = "↩ Вернуть деньги и отменить"
+
+["bot.sh.cancel_btn"]
+other = "✖ Отменить заказ"
+
+["bot.sh.to_list_btn"]
+other = "Заказы"
+
+["bot.sh.ship_ask"]
+other = "📦 Заказ №{{.Num}}: напишите номер отправления или нажмите «Без номера»."
+
+["bot.sh.no_number_btn"]
+other = "Без номера"
+
+["bot.sh.ship_done"]
+other = "✔ Заказ №{{.Num}} отмечен отправленным."
+
+["bot.sh.note_ask"]
+other = "📝 Заказ №{{.Num}}: напишите заметку. Её видите только вы и коллеги, покупатель не видит."
+
+["bot.sh.note_current"]
+other = "Сейчас: {{.Text}}"
+
+["bot.sh.note_erase_btn"]
+other = "Стереть заметку"
+
+["bot.sh.note_saved"]
+other = "✔ Заметка сохранена."
+
+["bot.sh.note_erased"]
+other = "✔ Заметка стёрта."
+
+["bot.sh.resend_ask"]
+other = "✉️ Заказ №{{.Num}}: какое письмо отправить ещё раз на {{.Email}}?"
+
+["bot.sh.letter_received"]
+other = "Заказ получен"
+
+["bot.sh.letter_shipped"]
+other = "Заказ отправлен"
+
+["bot.sh.letter_refunded"]
+other = "Возврат денег"
+
+["bot.sh.resend_done"]
+other = "✔ Письмо поставлено в очередь и придёт в течение минуты."
+
+["bot.sh.courier_head"]
+other = "📋 Текст для курьера (нажмите, чтобы скопировать):"
+
+["bot.sh.courier_empty"]
+other = "Для текста курьеру нет данных."
+
+["bot.sh.courier_private"]
+other = "Адрес доставки показывается только в личном чате с ботом."
+
+["bot.sh.cancel_word"]
+other = "ОТМЕНИТЬ ЗАКАЗ"
+
+["bot.sh.cancel_ask"]
+other = "✖ Отменить заказ №{{.Num}}? Он не оплачен. Заказ закроется, а товар вернётся в продажу. Отменить это действие нельзя.\n\nЧтобы подтвердить, напишите {{.Word}}."
+
+["bot.sh.cancel_wrong"]
+other = "Текст не совпал, поэтому ничего не отменено. Чтобы подтвердить, напишите {{.Word}} или вернитесь назад."
+
+["bot.sh.cancel_done"]
+other = "✔ Заказ №{{.Num}} отменён."
+
+["bot.sh.cancel_changed"]
+other = "Заказ больше не ждёт оплаты, поэтому ничего не отменено."
+
+["bot.sh.refund_word"]
+other = "ВЕРНУТЬ"
+
+["bot.sh.fulfil_word"]
+other = "ПРОВЕСТИ ЗАКАЗ"
+
+["bot.sh.refund_amount"]
+other = "↩ <b>Возврат · заказ №{{.Num}}</b>\nМожно вернуть до {{.Left}}. Сколько вернуть?"
+
+["bot.sh.refund_all_btn"]
+other = "Всю сумму ({{.Left}})"
+
+["bot.sh.refund_part_btn"]
+other = "Другую сумму"
+
+["bot.sh.refund_cancel_dialog_btn"]
+other = "Отмена"
+
+["bot.sh.refund_amount_text"]
+other = "Напишите сумму возврата, не больше {{.Left}}, например 12.50."
+
+["bot.sh.refund_amount_bad"]
+other = "Это не сумма от 0.01 до {{.Left}}. Напишите числом, например 12.50."
+
+["bot.sh.refund_amount_changed"]
+other = "Сумма, которую можно вернуть, изменилась: теперь до {{.Left}}."
+
+["bot.sh.refund_reason"]
+other = "Напишите причину возврата (необязательно) или нажмите «Без причины»."
+
+["bot.sh.refund_no_reason_btn"]
+other = "Без причины"
+
+["bot.sh.refund_reason_line"]
+other = "\nПричина: {{.Reason}}"
+
+["bot.sh.refund_confirm"]
+other = "↩ <b>Возврат · заказ №{{.Num}}</b>\n{{.Amount}} вернутся покупателю через платёжного провайдера.{{.ReasonLine}}\n\nТовар сам на склад не вернётся. Отменить это действие нельзя.\n\nЧтобы подтвердить, напишите {{.Word}}."
+
+["bot.sh.fulfil_confirm"]
+other = "✅ <b>Провести заказ №{{.Num}}?</b>\nЗаказ станет оплаченным, а товар уйдёт со склада. Покупатель получит подтверждение заказа. Отменить это действие нельзя.\n\nЧтобы подтвердить, напишите {{.Word}}."
+
+["bot.sh.refund_cancel_confirm"]
+other = "↩ <b>Вернуть деньги и отменить заказ №{{.Num}}?</b>\nВся оплата, {{.Amount}}, вернётся покупателю, а заказ будет отменён. Отменить это действие нельзя.\n\nЧтобы подтвердить, напишите {{.Word}}."
+
+["bot.sh.word_wrong"]
+other = "Текст не совпал, поэтому ничего не отправлено. Чтобы подтвердить, напишите {{.Word}} или отмените."
+
+["bot.sh.refund_retry"]
+other = "⏳ <b>Заказ №{{.Num}}</b>: ответа не было, операция могла начаться. Нажмите «Повторить»: сервер не вернёт деньги дважды. Или откройте заказ и проверьте."
+
+["bot.sh.refund_again_btn"]
+other = "Повторить"
+
+["bot.sh.refund_done"]
+other = "✔ Заказ №{{.Num}}: деньги вернулись: {{.Amount}}."
+
+["bot.sh.refund_pending"]
+other = "⏳ Заказ №{{.Num}}: провайдер ещё не ответил. Возврат {{.Amount}} в пути, заказ обновится сам."
+
+["bot.sh.refund_review"]
+other = "⚠️ Заказ №{{.Num}}: возврат нужно проверить вручную. Напишите в поддержку."
+
+["bot.sh.refund_failed"]
+other = "✖ Заказ №{{.Num}}: провайдер не принял возврат. Ничего не возвращено. {{.Reason}}"
+
+["bot.sh.fulfil_done"]
+other = "✔ Заказ №{{.Num}} проведён и готов к отправке."
+
+["bot.sh.refund_cancel_done"]
+other = "✔ Заказ №{{.Num}}: деньги вернулись ({{.Amount}}), заказ отменён."
+
+["bot.sh.refund_cancel_pending"]
+other = "⏳ Заказ №{{.Num}}: деньги ({{.Amount}}) в пути обратно. Заказ закроется, когда провайдер подтвердит."
+
+["bot.sh.refund_cancel_review"]
+other = "⚠️ Заказ №{{.Num}}: возврат нужно проверить вручную. Напишите в поддержку."
+
+["bot.sh.refund_cancel_failed"]
+other = "✖ Заказ №{{.Num}}: провайдер не принял возврат. Заказ остался на проверке. {{.Reason}}"
+
+["bot.sh.refund_nothing"]
+other = "По этому заказу нечего возвращать."
+
+["bot.sh.other_attempt"]
+other = "Возврат по заказу №{{.Num}} мог начаться. Сначала проверьте тот заказ: в его карточке есть кнопка, которая безопасно повторит операцию."
+
+["bot.sh.menu_back_btn"]
+other = "Вернуться к возврату"
+
+["bot.sh.menu_leave_refund"]
+other = "Возврат по заказу №{{.Num}} ждёт вашего слова. Если уйдёте, он будет сброшен."
+
+["bot.sh.menu_leave_maybe"]
+other = "Операция по заказу №{{.Num}} могла начаться. Если уйдёте, она сохранится и её можно повторить из карточки заказа: деньги не вернутся дважды."
+
+["bot.sh.err_not_refundable"]
+other = "Этот заказ нельзя вернуть здесь: он оплачен не через платёжного провайдера магазина."
+
+["bot.sh.err_out_of_stock"]
+other = "Товара на складе всё ещё нет, поэтому ничего не изменилось."
+
+["bot.sh.err_payment_unconfirmed"]
+other = "Оплата этого заказа ещё не подтверждена, поэтому ничего не изменилось."
+
+["bot.sh.err_not_resolvable"]
+other = "По этому заказу пока нечего решать: он следует за платежом."
+
+["bot.sh.err_not_in_review"]
+other = "Заказ больше не ждёт проверки."
+
+["bot.sh.err_money_failed"]
+other = "Сервер отказал в операции, поэтому ничего не возвращено."
+
+["bot.sh.err_changed"]
+other = "Заказ изменился с тех пор, как был показан экран. Ниже его актуальная карточка."
+
+["bot.sh.err_postal_required"]
+other = "Сначала добавьте почтовый индекс в адрес доставки (в браузере), потом отметьте заказ отправленным."
+
+["bot.sh.err_invalid_postal"]
+other = "Почтовый индекс в адресе доставки неверный. Сначала исправьте его в браузере."
+
+["bot.sh.err_too_long"]
+other = "Текст слишком длинный. Напишите не больше 2000 знаков."
+
+["bot.sh.err_rate_limited"]
+other = "Письмо по этому заказу ставили в очередь меньше минуты назад. Попробуйте снова через {{.Seconds}} с."
+
+["bot.sh.err_no_email"]
+other = "У заказа нет e-mail покупателя."
+
+["bot.sh.err_letter_unavailable"]
+other = "У этого заказа нет такого письма."
+
+["bot.sh.err_unavailable"]
+other = "Бот не смог сохранить операцию, поэтому ничего не отправлено. Попробуйте ещё раз."

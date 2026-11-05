@@ -6046,3 +6046,441 @@ other = "\n🤝 Bought with the referrer's code <b>{{.Code}}</b>{{if .Referrer}}
 
 ["bot.ord.ref_more"]
 other = "\n…and {{.N}} more friends' orders"
+
+["bot.sh.btn"]
+other = "🛍 Shop"
+
+["bot.sh.gone"]
+other = "The shop is not connected for this organization. Go back to the menu."
+
+["bot.sh.home_head"]
+other = "🛍 <b>Shop</b> · {{.Org}}"
+
+["bot.sh.storefront_open"]
+other = "Storefront: 🟢 open"
+
+["bot.sh.storefront_closed"]
+other = "Storefront: 🔴 closed"
+
+["bot.sh.orders_only"]
+other = "The shop is switched off. The storefront is closed. Orders and refunds are still available."
+
+["bot.sh.orders_only_only"]
+other = "This works only while the shop is connected. Orders and refunds are still available."
+
+["bot.sh.home_counts"]
+other = "To ship: {{.ToShip}} · In review: {{.Review}} · Awaiting payment: {{.Unpaid}}"
+
+["bot.sh.orders_btn"]
+other = "📦 Orders"
+
+["bot.sh.open_btn"]
+other = "🔓 Open the storefront"
+
+["bot.sh.close_btn"]
+other = "🔒 Close the storefront"
+
+["bot.sh.settings_btn"]
+other = "⚙️ Settings"
+
+["bot.sh.back_shop_btn"]
+other = "🛍 Shop"
+
+["bot.sh.edit_web_btn"]
+other = "🌐 Edit in the browser"
+
+["bot.sh.open_ask"]
+other = "Open the storefront? Buyers will be able to place orders and pay."
+
+["bot.sh.open_yes_btn"]
+other = "Yes, open"
+
+["bot.sh.close_ask"]
+other = "Close the storefront? New orders stop. Orders that are not paid yet stay as they are: you can wait for the payment or cancel them."
+
+["bot.sh.close_yes_btn"]
+other = "Yes, close"
+
+["bot.sh.opened_done"]
+other = "✔ The storefront is open."
+
+["bot.sh.closed_done"]
+other = "✔ The storefront is closed."
+
+["bot.sh.cannot_open"]
+other = "The storefront cannot be opened yet:"
+
+["bot.sh.blocker_settings_not_saved"]
+other = "the shop settings were never saved"
+
+["bot.sh.blocker_no_active_product"]
+other = "there is no active product"
+
+["bot.sh.blocker_payment_not_configured"]
+other = "online payment is not connected or not verified"
+
+["bot.sh.blocker_other"]
+other = "something else is missing"
+
+["bot.sh.cannot_open_hint"]
+other = "Fix it in the web event center and try again."
+
+["bot.sh.settings_text"]
+other = "⚙️ <b>Shop settings</b> · {{.Org}}\n\n{{.State}}\nCurrency: {{.Currency}}\nDelivery: {{.Price}} · {{.Label}}\nCountry: {{.Country}}\nAge check: {{.Age}}\nContact e-mail: {{.Email}}\nSales channel: {{.Channel}}\nDomain: {{.Domain}}\n\nTo change them, open the browser."
+
+["bot.sh.none"]
+other = "not set"
+
+["bot.sh.channel_default"]
+other = "the first suitable channel (by default)"
+
+["bot.sh.tab_to_ship"]
+other = "To ship"
+
+["bot.sh.tab_review"]
+other = "In review"
+
+["bot.sh.tab_unpaid"]
+other = "Awaiting payment"
+
+["bot.sh.tab_all"]
+other = "All"
+
+["bot.sh.list_title"]
+other = "📦 <b>Orders</b> · {{.Org}}\n{{.Tab}}{{.Total}} · page {{.Page}}/{{.Pages}}{{.Search}}"
+
+["bot.sh.list_total"]
+other = " · total: {{.Total}}"
+
+["bot.sh.search_line"]
+other = "🔎 Search: {{.Query}}"
+
+["bot.sh.search_none"]
+other = "Nothing found for «{{.Query}}». Type another word or clear the search."
+
+["bot.sh.empty_to_ship"]
+other = "Nothing to ship right now."
+
+["bot.sh.empty_review"]
+other = "No orders need a check."
+
+["bot.sh.empty_unpaid"]
+other = "No orders are waiting for payment."
+
+["bot.sh.empty_all"]
+other = "There are no orders yet."
+
+["bot.sh.list_hint"]
+other = "Open an order below, or type a number, name or e-mail to search."
+
+["bot.sh.card_head"]
+other = "🛍 <b>Order №{{.Num}}</b> · {{.Chip}} {{.Status}}\n{{.Amount}} · {{.When}}"
+
+["bot.sh.st_pending_payment"]
+other = "Awaiting payment"
+
+["bot.sh.st_paid"]
+other = "Paid"
+
+["bot.sh.st_shipped"]
+other = "Shipped"
+
+["bot.sh.st_cancelled"]
+other = "Canceled"
+
+["bot.sh.st_expired"]
+other = "Not paid in time"
+
+["bot.sh.st_refunded"]
+other = "Refunded"
+
+["bot.sh.st_partially_refunded"]
+other = "Partly refunded"
+
+["bot.sh.st_manual_review"]
+other = "Needs a check"
+
+["bot.sh.card_review_late"]
+other = "⚠️ The payment arrived after the hold ended and the goods were gone. Fulfil the order if the goods are back, or refund and cancel it."
+
+["bot.sh.card_review_unconfirmed"]
+other = "⚠️ The payment is not confirmed yet. The order follows its payment: there is nothing to decide for now."
+
+["bot.sh.card_review_other"]
+other = "⚠️ The order waits for a check."
+
+["bot.sh.card_buyer"]
+other = "\n\n👤 <b>{{.Name}}</b>{{.Contacts}}"
+
+["bot.sh.card_delivery"]
+other = "🚚 <b>Delivery</b>"
+
+["bot.sh.delivery_none"]
+other = "🚚 No delivery"
+
+["bot.sh.delivery_pickup"]
+other = "🚚 Pickup"
+
+["bot.sh.delivery_hidden"]
+other = "🚚 The delivery address is shown in the private chat with the bot only."
+
+["bot.sh.card_comment"]
+other = "💬 {{.Text}}"
+
+["bot.sh.card_items"]
+other = "\n\n🧾 <b>Items</b>"
+
+["bot.sh.line_discount"]
+other = "Discount: −{{.Amount}}"
+
+["bot.sh.line_shipping"]
+other = "Delivery: {{.Amount}}"
+
+["bot.sh.line_total"]
+other = "<b>Total: {{.Amount}}</b>"
+
+["bot.sh.line_refunded"]
+other = "↩ Returned: {{.Amount}}"
+
+["bot.sh.card_payment"]
+other = "💳 {{.Provider}} · {{.State}}"
+
+["bot.sh.card_shipped"]
+other = "📦 Shipped {{.When}}"
+
+["bot.sh.card_tracking"]
+other = "Tracking number: {{.Text}}"
+
+["bot.sh.card_note"]
+other = "📝 <b>Note</b> ({{.By}}, {{.When}}): {{.Text}}"
+
+["bot.sh.ship_btn"]
+other = "📦 Shipped"
+
+["bot.sh.track_btn"]
+other = "✏️ Tracking number"
+
+["bot.sh.courier_btn"]
+other = "📋 Courier text"
+
+["bot.sh.note_btn"]
+other = "📝 Note"
+
+["bot.sh.resend_btn"]
+other = "✉️ Send the letter again"
+
+["bot.sh.refund_btn"]
+other = "↩ Refund"
+
+["bot.sh.fulfil_btn"]
+other = "✅ Fulfil the order"
+
+["bot.sh.refund_cancel_btn"]
+other = "↩ Refund and cancel"
+
+["bot.sh.cancel_btn"]
+other = "✖ Cancel the order"
+
+["bot.sh.to_list_btn"]
+other = "Orders"
+
+["bot.sh.ship_ask"]
+other = "📦 Order №{{.Num}}: write the tracking number, or press «No number»."
+
+["bot.sh.no_number_btn"]
+other = "No number"
+
+["bot.sh.ship_done"]
+other = "✔ Order №{{.Num}} is marked as shipped."
+
+["bot.sh.note_ask"]
+other = "📝 Order №{{.Num}}: write the note. Only you and your colleagues see it, the buyer does not."
+
+["bot.sh.note_current"]
+other = "Now: {{.Text}}"
+
+["bot.sh.note_erase_btn"]
+other = "Erase the note"
+
+["bot.sh.note_saved"]
+other = "✔ The note is saved."
+
+["bot.sh.note_erased"]
+other = "✔ The note is erased."
+
+["bot.sh.resend_ask"]
+other = "✉️ Order №{{.Num}}: which letter to send again to {{.Email}}?"
+
+["bot.sh.letter_received"]
+other = "Order received"
+
+["bot.sh.letter_shipped"]
+other = "Order shipped"
+
+["bot.sh.letter_refunded"]
+other = "Refund"
+
+["bot.sh.resend_done"]
+other = "✔ The letter is queued and will arrive within a minute."
+
+["bot.sh.courier_head"]
+other = "📋 Courier text (tap to copy):"
+
+["bot.sh.courier_empty"]
+other = "There is nothing to put in a courier text."
+
+["bot.sh.courier_private"]
+other = "The delivery address is shown in the private chat with the bot only."
+
+["bot.sh.cancel_word"]
+other = "CANCEL ORDER"
+
+["bot.sh.cancel_ask"]
+other = "✖ Cancel order №{{.Num}}? It has not been paid. The order closes and its goods go back on sale. This cannot be undone.\n\nTo confirm, type {{.Word}}."
+
+["bot.sh.cancel_wrong"]
+other = "The text does not match, so nothing was canceled. To confirm, type {{.Word}}, or go back."
+
+["bot.sh.cancel_done"]
+other = "✔ Order №{{.Num}} is canceled."
+
+["bot.sh.cancel_changed"]
+other = "The order no longer waits for payment, so nothing was canceled."
+
+["bot.sh.refund_word"]
+other = "REFUND"
+
+["bot.sh.fulfil_word"]
+other = "PROCESS ORDER"
+
+["bot.sh.refund_amount"]
+other = "↩ <b>Refund · order №{{.Num}}</b>\nYou can return up to {{.Left}}. How much?"
+
+["bot.sh.refund_all_btn"]
+other = "The whole amount ({{.Left}})"
+
+["bot.sh.refund_part_btn"]
+other = "Another amount"
+
+["bot.sh.refund_cancel_dialog_btn"]
+other = "Cancel"
+
+["bot.sh.refund_amount_text"]
+other = "Write the amount to return, not more than {{.Left}}, for example 12.50."
+
+["bot.sh.refund_amount_bad"]
+other = "That is not an amount from 0.01 to {{.Left}}. Write it as a number, for example 12.50."
+
+["bot.sh.refund_amount_changed"]
+other = "The amount that can be returned changed: now up to {{.Left}}."
+
+["bot.sh.refund_reason"]
+other = "Write the reason for the refund (optional), or press «No reason»."
+
+["bot.sh.refund_no_reason_btn"]
+other = "No reason"
+
+["bot.sh.refund_reason_line"]
+other = "\nReason: {{.Reason}}"
+
+["bot.sh.refund_confirm"]
+other = "↩ <b>Refund · order №{{.Num}}</b>\n{{.Amount}} goes back to the buyer through the payment provider.{{.ReasonLine}}\n\nThe goods do not return to the stock by themselves. This cannot be undone.\n\nTo confirm, type {{.Word}}."
+
+["bot.sh.fulfil_confirm"]
+other = "✅ <b>Fulfil order №{{.Num}}?</b>\nThe order becomes paid and the goods leave the shelf. The buyer gets the order confirmation. This cannot be undone.\n\nTo confirm, type {{.Word}}."
+
+["bot.sh.refund_cancel_confirm"]
+other = "↩ <b>Refund and cancel order №{{.Num}}?</b>\nThe whole payment of {{.Amount}} goes back to the buyer and the order is canceled. This cannot be undone.\n\nTo confirm, type {{.Word}}."
+
+["bot.sh.word_wrong"]
+other = "The text does not match, so nothing was sent. To confirm, type {{.Word}}, or cancel."
+
+["bot.sh.refund_retry"]
+other = "⏳ <b>Order №{{.Num}}</b>: no answer came, so the operation may have started. Press «Repeat»: the server will not return the money twice. Or open the order to check."
+
+["bot.sh.refund_again_btn"]
+other = "Repeat"
+
+["bot.sh.refund_done"]
+other = "✔ Order №{{.Num}}: the money went back: {{.Amount}}."
+
+["bot.sh.refund_pending"]
+other = "⏳ Order №{{.Num}}: the provider has not answered yet. The refund of {{.Amount}} is on its way, and the order updates by itself."
+
+["bot.sh.refund_review"]
+other = "⚠️ Order №{{.Num}}: the refund needs a manual check. Write to support."
+
+["bot.sh.refund_failed"]
+other = "✖ Order №{{.Num}}: the provider did not accept the refund. Nothing was returned. {{.Reason}}"
+
+["bot.sh.fulfil_done"]
+other = "✔ Order №{{.Num}} is fulfilled and ready to ship."
+
+["bot.sh.refund_cancel_done"]
+other = "✔ Order №{{.Num}}: the money went back ({{.Amount}}) and the order is canceled."
+
+["bot.sh.refund_cancel_pending"]
+other = "⏳ Order №{{.Num}}: the money ({{.Amount}}) is on its way back. The order closes when the provider confirms."
+
+["bot.sh.refund_cancel_review"]
+other = "⚠️ Order №{{.Num}}: the refund needs a manual check. Write to support."
+
+["bot.sh.refund_cancel_failed"]
+other = "✖ Order №{{.Num}}: the provider did not accept the refund. The order stays in review. {{.Reason}}"
+
+["bot.sh.refund_nothing"]
+other = "There is nothing to refund on this order."
+
+["bot.sh.other_attempt"]
+other = "The refund of order №{{.Num}} may have started. Check that order first: its card has the button that repeats it safely."
+
+["bot.sh.menu_back_btn"]
+other = "Back to the refund"
+
+["bot.sh.menu_leave_refund"]
+other = "The refund of order №{{.Num}} waits for your word. If you leave, it is dropped."
+
+["bot.sh.menu_leave_maybe"]
+other = "The operation on order №{{.Num}} may have started. If you leave, it is kept and can be repeated from the order's card: the money will not be returned twice."
+
+["bot.sh.err_not_refundable"]
+other = "This order cannot be refunded here: it was not paid through the shop's payment provider."
+
+["bot.sh.err_out_of_stock"]
+other = "The goods are not free on the shelf yet, so nothing changed."
+
+["bot.sh.err_payment_unconfirmed"]
+other = "The payment of this order is not confirmed yet, so nothing changed."
+
+["bot.sh.err_not_resolvable"]
+other = "This order has nothing to decide yet: it follows its payment."
+
+["bot.sh.err_not_in_review"]
+other = "The order no longer waits for a check."
+
+["bot.sh.err_money_failed"]
+other = "The server refused the operation, so nothing was returned."
+
+["bot.sh.err_changed"]
+other = "The order has changed since the screen was drawn. The card below shows its latest state."
+
+["bot.sh.err_postal_required"]
+other = "Add the postal code to the delivery address first (in the browser), then mark the order shipped."
+
+["bot.sh.err_invalid_postal"]
+other = "The postal code of the delivery address is not valid. Fix it in the browser first."
+
+["bot.sh.err_too_long"]
+other = "The text is too long. Use up to 2000 characters."
+
+["bot.sh.err_rate_limited"]
+other = "The letter of this order was queued less than a minute ago. Try again in {{.Seconds}} s."
+
+["bot.sh.err_no_email"]
+other = "The order has no buyer e-mail."
+
+["bot.sh.err_letter_unavailable"]
+other = "This order has no such letter."
+
+["bot.sh.err_unavailable"]
+other = "The bot could not save the operation, so nothing was sent. Try again."

@@ -168,6 +168,9 @@ func (b *Bot) menuCommand(ctx context.Context, cmd, arg string, from *models.Use
 //
 // A refund with the server right now, or one already left, is no question.
 func (b *Bot) askLeaveRefund(ctx context.Context, chatID int64, from *models.User, id *Identity) bool {
+	if b.askLeaveShopRefund(ctx, chatID, from, id) { // a shop order's refund asks the same way
+		return true
+	}
 	var st refundDialog
 	step, found, _, err := b.dialogs.Load(ctx, from.ID, refundDialogKind, &st)
 	if err != nil || !found || st.Parked || b.sendingNow(step, st) {
@@ -214,7 +217,7 @@ func (b *Bot) menuPress(ctx context.Context, chatID int64, from *models.User, da
 // here (TestLeaveAllDialogs_EndsEveryDialogKind).
 func (b *Bot) leaveAllDialogs(ctx context.Context, tg int64, keepRefund bool) {
 	for _, kind := range dialogOwnerOrder {
-		if keepRefund && kind == refundDialogKind {
+		if keepRefund && (kind == refundDialogKind || kind == shopRefundDialogKind) {
 			continue
 		}
 		dialogOwners[kind].leave(b, ctx, tg)

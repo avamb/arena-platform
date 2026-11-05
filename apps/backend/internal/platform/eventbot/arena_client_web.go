@@ -18,10 +18,19 @@ type WebLoginLink struct {
 // WebLoginLink asks for a one-time link for the person behind a linked
 // Telegram account, under the service token.
 func (c *ArenaClient) WebLoginLink(ctx context.Context, telegramUserID int64) (WebLoginLink, error) {
+	return c.WebLoginLinkTo(ctx, telegramUserID, "")
+}
+
+// WebLoginLinkTo is WebLoginLink that opens the web event center at a screen:
+// target is a relative path (`/o/{org_id}/shop...`, spec 61 section 4.5). The
+// server keeps it only for an organization the person works in and ignores
+// any other, so the link then opens the home page.
+func (c *ArenaClient) WebLoginLinkTo(ctx context.Context, telegramUserID int64, target string) (WebLoginLink, error) {
 	var out WebLoginLink
 	body := struct {
-		TelegramUserID int64 `json:"telegram_user_id"`
-	}{telegramUserID}
+		TelegramUserID int64  `json:"telegram_user_id"`
+		Target         string `json:"target,omitempty"`
+	}{telegramUserID, target}
 	err := c.do(ctx, http.MethodPost, "/v1/bot/web-login-codes", c.serviceToken, body, &out)
 	return out, err
 }

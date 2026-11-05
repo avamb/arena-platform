@@ -20,11 +20,14 @@ package hbot
 // exchanges the code at POST /v1/auth/web/link (hauth).
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -33,6 +36,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgperm"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
 )
 
@@ -49,6 +53,11 @@ const (
 	// <EVENT_CENTER_PUBLIC_URL>/tg/invitations?session=<id>&event=<id>#code=<code>.
 	MiniappKindInvitations = "invitations"
 )
+
+// webTargetPattern is the only shape of "target" the plain link accepts: the
+// shop section of one organization of the web event center (spec 61 section
+// 4.5). Anything else is dropped and the link opens the home page.
+var webTargetPattern = regexp.MustCompile(`^/o/([0-9a-fA-F-]{36})/shop(/[A-Za-z0-9_-]+)*$`)
 
 // webLoginNoticeBatch caps one claim of sign-in notices.
 const webLoginNoticeBatch = 50
@@ -95,6 +104,7 @@ func (h *Handler) HandleCreateWebLoginCode(w http.ResponseWriter, r *http.Reques
 		Kind           string `json:"kind"`
 		EventID        string `json:"event_id"`
 		SessionID      string `json:"session_id"`
+		Target         string `json:"target"`
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 4*1024))
 	if err != nil || json.Unmarshal(body, &req) != nil {
@@ -185,6 +195,14 @@ func (h *Handler) HandleCreateWebLoginCode(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// The optional target (spec 61 section 4.5) is kept only when it names the
+	// shop of an organization the person works in; a platform-level role never
+	// gets here (refused above). A target that does not qualify is ignored.
+	var target string
+	if purpose == gen.WebLoginPurposeWeb {
+		target = h.acceptWebTarget(ctx, q, link.UserID, req.Target)
+	}
+
 	code, err := newInvitationCode()
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -210,15 +228,18 @@ func (h *Handler) HandleCreateWebLoginCode(w http.ResponseWriter, r *http.Reques
 	}
 	h.writeAudit(r, "user", link.UserID.String(), "v1.auth.web_login_code_issue", "user", link.UserID.String(),
 		map[string]any{"via": "telegram_bot", "purpose": purpose})
-	url := h.eventCenterURL + "/login/link#code=" + code
+	loginURL := h.eventCenterURL + "/login/link#code=" + code
+	if purpose == gen.WebLoginPurposeWeb && target != "" {
+		loginURL += "&next=" + url.QueryEscape(target)
+	}
 	if purpose == gen.WebLoginPurposeMiniapp {
-		url = h.eventCenterURL + "/tg/edit#code=" + code + linkSuffix
+		loginURL = h.eventCenterURL + "/tg/edit#code=" + code + linkSuffix
 		if invitationsPath != "" {
-			url = h.eventCenterURL + invitationsPath + "#code=" + code
+			loginURL = h.eventCenterURL + invitationsPath + "#code=" + code
 		}
 	}
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
-		"url":        url,
+		"url":        loginURL,
 		"expires_at": expiresAt.UTC().Format(time.RFC3339),
 	})
 }
@@ -247,4 +268,37 @@ func (h *Handler) HandleClaimWebLoginNotices(w http.ResponseWriter, r *http.Requ
 		})
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"notices": out})
+}
+
+// acceptWebTarget returns target when it is a shop path of an organization
+// the user holds an active membership of (the organization not archived), and
+// "" otherwise. A failed lookup also yields "": the link then simply opens the
+// home page.
+func (h *Handler) acceptWebTarget(ctx context.Context, q *gen.Queries, userID uuid.UUID, target string) string {
+	target = strings.TrimSpace(target)
+	m := webTargetPattern.FindStringSubmatch(target)
+	if m == nil {
+		return ""
+	}
+	orgID, err := uuid.Parse(m[1])
+	if err != nil {
+		return ""
+	}
+	rows, err := q.ListMembershipsByUser(ctx, userID)
+	if err != nil {
+		h.logger.Warn("hbot: web login: read memberships for target failed", slog.String("error", err.Error()))
+		return ""
+	}
+	// An archived organization is not one the person works in. The shared rule
+	// (orgperm) decides what counts as a membership.
+	live := make([]gen.MembershipRow, 0, len(rows))
+	for _, row := range rows {
+		if !row.OrgArchived {
+			live = append(live, row)
+		}
+	}
+	if orgperm.HasMembershipRow(live, orgID) {
+		return target
+	}
+	return ""
 }
