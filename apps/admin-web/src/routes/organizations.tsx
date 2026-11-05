@@ -79,6 +79,7 @@ import {
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
 import { useAuth } from "@/lib/auth/useAuth";
 import { buildOrgContextHref } from "@/lib/routing/orgContext";
+import { OrganizationModulesTab } from "./organizationModules";
 import {
   useEscapeClose,
   useFocusOnMount,
@@ -682,6 +683,7 @@ export const DRAWER_TAB_KEYS = [
   "channels",
   "payments",
   "api_keys",
+  "modules",
 ] as const;
 
 export type DrawerTabKey = (typeof DRAWER_TAB_KEYS)[number];
@@ -694,6 +696,7 @@ const DRAWER_TAB_LABELS: Record<DrawerTabKey, string> = {
   channels: "Channels",
   payments: "Payments",
   api_keys: "API keys",
+  modules: "Modules",
 };
 
 /**
@@ -845,6 +848,7 @@ function OrganizationDrawer({
         {activeTab === "channels" ? <ChannelsTab org={org} /> : null}
         {activeTab === "payments" ? <PaymentsTab org={org} /> : null}
         {activeTab === "api_keys" ? <ApiKeysTab org={org} /> : null}
+        {activeTab === "modules" ? <OrganizationModulesTab orgId={org.id} /> : null}
       </section>
     </aside>
   );

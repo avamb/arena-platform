@@ -320,6 +320,11 @@ interface AuthedRequest {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   body?: unknown;
+  /**
+   * The audit reason the person just wrote in a dialog of their own. When set it is sent as X-Admin-Reason
+   * as it is, instead of the reason of the session (the module dialogs of an organization ask for one).
+   */
+  adminReason?: string;
 }
 
 /**
