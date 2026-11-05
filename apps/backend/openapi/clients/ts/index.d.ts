@@ -1936,6 +1936,125 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/bot/shop-delivery/steps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A step button of a delivery card was pressed
+         * @description Called by the bot PROCESS (the sales bot in arena-bot) under
+         *     `BOT_SERVICE_TOKEN` when a member of a delivery group presses a step of
+         *     a shop order card (spec 61 section 7b.3). Any member of the group may
+         *     press (V-16); the step is set through the same writer as the event center
+         *     (`POST .../shop/orders/{order_id}/fulfillment`) with the Telegram
+         *     account as the actor and `via` `delivery_group`. The chat must be a
+         *     switched-on, not deleted `shop_delivery` chat of the order's organization
+         *     (or the operator's) that the bot is still in; otherwise 404. The answer
+         *     is 200 for every outcome of the press, with the card to put in its place.
+         */
+        post: operations["postBotShopDeliveryStep"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/shop-delivery/card": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The delivery card of an order as it is now
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN` to put the step
+         *     buttons back on a card ("back" after a question). Same chat check as the
+         *     step route.
+         */
+        post: operations["postBotShopDeliveryCard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/sales-chats/connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bind a chat with a connection code
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN` when `/connect <code>`
+         *     is written in a group (spec 61 section 7a.4). The code's chat is created,
+         *     or revived and rewritten (name, kinds, switched on, not deleted, bot not
+         *     removed), for this Telegram chat, and the code is spent. Writes the audit
+         *     event `v1.sales_chat.connected`.
+         */
+        post: operations["postBotSalesChatConnect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/sales-chats/removed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The sales bot was removed from a chat
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN` on Telegram's
+         *     `my_chat_member` update that says the bot left or was removed. Every live
+         *     chat row of that Telegram chat is marked (`bot_removed_at`) and hears
+         *     nothing more until a new `/connect`.
+         */
+        post: operations["postBotSalesChatRemoved"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/sales-chats/migrated": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A chat of the sales bot became a supergroup
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN` when Telegram reports
+         *     `migrate_to_chat_id`: the chat rows and the remembered delivery cards
+         *     move to the new id, so presses from the supergroup are recognised.
+         */
+        post: operations["postBotSalesChatMigrated"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/bot/invitations/pdf-notices/claim": {
         parameters: {
             query?: never;
@@ -2286,6 +2405,110 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/organizations/{org_id}/sales-chats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - the Telegram chats of an organization
+         * @description The sales bot's chats of the organization (spec 61 section 7a.4): name, what each hears, the on/off switch, the last delivery error, when it was connected and whether the bot was removed from it. Deleted chats are left out. Requires JWT, superadmin.read and a platform superadmin.
+         */
+        get: operations["listAdminOrgSalesChats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/organizations/{org_id}/sales-chats/connect-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - a code that connects a chat of an organization
+         * @description Creates a one-time code (30 minutes, only its SHA-256 is stored) for a chat with a name and the kinds it will hear (spec 61 section 7a.4). The operator adds the sales bot to the group and writes `command` there; the bot binds the chat and answers which organization it now hears. The code itself is not written to the audit log. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the reason.
+         */
+        post: operations["createAdminOrgSalesChatCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/sales-chats/operator": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - the platform's own Telegram chats
+         * @description The operator's chats of the sales bot (no organization: they hear every organization), the tab `Platform` of the admin screen. Deleted chats are left out. Requires JWT, superadmin.read and a platform superadmin.
+         */
+        get: operations["listAdminOperatorSalesChats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/sales-chats/operator/connect-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - a code that connects an operator chat
+         * @description Creates a one-time code (30 minutes, only its SHA-256 is stored) for a chat with a name and the kinds it will hear (spec 61 section 7a.4). The operator adds the sales bot to the group and writes `command` there; the bot binds the chat and answers which organization it now hears. The code itself is not written to the audit log. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the reason.
+         */
+        post: operations["createAdminOperatorSalesChatCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/sales-chats/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Admin - delete a Telegram chat
+         * @description Marks the chat deleted: nothing is sent there any more and its delivery history stays. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the reason.
+         */
+        delete: operations["deleteAdminSalesChat"];
+        options?: never;
+        head?: never;
+        /**
+         * Admin - change a Telegram chat
+         * @description Renames a chat, changes what it hears or switches it on or off. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the reason and the values before and after.
+         */
+        patch: operations["patchAdminSalesChat"];
         trace?: never;
     };
     "/v1/admin/billing/white-label": {
@@ -12573,7 +12796,7 @@ export interface paths {
         /**
          * Send the buyer's order e-mail once more
          * @description Queues the letter the buyer got when the order was paid (`received`),
-         *     shipped (`shipped`) or refunded (`refunded`, the letter about the newest
+         *     shipped (`shipped`), delivered (`delivered`) or refunded (`refunded`, the letter about the newest
          *     succeeded refund; an order with none answers 409) for the worker to send again,
          *     to the address on the order, in the buyer's language. The first send's
          *     "already sent" marker does not stop it. Answers 202 at once; the delivery itself is asynchronous. One request per
@@ -12601,7 +12824,11 @@ export interface paths {
         /**
          * Mark a shop order shipped
          * @description Moves a paid (or partially refunded) order to `shipped`, stores the
-         *     optional tracking note and writes the `v1.shop.order.shipped` event. Shipping
+         *     optional tracking note and writes the `v1.shop.order.shipped` event. It is
+         *     the delivery step `handed_over` (`POST .../fulfillment`): it records a step
+         *     in the order's history and writes `v1.shop.order.fulfillment_changed`, and a
+         *     refunded, cancelled or expired order answers 409
+         *     `shop.fulfillment_order_closed`. Shipping
          *     a shipped order again only updates the note. Shipping an order in
          *     `manual_review` takes its goods off the shelf at that moment, only when they
          *     are free after every live hold (409 `shop.out_of_stock` otherwise). The body
@@ -12610,6 +12837,42 @@ export interface paths {
          *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
          */
         post: operations["shipShopOrder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/shop/orders/{order_id}/fulfillment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set the delivery step of a shop order
+         * @description Moves the order to its next delivery step (spec 61 section 7b) through the
+         *     one writer every surface uses, the delivery group's Telegram buttons too:
+         *     `packed`, `handed_over` (what `POST .../ship` does: status `shipped`,
+         *     `shipped_at`, the tracking number and the buyer's "shipped" letter, all
+         *     only the first time), `delivered` (queues the buyer's "delivered" letter,
+         *     once per order) or `failed` (with a reason; it may be handed over again).
+         *     The step and the money status are apart: a refund does not change the
+         *     step. Repeating the current step changes nothing; `handed_over` again
+         *     with another number only stores the number. Every change writes a row
+         *     of the order's history (`events`), the outbox event
+         *     `v1.shop.order.fulfillment_changed` (the delivery card in the delivery
+         *     group is edited from it) and the audit event `v1.shop.order.fulfillment`.
+         *     The history names the signed-in user (or `API key`) and the client from
+         *     `X-Client-Channel` (`telegram_bot`, `event_center_web`, `admin_web`).
+         *     Works in the shop mode `orders_only` too.
+         *
+         *     Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+         */
+        post: operations["setShopOrderFulfillment"];
         delete?: never;
         options?: never;
         head?: never;
@@ -35769,6 +36032,10 @@ export interface components {
             buyer_locale?: string | null;
             /** @description Tracking number or note given when shipped. */
             tracking_note: string;
+            /** @description The delivery step, apart from the money status (spec 61 section 7b): `waiting` (paid, waits for packing), `packed`, `handed_over` (shipped: `shipped_at`, `tracking_note`), `delivered` or `failed` (not delivered; it may be handed over again). Null for an order that is not paid yet or has nothing to ship (`delivery_kind` `none`). A refund does not change it. Set it with `POST .../shop/orders/{order_id}/fulfillment`. */
+            fulfillment_step?: string | null;
+            /** @description The history of the delivery steps, oldest first. Only the answers about one order carry it (read, ship, fulfillment, note and the other single-order routes); the list leaves it out. */
+            events?: components["schemas"]["ShopOrderEvent"][];
             /** @description The internal note of the shop staff. Never shown to the buyer or on the storefront. */
             staff_note: components["schemas"]["ShopStaffNote"];
             /** @description The lines in order. */
@@ -35850,10 +36117,309 @@ export interface components {
              * @description Refunded and partly refunded orders.
              */
             refunds: number;
+            /** @description How many orders that can still move (paid, shipped or partly refunded) stand at each delivery step, the numbers behind the list's `fulfillment_step` filter. */
+            steps: components["schemas"]["ShopOrderStepCounts"];
+        };
+        /** @description Orders per delivery step, among the paid, shipped and partly refunded ones. */
+        ShopOrderStepCounts: {
+            /**
+             * Format: int64
+             * @description Paid, waiting to be packed.
+             */
+            waiting: number;
+            /**
+             * Format: int64
+             * @description Packed, not handed over yet.
+             */
+            packed: number;
+            /**
+             * Format: int64
+             * @description Handed to the courier (shipped).
+             */
+            handed_over: number;
+            /**
+             * Format: int64
+             * @description Delivered.
+             */
+            delivered: number;
+            /**
+             * Format: int64
+             * @description Not delivered; they wait for another delivery or a refund.
+             */
+            failed: number;
+        };
+        /** @description One change of the delivery step of a shop order. */
+        ShopOrderEvent: {
+            /**
+             * Format: uuid
+             * @description The history row.
+             */
+            id: string;
+            /** @description The step set: `packed`, `handed_over`, `delivered` or `failed`. */
+            step: string;
+            /** @description The step before the change. */
+            from_step: string | null;
+            /** @description The shipment number stored with a `handed_over` step, empty otherwise. */
+            tracking: string;
+            /** @description Why a `failed` delivery failed: `no_answer`, `not_home`, `wrong_address`, `refused` (the buttons of the delivery group) or a person's text. */
+            reason: string;
+            /** @description A free remark, empty when none was given. */
+            note: string;
+            /**
+             * Format: uuid
+             * @description The platform user who set the step, null for a member of the delivery group.
+             */
+            actor_user_id: string | null;
+            /**
+             * Format: int64
+             * @description The Telegram account of the delivery group member who pressed the button, null otherwise.
+             */
+            actor_telegram_id: number | null;
+            /** @description The name shown for the actor (the user's name or e-mail, the Telegram name, `API key`). */
+            actor_name: string;
+            /** @description Where the step was set: `delivery_group` (a button of the delivery card in Telegram), `telegram_bot`, `event_center_web`, `admin_web`, `api` (an organization API key) or `system`. */
+            via: string;
+            /**
+             * Format: date-time
+             * @description When the step was set.
+             */
+            created_at: string;
+        };
+        /** @description The next delivery step of a shop order. */
+        ShopFulfillmentRequest: {
+            /** @description `packed`, `handed_over`, `delivered` or `failed`. From `waiting`: `packed`, `handed_over` or `failed`; from `packed`: `handed_over` or `failed`; from `handed_over`: `delivered` or `failed`; from `failed`: `handed_over` (another try). The current step again changes nothing. */
+            step: string;
+            /** @description The shipment number of `handed_over`, up to 2000 characters; absent or null keeps the stored one. `handed_over` again with another number only stores it. */
+            tracking?: string | null;
+            /** @description Why the delivery failed, required with `failed` (up to 500 characters). */
+            reason?: string;
+            /** @description A free remark for the history, up to 2000 characters. */
+            note?: string;
+        };
+        /** @description A Telegram chat of the sales bot (sales_notification_subscriptions), as the admin screen shows it. */
+        SalesChat: {
+            /**
+             * Format: uuid
+             * @description The chat row.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The organization; null for an operator chat, which hears every organization.
+             */
+            org_id: string | null;
+            /** @description The operator's name of the chat. */
+            name: string;
+            /** @description Telegram's chat id, written by the bot on `/connect`. */
+            chat_id: string;
+            /** @description The group's title when it was connected. */
+            chat_title: string | null;
+            /** @description What the chat hears: `tickets` (ticket sales and refunds), `shop_sale` (the fact of a shop sale, no buyer data), `shop_delivery` (the full shop order card with the step buttons, for a delivery group). */
+            kinds: string[];
+            /** @description The operator's on/off switch. */
+            allowed: boolean;
+            /** @description The chat hears sales. */
+            on_order_paid: boolean;
+            /** @description The chat hears refunds. */
+            on_ticket_refunded: boolean;
+            /** @description The last delivery error reported by Telegram, null after a success. */
+            last_error: string | null;
+            /**
+             * Format: date-time
+             * @description When Telegram reported the bot removed from the chat; nothing is sent there until a new `/connect`.
+             */
+            bot_removed_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the chat was last bound with a code.
+             */
+            connected_at: string | null;
+            /**
+             * Format: date-time
+             * @description When the row was created.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description Last change.
+             */
+            updated_at: string;
+        };
+        /** @description The chats of an organization, or the operator's (deleted chats left out). */
+        SalesChatList: {
+            /**
+             * Format: uuid
+             * @description The organization, null for the operator's list.
+             */
+            org_id: string | null;
+            /** @description The chats, oldest first. */
+            items: components["schemas"]["SalesChat"][];
+        };
+        /** @description The chat a connection code will bind. */
+        SalesChatConnectCodeRequest: {
+            /** @description The chat's name in the admin screen, 1-200 characters. */
+            name: string;
+            /** @description What it will hear: one or more of `tickets`, `shop_sale`, `shop_delivery`. */
+            kinds: string[];
+        };
+        /** @description A one-time connection code. Only its hash is stored, so this answer is the only place it appears. */
+        SalesChatConnectCode: {
+            /**
+             * Format: uuid
+             * @description The code row.
+             */
+            id: string;
+            /** @description The code, ten characters shown as XXXXX-XXXXX. */
+            code: string;
+            /** @description What to write in the group after adding the sales bot: `/connect <code>` (or `/connect@<bot> <code>` when the group has other bots). */
+            command: string;
+            /**
+             * Format: date-time
+             * @description The code works for 30 minutes, once.
+             */
+            expires_at: string;
+            /** @description The chat's name. */
+            name: string;
+            /** @description What the chat will hear. */
+            kinds: string[];
+        };
+        /** @description An edit of a chat; absent members stay. */
+        SalesChatPatchRequest: {
+            /** @description A new name, 1-200 characters. */
+            name?: string;
+            /** @description The new list of kinds. */
+            kinds?: string[];
+            /** @description Switch the chat on or off. */
+            allowed?: boolean;
+        };
+        /** @description The chat was marked deleted. */
+        SalesChatDeleted: {
+            /** @description Always true. */
+            deleted: boolean;
+            /**
+             * Format: uuid
+             * @description The chat row.
+             */
+            id: string;
+        };
+        /** @description One inline button of a delivery card. */
+        BotDeliveryButton: {
+            /** @description The label in the organization's language. */
+            text: string;
+            /** @description The callback data, at most 64 bytes: `sd:<op>:<lang>:<order id>`. */
+            data: string;
+        };
+        /** @description The delivery card as the group must see it now (Telegram HTML). */
+        BotDeliveryCard: {
+            /** @description The card text with the status line of the current step. */
+            text: string;
+            /** @description The button rows; empty when nothing can be pressed (delivered, refunded). */
+            rows: components["schemas"]["BotDeliveryButton"][][];
+        };
+        /** @description A member of a delivery group pressed a step of a card. */
+        BotShopDeliveryStepRequest: {
+            /** @description The Telegram chat the card is in. */
+            chat_id: string;
+            /**
+             * Format: int64
+             * @description Who pressed.
+             */
+            telegram_user_id: number;
+            /** @description Their name as Telegram shows it. */
+            telegram_name?: string;
+            /**
+             * Format: uuid
+             * @description The shop order.
+             */
+            order_id: string;
+            /** @description `packed`, `handed_over`, `delivered` or `failed`. */
+            step: string;
+            /** @description The shipment number of `handed_over`. */
+            tracking?: string | null;
+            /** @description The reason of `failed` (a code of the buttons or a typed text). */
+            reason?: string;
+        };
+        /** @description Which card to render. */
+        BotShopDeliveryCardRequest: {
+            /** @description The Telegram chat the card is in. */
+            chat_id: string;
+            /**
+             * Format: uuid
+             * @description The shop order.
+             */
+            order_id: string;
+        };
+        /** @description What a press did and the card to show. */
+        BotShopDeliveryAnswer: {
+            /** @description `applied` (the step was set), `unchanged` (it already was), `stale` (somebody moved the order on: the card shows the current step) or `closed` (refunded or cancelled: do not ship, the card has no buttons). */
+            outcome: string;
+            /** @description The step now. */
+            fulfillment_step: string | null;
+            /**
+             * Format: int64
+             * @description The order number.
+             */
+            order_number: number;
+            /** @description The organization's language the card is written in. */
+            locale: string;
+            /** @description The card to put in place of the pressed one. */
+            card: components["schemas"]["BotDeliveryCard"];
+        };
+        /** @description `/connect <code>` written in a group. */
+        BotSalesChatConnectRequest: {
+            /** @description The code from the admin screen. */
+            code: string;
+            /** @description The Telegram chat. */
+            chat_id: string;
+            /** @description The group's title. */
+            chat_title?: string;
+            /**
+             * Format: int64
+             * @description Who wrote the command.
+             */
+            telegram_user_id?: number;
+            /** @description Their name. */
+            telegram_name?: string;
+        };
+        /** @description The chat the code bound. */
+        BotSalesChatConnectResponse: {
+            /** @description The chat row. */
+            chat: components["schemas"]["SalesChat"];
+            /** @description The organization's name, empty for an operator chat. */
+            org_name: string;
+            /** @description The organization's language (`en` for an operator chat). */
+            locale: string;
+            /** @description The chat hears every organization. */
+            operator: boolean;
+        };
+        /** @description Telegram said the bot left or was removed from a chat. */
+        BotSalesChatRemovedRequest: {
+            /** @description The Telegram chat. */
+            chat_id: string;
+        };
+        /** @description How many chat rows were marked. */
+        BotSalesChatRemovedResponse: {
+            /**
+             * Format: int64
+             * @description Rows marked as removed.
+             */
+            marked: number;
+        };
+        /** @description A group became a supergroup. */
+        BotSalesChatMigratedRequest: {
+            /** @description The old chat id. */
+            from_chat_id: string;
+            /** @description The new chat id. */
+            to_chat_id: string;
+        };
+        /** @description The chat rows now use the new id. */
+        BotSalesChatMigratedResponse: {
+            /** @description Always true. */
+            migrated: boolean;
         };
         /** @description Which buyer letter to send once more. */
         ShopResendEmailRequest: {
-            /** @description `received` (the order is confirmed), `shipped` (the order is on its way) or `refunded` (money of the order went back to the buyer). */
+            /** @description `received` (the order is confirmed), `shipped` (the order is on its way), `delivered` (the order arrived; only for an order that reached the step `delivered`) or `refunded` (money of the order went back to the buyer). */
             kind: string;
         };
         /** @description The letter was queued for the worker. */
@@ -35907,6 +36473,8 @@ export interface components {
             q?: string;
             /** @description A tab of the list: `to_ship`, `unpaid`, `shipped` or `refunds`. */
             view?: string;
+            /** @description Only orders at this delivery step (`waiting`, `packed`, `handed_over`, `delivered`, `failed`) among the paid, shipped and partly refunded ones. */
+            fulfillment_step?: string;
             /** @description Only orders of this status. */
             status?: string;
             /** @description Created at or after this instant (RFC 3339 with a zone, or YYYY-MM-DD for UTC midnight). */
@@ -41057,6 +41625,342 @@ export interface operations {
             };
         };
     };
+    postBotShopDeliveryStep: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotShopDeliveryStepRequest"];
+            };
+        };
+        responses: {
+            /** @description What the press did and the card to show. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotShopDeliveryAnswer"];
+                };
+            };
+            /** @description The body is not valid JSON of the expected shape (`sales_chat.invalid_body`), a bad step (`shop.invalid_fulfillment_step`) or `failed` without a reason (`shop.fulfillment_reason_required`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown order, or the chat may not press its buttons (`shop_delivery.not_found`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A text is too long (`shop.text_too_long`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_chat.failed`) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postBotShopDeliveryCard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotShopDeliveryCardRequest"];
+            };
+        };
+        responses: {
+            /** @description The card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotShopDeliveryAnswer"];
+                };
+            };
+            /** @description The body is not valid JSON of the expected shape (`sales_chat.invalid_body`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown order, or the chat may not press its buttons (`shop_delivery.not_found`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_chat.failed`) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postBotSalesChatConnect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotSalesChatConnectRequest"];
+            };
+        };
+        responses: {
+            /** @description The chat the code bound. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotSalesChatConnectResponse"];
+                };
+            };
+            /** @description The body is not valid JSON of the expected shape (`sales_chat.invalid_body`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The code is unknown, used or expired (`sales_chat.code_invalid`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_chat.failed`) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postBotSalesChatRemoved: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotSalesChatRemovedRequest"];
+            };
+        };
+        responses: {
+            /** @description How many rows were marked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotSalesChatRemovedResponse"];
+                };
+            };
+            /** @description The body is not valid JSON of the expected shape (`sales_chat.invalid_body`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_chat.failed`) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postBotSalesChatMigrated: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotSalesChatMigratedRequest"];
+            };
+        };
+        responses: {
+            /** @description The rows use the new id. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotSalesChatMigratedResponse"];
+                };
+            };
+            /** @description The body is not valid JSON of the expected shape, or an id is missing (`sales_chat.invalid_body`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_chat.failed`) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     claimBotInvitationPdfNotices: {
         parameters: {
             query?: never;
@@ -42299,6 +43203,477 @@ export interface operations {
                 };
             };
             /** @description Internal server error (`org_module.failed`) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database or the audit log is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listAdminOrgSalesChats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The chats. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesChatList"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller is not a platform superadmin (`org_module.superadmin_only`), an organization owner included */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such organization (`sales_chat.organization_not_found`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_chat.failed`) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database or the audit log is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createAdminOrgSalesChatCode: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SalesChatConnectCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description The code, shown once. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesChatConnectCode"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of the expected shape (`sales_chat.invalid_body`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller is not a platform superadmin (`org_module.superadmin_only`), an organization owner included */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such organization (`sales_chat.organization_not_found`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown or no kinds (`sales_chat.invalid_kinds`), or a name that is empty or longer than 200 characters (`sales_chat.invalid_name`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_chat.failed`) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database or the audit log is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listAdminOperatorSalesChats: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The chats. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesChatList"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller is not a platform superadmin (`org_module.superadmin_only`), an organization owner included */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_chat.failed`) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database or the audit log is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createAdminOperatorSalesChatCode: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SalesChatConnectCodeRequest"];
+            };
+        };
+        responses: {
+            /** @description The code, shown once. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesChatConnectCode"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of the expected shape (`sales_chat.invalid_body`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller is not a platform superadmin (`org_module.superadmin_only`), an organization owner included */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown or no kinds (`sales_chat.invalid_kinds`), or a name that is empty or longer than 200 characters (`sales_chat.invalid_name`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_chat.failed`) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database or the audit log is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    deleteAdminSalesChat: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the chat row. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The chat was deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesChatDeleted"];
+                };
+            };
+            /** @description Missing X-Admin-Reason */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller is not a platform superadmin (`org_module.superadmin_only`), an organization owner included */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such chat, or it was deleted already (`sales_chat.not_found`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_chat.failed`) */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database or the audit log is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    patchAdminSalesChat: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the chat row. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SalesChatPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description The chat. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesChat"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, an empty edit, or the body is not valid JSON of the expected shape (`sales_chat.invalid_body`) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Permission denied: the caller is not a platform superadmin (`org_module.superadmin_only`), an organization owner included */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such chat, or it was deleted (`sales_chat.not_found`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unknown or no kinds (`sales_chat.invalid_kinds`), or a bad name (`sales_chat.invalid_name`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`sales_chat.failed`) */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -78185,6 +79560,8 @@ export interface operations {
                 status?: string;
                 /** @description A tab of the order list, combined with `status` when both are given: `to_ship` (paid or partly refunded, something to hand over, not shipped yet), `unpaid`, `shipped` or `refunds`. `GET .../shop/orders/counts` gives the size of each. */
                 view?: string;
+                /** @description Only orders at this delivery step (`waiting`, `packed`, `handed_over`, `delivered`, `failed`) among the paid, shipped and partly refunded ones; `GET .../shop/orders/counts` gives the size of each in `steps`. */
+                fulfillment_step?: string;
                 /** @description Order number, or part of the buyer's e-mail or name. */
                 q?: string;
                 /** @description Created at or after this instant (RFC 3339, or YYYY-MM-DD for UTC midnight). */
@@ -78608,7 +79985,7 @@ export interface operations {
                     "application/json": components["schemas"]["ShopResendEmailResponse"];
                 };
             };
-            /** @description The body is not valid JSON for this route, or `kind` is not `received`, `shipped` or `refunded` (`shop.invalid_body`, `shop.invalid_email_kind`). */
+            /** @description The body is not valid JSON for this route, or `kind` is not `received`, `shipped`, `delivered` or `refunded` (`shop.invalid_body`, `shop.invalid_email_kind`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -78755,6 +80132,107 @@ export interface operations {
                 };
             };
             /** @description The tracking note is too long (`shop.text_too_long`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`shop.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The database is unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    setShopOrderFulfillment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+                /** @description UUID of the shop order (an order of another organization answers 404). */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShopFulfillmentRequest"];
+            };
+        };
+        responses: {
+            /** @description The order with its history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShopOrder"];
+                };
+            };
+            /** @description The body is not valid JSON for this route (`shop.invalid_body`), `step` is not a delivery step (`shop.invalid_fulfillment_step`) or `failed` has no reason (`shop.fulfillment_reason_required`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid JWT or API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks the `shop.manage` permission or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such order in this organization (`shop.order_not_found`), or the organization has no shop (`shop.module_not_enabled`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The step does not follow the current one (`shop.fulfillment_invalid_step`, `details.fulfillment_step` and `details.allowed`), the order was refunded, cancelled or expired: do not ship (`shop.fulfillment_order_closed`), it is not paid (`shop.fulfillment_order_unpaid`), it waits for a decision in `manual_review` and can only be handed over (`shop.fulfillment_order_in_review`), it has nothing to ship (`shop.order_not_shippable`), or a `manual_review` order's goods are not free (`shop.out_of_stock`) or its payment is not settled (`shop.payment_unconfirmed`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A text is too long (`shop.text_too_long`). */
             422: {
                 headers: {
                     [name: string]: unknown;

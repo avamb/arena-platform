@@ -23,7 +23,7 @@ func (s *PGStore) Subscriptions(ctx context.Context) ([]Subscription, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id::text, COALESCE(org_id::text, ''), name, chat_id, on_order_paid, on_ticket_refunded, on_event_changes, kinds
 		  FROM sales_notification_subscriptions
-		 WHERE allowed
+		 WHERE allowed AND deleted_at IS NULL AND bot_removed_at IS NULL
 		 ORDER BY created_at, id`)
 	if err != nil {
 		return nil, err

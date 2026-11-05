@@ -347,9 +347,10 @@ func TestFormatShopDeliveryRefund_RussianAndEnglish(t *testing.T) {
 // Every salesnotify.shop.* key exists in every catalog and keeps its
 // placeholders, so no language shows an empty value or a raw key.
 func TestShopTexts_EveryLocaleHasEveryKey(t *testing.T) {
-	data := map[string]any{"Org": "O", "Number": 7, "Amount": "A", "Total": "T", "Url": "U", "Count": 3, "Qty": 2, "Name": "N", "Price": "P", "Note": "X", "List": "L"}
+	data := map[string]any{"Org": "O", "Number": 7, "Amount": "A", "Total": "T", "Url": "U", "Count": 3, "Qty": 2, "Name": "N", "Price": "P", "Note": "X", "List": "L",
+		"Step": "S", "Tracking": "TR", "Reason": "R", "Kinds": "K"}
 	for _, loc := range []string{"en", "ru", "cs", "he", "es"} {
-		for _, k := range shopKeys {
+		for _, k := range append(append([]string{}, shopKeys...), botKeys...) {
 			got := say(loc, k, data)
 			if got == k || strings.TrimSpace(got) == "" || strings.Contains(got, "{{") || strings.Contains(got, "<no value>") {
 				t.Errorf("%s / %s renders %q", loc, k, got)
@@ -362,7 +363,7 @@ func TestShopTexts_EveryLocaleHasEveryKey(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, k := range shopKeys {
+		for _, k := range append(append([]string{}, shopKeys...), botKeys...) {
 			if !strings.Contains(string(raw), "[\""+k+"\"]") {
 				t.Errorf("%s.toml lacks %s", loc, k)
 			}

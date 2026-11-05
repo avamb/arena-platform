@@ -6046,3 +6046,98 @@ other = "\n🤝 Bought with the referrer's code <b>{{.Code}}</b>{{if .Referrer}}
 
 ["bot.ord.ref_more"]
 other = "\n…and {{.N}} more friends' orders"
+
+# --- salesnotify delivery steps and the sales bot (spec 61 section 7b) ---
+["salesnotify.shop.step.waiting"]
+other = "⏳ Waiting to be packed"
+
+["salesnotify.shop.step.packed"]
+other = "📦 Packed"
+
+["salesnotify.shop.step.handed_over"]
+other = "🚚 Handed to courier"
+
+["salesnotify.shop.step.delivered"]
+other = "✅ Delivered"
+
+["salesnotify.shop.step.failed"]
+other = "❌ Not delivered"
+
+["salesnotify.shop.step_tracking"]
+other = "No. {{.Tracking}}"
+
+["salesnotify.shop.card_closed"]
+other = "🛑 Order refunded: do not ship"
+
+["salesnotify.shop.reason.no_answer"]
+other = "No answer on the phone"
+
+["salesnotify.shop.reason.not_home"]
+other = "Nobody home"
+
+["salesnotify.shop.reason.wrong_address"]
+other = "Wrong address"
+
+["salesnotify.shop.reason.refused"]
+other = "Refused to accept"
+
+["salesnotify.shop.reason.other"]
+other = "Other"
+
+["salesnotify.shop.btn_no_tracking"]
+other = "🚚 No number"
+
+["salesnotify.shop.btn_back"]
+other = "↩️ Back"
+
+["salesnotify.shop.failed_title"]
+other = "❌ <b>Shop order not delivered</b> — {{.Org}}"
+
+["salesnotify.shop.failed_body"]
+other = "Order No. {{.Number}}: {{.Reason}}. Decide in the event center: another delivery or a refund."
+
+["salesnotify.shop.ask_tracking"]
+other = "🚚 Shipment number: reply to this message with it, or press «No number» under the card."
+
+["salesnotify.shop.ask_reason"]
+other = "❌ Why was it not delivered? Reply to this message with the reason."
+
+["salesnotify.bot.toast_done"]
+other = "Done: {{.Step}}"
+
+["salesnotify.bot.toast_stale"]
+other = "Already set: {{.Step}}"
+
+["salesnotify.bot.toast_closed"]
+other = "Order refunded: do not ship"
+
+["salesnotify.bot.toast_error"]
+other = "Did not work, please try again"
+
+["salesnotify.bot.toast_not_connected"]
+other = "This chat is not connected to deliveries"
+
+["salesnotify.bot.prompt_expired"]
+other = "This question has expired: press the button on the card again."
+
+["salesnotify.bot.connected"]
+other = "✅ Chat connected: {{.Org}}\nHears: {{.Kinds}}"
+
+["salesnotify.bot.connect_failed"]
+other = "The code did not work or has expired. Ask for a new code in the admin console."
+
+["salesnotify.bot.connect_usage"]
+other = "Write /connect and the code from the admin console."
+
+["salesnotify.bot.operator"]
+other = "Platform (all organizations)"
+
+["salesnotify.bot.kind.tickets"]
+other = "ticket sales"
+
+["salesnotify.bot.kind.shop_sale"]
+other = "shop sales (no buyer data)"
+
+["salesnotify.bot.kind.shop_delivery"]
+other = "shop orders to deliver"
+

@@ -330,7 +330,7 @@ func TestShopAudit_NothingToShipIsRefused(t *testing.T) {
 	f := newShopFixture(t)
 	_, variant := f.openShop(4500, 5)
 	o := f.paidOrder(variant, 1)
-	f.exec(`UPDATE shop_orders SET delivery_kind = 'none' WHERE id = $1`, o.ID)
+	f.exec(`UPDATE shop_orders SET delivery_kind = 'none', fulfillment_step = NULL WHERE id = $1`, o.ID)
 	code, body, _ := f.do(http.MethodPost, f.orgPath(f.orgA, "/orders/"+o.ID.String()+"/ship"), f.ownerA, `{}`)
 	if code != http.StatusConflict || shopErrCode(body) != "shop.order_not_shippable" {
 		t.Fatalf("ship of an order with nothing to ship = %d %v; want 409 shop.order_not_shippable", code, body)

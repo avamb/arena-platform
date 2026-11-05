@@ -5873,3 +5873,98 @@ other = "\n🤝 Comprado con el código de quien invitó: <b>{{.Code}}</b>{{if .
 
 ["bot.ord.ref_more"]
 other = "\n…y {{.N}} pedidos de amigos más"
+
+# --- salesnotify delivery steps and the sales bot (spec 61 section 7b) ---
+["salesnotify.shop.step.waiting"]
+other = "⏳ Pendiente de preparar"
+
+["salesnotify.shop.step.packed"]
+other = "📦 Preparado"
+
+["salesnotify.shop.step.handed_over"]
+other = "🚚 Entregado al mensajero"
+
+["salesnotify.shop.step.delivered"]
+other = "✅ Entregado"
+
+["salesnotify.shop.step.failed"]
+other = "❌ No entregado"
+
+["salesnotify.shop.step_tracking"]
+other = "n.º {{.Tracking}}"
+
+["salesnotify.shop.card_closed"]
+other = "🛑 Pedido reembolsado: no enviar"
+
+["salesnotify.shop.reason.no_answer"]
+other = "No contesta al teléfono"
+
+["salesnotify.shop.reason.not_home"]
+other = "No había nadie"
+
+["salesnotify.shop.reason.wrong_address"]
+other = "Dirección incorrecta"
+
+["salesnotify.shop.reason.refused"]
+other = "Rechazó la entrega"
+
+["salesnotify.shop.reason.other"]
+other = "Otro"
+
+["salesnotify.shop.btn_no_tracking"]
+other = "🚚 Sin número"
+
+["salesnotify.shop.btn_back"]
+other = "↩️ Atrás"
+
+["salesnotify.shop.failed_title"]
+other = "❌ <b>Pedido de la tienda no entregado</b> — {{.Org}}"
+
+["salesnotify.shop.failed_body"]
+other = "Pedido n.º {{.Number}}: {{.Reason}}. Decide en el centro de eventos: otra entrega o un reembolso."
+
+["salesnotify.shop.ask_tracking"]
+other = "🚚 Número de envío: responde a este mensaje con el número o pulsa «Sin número» bajo la tarjeta."
+
+["salesnotify.shop.ask_reason"]
+other = "❌ ¿Por qué no se entregó? Responde a este mensaje con el motivo."
+
+["salesnotify.bot.toast_done"]
+other = "Hecho: {{.Step}}"
+
+["salesnotify.bot.toast_stale"]
+other = "Ya marcado: {{.Step}}"
+
+["salesnotify.bot.toast_closed"]
+other = "Pedido reembolsado, no enviar"
+
+["salesnotify.bot.toast_error"]
+other = "No funcionó, inténtalo de nuevo"
+
+["salesnotify.bot.toast_not_connected"]
+other = "Este chat no está conectado a las entregas"
+
+["salesnotify.bot.prompt_expired"]
+other = "Esta pregunta ha caducado: pulsa de nuevo el botón de la tarjeta."
+
+["salesnotify.bot.connected"]
+other = "✅ Chat conectado: {{.Org}}\nRecibe: {{.Kinds}}"
+
+["salesnotify.bot.connect_failed"]
+other = "El código no funciona o ha caducado. Pide un código nuevo en la consola de administración."
+
+["salesnotify.bot.connect_usage"]
+other = "Escribe /connect y el código de la consola de administración."
+
+["salesnotify.bot.operator"]
+other = "Plataforma (todas las organizaciones)"
+
+["salesnotify.bot.kind.tickets"]
+other = "venta de entradas"
+
+["salesnotify.bot.kind.shop_sale"]
+other = "ventas de la tienda (sin datos del comprador)"
+
+["salesnotify.bot.kind.shop_delivery"]
+other = "pedidos de la tienda para entregar"
+

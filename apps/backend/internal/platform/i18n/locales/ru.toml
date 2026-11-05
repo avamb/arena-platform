@@ -6040,3 +6040,98 @@ other = "\n🤝 Куплено по коду пригласившего <b>{{.Co
 
 ["bot.ord.ref_more"]
 other = "\n…и ещё заказов друзей: {{.N}}"
+
+# --- salesnotify delivery steps and the sales bot (spec 61 section 7b) ---
+["salesnotify.shop.step.waiting"]
+other = "⏳ Ждёт сборки"
+
+["salesnotify.shop.step.packed"]
+other = "📦 Собран"
+
+["salesnotify.shop.step.handed_over"]
+other = "🚚 Передан курьеру"
+
+["salesnotify.shop.step.delivered"]
+other = "✅ Доставлен"
+
+["salesnotify.shop.step.failed"]
+other = "❌ Не доставлен"
+
+["salesnotify.shop.step_tracking"]
+other = "№ {{.Tracking}}"
+
+["salesnotify.shop.card_closed"]
+other = "🛑 Заказ возвращён: не отправлять"
+
+["salesnotify.shop.reason.no_answer"]
+other = "Не дозвонились"
+
+["salesnotify.shop.reason.not_home"]
+other = "Нет дома"
+
+["salesnotify.shop.reason.wrong_address"]
+other = "Неверный адрес"
+
+["salesnotify.shop.reason.refused"]
+other = "Отказ от получения"
+
+["salesnotify.shop.reason.other"]
+other = "Другое"
+
+["salesnotify.shop.btn_no_tracking"]
+other = "🚚 Без номера"
+
+["salesnotify.shop.btn_back"]
+other = "↩️ Назад"
+
+["salesnotify.shop.failed_title"]
+other = "❌ <b>Заказ магазина не доставлен</b> — {{.Org}}"
+
+["salesnotify.shop.failed_body"]
+other = "Заказ № {{.Number}}: {{.Reason}}. Решите в ивент-центре: повторная доставка или возврат."
+
+["salesnotify.shop.ask_tracking"]
+other = "🚚 Номер отправления: ответьте на это сообщение номером или нажмите «Без номера» под карточкой."
+
+["salesnotify.shop.ask_reason"]
+other = "❌ Почему не доставлен? Ответьте на это сообщение текстом."
+
+["salesnotify.bot.toast_done"]
+other = "Готово: {{.Step}}"
+
+["salesnotify.bot.toast_stale"]
+other = "Уже стоит: {{.Step}}"
+
+["salesnotify.bot.toast_closed"]
+other = "Заказ возвращён, не отправлять"
+
+["salesnotify.bot.toast_error"]
+other = "Не получилось, попробуйте ещё раз"
+
+["salesnotify.bot.toast_not_connected"]
+other = "Этот чат не подключён к доставке"
+
+["salesnotify.bot.prompt_expired"]
+other = "Вопрос устарел: нажмите кнопку на карточке ещё раз."
+
+["salesnotify.bot.connected"]
+other = "✅ Чат подключён: {{.Org}}\nСлышит: {{.Kinds}}"
+
+["salesnotify.bot.connect_failed"]
+other = "Код не подошёл или устарел. Попросите новый код в админке."
+
+["salesnotify.bot.connect_usage"]
+other = "Напишите /connect и код из админки."
+
+["salesnotify.bot.operator"]
+other = "Платформа (все организации)"
+
+["salesnotify.bot.kind.tickets"]
+other = "продажи билетов"
+
+["salesnotify.bot.kind.shop_sale"]
+other = "продажи магазина (без данных покупателя)"
+
+["salesnotify.bot.kind.shop_delivery"]
+other = "заказы магазина для доставки"
+

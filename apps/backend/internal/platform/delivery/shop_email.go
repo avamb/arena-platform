@@ -2,7 +2,7 @@
 // the buyer of a merchandise shop order (spec 47 section 7, lane L5).
 //
 // internal/platform/shop queues one job in the SAME transaction that marks the
-// order paid ("received"), shipped ("shipped") or a refund succeeded
+// order paid ("received"), shipped ("shipped"), delivered ("delivered") or a refund succeeded
 // ("refunded", one letter per refund). The handler:
 //
 //  1. loads the order, its lines, the shop settings and the organization;
@@ -97,6 +97,8 @@ func (h *shopEmail) handle(ctx context.Context, payload []byte) error {
 		kind = templates.TemplateKindShopOrderReceived
 	case shop.EmailShipped:
 		kind = templates.TemplateKindShopOrderShipped
+	case shop.EmailDelivered:
+		kind = templates.TemplateKindShopOrderDelivered
 	case shop.EmailRefunded:
 		kind = templates.TemplateKindShopOrderRefunded
 	}
@@ -188,6 +190,8 @@ func shopLetterKind(kind string) string {
 	switch kind {
 	case shop.EmailShipped:
 		return emailstatus.KindShopShipped
+	case shop.EmailDelivered:
+		return emailstatus.KindShopDelivered
 	case shop.EmailRefunded:
 		return emailstatus.KindShopRefunded
 	default:
@@ -210,7 +214,7 @@ func shopEmailSkipReason(o gen.ShopOrderRow, kind string) string {
 			return "the order is " + o.Status
 		}
 	}
-	if kind == shop.EmailShipped && o.DeliveryKind == shop.DeliveryNone {
+	if (kind == shop.EmailShipped || kind == shop.EmailDelivered) && o.DeliveryKind == shop.DeliveryNone {
 		return "nothing ships: a digital or service order"
 	}
 	if kind == shop.EmailShipped && o.ShippedAt == nil {

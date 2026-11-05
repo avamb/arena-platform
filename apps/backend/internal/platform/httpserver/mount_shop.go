@@ -213,6 +213,9 @@ func (s *Server) mountShopRoutes(r chi.Router) {
 		pr.Put(base+"/pages/{slug}", s.orgGated(s.shopFull(h.HandlePutPage)))
 		pr.Delete(base+"/pages/{slug}", s.orgGated(s.shopFull(h.HandleDeletePage)))
 		pr.Post(base+"/orders/{order_id}/ship", s.orgGated(s.shopOrders(h.HandleShipOrder)))
+		// The delivery steps (spec 61 section 7b): the same writer as the
+		// delivery group's buttons and the bot.
+		pr.Post(base+"/orders/{order_id}/fulfillment", s.orgGated(s.shopOrders(h.HandleFulfillment)))
 		pr.Patch(base+"/orders/{order_id}", s.orgGated(s.shopOrders(h.HandlePatchOrder)))
 		pr.Post(base+"/orders/{order_id}/resend-email", s.orgGated(s.shopOrders(h.HandleResendEmail)))
 	})

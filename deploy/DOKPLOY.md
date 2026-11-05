@@ -366,7 +366,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `OUTBOX_WEBHOOK_URL`, `OUTBOX_SIGNING_SECRET` | — | ✅ with `OUTBOX_MODE=webhook` | — | — |
 | `OUTBOX_POLL_INTERVAL`, `WORKER_POLL_INTERVAL`, `WORKER_METRICS_ADDR`, `SENDER_VERIFICATION_POLL_INTERVAL` | — | ● | — | — |
 | `OPS_TELEGRAM_BOT_TOKEN`, `OPS_TELEGRAM_CHAT_ID`, `OPS_ALERT_ENV_LABEL`, `OPS_WATCHDOG_HEARTBEAT_HOUR_UTC` | — | ● | — | — |
-| `SALES_TELEGRAM_BOT_TOKEN` | — | ● | — | — |
+| `SALES_TELEGRAM_BOT_TOKEN` (the bot also receives the delivery group's buttons and `/connect`, spec 61 §7b.3; needs `BOT_SERVICE_TOKEN` there) | — | ● | ● | — |
 | `BILLING_COLLECT_SINCE` (RFC 3339, empty = billing collection off; the owner names the date X) | — | ● | — | — |
 | `BILLING_STRIPE_SECRET_KEY`, `BILLING_STRIPE_WEBHOOK_SECRET` (the PLATFORM's Stripe account for organizer invoices and credit packs; empty = card payment off) | ● | — | — | — |
 | `BILLING_BANK_WEBHOOK_SECRET` (HMAC key of bank payment notifications; empty = the bank webhook answers 503) | ● | — | — | — |
@@ -1239,7 +1239,7 @@ organizer (DNS, opening the shop, payment channel, Telegram, 301) is in
 | `CORS_ALLOWED_ORIGINS` | `arena-api` | Must list `https://<shop domain>`. Without it the browser cannot read the catalog and the checkout answers 400 `checkout.invalid_return_url` (the return URL policy accepts only these origins and `PUBLIC_TICKETS_BASE_URL`). Redeploy `arena-api` after changing it |
 | `SHOP_PUBLIC_BASE_URL` | `arena-worker` | Platform storefront origin for the link in the "order received" e-mail of an organization without its own `shop_domain` |
 | `SHOP_TURNSTILE_SITE_KEY`, `SHOP_TURNSTILE_SECRET` | see the checklist, section 4 | Cloudflare Turnstile on the shop checkout. On the stand use Cloudflare's test pair (`1x00000000000000000000AA` / `1x0000000000000000000000000000000AA`), on production a pair created for the shop domain |
-| `SALES_TELEGRAM_BOT_TOKEN` | `arena-worker` | Telegram announcements to the logistician's chat (`sales_notification_subscriptions`, kinds `{shop_delivery}` for the delivery group, `{tickets,shop_sale}` for a sales chat) |
+| `SALES_TELEGRAM_BOT_TOKEN` | `arena-worker`, `arena-bot` | Telegram announcements to the logistician's chat (`sales_notification_subscriptions`, kinds `{shop_delivery}` for the delivery group, `{tickets,shop_sale}` for a sales chat); `arena-bot` polls the same token for the delivery buttons and `/connect` (one replica). Chats are connected from the admin screen "Telegram chats", not SQL (`docs/ops/shop_notifications_ru.md`) |
 
 ### 16.2 Domain and TLS
 
