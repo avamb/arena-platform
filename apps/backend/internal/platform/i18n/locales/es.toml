@@ -4904,6 +4904,30 @@ other = "💸 Reembolsado: <b>{{.Amount}}</b>"
 ["salesnotify.shop.refunded_so_far"]
 other = "💸 Reembolsado hasta ahora: {{.Amount}} de {{.Total}}"
 
+["salesnotify.shop.sale_title"]
+other = "🛍 <b>Venta en la tienda</b> — {{.Org}}"
+
+["salesnotify.shop.sale_items"]
+other = "🛒 Artículos ({{.Count}}): {{.List}}"
+
+["salesnotify.shop.sale_item"]
+other = "{{.Name}} ×{{.Qty}}"
+
+["salesnotify.shop.sale_refund_full"]
+other = "↩️ Pedido devuelto por completo"
+
+["salesnotify.shop.sale_refund_part"]
+other = "↩️ Devolución parcial: {{.Amount}} de {{.Total}}"
+
+["salesnotify.shop.refund_do_not_ship"]
+other = "🛑 No lo envíes hasta que el organizador confirme qué enviar: una parte del pedido está devuelta."
+
+["salesnotify.shop.refund_stop_shipment"]
+other = "🛑 No lo envíes. Detén el envío: todo el pedido está devuelto."
+
+["salesnotify.shop.refund_already_shipped"]
+other = "📮 Ya enviado. La devolución no detiene el paquete."
+
 ["salesnotify.shop.review_title"]
 other = "⚠️ <b>Un pedido de la tienda necesita tu atención</b> — {{.Org}}"
 

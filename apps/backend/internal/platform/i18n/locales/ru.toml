@@ -5070,6 +5070,30 @@ other = "💸 Возвращено: <b>{{.Amount}}</b>"
 ["salesnotify.shop.refunded_so_far"]
 other = "💸 Возвращено всего: {{.Amount}} из {{.Total}}"
 
+["salesnotify.shop.sale_title"]
+other = "🛍 <b>Продажа в магазине</b> — {{.Org}}"
+
+["salesnotify.shop.sale_items"]
+other = "🛒 Позиции ({{.Count}}): {{.List}}"
+
+["salesnotify.shop.sale_item"]
+other = "{{.Name}} ×{{.Qty}}"
+
+["salesnotify.shop.sale_refund_full"]
+other = "↩️ Заказ возвращён полностью"
+
+["salesnotify.shop.sale_refund_part"]
+other = "↩️ Возврат частичный: {{.Amount}} из {{.Total}}"
+
+["salesnotify.shop.refund_do_not_ship"]
+other = "🛑 Не отправляйте, пока организатор не подтвердит, что слать: часть заказа возвращена."
+
+["salesnotify.shop.refund_stop_shipment"]
+other = "🛑 Не отправляйте. Остановите отправку: заказ возвращён полностью."
+
+["salesnotify.shop.refund_already_shipped"]
+other = "📮 Уже отправлен. Возврат посылку не остановит."
+
 ["salesnotify.shop.review_title"]
 other = "⚠️ <b>Заказ в магазине требует внимания</b> — {{.Org}}"
 

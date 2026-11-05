@@ -1239,7 +1239,7 @@ organizer (DNS, opening the shop, payment channel, Telegram, 301) is in
 | `CORS_ALLOWED_ORIGINS` | `arena-api` | Must list `https://<shop domain>`. Without it the browser cannot read the catalog and the checkout answers 400 `checkout.invalid_return_url` (the return URL policy accepts only these origins and `PUBLIC_TICKETS_BASE_URL`). Redeploy `arena-api` after changing it |
 | `SHOP_PUBLIC_BASE_URL` | `arena-worker` | Platform storefront origin for the link in the "order received" e-mail of an organization without its own `shop_domain` |
 | `SHOP_TURNSTILE_SITE_KEY`, `SHOP_TURNSTILE_SECRET` | see the checklist, section 4 | Cloudflare Turnstile on the shop checkout. On the stand use Cloudflare's test pair (`1x00000000000000000000AA` / `1x0000000000000000000000000000000AA`), on production a pair created for the shop domain |
-| `SALES_TELEGRAM_BOT_TOKEN` | `arena-worker` | Telegram announcements to the logistician's chat (`sales_notification_subscriptions`, kinds `{shop}`) |
+| `SALES_TELEGRAM_BOT_TOKEN` | `arena-worker` | Telegram announcements to the logistician's chat (`sales_notification_subscriptions`, kinds `{shop_delivery}` for the delivery group, `{tickets,shop_sale}` for a sales chat) |
 
 ### 16.2 Domain and TLS
 

@@ -171,17 +171,20 @@ curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H "X-Admin-Reason: shop releas
 curl -s "$API/v1/public/shop/by-host?host=$SHOP_HOST"      # пока магазин закрыт: 404 shop.not_found, после шага 8: 200
 ```
 
-## 7. Telegram логиста
+## 7. Telegram логиста и продаж
 
-1. Бот продаж (`SALES_TELEGRAM_BOT_TOKEN` на `arena-worker`) добавлен в группу логиста. id группы: число со знаком
+1. Бот продаж (`SALES_TELEGRAM_BOT_TOKEN` на `arena-worker`) добавлен в группу доставки. id группы: число со знаком
    минус, у супергруппы начинается с `-100`.
-2. Подписка (SQL, подробности `docs/ops/shop_notifications_ru.md`):
+2. Подписка группы доставки (SQL, подробности `docs/ops/shop_notifications_ru.md`, спека 61 §7a):
 
    ```sql
    INSERT INTO sales_notification_subscriptions (org_id, name, chat_id, kinds)
-   VALUES ('<ORG>', 'Логистика', '<chat id>', '{shop}');
+   VALUES ('<ORG>', 'Логистика', '<chat id>', '{shop_delivery}');
    ```
-3. Если нужен и чат с билетами: `kinds = '{tickets,shop}'`. Ошибка последней доставки видна в `last_error` строки.
+3. Чат продаж с билетами уже получил `shop_sale` при миграции 0198: он слышит только факт продажи магазина, без
+   данных покупателя. Новому чату: `kinds = '{tickets,shop_sale}'`. Чат с обоими значениями (`shop_sale` и
+   `shop_delivery`) получает одну полную карточку. Сообщения магазина идут только при подключённом модуле магазина или
+   пока есть открытые заказы. Ошибка последней доставки видна в `last_error` строки.
 
 ## 8. Включение и первый заказ
 

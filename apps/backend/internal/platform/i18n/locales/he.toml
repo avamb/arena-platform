@@ -245,6 +245,30 @@ other = "💸 הוחזר: <b>{{.Amount}}</b>"
 ["salesnotify.shop.refunded_so_far"]
 other = "💸 הוחזר עד כה: {{.Amount}} מתוך {{.Total}}"
 
+["salesnotify.shop.sale_title"]
+other = "🛍 <b>מכירה בחנות</b> — {{.Org}}"
+
+["salesnotify.shop.sale_items"]
+other = "🛒 פריטים ({{.Count}}): {{.List}}"
+
+["salesnotify.shop.sale_item"]
+other = "{{.Name}} ×{{.Qty}}"
+
+["salesnotify.shop.sale_refund_full"]
+other = "↩️ הוחזר במלואו"
+
+["salesnotify.shop.sale_refund_part"]
+other = "↩️ החזר חלקי: {{.Amount}} מתוך {{.Total}}"
+
+["salesnotify.shop.refund_do_not_ship"]
+other = "🛑 אין לשלוח עד שהמארגן יאשר מה לשלוח: חלק מההזמנה הוחזר."
+
+["salesnotify.shop.refund_stop_shipment"]
+other = "🛑 אין לשלוח. עצרו את המשלוח: כל ההזמנה הוחזרה."
+
+["salesnotify.shop.refund_already_shipped"]
+other = "📮 כבר נשלח. ההחזר לא יעצור את החבילה."
+
 ["salesnotify.shop.review_title"]
 other = "⚠️ <b>הזמנה בחנות דורשת את תשומת לבך</b> — {{.Org}}"
 

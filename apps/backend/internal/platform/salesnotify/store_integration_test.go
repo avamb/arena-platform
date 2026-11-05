@@ -74,7 +74,7 @@ func TestPGStore_SubscriptionsQueriesAndBookkeeping_LiveDB(t *testing.T) {
 		t.Fatalf("allowed subscriptions = %+v", mine)
 	}
 	// A row created before kinds existed (no kinds in the INSERT) hears tickets.
-	if len(mine[0].Kinds) != 1 || mine[0].Kinds[0] != KindTickets || !mine[0].Hears(KindTickets) || mine[0].Hears(KindShop) {
+	if len(mine[0].Kinds) != 1 || mine[0].Kinds[0] != KindTickets || !mine[0].Hears(KindTickets) || mine[0].Hears(KindShopDelivery) || mine[0].Hears(KindShopSale) {
 		t.Fatalf("default kinds = %v; want {tickets}", mine[0].Kinds)
 	}
 
