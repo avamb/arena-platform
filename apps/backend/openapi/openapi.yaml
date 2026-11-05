@@ -27146,6 +27146,14 @@ components:
         tracking_note:
           type: string
           description: Tracking number or note given when shipped.
+        fulfillment_step:
+          type: [string, "null"]
+          description: "The delivery step, apart from the money status (spec 61 section 7b): `waiting` (paid, waits for packing), `packed`, `handed_over` (shipped: `shipped_at`, `tracking_note`), `delivered` or `failed` (not delivered; it may be handed over again). Null for an order that is not paid yet or has nothing to ship (`delivery_kind` `none`). A refund does not change it. Set it with `POST .../shop/orders/{order_id}/fulfillment`."
+        events:
+          type: array
+          description: The history of the delivery steps, oldest first. Only the answers about one order carry it (read, ship, fulfillment, note and the other single-order routes); the list leaves it out.
+          items:
+            $ref: "#/components/schemas/ShopOrderEvent"
         staff_note:
           allOf:
             - $ref: "#/components/schemas/ShopStaffNote"
@@ -27213,7 +27221,7 @@ components:
     ShopOrderCounts:
       type: object
       description: How many orders each tab of the order list holds.
-      required: [all, to_ship, unpaid, shipped, refunds]
+      required: [all, to_ship, unpaid, shipped, refunds, steps]
       properties:
         all:
           type: integer
@@ -27235,6 +27243,418 @@ components:
           type: integer
           format: int64
           description: Refunded and partly refunded orders.
+        steps:
+          allOf:
+            - $ref: "#/components/schemas/ShopOrderStepCounts"
+          description: How many orders that can still move (paid, shipped or partly refunded) stand at each delivery step, the numbers behind the list's `fulfillment_step` filter.
+
+    ShopOrderStepCounts:
+      type: object
+      description: Orders per delivery step, among the paid, shipped and partly refunded ones.
+      required: [waiting, packed, handed_over, delivered, failed]
+      properties:
+        waiting:
+          type: integer
+          format: int64
+          description: Paid, waiting to be packed.
+        packed:
+          type: integer
+          format: int64
+          description: Packed, not handed over yet.
+        handed_over:
+          type: integer
+          format: int64
+          description: Handed to the courier (shipped).
+        delivered:
+          type: integer
+          format: int64
+          description: Delivered.
+        failed:
+          type: integer
+          format: int64
+          description: Not delivered; they wait for another delivery or a refund.
+
+    ShopOrderEvent:
+      type: object
+      description: One change of the delivery step of a shop order.
+      required: [id, step, from_step, tracking, reason, note, actor_user_id, actor_telegram_id, actor_name, via, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The history row.
+        step:
+          type: string
+          description: "The step set: `packed`, `handed_over`, `delivered` or `failed`."
+        from_step:
+          type: [string, "null"]
+          description: The step before the change.
+        tracking:
+          type: string
+          description: The shipment number stored with a `handed_over` step, empty otherwise.
+        reason:
+          type: string
+          description: "Why a `failed` delivery failed: `no_answer`, `not_home`, `wrong_address`, `refused` (the buttons of the delivery group) or a person's text."
+        note:
+          type: string
+          description: A free remark, empty when none was given.
+        actor_user_id:
+          type: [string, "null"]
+          format: uuid
+          description: The platform user who set the step, null for a member of the delivery group.
+        actor_telegram_id:
+          type: [integer, "null"]
+          format: int64
+          description: The Telegram account of the delivery group member who pressed the button, null otherwise.
+        actor_name:
+          type: string
+          description: The name shown for the actor (the user's name or e-mail, the Telegram name, `API key`).
+        via:
+          type: string
+          description: "Where the step was set: `delivery_group` (a button of the delivery card in Telegram), `telegram_bot`, `event_center_web`, `admin_web`, `api` (an organization API key) or `system`."
+        created_at:
+          type: string
+          format: date-time
+          description: When the step was set.
+
+    ShopFulfillmentRequest:
+      type: object
+      description: The next delivery step of a shop order.
+      required: [step]
+      properties:
+        step:
+          type: string
+          description: "`packed`, `handed_over`, `delivered` or `failed`. From `waiting`: `packed`, `handed_over` or `failed`; from `packed`: `handed_over` or `failed`; from `handed_over`: `delivered` or `failed`; from `failed`: `handed_over` (another try). The current step again changes nothing."
+        tracking:
+          type: [string, "null"]
+          description: The shipment number of `handed_over`, up to 2000 characters; absent or null keeps the stored one. `handed_over` again with another number only stores it.
+        reason:
+          type: string
+          description: Why the delivery failed, required with `failed` (up to 500 characters).
+        note:
+          type: string
+          description: A free remark for the history, up to 2000 characters.
+
+    SalesChat:
+      type: object
+      description: A Telegram chat of the sales bot (sales_notification_subscriptions), as the admin screen shows it.
+      required: [id, org_id, name, chat_id, chat_title, kinds, allowed, on_order_paid, on_ticket_refunded, last_error, bot_removed_at, connected_at, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The chat row.
+        org_id:
+          type: [string, "null"]
+          format: uuid
+          description: The organization; null for an operator chat, which hears every organization.
+        name:
+          type: string
+          description: The operator's name of the chat.
+        chat_id:
+          type: string
+          description: Telegram's chat id, written by the bot on `/connect`.
+        chat_title:
+          type: [string, "null"]
+          description: The group's title when it was connected.
+        kinds:
+          type: array
+          description: "What the chat hears: `tickets` (ticket sales and refunds), `shop_sale` (the fact of a shop sale, no buyer data), `shop_delivery` (the full shop order card with the step buttons, for a delivery group)."
+          items:
+            type: string
+            description: A kind.
+        allowed:
+          type: boolean
+          description: The operator's on/off switch.
+        on_order_paid:
+          type: boolean
+          description: The chat hears sales.
+        on_ticket_refunded:
+          type: boolean
+          description: The chat hears refunds.
+        last_error:
+          type: [string, "null"]
+          description: The last delivery error reported by Telegram, null after a success.
+        bot_removed_at:
+          type: [string, "null"]
+          format: date-time
+          description: When Telegram reported the bot removed from the chat; nothing is sent there until a new `/connect`.
+        connected_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the chat was last bound with a code.
+        created_at:
+          type: string
+          format: date-time
+          description: When the row was created.
+        updated_at:
+          type: string
+          format: date-time
+          description: Last change.
+
+    SalesChatList:
+      type: object
+      description: The chats of an organization, or the operator's (deleted chats left out).
+      required: [org_id, items]
+      properties:
+        org_id:
+          type: [string, "null"]
+          format: uuid
+          description: The organization, null for the operator's list.
+        items:
+          type: array
+          description: The chats, oldest first.
+          items:
+            $ref: "#/components/schemas/SalesChat"
+
+    SalesChatConnectCodeRequest:
+      type: object
+      description: The chat a connection code will bind.
+      required: [name, kinds]
+      properties:
+        name:
+          type: string
+          description: The chat's name in the admin screen, 1-200 characters.
+        kinds:
+          type: array
+          description: "What it will hear: one or more of `tickets`, `shop_sale`, `shop_delivery`."
+          items:
+            type: string
+            description: A kind.
+
+    SalesChatConnectCode:
+      type: object
+      description: A one-time connection code. Only its hash is stored, so this answer is the only place it appears.
+      required: [id, code, command, expires_at, name, kinds]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The code row.
+        code:
+          type: string
+          description: The code, ten characters shown as XXXXX-XXXXX.
+        command:
+          type: string
+          description: "What to write in the group after adding the sales bot: `/connect <code>` (or `/connect@<bot> <code>` when the group has other bots)."
+        expires_at:
+          type: string
+          format: date-time
+          description: The code works for 30 minutes, once.
+        name:
+          type: string
+          description: The chat's name.
+        kinds:
+          type: array
+          description: What the chat will hear.
+          items:
+            type: string
+            description: A kind.
+
+    SalesChatPatchRequest:
+      type: object
+      description: An edit of a chat; absent members stay.
+      properties:
+        name:
+          type: string
+          description: A new name, 1-200 characters.
+        kinds:
+          type: array
+          description: The new list of kinds.
+          items:
+            type: string
+            description: A kind.
+        allowed:
+          type: boolean
+          description: Switch the chat on or off.
+
+    SalesChatDeleted:
+      type: object
+      description: The chat was marked deleted.
+      required: [deleted, id]
+      properties:
+        deleted:
+          type: boolean
+          description: Always true.
+        id:
+          type: string
+          format: uuid
+          description: The chat row.
+
+    BotDeliveryButton:
+      type: object
+      description: One inline button of a delivery card.
+      required: [text, data]
+      properties:
+        text:
+          type: string
+          description: The label in the organization's language.
+        data:
+          type: string
+          description: "The callback data, at most 64 bytes: `sd:<op>:<lang>:<order id>`."
+
+    BotDeliveryCard:
+      type: object
+      description: The delivery card as the group must see it now (Telegram HTML).
+      required: [text, rows]
+      properties:
+        text:
+          type: string
+          description: The card text with the status line of the current step.
+        rows:
+          type: array
+          description: The button rows; empty when nothing can be pressed (delivered, refunded).
+          items:
+            type: array
+            description: One row.
+            items:
+              $ref: "#/components/schemas/BotDeliveryButton"
+
+    BotShopDeliveryStepRequest:
+      type: object
+      description: A member of a delivery group pressed a step of a card.
+      required: [chat_id, telegram_user_id, order_id, step]
+      properties:
+        chat_id:
+          type: string
+          description: The Telegram chat the card is in.
+        telegram_user_id:
+          type: integer
+          format: int64
+          description: Who pressed.
+        telegram_name:
+          type: string
+          description: Their name as Telegram shows it.
+        order_id:
+          type: string
+          format: uuid
+          description: The shop order.
+        step:
+          type: string
+          description: "`packed`, `handed_over`, `delivered` or `failed`."
+        tracking:
+          type: [string, "null"]
+          description: The shipment number of `handed_over`.
+        reason:
+          type: string
+          description: The reason of `failed` (a code of the buttons or a typed text).
+
+    BotShopDeliveryCardRequest:
+      type: object
+      description: Which card to render.
+      required: [chat_id, order_id]
+      properties:
+        chat_id:
+          type: string
+          description: The Telegram chat the card is in.
+        order_id:
+          type: string
+          format: uuid
+          description: The shop order.
+
+    BotShopDeliveryAnswer:
+      type: object
+      description: What a press did and the card to show.
+      required: [outcome, fulfillment_step, order_number, locale, card]
+      properties:
+        outcome:
+          type: string
+          description: "`applied` (the step was set), `unchanged` (it already was), `stale` (somebody moved the order on: the card shows the current step) or `closed` (refunded or cancelled: do not ship, the card has no buttons)."
+        fulfillment_step:
+          type: [string, "null"]
+          description: The step now.
+        order_number:
+          type: integer
+          format: int64
+          description: The order number.
+        locale:
+          type: string
+          description: The organization's language the card is written in.
+        card:
+          allOf:
+            - $ref: "#/components/schemas/BotDeliveryCard"
+          description: The card to put in place of the pressed one.
+
+    BotSalesChatConnectRequest:
+      type: object
+      description: "`/connect <code>` written in a group."
+      required: [code, chat_id]
+      properties:
+        code:
+          type: string
+          description: The code from the admin screen.
+        chat_id:
+          type: string
+          description: The Telegram chat.
+        chat_title:
+          type: string
+          description: The group's title.
+        telegram_user_id:
+          type: integer
+          format: int64
+          description: Who wrote the command.
+        telegram_name:
+          type: string
+          description: Their name.
+
+    BotSalesChatConnectResponse:
+      type: object
+      description: The chat the code bound.
+      required: [chat, org_name, locale, operator]
+      properties:
+        chat:
+          allOf:
+            - $ref: "#/components/schemas/SalesChat"
+          description: The chat row.
+        org_name:
+          type: string
+          description: The organization's name, empty for an operator chat.
+        locale:
+          type: string
+          description: The organization's language (`en` for an operator chat).
+        operator:
+          type: boolean
+          description: The chat hears every organization.
+
+    BotSalesChatRemovedRequest:
+      type: object
+      description: Telegram said the bot left or was removed from a chat.
+      required: [chat_id]
+      properties:
+        chat_id:
+          type: string
+          description: The Telegram chat.
+
+    BotSalesChatRemovedResponse:
+      type: object
+      description: How many chat rows were marked.
+      required: [marked]
+      properties:
+        marked:
+          type: integer
+          format: int64
+          description: Rows marked as removed.
+
+    BotSalesChatMigratedRequest:
+      type: object
+      description: A group became a supergroup.
+      required: [from_chat_id, to_chat_id]
+      properties:
+        from_chat_id:
+          type: string
+          description: The old chat id.
+        to_chat_id:
+          type: string
+          description: The new chat id.
+
+    BotSalesChatMigratedResponse:
+      type: object
+      description: The chat rows now use the new id.
+      required: [migrated]
+      properties:
+        migrated:
+          type: boolean
+          description: Always true.
 
     ShopResendEmailRequest:
       type: object
@@ -27243,7 +27663,7 @@ components:
       properties:
         kind:
           type: string
-          description: "`received` (the order is confirmed), `shipped` (the order is on its way) or `refunded` (money of the order went back to the buyer)."
+          description: "`received` (the order is confirmed), `shipped` (the order is on its way), `delivered` (the order arrived; only for an order that reached the step `delivered`) or `refunded` (money of the order went back to the buyer)."
 
     ShopResendEmailResponse:
       type: object
@@ -27331,6 +27751,9 @@ components:
         view:
           type: string
           description: "A tab of the list: `to_ship`, `unpaid`, `shipped` or `refunds`."
+        fulfillment_step:
+          type: string
+          description: "Only orders at this delivery step (`waiting`, `packed`, `handed_over`, `delivered`, `failed`) among the paid, shipped and partly refunded ones."
         status:
           type: string
           description: Only orders of this status.
@@ -32437,6 +32860,280 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/bot/shop-delivery/steps:
+    post:
+      operationId: postBotShopDeliveryStep
+      summary: A step button of a delivery card was pressed
+      description: |
+        Called by the bot PROCESS (the sales bot in arena-bot) under
+        `BOT_SERVICE_TOKEN` when a member of a delivery group presses a step of
+        a shop order card (spec 61 section 7b.3). Any member of the group may
+        press (V-16); the step is set through the same writer as the event center
+        (`POST .../shop/orders/{order_id}/fulfillment`) with the Telegram
+        account as the actor and `via` `delivery_group`. The chat must be a
+        switched-on, not deleted `shop_delivery` chat of the order's organization
+        (or the operator's) that the bot is still in; otherwise 404. The answer
+        is 200 for every outcome of the press, with the card to put in its place.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotShopDeliveryStepRequest"
+      responses:
+        "200":
+          description: "What the press did and the card to show."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotShopDeliveryAnswer"
+        "400":
+          description: "The body is not valid JSON of the expected shape (`sales_chat.invalid_body`), a bad step (`shop.invalid_fulfillment_step`) or `failed` without a reason (`shop.fulfillment_reason_required`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Unknown order, or the chat may not press its buttons (`shop_delivery.not_found`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "A text is too long (`shop.text_too_long`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Missing or wrong service token"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`sales_chat.failed`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Service token not configured or database not available"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/bot/shop-delivery/card:
+    post:
+      operationId: postBotShopDeliveryCard
+      summary: The delivery card of an order as it is now
+      description: |
+        Called by the bot PROCESS under `BOT_SERVICE_TOKEN` to put the step
+        buttons back on a card ("back" after a question). Same chat check as the
+        step route.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotShopDeliveryCardRequest"
+      responses:
+        "200":
+          description: "The card."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotShopDeliveryAnswer"
+        "400":
+          description: "The body is not valid JSON of the expected shape (`sales_chat.invalid_body`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "Unknown order, or the chat may not press its buttons (`shop_delivery.not_found`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Missing or wrong service token"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`sales_chat.failed`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Service token not configured or database not available"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/bot/sales-chats/connect:
+    post:
+      operationId: postBotSalesChatConnect
+      summary: Bind a chat with a connection code
+      description: |
+        Called by the bot PROCESS under `BOT_SERVICE_TOKEN` when `/connect <code>`
+        is written in a group (spec 61 section 7a.4). The code's chat is created,
+        or revived and rewritten (name, kinds, switched on, not deleted, bot not
+        removed), for this Telegram chat, and the code is spent. Writes the audit
+        event `v1.sales_chat.connected`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotSalesChatConnectRequest"
+      responses:
+        "200":
+          description: "The chat the code bound."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotSalesChatConnectResponse"
+        "400":
+          description: "The body is not valid JSON of the expected shape (`sales_chat.invalid_body`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "The code is unknown, used or expired (`sales_chat.code_invalid`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Missing or wrong service token"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`sales_chat.failed`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Service token not configured or database not available"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/bot/sales-chats/removed:
+    post:
+      operationId: postBotSalesChatRemoved
+      summary: The sales bot was removed from a chat
+      description: |
+        Called by the bot PROCESS under `BOT_SERVICE_TOKEN` on Telegram's
+        `my_chat_member` update that says the bot left or was removed. Every live
+        chat row of that Telegram chat is marked (`bot_removed_at`) and hears
+        nothing more until a new `/connect`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotSalesChatRemovedRequest"
+      responses:
+        "200":
+          description: "How many rows were marked."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotSalesChatRemovedResponse"
+        "400":
+          description: "The body is not valid JSON of the expected shape (`sales_chat.invalid_body`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Missing or wrong service token"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`sales_chat.failed`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Service token not configured or database not available"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/bot/sales-chats/migrated:
+    post:
+      operationId: postBotSalesChatMigrated
+      summary: A chat of the sales bot became a supergroup
+      description: |
+        Called by the bot PROCESS under `BOT_SERVICE_TOKEN` when Telegram reports
+        `migrate_to_chat_id`: the chat rows and the remembered delivery cards
+        move to the new id, so presses from the supergroup are recognised.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BotSalesChatMigratedRequest"
+      responses:
+        "200":
+          description: "The rows use the new id."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotSalesChatMigratedResponse"
+        "400":
+          description: "The body is not valid JSON of the expected shape, or an id is missing (`sales_chat.invalid_body`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Missing or wrong service token"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`sales_chat.failed`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "Service token not configured or database not available"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/bot/invitations/pdf-notices/claim:
     post:
       operationId: claimBotInvitationPdfNotices
@@ -33438,6 +34135,384 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: "Internal server error (`org_module.failed`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "The database or the audit log is unavailable"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/organizations/{org_id}/sales-chats:
+    get:
+      operationId: listAdminOrgSalesChats
+      summary: Admin - the Telegram chats of an organization
+      description: "The sales bot's chats of the organization (spec 61 section 7a.4): name, what each hears, the on/off switch, the last delivery error, when it was connected and whether the bot was removed from it. Deleted chats are left out. Requires JWT, superadmin.read and a platform superadmin."
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: "The chats."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesChatList"
+        "404":
+          description: "No such organization (`sales_chat.organization_not_found`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller is not a platform superadmin (`org_module.superadmin_only`), an organization owner included"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`sales_chat.failed`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "The database or the audit log is unavailable"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/organizations/{org_id}/sales-chats/connect-codes:
+    post:
+      operationId: createAdminOrgSalesChatCode
+      summary: Admin - a code that connects a chat of an organization
+      description: "Creates a one-time code (30 minutes, only its SHA-256 is stored) for a chat with a name and the kinds it will hear (spec 61 section 7a.4). The operator adds the sales bot to the group and writes `command` there; the bot binds the chat and answers which organization it now hears. The code itself is not written to the audit log. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the reason."
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log.
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesChatConnectCodeRequest"
+      responses:
+        "201":
+          description: "The code, shown once."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesChatConnectCode"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is not valid JSON of the expected shape (`sales_chat.invalid_body`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "No such organization (`sales_chat.organization_not_found`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "Unknown or no kinds (`sales_chat.invalid_kinds`), or a name that is empty or longer than 200 characters (`sales_chat.invalid_name`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller is not a platform superadmin (`org_module.superadmin_only`), an organization owner included"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`sales_chat.failed`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "The database or the audit log is unavailable"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/sales-chats/operator:
+    get:
+      operationId: listAdminOperatorSalesChats
+      summary: Admin - the platform's own Telegram chats
+      description: "The operator's chats of the sales bot (no organization: they hear every organization), the tab `Platform` of the admin screen. Deleted chats are left out. Requires JWT, superadmin.read and a platform superadmin."
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: "The chats."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesChatList"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller is not a platform superadmin (`org_module.superadmin_only`), an organization owner included"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`sales_chat.failed`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "The database or the audit log is unavailable"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/sales-chats/operator/connect-codes:
+    post:
+      operationId: createAdminOperatorSalesChatCode
+      summary: Admin - a code that connects an operator chat
+      description: "Creates a one-time code (30 minutes, only its SHA-256 is stored) for a chat with a name and the kinds it will hear (spec 61 section 7a.4). The operator adds the sales bot to the group and writes `command` there; the bot binds the chat and answers which organization it now hears. The code itself is not written to the audit log. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the reason."
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log.
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesChatConnectCodeRequest"
+      responses:
+        "201":
+          description: "The code, shown once."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesChatConnectCode"
+        "400":
+          description: "Missing X-Admin-Reason, or the body is not valid JSON of the expected shape (`sales_chat.invalid_body`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "Unknown or no kinds (`sales_chat.invalid_kinds`), or a name that is empty or longer than 200 characters (`sales_chat.invalid_name`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller is not a platform superadmin (`org_module.superadmin_only`), an organization owner included"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`sales_chat.failed`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "The database or the audit log is unavailable"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/admin/sales-chats/{id}:
+    patch:
+      operationId: patchAdminSalesChat
+      summary: Admin - change a Telegram chat
+      description: "Renames a chat, changes what it hears or switches it on or off. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the reason and the values before and after."
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Id of the chat row.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log.
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesChatPatchRequest"
+      responses:
+        "200":
+          description: "The chat."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesChat"
+        "400":
+          description: "Missing X-Admin-Reason, an empty edit, or the body is not valid JSON of the expected shape (`sales_chat.invalid_body`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "No such chat, or it was deleted (`sales_chat.not_found`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "Unknown or no kinds (`sales_chat.invalid_kinds`), or a bad name (`sales_chat.invalid_name`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller is not a platform superadmin (`org_module.superadmin_only`), an organization owner included"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`sales_chat.failed`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "The database or the audit log is unavailable"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteAdminSalesChat
+      summary: Admin - delete a Telegram chat
+      description: "Marks the chat deleted: nothing is sent there any more and its delivery history stays. Requires JWT, superadmin.read, a platform superadmin and X-Admin-Reason. Writes an audit row with the reason."
+      tags: [v1, admin]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Id of the chat row.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Admin-Reason
+          in: header
+          required: true
+          description: Human-readable business reason for this change. It is stored in the audit log.
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: "The chat was deleted."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesChatDeleted"
+        "400":
+          description: "Missing X-Admin-Reason"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "No such chat, or it was deleted already (`sales_chat.not_found`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Unauthenticated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Permission denied: the caller is not a platform superadmin (`org_module.superadmin_only`), an organization owner included"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`sales_chat.failed`)"
           content:
             application/json:
               schema:
@@ -67710,6 +68785,12 @@ paths:
           description: "A tab of the order list, combined with `status` when both are given: `to_ship` (paid or partly refunded, something to hand over, not shipped yet), `unpaid`, `shipped` or `refunds`. `GET .../shop/orders/counts` gives the size of each."
           schema:
             type: string
+        - name: fulfillment_step
+          in: query
+          required: false
+          description: "Only orders at this delivery step (`waiting`, `packed`, `handed_over`, `delivered`, `failed`) among the paid, shipped and partly refunded ones; `GET .../shop/orders/counts` gives the size of each in `steps`."
+          schema:
+            type: string
         - name: q
           in: query
           required: false
@@ -68071,7 +69152,7 @@ paths:
       summary: Send the buyer's order e-mail once more
       description: |
         Queues the letter the buyer got when the order was paid (`received`),
-        shipped (`shipped`) or refunded (`refunded`, the letter about the newest
+        shipped (`shipped`), delivered (`delivered`) or refunded (`refunded`, the letter about the newest
         succeeded refund; an order with none answers 409) for the worker to send again,
         to the address on the order, in the buyer's language. The first send's
         "already sent" marker does not stop it. Answers 202 at once; the delivery itself is asynchronous. One request per
@@ -68111,7 +69192,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ShopResendEmailResponse"
         "400":
-          description: The body is not valid JSON for this route, or `kind` is not `received`, `shipped` or `refunded` (`shop.invalid_body`, `shop.invalid_email_kind`).
+          description: The body is not valid JSON for this route, or `kind` is not `received`, `shipped`, `delivered` or `refunded` (`shop.invalid_body`, `shop.invalid_email_kind`).
           content:
             application/json:
               schema:
@@ -68164,7 +69245,11 @@ paths:
       summary: Mark a shop order shipped
       description: |
         Moves a paid (or partially refunded) order to `shipped`, stores the
-        optional tracking note and writes the `v1.shop.order.shipped` event. Shipping
+        optional tracking note and writes the `v1.shop.order.shipped` event. It is
+        the delivery step `handed_over` (`POST .../fulfillment`): it records a step
+        in the order's history and writes `v1.shop.order.fulfillment_changed`, and a
+        refunded, cancelled or expired order answers 409
+        `shop.fulfillment_order_closed`. Shipping
         a shipped order again only updates the note. Shipping an order in
         `manual_review` takes its goods off the shelf at that moment, only when they
         are free after every live hold (409 `shop.out_of_stock` otherwise). The body
@@ -68246,6 +69331,107 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: The database is unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/organizations/{org_id}/shop/orders/{order_id}/fulfillment:
+    post:
+      operationId: setShopOrderFulfillment
+      summary: Set the delivery step of a shop order
+      description: |
+        Moves the order to its next delivery step (spec 61 section 7b) through the
+        one writer every surface uses, the delivery group's Telegram buttons too:
+        `packed`, `handed_over` (what `POST .../ship` does: status `shipped`,
+        `shipped_at`, the tracking number and the buyer's "shipped" letter, all
+        only the first time), `delivered` (queues the buyer's "delivered" letter,
+        once per order) or `failed` (with a reason; it may be handed over again).
+        The step and the money status are apart: a refund does not change the
+        step. Repeating the current step changes nothing; `handed_over` again
+        with another number only stores the number. Every change writes a row
+        of the order's history (`events`), the outbox event
+        `v1.shop.order.fulfillment_changed` (the delivery card in the delivery
+        group is edited from it) and the audit event `v1.shop.order.fulfillment`.
+        The history names the signed-in user (or `API key`) and the client from
+        `X-Client-Channel` (`telegram_bot`, `event_center_web`, `admin_web`).
+        Works in the shop mode `orders_only` too.
+
+        Requires JWT or API key + the `shop.manage` permission and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+        - name: order_id
+          in: path
+          required: true
+          description: UUID of the shop order (an order of another organization answers 404).
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShopFulfillmentRequest"
+      responses:
+        "200":
+          description: The order with its history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopOrder"
+        "400":
+          description: "The body is not valid JSON for this route (`shop.invalid_body`), `step` is not a delivery step (`shop.invalid_fulfillment_step`) or `failed` has no reason (`shop.fulfillment_reason_required`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "No such order in this organization (`shop.order_not_found`), or the organization has no shop (`shop.module_not_enabled`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: "The step does not follow the current one (`shop.fulfillment_invalid_step`, `details.fulfillment_step` and `details.allowed`), the order was refunded, cancelled or expired: do not ship (`shop.fulfillment_order_closed`), it is not paid (`shop.fulfillment_order_unpaid`), it waits for a decision in `manual_review` and can only be handed over (`shop.fulfillment_order_in_review`), it has nothing to ship (`shop.order_not_shippable`), or a `manual_review` order's goods are not free (`shop.out_of_stock`) or its payment is not settled (`shop.payment_unconfirmed`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: "A text is too long (`shop.text_too_long`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "Missing or invalid JWT or API key."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "Caller lacks the `shop.manage` permission or is not a member of the organization."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: "Internal server error (`shop.failed`)."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "The database is unavailable (`dependency.database_unavailable`)."
           content:
             application/json:
               schema:

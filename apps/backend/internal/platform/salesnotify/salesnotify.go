@@ -230,7 +230,7 @@ func (d *Dispatcher) Dispatch(_ context.Context, ev outbox.Event) error {
 	}
 	switch ev.EventType {
 	case EventOrderPaid, EventTicketRefunded, EventTicketCancelled, EventRefundBlockedScanned, EventScanExceptionGranted,
-		EventShopOrderPaid, EventShopOrderRefunded, EventShopOrderManualReview:
+		EventShopOrderPaid, EventShopOrderRefunded, EventShopOrderManualReview, EventShopOrderFulfillmentChanged:
 	default:
 		return nil
 	}
@@ -269,6 +269,9 @@ func (d *Dispatcher) Handle(ctx context.Context, ev outbox.Event) {
 	switch ev.EventType {
 	case EventShopOrderPaid, EventShopOrderRefunded, EventShopOrderManualReview:
 		d.handleShop(ctx, ev)
+		return
+	case EventShopOrderFulfillmentChanged:
+		d.handleShopStep(ctx, ev)
 		return
 	}
 	key, trigger, text, orgID, err := d.compose(ctx, ev)

@@ -28,6 +28,9 @@ const (
 	// EmailRefunded is the "money has been returned" letter, one per
 	// succeeded refund (partial or full).
 	EmailRefunded = "refunded"
+	// EmailDelivered is the "your order was delivered" letter (delivery step
+	// delivered, spec 61 section 7b.4): sent always, at most once per order.
+	EmailDelivered = "delivered"
 )
 
 // DeliveryNone is shop_orders.delivery_kind of a cart with nothing to ship
@@ -39,7 +42,7 @@ const DeliveryNone = "none"
 type OrderEmailPayload struct {
 	OrderID string `json:"order_id"`
 	OrgID   string `json:"org_id"`
-	// Kind is EmailReceived, EmailShipped or EmailRefunded.
+	// Kind is EmailReceived, EmailShipped, EmailRefunded or EmailDelivered.
 	Kind string `json:"kind"`
 	// RefundID names the refund an EmailRefunded letter is about: the letter
 	// is sent, and remembered as sent, once per refund.
@@ -61,8 +64,8 @@ func (s *Service) enqueueOrderEmailTx(ctx context.Context, tx pgx.Tx, kind strin
 	if o.BuyerEmail == "" {
 		return // nobody to write to
 	}
-	if kind == EmailShipped && o.DeliveryKind == DeliveryNone {
-		return // nothing ships: a digital or service order has no "shipped" letter
+	if (kind == EmailShipped || kind == EmailDelivered) && o.DeliveryKind == DeliveryNone {
+		return // nothing ships: a digital or service order has no "shipped" or "delivered" letter
 	}
 	sp, err := tx.Begin(ctx)
 	if err != nil {

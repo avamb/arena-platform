@@ -116,6 +116,11 @@ const TemplateKindShopOrderReceived = "shop_order_received"
 // shipped (or ready, for a pickup order), with the tracking note.
 const TemplateKindShopOrderShipped = "shop_order_shipped"
 
+// TemplateKindShopOrderDelivered is sent when a shop order reaches the
+// delivery step "delivered" (spec 61 section 7b.4, V-17): always, at most once
+// per order. Same design as shop_order_shipped.
+const TemplateKindShopOrderDelivered = "shop_order_delivered"
+
 // TemplateKindShopOrderRefunded is sent when money of a paid shop order went
 // back to the buyer (a succeeded refund, partial or full): the amount, how
 // much of the order has been returned so far, the items and the shop's
@@ -287,7 +292,7 @@ type Data struct {
 	WhiteLabel bool
 
 	// Shop is the order the shop e-mails describe (kinds shop_order_received,
-	// shop_order_shipped and shop_order_refunded); Render fills an empty one when it is nil.
+	// shop_order_shipped, shop_order_delivered and shop_order_refunded); Render fills an empty one when it is nil.
 	Shop *ShopOrderData
 
 	// Referral is what the three "Refer a friend" letters say (kinds

@@ -17,14 +17,15 @@ func TestRender_SellerAndPaymentProviderInEveryBuyerLetter(t *testing.T) {
 	}
 	base := Data{TicketID: "id", EventName: "E", RecipientEmail: "x@y.z"}
 	kinds := map[string]Data{
-		TemplateKindTicket:            base,
-		TemplateKindInvitation:        base,
-		TemplateKindChange:            changeTestData(),
-		TemplateKindCancel:            changeTestData(),
-		TemplateKindRefund:            refundData(),
-		TemplateKindShopOrderReceived: shopTestData(),
-		TemplateKindShopOrderShipped:  shopTestData(),
-		TemplateKindShopOrderRefunded: shopRefundTestData(),
+		TemplateKindTicket:             base,
+		TemplateKindInvitation:         base,
+		TemplateKindChange:             changeTestData(),
+		TemplateKindCancel:             changeTestData(),
+		TemplateKindRefund:             refundData(),
+		TemplateKindShopOrderReceived:  shopTestData(),
+		TemplateKindShopOrderShipped:   shopTestData(),
+		TemplateKindShopOrderDelivered: shopTestData(),
+		TemplateKindShopOrderRefunded:  shopRefundTestData(),
 	}
 	if len(sellerFooterWords) != len(SupportedLocales) {
 		t.Fatalf("sellerFooterWords has %d locales, SupportedLocales %d", len(sellerFooterWords), len(SupportedLocales))

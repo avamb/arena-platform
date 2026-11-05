@@ -62,6 +62,13 @@ type shopFixture struct {
 
 func newShopFixture(t *testing.T) *shopFixture {
 	t.Helper()
+	return newShopFixtureWith(t, nil)
+}
+
+// newShopFixtureWith is newShopFixture with one more change to the server's
+// configuration (the sales bot tests set BOT_SERVICE_TOKEN).
+func newShopFixtureWith(t *testing.T, extra func(*config.Config)) *shopFixture {
+	t.Helper()
 	stripe := newStubStripe(t)
 	stripe.refundHandler = func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -73,6 +80,9 @@ func newShopFixture(t *testing.T) *shopFixture {
 		c.StripeAPIBaseURL = stripe.baseURL()
 		c.WidgetPaymentWindowSeconds = 1860
 		c.WidgetPaymentGraceSeconds = 120
+		if extra != nil {
+			extra(c)
+		}
 	})
 	f := &shopFixture{t: t, srv: srv, pool: srv.pgxPool, q: gen.New(srv.pgxPool), stripe: stripe}
 	ctx := context.Background()

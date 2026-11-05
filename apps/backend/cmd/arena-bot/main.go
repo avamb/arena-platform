@@ -14,6 +14,10 @@
 //	BOT_SERVICE_TOKEN            shared with arena-api for /v1/bot/invitations/accept
 //	BOT_ARENA_API_URL            http://api:8080 inside compose
 //	BOT_METRICS_ADDR             sidecar /healthz and /metrics (default :9092)
+//	SALES_TELEGRAM_BOT_TOKEN     the sales bot's token: when set, a second poller
+//	                             (package salesbot) receives the delivery group's
+//	                             buttons, /connect and my_chat_member (spec 61 7b.3);
+//	                             arena-worker keeps sending with the same token
 //	JWT_SIGNING_SECRET           the API's own secret: the bot mints user JWTs with it
 package main
 
@@ -37,6 +41,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesbot"
 )
 
 func main() {
@@ -159,6 +164,32 @@ func run() error {
 	go func() {
 		botErr <- bot.Run(rootCtx)
 	}()
+
+	// The sales bot's receiving half (spec 61 section 7b.3): the delivery
+	// group's buttons, /connect and my_chat_member. One replica, like the
+	// events bot: Telegram answers a second poller of the same token 409.
+	if cfg.SalesTelegramBotToken != "" {
+		if cfg.BotServiceToken == "" {
+			logger.Warn("arena-bot: SALES_TELEGRAM_BOT_TOKEN is set but BOT_SERVICE_TOKEN is empty: the delivery buttons and /connect cannot reach arena-api")
+		}
+		sales, err := salesbot.New(salesbot.Options{
+			Token:   cfg.SalesTelegramBotToken,
+			API:     salesbot.NewHTTPAPI(cfg.BotArenaAPIURL, cfg.BotServiceToken, nil),
+			Prompts: salesbot.NewPGPrompts(pool.Pool),
+			Logger:  logger.With(slog.String("bot", "sales")),
+		})
+		if err != nil {
+			return err
+		}
+		go func() {
+			if err := sales.Run(rootCtx); err != nil {
+				// The events bot keeps working when the sales token is wrong.
+				logger.Error("arena-bot: sales bot stopped", "error", err.Error())
+			}
+		}()
+	} else {
+		logger.Info("arena-bot: SALES_TELEGRAM_BOT_TOKEN is empty, the sales bot does not receive presses")
+	}
 
 	select {
 	case <-rootCtx.Done():

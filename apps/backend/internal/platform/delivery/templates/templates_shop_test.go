@@ -298,9 +298,10 @@ func TestRender_ShopLetters_NeverMentionTickets(t *testing.T) {
 	}
 	words := []string{"ticket", "билет", "entrada", "vstupenk", "billet", "כרטיסים"}
 	for kind, d := range map[string]Data{
-		TemplateKindShopOrderReceived: shopTestData(),
-		TemplateKindShopOrderShipped:  shopTestData(),
-		TemplateKindShopOrderRefunded: shopRefundTestData(),
+		TemplateKindShopOrderReceived:  shopTestData(),
+		TemplateKindShopOrderShipped:   shopTestData(),
+		TemplateKindShopOrderDelivered: shopTestData(),
+		TemplateKindShopOrderRefunded:  shopRefundTestData(),
 	} {
 		for _, loc := range SupportedLocales {
 			out, err := r.Render(kind, loc, d)

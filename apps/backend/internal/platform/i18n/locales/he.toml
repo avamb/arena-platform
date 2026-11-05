@@ -350,3 +350,98 @@ other = "ההחזר של {{.Amount}} על הזמנת החבר מס׳ {{.Number}}
 
 ["salesnotify.referral.unpaid_body_provider"]
 other = "ההחזר של {{.Amount}} על הזמנת החבר מס׳ {{.Number}} (קוד <b>{{.Code}}</b>) לא שולם: ספק התשלומים סירב להחזר. ביקשנו מהקונה שהביא את החבר לפנות אליכם. הסדירו איתו בעצמכם, למשל בקוד הנחה."
+
+# --- salesnotify delivery steps and the sales bot (spec 61 section 7b) ---
+["salesnotify.shop.step.waiting"]
+other = "⏳ ממתינה לאריזה"
+
+["salesnotify.shop.step.packed"]
+other = "📦 נארזה"
+
+["salesnotify.shop.step.handed_over"]
+other = "🚚 נמסרה לשליח"
+
+["salesnotify.shop.step.delivered"]
+other = "✅ נמסרה ללקוח"
+
+["salesnotify.shop.step.failed"]
+other = "❌ לא נמסרה"
+
+["salesnotify.shop.step_tracking"]
+other = "מס׳ {{.Tracking}}"
+
+["salesnotify.shop.card_closed"]
+other = "🛑 ההזמנה הוחזרה: לא לשלוח"
+
+["salesnotify.shop.reason.no_answer"]
+other = "לא ענו לטלפון"
+
+["salesnotify.shop.reason.not_home"]
+other = "אין אף אחד בבית"
+
+["salesnotify.shop.reason.wrong_address"]
+other = "כתובת שגויה"
+
+["salesnotify.shop.reason.refused"]
+other = "סירב לקבל"
+
+["salesnotify.shop.reason.other"]
+other = "אחר"
+
+["salesnotify.shop.btn_no_tracking"]
+other = "🚚 בלי מספר"
+
+["salesnotify.shop.btn_back"]
+other = "↩️ חזרה"
+
+["salesnotify.shop.failed_title"]
+other = "❌ <b>הזמנה מהחנות לא נמסרה</b> — {{.Org}}"
+
+["salesnotify.shop.failed_body"]
+other = "הזמנה מס׳ {{.Number}}: {{.Reason}}. החליטו במרכז האירועים: משלוח נוסף או החזר."
+
+["salesnotify.shop.ask_tracking"]
+other = "🚚 מספר המשלוח: השיבו להודעה זו עם המספר, או לחצו «בלי מספר» מתחת לכרטיס."
+
+["salesnotify.shop.ask_reason"]
+other = "❌ למה לא נמסרה? השיבו להודעה זו עם הסיבה."
+
+["salesnotify.bot.toast_done"]
+other = "בוצע: {{.Step}}"
+
+["salesnotify.bot.toast_stale"]
+other = "כבר מסומן: {{.Step}}"
+
+["salesnotify.bot.toast_closed"]
+other = "ההזמנה הוחזרה, לא לשלוח"
+
+["salesnotify.bot.toast_error"]
+other = "לא הצליח, נסו שוב"
+
+["salesnotify.bot.toast_not_connected"]
+other = "הצ׳אט הזה לא מחובר למשלוחים"
+
+["salesnotify.bot.prompt_expired"]
+other = "השאלה פגה: לחצו שוב על הכפתור בכרטיס."
+
+["salesnotify.bot.connected"]
+other = "✅ הצ׳אט חובר: {{.Org}}\nמקבל: {{.Kinds}}"
+
+["salesnotify.bot.connect_failed"]
+other = "הקוד לא עבד או שפג תוקפו. בקשו קוד חדש בממשק הניהול."
+
+["salesnotify.bot.connect_usage"]
+other = "כתבו /connect ואת הקוד מממשק הניהול."
+
+["salesnotify.bot.operator"]
+other = "הפלטפורמה (כל הארגונים)"
+
+["salesnotify.bot.kind.tickets"]
+other = "מכירת כרטיסים"
+
+["salesnotify.bot.kind.shop_sale"]
+other = "מכירות בחנות (בלי פרטי הקונה)"
+
+["salesnotify.bot.kind.shop_delivery"]
+other = "הזמנות מהחנות למשלוח"
+

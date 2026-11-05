@@ -441,8 +441,15 @@ func (d *Dispatcher) handleShop(ctx context.Context, ev outbox.Event) {
 	// None of the shop messages carries the events-bot footer: the chats are
 	// a courier's and a sales desk's, and "create your events from Telegram"
 	// is noise there. Ticket sales keep it (compose).
-	d.announce(ctx, delivery, fullKey, fullText)
+	if trigger != TriggerShopOrderPaid || !d.announceCards(ctx, delivery, fullKey, orgID, id) {
+		d.announce(ctx, delivery, fullKey, fullText)
+	}
 	d.announce(ctx, sale, saleKey, saleText)
+	if trigger == TriggerShopOrderRefunded {
+		// The card in the delivery groups says "do not ship" and loses its
+		// buttons once the whole order went back (spec 61 section 7b.2).
+		d.RefreshCards(ctx, orgID, id)
+	}
 }
 
 // announce claims key once and sends text to every target.

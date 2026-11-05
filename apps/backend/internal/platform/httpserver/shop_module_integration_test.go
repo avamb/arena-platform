@@ -29,6 +29,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 )
 
 // shopModuleEnv is a shop fixture plus a manager of organization A and a
@@ -41,7 +42,14 @@ type shopModuleEnv struct {
 
 func newShopModuleEnv(t *testing.T) *shopModuleEnv {
 	t.Helper()
-	f := newShopFixture(t)
+	return newShopModuleEnvWith(t, nil)
+}
+
+// newShopModuleEnvWith is newShopModuleEnv with one more change to the
+// server's configuration.
+func newShopModuleEnvWith(t *testing.T, extra func(*config.Config)) *shopModuleEnv {
+	t.Helper()
+	f := newShopFixtureWith(t, extra)
 	e := &shopModuleEnv{shopFixture: f}
 	ctx := context.Background()
 	// The secret productionIntegrationServerCfg signs with.
