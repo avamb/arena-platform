@@ -7030,6 +7030,11 @@ type CreateTicketTierRequest struct {
 	// Color Optional colour of the category on the seat map, `#rrggbb` (stored lower-case). Null or an empty string means none. Anything else answers 400 `tier.invalid_color`.
 	Color *string `json:"color"`
 
+	// IsAddon Create the category as an add-on (migration 0197): sold only
+	// together with a main category ticket of the same session.
+	// Defaults to false.
+	IsAddon *bool `json:"is_addon,omitempty"`
+
 	// Name Tier name. Required, trimmed of whitespace.
 	Name string `json:"name"`
 
@@ -9875,6 +9880,13 @@ type ImportBil24SessionCategory struct {
 	// the stored colour. Anything else answers 422
 	// import.invalid_color.
 	Color *string `json:"color,omitempty"`
+
+	// IsAddon Arena extension, source=arena only (migration 0197): `true` makes
+	// the category an add-on, sold only together with a main category
+	// ticket of the same session; `false` makes it a main category
+	// again; absent keeps the stored flag. Written by GET
+	// .../event-bundle only when true.
+	IsAddon *bool `json:"isAddon,omitempty"`
 
 	// NextCategoryIndex source=arena only. 0-based index into `categoryList` of the category
 	// that receives this category's free places when its sale window
@@ -20638,6 +20650,15 @@ type TicketTierItem struct {
 	// Id UUIDv7 primary key of the ticket-tier row.
 	Id openapi_types.UUID `json:"id"`
 
+	// IsAddon An add-on category (migration 0197): sold only together with a
+	// ticket of a main (non-add-on) category of the same session, in
+	// the same purchase; a cart of add-on tickets only answers 409
+	// `tier.addon_requires_main` (gateway: 101). Its free places do not
+	// keep the session on sale: once every main category is gone the
+	// session reads `sold_out` and the public feed offers the add-on
+	// no place (`available` 0).
+	IsAddon *bool `json:"is_addon,omitempty"`
+
 	// IsOpen Whether the category is open for sale. A closed category
 	// (false) accepts no NEW holds; places already held or sold are
 	// untouched and an order already placed can still be paid. Always
@@ -21486,6 +21507,12 @@ type UpdateTicketTierRequest struct {
 	// key leaves it unchanged. A malformed value answers 400
 	// `tier.invalid_color`.
 	Color *string `json:"color"`
+
+	// IsAddon Mark (`true`) or unmark (`false`) the category as an add-on
+	// (migration 0197): sold only together with a main category ticket
+	// of the same session, and its free places do not keep the session
+	// on sale. Omitting the key leaves the flag unchanged.
+	IsAddon *bool `json:"is_addon"`
 
 	// IsOpen Open (`true`) or close (`false`) the category. A closed
 	// category accepts no NEW hold on any sales path, while places

@@ -502,8 +502,24 @@ func (w *Wizard) render(ctx context.Context, ws WizSession, d *Draft) (Screen, e
 		return w.dateQuestion(loc, d, header(3, "bot.wz.title_tickets"), t("bot.wz.ask_t_cat_until", map[string]any{"Name": Esc(d.Scratch.Cat.Name)}), nav), nil
 
 	case stTCatMore:
+		rows := [][]Button{{btn("bot.wz.t_cat_more_btn", "more"), btn("bot.wz.t_cat_done_btn", "done")}}
+		if tk := d.tk(); tk.Mode == ModeParallel && len(tk.Categories) >= 2 {
+			rows = append(rows, []Button{btn("bot.wz.t_cat_addon_btn", "addon")})
+		}
 		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_cat_more", map[string]any{"List": w.categoriesList(loc, d.currencyOrGuess(), d.tk())}),
-			Buttons: nav([]Button{btn("bot.wz.t_cat_more_btn", "more"), btn("bot.wz.t_cat_done_btn", "done")})}, nil
+			Buttons: nav(rows...)}, nil
+
+	case stTCatAddon:
+		rows := [][]Button{}
+		for i, c := range d.tk().Categories {
+			mark := "☐ "
+			if c.Addon {
+				mark = "☑ "
+			}
+			rows = append(rows, []Button{{Label: mark + c.Name, Data: "ad:" + strconv.Itoa(i)}})
+		}
+		rows = append(rows, []Button{btn("bot.wz.t_cat_done_btn", "done")})
+		return Screen{Text: header(3, "bot.wz.title_tickets") + t("bot.wz.ask_t_cat_addon", nil), Buttons: nav(rows...)}, nil
 
 	case stXDescription:
 		if d.singleEdit() {
@@ -808,7 +824,7 @@ func (w *Wizard) modeLabel(loc, mode string) string {
 func isTicketStep(step string) bool {
 	switch step {
 	case stTName, stTPrice, stTChanges, stTChangeDate, stTChangePrice, stTChangeMore,
-		stTCatName, stTCatPrice, stTCatPlaces, stTCatLast, stTCatUntil, stTCatMore:
+		stTCatName, stTCatPrice, stTCatPlaces, stTCatLast, stTCatUntil, stTCatMore, stTCatAddon:
 		return true
 	}
 	return false
@@ -822,6 +838,9 @@ func (w *Wizard) categoriesList(loc, cur string, tk *DraftTickets) string {
 		p := Esc(c.Name) + " " + FormatMoney(c.PriceMinor, cur, loc)
 		if sq := colorEmoji(c.Color); sq != "" {
 			p = sq + " " + p
+		}
+		if c.Addon {
+			p += " " + w.texts.T(loc, "bot.wz.addon_mark", nil)
 		}
 		switch tk.Mode {
 		case ModeParallel:

@@ -485,6 +485,9 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		return
 	}
 	gaLines := gaPricingLines(pricedGA)
+	if !h.checkAddonCart(ctx, w, r, hasSeats, parsedGATierIDs) {
+		return
+	}
 
 	// ── 8. Promo code lookup ───────────────────────────────────────────────────
 	// Only the row fetch happens here; validation (min-order-amount etc.) runs

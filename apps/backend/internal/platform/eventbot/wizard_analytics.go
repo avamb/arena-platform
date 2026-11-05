@@ -43,6 +43,7 @@ var wizardReasonCodes = map[string]string{
 	"err_cat_end":              "category_end_invalid",
 	"err_until_order":          "category_end_order",
 	"err_min_two":              "categories_min_two",
+	"err_addon_all":            "categories_all_addon",
 	"err_currency":             "currency_invalid",
 	"err_channels_empty":       "channels_empty",
 	"err_plan_extra_name":      "plan_extra_name_invalid",

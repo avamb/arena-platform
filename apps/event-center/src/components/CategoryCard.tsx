@@ -45,6 +45,7 @@ type Mode = "none" | "price" | "priceConfirm" | "qty" | "windowStart" | "windowE
 
 type Action =
   | { kind: "toggle"; open: boolean }
+  | { kind: "addon"; addon: boolean }
   | { kind: "price"; amount: number }
   | { kind: "qty"; value: number }
   | { kind: "window"; edge: "start" | "end"; day: string | null };
@@ -105,6 +106,9 @@ export function CategoryCard({ orgId, eventId, sessionId, tierId, tiers, timezon
         case "toggle":
           await updateTier(ref, { is_open: a.open });
           return { key: a.open ? "categories.toggle.openedDone" : "categories.toggle.closedDone" };
+        case "addon":
+          await updateTier(ref, { is_addon: a.addon });
+          return { key: a.addon ? "categories.addon.setDone" : "categories.addon.clearedDone" };
         case "qty":
           await updateTier(ref, { capacity: a.value });
           return { key: "categories.qty.saved", params: { total: formatNumber(a.value, locale) } };
@@ -348,6 +352,24 @@ export function CategoryCard({ orgId, eventId, sessionId, tierId, tiers, timezon
             </button>
           </div>
           {open && <p className="field-hint">{t("categories.toggle.closeHint")}</p>}
+        </div>
+      )}
+
+      {/* Add-on: sold only with a main ticket of the date (migration 0197). */}
+      {(tiers.length >= 2 || tier.is_addon === true) && (
+        <div data-testid="category-addon">
+          <div className="actions">
+            <button
+              type="button"
+              className="btn"
+              disabled={write.isPending}
+              onClick={() => run({ kind: "addon", addon: tier.is_addon !== true })}
+              data-testid="addon-btn"
+            >
+              {t(tier.is_addon === true ? "categories.addon.clear" : "categories.addon.set")}
+            </button>
+          </div>
+          <p className="field-hint">{t(tier.is_addon === true ? "categories.addon.isHint" : "categories.addon.hint")}</p>
         </div>
       )}
 

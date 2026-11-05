@@ -686,6 +686,18 @@ other = "Categorías: {{.List}}. ¿Añadir otra?"
 ["bot.wz.t_cat_more_btn"]
 other = "+ Otra categoría"
 
+["bot.wz.t_cat_addon_btn"]
+other = "Categorías adicionales…"
+
+["bot.wz.ask_t_cat_addon"]
+other = "Marca las categorías adicionales. Esa entrada solo se vende junto con una entrada principal para la misma fecha (por ejemplo, «Niño adicional» con «Niño + adulto»). Cuando se agoten las entradas principales, la fecha se cierra como agotada aunque queden plazas adicionales."
+
+["bot.wz.err_addon_all"]
+other = "Al menos una categoría debe ser principal: las adicionales solo se venden junto con ella."
+
+["bot.wz.addon_mark"]
+other = "(adicional)"
+
 ["bot.wz.t_cat_done_btn"]
 other = "Listo →"
 

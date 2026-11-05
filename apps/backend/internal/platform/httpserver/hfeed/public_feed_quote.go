@@ -182,6 +182,9 @@ func (h *Handler) HandlePublicFeedCheckoutQuote(w http.ResponseWriter, r *http.R
 		return
 	}
 	lines := gaPricingLines(pricedGA)
+	if !h.checkAddonCart(ctx, w, r, hasSeats, parsedGATierIDs) {
+		return
+	}
 	currency := cartCurrency(pricedGA, "")
 
 	// ── Seated lines (same resolution as checkout/start step 11, minus the

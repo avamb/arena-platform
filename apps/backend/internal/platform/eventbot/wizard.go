@@ -81,9 +81,10 @@ const (
 	stTCatLast        = "t_cat_last"
 	stTCatUntil       = "t_cat_until"
 	stTCatMore        = "t_cat_more"
-	stTDate           = "t_date"    // edited event: which date's categories change
-	stSTickets        = "s_tickets" // edited event, new date: same categories or its own
-	stSConfirm        = "s_confirm" // edited event, new date: its summary before "one more date?"
+	stTCatAddon       = "t_cat_addon" // parallel categories: which are add-ons
+	stTDate           = "t_date"      // edited event: which date's categories change
+	stSTickets        = "s_tickets"   // edited event, new date: same categories or its own
+	stSConfirm        = "s_confirm"   // edited event, new date: its summary before "one more date?"
 	stXDescription    = "x_description"
 	stXCurrency       = "x_currency"
 	stXChannels       = "x_channels"
@@ -246,6 +247,10 @@ type DraftCategory struct {
 	// plan seats into it. Color is its #rrggbb colour on the seat map.
 	Extra bool   `json:"extra,omitempty"`
 	Color string `json:"color,omitempty"`
+	// Addon marks an add-on category (migration 0197): sold only together
+	// with a main category ticket of the same date ("extra child" next to
+	// "child + adult"), and its free places do not keep the date on sale.
+	Addon bool `json:"addon,omitempty"`
 }
 
 // DraftPriceStep is one "from date → price" row of the single category.
@@ -782,7 +787,7 @@ func (d *Draft) cancelEdit() {
 func (d *Draft) carryTierID(c *DraftCategory) {
 	for _, p := range d.Scratch.PrevCats {
 		if strings.EqualFold(strings.TrimSpace(p.Name), strings.TrimSpace(c.Name)) {
-			c.TierID = p.TierID
+			c.TierID, c.Addon = p.TierID, p.Addon
 			return
 		}
 	}
@@ -1539,10 +1544,17 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		switch data {
 		case "more":
 			d.goTo(stTCatName)
+		case "addon":
+			if tk := d.tk(); tk.Mode == ModeParallel && len(tk.Categories) >= 2 {
+				d.goTo(stTCatAddon)
+			}
 		case "done":
 			tk := d.tk()
 			if len(tk.Categories) < 2 {
 				return d.reject("err_min_two", t("bot.wz.err_min_two", nil)), nil
+			}
+			if allAddon(tk.Categories) {
+				return d.reject("err_addon_all", t("bot.wz.err_addon_all", nil)), nil
 			}
 			if tk.Mode == ModeSequence {
 				// The last category sells until the session starts: its own
@@ -1551,6 +1563,20 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 				last.SellUntil, last.SellLimit = "", 0
 			}
 			d.ticketsDone()
+		}
+
+	case stTCatAddon:
+		tk := d.tk()
+		switch {
+		case strings.HasPrefix(data, "ad:"):
+			if i, err := strconv.Atoi(strings.TrimPrefix(data, "ad:")); err == nil && i >= 0 && i < len(tk.Categories) {
+				tk.Categories[i].Addon = !tk.Categories[i].Addon
+			}
+		case data == "done":
+			if allAddon(tk.Categories) {
+				return d.reject("err_addon_all", t("bot.wz.err_addon_all", nil)), nil
+			}
+			d.goTo(stTCatMore)
 		}
 
 	case stXDescription:

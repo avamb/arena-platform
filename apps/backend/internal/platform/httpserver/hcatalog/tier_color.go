@@ -43,8 +43,9 @@ func parseTierColor(w http.ResponseWriter, r *http.Request, in optionalString) (
 	return &v, true, true
 }
 
-// withColor fills the colour of one category. Non-fatal: a failed read
-// leaves the colour null and is logged.
+// withColor fills the colour and the add-on flag (migration 0197) of one
+// category. Non-fatal: a failed read leaves the colour null (the flag false)
+// and is logged.
 func (h *Handler) withColor(ctx context.Context, tr tierResponse) tierResponse {
 	id, err := uuid.Parse(tr.ID)
 	if err != nil {
@@ -60,5 +61,10 @@ func (h *Handler) withColor(ctx context.Context, tr tierResponse) tierResponse {
 		return tr
 	}
 	tr.Color = c
+	if addon, aerr := h.tierQueries.ListAddonTierIDs(ctx, []uuid.UUID{id}); aerr == nil {
+		tr.IsAddon = addon[id]
+	} else {
+		h.logger.Warn("tier: add-on flag read failed (non-fatal)", slog.String("tier_id", tr.ID), slog.String("error", aerr.Error()))
+	}
 	return tr
 }

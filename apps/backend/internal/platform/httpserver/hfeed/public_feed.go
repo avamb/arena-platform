@@ -199,6 +199,10 @@ type publicFeedTierResponse struct {
 	// null when the category owns no place at all (a ledger-only session),
 	// in which case the widget falls back to Capacity as before.
 	Available *int `json:"available"`
+	// IsAddon: an add-on category (migration 0197), sold only together with
+	// a main category ticket of the same session. Once the session's main
+	// categories are gone its Available is 0.
+	IsAddon bool `json:"is_addon"`
 }
 
 func publicFeedTierFromRow(t gen.TicketTierRow) publicFeedTierResponse {
@@ -846,6 +850,16 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 					slog.String("error", factsErr.Error()),
 				)
 			}
+			var addonTiers map[uuid.UUID]bool
+			if h.tierQueries != nil {
+				var addonErr error
+				if addonTiers, addonErr = h.tierQueries.ListAddonTierIDsBySessions(ctx, sessionIDs); addonErr != nil {
+					h.logger.Error("public_feed: add-on categories failed",
+						slog.String("event_id", eventID.String()),
+						slog.String("error", addonErr.Error()),
+					)
+				}
+			}
 			for _, sess := range sessions {
 				// The same status rule the hold gate applies, and the
 				// organizer's sales state the gate also refuses on.
@@ -949,6 +963,13 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 								tr.Available = &zero
 							} else {
 								tr.Available = publicFeedTierAvailable(hcheckout.CapSaleWindow(tier, salesEndOf(sess)), placeStats, now)
+							}
+							tr.IsAddon = addonTiers[tier.ID]
+							if tr.IsAddon && sessResp.SalesState == salesstate.SoldOut {
+								// Every main ticket is gone: an add-on alone
+								// cannot be bought (hcheckout.CheckAddonCompanions).
+								zero := 0
+								tr.Available = &zero
 							}
 							tr.PriceStep = steps.priceStep(tier.ID, tr, effPrices, tiers)
 							sessResp.Tiers = append(sessResp.Tiers, tr)

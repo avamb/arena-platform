@@ -125,6 +125,17 @@ func (w *Watcher) RunOnce(ctx context.Context, now time.Time) (int, error) {
 	if err != nil {
 		return told, err
 	}
+	// After the sold-out pass, so a category whose sell-out ended the whole
+	// date is recorded without a second message (more_alerts.go).
+	for _, pass := range []func(context.Context, time.Time, bool) (int, error){
+		w.categoriesSoldOut, w.salesEnded, w.manualChanges,
+	} {
+		n, err := pass(ctx, now, !seeded)
+		told += n
+		if err != nil {
+			return told, err
+		}
+	}
 	// "Notify me when sales open": the subscribers of every session that
 	// opened get their letter (package salesubscribe).
 	if n, err := salesubscribe.ClaimOpened(ctx, w.pool, now); err != nil {

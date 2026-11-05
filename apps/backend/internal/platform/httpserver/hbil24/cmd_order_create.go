@@ -180,6 +180,12 @@ func (h *Handler) handleBil24CreateOrderExtSession(w http.ResponseWriter, r *htt
 		))
 		return
 	}
+	// An add-on category (migration 0197) is sold only with a main ticket.
+	// The cart is built one RESERVE at a time, so the whole of it is judged
+	// here; an invitation is the organizer's own decision and is not.
+	if !req.Complimentary && !h.orderAddonsOK(ctx, w, req, cc, units) {
+		return
+	}
 
 	// An invitation takes no promo code: it is discounted in full below.
 	var (
@@ -1031,4 +1037,30 @@ func (h *Handler) orderInternal(w http.ResponseWriter, req bil24Request, msg str
 	writeBil24JSON(w, http.StatusOK, bil24Error(
 		req.Command, ResultCodeInternalError, "failed to create order",
 	))
+}
+
+// orderAddonsOK refuses (101 bil24.addon_requires_main) a cart of add-on
+// tickets only and reports whether CREATE_ORDER_EXT may go on.
+func (h *Handler) orderAddonsOK(ctx context.Context, w http.ResponseWriter, req bil24Request, cc cartCtx, units []orderUnit) bool {
+	if h.tierQueries == nil {
+		return true
+	}
+	ids := make([]uuid.UUID, 0, len(units))
+	for _, u := range units {
+		ids = append(ids, u.tierID)
+	}
+	err := hcheckout.CheckAddonCompanions(ctx, h.tierQueries, ids)
+	if err == nil {
+		return true
+	}
+	if !errors.Is(err, hcheckout.ErrAddonWithoutMain) {
+		h.orderTransient(w, req, cc, "add-on check failed", err)
+		return false
+	}
+	writeBil24JSON(w, http.StatusOK, bil24Error(
+		req.Command, ResultCodeUserVisible,
+		h.localizeDesc(req.Locale, cc.locale, "bil24.addon_requires_main",
+			"This ticket can only be bought together with a main ticket for the same session.", nil),
+	))
+	return false
 }

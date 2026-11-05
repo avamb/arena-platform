@@ -199,6 +199,16 @@ func applyArenaCategoryExtras(
 		}
 	}
 
+	// Add-on categories (migration 0197): absent keeps the stored flag.
+	for i, c := range list {
+		if c.IsAddon == nil {
+			continue
+		}
+		if err := q.SetTicketTierAddon(ctx, ordered[i], *c.IsAddon); err != nil {
+			return nil, fmt.Errorf("write add-on category flag: %w", err)
+		}
+	}
+
 	for i, c := range list {
 		if c.PriceSchedule == nil {
 			continue

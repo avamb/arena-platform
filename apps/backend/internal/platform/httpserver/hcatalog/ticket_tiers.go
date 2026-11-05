@@ -99,6 +99,10 @@ type tierResponse struct {
 	// Color is the category's own #rrggbb colour on the seat map (migration
 	// 0171); null = use the colour of the geometry category.
 	Color *string `json:"color"`
+	// IsAddon: an add-on category, sold only together with a main category
+	// ticket of the same session; its free places do not keep the session
+	// on sale (migration 0197).
+	IsAddon bool `json:"is_addon"`
 }
 
 // TierResponse is the exported alias of tierResponse for use by the httpserver
@@ -158,6 +162,8 @@ type createTierRequest struct {
 	SortOrder       int32   `json:"sort_order"`
 	// Color is the category's #rrggbb colour on the seat map; empty = none.
 	Color optionalString `json:"color"`
+	// IsAddon marks an add-on category (migration 0197).
+	IsAddon bool `json:"is_addon"`
 }
 
 func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
@@ -337,6 +343,11 @@ func (h *Handler) HandleCreateTier(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 		}
+		if req.IsAddon {
+			if err := txq.SetTicketTierAddon(ctx, row.ID, true); err != nil {
+				return err
+			}
+		}
 		if quantity <= 0 {
 			// No quantity and none derivable: the tier is a pure pricing /
 			// geometry-mapping row (a seated session's category before its
@@ -510,6 +521,10 @@ func (h *Handler) HandleListTiers(w http.ResponseWriter, r *http.Request) {
 	if colorErr != nil {
 		h.logger.Warn("tier: colours failed (non-fatal)", slog.String("error", colorErr.Error()))
 	}
+	addons, addonErr := h.tierQueries.ListAddonTierIDsBySessions(ctx, []uuid.UUID{sessionID})
+	if addonErr != nil {
+		h.logger.Warn("tier: add-on flags failed (non-fatal)", slog.String("error", addonErr.Error()))
+	}
 
 	result := make([]tierResponse, 0, len(rows))
 	for _, t := range rows {
@@ -518,6 +533,7 @@ func (h *Handler) HandleListTiers(w http.ResponseWriter, r *http.Request) {
 			cc := c
 			tr.Color = &cc
 		}
+		tr.IsAddon = addons[t.ID]
 		if eff, ok := effective[t.ID]; ok && effErr == nil {
 			amount := eff.Amount
 			tr.CurrentPrice = &amount
@@ -682,6 +698,9 @@ type updateTierRequest struct {
 	// Color is the category's #rrggbb colour on the seat map: absent keeps
 	// it, null or "" clears it, a value sets it (migration 0171).
 	Color optionalString `json:"color"`
+	// IsAddon marks or unmarks an add-on category (migration 0197);
+	// omitting the key leaves the flag alone.
+	IsAddon *bool `json:"is_addon"`
 }
 
 func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
@@ -895,6 +914,11 @@ func (h *Handler) HandleUpdateTier(w http.ResponseWriter, r *http.Request) {
 		}
 		if setColor {
 			if _, err := txq.SetTicketTierColor(ctx, tierID, sessionID, newColor); err != nil {
+				return err
+			}
+		}
+		if req.IsAddon != nil {
+			if err := txq.SetTicketTierAddon(ctx, tierID, *req.IsAddon); err != nil {
 				return err
 			}
 		}

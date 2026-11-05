@@ -8,6 +8,7 @@ var wizardKeys = []string{
 	"bot.wz.cal_week", "bot.wz.cal_month", "bot.wz.date_confirm_one", "bot.wz.date_confirm_many",
 	"bot.wz.date_retry_btn", "bot.wz.date_limit_suffix", "bot.wz.err_date_past", "bot.wz.err_date_early", "bot.wz.err_date_late",
 	"bot.wz.new_event_btn",
+	"bot.wz.t_cat_addon_btn", "bot.wz.ask_t_cat_addon", "bot.wz.err_addon_all", "bot.wz.addon_mark",
 	"bot.wz.cancel_btn",
 	"bot.wz.back_btn",
 	"bot.wz.skip_btn",

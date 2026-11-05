@@ -10,6 +10,7 @@ import {
   MAX_LINE_QUANTITY,
   cartLimitMessage,
   getCartLimitStrings,
+  addonNote,
   seatCapMessage,
 } from './lib/cartLimits.js';
 import { seatCapBlocks, toggleSeatSelection } from './lib/selection.js';
@@ -21,7 +22,7 @@ describe('cart limit texts', () => {
     expect(Object.keys(CART_LIMIT_I18N).sort()).toEqual([...LOCALES].sort());
     for (const loc of LOCALES) {
       const s = CART_LIMIT_I18N[loc]!;
-      expect(Object.keys(s).sort(), loc).toEqual(['cart_too_large', 'invalid_qty', 'too_many_seats']);
+      expect(Object.keys(s).sort(), loc).toEqual(['addon_note', 'addon_only', 'cart_too_large', 'invalid_qty', 'too_many_seats']);
       for (const text of Object.values(s)) expect(text, loc).toBeTruthy();
     }
   });
@@ -86,5 +87,15 @@ describe('seat cap', () => {
 
   it('does not cap when no cap is given (existing callers)', () => {
     expect(toggleSeatSelection(seats(500), 'NEW', 'available').size).toBe(501);
+  });
+});
+
+describe('add-on categories', () => {
+  it('names the refusal of an add-on-only cart in the buyer language', () => {
+    for (const loc of LOCALES) {
+      expect(cartLimitMessage('tier.addon_requires_main', loc), loc).toBe(CART_LIMIT_I18N[loc]!.addon_only);
+      expect(addonNote(loc), loc).toBe(CART_LIMIT_I18N[loc]!.addon_note);
+    }
+    expect(cartLimitMessage('tier.addon_requires_main', 'ru-RU')).toContain('основным билетом');
   });
 });

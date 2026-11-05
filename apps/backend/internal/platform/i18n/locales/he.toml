@@ -60,6 +60,9 @@ other = "מכירת הכרטיסים למועד זה עדיין לא התחיל�
 ["bil24.session_sold_out"]
 other = "הכרטיסים למועד זה אזלו."
 
+["bil24.addon_requires_main"]
+other = "ניתן לקנות כרטיס זה רק יחד עם כרטיס ראשי לאותו מועד."
+
 ["bil24.subscription_invalid_email"]
 other = "בדקו את כתובת המייל ושלחו שוב."
 

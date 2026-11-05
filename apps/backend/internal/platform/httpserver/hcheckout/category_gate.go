@@ -404,6 +404,8 @@ func CategoryGateErrorCode(err error) string {
 		return "tier.not_on_sale"
 	case errors.Is(err, ErrCategoryNotFound):
 		return "tier.not_found"
+	case errors.Is(err, ErrAddonWithoutMain):
+		return "tier.addon_requires_main"
 	default:
 		return ""
 	}
@@ -424,6 +426,8 @@ func CategoryGateMessage(err error) string {
 		return "ticket category is not on sale right now"
 	case errors.Is(err, ErrCategoryNotFound):
 		return "ticket category not found in this session"
+	case errors.Is(err, ErrAddonWithoutMain):
+		return "this ticket can only be bought together with a main ticket of the same session"
 	default:
 		return ""
 	}

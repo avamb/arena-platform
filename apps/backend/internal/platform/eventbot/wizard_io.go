@@ -131,6 +131,7 @@ func BuildBundle(d *Draft, idx int, actionID int64, posterURL, externalRef strin
 				Availability:      i32(c.Places),
 				NextCategoryIndex: &minusOne,
 				PriceSchedule:     &empty,
+				IsAddon:           addonFlag(c),
 			})
 		}
 	case ModeSequence:
@@ -209,9 +210,33 @@ func seatedCategories(tk DraftTickets) []bil24compat.ImportSessionCategory {
 			cat.PlanExtra, cat.Placement = true, true
 		}
 		cat.Color = c.Color
+		cat.IsAddon = addonFlag(c)
 		out = append(out, cat)
 	}
 	return out
+}
+
+// addonFlag is the add-on flag of a parallel category on the wire: set when
+// it is an add-on, and an explicit false for an existing category (the draft
+// read it back on "Edit", so a cleared mark must reach the server); a new
+// main category sends nothing, as before migration 0197.
+func addonFlag(c DraftCategory) *bool {
+	if !c.Addon && c.TierID == "" {
+		return nil
+	}
+	v := c.Addon
+	return &v
+}
+
+// allAddon reports a list of categories that are all add-ons: a date needs
+// at least one main category to sell them with.
+func allAddon(cats []DraftCategory) bool {
+	for _, c := range cats {
+		if !c.Addon {
+			return false
+		}
+	}
+	return len(cats) > 0
 }
 
 // i32 narrows a place count for the wire; ParseCount already caps counts

@@ -63,6 +63,12 @@ function TiersTable({
               <tr key={tier.id} data-testid="tier-row" data-tier-name={tier.name}>
                 <th scope="row" data-label={t("col.category")}>
                   {tier.name}
+                  {tier.is_addon === true && (
+                    <>
+                      {" "}
+                      <Badge tone="neutral">{t("tier.addon")}</Badge>
+                    </>
+                  )}
                 </th>
                 <td data-label={t("col.price")}>{tierPrice(tier, locale, t)}</td>
                 <td data-label={t("col.sold")}>{n(tier.sold)}</td>

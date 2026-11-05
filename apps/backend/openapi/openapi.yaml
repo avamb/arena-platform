@@ -13375,6 +13375,16 @@ components:
             untouched and an order already placed can still be paid. Always
             present on both the admin list and the public feed. GA category
             quotas - plan 08_architecture/23 step 5.
+        is_addon:
+          type: boolean
+          description: |
+            An add-on category (migration 0197): sold only together with a
+            ticket of a main (non-add-on) category of the same session, in
+            the same purchase; a cart of add-on tickets only answers 409
+            `tier.addon_requires_main` (gateway: 101). Its free places do not
+            keep the session on sale: once every main category is gone the
+            session reads `sold_out` and the public feed offers the add-on
+            no place (`available` 0).
         color:
           type: [string, "null"]
           description: |
@@ -13671,6 +13681,12 @@ components:
         color:
           type: [string, "null"]
           description: Optional colour of the category on the seat map, `#rrggbb` (stored lower-case). Null or an empty string means none. Anything else answers 400 `tier.invalid_color`.
+        is_addon:
+          type: boolean
+          description: |
+            Create the category as an add-on (migration 0197): sold only
+            together with a main category ticket of the same session.
+            Defaults to false.
 
     UpdateTicketTierRequest:
       type: object
@@ -13769,6 +13785,13 @@ components:
             lower-case). `null` (or an empty string) clears it. Omitting the
             key leaves it unchanged. A malformed value answers 400
             `tier.invalid_color`.
+        is_addon:
+          type: [boolean, "null"]
+          description: |
+            Mark (`true`) or unmark (`false`) the category as an add-on
+            (migration 0197): sold only together with a main category ticket
+            of the same session, and its free places do not keep the session
+            on sale. Omitting the key leaves the flag unchanged.
 
     TicketTierEnvelope:
       type: object
@@ -21178,6 +21201,14 @@ components:
             seat map, `#rrggbb` (stored lower-case). Absent or empty keeps
             the stored colour. Anything else answers 422
             import.invalid_color.
+        isAddon:
+          type: boolean
+          description: |
+            Arena extension, source=arena only (migration 0197): `true` makes
+            the category an add-on, sold only together with a main category
+            ticket of the same session; `false` makes it a main category
+            again; absent keeps the stored flag. Written by GET
+            .../event-bundle only when true.
         categoryPriceId:
           type: integer
           format: int64

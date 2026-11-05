@@ -184,6 +184,12 @@ export interface Tier {
   available?: number | null;
   /** False when an operator closed the category: it takes no new holds. */
   is_open?: boolean;
+  /**
+   * An add-on category: sold only together with a main category ticket of
+   * the same date ("extra child" next to "child + adult"). The platform
+   * refuses a cart of add-ons only (tier.addon_requires_main).
+   */
+  is_addon?: boolean;
   sale_window_start?: string | null;
   sale_window_end?: string | null;
   sort_order: number;

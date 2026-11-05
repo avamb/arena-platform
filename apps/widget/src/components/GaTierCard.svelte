@@ -3,6 +3,7 @@
   import { formatPrice } from '../lib/checkout.js';
   import { priceLabelBesideName } from '../lib/priceLabel.js';
   import { priceStepLine } from '../lib/priceStep.js';
+  import { addonNote } from '../lib/cartLimits.js';
   import type { Tier } from '../types.js';
 
   interface Props {
@@ -55,6 +56,9 @@
     {#if priceChange && !soldOut}
       <span class="ga-card-price-change" data-testid="ga-price-change">{priceChange}</span>
     {/if}
+    {#if tier.is_addon && !soldOut}
+      <span class="ga-card-addon" data-testid="ga-addon-note">{addonNote(locale)}</span>
+    {/if}
   </div>
   <div class="ga-card-stepper">
     <button
@@ -88,6 +92,7 @@
   .ga-card-name { font-weight: 600; font-size: 0.9375rem; color: var(--arena-color-primary, #1a1a1a); }
   .ga-card-price { font-size: 0.875rem; color: var(--arena-color-secondary, #6b7280); }
   .ga-card-soldout { font-size: 0.8125rem; font-weight: 600; color: var(--arena-color-secondary, #6b7280); }
+  .ga-card-addon { font-size: 0.8125rem; color: var(--arena-color-secondary, #6b7280); }
   .ga-card-stepper { display: flex; align-items: center; gap: 0.625rem; flex-shrink: 0; }
   .step-btn {
     width: 2rem;
