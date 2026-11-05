@@ -58,10 +58,14 @@ const (
 	EventShopOrderManualReview = "v1.shop.order.manual_review"
 )
 
-// Subscription kinds (sales_notification_subscriptions.kinds, migration 0173).
+// Subscription kinds (sales_notification_subscriptions.kinds, migrations 0173
+// and 0198). KindShop is the DELIVERY group's kind, "shop_delivery": migration
+// 0198 renamed the stored value 'shop' and added 'shop_sale' (the fact of a
+// sale for a sales chat, spec 08_architecture/61 section 7a), which the
+// notifier does not announce yet.
 const (
 	KindTickets = "tickets"
-	KindShop    = "shop"
+	KindShop    = "shop_delivery"
 )
 
 // queueSize bounds the events waiting for Telegram. A burst beyond it is

@@ -108,13 +108,13 @@ func TestShopNotify_PaidOrderQueuesTheEmailAndAnnouncesToShopChatsOnly(t *testin
 	f := newShopFixture(t)
 	nonce := uuid.NewString()[:8]
 	logistics, ticketsOnly, both := "shopnotify-"+nonce+"-L", "shopnotify-"+nonce+"-T", "shopnotify-"+nonce+"-B"
-	f.subscribe(logistics, "{shop}")
+	f.subscribe(logistics, "{shop_delivery}")
 	f.subscribe(ticketsOnly, "{tickets}")
-	f.subscribe(both, "{tickets,shop}")
+	f.subscribe(both, "{tickets,shop_delivery}")
 	// The kinds column refuses anything else.
 	if _, err := f.pool.Exec(context.Background(), `INSERT INTO sales_notification_subscriptions (org_id, name, chat_id, kinds)
 		VALUES ($1, 'bad', $2, '{other}')`, f.orgA, "shopnotify-"+nonce+"-X"); err == nil {
-		t.Fatal("a subscription kind outside tickets/shop must be refused by the CHECK")
+		t.Fatal("a subscription kind outside tickets/shop_sale/shop_delivery must be refused by the CHECK")
 	}
 
 	_, variant := f.openShop(4500, 3)
@@ -299,7 +299,7 @@ func TestShopNotify_DigitalOnlyOrderLetter(t *testing.T) {
 func TestShopNotify_ManualReviewTellsTheOrganizerNotTheBuyer(t *testing.T) {
 	f := newShopFixture(t)
 	chat := "shopnotify-" + uuid.NewString()[:8] + "-L"
-	f.subscribe(chat, "{shop}")
+	f.subscribe(chat, "{shop_delivery}")
 	_, variant := f.openShop(4500, 1)
 	late := f.placed(variant, 1)
 	f.expireOrder(late.ID)
