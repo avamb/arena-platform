@@ -27,36 +27,6 @@ func shopSample() ShopOrder {
 	}
 }
 
-func TestRoute_ShopKindsSeparateTicketsFromShop(t *testing.T) {
-	subs := []Subscription{
-		{ID: "tickets", OrgID: orgVino, ChatID: "-1", OnOrderPaid: true, OnTicketRefunded: true, Kinds: []string{KindTickets}},
-		{ID: "legacy", OrgID: orgVino, ChatID: "-2", OnOrderPaid: true, OnTicketRefunded: true}, // no kinds = tickets
-		{ID: "logistics", OrgID: orgVino, ChatID: "-3", OnOrderPaid: true, OnTicketRefunded: true, Kinds: []string{KindShop}},
-		{ID: "both", OrgID: orgVino, ChatID: "-4", OnOrderPaid: true, OnTicketRefunded: false, Kinds: []string{KindTickets, KindShop}},
-		{ID: "operator-shop", ChatID: "-5", OnOrderPaid: true, OnTicketRefunded: true, Kinds: []string{KindShop}},
-		{ID: "other-org", OrgID: orgLampyris, ChatID: "-6", OnOrderPaid: true, OnTicketRefunded: true, Kinds: []string{KindShop}},
-	}
-	ids := func(ss []Subscription) string {
-		var out []string
-		for _, s := range ss {
-			out = append(out, s.ID)
-		}
-		return strings.Join(out, ",")
-	}
-	if got := ids(Route(subs, orgVino, TriggerShopOrderPaid)); got != "logistics,both,operator-shop" {
-		t.Errorf("shop paid routed to %q", got)
-	}
-	if got := ids(Route(subs, orgVino, TriggerShopOrderRefunded)); got != "logistics,operator-shop" {
-		t.Errorf("shop refund routed to %q (the refund switch of 'both' is off)", got)
-	}
-	if got := ids(Route(subs, orgVino, TriggerOrderPaid)); got != "tickets,legacy,both" {
-		t.Errorf("a ticket sale routed to %q: the logistics group must not hear it", got)
-	}
-	if got := ids(Route(subs, orgVino, TriggerTicketRefunded)); got != "tickets,legacy" {
-		t.Errorf("a ticket refund routed to %q", got)
-	}
-}
-
 func TestFormatShopOrderPaid_CourierFormOrder(t *testing.T) {
 	msg := FormatShopOrderPaid(shopSample())
 	// One block of consecutive lines in the courier form's order.
@@ -151,7 +121,7 @@ func shopEvent(typ, orderID string, extra map[string]any) outbox.Event {
 func TestDispatcher_ShopOrderGoesToShopChatsOncePerAnnouncement(t *testing.T) {
 	store := newFakeStore(
 		Subscription{ID: "tickets", OrgID: orgVino, Name: "Vino tickets", ChatID: "-1", OnOrderPaid: true, OnTicketRefunded: true, Kinds: []string{KindTickets}},
-		Subscription{ID: "logistics", OrgID: orgVino, Name: "Vino logistics", ChatID: "-2", OnOrderPaid: true, OnTicketRefunded: true, Kinds: []string{KindShop}},
+		Subscription{ID: "logistics", OrgID: orgVino, Name: "Vino logistics", ChatID: "-2", OnOrderPaid: true, OnTicketRefunded: true, Kinds: []string{KindShopDelivery}},
 	)
 	order := shopSample()
 	order.Order.RefundedMinor = 5000
@@ -189,7 +159,7 @@ func TestDispatcher_ShopOrderGoesToShopChatsOncePerAnnouncement(t *testing.T) {
 // The events-bot footer is for organizers; the logistics chat is a courier's.
 func TestDispatcher_ShopMessagesCarryNoEventsBotFooter(t *testing.T) {
 	store := newFakeStore(
-		Subscription{ID: "logistics", OrgID: orgVino, ChatID: "-2", OnOrderPaid: true, OnTicketRefunded: true, Kinds: []string{KindShop}},
+		Subscription{ID: "both", OrgID: orgVino, ChatID: "-2", OnOrderPaid: true, OnTicketRefunded: true, Kinds: []string{KindShopSale, KindShopDelivery}},
 	)
 	store.shopOrds["o-1"] = shopSample()
 	snd := &fakeSender{}
@@ -226,10 +196,11 @@ func TestDispatcher_SubscriptionWithoutShopKindGetsNoShopOrders(t *testing.T) {
 	}
 }
 
-func TestDispatcher_ManualReviewReachesShopChatsOnce(t *testing.T) {
+func TestDispatcher_ManualReviewReachesSalesChatsOnceAndNeverDelivery(t *testing.T) {
 	store := newFakeStore(
 		Subscription{ID: "tickets", OrgID: orgVino, ChatID: "-1", OnOrderPaid: true, OnTicketRefunded: true, Kinds: []string{KindTickets}},
-		Subscription{ID: "logistics", OrgID: orgVino, ChatID: "-2", OnOrderPaid: true, OnTicketRefunded: true, Kinds: []string{KindShop}},
+		Subscription{ID: "sales", OrgID: orgVino, ChatID: "-2", OnOrderPaid: true, OnTicketRefunded: true, Kinds: []string{KindShopSale}},
+		Subscription{ID: "delivery", OrgID: orgVino, ChatID: "-3", OnOrderPaid: true, OnTicketRefunded: true, Kinds: []string{KindShopDelivery}},
 	)
 	store.shopOrds["o-1"] = shopSample()
 	snd := &fakeSender{}
@@ -238,11 +209,16 @@ func TestDispatcher_ManualReviewReachesShopChatsOnce(t *testing.T) {
 	d.Handle(ctx, shopEvent(EventShopOrderManualReview, "o-1", nil))
 	d.Handle(ctx, shopEvent(EventShopOrderManualReview, "o-1", nil))
 	if len(snd.sent) != 1 || snd.sent[0].chat != "-2" {
-		t.Fatalf("manual review announcements = %+v; want one, to the logistics chat only", snd.sent)
+		t.Fatalf("manual review announcements = %+v; want one, to the sales chat only", snd.sent)
 	}
-	for _, want := range []string{"needs your attention", "Order #1000777", "arrived after the hold ended", "Check the order in the event center", "anna@example.com"} {
+	for _, want := range []string{"needs your attention", "Order #1000777", "arrived after the hold ended", "Check the order in the event center"} {
 		if !strings.Contains(snd.sent[0].text, want) {
 			t.Errorf("review message lacks %q:\n%s", want, snd.sent[0].text)
+		}
+	}
+	for _, personal := range []string{"Anna", "anna@example.com", "+972500000000", "Herzl", "Dan L"} {
+		if strings.Contains(snd.sent[0].text, personal) {
+			t.Errorf("the review notice carries buyer data %q:\n%s", personal, snd.sent[0].text)
 		}
 	}
 	if !store.claimed["shop_review:o-1:"] {
@@ -263,6 +239,9 @@ func TestFormatShopOrderReview_UnconfirmedPaymentIsNotPaid(t *testing.T) {
 		if strings.Contains(msg, paid) {
 			t.Errorf("%s: an unconfirmed payment is announced as paid:\n%s", loc, msg)
 		}
+		if strings.Contains(msg, "Anna") || strings.Contains(msg, "anna@example.com") || strings.Contains(msg, "+972500000000") {
+			t.Errorf("%s: the review notice carries buyer data:\n%s", loc, msg)
+		}
 		if !strings.Contains(msg, "⏳") || !strings.Contains(msg, "1000777") {
 			t.Errorf("%s: the unconfirmed-payment text is missing:\n%s", loc, msg)
 		}
@@ -277,7 +256,7 @@ func TestFormatShopOrderReview_UnconfirmedPaymentIsNotPaid(t *testing.T) {
 		t.Errorf("late-payment text:\n%s", msg)
 	}
 
-	store := newFakeStore(Subscription{ID: "logistics", OrgID: orgVino, ChatID: "-2", OnOrderPaid: true, Kinds: []string{KindShop}})
+	store := newFakeStore(Subscription{ID: "sales", OrgID: orgVino, ChatID: "-2", OnOrderPaid: true, Kinds: []string{KindShopSale}})
 	first := shopSample()
 	first.Order.ReviewReason = &unconfirmed
 	store.shopOrds["o-1"] = first
@@ -344,17 +323,17 @@ func TestFormatShopOrderPaid_EnglishIsTheDefaultAndTheFallback(t *testing.T) {
 	}
 }
 
-func TestFormatShopOrderRefund_RussianAndEnglish(t *testing.T) {
+func TestFormatShopDeliveryRefund_RussianAndEnglish(t *testing.T) {
 	s := shopSample()
 	s.Order.RefundedMinor = 5000
-	en := FormatShopOrderRefund(s, 5000)
+	en := FormatShopDeliveryRefund(s, 5000)
 	for _, want := range []string{"↩️ <b>Shop refund</b> — Vino&amp;Co", "🧾 Order #1000777", "💸 Refunded: <b>50.00 ₪</b>", "💸 Refunded so far: 50.00 ₪ of 230.00 ₪", "👤 Anna &lt;K&gt;"} {
 		if !strings.Contains(en, want) {
 			t.Errorf("English refund lacks %q:\n%s", want, en)
 		}
 	}
 	s.Locale = "ru"
-	ru := FormatShopOrderRefund(s, 5000)
+	ru := FormatShopDeliveryRefund(s, 5000)
 	for _, want := range []string{"↩️ <b>Возврат в магазине</b> — Vino&amp;Co", "🧾 Заказ №1000777", "💸 Возвращено: <b>50,00 ₪</b>", "💸 Возвращено всего: 50,00 ₪ из 230,00 ₪", "👤 Anna &lt;K&gt;"} {
 		if !strings.Contains(ru, want) {
 			t.Errorf("Russian refund lacks %q:\n%s", want, ru)
@@ -368,7 +347,7 @@ func TestFormatShopOrderRefund_RussianAndEnglish(t *testing.T) {
 // Every salesnotify.shop.* key exists in every catalog and keeps its
 // placeholders, so no language shows an empty value or a raw key.
 func TestShopTexts_EveryLocaleHasEveryKey(t *testing.T) {
-	data := map[string]any{"Org": "O", "Number": 7, "Amount": "A", "Total": "T", "Url": "U", "Count": 3, "Qty": 2, "Name": "N", "Price": "P", "Note": "X"}
+	data := map[string]any{"Org": "O", "Number": 7, "Amount": "A", "Total": "T", "Url": "U", "Count": 3, "Qty": 2, "Name": "N", "Price": "P", "Note": "X", "List": "L"}
 	for _, loc := range []string{"en", "ru", "cs", "he", "es"} {
 		for _, k := range shopKeys {
 			got := say(loc, k, data)

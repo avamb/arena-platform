@@ -145,8 +145,8 @@ payload; money is in minor units of `currency`, and no buyer data is carried.
 | `v1.shop.order.manual_review` | `reason` (`stock_short`), `short_items`: `[{variant_id, ordered, available}]` |
 
 Consumers today: the Telegram leg `salesnotify` (`paid`, `refunded`,
-`manual_review` go to subscriptions whose `kinds` contain `shop`; `shipped` is
-not announced). The buyer e-mails are queued as `shop.order_email` worker jobs
+`manual_review` go to subscriptions whose `kinds` contain `shop_sale` (the fact) or
+`shop_delivery` (the card), spec 61 section 7a; `shipped` is not announced). The buyer e-mails are queued as `shop.order_email` worker jobs
 in the same transaction, not through the outbox. The Bil24-site and MACS dispatchers have no mapping for these types, so a shop
 order never reaches a WordPress site.
 

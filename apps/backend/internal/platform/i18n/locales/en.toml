@@ -5076,6 +5076,30 @@ other = "💸 Refunded: <b>{{.Amount}}</b>"
 ["salesnotify.shop.refunded_so_far"]
 other = "💸 Refunded so far: {{.Amount}} of {{.Total}}"
 
+["salesnotify.shop.sale_title"]
+other = "🛍 <b>Shop sale</b> — {{.Org}}"
+
+["salesnotify.shop.sale_items"]
+other = "🛒 Items ({{.Count}}): {{.List}}"
+
+["salesnotify.shop.sale_item"]
+other = "{{.Name}} ×{{.Qty}}"
+
+["salesnotify.shop.sale_refund_full"]
+other = "↩️ Refunded in full"
+
+["salesnotify.shop.sale_refund_part"]
+other = "↩️ Partly refunded: {{.Amount}} of {{.Total}}"
+
+["salesnotify.shop.refund_do_not_ship"]
+other = "🛑 Do not ship until the organizer confirms what to send: part of the order is refunded."
+
+["salesnotify.shop.refund_stop_shipment"]
+other = "🛑 Do not ship. Stop the shipment: the whole order is refunded."
+
+["salesnotify.shop.refund_already_shipped"]
+other = "📮 Already shipped. The refund does not stop the parcel."
+
 ["salesnotify.shop.review_title"]
 other = "⚠️ <b>Shop order needs your attention</b> — {{.Org}}"
 
