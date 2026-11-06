@@ -66,6 +66,11 @@ type publicFeedEventResponse struct {
 	OrgID         string  `json:"org_id"`
 	Name          string  `json:"name"`
 	Description   *string `json:"description"`
+	// Slug is the event's public page address (null until one is assigned),
+	// AgeRating and ShortDescription are the organizer's catalog fields (P-5).
+	Slug             *string `json:"slug"`
+	AgeRating        *string `json:"age_rating"`
+	ShortDescription *string `json:"short_description"`
 	// DescriptionHTML and DescriptionText are the safe HTML and the plain text of
 	// Description, read with the event's format flag (spec 44, RT-03a). nil when
 	// there is no description. Description itself stays the raw stored value.
@@ -107,17 +112,20 @@ func (h *Handler) mediaFileURL(ctx context.Context, id uuid.UUID) string {
 
 func (h *Handler) publicFeedEventFromRow(ctx context.Context, e gen.EventRow) publicFeedEventResponse {
 	resp := publicFeedEventResponse{
-		ID:            e.ID.String(),
-		DisplayNumber: e.DisplayNumber,
-		OrgID:         e.OrgID.String(),
-		Name:          e.Name,
-		Description:   e.Description,
-		Status:        e.Status,
-		VenueNames:    []string{},
-		Visibility:    e.Visibility,
-		ImageURL:      e.ImageURL,
-		CreatedAt:     e.CreatedAt.UTC().Format(time.RFC3339),
-		UpdatedAt:     e.UpdatedAt.UTC().Format(time.RFC3339),
+		ID:               e.ID.String(),
+		DisplayNumber:    e.DisplayNumber,
+		OrgID:            e.OrgID.String(),
+		Name:             e.Name,
+		Description:      e.Description,
+		Slug:             e.Slug,
+		AgeRating:        e.AgeRating,
+		ShortDescription: e.ShortDescription,
+		Status:           e.Status,
+		VenueNames:       []string{},
+		Visibility:       e.Visibility,
+		ImageURL:         e.ImageURL,
+		CreatedAt:        e.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:        e.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 	if e.PosterMediaID != nil {
 		mid := e.PosterMediaID.String()

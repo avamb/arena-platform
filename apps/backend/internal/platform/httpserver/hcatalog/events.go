@@ -13,11 +13,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	catalogdomain "github.com/abhteam/arena_new/apps/backend/internal/domain/catalog"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventslug"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventtext"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgread"
@@ -777,6 +779,21 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A typed slug is checked BEFORE anything is written (P-5): Latin letters,
+	// digits and single hyphens, up to 120 characters. null clears it.
+	if req.Slug.Present && req.Slug.Value != nil {
+		norm, valid := eventslug.Normalize(*req.Slug.Value)
+		if !valid {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"event.invalid_slug",
+				"slug must be 1-120 characters: Latin letters, digits and single hyphens",
+				r, map[string]any{"field": "slug"},
+			))
+			return
+		}
+		req.Slug.Value = &norm
+	}
+
 	// email_note (EC-31) is checked BEFORE anything is written, so a refused
 	// text leaves the event as it was.
 	emailNoteFormat, ok := parseTextFormat(w, r, req.EmailNoteFormat, "email_note_format", "event.invalid_email_note_format")
@@ -986,6 +1003,24 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		resolvedSlug := resolveStr(req.Slug, existing.Slug)
+		if req.Slug.Present && resolvedSlug != nil &&
+			(existing.Slug == nil || !strings.EqualFold(*existing.Slug, *resolvedSlug)) {
+			taken, tErr := q.EventSlugTaken(ctx, orgID, *resolvedSlug)
+			if tErr != nil {
+				h.logger.Error("event: slug check failed", slog.String("error", tErr.Error()))
+				httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+					"event.metadata_update_failed", "failed to update event metadata", r,
+				))
+				return
+			}
+			if taken {
+				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+					"event.duplicate_slug", "another event of this organization already uses this slug",
+					r, map[string]any{"field": "slug"},
+				))
+				return
+			}
+		}
 		resolvedShortDesc := resolveStr(req.ShortDescription, existing.ShortDescription)
 		resolvedGenre := resolveStr(req.Genre, existing.Genre)
 		resolvedAgeRating := resolveStr(req.AgeRating, existing.AgeRating)
@@ -1000,6 +1035,14 @@ func (h *Handler) HandleUpdateEvent(w http.ResponseWriter, r *http.Request) {
 			resolvedDuration, resolvedTeaserURL, resolvedTrailerURL, resolvedMetaDesc, resolvedMetaKW,
 		)
 		if metaErr != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(metaErr, &pgErr) && pgErr.Code == "23505" {
+				httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelopeWithDetails(
+					"event.duplicate_slug", "another event of this organization already uses this slug",
+					r, map[string]any{"field": "slug"},
+				))
+				return
+			}
 			h.logger.Error("event: metadata update failed",
 				slog.String("event_id", eventID.String()),
 				slog.String("error", metaErr.Error()),
@@ -1214,6 +1257,14 @@ func (h *Handler) HandleUpdateEventStatus(w http.ResponseWriter, r *http.Request
 		catalogType = EventPublishedEventType
 	}
 	h.notifyCatalogChange(ctx, catalogType, updated.ID.String(), orgID.String(), nil)
+
+	// P-5: a published event needs a public page address.
+	if req.Status == "published" && updated.Slug == nil {
+		h.ensureEventSlug(ctx, orgID, updated.ID)
+		if fresh, gErr := h.eventQueries.GetEventRaw(ctx, updated.ID); gErr == nil {
+			updated = fresh
+		}
+	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"event": h.hydratedEvent(ctx, updated),
