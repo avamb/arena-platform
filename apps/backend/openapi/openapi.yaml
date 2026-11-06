@@ -1021,6 +1021,12 @@ components:
           description: |
             True when the caller is a platform superadmin. Other
             organization routes then require the X-Admin-Reason header.
+        branding:
+          allOf:
+            - $ref: "#/components/schemas/OrganizationBranding"
+          description: |
+            The organization's theme, so the event center can paint itself
+            without a second request. Empty object = platform palette.
 
     MeUser:
       type: object
@@ -2452,6 +2458,50 @@ components:
             - org_admin
           example: "agent"
 
+    OrganizationBranding:
+      type: object
+      additionalProperties: false
+      description: |
+        An organization's theme (migration 0204, spec 62 §12.1). Every key is
+        optional; an absent key falls back to the platform palette
+        (arenasoldout.com: primary #001489, ink #0B1020, bg #F6F7FB, font
+        Onest). The event center writes the tokens into its CSS; the ticket
+        PDF and the ticket letters take their accent colour from `primary`.
+        Colours are `#rrggbb` or `rgba(r, g, b, a)`; anything else, and any
+        other key, is refused with 400 `org.invalid_branding`.
+      properties:
+        primary:
+          type: string
+          description: Main brand colour (buttons, the active tab, the PDF and letter accent).
+          example: "#822121"
+        on_primary:
+          type: string
+          description: Text and icon colour drawn on `primary`.
+          example: "#ffffff"
+        on_primary_muted:
+          type: string
+          description: Secondary text colour drawn on `primary`.
+          example: "rgba(255, 255, 255, .72)"
+        ink:
+          type: string
+          description: Main text colour on the page background.
+          example: "#2c2c2c"
+        accent:
+          type: string
+          description: Second brand colour for highlights.
+          example: "#d9a441"
+        bg:
+          type: string
+          description: Page background colour.
+          example: "#f0e6dc"
+        font:
+          type: string
+          description: |
+            Interface font, one of `Assistant`, `Onest`, `Golos Text`
+            (a plain string so the generated enum constants of other
+            schemas are not renamed).
+          example: "Assistant"
+
     OrganizationItem:
       type: object
       required: [id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, kyb_status, created_at, updated_at]
@@ -2563,6 +2613,13 @@ components:
           format: uri
           description: Public marketing or info URL.
           example: "https://acme.example"
+        branding:
+          allOf:
+            - $ref: "#/components/schemas/OrganizationBranding"
+          description: |
+            The organization's theme. Answered by GET and PATCH
+            /v1/organizations/{id} only; absent or empty means the
+            platform palette.
         logo_media_id:
           type: [string, "null"]
           format: uuid
@@ -2795,6 +2852,17 @@ components:
         website_url:
           type: string
           description: New public marketing / info URL (empty string clears). Validated as URI when non-empty.
+        branding:
+          type: [object, "null"]
+          additionalProperties:
+            type: string
+          description: |
+            Replaces the organization's whole theme (see
+            OrganizationBranding for the keys and values); `null` or `{}`
+            returns to the platform palette, an omitted member keeps it.
+            Accepted by PATCH /v1/organizations/{id} only (permission
+            `org.update`, the owner). An unknown key or an invalid value
+            answers 400 `org.invalid_branding`.
         logo_media_id:
           type: [string, "null"]
           format: uuid

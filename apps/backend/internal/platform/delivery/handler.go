@@ -217,6 +217,12 @@ type Payload struct {
 	// MediaResolver. When empty the platform fallback logo URL is used
 	// and the PDF header simply omits the logo image slot.
 	OrgLogoMediaID string `json:"org_logo_media_id,omitempty"`
+	// OrgAccentColor is the organization's branding.primary (migration
+	// 0204, spec 62 P-23), the accent of the PDF and the letter. A hint like
+	// the presentation fields: resolved at render time (resolvePresentation)
+	// when empty; only a "#rrggbb" value is used, anything else keeps the
+	// platform default.
+	OrgAccentColor string `json:"org_accent_color,omitempty"`
 	OrgName        string `json:"org_name,omitempty"`
 	// PromoterName is the event's promoter when it is not the selling
 	// organization (migration 0113). Printed as the PDF's "Organizer"
@@ -915,6 +921,7 @@ func buildPDFTicket(ticketID uuid.UUID, p Payload, branding templates.Branding, 
 		OrgLogo:                logoBytes,
 		PosterImage:            posterBytes,
 		OrgName:                branding.OrgName,
+		AccentColor:            branding.Accent,
 		OrganizerName:          p.PromoterName,
 		OrgWebsiteURL:          branding.WebsiteURL,
 		LegalName:              branding.LegalName,
@@ -983,6 +990,7 @@ func resolveBranding(ctx context.Context, m MediaResolver, p Payload, logger *sl
 		TaxIDScheme:            strings.TrimSpace(p.OrgTaxIDScheme),
 	}
 	b.LogoAlt = b.OrgName
+	b.Accent = hexAccent(p.OrgAccentColor)
 
 	logoID := strings.TrimSpace(p.OrgLogoMediaID)
 	if logoID == "" || m == nil {
