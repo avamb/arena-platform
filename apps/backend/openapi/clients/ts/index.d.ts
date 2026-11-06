@@ -11442,6 +11442,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/orders/{order_id}/external-refund": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record a refund made outside the platform
+         * @description Records money the organizer already returned to the buyer in the payment
+         *     provider's own cabinet (spec 62 section 14.6, the orders of the
+         *     WordPress era). Arena moves no money. In ONE transaction every named
+         *     ticket is cancelled (its place goes back on sale, its barcodes stop
+         *     admitting) and a refund with `settlement` `external` is booked for it
+         *     with the FINAL amount returned for that ticket; the order becomes
+         *     `partially_refunded`, or `refunded` once no ticket is left active. The
+         *     cancellation is announced through the outbox like any ticket
+         *     cancellation (the sites and MACS hear `ticket.refunded`). The call does
+         *     not e-mail the buyer. The rule is one final refund per ticket: a ticket
+         *     that already has an external refund answers 409
+         *     `order.external_refund_exists` with the amount recorded in `details`,
+         *     and a ticket cannot be refunded twice. The amount of a ticket may not
+         *     exceed what the buyer paid for it. A ticket already scanned at the gate
+         *     is refused like in the ticket cancellation route. Any refusal rolls the
+         *     whole call back. Requires the `refund.create` permission; the web asks
+         *     for the password again.
+         */
+        post: operations["postV1OrganizationsOrgIdOrdersOrderIdExternalRefund"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/orders/{order_id}/consents": {
         parameters: {
             query?: never;
@@ -17035,6 +17071,67 @@ export interface components {
              * @description When the one-time address stops being valid (24 hours after the request). Null for the order's own address.
              */
             expires_at: string | null;
+        };
+        /** @description One ticket of an external refund. */
+        ExternalRefundItem: {
+            /**
+             * Format: uuid
+             * @description UUID of an active ticket of the order.
+             */
+            ticket_id: string;
+            /**
+             * Format: int64
+             * @description The FINAL amount returned for this ticket, in minor units. Positive, at most the price paid for the ticket.
+             */
+            amount_minor: number;
+            /** @description The refund number of the provider's cabinet (AllPay), kept for reconciliation. Up to 120 characters; may repeat across tickets. */
+            provider_refund_ref?: string;
+        };
+        /** @description Body of the external-refund route. */
+        ExternalRefundRequest: {
+            /** @description The tickets to refund, 1 to 200, each at most once. */
+            items: components["schemas"]["ExternalRefundItem"][];
+        };
+        /** @description One recorded external refund. */
+        ExternalRefundResultItem: {
+            /**
+             * Format: uuid
+             * @description UUID of the cancelled ticket.
+             */
+            ticket_id: string;
+            /**
+             * Format: uuid
+             * @description UUID of the refunds row (settlement external).
+             */
+            refund_id: string;
+            /**
+             * Format: int64
+             * @description The final amount recorded for the ticket, in minor units.
+             */
+            amount_minor: number;
+            /** @description ISO 4217 currency of the order. */
+            currency: string;
+            /** @description The provider refund number as given; empty when none was given. */
+            provider_refund_ref: string;
+        };
+        /** @description What the external refund recorded. */
+        ExternalRefundResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the order.
+             */
+            order_id: string;
+            /** @description The order status after the call, `partially_refunded` or `refunded`. */
+            order_status: string;
+            /**
+             * Format: int64
+             * @description The sum recorded by this call, in minor units.
+             */
+            total_minor: number;
+            /** @description ISO 4217 currency of the order. */
+            currency: string;
+            /** @description One entry per refunded ticket, in request order. */
+            items: components["schemas"]["ExternalRefundResultItem"][];
         };
         /** @description One refund row of an order, as the organizer's refund API reports it. */
         OrderRefundItem: {
@@ -76277,6 +76374,107 @@ export interface operations {
                 };
             };
             /** @description Delivery store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdOrdersOrderIdExternalRefund: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExternalRefundRequest"];
+            };
+        };
+        responses: {
+            /** @description The refunds were recorded and the tickets cancelled. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExternalRefundResponse"];
+                };
+            };
+            /** @description The body is malformed, a ticket id is not a UUID, a ticket repeats, or an amount is not positive. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`refund.create`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order is not paid (`order.not_refundable`), the ticket already has a refund (`order.external_refund_exists`), or is not active (`ticket.not_active`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The ticket is not in this order (`order.ticket_not_in_order`) or the amount is above the ticket price (`order.refund_exceeds_price`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
             503: {
                 headers: {
                     [name: string]: unknown;

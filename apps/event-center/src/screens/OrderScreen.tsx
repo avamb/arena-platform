@@ -10,6 +10,7 @@ import { OrderReferral } from "@/components/OrderReferral";
 import { OrderTickets } from "@/components/OrderTickets";
 import { CancelOrder } from "@/components/CancelOrder";
 import { RefundOrder } from "@/components/RefundOrder";
+import { ExternalRefund } from "@/components/ExternalRefund";
 import { Badge, ErrorBox, Loading } from "@/components/ui";
 import { useOrg } from "@/screens/OrgLayout";
 import { OrderStatusBadge } from "@/screens/OrdersScreen";
@@ -98,6 +99,7 @@ export function OrderScreen() {
             canCreate={access.can("refund.create") && access.can("refund.read")}
             canApprove={access.can("refund.approve")}
           />
+          <ExternalRefund key={`ext:${orgId}:${o.id}`} orgId={orgId} order={o} canCreate={access.can("refund.create")} />
         </div>
       </section>
 

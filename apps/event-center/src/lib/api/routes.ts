@@ -89,6 +89,7 @@ export const API = {
   cancelOrder: { method: "POST", path: "/v1/organizations/{org_id}/orders/{id}/cancel" },
   // 8-1: refund tickets of an order. The create asks for the password again (spec 37 4.6).
   refundOptions: { method: "GET", path: "/v1/organizations/{org_id}/orders/{order_id}/refund-options" },
+  externalRefund: { method: "POST", path: "/v1/organizations/{org_id}/orders/{order_id}/external-refund" },
   refundCreate: { method: "POST", path: "/v1/organizations/{org_id}/orders/{order_id}/refunds" },
   // "Refer a friend" (spec 52): the programme of an event, its pause/resume/end, totals and rewards.
   referralProgram: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/referral-program" },

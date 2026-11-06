@@ -44,6 +44,13 @@ func (s *Server) mountOrderRoutes(r chi.Router) {
 		pr.Post("/organizations/{org_id}/orders/{id}/cancel", s.handleCancelOrder)
 	})
 	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "refund.create", "refunds")
+		pr.Use(s.requireWebStepUp) // money: the web asks for the password again
+		// Money the organizer returned in the provider's own cabinet (WordPress-era orders):
+		// cancels the tickets and books the final amount per ticket (spec 62 14.6).
+		pr.Post("/organizations/{org_id}/orders/{order_id}/external-refund", s.handleExternalRefundOrder)
+	})
+	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "ticket.update", "orders")
 		// Send an order's tickets again, to its own address or a one-time one (EC-13).
 		pr.Post("/organizations/{org_id}/orders/{order_id}/resend-tickets", s.handleResendOrderTickets)

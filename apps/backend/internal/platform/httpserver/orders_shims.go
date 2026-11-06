@@ -101,3 +101,13 @@ func (s *Server) handleResendOrderTickets(w http.ResponseWriter, r *http.Request
 	}
 	s.ticketsHandler().HandleResendOrderTickets(w, r)
 }
+
+// handleExternalRefundOrder serves POST .../orders/{order_id}/external-refund
+// (spec 62 14.6): membership here, refund.create plus the web step-up in the
+// mount, the org-scoped order lookup and the single transaction in htickets.
+func (s *Server) handleExternalRefundOrder(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.ticketsHandler().HandleExternalRefund(w, r)
+}

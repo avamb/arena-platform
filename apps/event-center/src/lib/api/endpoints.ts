@@ -52,6 +52,8 @@ import type {
   OrderListResponse,
   OrderRefundOptions,
   OrderResendTicketsResponse,
+  ExternalRefundRequest,
+  ExternalRefundResponse,
   OrderSummary,
   OrganizationItem,
   OrgMeResponse,
@@ -460,6 +462,28 @@ export async function createOrderRefunds(
     throw new ApiError(200, "refund.unconfirmed_response", "The refund response could not be verified.");
   }
   return answer;
+}
+
+// ─── P-14: a refund made outside the platform ────────────────────────────────
+
+/**
+ * Records money the organizer returned in the provider's own cabinet: voids the
+ * named tickets and books one FINAL amount per ticket (spec 62 14.6). `headers`
+ * carries the step-up token (`withStepUp`). A ticket that already has a refund
+ * answers 409 `order.external_refund_exists` with the recorded amount.
+ */
+export function recordExternalRefund(
+  orgId: string,
+  orderId: string,
+  body: ExternalRefundRequest,
+  headers: Record<string, string>,
+): Promise<ExternalRefundResponse> {
+  return call<ExternalRefundResponse>({
+    route: API.externalRefund,
+    params: { org_id: orgId, order_id: orderId },
+    body,
+    headers,
+  });
 }
 
 // ─── 4-7: the owner's "Organization data" ────────────────────────────────────
