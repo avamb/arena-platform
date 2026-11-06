@@ -1,4 +1,4 @@
-# Arena Sold Out organizer storefront (shop.einatwinery.com, the organizer's own domain).
+# Arena Sold Out organizer storefront (www.einatwinery.com, the organizer's own domain).
 # Carts, checkout and order status pages (/checkout/<token>) are private and never indexed.
 # These rules are for the own-domain layout. On the platform host the shop lives under an
 # organization prefix (/<org>/cart) and robots.txt cannot name it, so every one of these pages
@@ -9,4 +9,4 @@ Disallow: /checkout
 Disallow: /checkout/
 Disallow: /search
 
-Sitemap: https://shop.einatwinery.com/sitemap.xml
+Sitemap: https://www.einatwinery.com/sitemap.xml
