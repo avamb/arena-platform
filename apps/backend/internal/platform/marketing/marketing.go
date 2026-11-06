@@ -46,6 +46,7 @@ const JobTypeConfirmEmail = "marketing.confirm_email"
 // Journal sources.
 const (
 	SourceWidget      = "widget"
+	SourceSite        = "site"
 	SourceConfirmLink = "confirm_link"
 	SourceWithdraw    = "withdraw_link"
 	SourceOrganizer   = "organizer"
@@ -72,6 +73,7 @@ const (
 var (
 	ErrInvalidEmail     = errors.New("marketing: invalid e-mail")
 	ErrTextOutdated     = errors.New("marketing: consent text outdated")
+	ErrTextVersion      = errors.New("marketing: text version missing or malformed")
 	ErrTokenInvalid     = errors.New("marketing: link invalid or used")
 	ErrCodeNotFound     = errors.New("marketing: promo code not found in the organization")
 	ErrCodeNeedsPerUser = errors.New("marketing: the promo code must be limited to one use per buyer")
@@ -209,11 +211,17 @@ func (o Offer) IsRewardCode(id uuid.UUID) bool {
 
 // Grant is one ticked consent at checkout.
 type Grant struct {
-	OrgID             uuid.UUID
-	Email             string
-	Name              string
-	Locale            string
-	TextVersion       string
+	OrgID       uuid.UUID
+	Email       string
+	Name        string
+	Phone       string
+	Locale      string
+	TextVersion string
+	// Source is SourceWidget (checkout tick, the default) or SourceSite (the
+	// subscription form of a static site, spec 62 П-10). A site shows its OWN
+	// consent text, so it names the version of that text itself (ValidSiteTextVersion)
+	// instead of having to equal TextVersion.
+	Source            string
 	CheckoutSessionID *uuid.UUID
 	PageURL           string
 	ClientIP          string
@@ -238,7 +246,15 @@ func RecordGrantTx(ctx context.Context, tx DB, g Grant) (uuid.UUID, error) {
 	if err != nil {
 		return uuid.Nil, err
 	}
-	if g.TextVersion != TextVersion {
+	source := g.Source
+	if source != SourceSite {
+		source = SourceWidget
+	}
+	if source == SourceSite {
+		if !ValidSiteTextVersion(g.TextVersion) {
+			return uuid.Nil, ErrTextVersion
+		}
+	} else if g.TextVersion != TextVersion {
 		return uuid.Nil, ErrTextOutdated
 	}
 	now := g.Now.UTC()
@@ -257,23 +273,24 @@ func RecordGrantTx(ctx context.Context, tx DB, g Grant) (uuid.UUID, error) {
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO marketing_subscriptions
 		    (org_id, email, email_normalized, buyer_name, locale, status, text_version, source,
-		     page_url, granted_at, unsubscribe_token, created_at, updated_at)
-		VALUES ($1, $2, $3, NULLIF($4, ''), $5, 'pending', $6, $7, $8, $9, $10, $9, $9)
+		     page_url, granted_at, unsubscribe_token, created_at, updated_at, phone)
+		VALUES ($1, $2, $3, NULLIF($4, ''), $5, 'pending', $6, $7, $8, $9, $10, $9, $9, $11)
 		ON CONFLICT (org_id, email_normalized) DO UPDATE SET
 		    email = EXCLUDED.email,
 		    buyer_name = COALESCE(EXCLUDED.buyer_name, marketing_subscriptions.buyer_name),
 		    locale = EXCLUDED.locale, text_version = EXCLUDED.text_version,
+		    phone = COALESCE(NULLIF(EXCLUDED.phone, ''), marketing_subscriptions.phone),
 		    page_url = EXCLUDED.page_url, granted_at = EXCLUDED.granted_at,
 		    status = CASE WHEN marketing_subscriptions.status = 'confirmed' THEN 'confirmed' ELSE 'pending' END,
 		    withdrawn_at = NULL, updated_at = EXCLUDED.updated_at
 		RETURNING id, status, confirm_sent_at`,
 		g.OrgID, strings.TrimSpace(g.Email), email, capRunes(strings.TrimSpace(g.Name), maxName),
-		salesubscribe.CleanLocale(g.Locale), g.TextVersion, SourceWidget,
-		salesubscribe.CleanPageURL(g.PageURL), now, token,
+		salesubscribe.CleanLocale(g.Locale), g.TextVersion, source,
+		salesubscribe.CleanPageURL(g.PageURL), now, token, capRunes(strings.TrimSpace(g.Phone), 30),
 	).Scan(&id, &status, &lastSent); err != nil {
 		return uuid.Nil, err
 	}
-	if err := journal(ctx, tx, id, g.OrgID, "granted", g.TextVersion, g.Locale, SourceWidget,
+	if err := journal(ctx, tx, id, g.OrgID, "granted", g.TextVersion, g.Locale, source,
 		g.CheckoutSessionID, g.ClientIP, g.UserAgent, now); err != nil {
 		return uuid.Nil, err
 	}
@@ -314,6 +331,22 @@ func enqueue(ctx context.Context, db DB, id uuid.UUID) error {
 		INSERT INTO worker_jobs (job_type, payload, max_attempts, status, scheduled_at)
 		VALUES ($1, $2::jsonb, 5, 'pending', now())`, JobTypeConfirmEmail, body)
 	return err
+}
+
+// ValidSiteTextVersion reports whether v can name the consent text of a
+// static site's form: 3 to 64 characters of letters, digits and . _ : -
+func ValidSiteTextVersion(v string) bool {
+	if len(v) < 3 || len(v) > 64 {
+		return false
+	}
+	for _, r := range v {
+		ok := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '.' || r == '_' || r == ':' || r == '-'
+		if !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // HashToken is what the table stores of a confirmation token.

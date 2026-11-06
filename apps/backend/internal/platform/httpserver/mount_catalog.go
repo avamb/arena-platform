@@ -269,6 +269,10 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 	// "Write to the organizer" form of the hosted page (HP contact form).
 	// Always mounted; the handler answers 503 without a database.
 	r.Post("/public/organizer-contact/{org_slug}", s.handleOrganizerContact)
+	// The same form, the subscription without a purchase and their site guard
+	// for a static site, addressed by feed token (spec 62 section 10).
+	r.With(s.siteFormIdempotency("organizer-contact")).Post("/public/feeds/{feed_token}/organizer-contact", s.handleSiteContact)
+	r.With(s.siteFormIdempotency("marketing-subscriptions")).Post("/public/feeds/{feed_token}/marketing-subscriptions", s.handleSiteSubscribe)
 	// Funnel telemetry sink — WID-0e (feature #322).
 	// Always mounted; handler self-gates with 503 when funnelQueries is nil.
 	r.Post("/public/feeds/{feed_token}/events", s.handlePublicFeedFunnelEvents)
