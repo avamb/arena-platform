@@ -42,6 +42,10 @@ type settingsBody struct {
 	ShopDomain       *string    `json:"shop_domain"`
 	MaxLineQty       *int32     `json:"max_line_qty"`
 	Enabled          *bool      `json:"enabled"`
+	// ShopName and SenderEmail: absent or null keeps the stored value, ""
+	// clears it. sender_email is the platform superadmin's alone.
+	ShopName    *string `json:"shop_name"`
+	SenderEmail *string `json:"sender_email"`
 	// ExpectedUpdatedAt is the updated_at the editor loaded the settings
 	// with; a different stored value answers 409 shop.settings_changed.
 	ExpectedUpdatedAt *string `json:"expected_updated_at"`
@@ -93,6 +97,7 @@ func (h *Handler) HandlePutSettings(w http.ResponseWriter, r *http.Request) {
 		ShopDomain: b.ShopDomain, MayChangeDomain: auth.HasSuperadminOrgAccess(r.Context()),
 		MaxLineQty: b.MaxLineQty, Enabled: b.Enabled, ExpectedUpdatedAt: expected,
 		MayChangeEnabled: true, PaymentReady: paymentReady,
+		ShopName: b.ShopName, SenderEmail: b.SenderEmail, MayChangeSender: auth.HasSuperadminOrgAccess(r.Context()),
 	})
 	if err != nil {
 		h.fail(w, r, "write settings", err)
@@ -101,6 +106,9 @@ func (h *Handler) HandlePutSettings(w http.ResponseWriter, r *http.Request) {
 	meta := map[string]any{"currency": st.Currency, "shipping_fee_minor": st.ShippingFeeMinor}
 	if st.Enabled != before.Enabled {
 		meta["enabled_before"], meta["enabled"] = before.Enabled, st.Enabled
+	}
+	if !sameOptStr(st.SenderEmail, before.SenderEmail) {
+		meta["sender_email_before"], meta["sender_email"] = optStr(before.SenderEmail), optStr(st.SenderEmail)
 	}
 	h.writeAudit(r, "v1.shop.settings.update", "shop_settings", org.String(), org, meta)
 	h.writeSettings(w, r, st)

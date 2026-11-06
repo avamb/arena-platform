@@ -51,6 +51,7 @@ import { blockersOf, blockersOfError, withBlockers } from "@/lib/shopStorefront"
 import { useOrg } from "@/screens/OrgLayout";
 
 const PROBLEM_KEY: Record<SettingsProblem, MessageKey> = {
+  shopName: "shop.settings.err.shopName",
   currency: "shop.settings.err.currency",
   currencyUnknown: "shop.settings.err.currencyUnknown",
   shippingFee: "shop.settings.err.shippingFee",
@@ -106,7 +107,7 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
   const set = (change: Partial<SettingsDraft>) => p.onDraft({ ...draft, ...change });
   const err = (k: SettingsProblem): string | undefined =>
     problems[k] === true
-      ? t(PROBLEM_KEY[k], { max: k === "shippingLabel" ? SHOP_LIMITS.shippingLabel : k === "announcement" ? SHOP_LIMITS.announcement : SHOP_LIMITS.logisticsNote })
+      ? t(PROBLEM_KEY[k], { max: k === "shopName" ? SHOP_LIMITS.shopName : k === "shippingLabel" ? SHOP_LIMITS.shippingLabel : k === "announcement" ? SHOP_LIMITS.announcement : SHOP_LIMITS.logisticsNote })
       : undefined;
   const currency = draft.currency.trim().toUpperCase() || settings.currency;
   const currencyMode = currencyState(p.productCount);
@@ -212,6 +213,14 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
           value={draft.announcement}
           onChange={(v) => set({ announcement: v })}
           testId="shop-settings-announcement"
+        />
+        <TextField
+          label={t("shop.settings.f.shopName")}
+          hint={t("shop.settings.f.shopNameHint", { max: SHOP_LIMITS.shopName })}
+          error={err("shopName")}
+          value={draft.shopName}
+          onChange={(v) => set({ shopName: v })}
+          testId="shop-settings-name"
         />
         <TextField
           label={t("shop.settings.f.contactEmail")}

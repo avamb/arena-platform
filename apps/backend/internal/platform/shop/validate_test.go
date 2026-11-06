@@ -243,6 +243,49 @@ func TestValidateSettings(t *testing.T) {
 	}
 }
 
+// The shop's own name is trimmed and capped at 100 characters, the sender is
+// lower-cased and must be an address; an empty value means "clear".
+func TestValidateSettings_ShopNameAndSender(t *testing.T) {
+	name, sender := "  Einat Winery ", " Shop@EinatWinery.COM "
+	in := SettingsInput{Currency: "ILS", ShopName: &name, SenderEmail: &sender}
+	if err := validateSettings(&in); err != nil {
+		t.Fatalf("validateSettings: %v", err)
+	}
+	if *in.ShopName != "Einat Winery" || *in.SenderEmail != "shop@einatwinery.com" {
+		t.Errorf("not normalized: name %q sender %q", *in.ShopName, *in.SenderEmail)
+	}
+	blank := "   "
+	in = SettingsInput{Currency: "ILS", ShopName: &blank, SenderEmail: &blank}
+	if err := validateSettings(&in); err != nil || *in.ShopName != "" || *in.SenderEmail != "" {
+		t.Errorf("blank values = %v %q %q; want accepted as empty (clear)", err, *in.ShopName, *in.SenderEmail)
+	}
+	long, notMail := strings.Repeat("я", MaxShopNameLen+1), "shop at einatwinery"
+	for code, in := range map[string]SettingsInput{
+		"shop.invalid_shop_name":    {Currency: "ILS", ShopName: &long},
+		"shop.invalid_sender_email": {Currency: "ILS", SenderEmail: &notMail},
+	} {
+		err := validateSettings(&in)
+		var e *Error
+		if !errors.As(err, &e) || e.Code != code {
+			t.Errorf("%s: got %v", code, err)
+		}
+	}
+}
+
+// keepOrSet: nil keeps the stored value, "" clears it, a value replaces it.
+func TestKeepOrSet(t *testing.T) {
+	stored, empty, next := "old", "", "new"
+	if got := keepOrSet(&stored, nil); got == nil || *got != "old" {
+		t.Errorf("nil = %v; want the stored value", got)
+	}
+	if got := keepOrSet(&stored, &empty); got != nil {
+		t.Errorf("empty = %q; want nil", *got)
+	}
+	if got := keepOrSet(nil, &next); got == nil || *got != "new" {
+		t.Errorf("value = %v; want new", got)
+	}
+}
+
 func TestNewOrderToken(t *testing.T) {
 	a, err := NewOrderToken()
 	if err != nil {

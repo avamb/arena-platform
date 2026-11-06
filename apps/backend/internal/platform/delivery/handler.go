@@ -246,6 +246,9 @@ type Payload struct {
 	// It is populated from the organization record by the enqueueing path.
 	SenderEmail              string `json:"sender_email,omitempty"`
 	SenderVerificationStatus string `json:"sender_verification_status,omitempty"`
+	// FromName names the sender in the From header. Only a shop letter sets
+	// it: the shop's own name (shop_settings.shop_name, migration 0200).
+	FromName string `json:"from_name,omitempty"`
 }
 
 // HandlerOptions bundles the dependencies required by the delivery handler.
@@ -763,6 +766,7 @@ func ticketEmailMessage(p Payload, recipientEmail, subject, htmlBody, textBody s
 	}
 	return email.Message{
 		From:     from,
+		FromName: strings.TrimSpace(p.FromName),
 		To:       recipientEmail,
 		Subject:  subject,
 		ReplyTo:  strings.TrimSpace(p.OrgContactEmail),

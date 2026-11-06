@@ -60,6 +60,7 @@ export const SHOP_LIMITS = {
   maxVariants: 100,
   announcement: 500,
   shippingLabel: 200,
+  shopName: 100,
   logisticsNote: 2000,
   trackingNote: 2000,
   refundReason: 2000,
@@ -848,6 +849,8 @@ export function staffNoteChanged(typed: string, saved: string): boolean {
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 export interface SettingsDraft {
+  /** The shop's own name for the storefront and the buyer's letters; empty = the organization's name. */
+  shopName: string;
   currency: string;
   shippingFee: string;
   shippingLabel: string;
@@ -862,6 +865,7 @@ export interface SettingsDraft {
 
 export function settingsDraft(s: ShopSettings): SettingsDraft {
   return {
+    shopName: s.shop_name ?? "",
     currency: s.currency,
     shippingFee: moneyInput(s.shipping_fee_minor, s.currency),
     shippingLabel: s.shipping_label,
@@ -876,6 +880,7 @@ export function settingsDraft(s: ShopSettings): SettingsDraft {
 }
 
 export type SettingsProblem =
+  | "shopName"
   | "currency"
   | "currencyUnknown"
   | "shippingFee"
@@ -898,6 +903,7 @@ export function checkSettings(d: SettingsDraft, opts: { currencyLocked?: boolean
   else if (opts.currencyLocked !== true && !isIsoCurrency(cur)) bad.currencyUnknown = true;
   else if (parseMoney(d.shippingFee.trim() === "" ? "0" : d.shippingFee, cur) === null) bad.shippingFee = true;
   if ([...d.shippingLabel.trim()].length > SHOP_LIMITS.shippingLabel) bad.shippingLabel = true;
+  if ([...d.shopName.trim()].length > SHOP_LIMITS.shopName) bad.shopName = true;
   if (d.country.trim() !== "" && !/^[A-Za-z]{2}$/.test(d.country.trim())) bad.country = true;
   if (d.ageGate.trim() !== "") {
     const n = Number(d.ageGate.trim());
@@ -927,6 +933,8 @@ export function settingsRequest(d: SettingsDraft, loadedUpdatedAt?: string | nul
     contact_email: d.contactEmail.trim() === "" ? null : d.contactEmail.trim(),
     logistics_note: d.logisticsNote.trim(),
     sales_channel_id: d.salesChannelId === "" ? null : d.salesChannelId,
+    // An empty name clears it (the organization's name again).
+    shop_name: d.shopName.trim(),
   };
   // Absent keeps the stored value.
   if (d.maxLineQty.trim() !== "") body.max_line_qty = Number(d.maxLineQty.trim());

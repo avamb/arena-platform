@@ -28,6 +28,9 @@ type publicSettingsJSON struct {
 	AnnouncementText string  `json:"announcement_text"`
 	ContactEmail     *string `json:"contact_email"`
 	MaxLineQty       int32   `json:"max_line_qty"`
+	// ShopName is the shop's own name, absent when it has none (the
+	// storefront then prints its built-in name).
+	ShopName string `json:"shop_name,omitempty"`
 	// CaptchaSiteKey is the Turnstile site key the checkout form renders its
 	// widget with; absent while the shop's checkout has no captcha.
 	CaptchaSiteKey string `json:"captcha_site_key,omitempty"`
@@ -94,6 +97,7 @@ func (h *Handler) HandlePublicCatalog(w http.ResponseWriter, r *http.Request) {
 			Currency: st.Currency, ShippingFeeMinor: st.ShippingFeeMinor, ShippingLabel: st.ShippingLabel,
 			CountryISO2: st.CountryISO2, AgeGateMinAge: st.AgeGateMinAge, AnnouncementText: st.AnnouncementText,
 			ContactEmail: st.ContactEmail, MaxLineQty: st.MaxLineQty, CaptchaSiteKey: h.captchaSiteKey(),
+			ShopName:       optStr(st.ShopName),
 			ReferralActive: referralActive, ReferralFriendDiscountPct: referralPct,
 			WhiteLabel: h.whiteLabel(r.Context(), sf.Org.ID),
 		},

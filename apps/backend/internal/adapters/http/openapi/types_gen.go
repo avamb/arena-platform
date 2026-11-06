@@ -19837,6 +19837,9 @@ type ShopPublicSettings struct {
 	// ShippingLabel How the delivery is called.
 	ShippingLabel string `json:"shipping_label"`
 
+	// ShopName The shop's own name; absent when it has none, and the storefront then prints its built-in name.
+	ShopName *string `json:"shop_name,omitempty"`
+
 	// WhiteLabel True when the organization has white label today; the storefront then hides its "on the Arena Sold Out platform" footer.
 	WhiteLabel *bool `json:"white_label,omitempty"`
 }
@@ -20007,6 +20010,9 @@ type ShopSettings struct {
 	// SalesChannelId Sales channel whose payment provider takes the shop's money; null means the organization's oldest channel whose provider can host a payment page with a configured provider account.
 	SalesChannelId *openapi_types.UUID `json:"sales_channel_id"`
 
+	// SenderEmail From address of the shop letters, set by the platform operator once the domain is authenticated with the e-mail provider; null means the organization's verified sender, else the platform address.
+	SenderEmail *string `json:"sender_email"`
+
 	// ShippingFeeMinor Flat delivery fee added to every order, minor units.
 	ShippingFeeMinor int64 `json:"shipping_fee_minor"`
 
@@ -20018,6 +20024,9 @@ type ShopSettings struct {
 
 	// ShopMode The organization's shop mode, `full` or `orders_only`, or null for none.
 	ShopMode *string `json:"shop_mode"`
+
+	// ShopName The shop's own name, printed by the storefront and in the header and the From display name of the shop letters; null means the organization's name.
+	ShopName *string `json:"shop_name"`
 
 	// UpdatedAt When the settings were last saved; null when never.
 	UpdatedAt *time.Time `json:"updated_at"`
@@ -20058,6 +20067,9 @@ type ShopSettingsUpdateRequest struct {
 	// SalesChannelId A sales channel of this organization, or null for the oldest one whose provider can take the payment.
 	SalesChannelId *openapi_types.UUID `json:"sales_channel_id"`
 
+	// SenderEmail From address of the shop letters (platform superadmin only, 403 `shop.sender_superadmin_only` otherwise); absent or null keeps it, an empty string clears it.
+	SenderEmail *string `json:"sender_email"`
+
 	// ShippingFeeMinor Flat delivery fee, minor units, zero or more.
 	ShippingFeeMinor *int64 `json:"shipping_fee_minor,omitempty"`
 
@@ -20066,6 +20078,9 @@ type ShopSettingsUpdateRequest struct {
 
 	// ShopDomain Storefront host (platform superadmin only); absent or null keeps it, an empty string clears it.
 	ShopDomain *string `json:"shop_domain"`
+
+	// ShopName The shop's own name, up to 100 characters; absent or null keeps it, an empty string clears it (the organization's name again).
+	ShopName *string `json:"shop_name"`
 }
 
 // ShopShipRequest Shipping details (the body may be empty).

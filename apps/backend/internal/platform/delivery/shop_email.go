@@ -315,14 +315,18 @@ func loadShopOrg(ctx context.Context, db gen.DBTX, orgID uuid.UUID) (shopOrg, er
 // name, legal block, sender and logo, and the SHOP's own contact address (the
 // organization's contact_email is never published on a hosted storefront, owner
 // rule 2026-10-13, so there is no fallback to it: no address, no contact line).
+// A shop with its own name and sender (migration 0200) speaks for itself: the
+// header and the From display name carry the shop's name, the From address is
+// the shop's sender. The legal block stays the organization's: it is the
+// seller.
 func shopLetterPayload(ctx context.Context, db gen.DBTX, orgID uuid.UUID) (Payload, error) {
 	g, err := loadShopOrg(ctx, db, orgID)
 	if err != nil {
 		return Payload{}, fmt.Errorf("delivery: read organization of shop order: %w", err)
 	}
-	contact := ""
+	contact, shopName, shopSender := "", "", ""
 	if st, err := gen.New(db).GetShopSettings(ctx, orgID); err == nil {
-		contact = ptrStr(st.ContactEmail)
+		contact, shopName, shopSender = ptrStr(st.ContactEmail), ptrStr(st.ShopName), ptrStr(st.SenderEmail)
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return Payload{}, fmt.Errorf("delivery: read shop settings: %w", err)
 	}
@@ -336,6 +340,14 @@ func shopLetterPayload(ctx context.Context, db gen.DBTX, orgID uuid.UUID) (Paylo
 	}
 	if g.LogoMediaID != nil {
 		p.OrgLogoMediaID = g.LogoMediaID.String()
+	}
+	if shopName != "" {
+		p.OrgName, p.FromName = shopName, shopName
+	}
+	if shopSender != "" {
+		// Set by a platform superadmin once the domain is authenticated in the
+		// platform's Brevo account (shop.SettingsInput.SenderEmail).
+		p.SenderEmail, p.SenderVerificationStatus = shopSender, "verified"
 	}
 	return p, nil
 }
