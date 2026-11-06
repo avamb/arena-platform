@@ -177,6 +177,10 @@ type HostedPaymentLookupResult struct {
 	State HostedPaymentState
 	// Event is set for HostedPaymentSettled only.
 	Event NormalizedEvent
+	// URL is the payment page of an existing order, when the provider's
+	// status answer carries it (HostedPaymentUnpaid). Empty when the
+	// provider does not say; AllPay's paymentstatus never does.
+	URL string
 }
 
 // HostedPaymentLookup is implemented by a provider with

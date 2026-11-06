@@ -11,9 +11,14 @@
 //     own state machine (hcheckout.ApplyProviderConfirmedPayment), so the
 //     purchase completes exactly as if the webhook had arrived; a webhook that
 //     does arrive later is a no-op;
-//   - unknown or unpaid: the payment page is asked for again WITH THE SAME
-//     reference and stored, so GET /v1/public/checkout/{token} offers it as
-//     payment_url — never a second purchase;
+//   - unknown (no order at the provider): the payment page is asked for
+//     again WITH THE SAME reference and stored, so GET
+//     /v1/public/checkout/{token} offers it as payment_url;
+//   - unpaid (the order exists, nothing charged): the page is NEVER asked for
+//     again — a second payable document at the provider could be paid twice.
+//     The URL is re-stored when the status answer carries it; otherwise the
+//     attempt stays stalled (logged once per process) and expires with its
+//     hold;
 //   - anything else (pending, unreachable): left alone, asked again on the
 //     next run while the hold lives.
 //
@@ -28,6 +33,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -92,6 +98,40 @@ type PaymentRecoverer struct {
 	Providers []string
 	Logger    *slog.Logger
 	Now       func() time.Time
+
+	// stalledLogged remembers the attempts already reported as an unpaid
+	// provider order without a page, so the per-minute job says it once.
+	stalledLogged sync.Map
+}
+
+// recoverAction is what the job does with one stalled attempt.
+type recoverAction int
+
+const (
+	recoverLeave    recoverAction = iota // pending or unrecognised: ask again next run
+	recoverApply                         // settled: run it through the webhook path
+	recoverRecreate                      // no order at the provider: ask for the page again
+	recoverStoreURL                      // the order exists and the provider named its page
+	recoverStalled                       // the order exists, no page known: never recreate
+)
+
+// decideRecover maps the provider's answer onto the job's action. An order
+// that exists but is unpaid is never created again: the provider would then
+// hold two payable documents for one cart.
+func decideRecover(res payments.HostedPaymentLookupResult) recoverAction {
+	switch res.State {
+	case payments.HostedPaymentSettled:
+		return recoverApply
+	case payments.HostedPaymentUnknown:
+		return recoverRecreate
+	case payments.HostedPaymentUnpaid:
+		if strings.TrimSpace(res.URL) != "" {
+			return recoverStoreURL
+		}
+		return recoverStalled
+	default:
+		return recoverLeave
+	}
 }
 
 // RecoverStats counts what one run did.
@@ -177,8 +217,8 @@ func (p *PaymentRecoverer) recoverOne(
 		return
 	}
 
-	switch lk.Result.State {
-	case payments.HostedPaymentSettled:
+	switch decideRecover(lk.Result) {
+	case recoverApply:
 		if p.Apply == nil {
 			stats.Failed++
 			log.Error("payment_recover: a paid attempt was found but nothing applies payments here")
@@ -194,10 +234,22 @@ func (p *PaymentRecoverer) recoverOne(
 		log.Info("payment_recover: the provider reports the attempt paid; processed as its webhook",
 			slog.String("event_kind", string(lk.Result.Event.Kind)))
 		return
-	case payments.HostedPaymentPending:
-		stats.Pending++
+	case recoverStoreURL:
+		if _, err := p.Store.SetPaymentIntentHostedURL(ctx, row.PaymentIntentID, strings.TrimSpace(lk.Result.URL)); err != nil {
+			stats.Failed++
+			log.Error("payment_recover: storing the provider's payment page failed", slog.String("error", err.Error()))
+			return
+		}
+		stats.Relinked++
+		log.Info("payment_recover: the provider's existing payment page was stored again")
 		return
-	case payments.HostedPaymentUnknown, payments.HostedPaymentUnpaid:
+	case recoverStalled:
+		stats.Pending++
+		if _, seen := p.stalledLogged.LoadOrStore(row.PaymentIntentID, struct{}{}); !seen {
+			log.Warn("payment_recover: the provider holds an unpaid order without a known page; it is not created again and the attempt stays stalled")
+		}
+		return
+	case recoverRecreate:
 		// Ask for the page again below.
 	default:
 		stats.Pending++

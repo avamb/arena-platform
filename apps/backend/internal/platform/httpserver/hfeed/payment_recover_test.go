@@ -95,12 +95,12 @@ func newTestRecoverer(store *fakeRecoverStore, prov *fakeRecoverProvider, apply 
 	}
 }
 
-func TestPaymentRecover_UnpaidAsksForThePageAgainUnderTheSameReference(t *testing.T) {
+func TestPaymentRecover_UnknownAsksForThePageAgainUnderTheSameReference(t *testing.T) {
 	now := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
 	row := stalledRow(now.Add(30 * time.Minute))
 	store := &fakeRecoverStore{rows: []gen.StalledHostedPaymentAttemptRow{row}}
 	prov := &fakeRecoverProvider{lookups: map[string]payments.HostedPaymentLookupResult{
-		row.ProviderPaymentID: {State: payments.HostedPaymentUnpaid},
+		row.ProviderPaymentID: {State: payments.HostedPaymentUnknown},
 	}}
 	applied := 0
 	r := newTestRecoverer(store, prov, func(context.Context, hcheckout.ConfirmedPaymentSource, payments.NormalizedEvent) error {
@@ -211,5 +211,57 @@ func TestPaymentRecover_AllPayIsRecoverable(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("allpay must be recoverable by reference: %v", RecoverableProviders())
+	}
+}
+
+func TestDecideRecover(t *testing.T) {
+	cases := []struct {
+		name string
+		res  payments.HostedPaymentLookupResult
+		want recoverAction
+	}{
+		{"settled", payments.HostedPaymentLookupResult{State: payments.HostedPaymentSettled}, recoverApply},
+		{"unknown recreates", payments.HostedPaymentLookupResult{State: payments.HostedPaymentUnknown}, recoverRecreate},
+		{"unpaid with url restores it", payments.HostedPaymentLookupResult{State: payments.HostedPaymentUnpaid, URL: "https://pay.test/x"}, recoverStoreURL},
+		{"unpaid without url stays stalled", payments.HostedPaymentLookupResult{State: payments.HostedPaymentUnpaid}, recoverStalled},
+		{"pending", payments.HostedPaymentLookupResult{State: payments.HostedPaymentPending}, recoverLeave},
+	}
+	for _, c := range cases {
+		if got := decideRecover(c.res); got != c.want {
+			t.Errorf("%s: decideRecover = %d, want %d", c.name, got, c.want)
+		}
+	}
+}
+
+// An order that exists at the provider but is unpaid is never created again:
+// a second payable document could be paid twice.
+func TestPaymentRecover_UnpaidNeverCreatesASecondPage(t *testing.T) {
+	now := time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
+	noURL := stalledRow(now.Add(30 * time.Minute))
+	withURL := stalledRow(now.Add(30 * time.Minute))
+	store := &fakeRecoverStore{rows: []gen.StalledHostedPaymentAttemptRow{noURL, withURL}}
+	prov := &fakeRecoverProvider{lookups: map[string]payments.HostedPaymentLookupResult{
+		noURL.ProviderPaymentID:   {State: payments.HostedPaymentUnpaid},
+		withURL.ProviderPaymentID: {State: payments.HostedPaymentUnpaid, URL: "https://pay.test/existing"},
+	}}
+	r := newTestRecoverer(store, prov, nil, now)
+
+	for run := 0; run < 2; run++ {
+		st, err := r.RecoverStalledPayments(context.Background(), 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Relinked != 1 || st.Pending != 1 {
+			t.Fatalf("run %d: stats %+v; want one URL re-stored and one left stalled", run, st)
+		}
+	}
+	if len(prov.starts) != 0 {
+		t.Fatalf("the page was asked for again %d times for an existing unpaid order", len(prov.starts))
+	}
+	if got := store.storedURLs[withURL.PaymentIntentID]; got != "https://pay.test/existing" {
+		t.Fatalf("stored page %q; want the provider's own URL", got)
+	}
+	if _, ok := store.storedURLs[noURL.PaymentIntentID]; ok {
+		t.Fatal("a page was stored for an attempt the provider named none for")
 	}
 }

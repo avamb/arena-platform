@@ -8,8 +8,9 @@
 //   - an AllPay attempt is recorded BEFORE the provider call, so a lost
 //     answer leaves a payment_intents row without a page;
 //   - checkout.payment_recover asks AllPay by the same order_id: unpaid →
-//     the page is asked for again and offered as payment_url; paid → the
-//     order is paid through the webhook's own state machine.
+//     left stalled, never created twice; no order → the page is asked for
+//     again and offered as payment_url; paid → the order is paid through
+//     the webhook's own state machine.
 //
 // Run with:
 //
@@ -155,10 +156,28 @@ func TestCheckoutPaymentRecover_LostAnswerIsRecovered(t *testing.T) {
 	}
 	age()
 
-	// ── 3. Unpaid: the page is asked for again under the same order_id ───
+	// ── 3a. Unpaid at AllPay: the order exists, so it is NEVER created again
+	// (a second payable document could be paid twice); the attempt stays
+	// stalled, since paymentstatus names no page.
+	createsBefore := len(stub.orders)
 	st, err := rec.RecoverStalledPayments(ctx, 10)
+	if err != nil || st.Pending != 1 || st.Relinked != 0 {
+		t.Fatalf("recover unpaid: stats %+v err %v; want the attempt left stalled", st, err)
+	}
+	if len(stub.orders) != createsBefore {
+		t.Fatal("an existing unpaid AllPay order was created a second time")
+	}
+	if pi, _ = q.GetPaymentIntentByProviderID(ctx, orderID); pi.HostedCheckoutURL != nil {
+		t.Fatalf("a page was stored for an unpaid order AllPay named none for: %v", *pi.HostedCheckoutURL)
+	}
+
+	// ── 3b. No order at AllPay: the page is asked for again under the same order_id
+	stub.mu.Lock()
+	delete(stub.ledger, orderID)
+	stub.mu.Unlock()
+	st, err = rec.RecoverStalledPayments(ctx, 10)
 	if err != nil || st.Relinked != 1 {
-		t.Fatalf("recover unpaid: stats %+v err %v; want one page asked for again", st, err)
+		t.Fatalf("recover unknown: stats %+v err %v; want one page asked for again", st, err)
 	}
 	if again := stub.last(t)["order_id"]; again != orderID {
 		t.Fatalf("page asked again for order %v; want the same order_id %s", again, orderID)
