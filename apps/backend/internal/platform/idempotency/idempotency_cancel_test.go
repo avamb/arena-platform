@@ -45,3 +45,30 @@ func TestMiddleware_SavesWhenClientContextCancelled(t *testing.T) {
 		t.Fatalf("stored %d %q", e.resp.Status, e.resp.Body)
 	}
 }
+
+// A 409 (checkout.price_changed and the like) is never the key's final
+// answer: the same key runs the handler again.
+func TestMiddleware_ConflictIsNotStored(t *testing.T) {
+	store := newInMemoryStore()
+	calls := 0
+	h := Middleware(store, Options{Scope: testScope})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(`{"error":{"code":"checkout.price_changed"}}`))
+	}))
+	for i := 0; i < 2; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/v1/echo", strings.NewReader(`{}`))
+		req.Header.Set(HeaderName, "conflict-key")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusConflict || rec.Header().Get("Idempotent-Replay") != "" {
+			t.Fatalf("call %d: %d replay=%q", i, rec.Code, rec.Header().Get("Idempotent-Replay"))
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("handler ran %d times, want 2", calls)
+	}
+	if _, ok := store.get("conflict-key", testScope); ok {
+		t.Fatal("a 409 was stored for the key")
+	}
+}

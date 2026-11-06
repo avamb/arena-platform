@@ -15382,6 +15382,16 @@ type PublicFeedCheckoutStartRequest struct {
 	// that does not ask for it, it is ignored and nothing is stored.
 	Consent *PublicCheckoutConsent `json:"consent,omitempty"`
 
+	// ExpectedTotal Optional. The cart total, in minor units, that the selling site
+	// showed the buyer (after discounts and the service fee). When
+	// present and different from the total arena computes, the request
+	// is refused with 409 `checkout.price_changed` and
+	// `details: {expected_total, actual_total, currency}` before
+	// anything is held; a free (0) cart is compared too. The refusal is
+	// never stored for the `Idempotency-Key`: repeat with the new total
+	// (normally under a new key).
+	ExpectedTotal *int64 `json:"expected_total,omitempty"`
+
 	// GaItems GA items for GA or hybrid sessions.
 	GaItems *[]PublicGAItem `json:"ga_items,omitempty"`
 

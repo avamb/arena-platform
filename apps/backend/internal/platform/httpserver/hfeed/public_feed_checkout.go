@@ -135,6 +135,11 @@ type PublicFeedCheckoutStartRequest struct {
 	// (spec 51-1). Recorded only when the organization offers the tick;
 	// ticked, it may earn the organizer's reward code.
 	MarketingConsent *PublicMarketingConsent `json:"marketing_consent,omitempty"`
+	// ExpectedTotal is the total (minor units) the selling site showed the
+	// buyer, optional. When present and different from what arena prices the
+	// cart at, the request is refused with 409 checkout.price_changed before
+	// anything is held (see refuseChangedPrice).
+	ExpectedTotal *int64 `json:"expected_total,omitempty"`
 }
 
 // normalizeBuyerLocale validates a caller-supplied locale against the
@@ -901,6 +906,9 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 		// attempts "sold out" a 15-seat master class on 2026-09-20. The
 		// answer was gathered before the transaction opened (9b); only the
 		// decision is taken here, once the total is known.
+		if h.refuseChangedPrice(w, r, req.ExpectedTotal, bd) {
+			return // the deferred rollback releases the holds
+		}
 		if !h.applyPaymentPreflight(ctx, w, r, checkCtx, bd.Total, preflight) {
 			return
 		}
@@ -1066,6 +1074,9 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 	// request: the deferred tx.Rollback releases the GA units and the
 	// reserved capacity instead of leaving them held until the TTL sweep.
 	// The configuration was read before the transaction opened (9b).
+	if h.refuseChangedPrice(w, r, req.ExpectedTotal, bd) {
+		return // the deferred rollback releases the holds
+	}
 	if !h.applyPaymentPreflight(ctx, w, r, checkCtx, bd.Total, preflight) {
 		return
 	}

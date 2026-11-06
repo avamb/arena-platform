@@ -27370,6 +27370,18 @@ export interface components {
              *     organizer's reward code (see `PublicMarketingConsent`).
              */
             marketing_consent?: components["schemas"]["PublicMarketingConsent"];
+            /**
+             * Format: int64
+             * @description Optional. The cart total, in minor units, that the selling site
+             *     showed the buyer (after discounts and the service fee). When
+             *     present and different from the total arena computes, the request
+             *     is refused with 409 `checkout.price_changed` and
+             *     `details: {expected_total, actual_total, currency}` before
+             *     anything is held; a free (0) cart is compared too. The refusal is
+             *     never stored for the `Idempotency-Key`: repeat with the new total
+             *     (normally under a new key).
+             */
+            expected_total?: number;
         };
         /**
          * @description The buyer's answer to the marketing consent tick (spec 51-1). When
@@ -62541,7 +62553,9 @@ export interface operations {
              *     (`session.sold_out`, both with `details.sales_state`), or
              *     `idempotency.body_mismatch` when the `Idempotency-Key` was already
              *     used with a different body (also while that first request is
-             *     still running).
+             *     still running), or `checkout.price_changed` when `expected_total`
+             *     differs from the computed total (`details.expected_total`,
+             *     `details.actual_total`, `details.currency`; nothing was held).
              */
             409: {
                 headers: {

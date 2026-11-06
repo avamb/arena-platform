@@ -16704,6 +16704,19 @@ components:
             organizer's reward code (see `PublicMarketingConsent`).
           allOf:
             - $ref: "#/components/schemas/PublicMarketingConsent"
+        expected_total:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            Optional. The cart total, in minor units, that the selling site
+            showed the buyer (after discounts and the service fee). When
+            present and different from the total arena computes, the request
+            is refused with 409 `checkout.price_changed` and
+            `details: {expected_total, actual_total, currency}` before
+            anything is held; a free (0) cart is compared too. The refusal is
+            never stored for the `Idempotency-Key`: repeat with the new total
+            (normally under a new key).
 
     PublicMarketingConsent:
       type: object
@@ -53392,7 +53405,9 @@ paths:
             (`session.sold_out`, both with `details.sales_state`), or
             `idempotency.body_mismatch` when the `Idempotency-Key` was already
             used with a different body (also while that first request is
-            still running).
+            still running), or `checkout.price_changed` when `expected_total`
+            differs from the computed total (`details.expected_total`,
+            `details.actual_total`, `details.currency`; nothing was held).
           content:
             application/json:
               schema:
