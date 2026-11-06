@@ -20606,6 +20606,72 @@ type ShopVariantsReplaceRequest struct {
 	Variants []ShopVariantInput `json:"variants"`
 }
 
+// SiteContactRequest A message from a static site's contact or private-event form.
+type SiteContactRequest struct {
+	// Consent Must be true; the sender agrees that the message is passed to the organizer.
+	Consent bool `json:"consent"`
+
+	// Email Sender's e-mail; the organizer's reply goes there (Reply-To).
+	Email string `json:"email"`
+
+	// LastName Sender's last name, up to 100 characters; optional.
+	LastName *string `json:"last_name,omitempty"`
+
+	// Locale Page language of the sender.
+	Locale *string `json:"locale,omitempty"`
+
+	// Message The message, 10-2000 characters. Optional for the `contact` topic, required for `private_event`.
+	Message *string `json:"message,omitempty"`
+
+	// Name Sender's first name, 1-100 characters.
+	Name string `json:"name"`
+
+	// Phone Sender's phone, 5-30 characters of digits, spaces and + ( ) - . ; optional.
+	Phone *string `json:"phone,omitempty"`
+
+	// Topic `contact` (default) or `private_event`. It is also the Turnstile
+	// widget action of the form and picks the recipients.
+	Topic *string `json:"topic,omitempty"`
+
+	// TurnstileToken Cloudflare Turnstile response token, solved with the action equal to `topic`.
+	TurnstileToken *string `json:"turnstile_token,omitempty"`
+}
+
+// SiteMarketingSubscriptionAccepted The subscription was accepted.
+type SiteMarketingSubscriptionAccepted struct {
+	// Status Always "check_email".
+	Status string `json:"status"`
+}
+
+// SiteMarketingSubscriptionRequest A subscription to an organization's mailings from a static site's form.
+type SiteMarketingSubscriptionRequest struct {
+	// Consent Must be true; the person ticked the box next to the consent text.
+	Consent bool `json:"consent"`
+
+	// Email The address to subscribe.
+	Email string `json:"email"`
+
+	// Locale Language of the confirmation letter; the organization's language when absent.
+	Locale *string `json:"locale,omitempty"`
+
+	// Name Subscriber's name, up to 100 characters; optional.
+	Name *string `json:"name,omitempty"`
+
+	// PageUrl The site page the form was on; the confirmation sends the person back there. Dropped unless it lies on one of the channel's site origins.
+	PageUrl *string `json:"page_url,omitempty"`
+
+	// Phone Subscriber's phone, 5-30 characters of digits, spaces and + ( ) - . ; optional.
+	Phone *string `json:"phone,omitempty"`
+
+	// TextVersion Version of the consent text the form showed, 3-64 characters of
+	// letters, digits and `. _ : -`. Stored with the grant and the
+	// confirmation as evidence of what was agreed to.
+	TextVersion string `json:"text_version"`
+
+	// TurnstileToken Cloudflare Turnstile response token, solved with the action `club`.
+	TurnstileToken *string `json:"turnstile_token,omitempty"`
+}
+
 // SmartPriceNow Where an active preset stands at the moment of the read.
 type SmartPriceNow struct {
 	// NextAt When the next price starts (by_days, last_days).
@@ -24702,6 +24768,26 @@ type ListPublicFeedEventsParams struct {
 	IncludeRemoved *bool `form:"include_removed,omitempty" json:"include_removed,omitempty"`
 }
 
+// CreateSiteMarketingSubscriptionParams defines parameters for CreateSiteMarketingSubscription.
+type CreateSiteMarketingSubscriptionParams struct {
+	// IdempotencyKey Optional client-generated key, one per submission (at most 255
+	// bytes). The same key and body replay the first answer without
+	// sending anything again (a Turnstile token is single-use, so a
+	// retry is not verified a second time); the same key with another
+	// body is 409. Scoped to the route and the feed token, kept 24 hours.
+	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
+// SendSiteOrganizerContactParams defines parameters for SendSiteOrganizerContact.
+type SendSiteOrganizerContactParams struct {
+	// IdempotencyKey Optional client-generated key, one per submission (at most 255
+	// bytes). The same key and body replay the first answer without
+	// sending anything again (a Turnstile token is single-use, so a
+	// retry is not verified a second time); the same key with another
+	// body is 409. Scoped to the route and the feed token, kept 24 hours.
+	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
 // GetPublicMarketingConfirmPageParams defines parameters for GetPublicMarketingConfirmPage.
 type GetPublicMarketingConfirmPageParams struct {
 	// Token The one-time token from the letter.
@@ -25596,8 +25682,14 @@ type StartPublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutStartRequest
 // PostPublicFeedFunnelEventsJSONRequestBody defines body for PostPublicFeedFunnelEvents for application/json ContentType.
 type PostPublicFeedFunnelEventsJSONRequestBody = WidgetFunnelEventsBatch
 
+// CreateSiteMarketingSubscriptionJSONRequestBody defines body for CreateSiteMarketingSubscription for application/json ContentType.
+type CreateSiteMarketingSubscriptionJSONRequestBody = SiteMarketingSubscriptionRequest
+
 // RequestPublicMyTicketsLinkJSONRequestBody defines body for RequestPublicMyTicketsLink for application/json ContentType.
 type RequestPublicMyTicketsLinkJSONRequestBody = MyTicketsLinkRequest
+
+// SendSiteOrganizerContactJSONRequestBody defines body for SendSiteOrganizerContact for application/json ContentType.
+type SendSiteOrganizerContactJSONRequestBody = SiteContactRequest
 
 // CreatePublicSaleSubscriptionJSONRequestBody defines body for CreatePublicSaleSubscription for application/json ContentType.
 type CreatePublicSaleSubscriptionJSONRequestBody = PublicSaleSubscriptionRequest

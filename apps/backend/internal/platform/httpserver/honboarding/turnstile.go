@@ -41,8 +41,53 @@ type TurnstileVerifier struct {
 	Client *http.Client
 }
 
+// Expect is what one form requires of a Turnstile answer: the widget action
+// it renders with and the hosts the token may have been solved on.
+type Expect struct {
+	Action    string
+	Hostnames []string
+}
+
+// ScopedVerifier checks a token against an Expect chosen per request. The
+// static sites' forms (spec 62 section 10.2) differ by action (club, contact,
+// private_event, my_tickets) and by the hosts of the channel's site.
+type ScopedVerifier interface {
+	VerifyScoped(ctx context.Context, token, remoteIP string, want Expect) (bool, error)
+}
+
+// VerifyFor runs the check with want when the verifier can take it, else
+// falls back to its own Verify (test doubles). It is the ONE entry point the
+// site forms share, so the "my tickets" link request reuses it unchanged.
+func VerifyFor(ctx context.Context, v Verifier, token, remoteIP string, want Expect) (bool, error) {
+	if sv, ok := v.(ScopedVerifier); ok {
+		return sv.VerifyScoped(ctx, token, remoteIP, want)
+	}
+	return v.Verify(ctx, token, remoteIP)
+}
+
+// HostnamesOfOrigins returns the host names of absolute http(s) origins, in
+// order, skipping anything else. A port is dropped, as Cloudflare reports the
+// bare host.
+func HostnamesOfOrigins(origins []string) []string {
+	var out []string
+	for _, o := range origins {
+		u, err := url.Parse(strings.TrimSpace(o))
+		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "" {
+			continue
+		}
+		out = append(out, strings.ToLower(u.Hostname()))
+	}
+	return out
+}
+
 // Verify implements Verifier.
 func (v *TurnstileVerifier) Verify(ctx context.Context, token, remoteIP string) (bool, error) {
+	return v.VerifyScoped(ctx, token, remoteIP, Expect{Action: v.Action, Hostnames: v.Hostnames})
+}
+
+// VerifyScoped implements ScopedVerifier. An empty want.Action or an empty
+// want.Hostnames skips that comparison.
+func (v *TurnstileVerifier) VerifyScoped(ctx context.Context, token, remoteIP string, want Expect) (bool, error) {
 	if strings.TrimSpace(v.Secret) == "" {
 		if v.Required {
 			return false, ErrCaptchaNotConfigured
@@ -88,10 +133,10 @@ func (v *TurnstileVerifier) Verify(ctx context.Context, token, remoteIP string) 
 	if !out.Success {
 		return false, nil
 	}
-	if v.Action != "" && out.Action != v.Action {
+	if want.Action != "" && out.Action != want.Action {
 		return false, nil
 	}
-	if len(v.Hostnames) > 0 && !hostAllowed(out.Hostname, v.Hostnames) {
+	if len(want.Hostnames) > 0 && !hostAllowed(out.Hostname, want.Hostnames) {
 		return false, nil
 	}
 	return true, nil

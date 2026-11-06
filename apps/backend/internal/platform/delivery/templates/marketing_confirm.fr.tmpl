@@ -16,7 +16,7 @@
   <p style="margin:0 0 12px 0;">Si vous n’avez rien demandé, ne faites rien : vous ne recevrez aucun envoi. Le lien est valable 7 jours.</p>
   <p style="margin:0 0 12px 0;">Vous avez changé d’avis ? Vous pouvez arrêter les envois à tout moment : <a href="{{.Marketing.WithdrawURL}}" style="color:#46555f;">Arrêter les envois</a></p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}Arena Platform — message automatique<br>{{end}}Si vous cliquez sur « Se désabonner », nos e-mails n’arriveront plus jamais à cette adresse, billets compris.</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Ticket processing by arenasoldout.com</a><br>{{end}}Si vous cliquez sur « Se désabonner », nos e-mails n’arriveront plus jamais à cette adresse, billets compris.</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -34,7 +34,7 @@ Si vous n’avez rien demandé, ne faites rien : vous ne recevrez aucun envoi. L
 
 Vous avez changé d’avis ? Vous pouvez arrêter les envois à tout moment : {{.Marketing.WithdrawURL}}
 
-{{if not .WhiteLabel}}Arena Platform — message automatique{{end}}
+{{if not .WhiteLabel}}Ticket processing by arenasoldout.com — https://arenasoldout.com{{end}}
 
 Si vous cliquez sur « Se désabonner », nos e-mails n’arriveront plus jamais à cette adresse, billets compris.
 {{end}}

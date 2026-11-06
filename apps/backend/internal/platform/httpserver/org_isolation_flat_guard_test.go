@@ -143,6 +143,8 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/public/payment-return", flatPublic, "feed token or checkout token in the URL"},
 	{"POST", "/v1/public/feeds/{feed_token}/sessions/{session_id}/sale-subscriptions", flatPublic, "feed token in the URL, the session must be on that feed"},
 	{"GET", "/v1/public/sale-subscriptions/confirm", flatPublic, "one-time token from the confirmation letter"},
+	{"POST", "/v1/public/feeds/{feed_token}/organizer-contact", flatPublic, "feed token in the URL, the organization is the token's channel; never answers an address (hsite, spec 62 P-17)"},
+	{"POST", "/v1/public/feeds/{feed_token}/marketing-subscriptions", flatPublic, "feed token in the URL, the grant is written for the token's channel organization only (hsite, spec 62 P-10)"},
 	{"POST", "/v1/public/feeds/{feed_token}/my-tickets/link", flatPublic, "feed token in the URL, the organization is the token's channel (mytickets, spec 62 §7)"},
 	{"POST", "/v1/public/my-tickets/session", flatPublic, "one-time token from the my-tickets letter, exchanged once"},
 	{"DELETE", "/v1/public/my-tickets/session", flatPublic, "bearer session token, scoped to one organization and one address"},

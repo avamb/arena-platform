@@ -15,7 +15,7 @@
   <p style="margin:16px 0 16px 0;"><a href="{{.SaleNotice.URL}}" style="display:inline-block;background:{{.Accent}};color:#ffffff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:6px;">Comprar entradas</a></p>
   <p style="margin:0 0 12px 0;"><span style="color:#93a0a8;font-size:12px;word-break:break-all;">Enlace: {{.SaleNotice.URL}}</span></p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}Arena Platform — mensaje automático<br>{{end}}Si pulsas «Cancelar suscripción», nuestros correos no volverán a llegar nunca a esta dirección, tampoco las entradas.</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Ticket processing by arenasoldout.com</a><br>{{end}}Si pulsas «Cancelar suscripción», nuestros correos no volverán a llegar nunca a esta dirección, tampoco las entradas.</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -30,7 +30,7 @@ Nos pediste que te avisáramos cuando se abriera la venta. Las entradas de {{.Ev
 {{end}}
 Comprar entradas: {{.SaleNotice.URL}}
 
-{{if not .WhiteLabel}}Arena Platform — mensaje automático{{end}}
+{{if not .WhiteLabel}}Ticket processing by arenasoldout.com — https://arenasoldout.com{{end}}
 
 Si pulsas «Cancelar suscripción», nuestros correos no volverán a llegar nunca a esta dirección, tampoco las entradas.
 {{end}}

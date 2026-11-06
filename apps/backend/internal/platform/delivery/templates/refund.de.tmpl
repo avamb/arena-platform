@@ -33,7 +33,7 @@
     {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
     {{with .Branding.ContactEmail}}<br>Kontakt: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Kontakt: <a href="{{.}}" style="color:#666">Dem Veranstalter schreiben</a>{{end}}{{end}}
   </p>
-  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}Arena Platform — automatische Nachricht{{end}}</p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Ticket processing by arenasoldout.com</a>{{end}}</p>
   <p style="font-size:11px;color:#999;line-height:1.5">Wenn Sie auf „Abbestellen“ klicken, erhalten Sie keine E-Mails mit Ihren Tickets und keine wichtigen E-Mails zu Ihrer Bestellung mehr. Werbe-Mailings senden wir nicht ohne Ihre Einwilligung.</p>
   </td></tr>
 </table>
@@ -73,7 +73,7 @@ Zugestellt an: {{.RecipientEmail}}
 {{end}}{{with .Branding.ContactEmail}}Kontakt: {{.}}
 {{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Kontakt: {{.}}
 {{end}}{{end}}
-{{if not .WhiteLabel}}Arena Platform — automatische Nachricht{{end}}
+{{if not .WhiteLabel}}Ticket processing by arenasoldout.com — https://arenasoldout.com{{end}}
 
 Wenn Sie auf „Abbestellen“ klicken, erhalten Sie keine E-Mails mit Ihren Tickets und keine wichtigen E-Mails zu Ihrer Bestellung mehr. Werbe-Mailings senden wir nicht ohne Ihre Einwilligung.
 {{end}}

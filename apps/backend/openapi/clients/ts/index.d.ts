@@ -8124,6 +8124,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/feeds/{feed_token}/organizer-contact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a message from a static site's form to the organizer
+         * @description The contact form of a static site that sells through a feed token
+         *     (spec 62 section 10.2). It extends the hosted page's form: the site is
+         *     addressed by its feed token, the message carries a `topic`
+         *     (`contact` or `private_event`), a `last_name` and a `phone`, and the
+         *     letter goes to the addresses configured for the topic in the channel's
+         *     settings (`settings.contact_form.recipients.<topic>`, a list of
+         *     addresses; a topic without addresses falls back to the channel's
+         *     public e-mail, the organization's contact e-mail, then its owner). One
+         *     letter per address, Reply-To is the sender; the organization's sales
+         *     Telegram chat gets a copy when its switch is on. The message is stored
+         *     and delivered by a worker job that retries; an address already mailed
+         *     is never mailed twice. A failed send keeps its error on the stored
+         *     message, is logged with ids only, and a job that runs out of retries is
+         *     reported to the operator as a dead letter, so nothing is lost silently.
+         *
+         *     The server verifies the Cloudflare Turnstile token itself: its
+         *     `action` must equal the `topic` and its `hostname` must be one of the
+         *     site origins of the channel (`settings.site.origins`). A channel that
+         *     lists no site origin has no site forms (404). Limits: 5 messages an
+         *     hour per IP (shared with the hosted page's form) and 30 an hour per
+         *     channel, a 16 KiB body. No JWT. The answer never carries an address.
+         */
+        post: operations["sendSiteOrganizerContact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/feeds/{feed_token}/marketing-subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Subscribe an address to the organization's mailings without a purchase
+         * @description The subscription form of a static site (spec 62 section 10.2, П-10),
+         *     for example the club of friends. Double opt-in: the request stores a
+         *     pending subscription of the address to the organization (one row per
+         *     organization and address), journals the grant with the `text_version`
+         *     and a timestamp, and queues a confirmation letter in the same
+         *     transaction. The letter's link opens the platform's confirmation page
+         *     (`GET /v1/public/marketing/confirm?token=`, a button, so a mail
+         *     scanner's click never confirms); pressing it confirms the address, records the confirmation in
+         *     the journal and sends the person back to `page_url` with
+         *     `arena_marketing=confirmed`. Every marketing letter carries the
+         *     withdraw link (`/v1/public/marketing/withdraw?token=`). A withdrawn
+         *     address that subscribes again is asked to confirm again.
+         *
+         *     The answer is always 202 for a well-formed request, whether the address
+         *     is new, pending, confirmed or withdrawn, and the same address asking
+         *     again within an hour is absorbed (no new letter) with the same answer.
+         *     The server verifies the Turnstile token itself: action `club`, hostname
+         *     one of the channel's site origins (`settings.site.origins`). Limits: 10
+         *     subscriptions an hour per IP (429), 3 an hour per address (absorbed).
+         *     No JWT.
+         */
+        post: operations["createSiteMarketingSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/checkout/{checkout_token}/referral": {
         parameters: {
             query?: never;
@@ -21704,6 +21783,96 @@ export interface components {
              * @example es
              */
             locale?: string;
+        };
+        /** @description A message from a static site's contact or private-event form. */
+        SiteContactRequest: {
+            /**
+             * @description `contact` (default) or `private_event`. It is also the Turnstile
+             *     widget action of the form and picks the recipients.
+             * @example private_event
+             */
+            topic?: string;
+            /**
+             * @description Sender's first name, 1-100 characters.
+             * @example Anna
+             */
+            name: string;
+            /**
+             * @description Sender's last name, up to 100 characters; optional.
+             * @example Cohen
+             */
+            last_name?: string;
+            /**
+             * @description Sender's e-mail; the organizer's reply goes there (Reply-To).
+             * @example anna@example.com
+             */
+            email: string;
+            /**
+             * @description Sender's phone, 5-30 characters of digits, spaces and + ( ) - . ; optional.
+             * @example +972 50 123 4567
+             */
+            phone?: string;
+            /**
+             * @description The message, 10-2000 characters. Optional for the `contact` topic, required for `private_event`.
+             * @example We would like to book the hall for 30 guests.
+             */
+            message?: string;
+            /** @description Must be true; the sender agrees that the message is passed to the organizer. */
+            consent: boolean;
+            /** @description Cloudflare Turnstile response token, solved with the action equal to `topic`. */
+            turnstile_token?: string;
+            /**
+             * @description Page language of the sender.
+             * @example he
+             */
+            locale?: string;
+        };
+        /** @description A subscription to an organization's mailings from a static site's form. */
+        SiteMarketingSubscriptionRequest: {
+            /**
+             * @description The address to subscribe.
+             * @example anna@example.com
+             */
+            email: string;
+            /**
+             * @description Subscriber's name, up to 100 characters; optional.
+             * @example Anna
+             */
+            name?: string;
+            /**
+             * @description Subscriber's phone, 5-30 characters of digits, spaces and + ( ) - . ; optional.
+             * @example +972 50 123 4567
+             */
+            phone?: string;
+            /**
+             * @description Language of the confirmation letter; the organization's language when absent.
+             * @example he
+             */
+            locale?: string;
+            /** @description Must be true; the person ticked the box next to the consent text. */
+            consent: boolean;
+            /**
+             * @description Version of the consent text the form showed, 3-64 characters of
+             *     letters, digits and `. _ : -`. Stored with the grant and the
+             *     confirmation as evidence of what was agreed to.
+             * @example club-2026-11-06
+             */
+            text_version: string;
+            /**
+             * @description The site page the form was on; the confirmation sends the person back there. Dropped unless it lies on one of the channel's site origins.
+             * @example https://vinoandco.events/club/
+             */
+            page_url?: string;
+            /** @description Cloudflare Turnstile response token, solved with the action `club`. */
+            turnstile_token?: string;
+        };
+        /** @description The subscription was accepted. */
+        SiteMarketingSubscriptionAccepted: {
+            /**
+             * @description Always "check_email".
+             * @example check_email
+             */
+            status: string;
         };
         /** @description The message is stored and queued for delivery. */
         OrganizerContactAccepted: {
@@ -64441,6 +64610,213 @@ export interface operations {
                 };
             };
             /** @description Database unavailable, or the captcha is not configured or cannot be checked. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    sendSiteOrganizerContact: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Optional client-generated key, one per submission (at most 255
+                 *     bytes). The same key and body replay the first answer without
+                 *     sending anything again (a Turnstile token is single-use, so a
+                 *     retry is not verified a second time); the same key with another
+                 *     body is 409. Scoped to the route and the feed token, kept 24 hours.
+                 */
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                /** @description The site channel's feed token. */
+                feed_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SiteContactRequest"];
+            };
+        };
+        responses: {
+            /** @description Stored and queued. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizerContactAccepted"];
+                };
+            };
+            /** @description Invalid topic, name, last name, e-mail, phone, message, missing consent or a malformed body (`contact.invalid_*`, `contact.consent_required`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The captcha was not passed, or was solved for another action or host (`contact.captcha_failed`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The token is unknown, or the site has no contact form or nobody to receive it (`contact.not_available`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Idempotency-Key was used with another body. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The body is larger than 16 KiB (`contact.too_large`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many messages from this IP or to this channel (`contact.rate_limited`, Retry-After). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The message could not be stored (`contact.send_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable, or the captcha is not configured or cannot be checked (`contact.captcha_not_configured`, `contact.captcha_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createSiteMarketingSubscription: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description Optional client-generated key, one per submission (at most 255
+                 *     bytes). The same key and body replay the first answer without
+                 *     sending anything again (a Turnstile token is single-use, so a
+                 *     retry is not verified a second time); the same key with another
+                 *     body is 409. Scoped to the route and the feed token, kept 24 hours.
+                 */
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                /** @description The site channel's feed token. */
+                feed_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SiteMarketingSubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted. A confirmation letter is on its way unless the address had already confirmed. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SiteMarketingSubscriptionAccepted"];
+                };
+            };
+            /** @description Invalid e-mail, name, phone, text version, missing consent or a malformed body (`subscription.invalid_*`, `subscription.consent_required`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The captcha was not passed, or was solved for another action or host (`subscription.captcha_failed`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The token is unknown or the site has no subscription form (`subscription.not_available`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Idempotency-Key was used with another body. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Too many subscriptions from this IP (`subscription.rate_limited`, Retry-After). */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The subscription could not be stored (`subscription.failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable, or the captcha is not configured or cannot be checked (`subscription.captcha_not_configured`, `subscription.captcha_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;

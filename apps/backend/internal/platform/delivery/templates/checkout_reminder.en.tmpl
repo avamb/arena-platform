@@ -18,7 +18,7 @@
   <p style="margin:0 0 12px 0;"><span style="color:#93a0a8;font-size:12px;word-break:break-all;">Link: {{.CartReminder.URL}}</span></p>
   <p style="margin:0 0 12px 0;">If you do not want these tickets, do nothing: the hold ends by itself. This is the only reminder about this order.</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}Arena Platform — automated message<br>{{end}}If you click “Unsubscribe”, the letters with your tickets and the important letters about your order will no longer reach you. We do not send marketing mailings without your consent.</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Ticket processing by arenasoldout.com</a><br>{{end}}If you click “Unsubscribe”, the letters with your tickets and the important letters about your order will no longer reach you. We do not send marketing mailings without your consent.</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -37,7 +37,7 @@ Continue to payment: {{.CartReminder.URL}}
 
 If you do not want these tickets, do nothing: the hold ends by itself. This is the only reminder about this order.
 
-{{if not .WhiteLabel}}Arena Platform — automated message{{end}}
+{{if not .WhiteLabel}}Ticket processing by arenasoldout.com — https://arenasoldout.com{{end}}
 
 If you click “Unsubscribe”, the letters with your tickets and the important letters about your order will no longer reach you. We do not send marketing mailings without your consent.
 {{end}}
