@@ -68,7 +68,8 @@ WHERE  o.org_id = $1
   AND  ($2 = '' OR o.status = $2)
   AND  ($3 = ''
         OR ($3 = 'paid'   AND o.status IN ('paid', 'partially_refunded', 'refunded'))
-        OR ($3 = 'unpaid' AND o.status IN ('pending_payment', 'expired', 'cancelled', 'abandoned', 'manual_review')))
+        OR ($3 = 'unpaid' AND o.status IN ('pending_payment', 'expired', 'cancelled', 'abandoned', 'manual_review'))
+        OR ($3 = 'refunds' AND o.status IN ('partially_refunded', 'refunded')))
   AND  ($4::uuid IS NULL OR o.session_id = $4)
   AND  ($5::uuid IS NULL OR o.event_id = $5)
   AND  ($6::timestamptz IS NULL OR o.created_at >= $6)

@@ -13239,7 +13239,7 @@ type OrderSearchRequest struct {
 	// Status Order lifecycle status filter.
 	Status *string `json:"status,omitempty"`
 
-	// Tab Status group `recent` (default), `paid` or `unpaid`.
+	// Tab Status group `recent` (default), `paid`, `unpaid` or `refunds` (partially_refunded and refunded).
 	Tab *string `json:"tab,omitempty"`
 
 	// To Only orders created at or before this RFC3339 timestamp.
@@ -23874,7 +23874,9 @@ type GetV1OrganizationsOrgIdOrdersParams struct {
 	// manual_review (no confirmed payment behind the order;
 	// manual_review is a payment that could not complete the checkout
 	// and waits for an operator). Every `orders.status` belongs to
-	// exactly one of the two groups. Any other value is 400
+	// exactly one of the two groups. `refunds` is partially_refunded
+	// and refunded only (a narrower view inside `paid`, the web
+	// event center's Refunds tab). Any other value is 400
 	// `orders.invalid_tab`. Combines with `status` (AND).
 	Tab *string `form:"tab,omitempty" json:"tab,omitempty"`
 

@@ -114,7 +114,7 @@ func orderSummary(o gen.OrderRow) map[string]any {
 // HandleList serves GET /v1/organizations/{org_id}/orders (EC-04, spec 35
 // §5.5). Filters: q (one value classified into barcode / order number /
 // e-mail / phone / name similarity — see classifyQuery), tab (recent |
-// paid | unpaid — see tabFilter), status, session_id, event_id, from/to
+// paid | unpaid | refunds — see tabFilter), status, session_id, event_id, from/to
 // (RFC3339 created_at range), plus limit/offset paging with total_count.
 func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 	if h.queries == nil {
@@ -139,7 +139,7 @@ func (h *Handler) HandleList(w http.ResponseWriter, r *http.Request) {
 	tab, ok := tabFilter(r.URL.Query().Get("tab"))
 	if !ok {
 		httputil.WriteJSON(w, http.StatusBadRequest,
-			httputil.ErrorEnvelope("orders.invalid_tab", "tab must be recent, paid or unpaid", r))
+			httputil.ErrorEnvelope("orders.invalid_tab", "tab must be recent, paid, unpaid or refunds", r))
 		return
 	}
 	params := gen.OrderSearchParams{

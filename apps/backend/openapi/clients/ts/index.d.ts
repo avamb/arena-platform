@@ -17822,7 +17822,7 @@ export interface components {
         OrderSearchRequest: {
             /** @description One search value (barcode, order number, e-mail, phone or name), classified like the GET `q`. */
             q?: string;
-            /** @description Status group `recent` (default), `paid` or `unpaid`. */
+            /** @description Status group `recent` (default), `paid`, `unpaid` or `refunds` (partially_refunded and refunded). */
             tab?: string;
             /** @description Order lifecycle status filter. */
             status?: string;
@@ -69240,7 +69240,9 @@ export interface operations {
                  *     manual_review (no confirmed payment behind the order;
                  *     manual_review is a payment that could not complete the checkout
                  *     and waits for an operator). Every `orders.status` belongs to
-                 *     exactly one of the two groups. Any other value is 400
+                 *     exactly one of the two groups. `refunds` is partially_refunded
+                 *     and refunded only (a narrower view inside `paid`, the web
+                 *     event center's Refunds tab). Any other value is 400
                  *     `orders.invalid_tab`. Combines with `status` (AND).
                  */
                 tab?: string;
