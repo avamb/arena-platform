@@ -71,6 +71,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/issuejob"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/latepayment"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/macs"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/marketing"
@@ -731,6 +732,9 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	reg.Register(cartreminder.JobTypeSweep, cartreminder.NewSweepHandler(pool, logger))
 	reg.Register(cartreminder.JobTypeEmail, delivery.NewCartReminderHandler(growthLetters))
 	reg.Register(marketing.JobTypeConfirmEmail, delivery.NewMarketingConfirmHandler(growthLetters))
+	// Spec 62 П-15: the letter about a payment that came after its order
+	// had closed (the money goes back).
+	reg.Register(latepayment.JobTypeEmail, delivery.NewLatePaymentEmailHandler(growthLetters))
 
 	// event.email_note_test mails the organizer a sample ticket letter with
 	// the event's own note (EC-31). A preview: never recorded as a buyer letter.

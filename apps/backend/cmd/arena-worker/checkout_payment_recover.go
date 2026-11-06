@@ -1,4 +1,4 @@
-// checkout_payment_recover.go — checkout.payment_recover (П-19,
+// checkout_payment_recover.go — checkout.payment_recover (П-19, П-15,
 // internal/platform/paymentrecover): settles hosted payment attempts recorded
 // before the provider call that never got their payment page. A paid one goes
 // through the payment webhook's own state machine; an unpaid or unknown one
@@ -24,11 +24,19 @@ import (
 // recoverProcessor adapts hfeed.PaymentRecoverer to paymentrecover.Processor.
 type recoverProcessor struct{ r *hfeed.PaymentRecoverer }
 
+// RecoverStalledPayments runs both passes: the attempts that never got their
+// page (П-19), then the reconciliation of handed-out pages no notification
+// settled (П-15 §5.4 п. 5). A failure of the first does not skip the second.
 func (p recoverProcessor) RecoverStalledPayments(ctx context.Context, limit int32) (paymentrecover.Stats, error) {
 	s, err := p.r.RecoverStalledPayments(ctx, limit)
+	rs, rerr := p.r.ReconcileUnsettledPayments(ctx, limit)
+	if err == nil {
+		err = rerr
+	}
 	return paymentrecover.Stats{
 		Examined: s.Examined, Applied: s.Applied, Relinked: s.Relinked,
-		Pending: s.Pending, TooLate: s.TooLate, Failed: s.Failed,
+		Pending: s.Pending, TooLate: s.TooLate, Failed: s.Failed + rs.Failed,
+		Reconciled: rs.Asked, ReconcileSettled: rs.Settled,
 	}, err
 }
 

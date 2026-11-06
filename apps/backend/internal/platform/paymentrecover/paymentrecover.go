@@ -28,6 +28,9 @@ const DefaultBatchSize = 50
 // Stats is what one run reports.
 type Stats struct {
 	Examined, Applied, Relinked, Pending, TooLate, Failed int
+	// Reconciled counts the handed-out pages asked about by the
+	// reconciliation pass (П-15), ReconcileSettled the ones it settled.
+	Reconciled, ReconcileSettled int
 }
 
 // Processor does one pass (hfeed.PaymentRecoverer through an adapter).
@@ -96,7 +99,7 @@ func NewHandler(opts Options) func(ctx context.Context, payload []byte) error {
 			opts.Logger.Error("checkout payment recovery failed", "error", runErr.Error())
 			return nil
 		}
-		if stats.Examined > 0 {
+		if stats.Examined > 0 || stats.Reconciled > 0 {
 			opts.Logger.Info("checkout payment recovery complete",
 				"examined", stats.Examined,
 				"applied", stats.Applied,
@@ -104,6 +107,8 @@ func NewHandler(opts Options) func(ctx context.Context, payload []byte) error {
 				"pending", stats.Pending,
 				"too_late", stats.TooLate,
 				"failed", stats.Failed,
+				"reconciled", stats.Reconciled,
+				"reconcile_settled", stats.ReconcileSettled,
 			)
 		}
 		return nil

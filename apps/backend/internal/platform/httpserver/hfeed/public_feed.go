@@ -302,6 +302,12 @@ type publicFeedSessionResponse struct {
 	// checkout (channelPricingRules). The widget shows it as a cart line so
 	// the buyer sees the total before the payment page does.
 	ServiceFeePercent string `json:"service_fee_percent"`
+	// PaymentWindowSeconds is how long the buyer has on the payment page of
+	// this channel (spec 62 П-3): the channel's own window, or the
+	// deployment's, never below a provider's floor. 0 when no window is
+	// configured. checkout/start answers the exact deadline
+	// (payment_expires_at).
+	PaymentWindowSeconds int64 `json:"payment_window_seconds"`
 	// PromoCodesAvailable is true when the organization has at least one promo
 	// code that is active, inside its date window and not used up. The widget
 	// shows its promo field only then. It says nothing about which code, nor
@@ -790,6 +796,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 	// (feature #321 WID-0d). Non-fatal: defaults to email-only on error.
 	defaultBuyerFields := buildBuyerFields(false, false)
 	serviceFeePercent := "0.00"
+	paymentWindow := h.paymentWindow
 	promoCodesAvailable := false
 	consentRequired, consentLegalName := false, ""
 	if h.publicFeedQueries != nil {
@@ -799,6 +806,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 			if strings.TrimSpace(flags.FeePercent) != "" {
 				serviceFeePercent = flags.FeePercent
 			}
+			paymentWindow = EffectivePaymentWindow(h.paymentWindow, flags.PaymentWindowSeconds, providerPageFloor(flags.Provider))
 			promoCodesAvailable = flags.PromoCodesAvailable
 			consentRequired, consentLegalName = consentFromFlags(flags)
 		} else if !errors.Is(flagsErr, pgx.ErrNoRows) {
@@ -880,6 +888,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 					}
 				}
 				sessResp.ServiceFeePercent = serviceFeePercent
+				sessResp.PaymentWindowSeconds = windowSeconds(paymentWindow)
 				sessResp.PromoCodesAvailable = promoCodesAvailable
 				sessResp.ShowWithdrawalNotice = showWithdrawalNotice
 				sessResp.WhiteLabel = whiteLabel

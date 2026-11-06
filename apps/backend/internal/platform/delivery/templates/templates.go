@@ -97,6 +97,12 @@ const (
 // Data.CartReminder carries the link and the hold's end.
 const TemplateKindCheckoutReminder = "checkout_reminder"
 
+// TemplateKindLatePayment tells a buyer what happened to a payment that came
+// after its order had closed (spec 62 П-15): the money goes back, or the
+// organizer returns it. Data.LatePayment carries it. A payment whose places
+// were taken again gets the ordinary ticket letter instead.
+const TemplateKindLatePayment = "late_payment"
+
 // TemplateKindMarketingConfirm asks a buyer who ticked the marketing consent
 // to confirm the address (double opt-in, package marketing). Data.Marketing
 // carries the confirmation and the withdraw links.
@@ -260,6 +266,10 @@ type Data struct {
 	// checkout_reminder); zero for every other kind.
 	CartReminder CartReminderData
 
+	// LatePayment is what the late-payment letter says (kind late_payment);
+	// zero for every other kind.
+	LatePayment LatePaymentData
+
 	// Marketing is what the marketing consent confirmation says (kind
 	// marketing_confirm); zero for every other kind.
 	Marketing MarketingConfirmData
@@ -384,6 +394,22 @@ type SaleNoticeData struct {
 	// When is the session start on the venue's clock; Venue its venue.
 	When  string
 	Venue string
+}
+
+// LatePaymentData is the content of the late-payment letter.
+type LatePaymentData struct {
+	// BuyerCancelled: the buyer cancelled the order before the payment
+	// came; otherwise it came after the order had closed.
+	BuyerCancelled bool
+	// Refunding: arena returns the money itself; otherwise the organizer
+	// does and contacts the buyer.
+	Refunding bool
+	// Total is the amount ready to print, OrderNumber the buyer-facing
+	// number, When the session start and Venue the venue.
+	Total       string
+	OrderNumber string
+	When        string
+	Venue       string
 }
 
 // CartReminderData is the content of the unpaid-order reminder.

@@ -1,0 +1,36 @@
+{{define "subject"}}{{if .LatePayment.Refunding}}Ihre Zahlung für {{.EventName}} wird erstattet{{else}}Zu Ihrer Zahlung für {{.EventName}}{{end}}{{end}}
+
+{{define "html"}}<!DOCTYPE html>
+<html lang="de" dir="ltr">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Zu Ihrer Zahlung</title></head>
+<body style="margin:0;padding:0;background:#f2f4f5;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f5;padding:24px 0;"><tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">
+  <tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>
+  <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
+  <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
+  <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">{{if .LatePayment.Refunding}}Ihre Zahlung wird erstattet{{else}}Ihre Zahlung kam nach dem Abschluss der Bestellung an{{end}}</h1>
+  <p style="margin:0 0 12px 0;">{{if .LatePayment.BuyerCancelled}}Sie haben die Bestellung {{.LatePayment.OrderNumber}} für {{.EventName}}{{with .LatePayment.When}} ({{.}}){{end}} storniert, die Zahlung von {{.LatePayment.Total}} ist trotzdem bei uns eingegangen.{{else}}Ihre Zahlung von {{.LatePayment.Total}} für die Bestellung {{.LatePayment.OrderNumber}} ({{.EventName}}{{with .LatePayment.When}}, {{.}}{{end}}) ist erst nach dem Abschluss der Bestellung bei uns eingegangen, die Tickets konnten nicht mehr für Sie reserviert bleiben.{{end}}</p>
+  <p style="margin:0 0 12px 0;">{{if .LatePayment.Refunding}}Wir erstatten den vollen Betrag auf das Zahlungsmittel, mit dem Sie bezahlt haben. Ihre Bank braucht dafür meist 5–10 Werktage.{{else}}Der Veranstalter erstattet Ihnen den vollen Betrag und meldet sich bei Ihnen.{{end}}</p>
+  <p style="margin:0 0 12px 0;">Für diese Bestellung wurden keine Tickets ausgestellt.</p>
+  {{with .LatePayment.Venue}}<p style="margin:0 0 12px 0;">{{.}}</p>{{end}}
+  </td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}Arena Platform — automatische Nachricht<br>{{end}}Wenn Sie auf „Abbestellen“ klicken, erhalten Sie keine E-Mails mit Ihren Tickets und keine wichtigen E-Mails zu Ihrer Bestellung mehr. Werbe-Mailings senden wir nicht ohne Ihre Einwilligung.</td></tr>
+</table>
+</td></tr></table>
+</body>
+</html>{{end}}
+
+{{define "text"}}{{.Branding.OrgName}}
+
+{{if .LatePayment.Refunding}}Ihre Zahlung wird erstattet{{else}}Ihre Zahlung kam nach dem Abschluss der Bestellung an{{end}}
+
+{{if .LatePayment.BuyerCancelled}}Sie haben die Bestellung {{.LatePayment.OrderNumber}} für {{.EventName}}{{with .LatePayment.When}} ({{.}}){{end}} storniert, die Zahlung von {{.LatePayment.Total}} ist trotzdem bei uns eingegangen.{{else}}Ihre Zahlung von {{.LatePayment.Total}} für die Bestellung {{.LatePayment.OrderNumber}} ({{.EventName}}{{with .LatePayment.When}}, {{.}}{{end}}) ist erst nach dem Abschluss der Bestellung bei uns eingegangen, die Tickets konnten nicht mehr für Sie reserviert bleiben.{{end}}
+{{if .LatePayment.Refunding}}Wir erstatten den vollen Betrag auf das Zahlungsmittel, mit dem Sie bezahlt haben. Ihre Bank braucht dafür meist 5–10 Werktage.{{else}}Der Veranstalter erstattet Ihnen den vollen Betrag und meldet sich bei Ihnen.{{end}}
+Für diese Bestellung wurden keine Tickets ausgestellt.
+{{with .LatePayment.Venue}}{{.}}
+{{end}}
+{{if not .WhiteLabel}}Arena Platform — automatische Nachricht{{end}}
+
+Wenn Sie auf „Abbestellen“ klicken, erhalten Sie keine E-Mails mit Ihren Tickets und keine wichtigen E-Mails zu Ihrer Bestellung mehr. Werbe-Mailings senden wir nicht ohne Ihre Einwilligung.
+{{end}}
