@@ -19,6 +19,9 @@
 // The collector runs on plain pool-bound queries, never inside a transaction:
 // each event is one idempotent statement, and a failure leaves the cursor where
 // it was so the next pass resumes at the failing row.
+//
+// Test orders (P-13, orders.is_test) are collected like any other on purpose:
+// they move real money through a live provider, so they are billed.
 package collect
 
 import (

@@ -194,6 +194,10 @@ func (d *Dispatcher) Dispatch(ctx context.Context, ev outbox.Event) error {
 	if !ok {
 		return nil // not a WordPress event; let the outbox mark it processed
 	}
+	// P-13: a test order is never announced to the selling site.
+	if outbox.IsTestEvent(ev) {
+		return nil
+	}
 	// A nil Dispatcher is what NewDispatcher answers for a nil pool, and it
 	// reaches here as a non-nil interface holding a nil pointer — so the guard
 	// has to be here, not at the call site.

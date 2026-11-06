@@ -20,6 +20,9 @@
 //
 // Nothing in a report or an alert carries personal data: counts, organization
 // ids, and the ids of billing facts only.
+//
+// Test orders (P-13, orders.is_test) are checked like any other on purpose:
+// billing counts them, because they move real money through a live provider.
 package reconcile
 
 import (

@@ -479,3 +479,30 @@ func TestPayloadSessionIDs_AcceptsBothProducerShapes(t *testing.T) {
 		t.Errorf("garbage ids must be dropped, got %v", got)
 	}
 }
+
+// TestDispatch_SkipsTestOrders proves a test order (P-13, payload is_test)
+// is never announced to the selling site, while the same event without the
+// flag is.
+func TestDispatch_SkipsTestOrders(t *testing.T) {
+	rcv := newReceiver(t)
+	channel := uuid.New()
+	loader := &fakeLoader{sub: rcv.subscriber(""), hasSub: true, order: &Order{ID: 5}, channelID: channel}
+	d := NewDispatcherWithLoader(loader)
+	payload := map[string]any{"order_id": uuid.New().String(), "channel_id": channel.String(), "is_test": true}
+	if err := d.Dispatch(context.Background(), outboxEvent(EventOrderPaid, payload)); err != nil {
+		t.Fatalf("Dispatch: %v", err)
+	}
+	if err := d.Dispatch(context.Background(), outboxEvent(EventTicketRefunded, map[string]any{"ticket_id": uuid.New().String(), "is_test": true})); err != nil {
+		t.Fatalf("Dispatch refunded: %v", err)
+	}
+	if len(rcv.bodies) != 0 || len(loader.routedChannels) != 0 {
+		t.Fatalf("a test order reached the site: %d deliveries, routed %v", len(rcv.bodies), loader.routedChannels)
+	}
+	delete(payload, "is_test")
+	if err := d.Dispatch(context.Background(), outboxEvent(EventOrderPaid, payload)); err != nil {
+		t.Fatalf("Dispatch real: %v", err)
+	}
+	if len(rcv.bodies) != 1 {
+		t.Fatalf("a real order was not delivered: %d deliveries", len(rcv.bodies))
+	}
+}

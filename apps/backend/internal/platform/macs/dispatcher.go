@@ -136,6 +136,10 @@ func NewDispatcher(pool *pgxpool.Pool, opts ...DispatcherOption) *Dispatcher {
 // Missing subscribers, missing system IDs, or malformed payloads return nil
 // (no subscriber = nothing to deliver; malformed = cannot be retried anyway).
 func (d *Dispatcher) Dispatch(ctx context.Context, ev outbox.Event) error {
+	// P-13: a test order never reaches the venue's scanning service.
+	if outbox.IsTestEvent(ev) {
+		return nil
+	}
 	switch ev.EventType {
 	case EventOrderPaid:
 		return d.dispatchOrderPaid(ctx, ev)
