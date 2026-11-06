@@ -4073,6 +4073,83 @@ components:
           format: date-time
           description: When the one-time address stops being valid (24 hours after the request). Null for the order's own address.
 
+    ExternalRefundItem:
+      type: object
+      description: One ticket of an external refund.
+      required: [ticket_id, amount_minor]
+      properties:
+        ticket_id:
+          type: string
+          format: uuid
+          description: UUID of an active ticket of the order.
+        amount_minor:
+          type: integer
+          format: int64
+          description: The FINAL amount returned for this ticket, in minor units. Positive, at most the price paid for the ticket.
+        provider_refund_ref:
+          type: string
+          description: The refund number of the provider's cabinet (AllPay), kept for reconciliation. Up to 120 characters; may repeat across tickets.
+
+    ExternalRefundRequest:
+      type: object
+      description: Body of the external-refund route.
+      required: [items]
+      properties:
+        items:
+          type: array
+          description: The tickets to refund, 1 to 200, each at most once.
+          items:
+            $ref: "#/components/schemas/ExternalRefundItem"
+
+    ExternalRefundResultItem:
+      type: object
+      description: One recorded external refund.
+      required: [ticket_id, refund_id, amount_minor, currency, provider_refund_ref]
+      properties:
+        ticket_id:
+          type: string
+          format: uuid
+          description: UUID of the cancelled ticket.
+        refund_id:
+          type: string
+          format: uuid
+          description: UUID of the refunds row (settlement external).
+        amount_minor:
+          type: integer
+          format: int64
+          description: The final amount recorded for the ticket, in minor units.
+        currency:
+          type: string
+          description: ISO 4217 currency of the order.
+        provider_refund_ref:
+          type: string
+          description: The provider refund number as given; empty when none was given.
+
+    ExternalRefundResponse:
+      type: object
+      description: What the external refund recorded.
+      required: [order_id, order_status, total_minor, currency, items]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+          description: UUID of the order.
+        order_status:
+          type: string
+          description: The order status after the call, `partially_refunded` or `refunded`.
+        total_minor:
+          type: integer
+          format: int64
+          description: The sum recorded by this call, in minor units.
+        currency:
+          type: string
+          description: ISO 4217 currency of the order.
+        items:
+          type: array
+          description: One entry per refunded ticket, in request order.
+          items:
+            $ref: "#/components/schemas/ExternalRefundResultItem"
+
     OrderRefundItem:
       type: object
       description: One refund row of an order, as the organizer's refund API reports it.
@@ -64409,6 +64486,104 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Delivery store unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/orders/{order_id}/external-refund:
+    post:
+      operationId: postV1OrganizationsOrgIdOrdersOrderIdExternalRefund
+      summary: Record a refund made outside the platform
+      description: |
+        Records money the organizer already returned to the buyer in the payment
+        provider's own cabinet (spec 62 section 14.6, the orders of the
+        WordPress era). Arena moves no money. In ONE transaction every named
+        ticket is cancelled (its place goes back on sale, its barcodes stop
+        admitting) and a refund with `settlement` `external` is booked for it
+        with the FINAL amount returned for that ticket; the order becomes
+        `partially_refunded`, or `refunded` once no ticket is left active. The
+        cancellation is announced through the outbox like any ticket
+        cancellation (the sites and MACS hear `ticket.refunded`). The call does
+        not e-mail the buyer. The rule is one final refund per ticket: a ticket
+        that already has an external refund answers 409
+        `order.external_refund_exists` with the amount recorded in `details`,
+        and a ticket cannot be refunded twice. The amount of a ticket may not
+        exceed what the buyer paid for it. A ticket already scanned at the gate
+        is refused like in the ticket cancellation route. Any refusal rolls the
+        whole call back. Requires the `refund.create` permission; the web asks
+        for the password again.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: order_id
+          in: path
+          required: true
+          description: UUIDv7 of the order
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExternalRefundRequest"
+      responses:
+        "200":
+          description: The refunds were recorded and the tickets cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalRefundResponse"
+        "400":
+          description: The body is malformed, a ticket id is not a UUID, a ticket repeats, or an amount is not positive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`refund.create`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Order not found, or not linked to this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The order is not paid (`order.not_refundable`), the ticket already has a refund (`order.external_refund_exists`), or is not active (`ticket.not_active`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The ticket is not in this order (`order.ticket_not_in_order`) or the amount is above the ticket price (`order.refund_exceeds_price`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
           content:
             application/json:
               schema:

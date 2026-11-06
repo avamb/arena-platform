@@ -9244,6 +9244,60 @@ type ExternalAllocation struct {
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
 }
 
+// ExternalRefundItem One ticket of an external refund.
+type ExternalRefundItem struct {
+	// AmountMinor The FINAL amount returned for this ticket, in minor units. Positive, at most the price paid for the ticket.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// ProviderRefundRef The refund number of the provider's cabinet (AllPay), kept for reconciliation. Up to 120 characters; may repeat across tickets.
+	ProviderRefundRef *string `json:"provider_refund_ref,omitempty"`
+
+	// TicketId UUID of an active ticket of the order.
+	TicketId openapi_types.UUID `json:"ticket_id"`
+}
+
+// ExternalRefundRequest Body of the external-refund route.
+type ExternalRefundRequest struct {
+	// Items The tickets to refund, 1 to 200, each at most once.
+	Items []ExternalRefundItem `json:"items"`
+}
+
+// ExternalRefundResponse What the external refund recorded.
+type ExternalRefundResponse struct {
+	// Currency ISO 4217 currency of the order.
+	Currency string `json:"currency"`
+
+	// Items One entry per refunded ticket, in request order.
+	Items []ExternalRefundResultItem `json:"items"`
+
+	// OrderId UUID of the order.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// OrderStatus The order status after the call, `partially_refunded` or `refunded`.
+	OrderStatus string `json:"order_status"`
+
+	// TotalMinor The sum recorded by this call, in minor units.
+	TotalMinor int64 `json:"total_minor"`
+}
+
+// ExternalRefundResultItem One recorded external refund.
+type ExternalRefundResultItem struct {
+	// AmountMinor The final amount recorded for the ticket, in minor units.
+	AmountMinor int64 `json:"amount_minor"`
+
+	// Currency ISO 4217 currency of the order.
+	Currency string `json:"currency"`
+
+	// ProviderRefundRef The provider refund number as given; empty when none was given.
+	ProviderRefundRef string `json:"provider_refund_ref"`
+
+	// RefundId UUID of the refunds row (settlement external).
+	RefundId openapi_types.UUID `json:"refund_id"`
+
+	// TicketId UUID of the cancelled ticket.
+	TicketId openapi_types.UUID `json:"ticket_id"`
+}
+
 // FeedToken A long-lived bearer token that grants a scanner device read access to the
 // agent feed for a specific sales channel. Presented as
 // `Authorization: Bearer <token>` to authenticated feed endpoints.
@@ -25096,6 +25150,9 @@ type PostV1OrganizationsOrgIdOrdersSearchJSONRequestBody = OrderSearchRequest
 
 // PostV1OrganizationsOrgIdOrdersIdCancelJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersIdCancel for application/json ContentType.
 type PostV1OrganizationsOrgIdOrdersIdCancelJSONRequestBody PostV1OrganizationsOrgIdOrdersIdCancelJSONBody
+
+// PostV1OrganizationsOrgIdOrdersOrderIdExternalRefundJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersOrderIdExternalRefund for application/json ContentType.
+type PostV1OrganizationsOrgIdOrdersOrderIdExternalRefundJSONRequestBody = ExternalRefundRequest
 
 // PostV1OrganizationsOrgIdOrdersOrderIdRefundsJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersOrderIdRefunds for application/json ContentType.
 type PostV1OrganizationsOrgIdOrdersOrderIdRefundsJSONRequestBody = CreateOrderRefundsRequest

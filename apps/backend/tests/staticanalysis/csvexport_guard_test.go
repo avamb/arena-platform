@@ -83,7 +83,9 @@ func TestCSVExportGuard_CsvexportIsTheOnlyPlatformWriter(t *testing.T) {
 	backend := filepath.Join(repoRoot(t), "apps", "backend")
 	platform := filepath.Join(backend, "internal", "platform")
 	allowed := map[string]string{
-		filepath.Join("customerimport", "parsers.go"): "reads an uploaded customer CSV",
+		filepath.Join("customerimport", "parsers.go"):          "reads an uploaded customer CSV",
+		filepath.Join("marketingimport", "marketingimport.go"): "reads the Brevo / Elementor exports of the P-18 import",
+		filepath.Join("wporders", "wporders.go"):               "reads the WordPress-era order correspondence of the P-14 import",
 	}
 	for rel := range csvImportAllowlist {
 		allowed[filepath.Join("httpserver", rel)] = "see csvImportAllowlist"
