@@ -15,6 +15,25 @@ import (
 // provider's hosted page shows ("Einat Winery, order 1000001790").
 const paymentDescriptionKey = "shop.payment.description"
 
+// receiptSeller is who the purpose line and the receipt name: the shop's own
+// brand with the organization, the legal seller, in brackets ("Einat Winery
+// (Vino&Co)"), or the organization alone when the shop has no name of its own
+// or its name is the organization's.
+func receiptSeller(shopName *string, org string) string {
+	brand := ""
+	if shopName != nil {
+		brand = strings.TrimSpace(*shopName)
+	}
+	org = strings.TrimSpace(org)
+	if brand == "" || strings.EqualFold(brand, org) {
+		return org
+	}
+	if org == "" {
+		return brand
+	}
+	return brand + " (" + org + ")"
+}
+
 // paymentDescription builds that line in the buyer's language. The number is
 // the order's system_id, never its UUID. Without a bundle, with an empty or
 // unsupported locale, or when the lookup fails, it is the English line (a
