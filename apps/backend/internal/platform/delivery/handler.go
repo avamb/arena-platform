@@ -218,7 +218,7 @@ type Payload struct {
 	// and the PDF header simply omits the logo image slot.
 	OrgLogoMediaID string `json:"org_logo_media_id,omitempty"`
 	// OrgAccentColor is the organization's branding.primary (migration
-	// 0204, spec 62 P-23), the accent of the PDF and the letter. A hint like
+	// 0203, spec 62 P-23), the accent of the PDF and the letter. A hint like
 	// the presentation fields: resolved at render time (resolvePresentation)
 	// when empty; only a "#rrggbb" value is used, anything else keeps the
 	// platform default.

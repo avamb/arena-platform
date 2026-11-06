@@ -3,7 +3,7 @@
  * switch of the event center.
  *
  * The organization stores its tokens in `organizations.branding` (migration
- * 0204); `GET /v1/organizations/{org_id}/me` answers them. OrgLayout calls
+ * 0203); `GET /v1/organizations/{org_id}/me` answers them. OrgLayout calls
  * applyBranding() when the organization loads: the tokens go into `:root`
  * as `--ec-*` custom properties through the CSSOM (allowed by the page's
  * `style-src 'self'`, unlike a style attribute), and styles.css maps them
