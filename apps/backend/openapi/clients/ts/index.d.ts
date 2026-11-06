@@ -4601,6 +4601,38 @@ export interface paths {
         patch: operations["updatePromoter"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/conversion-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the organization's server-side conversion settings
+         * @description Meta pixel id and GA4 measurement id with flags for the two write-only
+         *     secrets (spec 62 section 8.3). Requires `org.update` (the owner); an
+         *     organization API key is refused.
+         */
+        get: operations["getConversionSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set the organization's server-side conversion credentials
+         * @description After an order is paid, the platform sends Purchase to Meta Conversions
+         *     API and purchase to GA4 Measurement Protocol with these credentials, only
+         *     for a buyer whose `buyer_context.tracking_consent` is true. Absent keys
+         *     keep the stored value; an empty string or null clears. Requires
+         *     `org.update` (the owner); an organization API key is refused. Audited as
+         *     `v1.organization.conversion_settings_update` with the names of the
+         *     changed keys, never the values.
+         */
+        patch: operations["updateConversionSettings"];
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/seller-profile": {
         parameters: {
             query?: never;
@@ -27889,6 +27921,15 @@ export interface components {
              */
             attribution?: components["schemas"]["CheckoutAttribution"];
             /**
+             * @description The browser's tracking context (spec 62 sections 8.1 and 8.3),
+             *     optional. Kept beside the order for the organization's server-side
+             *     Meta CAPI and GA4 conversions; the server adds the client IP and
+             *     User-Agent itself. A malformed or oversized object is ignored, never
+             *     an error. Without `tracking_consent: true` at send time no
+             *     conversion leaves the platform.
+             */
+            buyer_context?: components["schemas"]["PublicCheckoutBuyerContext"];
+            /**
              * @description The buyer's tick on the organizer's mailings (spec 51-1),
              *     optional. Recorded only when the feed session's
              *     `marketing_optin.enabled` is true (consent journal, double
@@ -27982,6 +28023,66 @@ export interface components {
             status: string;
             /** @description True when the order is cancelled (now or by an earlier call). */
             cancelled: boolean;
+        };
+        /**
+         * @description Browser identifiers for server-side conversions. Every string is at most
+         *     256 characters (`page_url` 2048, `tracking_consent_text_version` 64) with
+         *     no control characters; a longer value is dropped, not truncated.
+         */
+        PublicCheckoutBuyerContext: {
+            /** @description Meta click id from the landing URL. */
+            fbclid?: string;
+            /** @description Google click id from the landing URL. */
+            gclid?: string;
+            /** @description Value of the `_fbp` cookie. */
+            fbp?: string;
+            /** @description Value of the `_fbc` cookie. */
+            fbc?: string;
+            /** @description GA4 client id (the `_ga` cookie value after `GA1.1.`). */
+            ga_client_id?: string;
+            /** @description The page the checkout started on, sent to Meta as event_source_url. */
+            page_url?: string;
+            /** @description The buyer's cookie-banner answer (analytics and advertising together). */
+            tracking_consent?: boolean;
+            /** @description Version of the banner text the answer was given to. */
+            tracking_consent_text_version?: string;
+        };
+        /**
+         * @description An organization's server-side conversion credentials. The two secrets
+         *     are write-only: only whether one is set is reported.
+         */
+        ConversionSettings: {
+            /** @description Meta pixel id, empty when not set. */
+            meta_pixel_id: string;
+            /** @description A Conversions API access token is stored. */
+            meta_capi_token_set: boolean;
+            /** @description Meta test event code used for orders of a test channel, empty when not set. */
+            meta_test_event_code: string;
+            /** @description GA4 measurement id (G-XXXXXXXXXX), empty when not set. */
+            ga4_measurement_id: string;
+            /** @description A Measurement Protocol API secret is stored. */
+            ga4_api_secret_set: boolean;
+        };
+        /** @description Envelope of the conversion-settings routes. */
+        ConversionSettingsEnvelope: {
+            /** @description The settings as stored after the call. */
+            conversion_settings: components["schemas"]["ConversionSettings"];
+        };
+        /**
+         * @description Every key is optional, at least one is required. An absent key keeps the
+         *     stored value; an empty string or null clears it.
+         */
+        UpdateConversionSettingsRequest: {
+            /** @description Numeric Meta pixel id (422 `conversions.invalid_field` otherwise). */
+            meta_pixel_id?: string | null;
+            /** @description Conversions API access token, 8-512 characters. Write-only. */
+            meta_capi_token?: string | null;
+            /** @description Meta test event code, up to 64 letters, digits, - or _. */
+            meta_test_event_code?: string | null;
+            /** @description GA4 measurement id, G- followed by capital letters and digits. */
+            ga4_measurement_id?: string | null;
+            /** @description Measurement Protocol API secret, 8-512 characters. Write-only. */
+            ga4_api_secret?: string | null;
         };
         /**
          * @description The buyer's answer to the marketing consent tick (spec 51-1). When
@@ -53521,6 +53622,146 @@ export interface operations {
             };
             /** @description The new name (or restoring) collides with an active promoter (`promoter.duplicate_name`). */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getConversionSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversionSettingsEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an API key (`conversions.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such organization (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    updateConversionSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateConversionSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; the settings as stored now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversionSettingsEnvelope"];
+                };
+            };
+            /** @description Invalid body (`conversions.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `org.update` in the organization, or is an API key (`conversions.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such organization (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A value has the wrong format (`conversions.invalid_field`). */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -17002,6 +17002,16 @@ components:
             never fail over a label.
           allOf:
             - $ref: "#/components/schemas/CheckoutAttribution"
+        buyer_context:
+          description: |
+            The browser's tracking context (spec 62 sections 8.1 and 8.3),
+            optional. Kept beside the order for the organization's server-side
+            Meta CAPI and GA4 conversions; the server adds the client IP and
+            User-Agent itself. A malformed or oversized object is ignored, never
+            an error. Without `tracking_consent: true` at send time no
+            conversion leaves the platform.
+          allOf:
+            - $ref: "#/components/schemas/PublicCheckoutBuyerContext"
         marketing_consent:
           description: |
             The buyer's tick on the organizer's mailings (spec 51-1),
@@ -17116,6 +17126,94 @@ components:
         cancelled:
           type: boolean
           description: True when the order is cancelled (now or by an earlier call).
+
+    PublicCheckoutBuyerContext:
+      type: object
+      description: |
+        Browser identifiers for server-side conversions. Every string is at most
+        256 characters (`page_url` 2048, `tracking_consent_text_version` 64) with
+        no control characters; a longer value is dropped, not truncated.
+      properties:
+        fbclid:
+          type: string
+          description: Meta click id from the landing URL.
+        gclid:
+          type: string
+          description: Google click id from the landing URL.
+        fbp:
+          type: string
+          description: Value of the `_fbp` cookie.
+        fbc:
+          type: string
+          description: Value of the `_fbc` cookie.
+        ga_client_id:
+          type: string
+          description: GA4 client id (the `_ga` cookie value after `GA1.1.`).
+        page_url:
+          type: string
+          description: The page the checkout started on, sent to Meta as event_source_url.
+        tracking_consent:
+          type: boolean
+          description: The buyer's cookie-banner answer (analytics and advertising together).
+        tracking_consent_text_version:
+          type: string
+          description: Version of the banner text the answer was given to.
+
+    ConversionSettings:
+      type: object
+      required: [meta_pixel_id, meta_capi_token_set, meta_test_event_code, ga4_measurement_id, ga4_api_secret_set]
+      description: |
+        An organization's server-side conversion credentials. The two secrets
+        are write-only: only whether one is set is reported.
+      properties:
+        meta_pixel_id:
+          type: string
+          description: Meta pixel id, empty when not set.
+        meta_capi_token_set:
+          type: boolean
+          description: A Conversions API access token is stored.
+        meta_test_event_code:
+          type: string
+          description: Meta test event code used for orders of a test channel, empty when not set.
+        ga4_measurement_id:
+          type: string
+          description: GA4 measurement id (G-XXXXXXXXXX), empty when not set.
+        ga4_api_secret_set:
+          type: boolean
+          description: A Measurement Protocol API secret is stored.
+
+    ConversionSettingsEnvelope:
+      type: object
+      required: [conversion_settings]
+      description: Envelope of the conversion-settings routes.
+      properties:
+        conversion_settings:
+          description: The settings as stored after the call.
+          allOf:
+            - $ref: "#/components/schemas/ConversionSettings"
+
+    UpdateConversionSettingsRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Every key is optional, at least one is required. An absent key keeps the
+        stored value; an empty string or null clears it.
+      properties:
+        meta_pixel_id:
+          type: [string, "null"]
+          description: Numeric Meta pixel id (422 `conversions.invalid_field` otherwise).
+        meta_capi_token:
+          type: [string, "null"]
+          description: Conversions API access token, 8-512 characters. Write-only.
+        meta_test_event_code:
+          type: [string, "null"]
+          description: Meta test event code, up to 64 letters, digits, - or _.
+        ga4_measurement_id:
+          type: [string, "null"]
+          description: GA4 measurement id, G- followed by capital letters and digits.
+        ga4_api_secret:
+          type: [string, "null"]
+          description: Measurement Protocol API secret, 8-512 characters. Write-only.
 
     PublicMarketingConsent:
       type: object
@@ -43367,6 +43465,129 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
           description: The new name (or restoring) collides with an active promoter (`promoter.duplicate_name`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/conversion-settings:
+    get:
+      operationId: getConversionSettings
+      summary: Read the organization's server-side conversion settings
+      description: |
+        Meta pixel id and GA4 measurement id with flags for the two write-only
+        secrets (spec 62 section 8.3). Requires `org.update` (the owner); an
+        organization API key is refused.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The settings.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversionSettingsEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update` in the organization, or is an API key (`conversions.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such organization (`org.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+    patch:
+      operationId: updateConversionSettings
+      summary: Set the organization's server-side conversion credentials
+      description: |
+        After an order is paid, the platform sends Purchase to Meta Conversions
+        API and purchase to GA4 Measurement Protocol with these credentials, only
+        for a buyer whose `buyer_context.tracking_consent` is true. Absent keys
+        keep the stored value; an empty string or null clears. Requires
+        `org.update` (the owner); an organization API key is refused. Audited as
+        `v1.organization.conversion_settings_update` with the names of the
+        changed keys, never the values.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateConversionSettingsRequest"
+      responses:
+        "200":
+          description: Saved; the settings as stored now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConversionSettingsEnvelope"
+        "400":
+          description: Invalid body (`conversions.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `org.update` in the organization, or is an API key (`conversions.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such organization (`org.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: A value has the wrong format (`conversions.invalid_field`).
           content:
             application/json:
               schema:

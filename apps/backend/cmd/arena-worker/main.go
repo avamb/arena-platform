@@ -57,6 +57,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/cartreminder"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/contactform"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/conversions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/convertjob"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customerimport"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/database"
@@ -236,6 +237,8 @@ func run() error {
 	}
 	outboxDispatcher := &multiDispatcher{dispatchers: outboxLegs(
 		salesNotifier,
+		// Server-side ad conversions (spec 62 8.3): queue only, never fails.
+		conversions.NewDispatcher(conversions.NewPGStore(pool.Pool), logger),
 		baseOutboxDispatcher,
 		macsDispatcher,
 		bil24WPDispatcher,
@@ -324,6 +327,10 @@ func run() error {
 		logger.Warn("could not schedule initial order expire sweep job", "error", err.Error())
 	} else {
 		logger.Info("order expire sweep job scheduled at startup")
+	}
+
+	if err := conversions.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
+		logger.Warn("could not schedule initial conversions sweep job", "error", err.Error())
 	}
 
 	// 7d. Reservation expire-sweep startup scheduling ------------------------
@@ -590,6 +597,14 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 			WithCheckoutQueries(reservationQueries),
 		Logger:    logger,
 		Scheduler: reservationexpiry.NewPGScheduler(pool),
+	}))
+
+	// conversions.sweep sends the queued Meta CAPI / GA4 MP purchases with
+	// backoff and self-schedules (spec 62 section 8.3).
+	reg.Register(conversions.JobType, conversions.NewHandler(conversions.HandlerOptions{
+		Store:     conversions.NewPGStore(pool),
+		Scheduler: conversions.NewPGScheduler(pool),
+		Logger:    logger,
 	}))
 
 	// billing.rate turns the collected events into charges; like collect it is

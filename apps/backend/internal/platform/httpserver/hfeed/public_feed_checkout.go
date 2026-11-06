@@ -65,6 +65,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/conversions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
@@ -132,6 +133,12 @@ type PublicFeedCheckoutStartRequest struct {
 	// a sales link of the organization before the hold; an empty or invalid
 	// object is never an error — a purchase must not fail over a label.
 	Attribution json.RawMessage `json:"attribution,omitempty"`
+	// BuyerContext is the browser's tracking context (spec 62 section 8.1 and
+	// 8.3): fbclid, gclid, fbp, fbc, ga_client_id, page_url and the
+	// tracking_consent answer with its text version. Optional and bounded;
+	// the server adds the client IP and User-Agent. It feeds the server-side
+	// Meta CAPI / GA4 conversions and is never logged.
+	BuyerContext json.RawMessage `json:"buyer_context,omitempty"`
 	// MarketingConsent is the buyer's tick on the organizer's mailings
 	// (spec 51-1). Recorded only when the organization offers the tick;
 	// ticked, it may earn the organizer's reward code.
@@ -629,6 +636,7 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 	// The attribution's sales link is looked up here, on the pool, before the
 	// hold transaction: inside it only the resolved values are written.
 	attr := h.resolveCheckoutAttribution(ctx, checkCtx.OrgID, req.Attribution, time.Now())
+	attr.buyerCtx = conversions.CleanBuyerContext(req.BuyerContext, httputil.TrustedClientIP(r, 0), r.UserAgent())
 
 	// ── 10. Begin transaction ─────────────────────────────────────────────────
 	if h.inventoryQueries == nil || h.pool == nil {
@@ -1799,6 +1807,7 @@ func (h *Handler) createPublicOrder(
 		return nil, err
 	}
 	orderID := res.Order.ID
+	h.storeBuyerContext(ctx, tx, cs.ID, orderID, attr.buyerCtx)
 	return &orderID, nil
 }
 
