@@ -72,6 +72,7 @@ async function readSettings(request: APIRequestContext): Promise<Settings> {
 async function openGrowth(page: Page, role: Role) {
   await signInAs(page, person(env, role));
   await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
+  await page.getByTestId("nav-more").click();
   await page.getByTestId("nav-growth").click();
   await expect(page.getByRole("heading", { level: 1, name: "Mailings and reminders" })).toBeVisible();
 }
@@ -171,11 +172,13 @@ test("the agent sees exactly what the API allows", async ({ page, request }) => 
   await signInAs(page, person(env, "agent"));
   await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
   if (!canSettings && !canSubscribers) {
+    await page.getByTestId("nav-more").click();
     await expect(page.getByTestId("nav-growth")).toHaveCount(0);
     await page.goto(`/o/${env.org_id}/growth`);
     await expect(page.getByText("Only the owner and the managers see this page.")).toBeVisible();
     return;
   }
+  await page.getByTestId("nav-more").click();
   await page.getByTestId("nav-growth").click();
   await expect(page.getByTestId("growth-settings")).toHaveCount(canSettings ? 1 : 0);
   await expect(page.getByTestId("growth-subscribers")).toHaveCount(canSubscribers ? 1 : 0);

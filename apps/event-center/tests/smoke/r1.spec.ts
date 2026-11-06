@@ -227,11 +227,12 @@ test.describe("R1 read-only event center", () => {
     await expect(page.getByTestId("order-row")).toBeVisible();
 
     // In-app navigation keeps the text.
-    await page.getByRole("navigation").getByRole("link", { name: "Events" }).click();
-    await page.getByRole("navigation").getByRole("link", { name: "Orders" }).click();
+    await page.getByRole("navigation", { name: "Main menu" }).getByRole("link", { name: "Events" }).click();
+    await page.getByRole("navigation", { name: "Main menu" }).getByRole("link", { name: "Orders" }).click();
     await expect(page.getByLabel("Search for an order")).toHaveValue("anna@example.test");
 
-    // Sign-out wipes it, without a page reload in between.
+    // Sign-out wipes it, without a page reload in between. It lives under "More".
+    await page.getByTestId("nav-more").click();
     await page.getByTestId("logout").click();
     await expect(page).toHaveURL(/\/login/);
     await page.getByLabel("E-mail").fill("manager@example.test");
@@ -290,13 +291,16 @@ test.describe("R1 read-only event center", () => {
     await mockApi(page);
     await signIn(page);
     await page.goto(`/o/${ORG_A}/events`);
+    await page.getByTestId("nav-more").click();
     await page.getByTestId("language-select").selectOption("ru");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Мероприятия");
     await expect(page.locator("html")).toHaveAttribute("lang", "ru");
-    for (const name of ["Мероприятия", "Заказы", "Уведомления"]) {
-      const box = await page.getByRole("navigation").getByRole("link", { name }).boundingBox();
+    for (const name of ["Мероприятия", "Заказы", "Возвраты", "Сводка"]) {
+      const box = await page.getByRole("navigation", { name: "Главное меню" }).getByRole("link", { name }).boundingBox();
       expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TAP);
     }
+    const more = await page.getByRole("navigation", { name: "Все разделы" }).getByRole("link", { name: "Уведомления" }).boundingBox();
+    expect(more?.height ?? 0).toBeGreaterThanOrEqual(MIN_TAP);
   });
 
   test("a signed-out visitor is sent to sign in and comes back", async ({ page }) => {

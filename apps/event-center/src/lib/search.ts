@@ -79,7 +79,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function parseOrdersSearch(raw: Record<string, unknown>): OrdersSearch {
   const out: OrdersSearch = {};
-  if (raw.tab === "paid" || raw.tab === "unpaid") out.tab = raw.tab;
+  if (raw.tab === "paid" || raw.tab === "unpaid" || raw.tab === "refunds") out.tab = raw.tab;
   // No `q`: the orders search never goes into the address (review finding L5).
   if (typeof raw.event === "string" && UUID.test(raw.event)) out.event = raw.event;
   if (typeof raw.session === "string" && UUID.test(raw.session)) out.session = raw.session;

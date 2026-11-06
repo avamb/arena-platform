@@ -311,9 +311,10 @@ test.describe("invitations (live)", () => {
     const calls = trackApi(page);
     await signInAs(page, person(env, "agent"));
     await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
-    // Inside the main menu only: the event "E2E Invitations Show" is a link too.
+    await page.getByTestId("nav-more").click();
+    // Inside "More" only: the event "E2E Invitations Show" is a link too.
     await expect(
-      page.getByRole("navigation", { name: "Main menu" }).getByRole("link", { name: "Invitations", exact: true }),
+      page.getByRole("navigation", { name: "All sections" }).getByRole("link", { name: "Invitations", exact: true }),
     ).toHaveCount(canRead ? 1 : 0);
     await page.goto(`/o/${env.org_id}/invitations`);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();

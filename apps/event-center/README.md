@@ -70,6 +70,54 @@ nginx sends a strict Content-Security-Policy and the other security headers from
 `add_header` drops the server-level ones). `scripts/check-headers.sh` asserts them on a
 running container; CI also runs the smoke against the built image, so the CSP is tested.
 
+## Organization theme and the shell (spec 62 section 12.1)
+
+Every organization paints the event center in its own colours. The tokens live in
+`organizations.branding` (migration 0204) and come with `GET /v1/organizations/{org_id}/me`;
+`OrgLayout` writes them into `:root` as `--ec-*` custom properties through the CSSOM
+(`src/lib/theme.ts`, allowed by `style-src 'self'`), and `styles.css` reads only tokens,
+never a colour literal. Keys: `primary`, `on_primary`, `on_primary_muted`, `ink`, `accent`,
+`bg` (`#rrggbb` or `rgba(...)`) and `font` (`Assistant`, `Onest` or `Golos Text`). Anything
+else is refused by the API with 400 `org.invalid_branding`. An organization without
+branding gets the arenasoldout.com palette: `#001489`, ink `#0B1020`, background
+`#F6F7FB`, font Onest. The ticket PDF and the ticket letters take their accent colour from
+`primary` (hex only).
+
+The owner sets it with one PATCH. Vino&Co's theme, as an example:
+
+```json
+PATCH /v1/organizations/{id}
+{
+  "branding": {
+    "primary": "#822121",
+    "on_primary": "#FFFFFF",
+    "on_primary_muted": "rgba(255,255,255,.72)",
+    "ink": "#2C2C2C",
+    "accent": "#D9A441",
+    "bg": "#F0E6DC",
+    "font": "Assistant"
+  }
+}
+```
+
+`"branding": null` returns to the platform palette. The dark theme follows the device
+unless the person picks Light or Dark under "More" (kept in `localStorage`); in it the
+brand colour is lightened until it reads on the dark background (`darkPrimary`, contrast
+4.5:1, guarded by `theme.test.ts`). Only Assistant is self-hosted today
+(`src/assets/fonts`, the page allows fonts from its own origin only); Onest and Golos Text
+fall back to the system font until their files are added.
+
+The shell is a bar of five items, Events, Orders, Refunds, Summary and More, at the bottom
+of a phone screen and under the header from 900 px. "More" holds every other section,
+Promo codes first, then the theme, the language and Sign out (`src/components/AppNav.tsx`).
+Refunds is the order list's `refunds` tab (partially refunded and refunded orders).
+Summary waits for the organization-wide summary (EC-V1) and lists the running events
+until then. Pages are one column of 640 px (a screen with a wide table or a hall map keeps
+960 px), tiles have a 16 px radius, tap targets are 44 px. A note offers "Add to home
+screen" once; the browser colour (`theme-color`) follows the organization, the manifest
+itself stays the platform's (a per-organization manifest needs a server route, the page
+allows `manifest-src 'self'` only).
+
 ## Event posters (task 7-1)
 
 An organizer uploads a poster as the first step of the creation wizard (or continues

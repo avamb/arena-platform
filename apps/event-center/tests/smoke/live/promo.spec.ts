@@ -71,6 +71,7 @@ async function signInAs(page: Page, p: ReturnType<typeof person>) {
 
 /** Opens the promo list the way a person does: through the navigation. */
 async function openPromo(page: Page) {
+  await page.getByTestId("nav-more").click();
   await page.getByTestId("nav-promo").click();
   await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/promo$`));
 }
@@ -336,6 +337,7 @@ test.describe.serial("promo codes twin (live)", () => {
     });
     await signInAs(page, person(env, "agent"));
     await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
+    await page.getByTestId("nav-more").click();
     await expect(page.getByTestId("nav-promo")).toHaveCount(0);
     await page.goto(`/o/${env.org_id}/promo`);
     await expect(page.getByTestId("promo-no-access")).toContainText("does not include promo codes");

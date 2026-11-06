@@ -5,12 +5,12 @@ import { ApiError } from "@/lib/api/http";
 import { wizardGate } from "@/lib/features";
 import { useI18n } from "@/lib/i18n";
 import { useEmbedded } from "@/lib/seatManager/embed";
-import { shopModeFor, shopNavTarget, showShopNav } from "@/lib/shopModule";
+import { shopModeFor } from "@/lib/shopModule";
 import { ErrorBox, ErrorScope, Loading } from "@/components/ui";
 import { RequireSignIn } from "@/screens/RequireSignIn";
-import { LanguageSelect } from "@/screens/LanguageSelect";
-import { AnalyticsOptOut } from "@/lib/analytics/AnalyticsOptOut";
 import { roleKey } from "@/screens/OrgsScreen";
+import { A2hsNote, TabBar } from "@/components/AppNav";
+import { applyBranding, resetBranding, type Branding } from "@/lib/theme";
 
 export interface OrgContextValue {
   orgId: string;
@@ -41,6 +41,15 @@ function OrgShell() {
   useEffect(() => {
     if (access.data !== undefined) rememberOrg(orgId);
   }, [access.data, orgId]);
+
+  // The organization's theme (spec 62 §12.1): its branding over the platform
+  // palette while the person works in it, the platform palette again after.
+  const branding: Branding | undefined = access.data?.branding;
+  useEffect(() => {
+    if (access.data === undefined) return;
+    applyBranding(branding);
+    return () => resetBranding();
+  }, [access.data, branding]);
 
   if (access.isLoading) {
     return (
@@ -86,107 +95,33 @@ function OrgShell() {
     <OrgCtx.Provider value={{ orgId, orgName, access }}>
       <ErrorScope.Provider value={{ orgId, orgName }}>
         {!embed && (
-        <header className="topbar">
-          <div className="topbar-org">
-            <span className="brand">{t("app.name")}</span>
-            <span className="org-name" data-testid="org-name">
-              {orgName}
-            </span>
-            <span className="muted">{t(roleKey(access.data.role))}</span>
-          </div>
-          <nav aria-label={t("nav.main")} className="topnav">
-            <Link to="/o/$orgId/events" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }}>
-              {t("nav.events")}
-            </Link>
-            {access.can("order.read") && (
-              <Link to="/o/$orgId/orders" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }}>
-                {t("nav.orders")}
-              </Link>
-            )}
-            {access.can("complimentary.read") && (
-              <Link
-                to="/o/$orgId/invitations"
-                params={{ orgId }}
-                activeProps={{ "aria-current": "page", className: "active" }}
-              >
-                {t("nav.invitations")}
-              </Link>
-            )}
-            {access.can("promoter.read") && (
-              <Link to="/o/$orgId/promoters" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }}>
-                {t("nav.promoters")}
-              </Link>
-            )}
-            {access.can("promo.read") && (
-              <Link to="/o/$orgId/promo" params={{ orgId }} search={{}} activeProps={{ "aria-current": "page", className: "active" }} data-testid="nav-promo">
-                {t("nav.promo")}
-              </Link>
-            )}
-            {showShopNav(shopMode, access.can("shop.read")) &&
-              (shopNavTarget(shopMode) === "orders" ? (
-                <Link to="/o/$orgId/shop/orders" params={{ orgId }} search={{}} activeProps={{ "aria-current": "page", className: "active" }} data-testid="nav-shop">
-                  {t("nav.shop")}
-                </Link>
-              ) : (
-                <Link to="/o/$orgId/shop" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }} data-testid="nav-shop">
-                  {t("nav.shop")}
-                </Link>
-              ))}
-            {access.can("sales_link.read") && (
-              <Link to="/o/$orgId/links" params={{ orgId }} search={{}} activeProps={{ "aria-current": "page", className: "active" }} data-testid="nav-links">
-                {t("nav.links")}
-              </Link>
-            )}
-            {(access.can("promo.read") || access.can("order.read")) && (
-              <Link to="/o/$orgId/growth" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }} data-testid="nav-growth">
-                {t("nav.growth")}
-              </Link>
-            )}
-            <Link
-              to="/o/$orgId/notifications"
-              params={{ orgId }}
-              activeProps={{ "aria-current": "page", className: "active" }}
-            >
-              {t("nav.notifications")}
-            </Link>
-            {access.can("membership.read") && (
-              <Link to="/o/$orgId/team" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }}>
-                {t("nav.team")}
-              </Link>
-            )}
-            {access.can("billing.read") && (
-              <Link to="/o/$orgId/billing" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }} data-testid="nav-billing">
-                {t("nav.billing")}
-              </Link>
-            )}
-            {access.can("org.update") && (
-              <Link to="/o/$orgId/org-data" params={{ orgId }} activeProps={{ "aria-current": "page", className: "active" }}>
-                {t("nav.orgData")}
-              </Link>
-            )}
+          <header className="topbar">
+            <div className="topbar-org">
+              <span className="brand">{t("app.name")}</span>
+              <span className="org-name" data-testid="org-name">
+                {orgName}
+              </span>
+              <span className="muted">{t(roleKey(access.data.role))}</span>
+            </div>
             {/* 6-1a: only in a build with VITE_FEATURE_WIZARD=1, and only for who can import a bundle. */}
             {wizardGate(access.can) === "ok" && (
               <Link
                 to="/o/$orgId/events/new"
                 params={{ orgId }}
-                activeProps={{ "aria-current": "page", className: "active" }}
+                className="btn btn-primary topbar-new"
+                activeProps={{ "aria-current": "page" }}
                 data-testid="nav-new-event"
               >
                 {t("nav.newEvent")}
               </Link>
             )}
-            {orgCount > 1 && <Link to="/orgs">{t("nav.switchOrg")}</Link>}
-          </nav>
-          <div className="topbar-tools">
-            <LanguageSelect />
-            <AnalyticsOptOut />
-            <button type="button" className="btn btn-link" onClick={() => void logout()} data-testid="logout">
-              {t("nav.logout")}
-            </button>
-          </div>
-        </header>
+          </header>
         )}
-        <main id="main" className={embed ? "page page-embed" : "page"}>
+        {!embed && (
+          <TabBar orgId={orgId} access={access} shopMode={shopMode} orgCount={orgCount} onLogout={() => void logout()} />
+        )}
+        {!embed && <A2hsNote />}
+        <main id="main" className={embed ? "page page-embed" : "page page-shell"}>
           <Outlet />
         </main>
       </ErrorScope.Provider>

@@ -51,6 +51,7 @@ test.describe("shop (mock)", () => {
     await mockShop(page);
     await signIn(page);
     await page.goto(`/o/${ORG_A}/events`);
+    await page.getByTestId("nav-more").click();
     await expect(page.getByTestId("nav-shop")).toBeVisible();
     await page.getByTestId("nav-shop").click();
     await expect(page).toHaveURL(new RegExp(`/o/${ORG_A}/shop/products`));
@@ -76,6 +77,7 @@ test.describe("shop (mock)", () => {
     await mockShop(page, ["event.read", "order.read"]);
     await signIn(page);
     await page.goto(`/o/${ORG_A}/events`);
+    await page.getByTestId("nav-more").click();
     await expect(page.getByTestId("nav-shop")).toHaveCount(0);
     await page.goto(`/o/${ORG_A}/shop/products`);
     await expect(page.getByTestId("shop-no-access")).toContainText("no access to the shop");
@@ -320,9 +322,12 @@ test.describe("shop (mock)", () => {
     await page.goto(`/o/${ORG_A}/shop/products/${PRODUCT_WINE}`);
     await page.getByTestId("shop-product-title").fill("Riesling Reserve");
     const bar = await page.getByTestId("shop-savebar").boundingBox();
-    const height = page.viewportSize()?.height ?? 812;
+    // Right on top of the shell's bottom bar (spec 62 section 12.1), never under it.
+    const tabbar = await page.getByTestId("tabbar").boundingBox();
+    const height = tabbar?.y ?? page.viewportSize()?.height ?? 812;
     expect(bar).not.toBeNull();
     expect((bar?.y ?? 0) + (bar?.height ?? 0)).toBeGreaterThanOrEqual(height - 1);
+    expect((bar?.y ?? 0) + (bar?.height ?? 0)).toBeLessThanOrEqual(height + 1);
     const button = await page.getByTestId("shop-product-save").boundingBox();
     expect(button?.height ?? 0).toBeGreaterThanOrEqual(44);
     // It stays there while the page scrolls.

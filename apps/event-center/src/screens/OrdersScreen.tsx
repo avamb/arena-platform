@@ -52,7 +52,7 @@ function OrderRow({ orgId, order }: { orgId: string; order: OrderListItem }) {
   );
 }
 
-const TABS: readonly OrderTab[] = ["recent", "paid", "unpaid"];
+const TABS: readonly OrderTab[] = ["recent", "paid", "unpaid", "refunds"];
 
 export function OrdersScreen() {
   const { t, locale } = useI18n();

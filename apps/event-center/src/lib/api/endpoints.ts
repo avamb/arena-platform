@@ -148,7 +148,7 @@ export function listTiers(orgId: string, eventId: string, sessionId: string): Pr
   });
 }
 
-export type OrderTab = "recent" | "paid" | "unpaid";
+export type OrderTab = "recent" | "paid" | "unpaid" | "refunds";
 
 export interface OrderQuery {
   tab?: OrderTab;
