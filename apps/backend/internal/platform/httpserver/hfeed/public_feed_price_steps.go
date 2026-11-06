@@ -29,6 +29,8 @@ import (
 type publicFeedPriceStep struct {
 	RemainingAtPrice *int  `json:"remaining_at_price"`
 	NextPrice        int64 `json:"next_price"`
+	// NextTierID is the category the sale passes to after this step.
+	NextTierID *string `json:"next_tier_id"`
 }
 
 // chainView is what the feed does to the chain steps of one session.
@@ -139,5 +141,6 @@ func (v chainView) priceStep(tierID uuid.UUID, tr publicFeedTierResponse, eff ma
 	if nextPrice <= tr.CurrentPrice {
 		return nil
 	}
-	return &publicFeedPriceStep{RemainingAtPrice: tr.Available, NextPrice: nextPrice}
+	nextTier := nextID.String()
+	return &publicFeedPriceStep{RemainingAtPrice: tr.Available, NextPrice: nextPrice, NextTierID: &nextTier}
 }
