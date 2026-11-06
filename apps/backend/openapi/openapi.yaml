@@ -70647,7 +70647,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "500":
-          description: Internal server error (`shop.failed`, `checkout.payment_start_failed`).
+          description: Internal server error (`shop.failed`).
           content:
             application/json:
               schema:

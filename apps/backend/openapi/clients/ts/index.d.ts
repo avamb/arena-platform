@@ -81485,7 +81485,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Internal server error (`shop.failed`, `checkout.payment_start_failed`). */
+            /** @description Internal server error (`shop.failed`). */
             500: {
                 headers: {
                     [name: string]: unknown;

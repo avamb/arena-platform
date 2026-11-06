@@ -568,7 +568,8 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 			return nil, &PaymentStartError{
 				Code:    ErrCodePaymentStartFailed,
 				Message: "We could not start the payment. Try again in a minute.",
-				Status:  http.StatusInternalServerError,
+				// 503, never 500/502, on this Cloudflare-fronted public route.
+				Status: http.StatusServiceUnavailable,
 			}
 		}
 		attemptRecorded = true
@@ -920,7 +921,7 @@ func (h *Handler) startHostedPayment(
 				slog.String("provider_payment_id", result.SessionID),
 				slog.String("error", err.Error()),
 			)
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 				ErrCodePaymentStartFailed, "We could not start the payment. Try again in a minute.", r,
 			))
 			return "", false
