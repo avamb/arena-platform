@@ -23,6 +23,8 @@ func TestParseFunnelRequest(t *testing.T) {
 		{"page surface needs a page", funnelRequest{FeedToken: "tok", EventID: ev, Step: "view", Surface: "hosted_page"}, false},
 		{"tickets page surface with a token", funnelRequest{FeedToken: "tok", EventID: ev, Step: "view", Surface: "tickets_page"}, false},
 		{"tickets page", funnelRequest{Page: &funnelPage{Slug: "a", EventSlug: "b"}, Step: "view", Surface: "tickets_page"}, true},
+		{"external site with a token", funnelRequest{FeedToken: "tok", EventID: ev, Step: "view", Surface: "external_site"}, true},
+		{"external site with a page", funnelRequest{Page: &funnelPage{Slug: "a", EventSlug: "b"}, Step: "session_open", Surface: "external_site"}, true},
 		{"unknown surface", funnelRequest{FeedToken: "tok", EventID: ev, Step: "view", Surface: "app"}, false},
 		{"both contexts", funnelRequest{FeedToken: "tok", EventID: ev, Page: &funnelPage{Slug: "a", EventSlug: "b"}, Step: "view", Surface: "widget"}, false},
 		{"neither context", funnelRequest{Step: "view", Surface: "widget"}, false},
