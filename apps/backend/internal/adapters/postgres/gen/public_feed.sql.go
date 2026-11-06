@@ -214,7 +214,8 @@ SELECT
           AND (p.valid_from  IS NULL OR p.valid_from  <= now())
           AND (p.valid_until IS NULL OR p.valid_until >  now())
           AND (p.max_uses IS NULL
-               OR p.max_uses > (SELECT COUNT(*) FROM promo_code_redemptions r WHERE r.promo_code_id = p.id))
+               OR p.max_uses > (SELECT COUNT(*) FROM promo_code_redemptions r WHERE r.promo_code_id = p.id
+                                   AND NOT EXISTS (SELECT 1 FROM orders t WHERE t.id = r.order_id AND t.is_test)))
     ) AS promo_codes_available,
     COALESCE(sc.settings #>> '{hosted_page,consent_required}', '') = 'true' AS consent_required,
     o.name,

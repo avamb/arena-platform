@@ -366,7 +366,7 @@ func (q *Queries) SoftDeletePromoCode(ctx context.Context, id, orgID uuid.UUID) 
 // ─────────────────────────────────────────────────────────────────────────────
 
 const countPromoCodeRedemptions = `-- name: CountPromoCodeRedemptions :one
-SELECT COUNT(*)::int FROM promo_code_redemptions WHERE promo_code_id = $1`
+SELECT COUNT(*)::int FROM promo_code_redemptions r WHERE r.promo_code_id = $1 AND NOT EXISTS (SELECT 1 FROM orders t WHERE t.id = r.order_id AND t.is_test)`
 
 // CountPromoCodeRedemptions returns the total number of times a promo code has
 // been redeemed. Used to enforce max_uses limits before accepting a redemption.
@@ -378,7 +378,7 @@ func (q *Queries) CountPromoCodeRedemptions(ctx context.Context, promoCodeID uui
 }
 
 const countUserRedemptions = `-- name: CountUserRedemptions :one
-SELECT COUNT(*)::int FROM promo_code_redemptions WHERE promo_code_id = $1 AND user_id = $2`
+SELECT COUNT(*)::int FROM promo_code_redemptions r WHERE r.promo_code_id = $1 AND r.user_id = $2 AND NOT EXISTS (SELECT 1 FROM orders t WHERE t.id = r.order_id AND t.is_test)`
 
 // CountUserRedemptions returns the number of times a specific platform user
 // has redeemed a given promo code (legacy REST checkout).
@@ -390,7 +390,7 @@ func (q *Queries) CountUserRedemptions(ctx context.Context, promoCodeID, userID 
 }
 
 const countPromoRedemptionsByCustomer = `-- name: CountPromoRedemptionsByCustomer :one
-SELECT COUNT(*)::int FROM promo_code_redemptions WHERE promo_code_id = $1 AND customer_id = $2`
+SELECT COUNT(*)::int FROM promo_code_redemptions r WHERE r.promo_code_id = $1 AND r.customer_id = $2 AND NOT EXISTS (SELECT 1 FROM orders t WHERE t.id = r.order_id AND t.is_test)`
 
 // CountPromoRedemptionsByCustomer returns how many times one customer has
 // redeemed the code — the max_uses_per_customer check where the buyer is
@@ -406,7 +406,7 @@ const countPromoRedemptionsByBuyerEmail = `-- name: CountPromoRedemptionsByBuyer
 SELECT COUNT(*)::int
 FROM promo_code_redemptions r
 JOIN orders o ON o.id = r.order_id
-WHERE r.promo_code_id = $1 AND lower(o.buyer_email) = lower($2)`
+WHERE r.promo_code_id = $1 AND lower(o.buyer_email) = lower($2) AND NOT o.is_test`
 
 // CountPromoRedemptionsByBuyerEmail returns how many orders bought under this
 // e-mail redeemed the code — the max_uses_per_customer check on the widget,
