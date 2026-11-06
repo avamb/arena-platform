@@ -62,7 +62,19 @@ type Options struct {
 	HTTPClient *http.Client
 	// Now is the clock (tests); nil is time.Now.
 	Now func() time.Time
+	// RetryBase is the first pause before getMe is tried again (tests); zero
+	// is defaultRetryBase.
+	RetryBase time.Duration
 }
+
+// The pauses between getMe attempts: doubling from defaultRetryBase, capped at
+// maxRetryDelay. A network blip at start (a connection reset by Telegram was
+// seen on prod on 2026-11-06) must not leave the delivery buttons dead until
+// somebody restarts the container.
+const (
+	defaultRetryBase = 2 * time.Second
+	maxRetryDelay    = 2 * time.Minute
+)
 
 // Bot is the sales bot's poller.
 type Bot struct {
@@ -71,6 +83,7 @@ type Bot struct {
 	prompts  PromptStore
 	logger   *slog.Logger
 	now      func() time.Time
+	retry    time.Duration
 	username string
 	// migrated holds the old ids of groups that became supergroups: a later
 	// "left" for such an id is the upgrade itself, not a removal.
@@ -86,7 +99,10 @@ func New(opts Options) (*Bot, error) {
 	if opts.API == nil || opts.Prompts == nil {
 		return nil, errors.New("salesbot: API and Prompts are required")
 	}
-	b := &Bot{api: opts.API, prompts: opts.Prompts, logger: opts.Logger, now: opts.Now, migrated: map[string]struct{}{}}
+	b := &Bot{api: opts.API, prompts: opts.Prompts, logger: opts.Logger, now: opts.Now, retry: opts.RetryBase, migrated: map[string]struct{}{}}
+	if b.retry <= 0 {
+		b.retry = defaultRetryBase
+	}
 	if b.logger == nil {
 		b.logger = slog.Default()
 	}
@@ -118,11 +134,32 @@ func New(opts Options) (*Bot, error) {
 	return b, nil
 }
 
-// Run long-polls updates until ctx ends.
+// Run long-polls updates until ctx ends. getMe is retried with growing pauses
+// until it answers; only a token Telegram rejects (401, 404) stops it, since
+// no retry can fix that. Run returns nil when ctx ends first.
 func (b *Bot) Run(ctx context.Context) error {
-	me, err := b.tg.GetMe(ctx)
-	if err != nil {
-		return fmt.Errorf("salesbot: getMe: %w", err)
+	var me *models.User
+	delay := b.retry
+	for attempt := 1; ; attempt++ {
+		var err error
+		me, err = b.tg.GetMe(ctx)
+		if err == nil {
+			break
+		}
+		if ctx.Err() != nil {
+			return nil
+		}
+		if errors.Is(err, tgbot.ErrorUnauthorized) || errors.Is(err, tgbot.ErrorNotFound) {
+			return fmt.Errorf("salesbot: getMe: %w", err)
+		}
+		b.logger.Warn("salesbot: getMe failed, retrying",
+			slog.Int("attempt", attempt), slog.Duration("in", delay), slog.String("error", err.Error()))
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(delay):
+		}
+		delay = min(delay*2, maxRetryDelay)
 	}
 	b.username = me.Username
 	b.logger.Info("salesbot: connected", slog.String("username", me.Username), slog.Int64("bot_id", me.ID))
