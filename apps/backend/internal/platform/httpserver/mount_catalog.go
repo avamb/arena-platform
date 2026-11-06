@@ -300,6 +300,15 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		r.Post("/public/feeds/{feed_token}/sessions/{session_id}/sale-subscriptions", s.handleCreateSaleSubscription)
 	}
 	r.Get("/public/sale-subscriptions/confirm", s.handleConfirmSaleSubscription)
+	// "My tickets by link" for a static organizer site (mytickets, spec 62 §7):
+	// the link request by feed token, the exchange of the e-mailed token for a
+	// 4-hour session, and the session's list, PDFs and logout.
+	// Always mounted; every handler answers 503 without a database.
+	r.Post("/public/feeds/{feed_token}/my-tickets/link", s.handleMyTicketsRequestLink)
+	r.Post("/public/my-tickets/session", s.handleMyTicketsExchange)
+	r.Delete("/public/my-tickets/session", s.handleMyTicketsLogout)
+	r.Get("/public/my-tickets/orders", s.handleMyTicketsOrders)
+	r.Get("/public/my-tickets/orders/{order_id}/tickets/{ticket_id}/pdf", s.handleMyTicketsPDF)
 	// Spec 51-1: the reminder's link back to the payment, and the two links
 	// of the marketing consent (confirm; withdraw page and its form).
 	if s.checkoutQueries != nil {

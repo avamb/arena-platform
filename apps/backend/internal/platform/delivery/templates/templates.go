@@ -97,6 +97,11 @@ const (
 // Data.CartReminder carries the link and the hold's end.
 const TemplateKindCheckoutReminder = "checkout_reminder"
 
+// TemplateKindMyTicketsLink carries the one-time "my tickets" link a buyer
+// asked for on the organizer's site (package mytickets, spec 62 §7).
+// Data.MyTickets carries the link.
+const TemplateKindMyTicketsLink = "my_tickets_link"
+
 // TemplateKindMarketingConfirm asks a buyer who ticked the marketing consent
 // to confirm the address (double opt-in, package marketing). Data.Marketing
 // carries the confirmation and the withdraw links.
@@ -255,6 +260,8 @@ type Data struct {
 	// SaleNotice is what the two subscriber letters say (kinds
 	// sale_subscribe_confirm and sale_open); zero for every other kind.
 	SaleNotice SaleNoticeData
+	// MyTickets is the link of the kind my_tickets_link; zero otherwise.
+	MyTickets MyTicketsLinkData
 
 	// CartReminder is what the unpaid-order reminder says (kind
 	// checkout_reminder); zero for every other kind.
@@ -375,6 +382,12 @@ type ScanAlertData struct {
 	// granted and until when it is valid, ready to print.
 	Reason string
 	Until  string
+}
+
+// MyTicketsLinkData is the content of the "my tickets" link letter.
+type MyTicketsLinkData struct {
+	// URL is the page that exchanges the one-time token for a session.
+	URL string
 }
 
 // SaleNoticeData is the content of a subscriber letter.

@@ -232,10 +232,13 @@ const (
 
 // Defines values for CheckoutStatusResponseStatus.
 const (
-	CheckoutStatusResponseStatusExpired CheckoutStatusResponseStatus = "expired"
-	CheckoutStatusResponseStatusFailed  CheckoutStatusResponseStatus = "failed"
-	CheckoutStatusResponseStatusPaid    CheckoutStatusResponseStatus = "paid"
-	CheckoutStatusResponseStatusPending CheckoutStatusResponseStatus = "pending"
+	CheckoutStatusResponseStatusCancelled CheckoutStatusResponseStatus = "cancelled"
+	CheckoutStatusResponseStatusExpired   CheckoutStatusResponseStatus = "expired"
+	CheckoutStatusResponseStatusFailed    CheckoutStatusResponseStatus = "failed"
+	CheckoutStatusResponseStatusNeedsHelp CheckoutStatusResponseStatus = "needs_help"
+	CheckoutStatusResponseStatusPaid      CheckoutStatusResponseStatus = "paid"
+	CheckoutStatusResponseStatusPending   CheckoutStatusResponseStatus = "pending"
+	CheckoutStatusResponseStatusRefunded  CheckoutStatusResponseStatus = "refunded"
 )
 
 // Defines values for ComplimentaryIssuanceStatus.
@@ -5944,6 +5947,31 @@ type CheckoutSessionItem struct {
 // `completed`, `abandoned`, `expired` are terminal.
 type CheckoutSessionItemState string
 
+// CheckoutStatusEvent The event block of the anonymous order status
+// (`GET /v1/public/checkout/{checkout_token}`).
+type CheckoutStatusEvent struct {
+	// EventId The event the order is for.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Name The event's name.
+	Name string `json:"name"`
+
+	// SessionId The session the order is for.
+	SessionId openapi_types.UUID `json:"session_id"`
+
+	// Slug The event's public page address; null until one is assigned.
+	Slug *string `json:"slug"`
+
+	// StartAt Session start, RFC 3339 UTC.
+	StartAt time.Time `json:"start_at"`
+
+	// Timezone IANA time zone of the venue to render `start_at` in; null when unknown.
+	Timezone *string `json:"timezone"`
+
+	// VenueName The session venue's name.
+	VenueName *string `json:"venue_name"`
+}
+
 // CheckoutStatusItem A single cart item (seat or general-admission) included in the
 // anonymous order-status response (feature #319 WID-0b).
 type CheckoutStatusItem struct {
@@ -5988,6 +6016,12 @@ type CheckoutStatusResponse struct {
 	// Discount Total discount applied; null until pricing_confirmed.
 	Discount *int `json:"discount"`
 
+	// Event What the order is for: event name and slug, the session start
+	// (UTC) and the venue with its IANA time zone, so a static page can
+	// render the order without a second call. Omitted when the session
+	// cannot be resolved.
+	Event *CheckoutStatusEvent `json:"event,omitempty"`
+
 	// ExpiresAt RFC3339 timestamp when the underlying reservation expires.
 	ExpiresAt *time.Time `json:"expires_at"`
 
@@ -6015,11 +6049,20 @@ type CheckoutStatusResponse struct {
 	// ProviderFee Payment provider fee; null until pricing_confirmed.
 	ProviderFee *int `json:"provider_fee"`
 
-	// Status Public order status derived from the checkout_session.state:
-	// - `pending`: created | pricing_confirmed | payment_started | manual_review
-	// - `paid`: completed
+	// Status Public order status, derived from the checkout_session.state and
+	// refined by the order the session produced:
+	// - `pending`: created | pricing_confirmed | payment_started
+	// - `paid`: completed (also a partially refunded order)
 	// - `expired`: expired
 	// - `failed`: abandoned
+	// - `needs_help`: manual_review - an operator has to look at the
+	//   order; the page should say "we are checking your order" and
+	//   show the organizer's contact, not a spinner (it used to be
+	//   reported as `pending`)
+	// - `refunded`: the order was fully refunded
+	// - `cancelled`: the order was cancelled
+	// Only `pending` is transient; the other statuses are final for a
+	// polling client.
 	Status CheckoutStatusResponseStatus `json:"status"`
 
 	// Subtotal Order subtotal in smallest currency unit; null until pricing_confirmed.
@@ -6035,11 +6078,21 @@ type CheckoutStatusResponse struct {
 	Total *int `json:"total"`
 }
 
-// CheckoutStatusResponseStatus Public order status derived from the checkout_session.state:
-// - `pending`: created | pricing_confirmed | payment_started | manual_review
-// - `paid`: completed
-// - `expired`: expired
-// - `failed`: abandoned
+// CheckoutStatusResponseStatus Public order status, derived from the checkout_session.state and
+// refined by the order the session produced:
+//   - `pending`: created | pricing_confirmed | payment_started
+//   - `paid`: completed (also a partially refunded order)
+//   - `expired`: expired
+//   - `failed`: abandoned
+//   - `needs_help`: manual_review - an operator has to look at the
+//     order; the page should say "we are checking your order" and
+//     show the organizer's contact, not a spinner (it used to be
+//     reported as `pending`)
+//   - `refunded`: the order was fully refunded
+//   - `cancelled`: the order was cancelled
+//
+// Only `pending` is transient; the other statuses are final for a
+// polling client.
 type CheckoutStatusResponseStatus string
 
 // CheckoutStatusTicketItem A single issued ticket included in the anonymous order-status response
@@ -6052,8 +6105,10 @@ type CheckoutStatusTicketItem struct {
 	// Number Seat number denormalized at issuance time.
 	Number *string `json:"number"`
 
-	// PdfUrl Path to download the PDF e-ticket:
-	// `GET /v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf`.
+	// PdfUrl ABSOLUTE URL to download the PDF e-ticket:
+	// `GET {api public origin}/v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf`.
+	// Deployments without a configured public origin answer the
+	// host-relative path instead.
 	PdfUrl *string `json:"pdf_url"`
 
 	// Row Row label denormalized at issuance time.
@@ -11486,6 +11541,115 @@ type MembershipItemRole string
 // MembershipItemStatus Lifecycle state of the membership. active = in force, revoked = soft-removed by an admin, suspended = paused.
 type MembershipItemStatus string
 
+// MyTicketsExchangeRequest Body of `POST /v1/public/my-tickets/session`.
+type MyTicketsExchangeRequest struct {
+	// Token The one-time token from the e-mailed link (query parameter `t`).
+	Token string `json:"token"`
+}
+
+// MyTicketsLinkRequest Body of `POST /v1/public/feeds/{feed_token}/my-tickets/link`.
+type MyTicketsLinkRequest struct {
+	// Email The address that placed the orders.
+	Email string `json:"email"`
+
+	// Locale Language of the letter (a short tag such as `ru`); the organization's language when omitted.
+	Locale *string `json:"locale,omitempty"`
+
+	// PageUrl The site page the letter links to (it receives `?t=<token>`). Used only
+	// when its origin is on the return-URL allow-list.
+	PageUrl *string `json:"page_url,omitempty"`
+}
+
+// MyTicketsOrder One listed order.
+type MyTicketsOrder struct {
+	// CreatedAt When the order was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency ISO 4217 currency code.
+	Currency string `json:"currency"`
+
+	// Event What the order is for.
+	Event CheckoutStatusEvent `json:"event"`
+
+	// OrderId The order.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// OrderNumber The number printed on the ticket e-mail and PDF.
+	OrderNumber int64 `json:"order_number"`
+
+	// PaidAt When the order was paid; absent for an invitation.
+	PaidAt *time.Time `json:"paid_at,omitempty"`
+
+	// SessionCancelled True when the session's date was cancelled.
+	SessionCancelled bool `json:"session_cancelled"`
+
+	// Status The public order status, `paid`, `refunded` or `cancelled` (same words as the order status route).
+	Status string `json:"status"`
+
+	// Tickets The order's tickets.
+	Tickets []MyTicketsTicket `json:"tickets"`
+
+	// Total Order total in the smallest currency unit.
+	Total int64 `json:"total"`
+}
+
+// MyTicketsOrdersPage One page of the session's orders.
+type MyTicketsOrdersPage struct {
+	// Orders The orders of this page, newest session first.
+	Orders []MyTicketsOrder `json:"orders"`
+
+	// Pagination Paging of the list.
+	Pagination struct {
+		// Page This page, 1-based.
+		Page int `json:"page"`
+
+		// PerPage Orders per page (20).
+		PerPage int `json:"per_page"`
+
+		// Total All matching orders.
+		Total int `json:"total"`
+
+		// TotalPages Number of pages, at least 1.
+		TotalPages int `json:"total_pages"`
+	} `json:"pagination"`
+}
+
+// MyTicketsSession A "my tickets" session.
+type MyTicketsSession struct {
+	// ExpiresAt When the session ends, RFC 3339 UTC (4 hours after the exchange).
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// SessionToken Bearer token for the other my-tickets routes. Shown once.
+	SessionToken string `json:"session_token"`
+}
+
+// MyTicketsTicket One ticket of a listed order.
+type MyTicketsTicket struct {
+	// HumanCode The human-readable fallback code in display form.
+	HumanCode *string `json:"human_code"`
+
+	// Number Seat number.
+	Number *string `json:"number"`
+
+	// PdfUrl Absolute URL of the PDF; needs the session's bearer token.
+	PdfUrl string `json:"pdf_url"`
+
+	// Row Row of an assigned seat.
+	Row *string `json:"row"`
+
+	// Sector Sector of an assigned seat.
+	Sector *string `json:"sector"`
+
+	// Status The ticket's status (`active`, `cancelled`, ...).
+	Status string `json:"status"`
+
+	// TicketId The ticket.
+	TicketId openapi_types.UUID `json:"ticket_id"`
+
+	// TierName Name of the ticket category.
+	TierName *string `json:"tier_name"`
+}
+
 // NetworkAgentsListResponse defines model for NetworkAgentsListResponse.
 type NetworkAgentsListResponse struct {
 	// Agents Active agent attachments for the given operator network
@@ -15506,6 +15670,34 @@ type PublicFeedCheckoutStartResponse struct {
 	// which case the caller should simply show the order status for the
 	// returned `checkout_token`.
 	RedirectUrl string `json:"redirect_url"`
+}
+
+// PublicFeedRemovedEvent An event that left a public feed token's list (spec 62 §6.1, item P-6).
+// `name`, `slug` and `display_number` are null when the event row no
+// longer exists.
+type PublicFeedRemovedEvent struct {
+	// DisplayNumber The event's display number; null when the event row is gone.
+	DisplayNumber *int64 `json:"display_number"`
+
+	// Id The event id the builder knows the page by.
+	Id openapi_types.UUID `json:"id"`
+
+	// LastSessionAt End of the event's last session, RFC 3339 UTC; null without sessions.
+	LastSessionAt *time.Time `json:"last_session_at"`
+
+	// Name The event's name; null when the event row is gone.
+	Name *string `json:"name"`
+
+	// RemovedAt When the event left the list, RFC 3339 UTC.
+	RemovedAt time.Time `json:"removed_at"`
+
+	// Slug The event's page address; null when none was assigned or the row is gone.
+	Slug *string `json:"slug"`
+
+	// Status Why the event left the list: `unpublished` (the publication to
+	// this token was deleted, or the event went back to draft),
+	// `cancelled`, `archived` or `deleted` (soft- or hard-deleted).
+	Status string `json:"status"`
 }
 
 // PublicGAItem defines model for PublicGAItem.
@@ -24388,6 +24580,13 @@ type ListPublicFeedEventsParams struct {
 
 	// Offset Pagination offset.
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+
+	// IncludeRemoved With `true` the answer also carries `removed_events`: every event
+	// that left this feed token's list within the last 30 days, with a
+	// terminal status and the removal time. It is how a site builder
+	// tells "removed" from "the answer is incomplete". The `events`
+	// list and its pagination are not affected.
+	IncludeRemoved *bool `form:"include_removed,omitempty" json:"include_removed,omitempty"`
 }
 
 // GetPublicMarketingConfirmPageParams defines parameters for GetPublicMarketingConfirmPage.
@@ -24412,6 +24611,27 @@ type GetPublicMarketingWithdrawPageParams struct {
 type PostPublicMarketingWithdrawParams struct {
 	// Token The withdraw-only token of the subscription.
 	Token string `form:"token" json:"token"`
+}
+
+// ListPublicMyTicketsOrdersParams defines parameters for ListPublicMyTicketsOrders.
+type ListPublicMyTicketsOrdersParams struct {
+	// Page 1-based page number, default 1.
+	Page *int `form:"page,omitempty" json:"page,omitempty"`
+
+	// Authorization `Bearer <session token>` from the exchange.
+	Authorization string `json:"Authorization"`
+}
+
+// GetPublicMyTicketsPdfParams defines parameters for GetPublicMyTicketsPdf.
+type GetPublicMyTicketsPdfParams struct {
+	// Authorization `Bearer <session token>` from the exchange.
+	Authorization string `json:"Authorization"`
+}
+
+// RevokePublicMyTicketsSessionParams defines parameters for RevokePublicMyTicketsSession.
+type RevokePublicMyTicketsSessionParams struct {
+	// Authorization `Bearer <session token>` from the exchange.
+	Authorization string `json:"Authorization"`
 }
 
 // GetPublicTermsParams defines parameters for GetPublicTerms.
@@ -25260,11 +25480,17 @@ type StartPublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutStartRequest
 // PostPublicFeedFunnelEventsJSONRequestBody defines body for PostPublicFeedFunnelEvents for application/json ContentType.
 type PostPublicFeedFunnelEventsJSONRequestBody = WidgetFunnelEventsBatch
 
+// RequestPublicMyTicketsLinkJSONRequestBody defines body for RequestPublicMyTicketsLink for application/json ContentType.
+type RequestPublicMyTicketsLinkJSONRequestBody = MyTicketsLinkRequest
+
 // CreatePublicSaleSubscriptionJSONRequestBody defines body for CreatePublicSaleSubscription for application/json ContentType.
 type CreatePublicSaleSubscriptionJSONRequestBody = PublicSaleSubscriptionRequest
 
 // PostPublicFunnelJSONRequestBody defines body for PostPublicFunnel for application/json ContentType.
 type PostPublicFunnelJSONRequestBody = SalesFunnelRequest
+
+// ExchangePublicMyTicketsLinkJSONRequestBody defines body for ExchangePublicMyTicketsLink for application/json ContentType.
+type ExchangePublicMyTicketsLinkJSONRequestBody = MyTicketsExchangeRequest
 
 // SendOrganizerContactJSONRequestBody defines body for SendOrganizerContact for application/json ContentType.
 type SendOrganizerContactJSONRequestBody = OrganizerContactRequest
