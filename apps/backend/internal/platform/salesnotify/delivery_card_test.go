@@ -180,7 +180,7 @@ func TestDispatcher_CardWithButtons_EditedOnStep_FailedToSales(t *testing.T) {
 	store.shopOrds["o-1"] = shopSample()
 	store.state = cardSample(shop.StepWaiting)
 	snd := &cardSender{}
-	d := NewDispatcher(store, snd, nil)
+	d := NewDispatcher(store, snd, nil).WithDeliveryButtons(true)
 	ctx := context.Background()
 	d.Handle(ctx, shopEvent(EventShopOrderPaid, "o-1", nil))
 	d.Handle(ctx, shopEvent(EventShopOrderPaid, "o-1", nil)) // retry
@@ -221,5 +221,38 @@ func TestDispatcher_CardWithButtons_EditedOnStep_FailedToSales(t *testing.T) {
 	last := snd.edits[len(snd.edits)-1]
 	if len(last.Rows) != 0 || !strings.Contains(last.Text, "do not ship") {
 		t.Fatalf("refunded card edit %+v", last)
+	}
+}
+
+// With the buttons off the delivery group gets the plain text message of
+// before M5, no card is remembered, and a card sent while the flag was on is
+// still edited, without its buttons.
+func TestDispatcher_ButtonsOff_PlainTextAndButtonlessEdits(t *testing.T) {
+	store := &cardStore{fakeStore: newFakeStore(shopChats()...), saved: map[string]int64{}}
+	store.shopOrds["o-1"] = shopSample()
+	store.state = cardSample(shop.StepWaiting)
+	snd := &cardSender{}
+	d := NewDispatcher(store, snd, nil) // buttons default to off
+	ctx := context.Background()
+	d.Handle(ctx, shopEvent(EventShopOrderPaid, "o-1", nil))
+	d.Handle(ctx, shopEvent(EventShopOrderPaid, "o-1", nil)) // retry
+	if len(snd.cards) != 0 || len(store.saved) != 0 {
+		t.Fatalf("a card went out with the buttons off: cards %+v saved %v", snd.cards, store.saved)
+	}
+	delivery := sentTo(&snd.fakeSender, "-2")
+	if len(delivery) != 1 || delivery[0] != FormatShopOrderPaid(shopSample()) {
+		t.Fatalf("the delivery group got %v", delivery)
+	}
+
+	// A card remembered from the time the flag was on: its text follows the
+	// step, the buttons are removed.
+	store.saved["delivery"] = 777
+	store.state = cardSample(shop.StepPacked)
+	d.Handle(ctx, shopEvent(EventShopOrderFulfillmentChanged, "o-1", map[string]any{"fulfillment_step": "packed", "event_id": "e1"}))
+	if len(snd.edits) != 1 || len(snd.edits[0].Rows) != 0 {
+		t.Fatalf("edits %+v", snd.edits)
+	}
+	if !strings.Contains(snd.edits[0].Text, RenderDeliveryCard(store.state).Text[:20]) {
+		t.Fatalf("edit text %q", snd.edits[0].Text)
 	}
 }

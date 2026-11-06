@@ -36,6 +36,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	tgbot "github.com/go-telegram/bot"
@@ -71,6 +72,10 @@ type Bot struct {
 	logger   *slog.Logger
 	now      func() time.Time
 	username string
+	// migrated holds the old ids of groups that became supergroups: a later
+	// "left" for such an id is the upgrade itself, not a removal.
+	migMu    sync.Mutex
+	migrated map[string]struct{}
 }
 
 // New builds the bot; it does not talk to Telegram until Run.
@@ -81,7 +86,7 @@ func New(opts Options) (*Bot, error) {
 	if opts.API == nil || opts.Prompts == nil {
 		return nil, errors.New("salesbot: API and Prompts are required")
 	}
-	b := &Bot{api: opts.API, prompts: opts.Prompts, logger: opts.Logger, now: opts.Now}
+	b := &Bot{api: opts.API, prompts: opts.Prompts, logger: opts.Logger, now: opts.Now, migrated: map[string]struct{}{}}
 	if b.logger == nil {
 		b.logger = slog.Default()
 	}
@@ -179,6 +184,7 @@ func ParseConnect(text, botUsername string) (code string, ok bool) {
 func (b *Bot) onMessage(ctx context.Context, m *models.Message) {
 	chat := chatKey(m.Chat.ID)
 	if m.MigrateToChatID != 0 {
+		b.rememberMigrated(chat)
 		if err := b.api.Migrated(ctx, chat, chatKey(m.MigrateToChatID)); err != nil {
 			b.logger.Warn("salesbot: migrate chat", "error", err.Error())
 		}
@@ -198,6 +204,13 @@ func (b *Bot) onConnect(ctx context.Context, m *models.Message, code string) {
 	lang := "en"
 	if m.From != nil && m.From.LanguageCode != "" {
 		lang = m.From.LanguageCode
+	}
+	if m.Chat.Type != models.ChatTypeGroup && m.Chat.Type != models.ChatTypeSupergroup {
+		// A code is bound to the chat it is typed in: in a private chat (or
+		// a channel) it would bind the person's own dialog. Refuse before
+		// the API sees it, so the code is not spent.
+		b.say(ctx, m, salesnotify.Say(lang, "salesnotify.bot.connect_group_only", nil))
+		return
 	}
 	if code == "" {
 		b.say(ctx, m, salesnotify.Say(lang, "salesnotify.bot.connect_usage", nil))
@@ -237,11 +250,30 @@ func (b *Bot) say(ctx context.Context, m *models.Message, text string) {
 	}
 }
 
+func (b *Bot) rememberMigrated(chat string) {
+	b.migMu.Lock()
+	b.migrated[chat] = struct{}{}
+	b.migMu.Unlock()
+}
+
+func (b *Bot) wasMigrated(chat string) bool {
+	b.migMu.Lock()
+	defer b.migMu.Unlock()
+	_, ok := b.migrated[chat]
+	return ok
+}
+
 // onMyChatMember marks a chat the bot was removed from.
 func (b *Bot) onMyChatMember(ctx context.Context, u *models.ChatMemberUpdated) {
 	switch u.NewChatMember.Type {
 	case models.ChatMemberTypeLeft, models.ChatMemberTypeBanned:
-		if err := b.api.Removed(ctx, chatKey(u.Chat.ID)); err != nil {
+		chat := chatKey(u.Chat.ID)
+		if b.wasMigrated(chat) {
+			// The old group of a supergroup upgrade: the bot did not leave,
+			// the subscriptions already follow the new id.
+			return
+		}
+		if err := b.api.Removed(ctx, chat); err != nil {
 			b.logger.Warn("salesbot: mark removed", "error", err.Error())
 		}
 	}

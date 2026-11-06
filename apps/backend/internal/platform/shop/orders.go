@@ -170,17 +170,67 @@ func (s *Service) ListOrdersPage(ctx context.Context, orgID uuid.UUID, f OrderFi
 
 // Ship marks a paid order shipped: the delivery step handed_over
 // (SetFulfillmentStep), which writes v1.shop.order.shipped and the buyer's
-// letter the first time. Shipping an order that is shipped already only
-// updates its tracking note. Shipping an order parked in manual_review means
-// the operator found the goods: they are taken off the shelf now, but only
-// when they are free (stock left after every live hold); otherwise 409
-// shop.out_of_stock lists the short lines. actor names who did it and from
-// where (its Tracking is ignored: trackingNote is the note).
+// letter the first time. Shipping an order that is shipped already, and at
+// handed_over, delivered or failed, only replaces its tracking note under the
+// order's row lock: no step moves (a delivered order stays delivered, a
+// failed one stays failed), no history row, no outbox event and no letter. A
+// new try of a failed delivery is an explicit handed_over step
+// (ApplyFulfillmentStep), not a note edit. Shipping an order parked in
+// manual_review means the operator found the goods: they are taken off the
+// shelf now, but only when they are free (stock left after every live hold);
+// otherwise 409 shop.out_of_stock lists the short lines. actor names who did
+// it and from where (its Tracking is ignored: trackingNote is the note).
 func (s *Service) Ship(ctx context.Context, orgID, id uuid.UUID, trackingNote string, actor StepInput) (OrderView, error) {
+	if err := s.ready(); err != nil {
+		return OrderView{}, err
+	}
 	trackingNote = strings.TrimSpace(trackingNote)
 	actor.Tracking = &trackingNote
-	v, _, err := s.ApplyFulfillmentStep(ctx, orgID, id, StepHandedOver, actor)
-	return v, err
+	if err := validateStepInput(StepHandedOver, &actor); err != nil {
+		return OrderView{}, err
+	}
+	if actor.ActorName == "" && actor.ActorUserID != nil {
+		// Read on the pool BEFORE the transaction opens.
+		actor.ActorName = s.authorName(ctx, StaffNoteAuthor{UserID: actor.ActorUserID})
+	}
+	var out gen.ShopOrderRow
+	err := s.inTx(ctx, func(tx pgx.Tx, q *gen.Queries) error {
+		o, err := q.GetShopOrderForUpdate(ctx, id, orgID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrOrderNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if trackingOnly(o) {
+			out = o
+			if o.TrackingNote != trackingNote {
+				out, err = q.SetShopOrderTracking(ctx, o.ID, trackingNote)
+			}
+			return err
+		}
+		res, err := s.SetFulfillmentStep(ctx, tx, orgID, id, StepHandedOver, actor)
+		out = res.Order
+		return err
+	})
+	if err != nil {
+		return OrderView{}, err
+	}
+	return s.view(ctx, s.q, out)
+}
+
+// trackingOnly: the order was handed over already and sits at a step after
+// that, so Ship edits the note and nothing else. A closed order (refunded,
+// cancelled, expired) goes through the step machine, which refuses it.
+func trackingOnly(o gen.ShopOrderRow) bool {
+	if o.ShippedAt == nil || o.DeliveryKind == DeliveryNone || OrderClosed(o) {
+		return false
+	}
+	switch CurrentStep(o) {
+	case StepHandedOver, StepDelivered, StepFailed:
+		return true
+	}
+	return false
 }
 
 // Cancel cancels an order that is still waiting for its payment; its goods go

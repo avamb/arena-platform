@@ -359,10 +359,14 @@ func MarkBotRemoved(ctx context.Context, db gen.DBTX, chatID string, now time.Ti
 }
 
 // MigrateChat follows a group upgraded to a supergroup on every row of the
-// old chat id (the bot hears migrate_to_chat_id as a service message).
+// old chat id (the bot hears migrate_to_chat_id as a service message). The
+// bot is in the new supergroup, so a "removed" mark that the old group's
+// left update put on the row (it may arrive first) and the error of a send to
+// the old id are cleared with the move.
 func MigrateChat(ctx context.Context, db gen.DBTX, from, to string) error {
 	_, err := db.Exec(ctx, `
-		UPDATE sales_notification_subscriptions SET chat_id = $2, updated_at = now()
+		UPDATE sales_notification_subscriptions
+		   SET chat_id = $2, bot_removed_at = NULL, last_error = NULL, updated_at = now()
 		 WHERE chat_id = $1 AND NOT EXISTS (
 		       SELECT 1 FROM sales_notification_subscriptions x
 		        WHERE x.chat_id = $2 AND x.org_id IS NOT DISTINCT FROM sales_notification_subscriptions.org_id)`,

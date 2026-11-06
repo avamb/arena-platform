@@ -915,9 +915,10 @@ func buildSalesNotifier(pool *pgxpool.Pool, cfg *config.Config, logger *slog.Log
 	if cfg.SalesTelegramBotToken != "" {
 		sender = salesnotify.NewTelegramSender(cfg.SalesTelegramBotToken, "")
 	}
-	logger.Info("sales notifier built", "telegram_configured", sender != nil, "events_bot", cfg.EventsTelegramBotUsername)
+	logger.Info("sales notifier built", "telegram_configured", sender != nil, "events_bot", cfg.EventsTelegramBotUsername, "shop_delivery_buttons", cfg.ShopDeliveryButtonsEnabled)
 	return salesnotify.NewDispatcher(salesnotify.NewPGStore(pool), sender, logger).
-		WithEventsBot(cfg.EventsTelegramBotUsername)
+		WithEventsBot(cfg.EventsTelegramBotUsername).
+		WithDeliveryButtons(cfg.ShopDeliveryButtonsEnabled)
 }
 
 // buildMediaRepo opens the media storage backend and wraps it in a

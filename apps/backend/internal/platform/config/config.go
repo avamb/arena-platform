@@ -557,6 +557,12 @@ type Config struct {
 	// website" button in the application dialog. Off until the site's
 	// /start/confirm page exists.
 	BotOnboardingSiteButton bool `env:"BOT_ONBOARDING_SITE_BUTTON" required:"false" default:"false"`
+	// ShopDeliveryButtonsEnabled (read by arena-worker) sends the delivery
+	// group's order card with the step buttons (spec 61 section 7b). Turn it
+	// on only once arena-bot runs with SALES_TELEGRAM_BOT_TOKEN and
+	// BOT_SERVICE_TOKEN, which are what receive the presses; off, the card is
+	// the plain text message it was before the buttons existed.
+	ShopDeliveryButtonsEnabled bool `env:"SHOP_DELIVERY_BUTTONS_ENABLED" required:"false" default:"false"`
 	// BotMiniappEditorEnabled (read by arena-bot) shows the Telegram web_app
 	// button "Edit in the editor" next to the description preview and on the
 	// email-note screen (spec 44, RT-12a). Off until the editor page of RT-12b
@@ -1181,6 +1187,12 @@ func LoadFor(role Role) (*Config, error) {
 		parseErrs = append(parseErrs, err)
 	}
 	cfg.BotOnboardingSiteButton = b
+
+	b, err = getenvBool("SHOP_DELIVERY_BUTTONS_ENABLED", false)
+	if err != nil {
+		parseErrs = append(parseErrs, err)
+	}
+	cfg.ShopDeliveryButtonsEnabled = b
 
 	b, err = getenvBool("BOT_MINIAPP_EDITOR_ENABLED", false)
 	if err != nil {

@@ -6566,6 +6566,9 @@ other = "The code did not work or has expired. Ask for a new code in the admin c
 ["salesnotify.bot.connect_usage"]
 other = "Write /connect and the code from the admin console."
 
+["salesnotify.bot.connect_group_only"]
+other = "You can connect only a group: add the bot to a group and send the code there."
+
 ["salesnotify.bot.operator"]
 other = "Platform (all organizations)"
 

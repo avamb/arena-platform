@@ -6560,6 +6560,9 @@ other = "Код не подошёл или устарел. Попросите н
 ["salesnotify.bot.connect_usage"]
 other = "Напишите /connect и код из админки."
 
+["salesnotify.bot.connect_group_only"]
+other = "Подключать можно только группу: добавьте бота в группу и отправьте код там."
+
 ["salesnotify.bot.operator"]
 other = "Платформа (все организации)"
 

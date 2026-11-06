@@ -220,6 +220,63 @@ func TestShopFulfillment_StepsThroughTheOrgAPI(t *testing.T) {
 	}
 }
 
+// Changing the tracking note through /ship moves no step: a delivered order
+// stays delivered, a failed one stays failed (no history row, no event, no
+// letter), while an explicit handed_over step still means a new try.
+func TestShopFulfillment_TrackingNoteEditMovesNoStep(t *testing.T) {
+	e := newDeliveryEnv(t)
+	_, variant := e.openShop(4500, 10)
+	ship := func(id uuid.UUID, note string) (int, map[string]any) {
+		code, body, _ := e.do(http.MethodPost, e.orgPath(e.orgA, "/orders/"+id.String()+"/ship"), e.ownerA, `{"tracking_note":"`+note+`"}`)
+		return code, body
+	}
+
+	// A first ship still goes through the step machine.
+	o := e.paidOrder(variant, 1)
+	code, body := ship(o.ID, "N1")
+	if code != http.StatusOK || body["fulfillment_step"] != shop.StepHandedOver || body["tracking_note"] != "N1" ||
+		e.eventRows(o.ID) != 1 || e.outboxCount(shop.EventOrderShipped, o.ID) != 1 || e.emailJobs(o.ID, shop.EmailShipped) != 1 {
+		t.Fatalf("first ship = %d %v rows %d", code, body, e.eventRows(o.ID))
+	}
+	// A note edit at handed_over: stored, nothing else.
+	if code, body = ship(o.ID, "N2"); code != http.StatusOK || body["tracking_note"] != "N2" || body["fulfillment_step"] != shop.StepHandedOver ||
+		e.eventRows(o.ID) != 1 || e.outboxCount(shop.EventOrderFulfillmentChanged, o.ID) != 1 || e.emailJobs(o.ID, shop.EmailShipped) != 1 {
+		t.Fatalf("note edit at handed_over = %d %v", code, body)
+	}
+
+	// Delivered: the note changes, the step stays.
+	if code, body = e.step(o.ID, `{"step":"delivered"}`, nil); code != http.StatusOK {
+		t.Fatalf("delivered = %d %v", code, body)
+	}
+	rows, changed := e.eventRows(o.ID), e.outboxCount(shop.EventOrderFulfillmentChanged, o.ID)
+	if code, body = ship(o.ID, "N3"); code != http.StatusOK || body["tracking_note"] != "N3" || body["fulfillment_step"] != shop.StepDelivered {
+		t.Fatalf("note edit of a delivered order = %d %v", code, body)
+	}
+	if e.eventRows(o.ID) != rows || e.outboxCount(shop.EventOrderFulfillmentChanged, o.ID) != changed {
+		t.Fatal("a note edit of a delivered order wrote a history row or an event")
+	}
+
+	// Failed: the note changes, the order stays failed and nothing is written.
+	f := e.paidOrder(variant, 1)
+	if code, body = ship(f.ID, "F1"); code != http.StatusOK {
+		t.Fatalf("ship = %d %v", code, body)
+	}
+	if code, body = e.step(f.ID, `{"step":"failed","reason":"not_home"}`, nil); code != http.StatusOK {
+		t.Fatalf("failed = %d %v", code, body)
+	}
+	rows, changed = e.eventRows(f.ID), e.outboxCount(shop.EventOrderFulfillmentChanged, f.ID)
+	if code, body = ship(f.ID, "F2"); code != http.StatusOK || body["tracking_note"] != "F2" || body["fulfillment_step"] != shop.StepFailed {
+		t.Fatalf("note edit of a failed order = %d %v", code, body)
+	}
+	if e.eventRows(f.ID) != rows || e.outboxCount(shop.EventOrderFulfillmentChanged, f.ID) != changed || e.emailJobs(f.ID, shop.EmailShipped) != 1 {
+		t.Fatal("a note edit of a failed order wrote a history row, an event or a letter")
+	}
+	// An explicit handed_over is still a new try.
+	if code, body = e.step(f.ID, `{"step":"handed_over"}`, nil); code != http.StatusOK || body["fulfillment_step"] != shop.StepHandedOver {
+		t.Fatalf("new try = %d %v", code, body)
+	}
+}
+
 // insertChat makes a sales chat of the organization (nil: the operator's).
 func (e *deliveryEnv) insertChat(org *uuid.UUID, chat string, kinds ...string) uuid.UUID {
 	e.t.Helper()

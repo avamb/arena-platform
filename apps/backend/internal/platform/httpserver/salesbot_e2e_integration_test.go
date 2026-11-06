@@ -226,7 +226,7 @@ func TestSalesBotE2E_ConnectCardPressReply(t *testing.T) {
 	// 2. The order is paid: the worker's leg sends the card with buttons.
 	_, variant := e.openShop(4500, 10)
 	o := e.paidOrder(variant, 1)
-	d := salesnotify.NewDispatcher(salesnotify.NewPGStore(e.pool), salesnotify.NewTelegramSender("sales-test-token", tg.srv.URL), nil)
+	d := salesnotify.NewDispatcher(salesnotify.NewPGStore(e.pool), salesnotify.NewTelegramSender("sales-test-token", tg.srv.URL), nil).WithDeliveryButtons(true)
 	m = tg.mark()
 	if n := handleOutbox(t, e, d, o.ID, shop.EventOrderPaid); n != 1 {
 		t.Fatalf("paid events = %d", n)

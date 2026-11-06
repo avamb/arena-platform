@@ -344,6 +344,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `BOT_SCHEME_BUTTON` (`off` default, `url` or `web_app`: the «Схема» button on the card of a seated date; needs `EVENT_CENTER_PUBLIC_URL` on the bot; turn it on only after the `/tg` screen of the event center is live; `web_app` opens `<EVENT_CENTER_PUBLIC_URL>/tg?next=<seats path>` and also needs `POST /v1/auth/telegram-miniapp` with `TELEGRAM_MINIAPP_SECRET_KEY` on the API) | — | — | ● | — |
 | `PUBLIC_TICKETS_BASE_URL` | ● | ● | ● | — |
 | `SHOP_PUBLIC_BASE_URL` (`https://` when set, the platform storefront origin; the shop order e-mail links `<this>/<org slug>/checkout/<token>` for an organization without its own `shop_domain`; empty = no status link) | — | ● | — | — |
+| `SHOP_DELIVERY_BUTTONS_ENABLED` (`true` sends the delivery group's order card with the step buttons, spec 61 section 7b; default off = a plain text message as before the buttons. Turn it on only when `arena-bot` runs with `SALES_TELEGRAM_BOT_TOKEN` and `BOT_SERVICE_TOKEN`, they are what receive the presses) | — | ● | — | — |
 | `SHORT_LINK_BASE_URL` (`https://`, host only, default `https://go.arenasoldout.com`, the host printed under a QR code; setup: `docs/ops/sales_links_ru.md`) | ● | — | — | — |
 | `SHORT_LINK_FALLBACK_URL` (`https://` when set; where `GET /go/{code}` sends an unknown code; empty = `PUBLIC_TICKETS_BASE_URL`, else `APP_PUBLIC_URL`) | ● | — | — | — |
 | `ONBOARDING_ENABLED`, `ONBOARDING_TERMS_URL`, `ONBOARDING_PRIVACY_URL` | ● | — | — | — |
@@ -1238,6 +1239,7 @@ organizer (DNS, opening the shop, payment channel, Telegram, 301) is in
 | `VITE_API_BASE_URL` | `shop-page` (build arg) | API origin, for example `https://api.arenasoldout.com` |
 | `CORS_ALLOWED_ORIGINS` | `arena-api` | Must list `https://<shop domain>`. Without it the browser cannot read the catalog and the checkout answers 400 `checkout.invalid_return_url` (the return URL policy accepts only these origins and `PUBLIC_TICKETS_BASE_URL`). Redeploy `arena-api` after changing it |
 | `SHOP_PUBLIC_BASE_URL` | `arena-worker` | Platform storefront origin for the link in the "order received" e-mail of an organization without its own `shop_domain` |
+| `SHOP_DELIVERY_BUTTONS_ENABLED` | `arena-worker` | `true` sends the delivery group's card with step buttons; default off (plain text). Only with `arena-bot` receiving presses (`SALES_TELEGRAM_BOT_TOKEN` + `BOT_SERVICE_TOKEN` there) |
 | `SHOP_TURNSTILE_SITE_KEY`, `SHOP_TURNSTILE_SECRET` | see the checklist, section 4 | Cloudflare Turnstile on the shop checkout. On the stand use Cloudflare's test pair (`1x00000000000000000000AA` / `1x0000000000000000000000000000000AA`), on production a pair created for the shop domain |
 | `SALES_TELEGRAM_BOT_TOKEN` | `arena-worker`, `arena-bot` | Telegram announcements to the logistician's chat (`sales_notification_subscriptions`, kinds `{shop_delivery}` for the delivery group, `{tickets,shop_sale}` for a sales chat); `arena-bot` polls the same token for the delivery buttons and `/connect` (one replica). Chats are connected from the admin screen "Telegram chats", not SQL (`docs/ops/shop_notifications_ru.md`) |
 

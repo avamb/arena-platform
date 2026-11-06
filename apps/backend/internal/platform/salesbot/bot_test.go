@@ -56,12 +56,14 @@ func TestTelegramName(t *testing.T) {
 // ── fakes ───────────────────────────────────────────────────────────────────
 
 type fakeAPI struct {
-	mu      sync.Mutex
-	steps   []StepRequest
-	cards   int
-	removed []string
-	answer  Answer
-	status  int
+	mu       sync.Mutex
+	steps    []StepRequest
+	cards    int
+	removed  []string
+	connects int
+	migrated [][2]string
+	answer   Answer
+	status   int
 }
 
 func (f *fakeAPI) Step(_ context.Context, r StepRequest) (Answer, int, error) {
@@ -77,13 +79,19 @@ func (f *fakeAPI) Card(context.Context, string, string) (Answer, int, error) {
 	return f.answer, f.status, nil
 }
 func (f *fakeAPI) Connect(context.Context, ConnectRequest) (ConnectAnswer, int, error) {
+	f.mu.Lock()
+	f.connects++
+	f.mu.Unlock()
 	return ConnectAnswer{}, http.StatusNotFound, nil
 }
 func (f *fakeAPI) Removed(_ context.Context, chat string) error {
 	f.removed = append(f.removed, chat)
 	return nil
 }
-func (f *fakeAPI) Migrated(context.Context, string, string) error { return nil }
+func (f *fakeAPI) Migrated(_ context.Context, from, to string) error {
+	f.migrated = append(f.migrated, [2]string{from, to})
+	return nil
+}
 
 type memPrompts struct {
 	mu sync.Mutex
@@ -312,6 +320,57 @@ func TestMyChatMember_RemovedIsReported(t *testing.T) {
 	b.handleUpdate(context.Background(), nil, &models.Update{MyChatMember: &models.ChatMemberUpdated{
 		Chat: models.Chat{ID: -200}, NewChatMember: models.ChatMember{Type: models.ChatMemberTypeMember}}})
 	if len(api.removed) != 1 || api.removed[0] != "-100" {
+		t.Fatalf("removed %v", api.removed)
+	}
+}
+
+func connectMsg(chatType models.ChatType) *models.Update {
+	return &models.Update{Message: &models.Message{ID: 5, Text: "/connect ABC123", Chat: models.Chat{ID: 42, Type: chatType},
+		From: &models.User{ID: 42, FirstName: "Ivan", LanguageCode: "ru"}}}
+}
+
+// /connect works in a group only: a private chat gets the plain refusal and
+// the code is not spent (the API is never called).
+func TestConnect_OnlyInGroups(t *testing.T) {
+	api := &fakeAPI{}
+	b, tg, _ := newTestBot(t, api)
+	ctx := context.Background()
+	b.handleUpdate(ctx, nil, connectMsg(models.ChatTypePrivate))
+	b.handleUpdate(ctx, nil, connectMsg(models.ChatTypeChannel))
+	if api.connects != 0 {
+		t.Fatalf("the code was spent outside a group (%d connects)", api.connects)
+	}
+	sent := tg.of("sendMessage")
+	if len(sent) != 2 || !strings.Contains(sent[0].params["text"], "Подключать можно только группу") {
+		t.Fatalf("replies %+v", sent)
+	}
+	b.handleUpdate(ctx, nil, connectMsg(models.ChatTypeGroup))
+	b.handleUpdate(ctx, nil, connectMsg(models.ChatTypeSupergroup))
+	if api.connects != 2 {
+		t.Fatalf("connects in groups = %d; want 2", api.connects)
+	}
+}
+
+// The left update of the old group of a supergroup upgrade is not a removal,
+// whichever side of the migration message it comes on.
+func TestMyChatMember_LeftAfterMigrationIsIgnored(t *testing.T) {
+	api := &fakeAPI{}
+	b, _, _ := newTestBot(t, api)
+	ctx := context.Background()
+	left := &models.Update{MyChatMember: &models.ChatMemberUpdated{
+		Chat: models.Chat{ID: -100}, NewChatMember: models.ChatMember{Type: models.ChatMemberTypeLeft}}}
+	b.handleUpdate(ctx, nil, &models.Update{Message: &models.Message{Chat: models.Chat{ID: -100}, MigrateToChatID: -1000000000100}})
+	b.handleUpdate(ctx, nil, left)
+	if len(api.migrated) != 1 || api.migrated[0] != [2]string{"-100", "-1000000000100"} {
+		t.Fatalf("migrated %v", api.migrated)
+	}
+	if len(api.removed) != 0 {
+		t.Fatalf("the upgrade was reported as a removal: %v", api.removed)
+	}
+	// Another group that really lost the bot is still reported.
+	b.handleUpdate(ctx, nil, &models.Update{MyChatMember: &models.ChatMemberUpdated{
+		Chat: models.Chat{ID: -200}, NewChatMember: models.ChatMember{Type: models.ChatMemberTypeBanned}}})
+	if len(api.removed) != 1 || api.removed[0] != "-200" {
 		t.Fatalf("removed %v", api.removed)
 	}
 }

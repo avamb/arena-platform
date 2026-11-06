@@ -192,6 +192,10 @@ type Dispatcher struct {
 	logger    *slog.Logger
 	queue     chan outbox.Event
 	eventsBot string
+	// deliveryButtons: the delivery group's card goes out with step buttons
+	// (SHOP_DELIVERY_BUTTONS_ENABLED). Off, it is the plain text message of
+	// before the buttons existed.
+	deliveryButtons bool
 }
 
 // NewDispatcher returns the leg; a nil sender (no bot token configured)
@@ -210,6 +214,17 @@ func NewDispatcher(store Store, sender Sender, logger *slog.Logger) *Dispatcher 
 func (d *Dispatcher) WithEventsBot(username string) *Dispatcher {
 	if d != nil {
 		d.eventsBot = strings.TrimPrefix(strings.TrimSpace(username), "@")
+	}
+	return d
+}
+
+// WithDeliveryButtons switches the step buttons of the delivery card on
+// (spec 61 section 7b). Off is the default: the card is a plain text message
+// and nothing is remembered for editing. A card sent while it was on is still
+// edited when its order moves, with the buttons removed.
+func (d *Dispatcher) WithDeliveryButtons(on bool) *Dispatcher {
+	if d != nil {
+		d.deliveryButtons = on
 	}
 	return d
 }

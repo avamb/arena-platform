@@ -6393,6 +6393,9 @@ other = "El código no funciona o ha caducado. Pide un código nuevo en la conso
 ["salesnotify.bot.connect_usage"]
 other = "Escribe /connect y el código de la consola de administración."
 
+["salesnotify.bot.connect_group_only"]
+other = "Solo se puede conectar un grupo: añade el bot a un grupo y envía allí el código."
+
 ["salesnotify.bot.operator"]
 other = "Plataforma (todas las organizaciones)"
 

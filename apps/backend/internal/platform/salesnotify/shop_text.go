@@ -132,6 +132,7 @@ var botKeys = []string{
 	"salesnotify.bot.connected",
 	"salesnotify.bot.connect_failed",
 	"salesnotify.bot.connect_usage",
+	"salesnotify.bot.connect_group_only",
 	"salesnotify.bot.operator",
 	"salesnotify.bot.kind.tickets",
 	"salesnotify.bot.kind.shop_sale",

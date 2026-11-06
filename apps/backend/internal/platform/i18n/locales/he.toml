@@ -433,6 +433,9 @@ other = "הקוד לא עבד או שפג תוקפו. בקשו קוד חדש ב�
 ["salesnotify.bot.connect_usage"]
 other = "כתבו /connect ואת הקוד מממשק הניהול."
 
+["salesnotify.bot.connect_group_only"]
+other = "אפשר לחבר רק קבוצה: הוסיפו את הבוט לקבוצה ושלחו שם את הקוד."
+
 ["salesnotify.bot.operator"]
 other = "הפלטפורמה (כל הארגונים)"
 

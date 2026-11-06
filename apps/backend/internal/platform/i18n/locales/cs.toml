@@ -433,6 +433,9 @@ other = "Kód nefunguje nebo vypršel. Požádejte o nový kód v administraci."
 ["salesnotify.bot.connect_usage"]
 other = "Napište /connect a kód z administrace."
 
+["salesnotify.bot.connect_group_only"]
+other = "Připojit lze jen skupinu: přidejte bota do skupiny a pošlete kód tam."
+
 ["salesnotify.bot.operator"]
 other = "Platforma (všechny organizace)"
 

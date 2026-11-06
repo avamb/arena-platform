@@ -56,8 +56,14 @@ func (d *Dispatcher) cardsEnabled() (CardStore, CardSender, bool) {
 }
 
 // announceCards sends the delivery card with its buttons to every delivery
-// group, claimed once under key, and remembers each message.
+// group, claimed once under key, and remembers each message. It answers false
+// (nothing sent, nothing claimed) when the buttons are off.
 func (d *Dispatcher) announceCards(ctx context.Context, targets []Subscription, key, orgID, orderID string) bool {
+	if !d.deliveryButtons {
+		// Buttons off: the caller sends the plain text message of before
+		// M5. No message id is stored, there is no card to edit later.
+		return false
+	}
 	cs, snd, ok := d.cardsEnabled()
 	if !ok || len(targets) == 0 {
 		return false
@@ -135,8 +141,12 @@ func (d *Dispatcher) RefreshCards(ctx context.Context, orgID, orderID string) {
 		return
 	}
 	card := RenderDeliveryCard(st)
+	rows := card.Rows
+	if !d.deliveryButtons {
+		rows = nil // empty rows remove the buttons of a card sent earlier
+	}
 	for _, ref := range refs {
-		if err := snd.EditCard(ctx, ref.ChatID, ref.MessageID, card.Text, card.Rows); err != nil && !IsNotModified(err) {
+		if err := snd.EditCard(ctx, ref.ChatID, ref.MessageID, card.Text, rows); err != nil && !IsNotModified(err) {
 			d.logger.Warn("sales.notify: card edit failed", "order_id", orderID, "chat_id", ref.ChatID, "error", err.Error())
 		}
 	}
