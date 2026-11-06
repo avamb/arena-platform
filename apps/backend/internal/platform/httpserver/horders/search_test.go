@@ -107,7 +107,7 @@ func TestLegacyTicketSystemID(t *testing.T) {
 }
 
 func TestTabFilter(t *testing.T) {
-	for in, want := range map[string]string{"": "", "recent": "", "Paid": "paid", " unpaid ": "unpaid"} {
+	for in, want := range map[string]string{"": "", "recent": "", "Paid": "paid", " unpaid ": "unpaid", "refunds": "refunds"} {
 		got, ok := tabFilter(in)
 		if !ok || got != want {
 			t.Errorf("tabFilter(%q) = %q,%v want %q", in, got, ok, want)

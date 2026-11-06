@@ -119,6 +119,7 @@ test.describe("organization data (live)", () => {
 
     const calls = trackApi(page);
     await openScreen(page, "org_admin");
+    await page.getByTestId("nav-more").click();
     await page.getByRole("link", { name: "Organization data" }).click();
     await expect(page.getByTestId("org-data")).toBeVisible();
     await expect(page.getByTestId("org-data-form")).toBeVisible();
@@ -294,6 +295,7 @@ test.describe("organization data (live)", () => {
 
       const calls = trackApi(page);
       await openScreen(page, role);
+      await page.getByTestId("nav-more").click();
       await expect(page.getByRole("link", { name: "Organization data" })).toHaveCount(0);
       await page.goto(`/o/${env.org_id}/org-data`);
       await expect(page.getByTestId("org-data-owner-only")).toContainText("Only the owner");

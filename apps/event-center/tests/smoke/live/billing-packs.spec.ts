@@ -42,6 +42,7 @@ const euro = (minor: number) => new Intl.NumberFormat("en-GB", { style: "currenc
 test.describe("billing balance, packs and invoices", () => {
   test("owner: balance 0, the EUR packs, no card fee, the commission helper equals the API", async ({ page, request }) => {
     await signInAs(page, "org_admin");
+    await page.getByTestId("nav-more").click();
     await page.getByTestId("nav-billing").click();
     await page.getByTestId("billing-nav-balance").click();
     await expect(page).toHaveURL(new RegExp(`${balanceUrl}$`));
@@ -259,6 +260,7 @@ test.describe("billing balance, packs and invoices", () => {
   for (const role of ["organizer", "agent"] as const) {
     test(`${role}: no billing pages, an explanation, no billing request, and the API says 403`, async ({ page, request }) => {
       await signInAs(page, role);
+      await page.getByTestId("nav-more").click();
       await expect(page.getByTestId("nav-billing")).toHaveCount(0);
 
       const billingCalls: string[] = [];

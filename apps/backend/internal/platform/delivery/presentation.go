@@ -87,7 +87,11 @@ func resolvePresentation(
 	p *Payload,
 	logger *slog.Logger,
 ) {
-	if q == nil || p == nil || !needsPresentation(*p) {
+	if q == nil || p == nil {
+		return
+	}
+	resolveAccent(ctx, q, ticketID, p, logger)
+	if !needsPresentation(*p) {
 		return
 	}
 	row, err := q.GetTicketPresentationByID(ctx, ticketID)

@@ -60,6 +60,7 @@ async function apiFind(request: APIRequestContext, role: Role, name: string): Pr
 }
 
 async function openPromoters(page: Page) {
+  await page.getByTestId("nav-more").click();
   await page.getByRole("link", { name: "Promoters" }).click();
   await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/promoters`));
 }
@@ -275,6 +276,7 @@ test.describe("promoters (live, three roles)", () => {
 
     await signInAs(page, person(env, "agent"));
     await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
+    await page.getByTestId("nav-more").click();
     const link = page.getByRole("link", { name: "Promoters" });
     if (!canRead) {
       await expect(link).toHaveCount(0);

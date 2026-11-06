@@ -10,8 +10,11 @@ import { captureLinkCode } from "@/lib/linkCode";
 import { captureTgEdit } from "@/lib/tgEdit";
 import { captureTgInvitations } from "@/lib/tgInvitations";
 import { router } from "@/router";
+import { applyThemeMode, storedThemeMode } from "@/lib/theme";
 import "@/styles.css";
 
+// The light/dark choice made under "More" (spec 62 §12.1), before the first paint.
+applyThemeMode(storedThemeMode());
 // A bot link carries its one-time code after "#": take it out of the
 // address before anything renders or sends a request (spec 37 §4.3).
 captureLinkCode();

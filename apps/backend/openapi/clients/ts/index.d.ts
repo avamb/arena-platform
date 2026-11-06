@@ -14118,6 +14118,11 @@ export interface components {
              *     organization routes then require the X-Admin-Reason header.
              */
             platform_superadmin: boolean;
+            /**
+             * @description The organization's theme, so the event center can paint itself
+             *     without a second request. Empty object = platform palette.
+             */
+            branding?: components["schemas"]["OrganizationBranding"];
         };
         MeUser: {
             /** @description Actor ID from the JWT (typically a UUID) */
@@ -15321,6 +15326,54 @@ export interface components {
             role: "organizer" | "agent" | "platform_operator" | "external_ticketing_operator" | "platform_superadmin" | "network_operator" | "org_admin";
         };
         /**
+         * @description An organization's theme (migration 0203, spec 62 §12.1). Every key is
+         *     optional; an absent key falls back to the platform palette
+         *     (arenasoldout.com: primary #001489, ink #0B1020, bg #F6F7FB, font
+         *     Onest). The event center writes the tokens into its CSS; the ticket
+         *     PDF and the ticket letters take their accent colour from `primary`.
+         *     Colours are `#rrggbb` or `rgba(r, g, b, a)`; anything else, and any
+         *     other key, is refused with 400 `org.invalid_branding`.
+         */
+        OrganizationBranding: {
+            /**
+             * @description Main brand colour (buttons, the active tab, the PDF and letter accent).
+             * @example #822121
+             */
+            primary?: string;
+            /**
+             * @description Text and icon colour drawn on `primary`.
+             * @example #ffffff
+             */
+            on_primary?: string;
+            /**
+             * @description Secondary text colour drawn on `primary`.
+             * @example rgba(255, 255, 255, .72)
+             */
+            on_primary_muted?: string;
+            /**
+             * @description Main text colour on the page background.
+             * @example #2c2c2c
+             */
+            ink?: string;
+            /**
+             * @description Second brand colour for highlights.
+             * @example #d9a441
+             */
+            accent?: string;
+            /**
+             * @description Page background colour.
+             * @example #f0e6dc
+             */
+            bg?: string;
+            /**
+             * @description Interface font, one of `Assistant`, `Onest`, `Golos Text`
+             *     (a plain string so the generated enum constants of other
+             *     schemas are not renamed).
+             * @example Assistant
+             */
+            font?: string;
+        };
+        /**
          * @description A single active organization (primary tenant boundary).
          *     Includes legal & contact attributes added in migration
          *     0049_organizations_legal_fields (Wave O / feature #253). All
@@ -15442,6 +15495,12 @@ export interface components {
              * @example https://acme.example
              */
             website_url?: string | null;
+            /**
+             * @description The organization's theme. Answered by GET and PATCH
+             *     /v1/organizations/{id} only; absent or empty means the
+             *     platform palette.
+             */
+            branding?: components["schemas"]["OrganizationBranding"];
             /**
              * Format: uuid
              * @description Optional forward reference to a media row that ships in
@@ -15669,6 +15728,17 @@ export interface components {
             contact_phone?: string;
             /** @description New public marketing / info URL (empty string clears). Validated as URI when non-empty. */
             website_url?: string;
+            /**
+             * @description Replaces the organization's whole theme (see
+             *     OrganizationBranding for the keys and values); `null` or `{}`
+             *     returns to the platform palette, an omitted member keeps it.
+             *     Accepted by PATCH /v1/organizations/{id} only (permission
+             *     `org.update`, the owner). An unknown key or an invalid value
+             *     answers 400 `org.invalid_branding`.
+             */
+            branding?: {
+                [key: string]: string;
+            } | null;
             /**
              * Format: uuid
              * @description New media-row FK (forward reference, Wave G). `null`
@@ -17778,7 +17848,7 @@ export interface components {
         OrderSearchRequest: {
             /** @description One search value (barcode, order number, e-mail, phone or name), classified like the GET `q`. */
             q?: string;
-            /** @description Status group `recent` (default), `paid` or `unpaid`. */
+            /** @description Status group `recent` (default), `paid`, `unpaid` or `refunds` (partially_refunded and refunded). */
             tab?: string;
             /** @description Order lifecycle status filter. */
             status?: string;
@@ -69317,7 +69387,9 @@ export interface operations {
                  *     manual_review (no confirmed payment behind the order;
                  *     manual_review is a payment that could not complete the checkout
                  *     and waits for an operator). Every `orders.status` belongs to
-                 *     exactly one of the two groups. Any other value is 400
+                 *     exactly one of the two groups. `refunds` is partially_refunded
+                 *     and refunded only (a narrower view inside `paid`, the web
+                 *     event center's Refunds tab). Any other value is 400
                  *     `orders.invalid_tab`. Combines with `status` (AND).
                  */
                 tab?: string;

@@ -99,6 +99,7 @@ test.describe("links and QR twin (live)", () => {
   test("owner: a link from the event card, the redirect leads to the event page, the scan is counted", async ({ page, request }) => {
     const slug = await eventSlug(request);
     await signInAs(page, "org_admin");
+    await page.getByTestId("nav-more").click();
     await expect(page.getByTestId("nav-links")).toBeVisible();
 
     await page.goto(`/o/${env.org_id}/events/${env.event_id}`);
@@ -166,6 +167,7 @@ test.describe("links and QR twin (live)", () => {
   test("owner: the list, retarget, edit, archive and restore", async ({ page, request }) => {
     const link = await findLink(request, LABEL);
     await signInAs(page, "org_admin");
+    await page.getByTestId("nav-more").click();
     await page.getByTestId("nav-links").click();
     await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/links$`));
     const row = page.getByTestId("link-row").filter({ hasText: LABEL });
@@ -242,6 +244,7 @@ test.describe("links and QR twin (live)", () => {
 
   test("manager: a link for a date from the session card, and the list of one event", async ({ page, request }) => {
     await signInAs(page, "organizer");
+    await page.getByTestId("nav-more").click();
     await expect(page.getByTestId("nav-links")).toBeVisible();
     await page.goto(`/o/${env.org_id}/events/${env.event_id}/sessions/${env.session_id}`);
     await page.getByTestId("session-qr-link").click();
@@ -279,6 +282,7 @@ test.describe("links and QR twin (live)", () => {
     expect(create.status()).toBe(403);
 
     await signInAs(page, "agent");
+    await page.getByTestId("nav-more").click();
     await expect(page.getByTestId("nav-links")).toHaveCount(0);
     const calls: string[] = [];
     page.on("request", (r) => {

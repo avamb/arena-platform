@@ -139,6 +139,7 @@ test.describe("4-3 promo codes (mock)", () => {
     await mockPromo(page, ["event.read"]);
     await signIn(page);
     await page.goto(`/o/${ORG_A}/events`);
+    await page.getByTestId("nav-more").click();
     await expect(page.getByTestId("nav-promo")).toHaveCount(0);
     await page.goto(`/o/${ORG_A}/promo`);
     await expect(page.getByTestId("promo-no-access")).toContainText("does not include promo codes");

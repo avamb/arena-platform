@@ -78,8 +78,11 @@ type OrgResponse struct {
 	KybStatus              string  `json:"kyb_status"`
 	KybVerifiedAt          *string `json:"kyb_verified_at"`
 	LogoMediaID            *string `json:"logo_media_id"`
-	CreatedAt              string  `json:"created_at"`
-	UpdatedAt              string  `json:"updated_at"`
+	// Branding is the organization's theme (migration 0203); omitted when the
+	// organization uses the platform palette or the route does not read it.
+	Branding  map[string]string `json:"branding,omitempty"`
+	CreatedAt string            `json:"created_at"`
+	UpdatedAt string            `json:"updated_at"`
 }
 
 // orgResponse is a package-level alias for OrgResponse so existing handler code
@@ -98,27 +101,28 @@ type createOrgRequest struct {
 // updateOrgRequest is the request body for PATCH /v1/organizations/{id}.
 // All fields are optional; empty/zero values leave the existing value unchanged.
 type updateOrgRequest struct {
-	Name                   string         `json:"name"`
-	Slug                   string         `json:"slug"`
-	Country                string         `json:"country"`
-	DefaultLocale          string         `json:"default_locale"`
-	ReservationTTLSeconds  int32          `json:"reservation_ttl_seconds"`
-	LegalName              optionalString `json:"legal_name"`
-	LegalForm              optionalString `json:"legal_form"`
-	TaxID                  optionalString `json:"tax_id"`
-	TaxIDScheme            optionalString `json:"tax_id_scheme"`
-	RegistrationNumber     optionalString `json:"registration_number"`
-	LegalAddressLine1      optionalString `json:"legal_address_line1"`
-	LegalAddressLine2      optionalString `json:"legal_address_line2"`
-	LegalAddressPostalCode optionalString `json:"legal_address_postal_code"`
-	LegalAddressCity       optionalString `json:"legal_address_city"`
-	LegalAddressCountry    optionalString `json:"legal_address_country"`
-	ContactEmail           optionalString `json:"contact_email"`
-	ContactPhone           optionalString `json:"contact_phone"`
-	WebsiteURL             optionalString `json:"website_url"`
-	KybStatus              optionalString `json:"kyb_status"`
-	SenderEmail            optionalString `json:"sender_email"`
-	LogoMediaID            optionalString `json:"logo_media_id"`
+	Name                   string           `json:"name"`
+	Slug                   string           `json:"slug"`
+	Country                string           `json:"country"`
+	DefaultLocale          string           `json:"default_locale"`
+	ReservationTTLSeconds  int32            `json:"reservation_ttl_seconds"`
+	LegalName              optionalString   `json:"legal_name"`
+	LegalForm              optionalString   `json:"legal_form"`
+	TaxID                  optionalString   `json:"tax_id"`
+	TaxIDScheme            optionalString   `json:"tax_id_scheme"`
+	RegistrationNumber     optionalString   `json:"registration_number"`
+	LegalAddressLine1      optionalString   `json:"legal_address_line1"`
+	LegalAddressLine2      optionalString   `json:"legal_address_line2"`
+	LegalAddressPostalCode optionalString   `json:"legal_address_postal_code"`
+	LegalAddressCity       optionalString   `json:"legal_address_city"`
+	LegalAddressCountry    optionalString   `json:"legal_address_country"`
+	ContactEmail           optionalString   `json:"contact_email"`
+	ContactPhone           optionalString   `json:"contact_phone"`
+	WebsiteURL             optionalString   `json:"website_url"`
+	KybStatus              optionalString   `json:"kyb_status"`
+	SenderEmail            optionalString   `json:"sender_email"`
+	LogoMediaID            optionalString   `json:"logo_media_id"`
+	Branding               optionalBranding `json:"branding"`
 }
 
 // optionalString preserves the difference between an omitted PATCH member and
@@ -431,6 +435,7 @@ func (h *Handler) HandleGetOrg(w http.ResponseWriter, r *http.Request) {
 
 	resp := responseFromOrganization(o)
 	resp.LegalForm = h.orgLegalForm(ctx, orgID)
+	resp.Branding = h.orgBranding(ctx, orgID)
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
 		"organization": resp,
 	})
@@ -536,6 +541,23 @@ func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var branding map[string]string
+	if req.Branding.Present {
+		if req.Branding.Invalid {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails("org.invalid_branding",
+				"branding must be an object of string tokens", r, map[string]any{"field": "branding"}))
+			return
+		}
+		normalized, bad := ValidateBranding(req.Branding.Value)
+		if bad != "" {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails("org.invalid_branding",
+				"branding keys are primary, on_primary, on_primary_muted, ink, accent, bg (#rrggbb or rgba(...)) and font (Assistant, Onest, Golos Text)",
+				r, map[string]any{"field": "branding", "key": bad}))
+			return
+		}
+		branding = normalized
+	}
+
 	// kyb_status gates live payments, so an organization cannot grade itself:
 	// only a platform superadmin writes it (the admin route does). The one move
 	// an owner may make is to ask for a review, unverified or rejected ->
@@ -550,7 +572,7 @@ func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, hidden, err := h.updateOrgTx(ctx, orgID, req, legalForm,
+	updated, hidden, err := h.updateOrgTx(ctx, orgID, req, legalForm, branding,
 		legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website, kybStatus)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -621,6 +643,7 @@ func (h *Handler) HandleUpdateOrg(w http.ResponseWriter, r *http.Request) {
 
 	resp := responseFromOrganization(updated)
 	resp.LegalForm = h.orgLegalForm(ctx, orgID)
+	resp.Branding = h.orgBranding(ctx, orgID)
 	out := map[string]any{"organization": resp}
 	if len(hidden) > 0 {
 		ids := make([]string, len(hidden))
@@ -660,7 +683,7 @@ func identityFieldsSent(req updateOrgRequest) []string {
 // that shows it, all in one transaction, so a sales page never shows an
 // incomplete seller block (HP-4a). It answers the ids of the channels whose
 // block was turned off.
-func (h *Handler) updateOrgTx(ctx context.Context, orgID uuid.UUID, req updateOrgRequest, legalForm *string,
+func (h *Handler) updateOrgTx(ctx context.Context, orgID uuid.UUID, req updateOrgRequest, legalForm *string, branding map[string]string,
 	legalName, taxID, taxScheme, registrationNumber, line1, line2, postalCode, city, addressCountry, email, phone, website *string, kybStatus string,
 ) (gen.OrganizationRow, []uuid.UUID, error) {
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -679,6 +702,11 @@ func (h *Handler) updateOrgTx(ctx context.Context, orgID uuid.UUID, req updateOr
 	}
 	if req.LegalForm.Present {
 		if _, err := q.SetOrganizationLegalForm(ctx, orgID, legalForm); err != nil {
+			return gen.OrganizationRow{}, nil, err
+		}
+	}
+	if req.Branding.Present {
+		if _, err := q.SetOrganizationBranding(ctx, orgID, branding); err != nil {
 			return gen.OrganizationRow{}, nil, err
 		}
 	}

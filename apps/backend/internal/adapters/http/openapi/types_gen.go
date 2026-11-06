@@ -13295,7 +13295,7 @@ type OrderSearchRequest struct {
 	// Status Order lifecycle status filter.
 	Status *string `json:"status,omitempty"`
 
-	// Tab Status group `recent` (default), `paid` or `unpaid`.
+	// Tab Status group `recent` (default), `paid`, `unpaid` or `refunds` (partially_refunded and refunded).
 	Tab *string `json:"tab,omitempty"`
 
 	// To Only orders created at or before this RFC3339 timestamp.
@@ -13528,6 +13528,10 @@ type OrgCityResponse struct {
 // OrgMeResponse The caller's access inside one organization, returned by
 // GET /v1/organizations/{org_id}/me. Every list is sorted and never null.
 type OrgMeResponse struct {
+	// Branding The organization's theme, so the event center can paint itself
+	// without a second request. Empty object = platform palette.
+	Branding *OrganizationBranding `json:"branding,omitempty"`
+
 	// CallerType `user` for a person signed in with a JWT, `api_key` for an
 	// organization API key.
 	CallerType string `json:"caller_type"`
@@ -13696,12 +13700,49 @@ type OrgWhiteLabelPeriod struct {
 	Status string `json:"status"`
 }
 
+// OrganizationBranding An organization's theme (migration 0203, spec 62 §12.1). Every key is
+// optional; an absent key falls back to the platform palette
+// (arenasoldout.com: primary #001489, ink #0B1020, bg #F6F7FB, font
+// Onest). The event center writes the tokens into its CSS; the ticket
+// PDF and the ticket letters take their accent colour from `primary`.
+// Colours are `#rrggbb` or `rgba(r, g, b, a)`; anything else, and any
+// other key, is refused with 400 `org.invalid_branding`.
+type OrganizationBranding struct {
+	// Accent Second brand colour for highlights.
+	Accent *string `json:"accent,omitempty"`
+
+	// Bg Page background colour.
+	Bg *string `json:"bg,omitempty"`
+
+	// Font Interface font, one of `Assistant`, `Onest`, `Golos Text`
+	// (a plain string so the generated enum constants of other
+	// schemas are not renamed).
+	Font *string `json:"font,omitempty"`
+
+	// Ink Main text colour on the page background.
+	Ink *string `json:"ink,omitempty"`
+
+	// OnPrimary Text and icon colour drawn on `primary`.
+	OnPrimary *string `json:"on_primary,omitempty"`
+
+	// OnPrimaryMuted Secondary text colour drawn on `primary`.
+	OnPrimaryMuted *string `json:"on_primary_muted,omitempty"`
+
+	// Primary Main brand colour (buttons, the active tab, the PDF and letter accent).
+	Primary *string `json:"primary,omitempty"`
+}
+
 // OrganizationItem A single active organization (primary tenant boundary).
 // Includes legal & contact attributes added in migration
 // 0049_organizations_legal_fields (Wave O / feature #253). All
 // legal & contact attributes are nullable to preserve backward
 // compatibility with organizations created before that wave.
 type OrganizationItem struct {
+	// Branding The organization's theme. Answered by GET and PATCH
+	// /v1/organizations/{id} only; absent or empty means the
+	// platform palette.
+	Branding *OrganizationBranding `json:"branding,omitempty"`
+
 	// ContactEmail Public operations / billing contact email.
 	ContactEmail *openapi_types.Email `json:"contact_email"`
 
@@ -21793,6 +21834,14 @@ type UpdateOperatorNetworkRequest struct {
 // the JSON Schema `if`/`then` clause below and enforced by the
 // server on PATCH.
 type UpdateOrganizationRequest struct {
+	// Branding Replaces the organization's whole theme (see
+	// OrganizationBranding for the keys and values); `null` or `{}`
+	// returns to the platform palette, an omitted member keeps it.
+	// Accepted by PATCH /v1/organizations/{id} only (permission
+	// `org.update`, the owner). An unknown key or an invalid value
+	// answers 400 `org.invalid_branding`.
+	Branding *map[string]string `json:"branding"`
+
 	// ContactEmail New public contact email (empty string clears). Validated as email when non-empty.
 	ContactEmail *string `json:"contact_email,omitempty"`
 
@@ -23920,7 +23969,9 @@ type GetV1OrganizationsOrgIdOrdersParams struct {
 	// manual_review (no confirmed payment behind the order;
 	// manual_review is a payment that could not complete the checkout
 	// and waits for an operator). Every `orders.status` belongs to
-	// exactly one of the two groups. Any other value is 400
+	// exactly one of the two groups. `refunds` is partially_refunded
+	// and refunded only (a narrower view inside `paid`, the web
+	// event center's Refunds tab). Any other value is 400
 	// `orders.invalid_tab`. Combines with `status` (AND).
 	Tab *string `form:"tab,omitempty" json:"tab,omitempty"`
 

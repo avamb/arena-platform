@@ -125,6 +125,7 @@ test.describe("the team (live)", () => {
       expect(me.permissions.includes(p), `${p} per the server`).toBe(true);
     }
     await openTeam(page, "org_admin");
+    await page.getByTestId("nav-more").click();
     await expect(page.getByRole("link", { name: "Team", exact: true })).toBeVisible();
     const own = row(page, person(env, "org_admin").email);
     await expect(own).toBeVisible();
@@ -323,6 +324,7 @@ test.describe("the team (live)", () => {
     const calls = trackApi(page);
     await signInAs(page, person(env, "agent"));
     await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
+    await page.getByTestId("nav-more").click();
     await expect(page.getByRole("link", { name: "Team", exact: true })).toHaveCount(0);
     await page.goto(`/o/${env.org_id}/team`);
     await expect(page.getByTestId("team-no-access")).toBeVisible();

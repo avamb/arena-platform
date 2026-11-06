@@ -25,6 +25,7 @@ import { parseSeatsSearch } from "@/lib/seatManager/embed";
 import { OrdersScreen } from "@/screens/OrdersScreen";
 import { OrderScreen } from "@/screens/OrderScreen";
 import { NotificationsScreen } from "@/screens/NotificationsScreen";
+import { SummaryScreen } from "@/screens/SummaryScreen";
 import { GrowthScreen } from "@/screens/GrowthScreen";
 import { BillingBalanceScreen } from "@/screens/BillingBalanceScreen";
 import { BillingInvoicesScreen } from "@/screens/BillingInvoicesScreen";
@@ -191,6 +192,13 @@ const orderRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/orders/$orderId",
   component: OrderScreen,
+});
+
+// Spec 62 §12.1: "Summary" of the bottom bar. The organization-wide summary is EC-V1; until then it lists the events.
+const summaryRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/summary",
+  component: SummaryScreen,
 });
 
 const notificationsRoute = createRoute({
@@ -388,6 +396,7 @@ export const routeTree = rootRoute.addChildren([
     sessionInvitationsRoute,
     ordersRoute,
     orderRoute,
+    summaryRoute,
     notificationsRoute,
     growthRoute,
     invitationsRoute,

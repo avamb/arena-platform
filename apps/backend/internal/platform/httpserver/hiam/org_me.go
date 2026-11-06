@@ -58,6 +58,15 @@ type orgMeResponse struct {
 	Roles              []string `json:"roles"`
 	Permissions        []string `json:"permissions"`
 	PlatformSuperadmin bool     `json:"platform_superadmin"`
+	// Branding is the organization's theme (migration 0203), always an
+	// object; empty means the platform palette.
+	Branding map[string]string `json:"branding"`
+}
+
+// orgBrandingReader is the optional read of organizations.branding;
+// *gen.Queries satisfies it, a fake without it answers an empty theme.
+type orgBrandingReader interface {
+	GetOrganizationBranding(ctx context.Context, orgID uuid.UUID) (map[string]string, error)
 }
 
 // Caller types of orgMeResponse.CallerType.
@@ -179,6 +188,14 @@ func HandleOrgMe(q OrgMeQuerier, isMember MemberCheck, resolver permissions.OrgE
 		}
 		resp.OrgName = org.Name
 		resp.OrgDisplayNumber = org.DisplayNumber
+		resp.Branding = map[string]string{}
+		if br, ok := q.(orgBrandingReader); ok {
+			if b, berr := br.GetOrganizationBranding(ctx, orgID); berr == nil && b != nil {
+				resp.Branding = b
+			} else if berr != nil {
+				logger.WarnContext(ctx, "org me: branding read failed", "error", berr.Error())
+			}
+		}
 
 		eff, err := resolver.EffectiveInOrg(ctx, actor, orgID)
 		if err != nil {

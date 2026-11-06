@@ -232,8 +232,9 @@ type Data struct {
 	Change ChangeData
 
 	// Accent is the colour of the thin band under the header, a CSS hex
-	// value. Render fills DefaultAccentColor when it is empty, so a caller
-	// never has to; a later wave can drive it from the organization.
+	// value. Render fills Branding.Accent (the organization's
+	// branding.primary) and then DefaultAccentColor when it is empty, so a
+	// caller never has to.
 	Accent string
 
 	// Tickets lists every ticket the one e-mail carries (one letter per
@@ -534,6 +535,10 @@ type Branding struct {
 	// OrgName is the public display name printed in the header next to
 	// the logo. Empty falls back to PlatformOrgName.
 	OrgName string
+	// Accent is the organization's brand colour (branding.primary,
+	// migration 0203) as "#rrggbb"; empty = the platform accent. Render
+	// copies it into Data.Accent when the caller left that empty.
+	Accent string
 	// WebsiteURL is the organisation website rendered as a footer link.
 	// Empty means "omit the link"; the {{with}} guards collapse the row.
 	WebsiteURL string
@@ -773,6 +778,9 @@ func (r *Renderer) ResolveLocale(kind, locale string) string {
 // Falls back to DefaultLocale when locale is missing. Returns an error
 // only if kind is unknown or the templates fail to execute.
 func (r *Renderer) Render(kind, locale string, data Data) (Rendered, error) {
+	if strings.TrimSpace(data.Accent) == "" {
+		data.Accent = strings.TrimSpace(data.Branding.Accent)
+	}
 	if strings.TrimSpace(data.Accent) == "" {
 		data.Accent = DefaultAccentColor
 	}
