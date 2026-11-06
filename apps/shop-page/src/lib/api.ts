@@ -307,6 +307,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   } catch (e) {
     throw new ApiError(0, 'network', e instanceof Error ? e.message : 'network error');
   }
+  return readAnswer<T>(res);
+}
+
+/** The JSON body of an answer, or the ApiError its error envelope describes. */
+async function readAnswer<T>(res: Response): Promise<T> {
   let body: unknown = null;
   const text = await res.text();
   if (text) {
@@ -474,6 +479,30 @@ export function getPage(orgSlug: string, slug: string): Promise<ShopPage> {
 
 export function resolveHost(host: string): Promise<{ org_slug: string }> {
   return request<{ org_slug: string }>(`/v1/public/shop/by-host?host=${encodeURIComponent(host)}`);
+}
+
+/**
+ * What public/boot.js already asked for on a custom domain, before this bundle arrived: the
+ * organization of the host and the catalog answer. Read once; null when there is nothing usable
+ * (another host, a failed request), and the caller then asks the API itself.
+ */
+interface BootPrefetch {
+  host: string;
+  slug: Promise<string | null>;
+  catalog: Promise<Response | null>;
+}
+
+export async function takePrefetch(host: string): Promise<{ slug: string; shop: Promise<ShopData> } | null> {
+  const w = window as unknown as { __arenaShopPrefetch?: BootPrefetch };
+  const p = w.__arenaShopPrefetch;
+  delete w.__arenaShopPrefetch;
+  if (!p || p.host !== host.toLowerCase()) return null;
+  const slug = await p.slug.catch(() => null);
+  if (!slug) return null;
+  const shop = p.catalog
+    .catch(() => null)
+    .then((res) => (res ? readAnswer<WireCatalog>(res).then(normalizeCatalog) : getShop(slug)));
+  return { slug, shop };
 }
 
 export async function createCheckout(orgSlug: string, body: CheckoutRequest): Promise<CheckoutCreated> {

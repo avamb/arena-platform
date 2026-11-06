@@ -50,7 +50,7 @@ function gallery(p: ShopProduct): string {
       const h = Math.floor(1946 / ratio);
       const mid = mediaId(p, i);
       const ss = srcset(img.url, img.width, GALLERY_WIDTHS);
-      const tag = `<img src="${esc(sized(img.url, 720))}" alt="${esc(img.alt ?? '')}"${ss ? ` srcset="${esc(ss)}"` : ''} width="1946" height="${h}"${i > 0 ? ' loading="lazy"' : ''} class="image-magnify-none" sizes="${MEDIA_SIZES}">`;
+      const tag = `<img src="${esc(sized(img.url, 720))}" alt="${esc(img.alt ?? '')}"${ss ? ` srcset="${esc(ss)}"` : ''} width="1946" height="${h}"${i > 0 ? ' loading="lazy"' : ' fetchpriority="high"'} class="image-magnify-none" sizes="${MEDIA_SIZES}">`;
       return `<li
             id="Slide-${SID}-${mid}"
             class="product__media-item grid__item slider__slide${i === 0 ? ' is-active' : ''}"

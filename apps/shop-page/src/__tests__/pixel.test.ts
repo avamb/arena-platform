@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { initPixel, isPixelHost, PIXEL_SCRIPT_URL, pixelParams, trackEvent, trackPageView, trackPurchaseOnce } from '../lib/pixel';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { initPixel, isPixelHost, PIXEL_DELAY_MS, PIXEL_SCRIPT_URL, pixelParams, trackEvent, trackPageView, trackPurchaseOnce } from '../lib/pixel';
 
 type Queued = { queue: unknown[][] };
 const queue = (): unknown[][] => ((window as unknown as { fbq?: Queued }).fbq?.queue ?? []);
@@ -29,9 +29,17 @@ describe('Meta pixel', () => {
     expect(document.querySelector('script')).toBeNull();
   });
 
-  it('loads Meta script once and queues init, then one PageView per address', () => {
-    expect(initPixel('123', 'www.einatwinery.com', ['einatwinery.com'])).toBe(true);
-    expect(document.querySelectorAll(`script[src="${PIXEL_SCRIPT_URL}"]`).length).toBe(1);
+  it('loads Meta script once, after the page settled, and queues init, then one PageView per address', () => {
+    vi.useFakeTimers();
+    try {
+      expect(initPixel('123', 'www.einatwinery.com', ['einatwinery.com'])).toBe(true);
+      // The script waits PIXEL_DELAY_MS after load so it does not take the pictures' bandwidth.
+      expect(document.querySelectorAll(`script[src="${PIXEL_SCRIPT_URL}"]`).length).toBe(0);
+      vi.advanceTimersByTime(PIXEL_DELAY_MS);
+      expect(document.querySelectorAll(`script[src="${PIXEL_SCRIPT_URL}"]`).length).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
     expect(trackPageView('/products/a')).toBe(true);
     expect(trackPageView('/products/a')).toBe(false);
     expect(trackPageView('/cart')).toBe(true);
