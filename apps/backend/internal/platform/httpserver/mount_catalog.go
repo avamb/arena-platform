@@ -283,6 +283,10 @@ func (s *Server) mountPublicFeedRoutes(r chi.Router) {
 		r.Get("/public/checkout/{checkout_token}", s.handlePublicCheckoutStatus)
 		// Hold-expiry recovery endpoint — WID-0c (feature #320).
 		r.Post("/public/checkout/{checkout_token}/recover", s.handlePublicCheckoutRecover)
+		// The buyer cancels an unpaid order and its places go back (П-2).
+		r.Post("/public/checkout/{checkout_token}/cancel", s.handlePublicCheckoutCancel)
+		// The buyer's cookie consent changed while the order is open (П-20).
+		r.Patch("/public/checkout/{checkout_token}/consent", s.handlePublicCheckoutConsent)
 		// The buyer's "Refer a friend" code and share link (spec 52).
 		r.Get("/public/checkout/{checkout_token}/referral", s.handlePublicCheckoutReferral)
 	}

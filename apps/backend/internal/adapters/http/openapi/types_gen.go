@@ -5624,6 +5624,16 @@ type Channel struct {
 	// OrgId Organization that owns this channel.
 	OrgId openapi_types.UUID `json:"org_id"`
 
+	// PaymentWindowSeconds The channel's own payment window in seconds (spec 62 П-3): how
+	// long the buyer has on the provider's payment page. `null` means
+	// the deployment default (`WIDGET_PAYMENT_WINDOW_SECONDS`). A
+	// provider with a floor of its own (Stripe refuses a Checkout
+	// Session that expires sooner than 30 minutes) never gets less than
+	// the deployment default; a longer value is honoured. The hold,
+	// order and checkout expire this window plus the payment grace
+	// after `checkout/start`.
+	PaymentWindowSeconds *int32 `json:"payment_window_seconds"`
+
 	// Settings Opaque JSONB blob of per-channel settings (e.g. `gateway_token_hash`
 	// for Bil24 compat channels). Structure is channel-type-specific.
 	Settings *map[string]interface{} `json:"settings,omitempty"`
@@ -5791,6 +5801,23 @@ type CheckoutAttributionFirst struct {
 
 	// UtmSource utm_source of the first touch.
 	UtmSource *string `json:"utm_source,omitempty"`
+}
+
+// CheckoutCancelResponse Response of `POST /v1/public/checkout/{checkout_token}/cancel`.
+type CheckoutCancelResponse struct {
+	// Cancelled True when the order is cancelled (now or by an earlier call).
+	Cancelled bool `json:"cancelled"`
+
+	// CheckoutToken The checkout token, echoed.
+	CheckoutToken string `json:"checkout_token"`
+
+	// Status The public status the order has now, as
+	// `GET /v1/public/checkout/{checkout_token}` reports it:
+	// `cancelled` (this call or an earlier one cancelled it), `paid`
+	// (the payment came first: show "thank you"), `expired` (the
+	// window had already closed) or `pending` (an operator holds the
+	// order).
+	Status string `json:"status"`
 }
 
 // CheckoutRecoverResponse Response body for `POST /v1/public/checkout/{checkout_token}/recover`
@@ -6028,10 +6055,22 @@ type CheckoutStatusResponse struct {
 	// Items Cart items held at the time of the request.
 	Items []CheckoutStatusItem `json:"items"`
 
+	// LatePayment Set when a payment arrived after the order stopped waiting for it
+	// (spec 62 П-15): `refund_requested` (the full amount goes back to
+	// the buyer's card), `operator_review` (the organizer returns it)
+	// or `reacquired` (the places were taken again and the order is
+	// paid). Omitted otherwise.
+	LatePayment *string `json:"late_payment,omitempty"`
+
 	// OrderNumber The order number the buyer sees in the ticket e-mail and on the PDF
 	// (`orders.system_id`). Present once the order exists for this
 	// checkout (always for a paid one); omitted before that.
 	OrderNumber *int64 `json:"order_number"`
+
+	// PaymentExpiresAt When the provider's page stops taking the payment (the sales
+	// channel's payment window, spec 62 П-3): `expires_at` minus the
+	// payment grace. Only while the order is `pending`.
+	PaymentExpiresAt *time.Time `json:"payment_expires_at,omitempty"`
 
 	// PaymentUrl The provider-hosted payment page for this order, present only
 	// while the order is still `pending` and its hold has not expired.
@@ -6060,7 +6099,8 @@ type CheckoutStatusResponse struct {
 	//   show the organizer's contact, not a spinner (it used to be
 	//   reported as `pending`)
 	// - `refunded`: the order was fully refunded
-	// - `cancelled`: the order was cancelled
+	// - `cancelled`: the order was cancelled — by the buyer
+	//   (`POST .../cancel`, spec 62 П-2) or an operator
 	// Only `pending` is transient; the other statuses are final for a
 	// polling client.
 	Status CheckoutStatusResponseStatus `json:"status"`
@@ -6089,7 +6129,8 @@ type CheckoutStatusResponse struct {
 //     show the organizer's contact, not a spinner (it used to be
 //     reported as `pending`)
 //   - `refunded`: the order was fully refunded
-//   - `cancelled`: the order was cancelled
+//   - `cancelled`: the order was cancelled — by the buyer
+//     (`POST .../cancel`, spec 62 П-2) or an operator
 //
 // Only `pending` is transient; the other statuses are final for a
 // polling client.
@@ -6119,6 +6160,28 @@ type CheckoutStatusTicketItem struct {
 
 	// TicketId UUIDv7 of the issued ticket.
 	TicketId openapi_types.UUID `json:"ticket_id"`
+}
+
+// CheckoutTrackingConsentResponse Response of `PATCH /v1/public/checkout/{checkout_token}/consent`.
+type CheckoutTrackingConsentResponse struct {
+	// Applied False when a newer choice was already stored; `tracking_consent`
+	// then shows the stored one.
+	Applied bool `json:"applied"`
+
+	// CheckoutToken The checkout token, echoed.
+	CheckoutToken string `json:"checkout_token"`
+
+	// TrackingConsent The consent the order carries now.
+	TrackingConsent struct {
+		// At When the buyer chose.
+		At *time.Time `json:"at"`
+
+		// Granted The buyer allowed tracking.
+		Granted bool `json:"granted"`
+
+		// Version The banner text version.
+		Version string `json:"version"`
+	} `json:"tracking_consent"`
 }
 
 // CompleteCheckoutRequest Request body for `POST /v1/checkout/{id}/complete`. Two completion
@@ -6577,6 +6640,12 @@ type CreateChannelRequest struct {
 	// it; anyone else gets 403
 	// `channel.merchant_of_record_superadmin_only`.
 	PaymentMode *CreateChannelRequestPaymentMode `json:"payment_mode,omitempty"`
+
+	// PaymentWindowSeconds The channel's own payment window in seconds, 120 to 86400 (spec
+	// 62 П-3; 1200 = 20 minutes for an AllPay site). Omit or `null` for
+	// the deployment default. Out of range: 400
+	// `channel.invalid_payment_window`.
+	PaymentWindowSeconds *int32 `json:"payment_window_seconds"`
 
 	// Provider Defaults to `stripe` when omitted or empty. Any other value
 	// returns 400 `channel.invalid_config`. The values are the
@@ -15616,6 +15685,15 @@ type PublicFeedCheckoutStartRequest struct {
 
 	// TierId Deprecated: use ga_items instead.
 	TierId *openapi_types.UUID `json:"tier_id,omitempty"`
+
+	// TrackingConsent The buyer's answer to the site's cookie banner (spec 62 §8.1,
+	// П-20), optional. Stored on the checkout; a conversion sender
+	// (GA4 Measurement Protocol, Meta CAPI) reads it from the order at
+	// send time and sends nothing unless it is an explicit yes. An
+	// unreadable object is dropped, never a reason to refuse the
+	// purchase. A later change goes through
+	// `PATCH /v1/public/checkout/{checkout_token}/consent`.
+	TrackingConsent *TrackingConsent `json:"tracking_consent,omitempty"`
 }
 
 // PublicFeedCheckoutStartResponse defines model for PublicFeedCheckoutStartResponse.
@@ -15642,11 +15720,18 @@ type PublicFeedCheckoutStartResponse struct {
 	// For a paid cart this is the payment deadline: it is moved to
 	// `WIDGET_PAYMENT_WINDOW_SECONDS + WIDGET_PAYMENT_GRACE_SECONDS`
 	// from now, so the provider's hosted session always stops accepting
-	// payment BEFORE arena releases the seats.
+	// payment BEFORE arena releases the seats. The window is the sales
+	// channel's own when it has one (`payment_window_seconds`, spec 62
+	// П-3).
 	ExpiresAt time.Time `json:"expires_at"`
 
 	// MarketingDiscountApplied True when the cart's discount is the reward for the marketing consent tick.
 	MarketingDiscountApplied *bool `json:"marketing_discount_applied,omitempty"`
+
+	// PaymentExpiresAt When the provider's page stops taking the payment (RFC 3339 UTC):
+	// the channel's payment window from now. This is what a site counts
+	// down to; `expires_at` is a grace later. Present for a paid cart.
+	PaymentExpiresAt *time.Time `json:"payment_expires_at,omitempty"`
 
 	// Pricing Itemized result of running the deterministic pricing pipeline
 	// (`ComputePricing`, feature #129). Every monetary field is
@@ -21711,6 +21796,26 @@ type TierPriceWindowInput struct {
 	ValidTo *time.Time `json:"valid_to"`
 }
 
+// TrackingConsent The cookie (tracking) consent of a purchase (spec 62 §8.1): one
+// choice for analytics and advertising together. Not stated reads as
+// no.
+type TrackingConsent struct {
+	// At When the buyer chose, RFC 3339, as the site recorded it. Omitted
+	// or in the future: the server's time. An older choice never
+	// replaces a newer stored one.
+	At *time.Time `json:"at,omitempty"`
+
+	// Categories Reserved for a future banner with separate categories; stored,
+	// not read today.
+	Categories *map[string]interface{} `json:"categories,omitempty"`
+
+	// Granted The buyer allowed tracking (analytics and advertising).
+	Granted bool `json:"granted"`
+
+	// Version The version of the banner text the buyer answered.
+	Version string `json:"version"`
+}
+
 // TransitionPaymentIntentRequest Request body for `POST /v1/payment-intents/{id}/transition`.
 // Drives the payment intent state machine forward. Transitioning
 // to `requires_action` REQUIRES `sca_redirect_url`
@@ -21816,6 +21921,14 @@ type UpdateChannelRequest struct {
 	// repeating the mode the channel already has, or moving back to
 	// `direct_merchant`, is allowed to any caller of the channel.
 	PaymentMode *UpdateChannelRequestPaymentMode `json:"payment_mode,omitempty"`
+
+	// PaymentWindowSeconds The channel's own payment window in seconds (spec 62 П-3).
+	// Tri-state like `reservation_ttl_override`: omit the key to keep
+	// the stored value, send `null` to go back to the deployment
+	// default, send 120 to 86400 to set it. Out of range: 400
+	// `channel.invalid_payment_window`. Orders already started keep
+	// the deadline they were given.
+	PaymentWindowSeconds *int32 `json:"payment_window_seconds"`
 
 	// Provider New payment provider. Omit (or send an empty string) to
 	// leave unchanged. Same values and rule as on create: a
@@ -25470,6 +25583,9 @@ type PaymentIntentWebhookForConfigJSONRequestBody = PaymentIntentWebhookRequest
 
 // TransitionPaymentIntentJSONRequestBody defines body for TransitionPaymentIntent for application/json ContentType.
 type TransitionPaymentIntentJSONRequestBody = TransitionPaymentIntentRequest
+
+// UpdatePublicCheckoutTrackingConsentJSONRequestBody defines body for UpdatePublicCheckoutTrackingConsent for application/json ContentType.
+type UpdatePublicCheckoutTrackingConsentJSONRequestBody = TrackingConsent
 
 // QuotePublicFeedCheckoutJSONRequestBody defines body for QuotePublicFeedCheckout for application/json ContentType.
 type QuotePublicFeedCheckoutJSONRequestBody = PublicFeedCheckoutQuoteRequest

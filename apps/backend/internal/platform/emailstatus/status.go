@@ -57,6 +57,10 @@ const (
 	// order_id (the referrer's order) and are no refund letters.
 	KindReferralCashback    = "referral_cashback"
 	KindReferralUnavailable = "referral_unavailable"
+	// KindLatePayment: a payment that came after its order stopped waiting
+	// (migration 0205, spec 62 П-15) — the buyer is told the money goes back
+	// or the places were kept after all. It names order_id.
+	KindLatePayment = "late_payment"
 )
 
 // Letter statuses as the API reports them. StatusQueued exists only in the

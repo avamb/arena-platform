@@ -137,13 +137,17 @@ type checkoutStatusResponse struct {
 	// PDF print, so the widget's success screen names the same order.
 	OrderNumber *int64  `json:"order_number,omitempty"`
 	ExpiresAt   *string `json:"expires_at,omitempty"`
-	Subtotal    *int64  `json:"subtotal,omitempty"`
-	Discount    *int64  `json:"discount,omitempty"`
-	PlatformFee *int64  `json:"platform_fee,omitempty"`
-	ProviderFee *int64  `json:"provider_fee,omitempty"`
-	Tax         *int64  `json:"tax,omitempty"`
-	Total       *int64  `json:"total,omitempty"`
-	Currency    *string `json:"currency,omitempty"`
+	// PaymentExpiresAt is when the provider's page stops taking the payment
+	// (the channel's payment window, spec 62 П-3): expires_at minus the
+	// grace arena waits before it lets the places go. Only while pending.
+	PaymentExpiresAt *string `json:"payment_expires_at,omitempty"`
+	Subtotal         *int64  `json:"subtotal,omitempty"`
+	Discount         *int64  `json:"discount,omitempty"`
+	PlatformFee      *int64  `json:"platform_fee,omitempty"`
+	ProviderFee      *int64  `json:"provider_fee,omitempty"`
+	Tax              *int64  `json:"tax,omitempty"`
+	Total            *int64  `json:"total,omitempty"`
+	Currency         *string `json:"currency,omitempty"`
 	// PaymentURL is the provider-hosted payment page for a still-pending
 	// order whose window has not closed. A buyer who bounced off the Stripe
 	// page — closed the tab, lost signal, hit "back" — used to have no way
@@ -158,9 +162,14 @@ type checkoutStatusResponse struct {
 	// Event is what the order is for (name, session start, venue and its
 	// time zone) so a static page can render the order without a second
 	// call. Omitted when the session can no longer be resolved.
-	Event   *checkoutStatusEvent           `json:"event,omitempty"`
-	Items   []checkoutStatusItemResponse   `json:"items"`
-	Tickets []checkoutStatusTicketResponse `json:"tickets"`
+	Event *checkoutStatusEvent `json:"event,omitempty"`
+	// LatePayment is set when a payment arrived after the order stopped
+	// waiting for it (spec 62 П-15): refund_requested (the money goes back),
+	// operator_review (the organizer returns it) or reacquired (the places
+	// were taken again and the order is paid).
+	LatePayment *string                        `json:"late_payment,omitempty"`
+	Items       []checkoutStatusItemResponse   `json:"items"`
+	Tickets     []checkoutStatusTicketResponse `json:"tickets"`
 }
 
 // checkoutStatusEvent is the event block of the order status.
@@ -289,6 +298,17 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 	}
 
 	resp.Event = h.checkoutEventBlock(ctx, reservation.SessionID)
+
+	if publicStatus == publicStatusPending && h.paymentWindow > 0 && cs.Total != nil && *cs.Total > 0 {
+		pay := reservation.ExpiresAt.Add(-h.paymentGrace).UTC().Format(time.RFC3339)
+		resp.PaymentExpiresAt = &pay
+	}
+
+	if publicStatus != publicStatusPaid && publicStatus != publicStatusPending {
+		if outcome := h.latePaymentOutcome(ctx, cs.ID); outcome != "" {
+			resp.LatePayment = &outcome
+		}
+	}
 
 	// ── 3b. Offer the hosted payment page back while it can still be paid ────
 	if publicStatus == publicStatusPending && reservation.ExpiresAt.After(time.Now().UTC()) {
@@ -441,6 +461,19 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, resp)
+}
+
+// latePaymentOutcome is the outcome of the newest late payment of the
+// checkout (migration 0205), "" when there is none or it cannot be read.
+func (h *Handler) latePaymentOutcome(ctx context.Context, checkoutSessionID uuid.UUID) string {
+	if h.checkoutQueries == nil {
+		return ""
+	}
+	outcome, err := h.checkoutQueries.LatestLatePaymentOutcome(ctx, checkoutSessionID)
+	if err != nil {
+		return ""
+	}
+	return outcome
 }
 
 // pendingPaymentURL returns the hosted payment page of the newest payment

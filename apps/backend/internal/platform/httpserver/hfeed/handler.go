@@ -156,6 +156,10 @@ type Handler struct {
 	// what coalesces two identical requests in flight), never per request:
 	// the Server builds a fresh Handler for every request.
 	checkoutIdem func(http.Handler) http.Handler
+
+	// paymentApplier runs a payment the provider reports as paid through
+	// the webhook's own state machine (the buyer-cancel pre-check, П-2).
+	paymentApplier ConfirmedPaymentApplier
 }
 
 // WithContactForm configures the hosted page's "Write to the organizer" form:

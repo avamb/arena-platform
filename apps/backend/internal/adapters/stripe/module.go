@@ -99,6 +99,8 @@ func ProviderDescriptor() payments.Descriptor {
 			// Evidence goes through the API; submit=true only after a
 			// person pressed "Submit" (spec 51.3).
 			Disputes: true,
+			// Stripe: "expires_at must be at least 30 minutes" from now.
+			MinPageLifetimeSeconds: 30 * 60,
 		},
 	}
 }

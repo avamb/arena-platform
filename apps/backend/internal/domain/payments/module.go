@@ -111,6 +111,12 @@ type Capabilities struct {
 	// arena about a chargeback by webhook (EventDisputeOpened); the answer
 	// then goes by e-mail (spec 51.3).
 	Disputes bool
+	// MinPageLifetimeSeconds is the shortest life the provider accepts for a
+	// hosted payment page (Stripe refuses a Checkout Session that expires
+	// sooner than 30 minutes). A sales channel's own, shorter payment window
+	// (spec 62 П-3) is not applied to such a provider: the deployment-wide
+	// widget window stays its floor. Zero means no floor.
+	MinPageLifetimeSeconds int
 	// Currencies lists the ISO 4217 codes (upper case) the provider can
 	// charge in. Empty means the provider states no limit, so arena refuses
 	// nothing on its behalf (the provider's own answer is the verdict).
@@ -338,6 +344,11 @@ type NormalizedEvent struct {
 	// EventDisputeUpdated): the dispute as the delivery states it. A module
 	// with Capabilities.Disputes reads it back before arena acts on it.
 	Dispute *Dispute
+	// PaidAt is when the buyer paid, when the provider states it. It tells a
+	// payment made after the order's window from a notification that was
+	// merely late (spec 62 П-15). Nil: the provider does not say — a page
+	// that expires with the window cannot be paid after it.
+	PaidAt *time.Time
 	// Raw is the body as received, for the audit trail.
 	Raw json.RawMessage
 }

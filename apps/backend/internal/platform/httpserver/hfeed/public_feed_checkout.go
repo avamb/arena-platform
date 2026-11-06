@@ -71,6 +71,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ordering"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/trackingconsent"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -140,6 +141,11 @@ type PublicFeedCheckoutStartRequest struct {
 	// cart at, the request is refused with 409 checkout.price_changed before
 	// anything is held (see refuseChangedPrice).
 	ExpectedTotal *int64 `json:"expected_total,omitempty"`
+	// TrackingConsent is the buyer's answer to the site's cookie banner
+	// (spec 62 §8.1, П-20): {granted, version, at}. Stored on the checkout;
+	// the conversion sender reads it from there at send time. Optional, and
+	// an unreadable one is dropped, never a reason to refuse the purchase.
+	TrackingConsent *trackingconsent.Input `json:"tracking_consent,omitempty"`
 }
 
 // normalizeBuyerLocale validates a caller-supplied locale against the
@@ -566,6 +572,7 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 		return
 	}
 	growth := growthCheckout{grant: grantFor(mk, r, checkCtx.OrgID, publicOrderBuyer{Email: req.HolderEmail, Name: buyerName}, buyerLocale, "")}
+	growth.tracking = h.trackingConsentFromStart(req.TrackingConsent)
 
 	// ── 9. Mint checkout_token ────────────────────────────────────────────────
 	checkoutToken, err := mintCheckoutToken()
@@ -1384,9 +1391,12 @@ func (h *Handler) confirmPublicCheckout(
 	// move reservations.expires_at inside the SAME transaction that mints
 	// the order, and ordering.CreateOrderFromCheckout copies orders.expires_at
 	// straight off the reservation it re-reads — so the two cannot disagree.
+	// The window is the CHANNEL's (П-3, payment_window.go), read on the pool
+	// here, before the transaction opens.
 	holdExpiresAt := expiresAt
 	if paid && h.paymentWindow > 0 {
-		holdExpiresAt = time.Now().UTC().Add(h.paymentWindow + h.paymentGrace)
+		window := h.channelPaymentWindow(ctx, checkCtx.OrgID, checkCtx.SalesChannelID)
+		holdExpiresAt = time.Now().UTC().Add(window + h.paymentGrace)
 	}
 
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
@@ -1619,7 +1629,11 @@ func (h *Handler) confirmPublicCheckout(
 		"redirect_url":     redirectURL,
 		"checkout_token":   checkoutToken,
 		"expires_at":       expiresAt.Format(time.RFC3339),
-		"pricing":          bd,
+		// The moment the provider's page stops taking the payment (the
+		// channel's window, П-3): what the site counts down to. expires_at
+		// is the hold, a grace later.
+		"payment_expires_at": expiresAt.Add(-h.paymentGrace).Format(time.RFC3339),
+		"pricing":            bd,
 
 		"marketing_discount_applied": growth.rewardWon && bd.Discount > 0,
 	})

@@ -57,8 +57,11 @@ type ChannelResponse struct {
 	IsTest                 bool            `json:"is_test"`
 	CollectName            bool            `json:"collect_name"`
 	CollectPhone           bool            `json:"collect_phone"`
-	CreatedAt              string          `json:"created_at"`
-	UpdatedAt              string          `json:"updated_at"`
+	// PaymentWindowSeconds is the channel's own payment window (spec 62
+	// П-3); null means the deployment default WIDGET_PAYMENT_WINDOW_SECONDS.
+	PaymentWindowSeconds *int32 `json:"payment_window_seconds"`
+	CreatedAt            string `json:"created_at"`
+	UpdatedAt            string `json:"updated_at"`
 }
 
 // SettingsForResponse normalizes a raw channel-settings payload for API
@@ -113,6 +116,7 @@ func ChannelFromRow(ch gen.SalesChannelRow) ChannelResponse {
 		IsTest:                 ch.IsTest,
 		CollectName:            ch.CollectName,
 		CollectPhone:           ch.CollectPhone,
+		PaymentWindowSeconds:   ch.PaymentWindowSeconds,
 		CreatedAt:              ch.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:              ch.UpdatedAt.UTC().Format(time.RFC3339),
 	}
@@ -211,6 +215,25 @@ func ValidateReservationTTLOverride(v *int32) string {
 	return ""
 }
 
+// Bounds of sales_channels.payment_window_seconds (migration 0205).
+const (
+	minPaymentWindowSeconds = 120
+	maxPaymentWindowSeconds = 86400
+)
+
+// ValidatePaymentWindowSeconds enforces the column's CHECK before the
+// database does, with a readable message. nil (the deployment default) is
+// always valid.
+func ValidatePaymentWindowSeconds(v *int32) string {
+	if v == nil {
+		return ""
+	}
+	if *v < minPaymentWindowSeconds || *v > maxPaymentWindowSeconds {
+		return fmt.Sprintf("payment_window_seconds must be between %d and %d seconds", minPaymentWindowSeconds, maxPaymentWindowSeconds)
+	}
+	return ""
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /v1/organizations/{org_id}/channels
 // ─────────────────────────────────────────────────────────────────────────────
@@ -226,6 +249,7 @@ type createChannelRequest struct {
 	IsTest                 bool            `json:"is_test"`
 	CollectName            bool            `json:"collect_name"`
 	CollectPhone           bool            `json:"collect_phone"`
+	PaymentWindowSeconds   *int32          `json:"payment_window_seconds"`
 }
 
 func (h *Handler) HandleCreateChannel(w http.ResponseWriter, r *http.Request) {
@@ -305,6 +329,14 @@ func (h *Handler) HandleCreateChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if msg := ValidatePaymentWindowSeconds(req.PaymentWindowSeconds); msg != "" {
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+			"channel.invalid_payment_window", msg, r,
+			map[string]any{"field": "payment_window_seconds"},
+		))
+		return
+	}
+
 	var providerAccountID *string
 	if req.ProviderAccountID != "" {
 		s := req.ProviderAccountID
@@ -321,10 +353,10 @@ func (h *Handler) HandleCreateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	settings = keepSellerDisplayKeys(settings, nil) // set only through seller-display
 
-	ch, err := h.channelQueries.InsertSalesChannelFlagged(ctx,
+	ch, err := h.channelQueries.InsertSalesChannelWithWindow(ctx,
 		orgID, req.Name, req.PaymentMode, req.Provider,
 		providerAccountID, req.FeePercent, req.ReservationTTLOverride, settings,
-		req.IsTest, req.CollectName, req.CollectPhone,
+		req.IsTest, req.CollectName, req.CollectPhone, req.PaymentWindowSeconds,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -450,6 +482,9 @@ type updateChannelRequest struct {
 	IsTest                 *bool           `json:"is_test"`
 	CollectName            *bool           `json:"collect_name"`
 	CollectPhone           *bool           `json:"collect_phone"`
+	// PaymentWindowSeconds is tri-state like ReservationTTLOverride: absent
+	// keeps, null clears to the deployment default, a number sets.
+	PaymentWindowSeconds optionalInt32 `json:"payment_window_seconds"`
 }
 
 func (h *Handler) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {
@@ -586,11 +621,22 @@ func (h *Handler) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	updated, err := h.channelQueries.UpdateSalesChannelFlagged(ctx,
+	if req.PaymentWindowSeconds.Present {
+		if msg := ValidatePaymentWindowSeconds(req.PaymentWindowSeconds.Value); msg != "" {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"channel.invalid_payment_window", msg, r,
+				map[string]any{"field": "payment_window_seconds"},
+			))
+			return
+		}
+	}
+
+	updated, err := h.channelQueries.UpdateSalesChannelWithWindow(ctx,
 		chID, orgID, req.Name, req.PaymentMode, req.Provider,
 		req.ProviderAccountID, req.FeePercent,
 		req.ReservationTTLOverride.Value, req.ReservationTTLOverride.Present,
 		settings, req.IsTest, req.CollectName, req.CollectPhone,
+		req.PaymentWindowSeconds.Value, req.PaymentWindowSeconds.Present,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

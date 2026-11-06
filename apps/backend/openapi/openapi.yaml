@@ -16924,6 +16924,97 @@ components:
             anything is held; a free (0) cart is compared too. The refusal is
             never stored for the `Idempotency-Key`: repeat with the new total
             (normally under a new key).
+        tracking_consent:
+          description: |
+            The buyer's answer to the site's cookie banner (spec 62 §8.1,
+            П-20), optional. Stored on the checkout; a conversion sender
+            (GA4 Measurement Protocol, Meta CAPI) reads it from the order at
+            send time and sends nothing unless it is an explicit yes. An
+            unreadable object is dropped, never a reason to refuse the
+            purchase. A later change goes through
+            `PATCH /v1/public/checkout/{checkout_token}/consent`.
+          allOf:
+            - $ref: "#/components/schemas/TrackingConsent"
+
+    TrackingConsent:
+      type: object
+      required: [granted, version]
+      description: |
+        The cookie (tracking) consent of a purchase (spec 62 §8.1): one
+        choice for analytics and advertising together. Not stated reads as
+        no.
+      properties:
+        granted:
+          type: boolean
+          description: The buyer allowed tracking (analytics and advertising).
+        version:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: The version of the banner text the buyer answered.
+        at:
+          type: string
+          format: date-time
+          description: |
+            When the buyer chose, RFC 3339, as the site recorded it. Omitted
+            or in the future: the server's time. An older choice never
+            replaces a newer stored one.
+        categories:
+          type: object
+          additionalProperties: true
+          description: |
+            Reserved for a future banner with separate categories; stored,
+            not read today.
+
+    CheckoutTrackingConsentResponse:
+      type: object
+      required: [checkout_token, applied, tracking_consent]
+      description: Response of `PATCH /v1/public/checkout/{checkout_token}/consent`.
+      properties:
+        checkout_token:
+          type: string
+          description: The checkout token, echoed.
+        applied:
+          type: boolean
+          description: |
+            False when a newer choice was already stored; `tracking_consent`
+            then shows the stored one.
+        tracking_consent:
+          type: object
+          required: [granted, version]
+          description: The consent the order carries now.
+          properties:
+            granted:
+              type: boolean
+              description: The buyer allowed tracking.
+            version:
+              type: string
+              description: The banner text version.
+            at:
+              type: [string, "null"]
+              format: date-time
+              description: When the buyer chose.
+
+    CheckoutCancelResponse:
+      type: object
+      required: [checkout_token, status, cancelled]
+      description: Response of `POST /v1/public/checkout/{checkout_token}/cancel`.
+      properties:
+        checkout_token:
+          type: string
+          description: The checkout token, echoed.
+        status:
+          type: string
+          description: |
+            The public status the order has now, as
+            `GET /v1/public/checkout/{checkout_token}` reports it:
+            `cancelled` (this call or an earlier one cancelled it), `paid`
+            (the payment came first: show "thank you"), `expired` (the
+            window had already closed) or `pending` (an operator holds the
+            order).
+        cancelled:
+          type: boolean
+          description: True when the order is cancelled (now or by an earlier call).
 
     PublicMarketingConsent:
       type: object
@@ -17468,7 +17559,16 @@ components:
             For a paid cart this is the payment deadline: it is moved to
             `WIDGET_PAYMENT_WINDOW_SECONDS + WIDGET_PAYMENT_GRACE_SECONDS`
             from now, so the provider's hosted session always stops accepting
-            payment BEFORE arena releases the seats.
+            payment BEFORE arena releases the seats. The window is the sales
+            channel's own when it has one (`payment_window_seconds`, spec 62
+            П-3).
+        payment_expires_at:
+          type: string
+          format: date-time
+          description: |
+            When the provider's page stops taking the payment (RFC 3339 UTC):
+            the channel's payment window from now. This is what a site counts
+            down to; `expires_at` is a grace later. Present for a paid cart.
         marketing_discount_applied:
           type: boolean
           description: True when the cart's discount is the reward for the marketing consent tick.
@@ -17638,7 +17738,8 @@ components:
               show the organizer's contact, not a spinner (it used to be
               reported as `pending`)
             - `refunded`: the order was fully refunded
-            - `cancelled`: the order was cancelled
+            - `cancelled`: the order was cancelled — by the buyer
+              (`POST .../cancel`, spec 62 П-2) or an operator
             Only `pending` is transient; the other statuses are final for a
             polling client.
         checkout_token:
@@ -17680,6 +17781,21 @@ components:
         currency:
           type: [string, "null"]
           description: ISO 4217 three-letter currency code; null until pricing_confirmed.
+        payment_expires_at:
+          type: string
+          format: date-time
+          description: |
+            When the provider's page stops taking the payment (the sales
+            channel's payment window, spec 62 П-3): `expires_at` minus the
+            payment grace. Only while the order is `pending`.
+        late_payment:
+          type: string
+          description: |
+            Set when a payment arrived after the order stopped waiting for it
+            (spec 62 П-15): `refund_requested` (the full amount goes back to
+            the buyer's card), `operator_review` (the organizer returns it)
+            or `reacquired` (the places were taken again and the order is
+            paid). Omitted otherwise.
         payment_url:
           type: string
           description: |
@@ -19811,6 +19927,18 @@ components:
         collect_phone:
           type: boolean
           description: Buyer phone is required at checkout for this channel (widget and hosted page).
+        payment_window_seconds:
+          type: [integer, "null"]
+          format: int32
+          description: |
+            The channel's own payment window in seconds (spec 62 П-3): how
+            long the buyer has on the provider's payment page. `null` means
+            the deployment default (`WIDGET_PAYMENT_WINDOW_SECONDS`). A
+            provider with a floor of its own (Stripe refuses a Checkout
+            Session that expires sooner than 30 minutes) never gets less than
+            the deployment default; a longer value is honoured. The hold,
+            order and checkout expire this window plus the payment grace
+            after `checkout/start`.
         created_at:
           type: string
           format: date-time
@@ -19895,6 +20023,16 @@ components:
         collect_phone:
           type: boolean
           description: Require the buyer phone at checkout (default false).
+        payment_window_seconds:
+          type: [integer, "null"]
+          format: int32
+          minimum: 120
+          maximum: 86400
+          description: |
+            The channel's own payment window in seconds, 120 to 86400 (spec
+            62 П-3; 1200 = 20 minutes for an AllPay site). Omit or `null` for
+            the deployment default. Out of range: 400
+            `channel.invalid_payment_window`.
 
     UpdateChannelRequest:
       type: object
@@ -19976,6 +20114,18 @@ components:
         collect_phone:
           type: boolean
           description: Require the buyer phone at checkout. Omit to leave it unchanged.
+        payment_window_seconds:
+          type: [integer, "null"]
+          format: int32
+          minimum: 120
+          maximum: 86400
+          description: |
+            The channel's own payment window in seconds (spec 62 П-3).
+            Tri-state like `reservation_ttl_override`: omit the key to keep
+            the stored value, send `null` to go back to the deployment
+            default, send 120 to 86400 to set it. Out of range: 400
+            `channel.invalid_payment_window`. Orders already started keep
+            the deadline they were given.
 
     ChannelGatewayCredentialSummary:
       type: object
@@ -53040,6 +53190,11 @@ paths:
             top of the ticket prices at checkout; the widget shows it as
             a cart line so the buyer sees the total before the payment
             page does.
+          * `payment_window_seconds` — how long the buyer has on this
+            channel's payment page, in seconds (spec 62 П-3): the channel's
+            own window or the deployment's, never below a provider's floor;
+            0 when no window is configured. `checkout/start` answers the
+            exact deadline as `payment_expires_at`.
           * `promo_codes_available` — true when the organization has at
             least one promo code that is active, inside its date window
             and not used up. The widget shows its promo field only then.
@@ -55181,6 +55336,142 @@ paths:
         "503":
           description: |
             Database unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/checkout/{checkout_token}/cancel:
+    post:
+      operationId: cancelPublicCheckout
+      summary: The buyer cancels an unpaid order
+      description: |
+        Spec 62 §5.4 п. 3 (П-2). The buyer pressed "Back" on the payment
+        provider's page, or the site's cancel button: an order that is not
+        paid is closed and its places go back on sale at once.
+
+        Before anything is written, every open payment attempt of the
+        checkout is read back from the provider (AllPay `paymentstatus`):
+
+        * paid: the order is completed as paid and the answer is `paid`;
+        * still processing: 409 `checkout.payment_in_progress`, nothing is
+          cancelled;
+        * unpaid, unknown, or no answer from the provider: the order is
+          cancelled. A payment the provider confirms later is refunded in
+          full (`late_payment: refund_requested` on the order status);
+        * a provider whose payment cannot be read back (Stripe) whose page
+          was handed out: 409 `checkout.payment_in_progress`; its page
+          expires by itself.
+
+        Idempotent: a repeat answers `cancelled: true` again and writes
+        nothing. No JWT: the `checkout_token` is the credential.
+      tags: [v1]
+      parameters:
+        - name: checkout_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Opaque checkout token from `checkout/start`.
+      responses:
+        "200":
+          description: |
+            The order's status after the call (`cancelled`, `paid`,
+            `expired`, `pending`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutCancelResponse"
+        "404":
+          description: No checkout for this token (`checkout.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: |
+            A payment may still land (`checkout.payment_in_progress`); show
+            the order status and ask again later.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limit exceeded (`checkout.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: The checkout could not be read (`checkout.lookup_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database unavailable (`dependency.database_unavailable`) or the
+            cancel could not be written (`checkout.cancel_failed`); retry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/public/checkout/{checkout_token}/consent:
+    patch:
+      operationId: updatePublicCheckoutTrackingConsent
+      summary: Update the tracking consent of an unfinished order
+      description: |
+        Spec 62 §8.1 (П-20). The buyer changed their answer in the site's
+        cookie banner while the order is open in the tab. The consent is
+        stored on the checkout; a conversion sender reads it from the order
+        at send time, so a refusal given before the send stops the
+        conversion (one already sent is not recalled). A choice older than
+        the stored one is kept out (`applied: false`). No JWT: the
+        `checkout_token` is the credential.
+      tags: [v1]
+      parameters:
+        - name: checkout_token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Opaque checkout token from `checkout/start`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrackingConsent"
+      responses:
+        "200":
+          description: The consent the order carries now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckoutTrackingConsentResponse"
+        "400":
+          description: The body is not a consent (`checkout.invalid_consent`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No checkout for this token (`checkout.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: Rate limit exceeded (`checkout.rate_limited`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: |
+            Database unavailable (`dependency.database_unavailable`,
+            `checkout.lookup_failed`, `checkout.consent_failed`); retry.
           content:
             application/json:
               schema:
