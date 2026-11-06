@@ -91,6 +91,7 @@ LEFT JOIN (
     JOIN   orders o ON o.id = oi.order_id
     WHERE  o.session_id = ANY($1::uuid[])
       AND  o.status IN ('paid', 'partially_refunded', 'refunded')
+      AND  NOT o.is_test
     GROUP  BY oi.tier_id
 ) sales ON sales.tier_id = tt.id
 WHERE  tt.session_id = ANY($1::uuid[])
@@ -106,6 +107,7 @@ SELECT o.session_id, o.status, o.source, o.currency,
        COALESCE(sum(o.total), 0)::bigint    AS total
 FROM   orders o
 WHERE  o.session_id = ANY($1::uuid[])
+  AND  NOT o.is_test
 GROUP  BY o.session_id, o.status, o.source, o.currency;
 
 -- name: ListSessionSummaryTickets :many
@@ -136,6 +138,7 @@ LEFT JOIN tickets         rt ON rt.id = r.ticket_id
 LEFT JOIN payment_intents pi ON pi.id = r.payment_intent_id
 LEFT JOIN orders          po ON po.checkout_session_id = pi.checkout_session_id
 WHERE  COALESCE(ro.session_id, rt.session_id, po.session_id) = ANY($1::uuid[])
+  AND  NOT COALESCE(ro.is_test, po.is_test, false)
 GROUP  BY COALESCE(ro.session_id, rt.session_id, po.session_id), r.settlement, r.state, r.currency, r.origin;
 
 -- name: ListSessionSummaryPromos :many
@@ -153,6 +156,7 @@ JOIN   promo_codes p ON p.id = o.promo_code_id
 LEFT JOIN promo_code_redemptions r ON r.order_id = o.id AND r.promo_code_id = p.id
 WHERE  o.session_id = ANY($1::uuid[])
   AND  o.status IN ('paid', 'partially_refunded', 'refunded')
+  AND  NOT o.is_test
 GROUP  BY o.session_id, p.id, p.code, o.currency;
 
 -- name: ListSessionSummaryComplimentary :many
@@ -165,7 +169,8 @@ SELECT sid.id AS session_id,
           FROM   orders o
           WHERE  o.session_id = sid.id
             AND  o.source = 'complimentary'
-            AND  o.status IN ('paid', 'partially_refunded', 'refunded'))::bigint AS orders,
+            AND  o.status IN ('paid', 'partially_refunded', 'refunded')
+            AND  NOT o.is_test)::bigint AS orders,
        (SELECT count(*)
           FROM   tickets t
           LEFT JOIN orders o ON o.id = t.order_id
@@ -215,6 +220,7 @@ WITH paid AS (
     WHERE  o.session_id = $1
       AND  o.org_id     = $2
       AND  o.status IN ('paid', 'partially_refunded', 'refunded')
+      AND  NOT o.is_test
 ),
 refunded AS (
     SELECT p.id AS order_id, r.currency, sum(r.amount)::bigint AS amount
@@ -252,3 +258,11 @@ FROM   lines l
 LEFT JOIN sales_links sl ON sl.id = l.sales_link_id AND sl.org_id = $2
 GROUP  BY l.sales_link_id, sl.label, l.utm_source, l.utm_campaign, l.currency
 ORDER  BY l.sales_link_id NULLS LAST, l.utm_source, l.utm_campaign, l.currency;
+
+-- name: ListSessionSummaryTestOrders :many
+SELECT o.session_id, count(*)::bigint AS orders
+FROM   orders o
+WHERE  o.session_id = ANY($1::uuid[])
+  AND  o.is_test
+  AND  o.status IN ('paid', 'partially_refunded', 'refunded')
+GROUP  BY o.session_id;

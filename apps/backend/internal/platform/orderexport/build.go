@@ -87,6 +87,7 @@ func newOrder(row Row) Order {
 		PaymentProvider:   paymentProvider,
 		BuyerUserID:       userID,
 		BuyerEmail:        buyerEmail,
+		IsTest:            row.OrderIsTest,
 	}
 }
 

@@ -3,12 +3,12 @@
 -- to respect the soft-delete policy.
 
 -- name: InsertSalesChannel :one
-INSERT INTO sales_channels (org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings)
-VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::jsonb, '{}'::jsonb))
-RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at;
+INSERT INTO sales_channels (org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, is_test, collect_name, collect_phone)
+VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::jsonb, '{}'::jsonb), $9::boolean, $10::boolean, $11::boolean)
+RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at, is_test, collect_name, collect_phone;
 
 -- name: GetSalesChannelByID :one
-SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at, is_test, collect_name, collect_phone
 FROM   sales_channels
 WHERE  id = $1
   AND  org_id = $2
@@ -20,14 +20,14 @@ WHERE  id = $1
 -- credential — which the plugins cast to int and cannot carry as a UUID —
 -- to the sales_channels row. display_number is a per-tenant human-facing
 -- identifier assigned in migration 0072.
-SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at, is_test, collect_name, collect_phone
 FROM   sales_channels
 WHERE  display_number = $1
   AND  deleted_at IS NULL
   AND  kind = 'sales';
 
 -- name: ListSalesChannelsByOrg :many
-SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at, is_test, collect_name, collect_phone
 FROM   sales_channels
 WHERE  org_id = $1
   AND  deleted_at IS NULL
@@ -51,12 +51,15 @@ SET    name                     = COALESCE(NULLIF($3, ''), name),
        fee_percent              = CASE WHEN $7::numeric IS NOT NULL THEN $7::numeric ELSE fee_percent END,
        reservation_ttl_override = CASE WHEN $9::boolean THEN $8 ELSE reservation_ttl_override END,
        settings                 = CASE WHEN $10::jsonb IS NOT NULL THEN $10::jsonb ELSE settings END,
+       is_test                  = COALESCE($11::boolean, is_test),
+       collect_name             = COALESCE($12::boolean, collect_name),
+       collect_phone            = COALESCE($13::boolean, collect_phone),
        updated_at               = now()
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
   AND  kind = 'sales'
-RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at, is_test, collect_name, collect_phone;
 
 -- name: SoftDeleteSalesChannel :one
 UPDATE sales_channels
@@ -66,7 +69,7 @@ WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
   AND  kind = 'sales'
-RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at;
+RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at, is_test, collect_name, collect_phone;
 
 -- name: EnableChannelHostedPage :execrows
 -- Turns on settings.hosted_page.enabled for a channel that publishes through
@@ -105,7 +108,7 @@ ORDER  BY created_at ASC, id ASC;
 -- name: GetSalesChannelByIDAnyKind :one
 -- GetSalesChannelByID without the internal-channel filter (spec 46): only
 -- order processing that resolves the channel of an EXISTING order calls it.
-SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at, is_test, collect_name, collect_phone
 FROM   sales_channels
 WHERE  id = $1
   AND  org_id = $2

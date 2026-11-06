@@ -66,6 +66,9 @@ type Row struct {
 	// OrderSource is orders.source (NULL for legacy tickets without an
 	// orders row); 'complimentary' marks an invitation.
 	OrderSource *string
+	// OrderIsTest is orders.is_test: the order came through a test sales
+	// channel. False for a legacy ticket without an orders row.
+	OrderIsTest bool
 }
 
 const sessionQuery = `
@@ -120,7 +123,8 @@ SELECT
     COALESCE(gi.unit_price, tt.price_amount, 0) AS sold_price,
     pc.code AS promo_code_name,
     v.timezone AS venue_timezone,
-    ord.source AS order_source
+    ord.source AS order_source,
+    COALESCE(ord.is_test, false) AS order_is_test
 FROM tickets t
 LEFT JOIN orders ord ON ord.id = t.order_id
 JOIN checkout_sessions cs ON cs.id = t.checkout_session_id
@@ -275,6 +279,7 @@ func query(ctx context.Context, pool *pgxpool.Pool, sql string, id uuid.UUID) ([
 			&r.PromoCodeName,
 			&r.VenueTimezone,
 			&r.OrderSource,
+			&r.OrderIsTest,
 		); err != nil {
 			return nil, fmt.Errorf("orderexport scan: %w", err)
 		}

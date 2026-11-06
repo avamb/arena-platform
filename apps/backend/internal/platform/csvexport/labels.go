@@ -53,6 +53,7 @@ const (
 	ColTicket
 	ColVIP
 	ColInvitation
+	ColTest
 )
 
 // SupportedLocales are the header languages, in the order they are offered.
@@ -75,7 +76,7 @@ var labels = map[string]map[Column]string{
 		ColUTMSource: "UTM source", ColUTMCampaign: "UTM campaign",
 		ColCount: "Count", ColSuspectCount: "Suspected bots",
 		ColEnteredAt: "Entry time", ColEnteredSource: "Entry source", ColEnteredScanner: "Scanner / gate",
-		ColGuest: "Guest", ColSeat: "Seat", ColTicket: "Ticket", ColVIP: "VIP", ColInvitation: "Invitation",
+		ColGuest: "Guest", ColSeat: "Seat", ColTicket: "Ticket", ColVIP: "VIP", ColInvitation: "Invitation", ColTest: "Test",
 	},
 	"ru": {
 		ColOrder: "Заказ", ColOrderStatus: "Статус заказа", ColDate: "Дата",
@@ -90,7 +91,7 @@ var labels = map[string]map[Column]string{
 		ColUTMSource: "UTM-источник", ColUTMCampaign: "UTM-кампания",
 		ColCount: "Количество", ColSuspectCount: "Из них боты",
 		ColEnteredAt: "Время входа", ColEnteredSource: "Источник входа", ColEnteredScanner: "Сканер / вход",
-		ColGuest: "Гость", ColSeat: "Место", ColTicket: "Билет", ColVIP: "VIP", ColInvitation: "Пригласительный",
+		ColGuest: "Гость", ColSeat: "Место", ColTicket: "Билет", ColVIP: "VIP", ColInvitation: "Пригласительный", ColTest: "Тест",
 	},
 	"es": {
 		ColOrder: "Pedido", ColOrderStatus: "Estado del pedido", ColDate: "Fecha",
@@ -105,7 +106,7 @@ var labels = map[string]map[Column]string{
 		ColUTMSource: "Fuente UTM", ColUTMCampaign: "Campaña UTM",
 		ColCount: "Cantidad", ColSuspectCount: "De ellos, bots",
 		ColEnteredAt: "Hora de entrada", ColEnteredSource: "Origen de la entrada", ColEnteredScanner: "Escáner / acceso",
-		ColGuest: "Invitado", ColSeat: "Asiento", ColTicket: "Entrada", ColVIP: "VIP", ColInvitation: "Invitación",
+		ColGuest: "Invitado", ColSeat: "Asiento", ColTicket: "Entrada", ColVIP: "VIP", ColInvitation: "Invitación", ColTest: "Prueba",
 	},
 }
 

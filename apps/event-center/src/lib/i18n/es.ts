@@ -277,6 +277,7 @@ export const es: Record<MessageKey, string> = {
   "orders.searchExample": "Por ejemplo, 1002957087",
   "orders.reset": "Borrar",
   "orders.letterFailed": "Correo no entregado",
+  "orders.testOrder": "Prueba",
   "orders.col.order": "Pedido",
   "orders.col.status": "Estado",
   "orders.col.buyer": "Comprador",

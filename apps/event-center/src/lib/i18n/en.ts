@@ -277,6 +277,7 @@ export const en = {
   "orders.searchExample": "For example, 1002957087",
   "orders.reset": "Reset",
   "orders.letterFailed": "Letter not delivered",
+  "orders.testOrder": "Test",
   "orders.col.order": "Order",
   "orders.col.status": "Status",
   "orders.col.buyer": "Buyer",

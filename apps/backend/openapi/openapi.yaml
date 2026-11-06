@@ -5394,6 +5394,12 @@ components:
         charge_percent_bp:
           type: integer
           description: Charge rate applied, in basis points.
+        is_test:
+          type: boolean
+          description: |
+            True when the order was created in a test sales channel. Set once
+            at creation from the channel and never changed. Such orders are
+            left out of the sales summaries.
         promo_code_id:
           type: [string, "null"]
           format: uuid
@@ -7113,6 +7119,14 @@ components:
           description: Invitations of the session, whichever way they were issued.
           allOf:
             - $ref: "#/components/schemas/SummaryComplimentary"
+        test_orders:
+          type: integer
+          format: int64
+          description: |
+            Paid orders that came through a test sales channel
+            (`is_test`). They are left out of orders, money, refunds, promo
+            codes, invitations and the revenue of the categories above; their
+            tickets still occupy places.
         sources:
           type: array
           description: |
@@ -7552,6 +7566,14 @@ components:
           description: Invitations of the session.
           allOf:
             - $ref: "#/components/schemas/SummaryComplimentary"
+        test_orders:
+          type: integer
+          format: int64
+          description: |
+            Paid orders that came through a test sales channel
+            (`is_test`). They are left out of orders, money, refunds, promo
+            codes, invitations and the revenue of the categories above; their
+            tickets still occupy places.
 
     EventSummary:
       type: object
@@ -7644,6 +7666,14 @@ components:
           description: Invitations over every session.
           allOf:
             - $ref: "#/components/schemas/SummaryComplimentary"
+        test_orders:
+          type: integer
+          format: int64
+          description: |
+            Paid orders that came through a test sales channel
+            (`is_test`). They are left out of orders, money, refunds, promo
+            codes, invitations and the revenue of the categories above; their
+            tickets still occupy places.
         sessions:
           type: array
           description: Every non-deleted session of the event in start order, each with its own figures.
@@ -7736,6 +7766,14 @@ components:
           description: Invitations over every session.
           allOf:
             - $ref: "#/components/schemas/SummaryComplimentary"
+        test_orders:
+          type: integer
+          format: int64
+          description: |
+            Paid orders that came through a test sales channel
+            (`is_test`). They are left out of orders, money, refunds, promo
+            codes, invitations and the revenue of the categories above; their
+            tickets still occupy places.
 
     EventSalesSummaryList:
       type: object
@@ -19456,6 +19494,18 @@ components:
             Opaque JSONB blob of per-channel settings (e.g. `gateway_token_hash`
             for Bil24 compat channels). Structure is channel-type-specific.
           additionalProperties: true
+        is_test:
+          type: boolean
+          description: |
+            True for a test sales channel. Every order created in it is
+            marked `is_test` and is left out of the sales figures. Payments
+            still go through the live provider.
+        collect_name:
+          type: boolean
+          description: Buyer name is required at checkout for this channel (widget and hosted page).
+        collect_phone:
+          type: boolean
+          description: Buyer phone is required at checkout for this channel (widget and hosted page).
         created_at:
           type: string
           format: date-time
@@ -19529,6 +19579,17 @@ components:
           description: |
             Opaque JSONB blob of per-channel settings. Structure is
             channel-type-specific; omit for an empty object (`{}`).
+        is_test:
+          type: boolean
+          description: |
+            Create the channel as a test channel (default false). Orders
+            created in it carry `is_test` from then on.
+        collect_name:
+          type: boolean
+          description: Require the buyer name at checkout (default false).
+        collect_phone:
+          type: boolean
+          description: Require the buyer phone at checkout (default false).
 
     UpdateChannelRequest:
       type: object
@@ -19598,6 +19659,18 @@ components:
           description: |
             New settings blob, merged in whole (not deep-merged) when
             present. Omit to leave the stored settings unchanged.
+        is_test:
+          type: boolean
+          description: |
+            Turn the test flag of the channel on or off. Omit to leave it
+            unchanged. Orders already created keep the flag they were born
+            with: it never changes on an order.
+        collect_name:
+          type: boolean
+          description: Require the buyer name at checkout. Omit to leave it unchanged.
+        collect_phone:
+          type: boolean
+          description: Require the buyer phone at checkout. Omit to leave it unchanged.
 
     ChannelGatewayCredentialSummary:
       type: object

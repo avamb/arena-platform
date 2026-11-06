@@ -54,7 +54,7 @@ SELECT o.id, o.system_id, o.org_id, o.channel_id, o.event_id, o.session_id, o.cu
        o.currency, o.subtotal, o.discount, o.charge, o.total, o.charge_percent_bp,
        o.promo_code_id, o.buyer_name, o.buyer_email, o.buyer_phone, o.payment_method,
        o.paid_at, o.cancelled_at, o.expires_at, o.metadata, o.created_at, o.updated_at,
-       o.sales_link_id, o.attribution,
+       o.sales_link_id, o.attribution, o.is_test,
        e.name AS event_name, s.start_at AS session_start_at, v.timezone AS session_timezone
 `
 
@@ -140,7 +140,7 @@ func (q *Queries) SearchOrdersByOrg(ctx context.Context, p OrderSearchParams, li
 			&r.Currency, &r.Subtotal, &r.Discount, &r.Charge, &r.Total, &r.ChargePercentBP,
 			&r.PromoCodeID, &r.BuyerName, &r.BuyerEmail, &r.BuyerPhone, &r.PaymentMethod,
 			&r.PaidAt, &r.CancelledAt, &r.ExpiresAt, &r.Metadata, &r.CreatedAt, &r.UpdatedAt,
-			&r.SalesLinkID, &r.Attribution,
+			&r.SalesLinkID, &r.Attribution, &r.IsTest,
 			&r.EventName, &r.SessionStartAt, &r.SessionTimezone,
 		); err != nil {
 			return nil, err

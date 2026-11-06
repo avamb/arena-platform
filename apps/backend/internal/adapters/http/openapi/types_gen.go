@@ -5595,6 +5595,12 @@ type CancelTicketResponse struct {
 // distinct distribution points (e.g. online widget, box office, API partner)
 // that sell tickets under a shared organizational account.
 type Channel struct {
+	// CollectName Buyer name is required at checkout for this channel (widget and hosted page).
+	CollectName *bool `json:"collect_name,omitempty"`
+
+	// CollectPhone Buyer phone is required at checkout for this channel (widget and hosted page).
+	CollectPhone *bool `json:"collect_phone,omitempty"`
+
 	// CreatedAt ISO-8601 timestamp when the channel was created.
 	CreatedAt time.Time `json:"created_at"`
 
@@ -5603,6 +5609,11 @@ type Channel struct {
 
 	// Id UUIDv7 channel identifier.
 	Id openapi_types.UUID `json:"id"`
+
+	// IsTest True for a test sales channel. Every order created in it is
+	// marked `is_test` and is left out of the sales figures. Payments
+	// still go through the live provider.
+	IsTest *bool `json:"is_test,omitempty"`
 
 	// Name Human-readable channel label (e.g. "Online Widget", "Box Office").
 	Name string `json:"name"`
@@ -6485,9 +6496,19 @@ type CreateBarcodeAuthorityRequestType string
 // `direct_merchant` and `provider` defaults to `stripe` when omitted
 // or empty, matching `HandleCreateChannel`'s server-side defaults.
 type CreateChannelRequest struct {
+	// CollectName Require the buyer name at checkout (default false).
+	CollectName *bool `json:"collect_name,omitempty"`
+
+	// CollectPhone Require the buyer phone at checkout (default false).
+	CollectPhone *bool `json:"collect_phone,omitempty"`
+
 	// FeePercent Platform fee percentage as a decimal string, e.g. `"2.50"`.
 	// Defaults to `"0.00"` when omitted or empty.
 	FeePercent *string `json:"fee_percent,omitempty"`
+
+	// IsTest Create the channel as a test channel (default false). Orders
+	// created in it carry `is_test` from then on.
+	IsTest *bool `json:"is_test,omitempty"`
 
 	// Name Human-readable channel label, e.g. "Online Widget",
 	// "Box Office". Trimmed; empty after trim returns 400
@@ -8945,6 +8966,12 @@ type EventSalesSummary struct {
 	// Refunds Refund totals of every session grouped by settlement, state and currency.
 	Refunds []SummaryRefundsItem `json:"refunds"`
 
+	// TestOrders Paid orders that came through a test sales channel
+	// (`is_test`). They are left out of orders, money, refunds, promo
+	// codes, invitations and the revenue of the categories above; their
+	// tickets still occupy places.
+	TestOrders *int64 `json:"test_orders,omitempty"`
+
 	// Tickets Tickets of every session by status.
 	Tickets SummaryTickets `json:"tickets"`
 }
@@ -9018,6 +9045,12 @@ type EventSummary struct {
 	// Sessions Every non-deleted session of the event in start order, each with its own figures.
 	Sessions []EventSummarySession `json:"sessions"`
 
+	// TestOrders Paid orders that came through a test sales channel
+	// (`is_test`). They are left out of orders, money, refunds, promo
+	// codes, invitations and the revenue of the categories above; their
+	// tickets still occupy places.
+	TestOrders *int64 `json:"test_orders,omitempty"`
+
 	// Tickets Tickets of every session by status.
 	Tickets SummaryTickets `json:"tickets"`
 
@@ -9071,6 +9104,12 @@ type EventSummarySession struct {
 
 	// Status Session status (draft, scheduled, cancelled, completed).
 	Status string `json:"status"`
+
+	// TestOrders Paid orders that came through a test sales channel
+	// (`is_test`). They are left out of orders, money, refunds, promo
+	// codes, invitations and the revenue of the categories above; their
+	// tickets still occupy places.
+	TestOrders *int64 `json:"test_orders,omitempty"`
 
 	// Tickets Tickets of the session by status.
 	Tickets SummaryTickets `json:"tickets"`
@@ -12525,6 +12564,11 @@ type OrderDetail struct {
 	// Id UUIDv7 primary key of the order row.
 	Id openapi_types.UUID `json:"id"`
 
+	// IsTest True when the order was created in a test sales channel. Set once
+	// at creation from the channel and never changed. Such orders are
+	// left out of the sales summaries.
+	IsTest *bool `json:"is_test,omitempty"`
+
 	// Items Line items of the order.
 	Items []OrderItemSummary `json:"items"`
 
@@ -12800,6 +12844,11 @@ type OrderListItem struct {
 
 	// Id UUIDv7 primary key of the order row.
 	Id openapi_types.UUID `json:"id"`
+
+	// IsTest True when the order was created in a test sales channel. Set once
+	// at creation from the channel and never changed. Such orders are
+	// left out of the sales summaries.
+	IsTest *bool `json:"is_test,omitempty"`
 
 	// LetterFailed True when the buyer most likely did not get a letter: a
 	// ticket letter that failed (bounced, blocked, refused by the
@@ -13304,6 +13353,11 @@ type OrderSummary struct {
 
 	// Id UUIDv7 primary key of the order row.
 	Id openapi_types.UUID `json:"id"`
+
+	// IsTest True when the order was created in a test sales channel. Set once
+	// at creation from the channel and never changed. Such orders are
+	// left out of the sales summaries.
+	IsTest *bool `json:"is_test,omitempty"`
 
 	// OrgId Owning organization.
 	OrgId openapi_types.UUID `json:"org_id"`
@@ -18875,6 +18929,12 @@ type SessionSummary struct {
 	// the session has no paid orders.
 	Sources []SessionSummarySource `json:"sources"`
 
+	// TestOrders Paid orders that came through a test sales channel
+	// (`is_test`). They are left out of orders, money, refunds, promo
+	// codes, invitations and the revenue of the categories above; their
+	// tickets still occupy places.
+	TestOrders *int64 `json:"test_orders,omitempty"`
+
 	// Tickets Tickets of the session by status.
 	Tickets struct {
 		// Active Valid tickets.
@@ -21483,10 +21543,21 @@ type UpdateBankAccountRequest struct {
 // (features #121/#236). Every field is optional and independently
 // applied: an omitted field leaves the stored column unchanged.
 type UpdateChannelRequest struct {
+	// CollectName Require the buyer name at checkout. Omit to leave it unchanged.
+	CollectName *bool `json:"collect_name,omitempty"`
+
+	// CollectPhone Require the buyer phone at checkout. Omit to leave it unchanged.
+	CollectPhone *bool `json:"collect_phone,omitempty"`
+
 	// FeePercent New platform fee percentage as a decimal string. Omitting
 	// the key OR sending JSON `null` both leave the stored value
 	// unchanged; only a non-null string value is applied.
 	FeePercent *string `json:"fee_percent"`
+
+	// IsTest Turn the test flag of the channel on or off. Omit to leave it
+	// unchanged. Orders already created keep the flag they were born
+	// with: it never changes on an order.
+	IsTest *bool `json:"is_test,omitempty"`
 
 	// Name New channel label. Omit (or send an empty string) to leave
 	// the stored name unchanged.

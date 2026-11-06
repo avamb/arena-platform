@@ -277,6 +277,7 @@ export const ru: Record<MessageKey, string> = {
   "orders.searchExample": "Например, 1002957087",
   "orders.reset": "Сбросить",
   "orders.letterFailed": "Письмо не дошло",
+  "orders.testOrder": "Тест",
   "orders.col.order": "Заказ",
   "orders.col.status": "Статус",
   "orders.col.buyer": "Покупатель",
