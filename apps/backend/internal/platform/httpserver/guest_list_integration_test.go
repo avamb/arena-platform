@@ -90,7 +90,7 @@ func TestGuestList_FileSubscriptionScheduleAndBotRoutes(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("lines = %d, want header + 2:\n%s", len(lines), body)
 	}
-	if lines[0] != `"Guest";"Category";"Seat";"Ticket";"Barcode";"VIP";"Entered";"Entry time";"Order";"E-mail";"Phone";"Invitation"` {
+	if lines[0] != `"Guest";"Category";"Seat";"Ticket";"Barcode";"VIP";"Entered";"Entry time";"Order";"E-mail";"Phone";"Invitation";"Test"` {
 		t.Errorf("header = %s", lines[0])
 	}
 	if !strings.HasPrefix(lines[1], `"Anna Guest";"Parterre";"";`) || !strings.Contains(lines[1], `;"yes";"no";"";`) {
