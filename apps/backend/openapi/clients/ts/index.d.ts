@@ -27797,8 +27797,8 @@ export interface components {
              *     `GET /v1/public/checkout/{checkout_token}` reports it:
              *     `cancelled` (this call or an earlier one cancelled it), `paid`
              *     (the payment came first: show "thank you"), `expired` (the
-             *     window had already closed) or `pending` (an operator holds the
-             *     order).
+             *     window had already closed), `needs_help` (an operator holds the
+             *     order) or `refunded`.
              */
             status: string;
             /** @description True when the order is cancelled (now or by an earlier call). */
@@ -64625,7 +64625,7 @@ export interface operations {
         responses: {
             /**
              * @description The order's status after the call (`cancelled`, `paid`,
-             *     `expired`, `pending`).
+             *     `expired`, `needs_help`, `refunded`).
              */
             200: {
                 headers: {

@@ -883,7 +883,7 @@
       // the old order instead of the ticket picker, so a buyer could not buy
       // a second master class (first production events, 2026-09-20). The
       // return page itself keeps working: its token is in the URL.
-      if (status === 'paid' || status === 'failed' || status === 'expired') {
+      if (status === 'paid' || status === 'failed' || status === 'expired' || status === 'cancelled') {
         forgetCheckoutToken();
       }
       if (status === 'paid') {
@@ -894,7 +894,7 @@
           totalMinorUnits: orderStatus.total ?? null,
           currency: orderStatus.currency ?? null,
         });
-      } else if (status === 'failed' || status === 'expired') {
+      } else if (status === 'failed' || status === 'expired' || status === 'cancelled') {
         dispatchWidgetEvent(host, ARENA_EVENTS.ORDER_FAILED, {
           checkoutToken: token,
           reason: status,

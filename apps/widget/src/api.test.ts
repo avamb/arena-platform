@@ -193,3 +193,18 @@ describe('postCheckoutStart — structured errors', () => {
     expect((err.details['conflicts'] as unknown[]).length).toBe(2);
   });
 });
+
+describe('getCheckoutStatus — public status normalization (spec 62 P-16, P-2)', () => {
+  const base = { checkout_token: 'tok', checkout_session_id: 'cs', items: [], tickets: [] };
+  it.each([
+    ['needs_help', 'pending'],
+    ['refunded', 'failed'],
+    ['cancelled', 'cancelled'],
+    ['paid', 'paid'],
+    ['expired', 'expired'],
+  ])('maps %s to %s', async (raw, want) => {
+    mockFetchResponse({ ok: true, body: { ...base, status: raw } });
+    const res = await getCheckoutStatus('tok', 'https://api.example.test');
+    expect(res.status).toBe(want);
+  });
+});

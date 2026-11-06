@@ -142,16 +142,30 @@ func (h *Handler) HandlePublicCheckoutCancel(w http.ResponseWriter, r *http.Requ
 	case hcheckout.BuyerCancelCancelled:
 		h.logger.Info("public_checkout_cancel: the buyer cancelled an unpaid order",
 			slog.String("checkout_session_id", cs.ID.String()))
-		h.writeCancelAnswer(w, checkoutToken, "cancelled", true)
+		h.writeCancelAnswer(w, checkoutToken, publicStatusCancelled, true)
 	case hcheckout.BuyerCancelAlreadyCancelled:
-		h.writeCancelAnswer(w, checkoutToken, "cancelled", true)
+		h.writeCancelAnswer(w, checkoutToken, publicStatusCancelled, true)
 	case hcheckout.BuyerCancelPaid:
-		h.writeCancelAnswer(w, checkoutToken, "paid", false)
+		h.writeCancelAnswer(w, checkoutToken, publicStatusPaid, false)
 	case hcheckout.BuyerCancelExpired:
-		h.writeCancelAnswer(w, checkoutToken, "expired", false)
+		h.writeCancelAnswer(w, checkoutToken, publicStatusExpired, false)
 	default:
-		h.writeCancelAnswer(w, checkoutToken, "pending", false)
+		// An operator holds the order, or it moved on (refunded): answer
+		// exactly what GET /v1/public/checkout/{token} reports, through the
+		// same mapping (needs_help for manual_review).
+		h.writeCancelAnswer(w, checkoutToken, h.currentPublicStatus(ctx, cs), false)
 	}
+}
+
+// currentPublicStatus is the public status GET /v1/public/checkout/{token}
+// reports for cs: the session state refined by its order through the one
+// mapping (checkoutStatusToPublic, then publicOrderStatus).
+func (h *Handler) currentPublicStatus(ctx context.Context, cs gen.CheckoutSessionRow) string {
+	status := checkoutStatusToPublic(cs.State)
+	if ord, err := h.checkoutQueries.GetOrderByCheckoutSession(ctx, cs.ID); err == nil {
+		status = publicOrderStatus(status, ord.Status)
+	}
+	return status
 }
 
 func (h *Handler) writeCancelAnswer(w http.ResponseWriter, token, status string, cancelled bool) {

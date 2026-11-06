@@ -336,13 +336,15 @@ export async function getCheckoutStatus(
     );
   }
   const body = (await res.json()) as CheckoutStatusResponse;
-  // The platform now also answers needs_help / refunded / cancelled (spec 62
-  // P-16). This widget has no screen for them: keep its earlier behaviour,
-  // where an order parked for review kept spinning and a closed one showed the
-  // generic final screen. Pages that render those states read the raw status.
+  // The platform now also answers needs_help / refunded (spec 62 P-16). This
+  // widget has no screen for them: keep its earlier behaviour, where an order
+  // parked for review kept spinning and a refunded one showed the generic
+  // final screen. cancelled is kept as it is: it is final, and the host page
+  // gets it as the reason of arena:order_failed. Pages that render the other
+  // states read the raw status.
   const raw = body.status as string;
   if (raw === 'needs_help') body.status = 'pending';
-  else if (raw === 'refunded' || raw === 'cancelled') body.status = 'failed';
+  else if (raw === 'refunded') body.status = 'failed';
   return body;
 }
 

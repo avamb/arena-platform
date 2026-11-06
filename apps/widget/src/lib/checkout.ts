@@ -278,8 +278,13 @@ export interface CheckoutStatusTicketItem {
   pdf_url?: string | null;
 }
 
-/** Public-facing order status. */
-export type CheckoutPublicStatus = 'pending' | 'paid' | 'expired' | 'failed';
+/**
+ * Public-facing order status as the widget handles it. The platform also
+ * answers needs_help and refunded; getCheckoutStatus folds those into pending
+ * and failed. cancelled (the buyer cancelled through POST .../cancel, or an
+ * operator did) is final and shows the closed-order screen.
+ */
+export type CheckoutPublicStatus = 'pending' | 'paid' | 'expired' | 'failed' | 'cancelled';
 
 /** Response from GET /v1/public/checkout/{token}. */
 export interface CheckoutStatusResponse {

@@ -5815,8 +5815,8 @@ type CheckoutCancelResponse struct {
 	// `GET /v1/public/checkout/{checkout_token}` reports it:
 	// `cancelled` (this call or an earlier one cancelled it), `paid`
 	// (the payment came first: show "thank you"), `expired` (the
-	// window had already closed) or `pending` (an operator holds the
-	// order).
+	// window had already closed), `needs_help` (an operator holds the
+	// order) or `refunded`.
 	Status string `json:"status"`
 }
 
