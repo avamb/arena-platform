@@ -14,6 +14,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hbil24"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hfeed"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/mytickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesubscribe"
 )
 
@@ -47,6 +48,7 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		hcheckout.PricingRules(s.pricingRules),
 		trustedProxies,
 	).WithMediaSigner(s.signedMediaURL).
+		WithAPIPublicBase(s.apiPublicURL).
 		WithPayments(
 			s.hostedPaymentStarter(),
 			s.checkoutReturnURLPolicy(),
@@ -61,6 +63,7 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		WithFunnelDeduper(&s.funnelDedupe).
 		WithPromoAttempts(s.promoAttemptRecorder()).
 		WithSaleSubscriptions(s.saleSubscriptionService(), s.saleSubscriptionSalt()).
+		WithMyTickets(s.myTicketsService(), s.saleSubscriptionSalt()).
 		WithTicketAccessLog(s.ticketAccessRecorder()).
 		WithCheckoutIdempotency(s.checkoutStartIdempotency())
 }
@@ -80,6 +83,34 @@ func (s *Server) saleSubscriptionService() *salesubscribe.Service {
 		return nil
 	}
 	return salesubscribe.New(s.pgxPool, nil)
+}
+
+// myTicketsService is "my tickets by link"; nil without a pool.
+func (s *Server) myTicketsService() *mytickets.Service {
+	if s.pgxPool == nil {
+		return nil
+	}
+	return mytickets.New(s.pgxPool, nil)
+}
+
+func (s *Server) handleMyTicketsRequestLink(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandleMyTicketsRequestLink(w, r)
+}
+
+func (s *Server) handleMyTicketsExchange(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandleMyTicketsExchange(w, r)
+}
+
+func (s *Server) handleMyTicketsLogout(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandleMyTicketsLogout(w, r)
+}
+
+func (s *Server) handleMyTicketsOrders(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandleMyTicketsOrders(w, r)
+}
+
+func (s *Server) handleMyTicketsPDF(w http.ResponseWriter, r *http.Request) {
+	s.feedHandler().HandleMyTicketsPDF(w, r)
 }
 
 // withGatewaySaleSubscriptions wires the gateway's SUBSCRIBE_SALE to the

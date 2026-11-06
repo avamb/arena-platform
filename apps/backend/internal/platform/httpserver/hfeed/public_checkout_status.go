@@ -26,6 +26,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -40,20 +41,58 @@ import (
 // Status mapping
 // ─────────────────────────────────────────────────────────────────────────────
 
+// The public order statuses (spec 62 §5.5, item P-16). The first four are the
+// original set; needs_help, refunded and cancelled are explicit so a thank-you
+// page can tell "we are checking your order" from "your money came back" from
+// "the order was cancelled".
+const (
+	publicStatusPending   = "pending"
+	publicStatusPaid      = "paid"
+	publicStatusExpired   = "expired"
+	publicStatusFailed    = "failed"
+	publicStatusNeedsHelp = "needs_help"
+	publicStatusRefunded  = "refunded"
+	publicStatusCancelled = "cancelled"
+)
+
 // checkoutStatusToPublic maps internal checkout_session.state to the
-// public-facing status enum (pending/paid/expired/failed).
+// public-facing status enum. manual_review used to be folded into pending,
+// which kept a buyer on a spinner for an order an operator has to look at.
 func checkoutStatusToPublic(state string) string {
 	switch state {
 	case "completed":
-		return "paid"
+		return publicStatusPaid
 	case "expired":
-		return "expired"
+		return publicStatusExpired
 	case "abandoned":
-		return "failed"
+		return publicStatusFailed
+	case "manual_review":
+		return publicStatusNeedsHelp
 	default:
-		// created, pricing_confirmed, payment_started, manual_review → pending
-		return "pending"
+		// created, pricing_confirmed, payment_started → pending
+		return publicStatusPending
 	}
+}
+
+// publicOrderStatus refines the checkout-session status with the order the
+// session produced. The order is the truth for what happened after payment:
+// a refunded or cancelled order has a completed checkout session, and an
+// order parked for review is "needs help" whatever the session says. A
+// partially refunded order stays paid (its remaining tickets are valid).
+// An order that is paid while the session disagrees is reported paid (the
+// safety net for a path that marks an order paid without completing it).
+func publicOrderStatus(sessionStatus, orderStatus string) string {
+	switch orderStatus {
+	case "refunded":
+		return publicStatusRefunded
+	case "cancelled":
+		return publicStatusCancelled
+	case "manual_review":
+		return publicStatusNeedsHelp
+	case "paid", "partially_refunded":
+		return publicStatusPaid
+	}
+	return sessionStatus
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -115,9 +154,26 @@ type checkoutStatusResponse struct {
 	// Omitted once the order is paid, expired or failed, and once the hold's
 	// expires_at has passed (the hosted session itself is already dead by
 	// then — its own expiry is set to fire before arena releases the seats).
-	PaymentURL *string                        `json:"payment_url,omitempty"`
-	Items      []checkoutStatusItemResponse   `json:"items"`
-	Tickets    []checkoutStatusTicketResponse `json:"tickets"`
+	PaymentURL *string `json:"payment_url,omitempty"`
+	// Event is what the order is for (name, session start, venue and its
+	// time zone) so a static page can render the order without a second
+	// call. Omitted when the session can no longer be resolved.
+	Event   *checkoutStatusEvent           `json:"event,omitempty"`
+	Items   []checkoutStatusItemResponse   `json:"items"`
+	Tickets []checkoutStatusTicketResponse `json:"tickets"`
+}
+
+// checkoutStatusEvent is the event block of the order status.
+type checkoutStatusEvent struct {
+	EventID   string  `json:"event_id"`
+	SessionID string  `json:"session_id"`
+	Name      string  `json:"name"`
+	Slug      *string `json:"slug"`
+	// StartAt is the session start, RFC 3339 UTC; Timezone is the venue's
+	// IANA zone ("" when unknown) to render it in.
+	StartAt   string  `json:"start_at"`
+	VenueName *string `json:"venue_name"`
+	Timezone  *string `json:"timezone"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -202,14 +258,14 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 		if ord, ordErr := h.checkoutQueries.GetOrderByCheckoutSession(ctx, cs.ID); ordErr == nil {
 			num := ord.SystemID
 			orderNumber = &num
-			if publicStatus != "paid" && ord.Status == "paid" {
+			if publicStatus != publicStatusPaid && ord.Status == "paid" {
 				h.logger.Warn("public_checkout_status: order is paid but checkout session disagrees; reporting paid",
 					slog.String("checkout_session_id", cs.ID.String()),
 					slog.String("checkout_session_state", cs.State),
 					slog.String("order_id", ord.ID.String()),
 				)
-				publicStatus = "paid"
 			}
+			publicStatus = publicOrderStatus(publicStatus, ord.Status)
 		}
 	}
 
@@ -232,8 +288,10 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 		Tickets:           []checkoutStatusTicketResponse{},
 	}
 
+	resp.Event = h.checkoutEventBlock(ctx, reservation.SessionID)
+
 	// ── 3b. Offer the hosted payment page back while it can still be paid ────
-	if publicStatus == "pending" && reservation.ExpiresAt.After(time.Now().UTC()) {
+	if publicStatus == publicStatusPending && reservation.ExpiresAt.After(time.Now().UTC()) {
 		if url := h.pendingPaymentURL(ctx, cs.ID); url != "" {
 			resp.PaymentURL = &url
 		}
@@ -243,7 +301,7 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 	// A mixed hold carries BOTH assigned seats (reservation_seats) and GA
 	// lines (reservation_ga_items, migration 0063); the response includes
 	// every item with its label + unit price (WID-0b contract).
-	if publicStatus == "pending" {
+	if publicStatus == publicStatusPending {
 		seats, seatErr := h.reservationQueries.ListReservationSeats(ctx, reservation.ID)
 		if seatErr != nil {
 			// Non-fatal: log + return empty items (UI can still display totals).
@@ -371,7 +429,7 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 					}
 				}
 				// PDF URL — a public endpoint that verifies ownership via checkout_token.
-				pdfURL := "/v1/public/checkout/" + checkoutToken + "/tickets/" + t.ID.String() + "/pdf"
+				pdfURL := h.absoluteAPIURL("/v1/public/checkout/" + checkoutToken + "/tickets/" + t.ID.String() + "/pdf")
 				tr.PDFURL = &pdfURL
 				ticketResps = append(ticketResps, tr)
 			}
@@ -539,4 +597,56 @@ func (h *Handler) HandleGetPublicTicketPDF(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Disposition", "inline; filename=\"ticket-"+ticketID.String()+".pdf\"")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(pdfBytes)
+}
+
+// checkoutEventBlock resolves the event block of the order status. Best
+// effort: a failed lookup omits the block, the status itself still renders.
+func (h *Handler) checkoutEventBlock(ctx context.Context, sessionID uuid.UUID) *checkoutStatusEvent {
+	if h.checkoutQueries == nil {
+		return nil
+	}
+	row, err := h.checkoutQueries.GetPublicOrderEvent(ctx, sessionID)
+	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			h.logger.Warn("public_checkout_status: event block lookup failed",
+				slog.String("session_id", sessionID.String()),
+				slog.String("error", err.Error()),
+			)
+		}
+		return nil
+	}
+	ev := &checkoutStatusEvent{
+		EventID:   row.EventID.String(),
+		SessionID: row.SessionID.String(),
+		Name:      row.Name,
+		Slug:      row.Slug,
+		StartAt:   row.StartAt.UTC().Format(time.RFC3339),
+		VenueName: row.VenueName,
+	}
+	if row.Timezone != nil && strings.TrimSpace(*row.Timezone) != "" {
+		tz := strings.TrimSpace(*row.Timezone)
+		ev.Timezone = &tz
+	}
+	return ev
+}
+
+// WithAPIPublicBase wires the API's public origin (Config.APIPublicBaseURL,
+// read per call) so links in public answers are absolute. A static site on
+// another origin cannot resolve a host-relative path against the API.
+func (h *Handler) WithAPIPublicBase(base func() string) *Handler {
+	h.apiPublicBase = base
+	return h
+}
+
+// absoluteAPIURL prefixes a host-relative API path with the public origin;
+// without a configured origin the path stays relative (unit tests, dev).
+func (h *Handler) absoluteAPIURL(path string) string {
+	if h == nil || h.apiPublicBase == nil {
+		return path
+	}
+	base := strings.TrimRight(strings.TrimSpace(h.apiPublicBase()), "/")
+	if base == "" || !strings.HasPrefix(path, "/") {
+		return path
+	}
+	return base + path
 }

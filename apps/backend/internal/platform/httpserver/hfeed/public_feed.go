@@ -522,6 +522,7 @@ type publicFeedPagination struct {
 //	city_id    — filter by publication city (UUID, optional)
 //	date_from  — filter events starting at or after this time (RFC3339, optional)
 //	date_to    — filter events ending at or before this time (RFC3339, optional)
+//	include_removed — "true" adds removed_events (see public_feed_removed.go)
 //	page       — 1-indexed page number (default 1)
 //	per_page   — results per page, 1-100 (default 20)
 //
@@ -684,8 +685,7 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 		totalPages = 1
 	}
 
-	w.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=30")
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{
+	body := map[string]any{
 		"events": events,
 		"pagination": publicFeedPagination{
 			Page:       page,
@@ -693,7 +693,23 @@ func (h *Handler) HandlePublicFeedEvents(w http.ResponseWriter, r *http.Request)
 			Total:      int(total),
 			TotalPages: totalPages,
 		},
-	})
+	}
+	// include_removed=true: the explicit "unpublished / deleted" marker for a
+	// site builder (spec 62 item P-6). Opt-in so the list widgets read stays
+	// exactly as it was.
+	if q.Get("include_removed") == "true" {
+		removed, rmErr := h.loadRemovedFeedEvents(ctx, feedToken, time.Now().UTC())
+		if rmErr != nil {
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"feed.list_failed", "We could not load the events. Try again in a minute.", r,
+			))
+			return
+		}
+		body["removed_events"] = removed
+	}
+
+	w.Header().Set("Cache-Control", "public, max-age=60, stale-while-revalidate=30")
+	httputil.WriteJSON(w, http.StatusOK, body)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -16462,6 +16462,75 @@ components:
           type: [integer, "null"]
           description: Number of GA tickets held (only for general_admission items).
 
+    PublicFeedRemovedEvent:
+      type: object
+      description: |
+        An event that left a public feed token's list (spec 62 §6.1, item P-6).
+        `name`, `slug` and `display_number` are null when the event row no
+        longer exists.
+      required: [id, status, removed_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The event id the builder knows the page by.
+        display_number:
+          type: [integer, "null"]
+          format: int64
+          description: The event's display number; null when the event row is gone.
+        name:
+          type: [string, "null"]
+          description: The event's name; null when the event row is gone.
+        slug:
+          type: [string, "null"]
+          description: The event's page address; null when none was assigned or the row is gone.
+        status:
+          type: string
+          description: |
+            Why the event left the list: `unpublished` (the publication to
+            this token was deleted, or the event went back to draft),
+            `cancelled`, `archived` or `deleted` (soft- or hard-deleted).
+        removed_at:
+          type: string
+          format: date-time
+          description: When the event left the list, RFC 3339 UTC.
+        last_session_at:
+          type: [string, "null"]
+          format: date-time
+          description: End of the event's last session, RFC 3339 UTC; null without sessions.
+
+    CheckoutStatusEvent:
+      type: object
+      description: |
+        The event block of the anonymous order status
+        (`GET /v1/public/checkout/{checkout_token}`).
+      required: [event_id, session_id, name, start_at]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: The event the order is for.
+        session_id:
+          type: string
+          format: uuid
+          description: The session the order is for.
+        name:
+          type: string
+          description: The event's name.
+        slug:
+          type: [string, "null"]
+          description: The event's public page address; null until one is assigned.
+        start_at:
+          type: string
+          format: date-time
+          description: Session start, RFC 3339 UTC.
+        venue_name:
+          type: [string, "null"]
+          description: The session venue's name.
+        timezone:
+          type: [string, "null"]
+          description: IANA time zone of the venue to render `start_at` in; null when unknown.
+
     CheckoutStatusTicketItem:
       type: object
       description: |
@@ -16490,8 +16559,10 @@ components:
         pdf_url:
           type: [string, "null"]
           description: |
-            Path to download the PDF e-ticket:
-            `GET /v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf`.
+            ABSOLUTE URL to download the PDF e-ticket:
+            `GET {api public origin}/v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf`.
+            Deployments without a configured public origin answer the
+            host-relative path instead.
 
     PublicGAItem:
       type: object
@@ -16581,6 +16652,142 @@ components:
           description: |
             The absolute http(s) page the buyer subscribed on. Kept only when
             its origin is on the return-URL allow-list; the letters link to it.
+    MyTicketsLinkRequest:
+      type: object
+      description: Body of `POST /v1/public/feeds/{feed_token}/my-tickets/link`.
+      required: [email]
+      properties:
+        email:
+          type: string
+          description: The address that placed the orders.
+        locale:
+          type: string
+          description: Language of the letter (a short tag such as `ru`); the organization's language when omitted.
+        page_url:
+          type: string
+          description: |
+            The site page the letter links to (it receives `?t=<token>`). Used only
+            when its origin is on the return-URL allow-list.
+    MyTicketsExchangeRequest:
+      type: object
+      description: Body of `POST /v1/public/my-tickets/session`.
+      required: [token]
+      properties:
+        token:
+          type: string
+          description: The one-time token from the e-mailed link (query parameter `t`).
+    MyTicketsSession:
+      type: object
+      description: A "my tickets" session.
+      required: [session_token, expires_at]
+      properties:
+        session_token:
+          type: string
+          description: Bearer token for the other my-tickets routes. Shown once.
+        expires_at:
+          type: string
+          format: date-time
+          description: When the session ends, RFC 3339 UTC (4 hours after the exchange).
+    MyTicketsTicket:
+      type: object
+      description: One ticket of a listed order.
+      required: [ticket_id, status, pdf_url]
+      properties:
+        ticket_id:
+          type: string
+          format: uuid
+          description: The ticket.
+        status:
+          type: string
+          description: The ticket's status (`active`, `cancelled`, ...).
+        sector:
+          type: [string, "null"]
+          description: Sector of an assigned seat.
+        row:
+          type: [string, "null"]
+          description: Row of an assigned seat.
+        number:
+          type: [string, "null"]
+          description: Seat number.
+        tier_name:
+          type: [string, "null"]
+          description: Name of the ticket category.
+        human_code:
+          type: [string, "null"]
+          description: The human-readable fallback code in display form.
+        pdf_url:
+          type: string
+          description: Absolute URL of the PDF; needs the session's bearer token.
+    MyTicketsOrder:
+      type: object
+      description: One listed order.
+      required: [order_id, order_number, status, total, currency, created_at, session_cancelled, event, tickets]
+      properties:
+        order_id:
+          type: string
+          format: uuid
+          description: The order.
+        order_number:
+          type: integer
+          format: int64
+          description: The number printed on the ticket e-mail and PDF.
+        status:
+          type: string
+          description: The public order status, `paid`, `refunded` or `cancelled` (same words as the order status route).
+        total:
+          type: integer
+          format: int64
+          description: Order total in the smallest currency unit.
+        currency:
+          type: string
+          description: ISO 4217 currency code.
+        paid_at:
+          type: string
+          format: date-time
+          description: When the order was paid; absent for an invitation.
+        created_at:
+          type: string
+          format: date-time
+          description: When the order was created.
+        session_cancelled:
+          type: boolean
+          description: True when the session's date was cancelled.
+        event:
+          description: What the order is for.
+          allOf:
+            - $ref: "#/components/schemas/CheckoutStatusEvent"
+        tickets:
+          type: array
+          description: The order's tickets.
+          items:
+            $ref: "#/components/schemas/MyTicketsTicket"
+    MyTicketsOrdersPage:
+      type: object
+      description: One page of the session's orders.
+      required: [orders, pagination]
+      properties:
+        orders:
+          type: array
+          description: The orders of this page, newest session first.
+          items:
+            $ref: "#/components/schemas/MyTicketsOrder"
+        pagination:
+          type: object
+          description: Paging of the list.
+          required: [page, per_page, total, total_pages]
+          properties:
+            page:
+              type: integer
+              description: This page, 1-based.
+            per_page:
+              type: integer
+              description: Orders per page (20).
+            total:
+              type: integer
+              description: All matching orders.
+            total_pages:
+              type: integer
+              description: Number of pages, at least 1.
     PublicSaleSubscriptionAccepted:
       type: object
       description: The request was saved.
@@ -17405,13 +17612,22 @@ components:
       properties:
         status:
           type: string
-          enum: [pending, paid, expired, failed]
+          enum: [pending, paid, expired, failed, needs_help, refunded, cancelled]
           description: |
-            Public order status derived from the checkout_session.state:
-            - `pending`: created | pricing_confirmed | payment_started | manual_review
-            - `paid`: completed
+            Public order status, derived from the checkout_session.state and
+            refined by the order the session produced:
+            - `pending`: created | pricing_confirmed | payment_started
+            - `paid`: completed (also a partially refunded order)
             - `expired`: expired
             - `failed`: abandoned
+            - `needs_help`: manual_review - an operator has to look at the
+              order; the page should say "we are checking your order" and
+              show the organizer's contact, not a spinner (it used to be
+              reported as `pending`)
+            - `refunded`: the order was fully refunded
+            - `cancelled`: the order was cancelled
+            Only `pending` is transient; the other statuses are final for a
+            polling client.
         checkout_token:
           type: string
           description: The opaque token identifying this checkout (echoed from path).
@@ -17462,6 +17678,14 @@ components:
             of rebuilding their cart. Omitted once the order is paid, expired
             or failed, and omitted once the hosted session's own expiry has
             passed.
+        event:
+          description: |
+            What the order is for: event name and slug, the session start
+            (UTC) and the venue with its IANA time zone, so a static page can
+            render the order without a second call. Omitted when the session
+            cannot be resolved.
+          allOf:
+            - $ref: "#/components/schemas/CheckoutStatusEvent"
         items:
           type: array
           description: Cart items held at the time of the request.
@@ -52661,6 +52885,18 @@ paths:
             type: integer
             default: 0
           description: Pagination offset.
+        - name: include_removed
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: |
+            With `true` the answer also carries `removed_events`: every event
+            that left this feed token's list within the last 30 days, with a
+            terminal status and the removal time. It is how a site builder
+            tells "removed" from "the answer is incomplete". The `events`
+            list and its pagination are not affected.
       responses:
         "200":
           description: Paginated list of published events for this feed token.
@@ -52674,6 +52910,14 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/EventItem"
+                  removed_events:
+                    type: array
+                    description: |
+                      Only with `include_removed=true`. Events that left this
+                      feed token's list within the last 30 days, newest
+                      removal first (at most 500).
+                    items:
+                      $ref: "#/components/schemas/PublicFeedRemovedEvent"
                   total:
                     type: integer
                     description: Total count of matching events (for pagination).
@@ -53759,6 +54003,280 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "429":
           description: "`subscription.rate_limited` or `feed.rate_limited` - too many attempts."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "`dependency.database_unavailable` - the service is not wired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/public/feeds/{feed_token}/my-tickets/link:
+    post:
+      operationId: requestPublicMyTicketsLink
+      summary: E-mail a buyer a one-time link to their tickets
+      description: |
+        "My tickets by link" for a static organizer site (spec 62 section 7).
+        The buyer types an address; when it has paid ticket orders of the
+        organization that owns the feed token's channel, a letter with a
+        one-time link is queued. The route is addressed by the FEED TOKEN, so it
+        works for a channel without a hosted page. The answer is always `202`:
+        a known address, an unknown address and a request swallowed by the
+        limits look the same, so the route cannot be used to learn who has
+        bought. The link works for 30 minutes and is spent only by
+        `POST /v1/public/my-tickets/session`, never by opening the page. Limits:
+        3 letters an hour per address, 10 an hour per client address, and the
+        feed-token and per-IP buckets. `page_url` is used only when its origin is
+        on the return-URL allow-list. No JWT is required.
+      tags: [v1, public]
+      parameters:
+        - name: feed_token
+          in: path
+          required: true
+          description: Public feed token of the site's channel.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MyTicketsLinkRequest"
+      responses:
+        "202":
+          description: Accepted. A letter is on its way if the address has orders.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicSaleSubscriptionAccepted"
+        "400":
+          description: "`my_tickets.invalid_json` or `my_tickets.invalid_email`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: "`feed.token_not_found` - the feed token is unknown or revoked."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: "`feed.rate_limited` - too many requests."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "`dependency.database_unavailable` - the service is not wired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/public/my-tickets/session:
+    post:
+      operationId: exchangePublicMyTicketsLink
+      summary: Exchange the e-mailed token for a 4-hour session
+      description: |
+        The page opened from the letter shows a button; its press calls this
+        route with the token from the link. The exchange is atomic: the token is
+        spent by the first call, a second (or concurrent) call, an expired or an
+        unknown token answers `410`. The answer carries a bearer token, valid for
+        4 hours, to send as `Authorization: Bearer ...` to the other my-tickets
+        routes; keep it in `sessionStorage`, not in a cookie. No JWT is required.
+      tags: [v1, public]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MyTicketsExchangeRequest"
+      responses:
+        "200":
+          description: The session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyTicketsSession"
+        "400":
+          description: "`my_tickets.invalid_json`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "410":
+          description: "`my_tickets.link_invalid` - the link was used, has expired or is unknown."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: "`my_tickets.rate_limited` - too many requests."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "`dependency.database_unavailable` - the service is not wired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: revokePublicMyTicketsSession
+      summary: Log out of "my tickets"
+      description: |
+        Revokes the bearer session on the server. Send the session token as
+        `Authorization: Bearer ...`. No JWT is required.
+      tags: [v1, public]
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          description: "`Bearer <session token>` from the exchange."
+          schema:
+            type: string
+      responses:
+        "204":
+          description: The session is revoked.
+        "401":
+          description: "`my_tickets.session_invalid` - unknown, expired or already revoked session."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: "`my_tickets.rate_limited` - too many requests."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "`dependency.database_unavailable` - the service is not wired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/public/my-tickets/orders:
+    get:
+      operationId: listPublicMyTicketsOrders
+      summary: The ticket orders of the session's address
+      description: |
+        Ticket orders of the session's organization whose buyer e-mail equals the
+        address that received the link (shop orders and other addresses are not
+        included), newest session first, 20 a page. Send the session token as
+        `Authorization: Bearer ...`. No JWT is required.
+      tags: [v1, public]
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          description: "`Bearer <session token>` from the exchange."
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          description: 1-based page number, default 1.
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+      responses:
+        "200":
+          description: One page of orders.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MyTicketsOrdersPage"
+        "400":
+          description: "`my_tickets.invalid_page`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "`my_tickets.session_invalid` - unknown, expired or revoked session."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: "`my_tickets.rate_limited` - too many requests."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: "`dependency.database_unavailable` - the service is not wired."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+  /v1/public/my-tickets/orders/{order_id}/tickets/{ticket_id}/pdf:
+    get:
+      operationId: getPublicMyTicketsPdf
+      summary: PDF of one ticket of the session's own order
+      description: |
+        Returns the ticket PDF only when the order belongs to the session's
+        organization and address; a foreign organization, order or ticket
+        answers the same `404`. Send the session token as
+        `Authorization: Bearer ...` (fetch it with a script and show the blob,
+        a plain link cannot carry the header). No JWT is required.
+      tags: [v1, public]
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          description: "`Bearer <session token>` from the exchange."
+          schema:
+            type: string
+        - name: order_id
+          in: path
+          required: true
+          description: The order, as listed by `GET /v1/public/my-tickets/orders`.
+          schema:
+            type: string
+            format: uuid
+        - name: ticket_id
+          in: path
+          required: true
+          description: The ticket of that order.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: PDF bytes.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: "`my_tickets.invalid_id`."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: "`my_tickets.session_invalid` - unknown, expired or revoked session."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: |
+            `my_tickets.ticket_not_found` - not the session's ticket, or
+            `checkout.pdf_not_found` - the PDF is not generated yet.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "429":
+          description: "`my_tickets.rate_limited` - too many requests."
           content:
             application/json:
               schema:

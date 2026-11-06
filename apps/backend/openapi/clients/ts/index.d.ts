@@ -7750,6 +7750,114 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/public/feeds/{feed_token}/my-tickets/link": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * E-mail a buyer a one-time link to their tickets
+         * @description "My tickets by link" for a static organizer site (spec 62 section 7).
+         *     The buyer types an address; when it has paid ticket orders of the
+         *     organization that owns the feed token's channel, a letter with a
+         *     one-time link is queued. The route is addressed by the FEED TOKEN, so it
+         *     works for a channel without a hosted page. The answer is always `202`:
+         *     a known address, an unknown address and a request swallowed by the
+         *     limits look the same, so the route cannot be used to learn who has
+         *     bought. The link works for 30 minutes and is spent only by
+         *     `POST /v1/public/my-tickets/session`, never by opening the page. Limits:
+         *     3 letters an hour per address, 10 an hour per client address, and the
+         *     feed-token and per-IP buckets. `page_url` is used only when its origin is
+         *     on the return-URL allow-list. No JWT is required.
+         */
+        post: operations["requestPublicMyTicketsLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/my-tickets/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange the e-mailed token for a 4-hour session
+         * @description The page opened from the letter shows a button; its press calls this
+         *     route with the token from the link. The exchange is atomic: the token is
+         *     spent by the first call, a second (or concurrent) call, an expired or an
+         *     unknown token answers `410`. The answer carries a bearer token, valid for
+         *     4 hours, to send as `Authorization: Bearer ...` to the other my-tickets
+         *     routes; keep it in `sessionStorage`, not in a cookie. No JWT is required.
+         */
+        post: operations["exchangePublicMyTicketsLink"];
+        /**
+         * Log out of "my tickets"
+         * @description Revokes the bearer session on the server. Send the session token as
+         *     `Authorization: Bearer ...`. No JWT is required.
+         */
+        delete: operations["revokePublicMyTicketsSession"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/my-tickets/orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The ticket orders of the session's address
+         * @description Ticket orders of the session's organization whose buyer e-mail equals the
+         *     address that received the link (shop orders and other addresses are not
+         *     included), newest session first, 20 a page. Send the session token as
+         *     `Authorization: Bearer ...`. No JWT is required.
+         */
+        get: operations["listPublicMyTicketsOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/public/my-tickets/orders/{order_id}/tickets/{ticket_id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * PDF of one ticket of the session's own order
+         * @description Returns the ticket PDF only when the order belongs to the session's
+         *     organization and address; a foreign organization, order or ticket
+         *     answers the same `404`. Send the session token as
+         *     `Authorization: Bearer ...` (fetch it with a script and show the blob,
+         *     a plain link cannot carry the header). No JWT is required.
+         */
+        get: operations["getPublicMyTicketsPdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/sale-subscriptions/confirm": {
         parameters: {
             query?: never;
@@ -27160,6 +27268,72 @@ export interface components {
             quantity?: number | null;
         };
         /**
+         * @description An event that left a public feed token's list (spec 62 §6.1, item P-6).
+         *     `name`, `slug` and `display_number` are null when the event row no
+         *     longer exists.
+         */
+        PublicFeedRemovedEvent: {
+            /**
+             * Format: uuid
+             * @description The event id the builder knows the page by.
+             */
+            id: string;
+            /**
+             * Format: int64
+             * @description The event's display number; null when the event row is gone.
+             */
+            display_number?: number | null;
+            /** @description The event's name; null when the event row is gone. */
+            name?: string | null;
+            /** @description The event's page address; null when none was assigned or the row is gone. */
+            slug?: string | null;
+            /**
+             * @description Why the event left the list: `unpublished` (the publication to
+             *     this token was deleted, or the event went back to draft),
+             *     `cancelled`, `archived` or `deleted` (soft- or hard-deleted).
+             */
+            status: string;
+            /**
+             * Format: date-time
+             * @description When the event left the list, RFC 3339 UTC.
+             */
+            removed_at: string;
+            /**
+             * Format: date-time
+             * @description End of the event's last session, RFC 3339 UTC; null without sessions.
+             */
+            last_session_at?: string | null;
+        };
+        /**
+         * @description The event block of the anonymous order status
+         *     (`GET /v1/public/checkout/{checkout_token}`).
+         */
+        CheckoutStatusEvent: {
+            /**
+             * Format: uuid
+             * @description The event the order is for.
+             */
+            event_id: string;
+            /**
+             * Format: uuid
+             * @description The session the order is for.
+             */
+            session_id: string;
+            /** @description The event's name. */
+            name: string;
+            /** @description The event's public page address; null until one is assigned. */
+            slug?: string | null;
+            /**
+             * Format: date-time
+             * @description Session start, RFC 3339 UTC.
+             */
+            start_at: string;
+            /** @description The session venue's name. */
+            venue_name?: string | null;
+            /** @description IANA time zone of the venue to render `start_at` in; null when unknown. */
+            timezone?: string | null;
+        };
+        /**
          * @description A single issued ticket included in the anonymous order-status response
          *     when the checkout has reached the `paid` state (feature #319 WID-0b).
          */
@@ -27181,8 +27355,10 @@ export interface components {
              */
             human_code?: string | null;
             /**
-             * @description Path to download the PDF e-ticket:
-             *     `GET /v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf`.
+             * @description ABSOLUTE URL to download the PDF e-ticket:
+             *     `GET {api public origin}/v1/public/checkout/{checkout_token}/tickets/{ticket_id}/pdf`.
+             *     Deployments without a configured public origin answer the
+             *     host-relative path instead.
              */
             pdf_url?: string | null;
         };
@@ -27262,6 +27438,109 @@ export interface components {
              *     its origin is on the return-URL allow-list; the letters link to it.
              */
             page_url?: string;
+        };
+        /** @description Body of `POST /v1/public/feeds/{feed_token}/my-tickets/link`. */
+        MyTicketsLinkRequest: {
+            /** @description The address that placed the orders. */
+            email: string;
+            /** @description Language of the letter (a short tag such as `ru`); the organization's language when omitted. */
+            locale?: string;
+            /**
+             * @description The site page the letter links to (it receives `?t=<token>`). Used only
+             *     when its origin is on the return-URL allow-list.
+             */
+            page_url?: string;
+        };
+        /** @description Body of `POST /v1/public/my-tickets/session`. */
+        MyTicketsExchangeRequest: {
+            /** @description The one-time token from the e-mailed link (query parameter `t`). */
+            token: string;
+        };
+        /** @description A "my tickets" session. */
+        MyTicketsSession: {
+            /** @description Bearer token for the other my-tickets routes. Shown once. */
+            session_token: string;
+            /**
+             * Format: date-time
+             * @description When the session ends, RFC 3339 UTC (4 hours after the exchange).
+             */
+            expires_at: string;
+        };
+        /** @description One ticket of a listed order. */
+        MyTicketsTicket: {
+            /**
+             * Format: uuid
+             * @description The ticket.
+             */
+            ticket_id: string;
+            /** @description The ticket's status (`active`, `cancelled`, ...). */
+            status: string;
+            /** @description Sector of an assigned seat. */
+            sector?: string | null;
+            /** @description Row of an assigned seat. */
+            row?: string | null;
+            /** @description Seat number. */
+            number?: string | null;
+            /** @description Name of the ticket category. */
+            tier_name?: string | null;
+            /** @description The human-readable fallback code in display form. */
+            human_code?: string | null;
+            /** @description Absolute URL of the PDF; needs the session's bearer token. */
+            pdf_url: string;
+        };
+        /** @description One listed order. */
+        MyTicketsOrder: {
+            /**
+             * Format: uuid
+             * @description The order.
+             */
+            order_id: string;
+            /**
+             * Format: int64
+             * @description The number printed on the ticket e-mail and PDF.
+             */
+            order_number: number;
+            /** @description The public order status, `paid`, `refunded` or `cancelled` (same words as the order status route). */
+            status: string;
+            /**
+             * Format: int64
+             * @description Order total in the smallest currency unit.
+             */
+            total: number;
+            /** @description ISO 4217 currency code. */
+            currency: string;
+            /**
+             * Format: date-time
+             * @description When the order was paid; absent for an invitation.
+             */
+            paid_at?: string;
+            /**
+             * Format: date-time
+             * @description When the order was created.
+             */
+            created_at: string;
+            /** @description True when the session's date was cancelled. */
+            session_cancelled: boolean;
+            /** @description What the order is for. */
+            event: components["schemas"]["CheckoutStatusEvent"];
+            /** @description The order's tickets. */
+            tickets: components["schemas"]["MyTicketsTicket"][];
+        };
+        /** @description One page of the session's orders. */
+        MyTicketsOrdersPage: {
+            /** @description The orders of this page, newest session first. */
+            orders: components["schemas"]["MyTicketsOrder"][];
+            /** @description Paging of the list. */
+            pagination: {
+                /** @description This page, 1-based. */
+                page: number;
+                /** @description Orders per page (20). */
+                per_page: number;
+                /** @description All matching orders. */
+                total: number;
+                /** @description Number of pages, at least 1. */
+                total_pages: number;
+            };
         };
         /** @description The request was saved. */
         PublicSaleSubscriptionAccepted: {
@@ -27966,14 +28245,23 @@ export interface components {
          */
         CheckoutStatusResponse: {
             /**
-             * @description Public order status derived from the checkout_session.state:
-             *     - `pending`: created | pricing_confirmed | payment_started | manual_review
-             *     - `paid`: completed
+             * @description Public order status, derived from the checkout_session.state and
+             *     refined by the order the session produced:
+             *     - `pending`: created | pricing_confirmed | payment_started
+             *     - `paid`: completed (also a partially refunded order)
              *     - `expired`: expired
              *     - `failed`: abandoned
+             *     - `needs_help`: manual_review - an operator has to look at the
+             *       order; the page should say "we are checking your order" and
+             *       show the organizer's contact, not a spinner (it used to be
+             *       reported as `pending`)
+             *     - `refunded`: the order was fully refunded
+             *     - `cancelled`: the order was cancelled
+             *     Only `pending` is transient; the other statuses are final for a
+             *     polling client.
              * @enum {string}
              */
-            status: "pending" | "paid" | "expired" | "failed";
+            status: "pending" | "paid" | "expired" | "failed" | "needs_help" | "refunded" | "cancelled";
             /** @description The opaque token identifying this checkout (echoed from path). */
             checkout_token: string;
             /**
@@ -28018,6 +28306,13 @@ export interface components {
              *     passed.
              */
             payment_url?: string;
+            /**
+             * @description What the order is for: event name and slug, the session start
+             *     (UTC) and the venue with its IANA time zone, so a static page can
+             *     render the order without a second call. Omitted when the session
+             *     cannot be resolved.
+             */
+            event?: components["schemas"]["CheckoutStatusEvent"];
             /** @description Cart items held at the time of the request. */
             items: components["schemas"]["CheckoutStatusItem"][];
             /** @description Issued tickets; non-empty only when status is `paid`. */
@@ -62003,6 +62298,14 @@ export interface operations {
                 limit?: number;
                 /** @description Pagination offset. */
                 offset?: number;
+                /**
+                 * @description With `true` the answer also carries `removed_events`: every event
+                 *     that left this feed token's list within the last 30 days, with a
+                 *     terminal status and the removal time. It is how a site builder
+                 *     tells "removed" from "the answer is incomplete". The `events`
+                 *     list and its pagination are not affected.
+                 */
+                include_removed?: boolean;
             };
             header?: never;
             path: {
@@ -62021,6 +62324,12 @@ export interface operations {
                 content: {
                     "application/json": {
                         events: components["schemas"]["EventItem"][];
+                        /**
+                         * @description Only with `include_removed=true`. Events that left this
+                         *     feed token's list within the last 30 days, newest
+                         *     removal first (at most 500).
+                         */
+                        removed_events?: components["schemas"]["PublicFeedRemovedEvent"][];
                         /** @description Total count of matching events (for pagination). */
                         total: number;
                         limit: number;
@@ -62887,6 +63196,315 @@ export interface operations {
                 };
             };
             /** @description `subscription.rate_limited` or `feed.rate_limited` - too many attempts. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    requestPublicMyTicketsLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Public feed token of the site's channel. */
+                feed_token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MyTicketsLinkRequest"];
+            };
+        };
+        responses: {
+            /** @description Accepted. A letter is on its way if the address has orders. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicSaleSubscriptionAccepted"];
+                };
+            };
+            /** @description `my_tickets.invalid_json` or `my_tickets.invalid_email`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `feed.token_not_found` - the feed token is unknown or revoked. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `feed.rate_limited` - too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    exchangePublicMyTicketsLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MyTicketsExchangeRequest"];
+            };
+        };
+        responses: {
+            /** @description The session. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyTicketsSession"];
+                };
+            };
+            /** @description `my_tickets.invalid_json`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `my_tickets.link_invalid` - the link was used, has expired or is unknown. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `my_tickets.rate_limited` - too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    revokePublicMyTicketsSession: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description `Bearer <session token>` from the exchange. */
+                Authorization: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session is revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description `my_tickets.session_invalid` - unknown, expired or already revoked session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `my_tickets.rate_limited` - too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listPublicMyTicketsOrders: {
+        parameters: {
+            query?: {
+                /** @description 1-based page number, default 1. */
+                page?: number;
+            };
+            header: {
+                /** @description `Bearer <session token>` from the exchange. */
+                Authorization: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of orders. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyTicketsOrdersPage"];
+                };
+            };
+            /** @description `my_tickets.invalid_page`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `my_tickets.session_invalid` - unknown, expired or revoked session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `my_tickets.rate_limited` - too many requests. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `dependency.database_unavailable` - the service is not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getPublicMyTicketsPdf: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description `Bearer <session token>` from the exchange. */
+                Authorization: string;
+            };
+            path: {
+                /** @description The order, as listed by `GET /v1/public/my-tickets/orders`. */
+                order_id: string;
+                /** @description The ticket of that order. */
+                ticket_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description PDF bytes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            /** @description `my_tickets.invalid_id`. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `my_tickets.session_invalid` - unknown, expired or revoked session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `my_tickets.ticket_not_found` - not the session's ticket, or
+             *     `checkout.pdf_not_found` - the PDF is not generated yet.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description `my_tickets.rate_limited` - too many requests. */
             429: {
                 headers: {
                     [name: string]: unknown;

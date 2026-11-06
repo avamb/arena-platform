@@ -75,6 +75,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/macs"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/marketing"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/mytickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/onboarding"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/opsalert"
@@ -717,6 +718,14 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	}
 	reg.Register(salesubscribe.JobTypeConfirmEmail, delivery.NewSaleConfirmHandler(saleLetters))
 	reg.Register(salesubscribe.JobTypeOpenEmail, delivery.NewSaleOpenHandler(saleLetters))
+	// "My tickets by link" (mytickets, spec 62 item P-7): the one-time link.
+	reg.Register(mytickets.JobTypeLinkEmail, delivery.NewMyTicketsLinkHandler(delivery.MyTicketsLinkOptions{
+		Sender:         deliveryOpts.Sender,
+		Templates:      deliveryOpts.Templates,
+		DB:             pool,
+		TicketsBaseURL: cfg.PublicTicketsBaseURL,
+		Logger:         logger,
+	}))
 
 	// Spec 51-1: the one reminder about an unpaid widget order (the sweep
 	// picks the orders, the letter checks them again) and the confirmation of

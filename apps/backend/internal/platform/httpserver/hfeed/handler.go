@@ -31,6 +31,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/mytickets"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesfunnel"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesubscribe"
@@ -73,8 +74,10 @@ type RateLimiter interface {
 
 // Handler holds the shared dependencies for all feed-domain HTTP handlers.
 type Handler struct {
-	feedTokenQueries   *gen.Queries
-	publicFeedQueries  *gen.Queries
+	feedTokenQueries  *gen.Queries
+	publicFeedQueries *gen.Queries
+	// apiPublicBase returns the API public origin; see WithAPIPublicBase.
+	apiPublicBase      func() string
 	sessionQueries     *gen.Queries
 	tierQueries        *gen.Queries
 	checkoutQueries    *gen.Queries
@@ -101,7 +104,10 @@ type Handler struct {
 	trustedProxies int
 	// saleSubscribe / saleSubscribeSalt serve "notify me when sales open"
 	// (WithSaleSubscriptions, sale_subscribe.go); nil answers 503.
-	saleSubscribe     *salesubscribe.Service
+	saleSubscribe *salesubscribe.Service
+	// myTickets / myTicketsSalt serve "my tickets by link" (my_tickets.go).
+	myTickets         *mytickets.Service
+	myTicketsSalt     string
 	saleSubscribeSalt string
 	// paymentStarter creates the provider-hosted payment page after the
 	// checkout transaction has committed. Nil means this deployment cannot

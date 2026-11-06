@@ -335,7 +335,15 @@ export async function getCheckoutStatus(
       { status: res.status, code, details },
     );
   }
-  return res.json() as Promise<CheckoutStatusResponse>;
+  const body = (await res.json()) as CheckoutStatusResponse;
+  // The platform now also answers needs_help / refunded / cancelled (spec 62
+  // P-16). This widget has no screen for them: keep its earlier behaviour,
+  // where an order parked for review kept spinning and a closed one showed the
+  // generic final screen. Pages that render those states read the raw status.
+  const raw = body.status as string;
+  if (raw === 'needs_help') body.status = 'pending';
+  else if (raw === 'refunded' || raw === 'cancelled') body.status = 'failed';
+  return body;
 }
 
 /**

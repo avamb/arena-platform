@@ -80,6 +80,7 @@ func buyerLetterKinds() map[string]Data {
 		TemplateKindReferralCashbackSent:        referralBuyerData(),
 		TemplateKindReferralCashbackUnavailable: referralBuyerData(),
 		TemplateKindCheckoutReminder:            {EventName: "E", RecipientEmail: "x@y.z", CartReminder: CartReminderData{URL: "https://a.example/r", When: "w", HoldUntil: "h", Tickets: 2, Total: "1.00 EUR", OrderNumber: "7"}},
+		TemplateKindMyTicketsLink:               {EventName: "E", RecipientEmail: "x@y.z", MyTickets: MyTicketsLinkData{URL: "https://a.example/t"}},
 		TemplateKindMarketingConfirm:            {EventName: "E", RecipientEmail: "x@y.z", Marketing: MarketingConfirmData{ConfirmURL: "https://a.example/c", WithdrawURL: "https://a.example/w"}},
 	}
 }
