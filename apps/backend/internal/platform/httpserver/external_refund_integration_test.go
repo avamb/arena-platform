@@ -71,6 +71,16 @@ func TestExternalRefund_FinalAmountPerTicket(t *testing.T) {
 	if st, _ := pf.do(t, http.MethodPost, path, readOnly, body(item(f.tickets[0], 1000, "AP-1"))); st != http.StatusForbidden {
 		t.Fatalf("without refund.create: %d; want 403", st)
 	}
+	// Another organization's key, with the permission, cannot reach this order: the route's own 404.
+	otherOrg := pf.org(t, "EXTREF2")
+	otherKey := pf.key(t, otherOrg, "refund.create")
+	foreign := fmt.Sprintf("/v1/organizations/%s/orders/%s/external-refund", otherOrg, f.order)
+	if st, out := pf.do(t, http.MethodPost, foreign, otherKey, body(item(f.tickets[0], 100, "AP-X"))); st != http.StatusNotFound || prom0113Code(out) != "orders.not_found" {
+		t.Fatalf("foreign organization: %d %v; want 404 orders.not_found", st, out)
+	}
+	if s, _ := f.ticket(t, 0); s != "active" {
+		t.Fatalf("a foreign call changed ticket 0 to %s", s)
+	}
 	// Validation: nothing is written for a refusal.
 	if st, out := pf.do(t, http.MethodPost, path, key, body(item(f.tickets[0], 2501, "AP-1"))); st != http.StatusUnprocessableEntity || prom0113Code(out) != "order.refund_exceeds_price" {
 		t.Fatalf("above the price: %d %v", st, out)
@@ -146,6 +156,17 @@ func TestExternalRefund_FinalAmountPerTicket(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("summary refunds = %v; want the external 1000", sum["refunds"])
+	}
+
+	refunded := false
+	ms, _ := sum["money"].([]any)
+	for _, m := range ms {
+		if mm, _ := m.(map[string]any); mm["refunded"] == float64(1000) {
+			refunded = true
+		}
+	}
+	if !refunded {
+		t.Fatalf("summary money = %v; want refunded 1000 (external refunds count as money returned)", sum["money"])
 	}
 
 	// 4. The last ticket: the order becomes refunded.

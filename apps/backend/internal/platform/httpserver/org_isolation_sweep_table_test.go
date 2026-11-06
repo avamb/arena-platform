@@ -473,6 +473,7 @@ var orgIsolationAuditedSafe = map[string]string{
 	"GET /v1/organizations/{org_id}/orders/{order_id}/letter-interactions":      "horders.HandleLetterInteractions (GetOrderByID(order, path org), then the letters by (order, path org); covered by TestBrevoWebhook_LetterInteractionsCarryUserAgentAndStayInsideTheOrganization)",
 	"GET /v1/organizations/{org_id}/orders/{order_id}/refund-options":           "refunds.Engine.Options (order loaded inside the path org; covered by TestRefundOrgRoutes_OptionsCreateReplayAndIsolation)",
 	"POST /v1/organizations/{org_id}/orders/{order_id}/refunds":                 "refunds.Engine.CreateBatch (order loaded inside the path org; covered by TestRefundOrgRoutes_OptionsCreateReplayAndIsolation)",
+	"POST /v1/organizations/{org_id}/orders/{order_id}/external-refund":         "htickets.ExternalRefundOrder (LockOrderForUpdate(order, path org); covered by TestExternalRefund_FinalAmountPerTicket)",
 	"GET /v1/organizations/{org_id}/disputes/{dispute_id}":                      "disputes.Service (dispute loaded with org_id = path org; covered by TestDisputeRoutes_StayInsideTheOrganization)",
 	"GET /v1/organizations/{org_id}/disputes/{dispute_id}/files/{file_id}":      "disputes.Service (dispute loaded with org_id = path org; covered by TestDisputeRoutes_StayInsideTheOrganization)",
 	"POST /v1/organizations/{org_id}/disputes/{dispute_id}/package":             "disputes.Service (dispute loaded with org_id = path org; covered by TestDisputeRoutes_StayInsideTheOrganization)",
