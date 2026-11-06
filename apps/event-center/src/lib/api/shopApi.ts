@@ -157,7 +157,7 @@ export function saveShopOrderNote(orgId: string, orderId: string, staffNote: str
 }
 
 /** Queues the buyer's letter once more. One request per order per minute: a second answers 429. */
-export function resendShopOrderEmail(orgId: string, orderId: string, kind: "received" | "shipped" | "refunded"): Promise<ShopResendEmailResponse> {
+export function resendShopOrderEmail(orgId: string, orderId: string, kind: "received" | "shipped" | "delivered" | "refunded"): Promise<ShopResendEmailResponse> {
   return call<ShopResendEmailResponse>({ route: API.shopOrderResendEmail, params: ord(orgId, orderId), body: { kind } });
 }
 
@@ -168,6 +168,19 @@ export function fetchShopOrder(orgId: string, orderId: string): Promise<ShopOrde
 export function shipShopOrder(orgId: string, orderId: string, trackingNote: string): Promise<ShopOrder> {
   const body: { tracking_note?: string } = trackingNote.trim() === "" ? {} : { tracking_note: trackingNote.trim() };
   return call<ShopOrder>({ route: API.shopOrderShip, params: ord(orgId, orderId), body });
+}
+
+/**
+ * Moves the order to its next delivery step (spec 61 section 7b). `handed_over` is what "ship" always was (status
+ * shipped, the tracking number, the buyer's letter once); `failed` needs a reason. The answer is the order with its
+ * history. The server judges the move (409 `shop.fulfillment_invalid_step` names the steps that may follow).
+ */
+export function setShopOrderFulfillment(
+  orgId: string,
+  orderId: string,
+  body: { step: string; tracking?: string; reason?: string; note?: string },
+): Promise<ShopOrder> {
+  return call<ShopOrder>({ route: API.shopOrderFulfillment, params: ord(orgId, orderId), body });
 }
 
 /** Cancels an order that waits for payment. `headers` carries the step-up token. */

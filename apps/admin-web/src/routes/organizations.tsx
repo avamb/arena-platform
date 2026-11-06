@@ -80,6 +80,7 @@ import { NAV_BY_PATH } from "@/lib/auth/navConfig";
 import { useAuth } from "@/lib/auth/useAuth";
 import { buildOrgContextHref } from "@/lib/routing/orgContext";
 import { OrganizationModulesTab } from "./organizationModules";
+import { OperatorChatsPanel, OrganizationChatsTab } from "./organizationChats";
 import {
   useEscapeClose,
   useFocusOnMount,
@@ -189,6 +190,7 @@ function OrganizationsExplorer() {
   const [activeTab, setActiveTab] = useState<DrawerTabKey>(initialHash.tab);
   const [includeDeleted, setIncludeDeleted] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [operatorChatsOpen, setOperatorChatsOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -271,6 +273,15 @@ function OrganizationsExplorer() {
         <div style={refreshWrapStyle}>
           <button
             type="button"
+            onClick={() => setOperatorChatsOpen((v) => !v)}
+            style={refreshButtonStyle}
+            aria-expanded={operatorChatsOpen}
+            data-testid="orgs-operator-chats-toggle"
+          >
+            {operatorChatsOpen ? "Hide operator chats" : "Operator chats"}
+          </button>
+          <button
+            type="button"
             onClick={() => query.refetch()}
             style={refreshButtonStyle}
             disabled={query.isFetching}
@@ -294,6 +305,8 @@ function OrganizationsExplorer() {
           )}
         </div>
       </header>
+
+      {operatorChatsOpen ? <OperatorChatsPanel /> : null}
 
       <div style={toolbarStyle}>
         <label style={searchLabelStyle}>
@@ -684,6 +697,7 @@ export const DRAWER_TAB_KEYS = [
   "payments",
   "api_keys",
   "modules",
+  "telegram_chats",
 ] as const;
 
 export type DrawerTabKey = (typeof DRAWER_TAB_KEYS)[number];
@@ -697,6 +711,7 @@ const DRAWER_TAB_LABELS: Record<DrawerTabKey, string> = {
   payments: "Payments",
   api_keys: "API keys",
   modules: "Modules",
+  telegram_chats: "Telegram chats",
 };
 
 /**
@@ -849,6 +864,7 @@ function OrganizationDrawer({
         {activeTab === "payments" ? <PaymentsTab org={org} /> : null}
         {activeTab === "api_keys" ? <ApiKeysTab org={org} /> : null}
         {activeTab === "modules" ? <OrganizationModulesTab orgId={org.id} /> : null}
+        {activeTab === "telegram_chats" ? <OrganizationChatsTab orgId={org.id} /> : null}
       </section>
     </aside>
   );

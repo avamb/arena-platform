@@ -103,7 +103,10 @@ func (b *Bot) shopFetch(ctx context.Context, jwt string, st *shopDialog) (shopPa
 	q := ShopOrderQuery{Q: st.Query, Limit: shopPageSize}
 	switch st.Tab {
 	case shTabShip:
-		q.View = "to_ship"
+		// Waiting and packed are two step filters: read apart and merged.
+		return b.shopFetchShip(ctx, jwt, st)
+	case shTabFailed:
+		q.Step = stepFailed
 	case shTabUnpaid:
 		q.View = "unpaid"
 	case shTabReview:
@@ -153,8 +156,8 @@ func (b *Bot) shopFetch(ctx context.Context, jwt string, st *shopDialog) (shopPa
 			return p, err
 		}
 		switch st.Tab {
-		case shTabShip:
-			p.Total = counts.ToShip
+		case shTabFailed:
+			p.Total = counts.Steps.Failed
 		case shTabUnpaid:
 			p.Total = counts.Unpaid
 		default:
@@ -223,8 +226,9 @@ func (b *Bot) renderShopOrders(ctx context.Context, chatID int64, editMsgID *int
 		return label
 	}
 	rows := [][]models.InlineKeyboardButton{
-		{btn(mark(shTabShip), "sh:t:s"), btn(mark(shTabReview), "sh:t:r")},
-		{btn(mark(shTabUnpaid), "sh:t:u"), btn(mark(shTabAll), "sh:t:a")},
+		{btn(mark(shTabShip), "sh:t:s"), btn(mark(shTabFailed), "sh:t:f")},
+		{btn(mark(shTabReview), "sh:t:r"), btn(mark(shTabUnpaid), "sh:t:u")},
+		{btn(mark(shTabAll), "sh:t:a")},
 	}
 	for i, o := range p.Orders {
 		rows = append(rows, []models.InlineKeyboardButton{btn(shopRowLabel(o, loc, st.TZ), ItemCallback("sh:o", i))})
@@ -270,7 +274,7 @@ func (b *Bot) shopOrdersCallback(ctx context.Context, chatID int64, msgID int, f
 		st, _, _ := b.loadShopState(ctx, tg, orgID)
 		b.showShopCard(ctx, chatID, &msgID, from, id, jwt, st, target, "")
 		return
-	case "sh", "sn", "cr", "nt", "nx", "rm", "rs", "cx":
+	case "sh", "sn", "cr", "nt", "nx", "rm", "rs", "cx", "ps", "fr":
 		b.shopCardAction(ctx, chatID, msgID, from, id, jwt, kind, arg)
 		return
 	}
@@ -403,6 +407,7 @@ func (b *Bot) shopCardText(loc string, o openapi.ShopOrder, tz string, private b
 			"Provider": Esc(o.Payment.Provider), "State": Esc(o.Payment.State),
 		}))
 	}
+	sb.WriteString(b.shopStepBlock(loc, o, tz))
 	if o.ShippedAt != nil {
 		sb.WriteString("\n" + b.texts.T(loc, "bot.sh.card_shipped", map[string]any{"When": Esc(FormatWhen(*o.ShippedAt, tz))}))
 		if t := strings.TrimSpace(o.TrackingNote); t != "" {
@@ -466,21 +471,24 @@ func shopIsShipped(o openapi.ShopOrder) bool {
 // shopCanShip: a paid (or partly refunded, or parked-for-goods) order that has
 // something to hand over and was not shipped yet.
 func shopCanShip(o openapi.ShopOrder) bool {
-	if !shopHasDelivery(o) || shopIsShipped(o) {
+	if !shopHasDelivery(o) {
 		return false
 	}
-	switch o.Status {
-	case shStatusPaid, shStatusPartRefund:
-		return true
-	case shStatusManual:
-		// An order whose payment is not confirmed cannot be shipped yet.
-		return o.ReviewReason == nil || *o.ReviewReason != shReviewUnconfirmed
+	if o.Status == shStatusManual {
+		// An order parked for a check can only be handed over (never packed), once.
+		// One whose payment is not confirmed cannot be shipped yet.
+		return !shopIsShipped(o) && (o.ReviewReason == nil || *o.ReviewReason != shReviewUnconfirmed)
 	}
-	return false
+	// From waiting, packed or not delivered (another try) the parcel can go to the courier.
+	return shopStepOffered(o, stepHandedOver)
 }
 
-// shopCanEditTracking: a shipped order can still get its number changed.
+// shopCanEditTracking: an order handed to the courier can still get its number
+// changed (until it is delivered; repeating the step only stores the number).
 func shopCanEditTracking(o openapi.ShopOrder) bool {
+	if !shopHasDelivery(o) || shopStep(o) != stepHandedOver {
+		return false
+	}
 	return o.Status == shStatusShipped || (o.Status == shStatusPartRefund && o.ShippedAt != nil)
 }
 
@@ -526,6 +534,10 @@ func shopLetters(o openapi.ShopOrder) []string {
 	if shopHasDelivery(o) && o.ShippedAt != nil {
 		out = append(out, "shipped")
 	}
+	// The "delivered" letter exists only for an order that reached that step.
+	if shopHasDelivery(o) && shopStep(o) == stepDelivered {
+		out = append(out, "delivered")
+	}
 	if o.Status == shStatusPartRefund || o.Status == shStatusRefunded || o.RefundedMinor > 0 {
 		out = append(out, "refunded")
 	}
@@ -537,6 +549,8 @@ func shopLetterCode(kind string) string {
 	switch kind {
 	case "shipped":
 		return "s"
+	case "delivered":
+		return "d"
 	case "refunded":
 		return "f"
 	}
@@ -549,6 +563,8 @@ func shopLetterFromCode(c string) (string, bool) {
 		return "received", true
 	case "s":
 		return "shipped", true
+	case "d":
+		return "delivered", true
 	case "f":
 		return "refunded", true
 	}
@@ -566,6 +582,7 @@ func (b *Bot) shopCardKeyboard(loc string, o openapi.ShopOrder) *models.InlineKe
 	case shopCanEditTracking(o):
 		rows = append(rows, []models.InlineKeyboardButton{btn(b.texts.T(loc, "bot.sh.track_btn", nil), "sh:sh:"+oid)})
 	}
+	rows = append(rows, b.shopStepRows(loc, o)...)
 	var row []models.InlineKeyboardButton
 	if shopHasDelivery(o) {
 		row = append(row, btn(b.texts.T(loc, "bot.sh.courier_btn", nil), "sh:cr:"+oid))

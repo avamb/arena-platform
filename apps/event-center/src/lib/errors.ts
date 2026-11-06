@@ -217,6 +217,12 @@ export type ApiErrorStem =
   | "shopCurrencyUnsupported"
   | "shopModuleOff"
   | "shopCannotOpen"
+  | "shopFulfillmentClosed"
+  | "shopFulfillmentUnpaid"
+  | "shopFulfillmentInReview"
+  | "shopFulfillmentInvalidStep"
+  | "shopFulfillmentBadStep"
+  | "shopFulfillmentReason"
   // Refer a friend (spec 52)
   | "referralTerms"
   | "referralProvider"
@@ -269,6 +275,8 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "shopVariantsChanged", "shopSettingsChanged", "shopCurrencyLocked", "shopCurrencyUnsupported",
   // Spec 61: the shop as a paid module, the storefront switch
   "shopModuleOff", "shopCannotOpen",
+  // Spec 61 section 7b: the delivery steps
+  "shopFulfillmentClosed", "shopFulfillmentUnpaid", "shopFulfillmentInReview", "shopFulfillmentInvalidStep", "shopFulfillmentBadStep", "shopFulfillmentReason",
   // Refer a friend (spec 52)
   "referralTerms", "referralProvider", "referralNoProgram",
   "growthCodeNotFound", "growthCodeOnePerBuyer",
@@ -491,6 +499,12 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "shop.currency_unsupported": "shopCurrencyUnsupported",
   "shop.module_not_enabled": "shopModuleOff",
   "shop.cannot_open": "shopCannotOpen",
+  "shop.fulfillment_order_closed": "shopFulfillmentClosed",
+  "shop.fulfillment_order_unpaid": "shopFulfillmentUnpaid",
+  "shop.fulfillment_order_in_review": "shopFulfillmentInReview",
+  "shop.fulfillment_invalid_step": "shopFulfillmentInvalidStep",
+  "shop.invalid_fulfillment_step": "shopFulfillmentBadStep",
+  "shop.fulfillment_reason_required": "shopFulfillmentReason",
   // Refer a friend (spec 52)
   "referral.terms_not_accepted": "referralTerms",
   "referral.provider_unsupported": "referralProvider",

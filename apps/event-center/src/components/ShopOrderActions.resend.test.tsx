@@ -14,7 +14,7 @@ vi.mock("@/lib/api/shopApi", () => ({
   cancelShopOrder: vi.fn(),
   fetchShopOrder: vi.fn(),
   refundShopOrder: vi.fn(),
-  shipShopOrder: vi.fn(),
+  setShopOrderFulfillment: vi.fn(),
 }));
 
 import { ShopOrderActions } from "@/components/ShopOrderActions";
@@ -177,12 +177,12 @@ describe("an order without delivery (M-03, M-07)", () => {
 
   it("keeps both for a shipped parcel, and the action reads as an action", async () => {
     const el = await mount(order());
-    expect(el.querySelector('[data-testid="shop-order-ship"]')?.textContent).toBe("Mark shipped");
+    expect(el.querySelector('[data-testid="shop-order-ship"]')?.textContent).toBe("Handed to courier");
     expect(el.querySelector('[data-testid="shop-order-courier"]')).not.toBeNull();
     expect(el.querySelector('[data-testid="shop-order-no-delivery"]')).toBeNull();
   });
 
-  it("after shipping, the mark-shipped action is gone and only the note can be changed", async () => {
+  it("after the hand-over, the action is gone and only the note can be changed", async () => {
     const el = await mount(order({ status: "shipped", shipped_at: "2026-10-02T09:00:00Z" }));
     expect(el.querySelector('[data-testid="shop-order-ship"]')?.textContent).toBe("Change the note");
   });

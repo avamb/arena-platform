@@ -32,10 +32,11 @@ const (
 	shopCourierMax = 3500
 )
 
-// shopCardAction handles the presses of a card: sh, sn, cr, nt, nx, rm, rs, cx.
+// shopCardAction handles the presses of a card: sh, sn, cr, nt, nx, rm, rs, cx,
+// and the delivery steps ps and fr (shop_steps.go).
 func (b *Bot) shopCardAction(ctx context.Context, chatID int64, msgID int, from *models.User, id *Identity, jwt, kind, arg string) {
 	code, idStr := "", arg
-	if kind == "rs" {
+	if kind == "rs" || kind == "ps" || kind == "fr" {
 		code, idStr, _ = strings.Cut(arg, ":")
 	}
 	orderID, err := uuid.Parse(idStr)
@@ -67,6 +68,10 @@ func (b *Bot) shopCardAction(ctx context.Context, chatID int64, msgID int, from 
 			toCard))
 	case "sn":
 		b.shopShip(ctx, chatID, edit, from, id, jwt, st, orderID, "")
+	case "ps":
+		b.shopStepPress(ctx, chatID, edit, from, id, jwt, st, orderID, code)
+	case "fr":
+		b.shopReasonPress(ctx, chatID, msgID, from, id, jwt, st, orderID, code)
 	case "cr":
 		b.shopCourier(ctx, chatID, edit, from, id, jwt, st, orderID)
 	case "nt":
@@ -148,6 +153,12 @@ func (b *Bot) shopActionError(ctx context.Context, chatID int64, edit *int, from
 	}
 	key, vars := "bot.error_generic", map[string]any(nil)
 	switch {
+	case ae.Code == "shop.fulfillment_order_closed":
+		key = "bot.sh.err_closed"
+	case ae.Code == "shop.fulfillment_order_unpaid":
+		key = "bot.sh.err_unpaid"
+	case ae.Code == "shop.fulfillment_order_in_review":
+		key = "bot.sh.err_in_review"
 	case ae.Code == "shop.out_of_stock":
 		key = "bot.sh.err_out_of_stock"
 	case ae.Code == "shop.payment_unconfirmed":
@@ -177,7 +188,10 @@ func (b *Bot) shopActionError(ctx context.Context, chatID int64, edit *int, from
 	b.showShopCard(ctx, chatID, edit, from, id, jwt, st, orderID, b.texts.T(id.Locale(), key, vars)+"\n\n")
 }
 
-// shopShip marks the order shipped with the tracking number ("" for none).
+// shopShip hands the order to the courier with the tracking number ("" for none).
+// It is the delivery step handed_over (ArenaClient.ShopShip), one behaviour for
+// the first hand-over, another try after a failed delivery and the later edit
+// of the number.
 func (b *Bot) shopShip(ctx context.Context, chatID int64, edit *int, from *models.User, id *Identity, jwt string, st shopDialog, orderID uuid.UUID, tracking string) {
 	o, err := b.arena.ShopShip(ctx, jwt, id.Current.OrgID, orderID, tracking)
 	if err != nil {
@@ -268,7 +282,7 @@ func (b *Bot) shopText(ctx context.Context, chatID int64, from *models.User, tex
 			[]models.InlineKeyboardButton{btn(b.texts.T(loc, "bot.btn_home", nil), "home")}))
 		return true
 	}
-	if !found || (step != shStepList && step != shStepShip && step != shStepNote && step != shStepCancel) {
+	if !found || (step != shStepList && step != shStepShip && step != shStepNote && step != shStepCancel && step != shStepReason) {
 		return false
 	}
 	id, jwt, err := b.resolveIdentity(ctx, from.ID)
@@ -295,6 +309,11 @@ func (b *Bot) shopText(ctx context.Context, chatID int64, from *models.User, tex
 	orderID := *st.CardID
 	toCard := inline([]models.InlineKeyboardButton{{Text: "« " + b.texts.T(loc, "bot.btn_back", nil), CallbackData: "sh:v:" + orderID.String()}})
 	switch step {
+	case shStepReason:
+		if text == "" {
+			return false
+		}
+		b.shopReasonText(ctx, chatID, edit, from, id, jwt, st, orderID, text, toCard)
 	case shStepShip, shStepNote:
 		if text == "" {
 			return false

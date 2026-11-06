@@ -17,7 +17,9 @@ package eventbot
 //	t:<s|r|u|a>     tab                           p:<n>       page
 //	x               clear the search              o:<i>       row i of the page
 //	v:<order>       the card of an order          b           back to the list
-//	sh / sn         ship (asks for the number) / ship without a number
+//	sh / sn         hand to the courier (asks for the number) / without a number
+//	ps:<p|d|f>      packed / delivered / not delivered (shop_steps.go)
+//	fr:<n|h|a|r|o>  a reason of "not delivered" (shop_steps.go)
 //	cr              courier text                  nt / nx     note / erase the note
 //	rm / rs:<r|s|f> choose a letter / send it     cx          cancel (asks the word)
 //	f:...           the refund dialog (shop_refund.go)
@@ -51,6 +53,7 @@ const (
 	shStepShip   = "ship"
 	shStepNote   = "note"
 	shStepCancel = "cancel"
+	shStepReason = "reason" // the typed reason "other" of a failed delivery
 
 	shopModuleName    = "shop"
 	shopModeFull      = "full"
@@ -60,6 +63,7 @@ const (
 	shTabShip   = "to_ship"
 	shTabReview = "review"
 	shTabUnpaid = "unpaid"
+	shTabFailed = "failed"
 	shTabAll    = "all"
 
 	shopPageSize = 10
@@ -126,7 +130,7 @@ func newShopDialog(orgID uuid.UUID, tz string) shopDialog {
 }
 
 func validShopTab(t string) bool {
-	return t == shTabShip || t == shTabReview || t == shTabUnpaid || t == shTabAll
+	return t == shTabShip || t == shTabReview || t == shTabUnpaid || t == shTabFailed || t == shTabAll
 }
 
 func shopTabFromCode(c string) (string, bool) {
@@ -137,6 +141,8 @@ func shopTabFromCode(c string) (string, bool) {
 		return shTabReview, true
 	case "u":
 		return shTabUnpaid, true
+	case "f":
+		return shTabFailed, true
 	case "a":
 		return shTabAll, true
 	}
@@ -149,6 +155,8 @@ func shopTabCode(tab string) string {
 		return "r"
 	case shTabUnpaid:
 		return "u"
+	case shTabFailed:
+		return "f"
 	case shTabAll:
 		return "a"
 	}
@@ -284,8 +292,9 @@ func (b *Bot) renderShopHome(ctx context.Context, chatID int64, editMsgID *int, 
 	}
 	b.saveShopState(ctx, id.Link.TelegramUserID, st, shStepHome)
 
+	// "To ship" is what waits for packing or for the courier: the orders of the steps waiting and packed.
 	vars := map[string]any{
-		"Org": Esc(id.Current.OrgName), "ToShip": counts.ToShip, "Review": reviewText, "Unpaid": counts.Unpaid,
+		"Org": Esc(id.Current.OrgName), "ToShip": counts.Steps.Waiting + counts.Steps.Packed, "Review": reviewText, "Unpaid": counts.Unpaid,
 	}
 	text := note + b.texts.T(loc, "bot.sh.home_head", vars)
 	if settings != nil {

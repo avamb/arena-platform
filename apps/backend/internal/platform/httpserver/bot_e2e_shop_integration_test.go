@@ -114,9 +114,10 @@ func seedShopBotOrg(t *testing.T, pool *pgxpool.Pool, orgID uuid.UUID) *shopBotS
 		var num int64
 		if err := pool.QueryRow(ctx, `INSERT INTO shop_orders (id, org_id, order_token, status, buyer_name, buyer_email, buyer_phone,
 			ship_name, ship_address1, ship_city, ship_postal, ship_country, delivery_kind, currency, subtotal, shipping_fee, total,
-			payment_intent_id, provider, paid_at, review_reason, expires_at)
+			payment_intent_id, provider, paid_at, review_reason, expires_at, fulfillment_step)
 			VALUES ($1, $2, $3, $4, $5, $6, '+34 600 111 222', $5, $7, 'Barcelona', '08001', 'ES', 'shipping', 'EUR', 4000, 500, 4500,
-			$8, 'stripe', CASE WHEN $8::uuid IS NULL THEN NULL ELSE now() END, $9, now() + interval '1 day')
+			$8, 'stripe', CASE WHEN $8::uuid IS NULL THEN NULL ELSE now() END, $9, now() + interval '1 day',
+			CASE WHEN $4::text = 'paid' THEN 'waiting' END)
 			RETURNING number`,
 			id, orgID, token(id), status, name, strings.ToLower(strings.ReplaceAll(name, " ", "."))+"@example.test",
 			s.buyerAddress, piID, reviewReason).Scan(&num); err != nil {
@@ -266,7 +267,7 @@ func TestBotE2E_Shop_OwnerWorksTheOrders(t *testing.T) {
 
 	// ── shipping with a tracking number
 	d.press("sh:sh:"+paid, "номер отправления")
-	d.say("TRACK-777", "отмечен отправленным")
+	d.say("TRACK-777", "передан курьеру")
 	if status, _, tracking, _ := seed.orderStatus(t, pool, seed.paid); status != "shipped" || tracking != "TRACK-777" {
 		t.Fatalf("after shipping: status=%s tracking=%q", status, tracking)
 	}

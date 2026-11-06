@@ -6082,7 +6082,7 @@ other = "Número de seguimiento: {{.Text}}"
 other = "📝 <b>Nota</b> ({{.By}}, {{.When}}): {{.Text}}"
 
 ["bot.sh.ship_btn"]
-other = "📦 Enviado"
+other = "🚚 Entregado al mensajero"
 
 ["bot.sh.track_btn"]
 other = "✏️ Número de seguimiento"
@@ -6118,7 +6118,7 @@ other = "📦 Pedido №{{.Num}}: escribe el número de seguimiento o pulsa «Si
 other = "Sin número"
 
 ["bot.sh.ship_done"]
-other = "✔ El pedido №{{.Num}} está marcado como enviado."
+other = "✔ El pedido №{{.Num}} está entregado al mensajero."
 
 ["bot.sh.note_ask"]
 other = "📝 Pedido №{{.Num}}: escribe la nota. Solo la veis tú y tus compañeros, el comprador no."
@@ -6311,6 +6311,86 @@ other = "Este pedido no tiene esa carta."
 
 ["bot.sh.err_unavailable"]
 other = "El bot no pudo guardar la operación, así que no se envió nada. Inténtalo de nuevo."
+["bot.sh.tab_failed"]
+other = "No entregados"
+
+["bot.sh.empty_failed"]
+other = "No hay pedidos con entrega fallida."
+
+["bot.sh.letter_delivered"]
+other = "Pedido entregado"
+
+["bot.sh.card_step"]
+other = "🚚 <b>Entrega:</b> {{.Step}}"
+
+["bot.sh.step_line"]
+other = "• {{.Step}} · {{.Who}} · {{.When}}{{.Extra}}"
+
+["bot.sh.step_track"]
+other = "n.º {{.Text}}"
+
+["bot.sh.step_reason"]
+other = "motivo: {{.Text}}"
+
+["bot.sh.step_waiting"]
+other = "Pendiente de preparar"
+
+["bot.sh.step_packed"]
+other = "Preparado"
+
+["bot.sh.step_handed_over"]
+other = "Entregado al mensajero"
+
+["bot.sh.step_delivered"]
+other = "Entregado"
+
+["bot.sh.step_failed"]
+other = "No entregado"
+
+["bot.sh.reason_no_answer"]
+other = "No contestó al teléfono"
+
+["bot.sh.reason_not_home"]
+other = "No estaba en casa"
+
+["bot.sh.reason_wrong_address"]
+other = "Dirección incorrecta"
+
+["bot.sh.reason_refused"]
+other = "Rechazó la entrega"
+
+["bot.sh.reason_other"]
+other = "Otro"
+
+["bot.sh.packed_btn"]
+other = "📦 Preparado"
+
+["bot.sh.delivered_btn"]
+other = "✅ Entregado"
+
+["bot.sh.failed_btn"]
+other = "❌ No entregado"
+
+["bot.sh.failed_ask"]
+other = "❌ Pedido №{{.Num}}: ¿por qué no se entregó? Elige un motivo."
+
+["bot.sh.reason_text_ask"]
+other = "✏️ Pedido №{{.Num}}: escribe el motivo (hasta 500 caracteres)."
+
+["bot.sh.step_done"]
+other = "✔ Pedido №{{.Num}}: {{.Step}}."
+
+["bot.sh.err_closed"]
+other = "El pedido fue reembolsado o cancelado, no hay nada que enviar."
+
+["bot.sh.err_unpaid"]
+other = "El pedido todavía no está pagado, así que no se puede marcar una etapa de entrega."
+
+["bot.sh.err_in_review"]
+other = "El pedido espera tu decisión. Resuélvelo primero. Hasta entonces solo se puede entregar al mensajero."
+
+["bot.sh.err_reason_long"]
+other = "El motivo es demasiado largo. Usa hasta 500 caracteres."
 # --- salesnotify delivery steps and the sales bot (spec 61 section 7b) ---
 ["salesnotify.shop.step.waiting"]
 other = "⏳ Pendiente de preparar"

@@ -24,6 +24,7 @@ import type {
 import { isIsoCurrency } from "@/lib/currencies";
 import { currencyFractionDigits, formatDateTime, formatMoneySymbol, regionName } from "@/lib/format";
 import type { Tone } from "@/lib/orders";
+import { isFulfillmentStep, type FulfillmentStep } from "@/lib/shopFulfillment";
 
 // ─── What the API will add (lane "shop-core") ───────────────────────────────
 // These fields are optional here, so the screens work with an API that does
@@ -723,6 +724,8 @@ export interface ShopOrdersFilters {
   status: ShopOrderStatus | "";
   /** A quick list; "" is none. It narrows the list together with the status. */
   view: OrderView | "";
+  /** A delivery step (spec 61 section 7b); "" is any. It narrows the list together with the others. */
+  step: FulfillmentStep | "";
   q: string;
   /** YYYY-MM-DD, inclusive. */
   from: string;
@@ -730,7 +733,7 @@ export interface ShopOrdersFilters {
   to: string;
 }
 
-export const EMPTY_FILTERS: ShopOrdersFilters = { status: "", view: "", q: "", from: "", to: "" };
+export const EMPTY_FILTERS: ShopOrdersFilters = { status: "", view: "", step: "", q: "", from: "", to: "" };
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -791,6 +794,7 @@ export function ordersSearchBody(f: ShopOrdersFilters, limit: number, offset: nu
   const body: Record<string, string | number> = { limit };
   if (f.status !== "") body.status = f.status;
   if (f.view !== "") body.view = f.view;
+  if (f.step !== "") body.fulfillment_step = f.step;
   if (f.q.trim() !== "") body.q = f.q.trim();
   if (DAY.test(f.from)) body.from = dayStartIso(f.from, zone);
   if (DAY.test(f.to)) body.to = dayStartIso(nextDay(f.to), zone);
@@ -801,6 +805,7 @@ export function ordersSearchBody(f: ShopOrdersFilters, limit: number, offset: nu
 export interface ShopOrdersSearch {
   status?: ShopOrderStatus;
   view?: OrderView;
+  step?: FulfillmentStep;
 }
 
 /** Only the status and the quick list go into the address: a buyer's e-mail or name never does. */
@@ -808,6 +813,7 @@ export function parseShopOrdersSearch(raw: Record<string, unknown>): ShopOrdersS
   const out: ShopOrdersSearch = {};
   if (typeof raw.status === "string" && isShopOrderStatus(raw.status)) out.status = raw.status;
   if (isOrderView(raw.view)) out.view = raw.view;
+  if (isFulfillmentStep(raw.step)) out.step = raw.step;
   return out;
 }
 
@@ -815,16 +821,18 @@ export function parseShopOrdersSearch(raw: Record<string, unknown>): ShopOrdersS
  * The letters of an order the buyer can be sent again (A-11): the confirmation, the shipping one when it shipped,
  * and the refund one when any money went back (a refunded or partly refunded status, or a refunded amount).
  */
-export type OrderLetter = "received" | "shipped" | "refunded";
+export type OrderLetter = "received" | "shipped" | "delivered" | "refunded";
 
 export function resendLetters(
-  order: Pick<ShopOrder, "status" | "buyer" | "delivery_kind" | "shipped_at"> & { refunded_minor?: number },
+  order: Pick<ShopOrder, "status" | "buyer" | "delivery_kind" | "shipped_at"> & { refunded_minor?: number; fulfillment_step?: string | null },
   canManage: boolean,
 ): OrderLetter[] {
   if (!canManage || order.buyer.email.trim() === "") return [];
   if (!["paid", "shipped", "partially_refunded", "refunded"].includes(order.status)) return [];
   const out: OrderLetter[] = ["received"];
   if (order.delivery_kind !== "none" && order.shipped_at !== null && order.shipped_at !== undefined) out.push("shipped");
+  // The "delivered" letter exists only for an order that reached that step (spec 61 section 7b.4).
+  if (order.delivery_kind !== "none" && order.fulfillment_step === "delivered") out.push("delivered");
   if (order.status === "partially_refunded" || order.status === "refunded" || (order.refunded_minor ?? 0) > 0) out.push("refunded");
   return out;
 }

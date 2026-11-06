@@ -35,7 +35,7 @@ describe("ShopOrdersTable", () => {
     const second = order({ id: "22222222-2222-4222-8222-222222222222", number: 1043, status: "manual_review", delivery_kind: "pickup", total: 1000 });
     const html = await renderInRouter(<ShopOrdersTable orgId="org1" orders={[order(), second]} />);
     expect(html.match(/data-testid="shop-order-row"/g)).toHaveLength(2);
-    for (const label of ["Number", "Date", "Buyer", "Total", "Status", "Delivery"]) expect(html).toContain(`>${label}</th>`);
+    for (const label of ["Number", "Date", "Buyer", "Total", "Status", "Delivery", "Delivery step"]) expect(html).toContain(`>${label}</th>`);
     expect(html).toContain("№1042");
     expect(html).toContain("Anna Smith");
     expect(html).toContain("anna@example.com");
@@ -45,7 +45,7 @@ describe("ShopOrdersTable", () => {
     expect(html).toContain("Pickup");
     expect(html).toMatch(/44[.,]90/);
     // every cell names its column for the phone layout
-    expect(html.match(/data-label="/g)?.length).toBe(12);
+    expect(html.match(/data-label="/g)?.length).toBe(14);
   });
 
   it("links each number to the card of the order", async () => {

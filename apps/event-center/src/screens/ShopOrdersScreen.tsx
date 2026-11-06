@@ -20,6 +20,7 @@ import { fetchShopOrderCounts, fetchShopSettings, searchShopOrders } from "@/lib
 import { formatNumber } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import { EMPTY_FILTERS, SHOP_ORDER_STATUSES, activeOrderTab, isShopOrderStatus, ordersSearchBody, shopTimeZone, uniqueById, type OrderTab, type ShopOrdersFilters } from "@/lib/shop";
+import { FULFILLMENT_STEPS, isFulfillmentStep, stepCount, stepLabelKey } from "@/lib/shopFulfillment";
 import { useOrg } from "@/screens/OrgLayout";
 
 export const SHOP_ORDERS_PAGE_SIZE = 50;
@@ -30,9 +31,9 @@ export function ShopOrdersScreen() {
   const search = useSearch({ from: "/o/$orgId/shop/orders" });
   const navigate = useNavigate({ from: "/o/$orgId/shop/orders" });
   const canRead = access.can("shop.read");
-  const [applied, setApplied] = useState<Omit<ShopOrdersFilters, "status" | "view">>({ q: "", from: "", to: "" });
+  const [applied, setApplied] = useState<Omit<ShopOrdersFilters, "status" | "view" | "step">>({ q: "", from: "", to: "" });
   const [draft, setDraft] = useState(applied);
-  const filters: ShopOrdersFilters = { ...EMPTY_FILTERS, ...applied, status: search.status ?? "", view: search.view ?? "" };
+  const filters: ShopOrdersFilters = { ...EMPTY_FILTERS, ...applied, status: search.status ?? "", view: search.view ?? "", step: search.step ?? "" };
   const tab = activeOrderTab(filters.view);
 
   // The shop's country sets the zone of every time on the screen, and the days of the period.
@@ -51,8 +52,9 @@ export function ShopOrdersScreen() {
 
   if (!canRead) return <NoShopAccess />;
   const rows = uniqueById(orders.data?.pages ?? []);
-  const filtered = filters.status !== "" || filters.view !== "" || filters.q.trim() !== "" || filters.from !== "" || filters.to !== "";
+  const filtered = filters.status !== "" || filters.view !== "" || filters.step !== "" || filters.q.trim() !== "" || filters.from !== "" || filters.to !== "";
   const pickTab = (next: OrderTab) => void navigate({ search: next === "all" ? {} : { view: next } });
+  const stepNumber = (s: (typeof FULFILLMENT_STEPS)[number]) => stepCount(s, counts.data);
   const emptyText = filters.view === "to_ship" && !filters.q.trim() && filters.status === "" ? t("shop.orders.emptyToShip") : filtered ? t("shop.orders.emptySearch") : t("shop.orders.empty");
 
   const onSearch = (e: FormEvent) => {
@@ -77,7 +79,7 @@ export function ShopOrdersScreen() {
           <select
             id="shop-orders-status"
             value={filters.status}
-            onChange={(e) => void navigate({ search: { status: isShopOrderStatus(e.target.value) ? e.target.value : undefined } })}
+            onChange={(e) => void navigate({ search: { status: isShopOrderStatus(e.target.value) ? e.target.value : undefined, step: search.step } })}
             data-testid="shop-orders-status"
           >
             <option value="">{t("shop.orders.f.all")}</option>
@@ -86,6 +88,26 @@ export function ShopOrdersScreen() {
                 {t(`shop.order.status.${s}` as MessageKey)}
               </option>
             ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="shop-orders-step">{t("shop.orders.f.step")}</label>
+          <select
+            id="shop-orders-step"
+            value={filters.step}
+            onChange={(e) => void navigate({ search: { ...search, step: isFulfillmentStep(e.target.value) ? e.target.value : undefined } })}
+            data-testid="shop-orders-step"
+          >
+            <option value="">{t("shop.orders.f.allSteps")}</option>
+            {FULFILLMENT_STEPS.map((s) => {
+              const n = stepNumber(s);
+              const label = t(stepLabelKey(s));
+              return (
+                <option key={s} value={s}>
+                  {n === null ? label : t("shop.orders.tabCount", { label, count: formatNumber(n, locale) })}
+                </option>
+              );
+            })}
           </select>
         </div>
         <div>
