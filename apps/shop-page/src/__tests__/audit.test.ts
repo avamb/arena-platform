@@ -258,9 +258,10 @@ describe('SA-05: Turnstile on the checkout', () => {
     expect(buildCheckoutRequest(cart, f, 'https://x/r', 'ru', 'IL', false).captcha_token).toBeUndefined();
     expect(buildCheckoutRequest(cart, f, 'https://x/r', 'ru', 'IL', false, 'tok').captcha_token).toBe('tok');
   });
-  it('the CSP lets the Turnstile script and frame in, and nothing else changed', () => {
+  it('the CSP lets the Turnstile script and frame and the Meta pixel in, and nothing else changed', () => {
     const csp = readFileSync(join(__dirname, '../../security-headers.conf.template'), 'utf8');
-    expect(csp).toMatch(/script-src 'self' https:\/\/challenges\.cloudflare\.com;/);
+    expect(csp).toMatch(/script-src 'self' https:\/\/challenges\.cloudflare\.com https:\/\/connect\.facebook\.net;/);
+    expect(csp).toMatch(/connect-src 'self' __API_ORIGIN__ https:\/\/connect\.facebook\.net https:\/\/www\.facebook\.com;/);
     expect(csp).toMatch(/frame-src https:\/\/challenges\.cloudflare\.com;/);
     expect(csp).toContain("object-src 'none'");
   });

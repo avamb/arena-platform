@@ -58,6 +58,7 @@ import { capturePromo, forgetPromo, referralDiscountMinor, storedPromo, type Ref
 import { MSG, REF, T } from './lib/i18n';
 import { isShopHost } from './lib/links';
 import { formatMoney } from './lib/money';
+import { initPixel, pixelParams, trackEvent, trackPageView, trackPurchaseOnce, type PixelItem } from './lib/pixel';
 import { isOwnOrder, nextDelayMs, phaseFor } from './lib/poll';
 import { fitLoadedImages, watchImageRatios } from './lib/ratio';
 import { applyTheme } from './theme';
@@ -88,6 +89,8 @@ let downloads: DownloadsState | undefined;
 /** The cart line whose typed quantity was just cut to the shop's limit: its note is drawn once. */
 let cartLimited: string | null = null;
 let lastStatus: OrderStatus | undefined;
+/** The product the page being drawn shows, for the pixel's ViewContent. */
+let viewedProduct: ShopProduct | undefined;
 /** The buyer's own "Refer a friend" code per order token: null = asked and none, absent = not asked yet. */
 const referrals = new Map<string, ReferralShare | null>();
 
@@ -199,6 +202,7 @@ function fixContentLinks(base: string): void {
 
 async function renderRoute(route: Route, fresh = false): Promise<void> {
   const s = state as State;
+  viewedProduct = undefined;
   // Opening the basket or the checkout: prices and stock may have moved since the catalog was loaded.
   if (fresh && (route.kind === 'cart' || route.kind === 'checkout')) await refreshCatalog();
   const ctx = ctxOf(s);
@@ -244,6 +248,7 @@ async function renderRoute(route: Route, fresh = false): Promise<void> {
       } else {
         main = productView(ctx, p);
         title = `${p.title} – ${shopName}`;
+        viewedProduct = p;
       }
       break;
     }
@@ -335,6 +340,24 @@ function draw(kind: Route['kind'], ctx: Ctx, main: string, title: string, descri
   applyAgeGate();
   fitLoadedImages();
   mountCheckoutCaptcha();
+  pixelPage(kind, ctx);
+}
+
+/** The pixel's view events, once per address: a redraw of the same page sends nothing. */
+function pixelPage(kind: Route['kind'], ctx: Ctx): void {
+  if (!trackPageView(location.pathname + location.search)) return;
+  const currency = ctx.shop.settings.currency;
+  if (kind === 'product' && viewedProduct) {
+    const v = viewedProduct.variants.find((x) => x.available) ?? viewedProduct.variants[0];
+    if (v) trackEvent('ViewContent', pixelParams([{ id: viewedProduct.slug, qty: 1, unitMinor: v.price_minor }], currency));
+  } else if (kind === 'checkout') {
+    const lines = resolveLines(ctx.cart, ctx.shop.products);
+    if (lines.length) trackEvent('InitiateCheckout', pixelParams(pixelItems(lines), currency, totalMinor(ctx.shop.settings, lines)));
+  }
+}
+
+function pixelItems(lines: ReturnType<typeof resolveLines>): PixelItem[] {
+  return lines.map((l) => ({ id: l.product.slug, qty: l.qty, unitMinor: l.variant.price_minor }));
 }
 
 /** The checkout form carries a Turnstile widget while the shop publishes a site key. */
@@ -453,6 +476,8 @@ async function pollStatus(token: string, failures = 0): Promise<void> {
     const own = isOwnOrder(token, storedOrderToken(s.org));
     if (st.status === 'paid') {
       if (own) {
+        const bought = resolveLines(s.cart, s.shop.products);
+        trackPurchaseOnce(token, st.number, pixelParams(pixelItems(bought), st.currency || s.shop.settings.currency, st.total_minor ?? undefined));
         commitCart([]);
         forgetOrderToken(s.org);
       }
@@ -595,6 +620,7 @@ function addToCart(variantId: string, qty: number, limitNote?: string): boolean 
   const hit = resolveLines([{ variant_id: variantId, qty: 1 }], s.shop.products)[0];
   if (!hit || !hit.variant.available) return false;
   commitCart(addItem(s.cart, variantId, qty, variantLimit(hit.variant, s.shop.settings.max_line_qty)));
+  trackEvent('AddToCart', pixelParams([{ id: hit.product.slug, qty, unitMinor: hit.variant.price_minor }], s.shop.settings.currency));
   syncInCart(variantId);
   openNotification(variantId, limitNote);
   return true;
@@ -1186,6 +1212,7 @@ async function boot(): Promise<void> {
     capturePromo(org, location.search);
     saveCart(org, state.cart);
     cartNotices.push(...cart.notes);
+    initPixel(EINAT_THEME.metaPixelId, location.hostname, EINAT_THEME.domains);
   } catch (e) {
     console.error(e);
     if (isNotFound(e)) fatal(T.notFoundTitle);

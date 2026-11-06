@@ -92,7 +92,13 @@ cached for a year, `/theme/*` (Dawn scripts) for five minutes, CSP built from
   pills, cart quantity, checkout, age gate, notification). Every navigation
   re-renders the page; Dawn's custom elements upgrade as they appear.
 - `src/lib/theme.ts` — what Shopify's theme editor held and the API has no field
-  for: logo, banner, footer logo, social links, the age-gate texts.
+  for: logo, banner, footer logo, social links, the age-gate texts, the Meta
+  pixel id.
+- `src/lib/pixel.ts` — the Meta pixel of the old store (Facebook & Instagram
+  app). It runs only on the theme's own domains, never on the platform host or
+  staging: PageView once per address, ViewContent, AddToCart, InitiateCheckout,
+  and Purchase once per paid order of this browser (`eventID` `order-<number>`
+  for a later server-side Conversions API copy).
 
 ## API contract notes (the real API, backend lane feat/shop-core)
 
@@ -151,6 +157,11 @@ the model the views use. Read it with `apps/backend/internal/platform/httpserver
   (`security-headers.conf.template`) allows `challenges.cloudflare.com` for it.
 - The age-gate texts and contact e-mail are static / from settings.
 - Old URL shapes and their fate: `docs/redirects_301.md`.
+- Analytics: Shopify ran only the Meta pixel `1352226752766944` (browser plus
+  Conversions API), no Google tags. The browser half moves with this app
+  (`src/lib/pixel.ts`, CSP allows `connect.facebook.net` and
+  `www.facebook.com`); the server half (Conversions API) stops with Shopify.
+  Check the events in Meta Events Manager → Test events after the switch.
 
 ## Visual check against the live shop
 
