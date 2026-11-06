@@ -80,6 +80,7 @@ func orderSummary(o gen.OrderRow) map[string]any {
 		"buyer_phone":         o.BuyerPhone,
 		"payment_method":      o.PaymentMethod,
 		"external_ref":        o.ExternalRef,
+		"is_test":             o.IsTest,
 		"created_at":          o.CreatedAt.Format(time.RFC3339),
 		"updated_at":          o.UpdatedAt.Format(time.RFC3339),
 	}

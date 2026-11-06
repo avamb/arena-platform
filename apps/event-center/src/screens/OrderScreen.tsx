@@ -10,7 +10,7 @@ import { OrderReferral } from "@/components/OrderReferral";
 import { OrderTickets } from "@/components/OrderTickets";
 import { CancelOrder } from "@/components/CancelOrder";
 import { RefundOrder } from "@/components/RefundOrder";
-import { ErrorBox, Loading } from "@/components/ui";
+import { Badge, ErrorBox, Loading } from "@/components/ui";
 import { useOrg } from "@/screens/OrgLayout";
 import { OrderStatusBadge } from "@/screens/OrdersScreen";
 
@@ -53,6 +53,7 @@ export function OrderScreen() {
           <div className="ord-title-row">
             <h1 id="order-title">{t("order.title", { number: orderNumber(o.system_id) })}</h1>
             <OrderStatusBadge status={o.status} />
+            {o.is_test && <Badge tone="wait">{t("orders.testOrder")}</Badge>}
             <strong className="ord-total">{money(o.total)}</strong>
           </div>
           {o.event_name !== "" && (

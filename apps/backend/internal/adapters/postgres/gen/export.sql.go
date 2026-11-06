@@ -109,7 +109,7 @@ SELECT t.id, t.system_ticket_id, t.status AS ticket_status, t.used_at, t.issued_
        oi.total AS item_total,
        tc.payload AS barcode,
        sc.name AS channel_name,
-       pc.code AS promo_code,
+       pc.code AS promo_code, COALESCE(o.is_test, false) AS is_test,
        fs.scanned_at AS entered_at, fs.source AS entered_source,
        fs.scanner_label AS entered_scanner, fs.gate AS entered_gate
 FROM      tickets t
@@ -165,6 +165,8 @@ type ExportSalesRow struct {
 	Barcode        *string    `json:"barcode"`
 	ChannelName    *string    `json:"channel_name"`
 	PromoCode      *string    `json:"promo_code"`
+	// IsTest: the order came through a test sales channel (migration 0201).
+	IsTest bool `json:"is_test"`
 	// The first admitted scan of the ticket (scan_events), M2: when, who
 	// reported it (arena_scanner or macs), the scanner's own name and the gate.
 	EnteredAt      *time.Time `json:"entered_at"`
@@ -190,7 +192,7 @@ func (q *Queries) ListExportSalesRows(ctx context.Context, sessionID, eventID *u
 			&i.SessionStart, &i.VenueTimezone,
 			&i.OrderNumber, &i.OrderStatus, &i.OrderCreatedAt,
 			&i.BuyerName, &i.BuyerEmail, &i.BuyerPhone,
-			&i.Currency, &i.TierName, &i.ItemTotal, &i.Barcode, &i.ChannelName, &i.PromoCode,
+			&i.Currency, &i.TierName, &i.ItemTotal, &i.Barcode, &i.ChannelName, &i.PromoCode, &i.IsTest,
 			&i.EnteredAt, &i.EnteredSource, &i.EnteredScanner, &i.EnteredGate,
 		); err != nil {
 			return nil, err

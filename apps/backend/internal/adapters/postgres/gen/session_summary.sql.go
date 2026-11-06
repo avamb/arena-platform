@@ -269,6 +269,7 @@ LEFT JOIN (
     JOIN   orders o ON o.id = oi.order_id
     WHERE  o.session_id = ANY($1::uuid[])
       AND  o.status IN ('paid', 'partially_refunded', 'refunded')
+      AND  NOT o.is_test
     GROUP  BY oi.tier_id
 ) sales ON sales.tier_id = tt.id
 WHERE  tt.session_id = ANY($1::uuid[])
@@ -324,6 +325,7 @@ SELECT o.session_id, o.status, o.source, o.currency,
        COALESCE(sum(o.total), 0)::bigint    AS total
 FROM   orders o
 WHERE  o.session_id = ANY($1::uuid[])
+  AND  NOT o.is_test
 GROUP  BY o.session_id, o.status, o.source, o.currency`
 
 // SessionSummaryOrdersRow totals the orders of one (session, status, source,
@@ -418,6 +420,7 @@ LEFT JOIN tickets         rt ON rt.id = r.ticket_id
 LEFT JOIN payment_intents pi ON pi.id = r.payment_intent_id
 LEFT JOIN orders          po ON po.checkout_session_id = pi.checkout_session_id
 WHERE  COALESCE(ro.session_id, rt.session_id, po.session_id) = ANY($1::uuid[])
+  AND  NOT COALESCE(ro.is_test, po.is_test, false)
 GROUP  BY COALESCE(ro.session_id, rt.session_id, po.session_id), r.settlement, r.state, r.currency, r.origin`
 
 // SessionSummaryRefundsRow totals the refunds of one (session, settlement,
@@ -465,6 +468,7 @@ JOIN   promo_codes p ON p.id = o.promo_code_id
 LEFT JOIN promo_code_redemptions r ON r.order_id = o.id AND r.promo_code_id = p.id
 WHERE  o.session_id = ANY($1::uuid[])
   AND  o.status IN ('paid', 'partially_refunded', 'refunded')
+  AND  NOT o.is_test
 GROUP  BY o.session_id, p.id, p.code, o.currency`
 
 // SessionSummaryPromoRow is one promo code's share of a session's paid
@@ -509,7 +513,8 @@ SELECT sid.id AS session_id,
           FROM   orders o
           WHERE  o.session_id = sid.id
             AND  o.source = 'complimentary'
-            AND  o.status IN ('paid', 'partially_refunded', 'refunded'))::bigint AS orders,
+            AND  o.status IN ('paid', 'partially_refunded', 'refunded')
+            AND  NOT o.is_test)::bigint AS orders,
        (SELECT count(*)
           FROM   tickets t
           LEFT JOIN orders o ON o.id = t.order_id
@@ -617,6 +622,7 @@ WITH paid AS (
     WHERE  o.session_id = $1
       AND  o.org_id     = $2
       AND  o.status IN ('paid', 'partially_refunded', 'refunded')
+      AND  NOT o.is_test
 ),
 refunded AS (
     SELECT p.id AS order_id, r.currency, sum(r.amount)::bigint AS amount
@@ -684,6 +690,44 @@ func (q *Queries) ListSessionSummarySources(ctx context.Context, sessionID, orgI
 		var i SessionSummarySourceRow
 		if err := rows.Scan(&i.SalesLinkID, &i.Label, &i.UTMSource, &i.UTMCampaign, &i.Currency,
 			&i.Orders, &i.Tickets, &i.Amount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	return items, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListSessionSummaryTestOrders
+// ─────────────────────────────────────────────────────────────────────────────
+
+const listSessionSummaryTestOrders = `-- name: ListSessionSummaryTestOrders :many
+SELECT o.session_id, count(*)::bigint AS orders
+FROM   orders o
+WHERE  o.session_id = ANY($1::uuid[])
+  AND  o.is_test
+  AND  o.status IN ('paid', 'partially_refunded', 'refunded')
+GROUP  BY o.session_id`
+
+// SessionSummaryTestOrdersRow is the number of paid orders of a session that
+// came through a test sales channel (migration 0201).
+type SessionSummaryTestOrdersRow struct {
+	SessionID uuid.UUID `json:"session_id"`
+	Orders    int64     `json:"orders"`
+}
+
+// ListSessionSummaryTestOrders counts the paid test orders of the given
+// sessions. Every other summary aggregate leaves test orders out.
+func (q *Queries) ListSessionSummaryTestOrders(ctx context.Context, sessionIDs []uuid.UUID) ([]SessionSummaryTestOrdersRow, error) {
+	rows, err := q.db.Query(ctx, listSessionSummaryTestOrders, sessionIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SessionSummaryTestOrdersRow
+	for rows.Next() {
+		var i SessionSummaryTestOrdersRow
+		if err := rows.Scan(&i.SessionID, &i.Orders); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

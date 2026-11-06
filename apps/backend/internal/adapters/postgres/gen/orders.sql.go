@@ -57,6 +57,9 @@ type OrderRow struct {
 	// none), see spec 43 section 3.
 	SalesLinkID *uuid.UUID      `json:"sales_link_id"`
 	Attribution json.RawMessage `json:"attribution"`
+	// IsTest is copied from sales_channels.is_test by a trigger when the order
+	// is inserted and never changes afterwards (migration 0201).
+	IsTest bool `json:"is_test"`
 }
 
 // scanOrderRow scans a single orders row.
@@ -96,6 +99,7 @@ func scanOrderRow(row interface {
 		&o.UpdatedAt,
 		&o.SalesLinkID,
 		&o.Attribution,
+		&o.IsTest,
 	)
 	return o, err
 }
@@ -124,7 +128,7 @@ RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
           currency, subtotal, discount, charge, total, charge_percent_bp,
           promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
           paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-          sales_link_id, attribution`
+          sales_link_id, attribution, is_test`
 
 // InsertOrder creates a new order row. system_id defaults to the next value
 // of compatibility_system_id_seq (>= 1e9), matching customers/tickets, so
@@ -171,7 +175,7 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
        currency, subtotal, discount, charge, total, charge_percent_bp,
        promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
        paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-       sales_link_id, attribution
+       sales_link_id, attribution, is_test
 FROM   orders
 WHERE  id = $1
   AND  org_id = $2`
@@ -193,7 +197,7 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
        currency, subtotal, discount, charge, total, charge_percent_bp,
        promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
        paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-       sales_link_id, attribution
+       sales_link_id, attribution, is_test
 FROM   orders
 WHERE  id = $1
   AND  org_id = $2
@@ -220,7 +224,7 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
        currency, subtotal, discount, charge, total, charge_percent_bp,
        promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
        paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-       sales_link_id, attribution
+       sales_link_id, attribution, is_test
 FROM   orders
 WHERE  system_id = $1`
 
@@ -242,7 +246,7 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
        currency, subtotal, discount, charge, total, charge_percent_bp,
        promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
        paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-       sales_link_id, attribution
+       sales_link_id, attribution, is_test
 FROM   orders
 WHERE  checkout_session_id = $1`
 
@@ -267,7 +271,7 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
        currency, subtotal, discount, charge, total, charge_percent_bp,
        promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
        paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-       sales_link_id, attribution
+       sales_link_id, attribution, is_test
 FROM   orders
 WHERE  reservation_id = $1`
 
@@ -291,7 +295,7 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
        currency, subtotal, discount, charge, total, charge_percent_bp,
        promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
        paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-       sales_link_id, attribution
+       sales_link_id, attribution, is_test
 FROM   orders
 WHERE  customer_id = $1
   AND  session_id = $2
@@ -317,7 +321,7 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
        currency, subtotal, discount, charge, total, charge_percent_bp,
        promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
        paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-       sales_link_id, attribution
+       sales_link_id, attribution, is_test
 FROM   orders
 WHERE  org_id = $1
   AND  ($2 = '' OR status = $2)
@@ -369,7 +373,7 @@ SELECT id, system_id, org_id, channel_id, event_id, session_id, customer_id,
        currency, subtotal, discount, charge, total, charge_percent_bp,
        promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
        paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-       sales_link_id, attribution
+       sales_link_id, attribution, is_test
 FROM   orders
 WHERE  org_id = $1
   AND  customer_id = $2
@@ -419,7 +423,7 @@ RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
           currency, subtotal, discount, charge, total, charge_percent_bp,
           promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
           paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-          sales_link_id, attribution`
+          sales_link_id, attribution, is_test`
 
 // UpdateOrderStatus transitions status and stamps the matching lifecycle
 // timestamp. Pass nil for paidAt/cancelledAt to leave the existing column
@@ -465,7 +469,7 @@ RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
           currency, subtotal, discount, charge, total, charge_percent_bp,
           promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
           paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-          sales_link_id, attribution`
+          sales_link_id, attribution, is_test`
 
 // UpdateOrderCheckout re-points a still-open order at a freshly priced
 // checkout session and rewrites its money columns (spec §7.7 step 5: a repeat
@@ -512,7 +516,7 @@ RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
           currency, subtotal, discount, charge, total, charge_percent_bp,
           promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
           paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-          sales_link_id, attribution`
+          sales_link_id, attribution, is_test`
 
 // SetOrderAttribution rewrites the attribution of a still-open order (spec 43
 // section 4.4: a repeat CREATE_ORDER_EXT of the same cart with another
@@ -760,7 +764,7 @@ SELECT o.id, o.system_id, o.org_id, o.channel_id, o.event_id, o.session_id,
        o.total, o.charge_percent_bp, o.promo_code_id, o.buyer_name,
        o.buyer_email, o.buyer_phone, o.payment_method, o.paid_at,
        o.cancelled_at, o.expires_at, o.metadata, o.created_at, o.updated_at,
-       o.sales_link_id, o.attribution
+       o.sales_link_id, o.attribution, o.is_test
 FROM   orders o
 WHERE  o.status = 'pending_payment'
   AND  o.expires_at IS NOT NULL
@@ -812,7 +816,7 @@ RETURNING id, system_id, org_id, channel_id, event_id, session_id, customer_id,
           currency, subtotal, discount, charge, total, charge_percent_bp,
           promo_code_id, buyer_name, buyer_email, buyer_phone, payment_method,
           paid_at, cancelled_at, expires_at, metadata, created_at, updated_at,
-          sales_link_id, attribution`
+          sales_link_id, attribution, is_test`
 
 // ExpireOrderIfStillPending flips one order to 'expired' only while it is
 // still pending_payment. The status guard is what makes the sweep safe to run

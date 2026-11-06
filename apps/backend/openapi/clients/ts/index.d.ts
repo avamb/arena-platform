@@ -17704,6 +17704,12 @@ export interface components {
             /** @description Charge rate applied, in basis points. */
             charge_percent_bp: number;
             /**
+             * @description True when the order was created in a test sales channel. Set once
+             *     at creation from the channel and never changed. Such orders are
+             *     left out of the sales summaries.
+             */
+            is_test?: boolean;
+            /**
              * Format: uuid
              * @description Promo code applied to this order, if any.
              */
@@ -19125,6 +19131,14 @@ export interface components {
             /** @description Invitations of the session, whichever way they were issued. */
             complimentary: components["schemas"]["SummaryComplimentary"];
             /**
+             * Format: int64
+             * @description Paid orders that came through a test sales channel
+             *     (`is_test`). They are left out of orders, money, refunds, promo
+             *     codes, invitations and the revenue of the categories above; their
+             *     tickets still occupy places.
+             */
+            test_orders?: number;
+            /**
              * @description The paid orders of the session (paid, partially refunded or
              *     refunded) grouped by where the buyer came from (spec 43): first
              *     one entry per sales link the orders are attributed to, then one
@@ -19507,6 +19521,14 @@ export interface components {
             promos: components["schemas"]["SummaryPromoItem"][];
             /** @description Invitations of the session. */
             complimentary: components["schemas"]["SummaryComplimentary"];
+            /**
+             * Format: int64
+             * @description Paid orders that came through a test sales channel
+             *     (`is_test`). They are left out of orders, money, refunds, promo
+             *     codes, invitations and the revenue of the categories above; their
+             *     tickets still occupy places.
+             */
+            test_orders?: number;
         };
         /**
          * @description The session summary over every session of an event (EC-06): the same
@@ -19569,6 +19591,14 @@ export interface components {
             promos: components["schemas"]["SummaryPromoItem"][];
             /** @description Invitations over every session. */
             complimentary: components["schemas"]["SummaryComplimentary"];
+            /**
+             * Format: int64
+             * @description Paid orders that came through a test sales channel
+             *     (`is_test`). They are left out of orders, money, refunds, promo
+             *     codes, invitations and the revenue of the categories above; their
+             *     tickets still occupy places.
+             */
+            test_orders?: number;
             /** @description Every non-deleted session of the event in start order, each with its own figures. */
             sessions: components["schemas"]["EventSummarySession"][];
         };
@@ -19631,6 +19661,14 @@ export interface components {
             promos: components["schemas"]["SummaryPromoItem"][];
             /** @description Invitations over every session. */
             complimentary: components["schemas"]["SummaryComplimentary"];
+            /**
+             * Format: int64
+             * @description Paid orders that came through a test sales channel
+             *     (`is_test`). They are left out of orders, money, refunds, promo
+             *     codes, invitations and the revenue of the categories above; their
+             *     tickets still occupy places.
+             */
+            test_orders?: number;
         };
         /** @description The sales figures of the requested events, one entry per event found. */
         EventSalesSummaryList: {
@@ -29629,6 +29667,16 @@ export interface components {
                 [key: string]: unknown;
             };
             /**
+             * @description True for a test sales channel. Every order created in it is
+             *     marked `is_test` and is left out of the sales figures. Payments
+             *     still go through the live provider.
+             */
+            is_test?: boolean;
+            /** @description Buyer name is required at checkout for this channel (widget and hosted page). */
+            collect_name?: boolean;
+            /** @description Buyer phone is required at checkout for this channel (widget and hosted page). */
+            collect_phone?: boolean;
+            /**
              * Format: date-time
              * @description ISO-8601 timestamp when the channel was created.
              */
@@ -29700,6 +29748,15 @@ export interface components {
             settings?: {
                 [key: string]: unknown;
             };
+            /**
+             * @description Create the channel as a test channel (default false). Orders
+             *     created in it carry `is_test` from then on.
+             */
+            is_test?: boolean;
+            /** @description Require the buyer name at checkout (default false). */
+            collect_name?: boolean;
+            /** @description Require the buyer phone at checkout (default false). */
+            collect_phone?: boolean;
         };
         /**
          * @description Body for `PATCH /v1/organizations/{org_id}/channels/{id}`
@@ -29768,6 +29825,16 @@ export interface components {
             settings?: {
                 [key: string]: unknown;
             };
+            /**
+             * @description Turn the test flag of the channel on or off. Omit to leave it
+             *     unchanged. Orders already created keep the flag they were born
+             *     with: it never changes on an order.
+             */
+            is_test?: boolean;
+            /** @description Require the buyer name at checkout. Omit to leave it unchanged. */
+            collect_name?: boolean;
+            /** @description Require the buyer phone at checkout. Omit to leave it unchanged. */
+            collect_phone?: boolean;
         };
         /**
          * @description Read-shape of the Bil24-compat gateway credential (feature #473,

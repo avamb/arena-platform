@@ -52,7 +52,8 @@ SELECT t.system_ticket_id,
        o.system_id AS order_number,
        COALESCE(NULLIF(btrim(o.buyer_email), ''), NULLIF(btrim(t.holder_email), '')) AS email,
        NULLIF(btrim(o.buyer_phone), '') AS phone,
-       (t.complimentary_issuance_id IS NOT NULL OR COALESCE(o.source = 'complimentary', false)) AS invitation
+       (t.complimentary_issuance_id IS NOT NULL OR COALESCE(o.source = 'complimentary', false)) AS invitation,
+       COALESCE(o.is_test, false) AS is_test
 FROM      tickets t
 JOIN      sessions s ON s.id = t.session_id
 JOIN      events   e ON e.id = s.event_id AND e.org_id = $2
@@ -90,6 +91,7 @@ type GuestListRow struct {
 	Email          *string    `json:"email"`
 	Phone          *string    `json:"phone"`
 	Invitation     bool       `json:"invitation"`
+	IsTest         bool       `json:"is_test"`
 }
 
 // ListGuestListRows returns the session's active tickets sorted by guest name
@@ -107,7 +109,7 @@ func (q *Queries) ListGuestListRows(ctx context.Context, sessionID, orgID uuid.U
 			&i.SystemTicketID, &i.GuestName, &i.TierName,
 			&i.SeatSector, &i.SeatRow, &i.SeatNumber,
 			&i.Barcode, &i.VIP, &i.EnteredAt,
-			&i.OrderNumber, &i.Email, &i.Phone, &i.Invitation,
+			&i.OrderNumber, &i.Email, &i.Phone, &i.Invitation, &i.IsTest,
 		); err != nil {
 			return nil, err
 		}

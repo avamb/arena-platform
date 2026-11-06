@@ -48,7 +48,7 @@ var Columns = []csvexport.Column{
 	csvexport.ColTicket, csvexport.ColBarcode, csvexport.ColVIP,
 	csvexport.ColEntered, csvexport.ColEnteredAt,
 	csvexport.ColOrder, csvexport.ColEmail, csvexport.ColPhone,
-	csvexport.ColInvitation,
+	csvexport.ColInvitation, csvexport.ColTest,
 }
 
 // Querier is the part of gen.Queries the list reads.
@@ -177,6 +177,7 @@ func Cells(r gen.GuestListRow, loc *time.Location) []csvexport.Cell {
 		csvexport.TextPtr(r.Email),
 		csvexport.TextPtr(r.Phone),
 		csvexport.YesNo(r.Invitation),
+		csvexport.YesNo(r.IsTest),
 	}
 }
 

@@ -47,7 +47,7 @@ SELECT t.id, t.system_ticket_id, t.status AS ticket_status, t.used_at, t.issued_
        oi.total AS item_total,
        tc.payload AS barcode,
        sc.name AS channel_name,
-       pc.code AS promo_code,
+       pc.code AS promo_code, COALESCE(o.is_test, false) AS is_test,
        fs.scanned_at AS entered_at, fs.source AS entered_source,
        fs.scanner_label AS entered_scanner, fs.gate AS entered_gate
 FROM      tickets t

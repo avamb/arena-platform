@@ -48,6 +48,8 @@ type Sale struct {
 	Buyer       Buyer
 	// IssuedBy is set only for a staff invitation (orders.issued_via).
 	IssuedBy Staff
+	// IsTest marks an order of a test sales channel: the message says so.
+	IsTest bool
 }
 
 // CategoryCount is how many units of one category an order bought.
@@ -81,6 +83,8 @@ type Refund struct {
 	// CancelledBy is set only for a ticket of a staff invitation that a
 	// member of the organization (or an API key) cancelled.
 	CancelledBy Staff
+	// IsTest marks a ticket of a test-channel order: the message says so.
+	IsTest bool
 }
 
 // sourceLabel names where the sale came from.
@@ -180,10 +184,19 @@ func EventsBotFooter(username string) string {
 	return fmt.Sprintf(`🤖 <a href="https://t.me/%s">@%s</a> — create and edit your events from Telegram`, esc(username), esc(username))
 }
 
+// testPrefix marks the message of a test-channel order: such an order is not
+// a real sale and must never be taken for one.
+func testPrefix(isTest bool) string {
+	if isTest {
+		return "<b>TEST</b> · "
+	}
+	return ""
+}
+
 // FormatSale renders one sale.
 func FormatSale(s Sale) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "🎟 <b>New sale</b> — %s\n\n", esc(s.OrgName))
+	fmt.Fprintf(&b, "🎟 %s<b>New sale</b> — %s\n\n", testPrefix(s.IsTest), esc(s.OrgName))
 	writeEvent(&b, s.EventName, s.StartAt, s.TimeZone, s.VenueName)
 	src := sourceLabel(s.Source)
 	if s.ChannelName != "" {
@@ -213,7 +226,7 @@ func FormatRefund(r Refund) string {
 	if r.Amount == 0 {
 		title = "Ticket cancelled"
 	}
-	fmt.Fprintf(&b, "↩️ <b>%s</b> — %s\n\n", title, esc(r.OrgName))
+	fmt.Fprintf(&b, "↩️ %s<b>%s</b> — %s\n\n", testPrefix(r.IsTest), title, esc(r.OrgName))
 	writeEvent(&b, r.EventName, r.StartAt, r.TimeZone, r.VenueName)
 	if r.OrderNumber != 0 {
 		fmt.Fprintf(&b, "\n🧾 Order #%d · ticket #%d\n", r.OrderNumber, r.TicketNumber)

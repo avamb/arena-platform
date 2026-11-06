@@ -37,6 +37,7 @@ function OrderRow({ orgId, order }: { orgId: string; order: OrderListItem }) {
         <span className="or-status">
           <OrderStatusBadge status={order.status} />
           {order.letter_failed && <Badge tone="bad">{t("orders.letterFailed")}</Badge>}
+          {order.is_test && <Badge tone="wait">{t("orders.testOrder")}</Badge>}
         </span>
         <span className="or-buyer">
           {order.buyer_name !== null && <span>{order.buyer_name}</span>}

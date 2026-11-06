@@ -54,6 +54,9 @@ type ChannelResponse struct {
 	FeePercent             string          `json:"fee_percent"`
 	ReservationTTLOverride *int32          `json:"reservation_ttl_override"`
 	Settings               json.RawMessage `json:"settings"`
+	IsTest                 bool            `json:"is_test"`
+	CollectName            bool            `json:"collect_name"`
+	CollectPhone           bool            `json:"collect_phone"`
 	CreatedAt              string          `json:"created_at"`
 	UpdatedAt              string          `json:"updated_at"`
 }
@@ -107,6 +110,9 @@ func ChannelFromRow(ch gen.SalesChannelRow) ChannelResponse {
 		FeePercent:             ch.FeePercent,
 		ReservationTTLOverride: ch.ReservationTTLOverride,
 		Settings:               SettingsForResponse(ch.Settings),
+		IsTest:                 ch.IsTest,
+		CollectName:            ch.CollectName,
+		CollectPhone:           ch.CollectPhone,
 		CreatedAt:              ch.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:              ch.UpdatedAt.UTC().Format(time.RFC3339),
 	}
@@ -217,6 +223,9 @@ type createChannelRequest struct {
 	FeePercent             string          `json:"fee_percent"`
 	ReservationTTLOverride *int32          `json:"reservation_ttl_override"`
 	Settings               json.RawMessage `json:"settings"`
+	IsTest                 bool            `json:"is_test"`
+	CollectName            bool            `json:"collect_name"`
+	CollectPhone           bool            `json:"collect_phone"`
 }
 
 func (h *Handler) HandleCreateChannel(w http.ResponseWriter, r *http.Request) {
@@ -312,9 +321,10 @@ func (h *Handler) HandleCreateChannel(w http.ResponseWriter, r *http.Request) {
 	}
 	settings = keepSellerDisplayKeys(settings, nil) // set only through seller-display
 
-	ch, err := h.channelQueries.InsertSalesChannel(ctx,
+	ch, err := h.channelQueries.InsertSalesChannelFlagged(ctx,
 		orgID, req.Name, req.PaymentMode, req.Provider,
 		providerAccountID, req.FeePercent, req.ReservationTTLOverride, settings,
+		req.IsTest, req.CollectName, req.CollectPhone,
 	)
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -437,6 +447,9 @@ type updateChannelRequest struct {
 	FeePercent             *string         `json:"fee_percent"`
 	ReservationTTLOverride optionalInt32   `json:"reservation_ttl_override"`
 	Settings               json.RawMessage `json:"settings"`
+	IsTest                 *bool           `json:"is_test"`
+	CollectName            *bool           `json:"collect_name"`
+	CollectPhone           *bool           `json:"collect_phone"`
 }
 
 func (h *Handler) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {
@@ -573,11 +586,11 @@ func (h *Handler) HandleUpdateChannel(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	updated, err := h.channelQueries.UpdateSalesChannel(ctx,
+	updated, err := h.channelQueries.UpdateSalesChannelFlagged(ctx,
 		chID, orgID, req.Name, req.PaymentMode, req.Provider,
 		req.ProviderAccountID, req.FeePercent,
 		req.ReservationTTLOverride.Value, req.ReservationTTLOverride.Present,
-		settings,
+		settings, req.IsTest, req.CollectName, req.CollectPhone,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

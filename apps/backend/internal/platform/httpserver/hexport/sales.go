@@ -23,7 +23,7 @@ var salesColumns = []csvexport.Column{
 	csvexport.ColCategory, csvexport.ColPrice, csvexport.ColCurrency,
 	csvexport.ColBarcode, csvexport.ColTicketStatus, csvexport.ColEntered,
 	csvexport.ColEnteredAt, csvexport.ColEnteredSource, csvexport.ColEnteredScanner,
-	csvexport.ColChannel, csvexport.ColPromoCode,
+	csvexport.ColChannel, csvexport.ColPromoCode, csvexport.ColTest,
 }
 
 // HandleSessionSales serves
@@ -173,6 +173,7 @@ func salesCells(row gen.ExportSalesRow, withSession bool) []csvexport.Cell {
 		csvexport.Text(scannerGate(row.EnteredScanner, row.EnteredGate)),
 		csvexport.TextPtr(row.ChannelName),
 		csvexport.TextPtr(row.PromoCode),
+		csvexport.YesNo(row.IsTest),
 	}
 	if withSession {
 		cells = append(cells, csvexport.DateTime(row.SessionStart, loc))

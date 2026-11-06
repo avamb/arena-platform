@@ -35,6 +35,9 @@ type SalesChannelRow struct {
 	CreatedAt              time.Time       `json:"created_at"`
 	UpdatedAt              time.Time       `json:"updated_at"`
 	DeletedAt              *time.Time      `json:"deleted_at"`
+	IsTest                 bool            `json:"is_test"`
+	CollectName            bool            `json:"collect_name"`
+	CollectPhone           bool            `json:"collect_phone"`
 }
 
 // scanSalesChannelRow scans a single sales_channels row into a SalesChannelRow.
@@ -56,6 +59,9 @@ func scanSalesChannelRow(row interface {
 		&ch.CreatedAt,
 		&ch.UpdatedAt,
 		&ch.DeletedAt,
+		&ch.IsTest,
+		&ch.CollectName,
+		&ch.CollectPhone,
 	)
 	return ch, err
 }
@@ -65,9 +71,9 @@ func scanSalesChannelRow(row interface {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const insertSalesChannel = `-- name: InsertSalesChannel :one
-INSERT INTO sales_channels (org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings)
-VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::jsonb, '{}'::jsonb))
-RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at`
+INSERT INTO sales_channels (org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, is_test, collect_name, collect_phone)
+VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::jsonb, '{}'::jsonb), $9::boolean, $10::boolean, $11::boolean)
+RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at, is_test, collect_name, collect_phone`
 
 // InsertSalesChannel creates a new active sales channel row.
 // Returns the created row including the uuidv7 PK assigned by the database.
@@ -75,8 +81,15 @@ RETURNING id, display_number, org_id, name, payment_mode, provider, provider_acc
 // payment_mode = 'direct_merchant' before calling this method.
 // Pass settings = nil to use the database default '{}'::jsonb.
 func (q *Queries) InsertSalesChannel(ctx context.Context, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent string, reservationTTLOverride *int32, settings json.RawMessage) (SalesChannelRow, error) {
+	return q.InsertSalesChannelFlagged(ctx, orgID, name, paymentMode, provider, providerAccountID, feePercent, reservationTTLOverride, settings, false, false, false)
+}
+
+// InsertSalesChannelFlagged is InsertSalesChannel with the test-channel flag
+// (migration 0201: orders created in a channel with isTest carry orders.is_test)
+// and the buyer-field flags collect_name / collect_phone (migration 0061).
+func (q *Queries) InsertSalesChannelFlagged(ctx context.Context, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent string, reservationTTLOverride *int32, settings json.RawMessage, isTest, collectName, collectPhone bool) (SalesChannelRow, error) {
 	row := q.db.QueryRow(ctx, insertSalesChannel,
-		orgID, name, paymentMode, provider, providerAccountID, feePercent, reservationTTLOverride, settings,
+		orgID, name, paymentMode, provider, providerAccountID, feePercent, reservationTTLOverride, settings, isTest, collectName, collectPhone,
 	)
 	return scanSalesChannelRow(row)
 }
@@ -93,7 +106,7 @@ func (q *Queries) InsertSalesChannel(ctx context.Context, orgID uuid.UUID, name,
 const channelIsSales = `kind = 'sales'`
 
 const getSalesChannelByID = `-- name: GetSalesChannelByID :one
-SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at, is_test, collect_name, collect_phone
 FROM   sales_channels
 WHERE  id = $1
   AND  org_id = $2
@@ -111,7 +124,7 @@ func (q *Queries) GetSalesChannelByID(ctx context.Context, id, orgID uuid.UUID) 
 }
 
 const getSalesChannelByIDAnyKind = `-- name: GetSalesChannelByIDAnyKind :one
-SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at, is_test, collect_name, collect_phone
 FROM   sales_channels
 WHERE  id = $1
   AND  org_id = $2
@@ -132,7 +145,7 @@ func (q *Queries) GetSalesChannelByIDAnyKind(ctx context.Context, id, orgID uuid
 // ─────────────────────────────────────────────────────────────────────────────
 
 const getSalesChannelByDisplayNumber = `-- name: GetSalesChannelByDisplayNumber :one
-SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at, is_test, collect_name, collect_phone
 FROM   sales_channels
 WHERE  display_number = $1
   AND  deleted_at IS NULL
@@ -153,7 +166,7 @@ func (q *Queries) GetSalesChannelByDisplayNumber(ctx context.Context, displayNum
 // ─────────────────────────────────────────────────────────────────────────────
 
 const listSalesChannelsByOrg = `-- name: ListSalesChannelsByOrg :many
-SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at
+SELECT id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at, is_test, collect_name, collect_phone
 FROM   sales_channels
 WHERE  org_id = $1
   AND  deleted_at IS NULL
@@ -194,12 +207,15 @@ SET    name                     = COALESCE(NULLIF($3, ''), name),
        fee_percent              = CASE WHEN $7::numeric IS NOT NULL THEN $7::numeric ELSE fee_percent END,
        reservation_ttl_override = CASE WHEN $9::boolean THEN $8 ELSE reservation_ttl_override END,
        settings                 = CASE WHEN $10::jsonb IS NOT NULL THEN $10::jsonb ELSE settings END,
+       is_test                  = COALESCE($11::boolean, is_test),
+       collect_name             = COALESCE($12::boolean, collect_name),
+       collect_phone            = COALESCE($13::boolean, collect_phone),
        updated_at               = now()
 WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
   AND  ` + channelIsSales + `
-RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at, is_test, collect_name, collect_phone`
 
 // UpdateSalesChannel applies a partial update to an active sales channel.
 // Empty string fields are ignored (existing value kept). Returns pgx.ErrNoRows
@@ -214,8 +230,15 @@ RETURNING id, display_number, org_id, name, payment_mode, provider, provider_acc
 // case); pass true with reservationTTLOverride=nil to explicitly clear it to
 // NULL, or true with a value to set it.
 func (q *Queries) UpdateSalesChannel(ctx context.Context, id, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent *string, reservationTTLOverride *int32, setReservationTTLOverride bool, settings json.RawMessage) (SalesChannelRow, error) {
+	return q.UpdateSalesChannelFlagged(ctx, id, orgID, name, paymentMode, provider, providerAccountID, feePercent, reservationTTLOverride, setReservationTTLOverride, settings, nil, nil, nil)
+}
+
+// UpdateSalesChannelFlagged is UpdateSalesChannel that can also set the
+// test-channel flag and the buyer-field flags: nil leaves each untouched. Orders already created keep the
+// flag they were born with.
+func (q *Queries) UpdateSalesChannelFlagged(ctx context.Context, id, orgID uuid.UUID, name, paymentMode, provider string, providerAccountID *string, feePercent *string, reservationTTLOverride *int32, setReservationTTLOverride bool, settings json.RawMessage, isTest, collectName, collectPhone *bool) (SalesChannelRow, error) {
 	row := q.db.QueryRow(ctx, updateSalesChannel,
-		id, orgID, name, paymentMode, provider, providerAccountID, feePercent, reservationTTLOverride, setReservationTTLOverride, settings,
+		id, orgID, name, paymentMode, provider, providerAccountID, feePercent, reservationTTLOverride, setReservationTTLOverride, settings, isTest, collectName, collectPhone,
 	)
 	return scanSalesChannelRow(row)
 }
@@ -232,7 +255,7 @@ WHERE  id = $1
   AND  org_id = $2
   AND  deleted_at IS NULL
   AND  ` + channelIsSales + `
-RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at`
+RETURNING id, display_number, org_id, name, payment_mode, provider, provider_account_id, fee_percent, reservation_ttl_override, settings, created_at, updated_at, deleted_at, is_test, collect_name, collect_phone`
 
 // SoftDeleteSalesChannel marks a sales channel as deleted by setting deleted_at.
 // The row is not physically removed. Returns pgx.ErrNoRows when the channel
