@@ -219,10 +219,13 @@ test.describe("shop (mock)", () => {
     await page.getByTestId("shop-ship-note").fill("1Z999AA10123456784");
     await noA11yViolations(page);
     await page.getByTestId("shop-ship-submit").click();
-    await expect(page.getByTestId("shop-order-note")).toContainText("marked as shipped");
+    await expect(page.getByTestId("shop-order-note")).toContainText("The order is handed to the courier.");
     await expect(page.getByTestId("shop-order-tracking")).toContainText("1Z999AA10123456784");
-    expect(state.writes[0]).toContain("/ship");
+    // Shipping is the delivery step "handed over" (spec 61 section 7b): one write to .../fulfillment with the number.
+    expect(state.writes[0]).toContain("/fulfillment");
+    expect(state.writes[0]).toContain('"step":"handed_over"');
     expect(state.writes[0]).toContain("1Z999AA10123456784");
+    await expect(page.getByTestId("shop-order-delivery")).toContainText("Handed to courier");
   });
 
   test("refund: part of the money, the word and the password, then the card shows the rest", async ({ page }) => {
@@ -458,11 +461,33 @@ test.describe("shop (mock)", () => {
     await page.goto(`/o/${ORG_A}/shop/orders/${ORDER_PAID}`);
     await page.getByTestId("shop-order-ship").click();
     await page.getByTestId("shop-ship-submit").click();
-    await expect(page.getByTestId("shop-order-note")).toContainText("marked as shipped");
+    await expect(page.getByTestId("shop-order-note")).toContainText("The order is handed to the courier.");
     await page.getByTestId("shop-nav-orders").click();
     await expect(page.getByTestId("shop-orders-tab-to_ship")).toContainText("To ship (0)");
     await page.getByTestId("shop-orders-tab-to_ship").click();
     await expect(page.getByText("Nothing to ship. Every paid order has gone out.")).toBeVisible();
+  });
+
+  test("order card: the delivery steps go packed, handed over, delivered through .../fulfillment and the history lists them", async ({ page }) => {
+    await mockApi(page);
+    const state = await mockShop(page);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/shop/orders/${ORDER_PAID}`);
+    await expect(page.getByTestId("shop-order-delivered")).toHaveCount(0);
+    await page.getByTestId("shop-order-packed").click();
+    await expect(page.getByTestId("shop-order-note")).toContainText("The delivery step is now: Packed.");
+    await expect(page.getByTestId("shop-order-packed")).toHaveCount(0);
+    await page.getByTestId("shop-order-ship").click();
+    await page.getByTestId("shop-ship-submit").click();
+    await expect(page.getByTestId("shop-order-note")).toContainText("The order is handed to the courier.");
+    await page.getByTestId("shop-order-delivered").click();
+    await expect(page.getByTestId("shop-order-note")).toContainText("The delivery step is now: Delivered.");
+    await expect(page.getByTestId("shop-order-delivered")).toHaveCount(0);
+    await expect(page.getByTestId("shop-order-step")).toHaveCount(3);
+    expect(state.writes.map((w) => JSON.parse(w.slice(w.indexOf("{"))).step)).toEqual(["packed", "handed_over", "delivered"]);
+    expect(state.writes.every((w) => w.includes(`/shop/orders/${ORDER_PAID}/fulfillment`))).toBe(true);
+    await noHorizontalScroll(page);
+    await noA11yViolations(page);
   });
 
   test("order card: the internal note saves by the button or Ctrl+Enter and names its author", async ({ page }) => {
@@ -626,12 +651,13 @@ test.describe("shop (mock, desktop)", () => {
     }
   });
 
-  test("the orders table is a table with six columns on a wide screen", async ({ page }) => {
+  test("the orders table is a table with seven columns on a wide screen, the last one is the delivery step", async ({ page }) => {
     await mockApi(page);
     await mockShop(page);
     await signIn(page);
     await page.goto(`/o/${ORG_A}/shop/orders`);
-    await expect(page.getByTestId("shop-orders-table").getByRole("columnheader")).toHaveCount(6);
+    await expect(page.getByTestId("shop-orders-table").getByRole("columnheader")).toHaveCount(7);
+    await expect(page.getByTestId("shop-orders-table").getByRole("columnheader").last()).toHaveText("Delivery step");
     await expect(page.getByTestId("shop-order-row")).toHaveCount(4);
   });
 });
