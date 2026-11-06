@@ -33,7 +33,7 @@
     {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
     {{with .Branding.ContactEmail}}<br>Контакты: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Контакты: <a href="{{.}}" style="color:#666">Написать организатору</a>{{end}}{{end}}
   </p>
-  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}Arena Platform — автоматическая рассылка приглашений{{end}}</p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Ticket processing by arenasoldout.com</a>{{end}}</p>
   <p style="font-size:11px;color:#999;line-height:1.5">Если вы нажмёте «Отписаться», письма с билетами и важные письма о вашем заказе к вам больше не придут. Рекламных рассылок без вашего согласия мы не отправляем.</p>
   </td></tr>
 </table>
@@ -71,7 +71,7 @@ PDF-файл прикреплён к этому письму.
 {{end}}{{with .Branding.ContactEmail}}Контакты: {{.}}
 {{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Контакты: {{.}}
 {{end}}{{end}}
-{{if not .WhiteLabel}}Arena Platform — автоматическая рассылка приглашений{{end}}
+{{if not .WhiteLabel}}Ticket processing by arenasoldout.com — https://arenasoldout.com{{end}}
 
 Если вы нажмёте «Отписаться», письма с билетами и важные письма о вашем заказе к вам больше не придут. Рекламных рассылок без вашего согласия мы не отправляем.
 {{end}}
