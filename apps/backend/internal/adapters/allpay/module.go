@@ -113,6 +113,10 @@ func ProviderDescriptor() payments.Descriptor {
 			// key and names no merchant: only the config in the URL can vouch
 			// for it.
 			WebhookConfigRouteOnly: true,
+			// order_id is arena's checkout session id, chosen before the
+			// call: the attempt is recorded first and a lost answer is read
+			// back with paymentstatus (LookupHostedPayment, П-19).
+			ReferenceIsPaymentID: true,
 			// PAY-14b: the refund is answered synchronously (refund.go).
 			Refund:        true,
 			PartialRefund: true,
@@ -217,6 +221,13 @@ func (a *Adapter) confirmPaid(ctx context.Context, ev payments.NormalizedEvent) 
 		return payments.NormalizedEvent{}, fmt.Errorf("%w: allpay: confirm the paid order %s: %s",
 			payments.ErrProviderUnreachable, ev.ProviderPaymentID, err.Error())
 	}
+	return confirmedEvent(ev, st)
+}
+
+// confirmedEvent decides a paid webhook from AllPay's own status answer
+// (confirmPaid). LookupHostedPayment uses the same decision, so an order
+// read back by the recovery job is confirmed exactly as its webhook would be.
+func confirmedEvent(ev payments.NormalizedEvent, st *PaymentStatus) (payments.NormalizedEvent, error) {
 	switch {
 	case st.Preauth == "authorized":
 		return payments.NormalizedEvent{}, fmt.Errorf("%w: allpay: order %s is reserved, not charged",
@@ -310,4 +321,58 @@ func chargebackDispute(cb *Callback, status string) *payments.Dispute {
 		Currency:        cb.Currency,
 		PaymentIntentID: cb.OrderID,
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HostedPaymentLookup (П-19)
+// ─────────────────────────────────────────────────────────────────────────────
+
+var _ payments.HostedPaymentLookup = (*Adapter)(nil)
+
+// LookupHostedPayment reads an order arena may have lost the creation answer
+// for (the checkout.payment_recover job). The order id is arena's checkout
+// session id, so it is known even when AllPay's answer is not.
+//
+//   - No such order under this login: HostedPaymentUnknown (the page was
+//     never created; the job asks for it again with the same order_id).
+//   - Status 0 without a pre-authorization: HostedPaymentUnpaid.
+//   - Paid, or paid and already refunded: HostedPaymentSettled, with the
+//     event a verified paid webhook would have produced after its own
+//     paymentstatus read-back (confirmedEvent): paid, or manual review.
+//   - A pre-authorization, or a paid answer that names no amount: pending.
+func (a *Adapter) LookupHostedPayment(ctx context.Context, reference string) (payments.HostedPaymentLookupResult, error) {
+	st, err := a.PaymentStatus(ctx, reference)
+	if errors.Is(err, ErrOrderNotFound) {
+		return payments.HostedPaymentLookupResult{State: payments.HostedPaymentUnknown}, nil
+	}
+	if err != nil {
+		return payments.HostedPaymentLookupResult{}, err
+	}
+	if st.Preauth == "authorized" {
+		return payments.HostedPaymentLookupResult{State: payments.HostedPaymentPending}, nil
+	}
+	if st.Status == StatusUnpaid {
+		return payments.HostedPaymentLookupResult{State: payments.HostedPaymentUnpaid}, nil
+	}
+	raw, _ := json.Marshal(map[string]any{
+		"source":   "allpay.paymentstatus",
+		"order_id": st.OrderID,
+		"status":   st.Status,
+	})
+	base := payments.NormalizedEvent{
+		Kind:              payments.EventPaymentSucceeded,
+		Type:              EventTypePaid,
+		ProviderPaymentID: st.OrderID,
+		ProviderChargeRef: st.OrderID,
+		Status:            strconv.Itoa(st.Status),
+		Raw:               json.RawMessage(raw),
+	}
+	ev, err := confirmedEvent(base, st)
+	if errors.Is(err, payments.ErrProviderUnreachable) {
+		return payments.HostedPaymentLookupResult{State: payments.HostedPaymentPending}, nil
+	}
+	if err != nil {
+		return payments.HostedPaymentLookupResult{}, err
+	}
+	return payments.HostedPaymentLookupResult{State: payments.HostedPaymentSettled, Event: ev}, nil
 }

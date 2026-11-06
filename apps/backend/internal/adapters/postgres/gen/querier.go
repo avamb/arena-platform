@@ -248,6 +248,11 @@ type Querier interface {
 	// Payment intents — SCA-aware payment state machine (feature #137)
 	InsertPaymentIntent(ctx context.Context, checkoutSessionID *uuid.UUID, orgID uuid.UUID, provider string, providerPaymentID *string, amount int64, currency string, initialState string, scaRedirectURL *string, clientSecret *string) (PaymentIntentRow, error)
 	InsertHostedPaymentIntent(ctx context.Context, checkoutSessionID *uuid.UUID, orgID uuid.UUID, provider string, providerPaymentID string, amount int64, currency string, hostedCheckoutURL string) (PaymentIntentRow, error)
+	// П-19: a hosted payment attempt recorded before the provider call, its
+	// page filled once known, and the attempts that never got one.
+	InsertHostedPaymentAttempt(ctx context.Context, checkoutSessionID *uuid.UUID, orgID uuid.UUID, provider string, providerPaymentID string, amount int64, currency string) (PaymentIntentRow, error)
+	SetPaymentIntentHostedURL(ctx context.Context, id uuid.UUID, hostedCheckoutURL string) (bool, error)
+	ListStalledHostedPaymentAttempts(ctx context.Context, provider string, createdBefore time.Time, limit int32) ([]StalledHostedPaymentAttemptRow, error)
 	GetPaymentIntentByID(ctx context.Context, id uuid.UUID) (PaymentIntentRow, error)
 	// GetPaymentIntentByIDForUpdate is the row-locking variant; call inside a tx (feature #361).
 	GetPaymentIntentByIDForUpdate(ctx context.Context, id uuid.UUID) (PaymentIntentRow, error)

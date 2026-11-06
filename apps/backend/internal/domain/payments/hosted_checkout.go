@@ -150,3 +150,39 @@ type HostedCheckoutExpirer interface {
 	// paid, expired, or the call failed); callers treat it as best effort.
 	ExpireCheckoutSession(ctx context.Context, sessionID string) error
 }
+
+// HostedPaymentState is what a provider says about one hosted payment arena
+// asks it about by reference (HostedPaymentLookup).
+type HostedPaymentState int
+
+const (
+	// HostedPaymentUnknown: the provider holds no payment under that
+	// reference — the page was never created.
+	HostedPaymentUnknown HostedPaymentState = iota
+	// HostedPaymentUnpaid: the payment exists and nothing was charged; the
+	// page may still be paid.
+	HostedPaymentUnpaid
+	// HostedPaymentSettled: the provider reports an outcome arena must act
+	// on. HostedPaymentLookupResult.Event carries it, normalized exactly as
+	// the provider's verified webhook would have been (a paid order, or one
+	// a human has to review).
+	HostedPaymentSettled
+	// HostedPaymentPending: anything else (an authorization, a status the
+	// provider is still settling). Left alone; asked again later.
+	HostedPaymentPending
+)
+
+// HostedPaymentLookupResult is one answer of HostedPaymentLookup.
+type HostedPaymentLookupResult struct {
+	State HostedPaymentState
+	// Event is set for HostedPaymentSettled only.
+	Event NormalizedEvent
+}
+
+// HostedPaymentLookup is implemented by a provider with
+// Capabilities.ReferenceIsPaymentID: it reads one hosted payment back by the
+// reference arena filed it under. The checkout.payment_recover job uses it
+// when arena lost the provider's answer to CreateCheckoutSession.
+type HostedPaymentLookup interface {
+	LookupHostedPayment(ctx context.Context, reference string) (HostedPaymentLookupResult, error)
+}

@@ -144,11 +144,24 @@ type Handler struct {
 	// accessLog records ticket downloads and views (migration 0184,
 	// WithTicketAccessLog); nil = off.
 	accessLog TicketAccessRecorder
+
+	// checkoutIdem is the Idempotency-Key middleware of checkout/start
+	// (П-19). It must be built ONCE per process (its singleflight group is
+	// what coalesces two identical requests in flight), never per request:
+	// the Server builds a fresh Handler for every request.
+	checkoutIdem func(http.Handler) http.Handler
 }
 
 // WithContactForm configures the hosted page's "Write to the organizer" form:
 // whether it is offered, its Turnstile site key and the privacy policy its
 // consent links to.
+// WithCheckoutIdempotency installs the process-wide Idempotency-Key
+// middleware of checkout/start. nil leaves the route without it.
+func (h *Handler) WithCheckoutIdempotency(mw func(http.Handler) http.Handler) *Handler {
+	h.checkoutIdem = mw
+	return h
+}
+
 func (h *Handler) WithContactForm(ready bool, siteKey, privacyURL string) *Handler {
 	h.contactFormReady = ready
 	h.contactFormSiteKey = siteKey

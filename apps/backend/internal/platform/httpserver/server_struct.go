@@ -146,6 +146,12 @@ type Server struct {
 	// first use by promoAttemptRecorder.
 	promoAttempts     *promoattempts.Recorder
 	promoAttemptsOnce sync.Once
+	// checkoutStartIdem is the Idempotency-Key middleware of the widget's
+	// checkout/start (П-19), built once on first use by
+	// checkoutStartIdempotency: its singleflight group must outlive the
+	// per-request hfeed.Handler.
+	checkoutStartIdem     func(http.Handler) http.Handler
+	checkoutStartIdemOnce sync.Once
 	// stepUpSessionCheck replaces the database lookup of requireWebStepUp
 	// ("is this sign-in still live?") in unit tests; nil in production.
 	stepUpSessionCheck func(ctx context.Context, sessionID, userID uuid.UUID) (bool, error)

@@ -24207,6 +24207,15 @@ type GetPublicTicketPdfParams struct {
 	Src *string `form:"src,omitempty" json:"src,omitempty"`
 }
 
+// StartPublicFeedCheckoutParams defines parameters for StartPublicFeedCheckout.
+type StartPublicFeedCheckoutParams struct {
+	// IdempotencyKey Optional client-generated key, one per payment attempt (at most
+	// 255 bytes). The same key and body replay the stored answer; the
+	// same key with another body is 409. Scoped to the feed token, kept
+	// 24 hours.
+	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
+}
+
 // ListPublicFeedEventsParams defines parameters for ListPublicFeedEvents.
 type ListPublicFeedEventsParams struct {
 	// CityId Optional filter by publication city scope.

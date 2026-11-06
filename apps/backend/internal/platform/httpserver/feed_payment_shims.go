@@ -49,17 +49,27 @@ func widgetPaymentGrace(cfg *config.Config) time.Duration {
 // One function, one place: a later wave that adds per-channel allowed domains
 // replaces this and nothing downstream changes.
 func (s *Server) checkoutReturnURLPolicy() hfeed.ReturnURLPolicy {
+	return CheckoutReturnURLPolicy(s.cfg)
+}
+
+// CheckoutReturnURLPolicy is the return-URL policy of a widget checkout built
+// from configuration alone; arena-worker's payment recovery uses the same one
+// as arena-api, so a page asked for again returns the buyer to the same place.
+func CheckoutReturnURLPolicy(cfg *config.Config) hfeed.ReturnURLPolicy {
 	policy := hfeed.ReturnURLPolicy{}
-	if s.cfg == nil {
+	if cfg == nil {
 		return policy
 	}
-	policy.Fallback = s.cfg.PublicTicketsBaseURL
-	policy.AllowedOrigins = append(policy.AllowedOrigins, s.cfg.CORSAllowedOrigins...)
-	if s.cfg.PublicTicketsBaseURL != "" {
-		policy.AllowedOrigins = append(policy.AllowedOrigins, s.cfg.PublicTicketsBaseURL)
+	policy.Fallback = cfg.PublicTicketsBaseURL
+	policy.AllowedOrigins = append(policy.AllowedOrigins, cfg.CORSAllowedOrigins...)
+	if cfg.PublicTicketsBaseURL != "" {
+		policy.AllowedOrigins = append(policy.AllowedOrigins, cfg.PublicTicketsBaseURL)
 	}
 	return policy
 }
+
+// WidgetPaymentGrace exports the widget payment grace for arena-worker.
+func WidgetPaymentGrace(cfg *config.Config) time.Duration { return widgetPaymentGrace(cfg) }
 
 // hostedPaymentStarter builds the per-request payment starter. It holds no
 // provider adapter: every organizer has their OWN Stripe account, so the

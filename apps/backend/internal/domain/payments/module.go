@@ -100,6 +100,12 @@ type Capabilities struct {
 	// per-merchant key the config alone holds. The legacy un-suffixed route
 	// refuses such a body outright.
 	WebhookConfigRouteOnly bool
+	// ReferenceIsPaymentID: the provider files a hosted payment under the
+	// reference arena chose (ClientReferenceID — AllPay's order_id), and that
+	// reference IS the provider payment id. arena can then record the payment
+	// attempt BEFORE calling the provider, and ask the provider about it by
+	// that id when the answer was lost (П-19, spec 62 §5.4 п. 2.4).
+	ReferenceIsPaymentID bool
 	// Disputes: arena can read a dispute and answer it through the
 	// provider's API (DisputeResponder). A provider without it still tells
 	// arena about a chargeback by webhook (EventDisputeOpened); the answer
