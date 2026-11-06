@@ -38,11 +38,14 @@ const (
 	StepPaid          = "paid"
 )
 
-// The surfaces a beacon may come from (the table CHECK in migration 0193).
+// The surfaces a beacon may come from (the table CHECK in migrations 0193 and 0201).
 const (
 	SurfaceWidget      = "widget"
 	SurfaceHostedPage  = "hosted_page"
 	SurfaceTicketsPage = "tickets_page"
+	// SurfaceExternalSite is a customer's own site on its own domain; it may
+	// name the event either way (feed token or page address).
+	SurfaceExternalSite = "external_site"
 )
 
 // ClientSteps are the steps the beacon counts, in funnel order.
@@ -52,7 +55,7 @@ var ClientSteps = []string{StepView, StepSessionOpen, StepSeatsChosen}
 var Steps = []string{StepView, StepSessionOpen, StepSeatsChosen, StepCheckoutStart, StepPaymentOpen, StepPaid}
 
 // Surfaces are the accepted beacon surfaces.
-var Surfaces = []string{SurfaceWidget, SurfaceHostedPage, SurfaceTicketsPage}
+var Surfaces = []string{SurfaceWidget, SurfaceHostedPage, SurfaceTicketsPage, SurfaceExternalSite}
 
 const (
 	// MaxBodyBytes is the largest request body the beacon reads. The body

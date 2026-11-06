@@ -16456,7 +16456,8 @@ type SalesFunnelPage struct {
 // A7). Name the event EITHER with `feed_token` and `event_id` (the widget)
 // OR with `page` (a page Arena hosts); sending both, or neither, is not
 // counted. The surface follows the addressing: `feed_token` is the
-// `widget` surface only, `page` is `hosted_page` or `tickets_page`. A body
+// `widget` surface, `page` is `hosted_page` or `tickets_page`; the
+// `external_site` surface (a customer's own site) may use either. A body
 // that disagrees with itself is not counted (the answer is still 204).
 // Unknown fields are ignored.
 type SalesFunnelRequest struct {
@@ -16481,8 +16482,10 @@ type SalesFunnelRequest struct {
 
 	// Surface Where the visitor was: `widget` (the embedded widget on a seller's
 	// own site), `hosted_page` (the hosted event page) or `tickets_page`
-	// (the promoter page that lists events). `widget` goes with
-	// `feed_token`, the other two with `page`. Any other value, or one that
+	// (the promoter page that lists events) or `external_site` (a
+	// customer's own site on its own domain). `widget` goes with
+	// `feed_token`, `hosted_page` and `tickets_page` with `page`,
+	// `external_site` with either. Any other value, or one that
 	// does not fit the addressing, is not counted.
 	Surface string `json:"surface"`
 
