@@ -1,4 +1,4 @@
--- 0201_test_sales_channel.sql — a test sales channel and test orders (П-13).
+-- 0202_test_sales_channel.sql — a test sales channel and test orders (П-13).
 --
 -- An organization may keep a second, test channel next to its live one. The
 -- test event is published only into it, payments still go through the live
