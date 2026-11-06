@@ -216,6 +216,27 @@ type HostedCheckoutRequest struct {
 	// reference, idempotency key, Flitt's order_id) and CheckoutSessionID is
 	// ignored. CheckoutToken is then the shop order's token.
 	ShopOrderID *uuid.UUID
+	// RecordAttempt, when set, is called for a provider whose payment id is
+	// arena's own reference (Capabilities.ReferenceIsPaymentID — AllPay)
+	// AFTER the configuration is resolved and BEFORE the provider is called,
+	// so the payment attempt exists even if the answer is lost or the process
+	// dies mid-call (П-19). An error stops the start: nothing is sent to the
+	// provider. Never called for any other provider.
+	RecordAttempt func(ctx context.Context, attempt PaymentAttempt) error
+	// ExpectProvider, when set, refuses the start (before any provider call)
+	// unless the channel's provider is still this one. The recovery job sets
+	// it: a page asked again for a recorded attempt must come from the
+	// provider the attempt is filed under.
+	ExpectProvider string
+}
+
+// PaymentAttempt is a hosted payment recorded before the provider call.
+type PaymentAttempt struct {
+	// Provider is the registry name the payment is filed under.
+	Provider string
+	// ProviderPaymentID is the id the provider will know the payment by: the
+	// request's reference.
+	ProviderPaymentID string
 }
 
 // reference is the arena id a hosted payment is filed under at the provider.
@@ -235,6 +256,9 @@ type HostedCheckoutResult struct {
 	// Provider is the provider that actually hosts the page (its registry
 	// name); it is what payment_intents.provider is recorded with.
 	Provider string
+	// AttemptRecorded reports that HostedCheckoutRequest.RecordAttempt ran
+	// and succeeded: the payment row exists, the caller only fills its page.
+	AttemptRecorded bool
 }
 
 // PaymentStarter creates the provider-hosted payment page for a confirmed
@@ -484,6 +508,13 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 
 	provider := cfg.entry.Descriptor.Name
 	caps := cfg.entry.Descriptor.Capabilities
+	if req.ExpectProvider != "" && !strings.EqualFold(req.ExpectProvider, provider) {
+		return nil, &PaymentStartError{
+			Code:    ErrCodePaymentProviderUnsupported,
+			Message: fmt.Sprintf("the sales channel now uses %s, the payment was started with %s", provider, req.ExpectProvider),
+			Status:  http.StatusConflict,
+		}
+	}
 	// The module learns which mode its config is filed under: a provider
 	// that takes it per request (AllPay's test_mode) then never charges a
 	// real card on a config filed as test.
@@ -529,6 +560,20 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 		returnWithToken = PaymentReturnURL(s.callbackBase, req.ReturnURL, req.CheckoutToken)
 	}
 
+	attemptRecorded := false
+	if caps.ReferenceIsPaymentID && req.RecordAttempt != nil {
+		if err := req.RecordAttempt(ctx, PaymentAttempt{Provider: provider, ProviderPaymentID: req.reference()}); err != nil {
+			// Nothing has been sent to the provider: refusing now loses the
+			// cart, never a payment.
+			return nil, &PaymentStartError{
+				Code:    ErrCodePaymentStartFailed,
+				Message: "We could not start the payment. Try again in a minute.",
+				Status:  http.StatusInternalServerError,
+			}
+		}
+		attemptRecorded = true
+	}
+
 	resp, err := adapter.CreateCheckoutSession(ctx, payments.CreateHostedCheckoutRequest{
 		Amount:            req.Amount,
 		Currency:          req.Currency,
@@ -560,11 +605,19 @@ func (s *StripePaymentStarter) StartHostedCheckout(ctx context.Context, req Host
 		return nil, fmt.Errorf("%s hosted checkout (config %s, mode %s): %w", provider, cfg.configID, cfg.mode, err)
 	}
 
+	if attemptRecorded && resp.SessionID != req.reference() {
+		// The recorded row is keyed by the reference: a page filed under
+		// another id would never meet its webhook.
+		return nil, fmt.Errorf("%s hosted checkout (config %s, mode %s): the provider filed the payment as %q, not under the recorded reference %q",
+			provider, cfg.configID, cfg.mode, resp.SessionID, req.reference())
+	}
+
 	return &HostedCheckoutResult{
-		RedirectURL: resp.URL,
-		SessionID:   resp.SessionID,
-		PaymentID:   resp.PaymentID,
-		Provider:    provider,
+		RedirectURL:     resp.URL,
+		SessionID:       resp.SessionID,
+		PaymentID:       resp.PaymentID,
+		Provider:        provider,
+		AttemptRecorded: attemptRecorded,
 	}, nil
 }
 
@@ -755,6 +808,33 @@ func (h *Handler) startHostedPayment(
 		return "", false
 	}
 
+	// For a provider that files the payment under arena's own reference
+	// (AllPay), the payment_intents row is written BEFORE the provider call:
+	// a lost answer or a crash mid-call then leaves an attempt the
+	// checkout.payment_recover job can ask the provider about, never a
+	// checkout with no payment behind it (П-19).
+	csID := in.Session.ID
+	var attemptID uuid.UUID
+	var recordAttempt func(context.Context, PaymentAttempt) error
+	if h.checkoutQueries != nil {
+		recordAttempt = func(ctx context.Context, a PaymentAttempt) error {
+			pi, err := h.checkoutQueries.InsertHostedPaymentAttempt(ctx,
+				&csID, in.CheckCtx.OrgID, a.Provider, a.ProviderPaymentID,
+				in.Breakdown.Total, in.Breakdown.Currency,
+			)
+			if err != nil {
+				h.logger.Error("public_feed_checkout: recording the payment attempt failed; the provider is not called",
+					slog.String("checkout_session_id", csID.String()),
+					slog.String("provider", a.Provider),
+					slog.String("error", err.Error()),
+				)
+				return err
+			}
+			attemptID = pi.ID
+			return nil
+		}
+	}
+
 	result, err := h.paymentStarter.StartHostedCheckout(ctx, HostedCheckoutRequest{
 		OrgID:             in.CheckCtx.OrgID,
 		ChannelID:         in.CheckCtx.SalesChannelID,
@@ -770,6 +850,7 @@ func (h *Handler) startHostedPayment(
 		ReturnURL:         in.ReturnBase,
 		ExpiresAtUnix:     in.ExpiresAt.Add(-h.paymentGrace).Unix(),
 		BuyerLocale:       in.Buyer.Locale,
+		RecordAttempt:     recordAttempt,
 	})
 	if err != nil {
 		if pse, isTyped := AsPaymentStartError(err); isTyped {
@@ -801,10 +882,20 @@ func (h *Handler) startHostedPayment(
 		return "", false
 	}
 
-	// The hosted SESSION id (cs_…) is the provider_payment_id: it is what
-	// every checkout.session.* webhook event identifies this payment by.
-	if h.checkoutQueries != nil {
-		csID := in.Session.ID
+	if result.AttemptRecorded {
+		// The payment row exists already; only its page is new. A failed
+		// write does not stop the buyer: the URL is in hand, the webhook
+		// finds the row by its id, and the recovery job fills the page.
+		if _, err := h.checkoutQueries.SetPaymentIntentHostedURL(ctx, attemptID, result.RedirectURL); err != nil {
+			h.logger.Warn("public_feed_checkout: storing the payment page of a recorded attempt failed",
+				slog.String("checkout_session_id", in.Session.ID.String()),
+				slog.String("payment_intent_id", attemptID.String()),
+				slog.String("error", err.Error()),
+			)
+		}
+	} else if h.checkoutQueries != nil {
+		// The hosted SESSION id (cs_…) is the provider_payment_id: it is what
+		// every checkout.session.* webhook event identifies this payment by.
 		if _, err := h.checkoutQueries.InsertHostedPaymentIntent(ctx,
 			&csID, in.CheckCtx.OrgID, result.Provider,
 			result.SessionID, in.Breakdown.Total, in.Breakdown.Currency,

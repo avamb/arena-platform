@@ -7590,6 +7590,26 @@ export interface paths {
          *     Response includes checkout_token (opaque high-entropy token, NOT UUID)
          *     and expires_at so the widget can display a countdown and later recover
          *     the order via WID-0b.
+         *
+         *     An optional `Idempotency-Key` header makes a retry safe. The key is
+         *     checked after the rate limit and before anything that takes a hold:
+         *     the same key with the same body answers the stored 201 again — the
+         *     same checkout and the same `redirect_url` — with the header
+         *     `Idempotent-Replay: true`, even when the hold has since been consumed
+         *     by that first request; the same key with another body is 409
+         *     `idempotency.body_mismatch`. Keys are scoped to the feed token and
+         *     kept for 24 hours; only a 2xx answer is stored, so a failed attempt
+         *     may be retried with the same key. A request without the header runs
+         *     as before.
+         *
+         *     For a provider that files the payment under arena's own reference
+         *     (AllPay: `order_id` is the checkout session id) the payment attempt
+         *     is recorded before the provider is called. When the provider's
+         *     answer is lost, the `checkout.payment_recover` worker job asks the
+         *     provider by the same reference: a paid order is completed exactly as
+         *     its webhook would complete it, an unpaid one gets its payment page
+         *     asked for again and offered as `payment_url` by
+         *     `GET /v1/public/checkout/{checkout_token}`.
          */
         post: operations["startPublicFeedCheckout"];
         delete?: never;
@@ -62380,7 +62400,16 @@ export interface operations {
     startPublicFeedCheckout: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /**
+                 * @description Optional client-generated key, one per payment attempt (at most
+                 *     255 bytes). The same key and body replay the stored answer; the
+                 *     same key with another body is 409. Scoped to the feed token, kept
+                 *     24 hours.
+                 * @example 550e8400-e29b-41d4-a716-446655440000
+                 */
+                "Idempotency-Key"?: string;
+            };
             path: {
                 /** @description Public feed token that scopes the available sessions. */
                 feed_token: string;
@@ -62393,7 +62422,11 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Checkout started. */
+            /**
+             * @description Checkout started, or — with `Idempotent-Replay: true` — the stored
+             *     answer of an earlier request with the same `Idempotency-Key` and
+             *     body.
+             */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -62407,7 +62440,9 @@ export interface operations {
              *     ticket lines or 100 seats), `checkout.invalid_qty` (a line over 50
              *     tickets), or `checkout.invalid_return_url` when the supplied
              *     `return_url` is not on the allowed-origin list and no
-             *     `PUBLIC_TICKETS_BASE_URL` fallback is configured.
+             *     `PUBLIC_TICKETS_BASE_URL` fallback is configured, or
+             *     `idempotency.key_too_long` for an `Idempotency-Key` over 255
+             *     bytes.
              */
             400: {
                 headers: {
@@ -62433,7 +62468,10 @@ export interface operations {
              *     session's sales end (`tier.not_on_sale`), or a session that was
              *     cancelled (`session.cancelled`) or that the organizer set to
              *     "coming soon" (`session.sales_not_started`) or "sold out"
-             *     (`session.sold_out`, both with `details.sales_state`).
+             *     (`session.sold_out`, both with `details.sales_state`), or
+             *     `idempotency.body_mismatch` when the `Idempotency-Key` was already
+             *     used with a different body (also while that first request is
+             *     still running).
              */
             409: {
                 headers: {

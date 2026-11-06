@@ -213,8 +213,43 @@ func (h *Handler) HandlePublicFeedCheckoutStart(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// ── 1a. Idempotency-Key (П-19). Checked AFTER the rate limit, so a
+	// replay still counts against it, and BEFORE everything that takes a
+	// hold: the same key and body answer the stored response (the same
+	// checkout and payment link) even when the hold has since been consumed
+	// by that very first request; the same key with another body is 409.
+	// Without the header the request runs as it always did.
+	h.serveCheckoutIdempotent(w, r, http.HandlerFunc(h.publicFeedCheckoutStart))
+}
+
+// serveCheckoutIdempotent runs next behind the checkout/start
+// Idempotency-Key middleware when one is installed.
+func (h *Handler) serveCheckoutIdempotent(w http.ResponseWriter, r *http.Request, next http.Handler) {
+	if h.checkoutIdem == nil {
+		next.ServeHTTP(w, r)
+		return
+	}
+	h.checkoutIdem(next).ServeHTTP(w, r)
+}
+
+// CheckoutStartMaxBody is how much of a checkout/start body is read, by the
+// handler and by the idempotency middleware in front of it alike.
+const CheckoutStartMaxBody = 64 * 1024
+
+// CheckoutStartIdempotencyScope is the idempotency_keys.scope of a
+// checkout/start request: one key namespace per feed token (sales channel),
+// no actor — the buyer is anonymous.
+func CheckoutStartIdempotencyScope(r *http.Request) string {
+	return "POST checkout/start:" + chi.URLParam(r, "feed_token")
+}
+
+// publicFeedCheckoutStart is checkout/start after the rate limit and the
+// idempotency check.
+func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request) {
+	feedToken := chi.URLParam(r, "feed_token")
+
 	// ── 2. Parse + validate body ──────────────────────────────────────────────
-	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024))
+	body, err := io.ReadAll(io.LimitReader(r.Body, CheckoutStartMaxBody))
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelope(
 			"checkout.invalid_body", "We could not read the request body: "+err.Error(), r,

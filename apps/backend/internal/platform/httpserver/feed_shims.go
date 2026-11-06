@@ -61,7 +61,8 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		WithFunnelDeduper(&s.funnelDedupe).
 		WithPromoAttempts(s.promoAttemptRecorder()).
 		WithSaleSubscriptions(s.saleSubscriptionService(), s.saleSubscriptionSalt()).
-		WithTicketAccessLog(s.ticketAccessRecorder())
+		WithTicketAccessLog(s.ticketAccessRecorder()).
+		WithCheckoutIdempotency(s.checkoutStartIdempotency())
 }
 
 // ticketAccessRecorder is the buyer's ticket access log (migration 0184); nil

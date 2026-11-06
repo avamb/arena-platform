@@ -205,6 +205,22 @@ type Options struct {
 	// different body (those paths are errors, not replays). Typical use: increment
 	// a Prometheus counter (e.g. observability.Metrics.IdempotencyReplaysTotal).
 	OnReplay func()
+	// Optional lets a request WITHOUT an Idempotency-Key header through to
+	// the handler untouched (no lookup, no capture, no save) instead of
+	// answering 400. A public route that adopted the key later (the widget's
+	// checkout/start, П-19) uses it so older clients keep working. A key that
+	// IS sent is still validated and enforced exactly as on a required route.
+	Optional bool
+	// ScopeFunc, when set, derives the scope from the request instead of the
+	// fixed Scope — e.g. "POST checkout/start:" + the feed token, so a key is
+	// only ever matched within one sales channel. An empty result falls back
+	// to Scope. It runs after routing, so chi URL params are available.
+	ScopeFunc func(r *http.Request) string
+	// MaxBodyBytes, when > 0, caps how much of the body the middleware reads
+	// (and hashes, and hands on). Anything beyond is cut, exactly as the
+	// handler's own io.LimitReader would cut it, so a public route cannot be
+	// made to buffer an arbitrarily large body before its own checks run.
+	MaxBodyBytes int64
 }
 
 // Middleware returns net/http middleware enforcing Idempotency-Key semantics
@@ -245,6 +261,10 @@ func Middleware(store Store, opts Options) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			key := strings.TrimSpace(r.Header.Get(HeaderName))
 			if key == "" {
+				if opts.Optional {
+					next.ServeHTTP(w, r)
+					return
+				}
 				writeIdempError(w, r, http.StatusBadRequest, "idempotency.missing_key", ErrMissingKey.Error())
 				return
 			}
@@ -254,7 +274,18 @@ func Middleware(store Store, opts Options) func(http.Handler) http.Handler {
 				return
 			}
 
-			bodyBytes, err := io.ReadAll(r.Body)
+			scope := opts.Scope
+			if opts.ScopeFunc != nil {
+				if s := opts.ScopeFunc(r); s != "" {
+					scope = s
+				}
+			}
+
+			var bodyReader io.Reader = r.Body
+			if opts.MaxBodyBytes > 0 {
+				bodyReader = io.LimitReader(r.Body, opts.MaxBodyBytes)
+			}
+			bodyBytes, err := io.ReadAll(bodyReader)
 			if err != nil {
 				writeIdempError(w, r, http.StatusBadRequest, "idempotency_read_body", err.Error())
 				return
@@ -264,7 +295,7 @@ func Middleware(store Store, opts Options) func(http.Handler) http.Handler {
 
 			reqHash := hashRequest(r.Method, r.URL.Path, bodyBytes)
 
-			stored, hit, err := store.Lookup(r.Context(), key, opts.Scope)
+			stored, hit, err := store.Lookup(r.Context(), key, scope)
 			if err != nil {
 				writeIdempError(w, r, http.StatusInternalServerError, "idempotency_lookup_failed", err.Error())
 				return
@@ -273,7 +304,7 @@ func Middleware(store Store, opts Options) func(http.Handler) http.Handler {
 				if stored.RequestHash != "" && stored.RequestHash != reqHash {
 					logging.FromContext(r.Context()).Warn("idempotency: body mismatch detected",
 						"code", "idempotency.body_mismatch",
-						"scope", opts.Scope,
+						"scope", scope,
 						"key", key,
 					)
 					writeIdempError(w, r, http.StatusConflict, "idempotency.body_mismatch", ErrConflict.Error())
@@ -290,7 +321,7 @@ func Middleware(store Store, opts Options) func(http.Handler) http.Handler {
 			// key+scope. The winning goroutine runs the handler and captures the
 			// response. Concurrent waiters share the captured result and replay it
 			// to their own ResponseWriter (with the Idempotent-Replay marker set).
-			sfKey := key + "\x00" + opts.Scope
+			sfKey := key + "\x00" + scope
 
 			// wasWinner is set to true inside the singleflight function only by
 			// the goroutine that actually runs it. Waiters never run the function,
@@ -306,7 +337,7 @@ func Middleware(store Store, opts Options) func(http.Handler) http.Handler {
 				rec := &capturingWriter{ResponseWriter: w, status: http.StatusOK, body: &bytes.Buffer{}}
 				ctx := contextWithMiddlewareState(r.Context(), &state{
 					key:     key,
-					scope:   opts.Scope,
+					scope:   scope,
 					ttl:     opts.TTL,
 					reqHash: reqHash,
 					actor:   opts.ActorID(r.Context()),
@@ -318,7 +349,7 @@ func Middleware(store Store, opts Options) func(http.Handler) http.Handler {
 					rec.Header().Del(persistedHeader)
 				} else if rec.status >= 200 && rec.status < 300 {
 					now := time.Now().UTC()
-					saveErr := store.Save(r.Context(), key, opts.Scope, opts.ActorID(r.Context()), StoredResponse{
+					saveErr := store.Save(r.Context(), key, scope, opts.ActorID(r.Context()), StoredResponse{
 						Status:      rec.status,
 						ContentType: rec.Header().Get("Content-Type"),
 						Body:        rec.body.Bytes(),
@@ -351,6 +382,13 @@ func Middleware(store Store, opts Options) func(http.Handler) http.Handler {
 				// This goroutine waited for the in-flight request to complete.
 				// Replay the captured response to our own ResponseWriter.
 				entry := val.(*concurrentEntry)
+				if entry.reqHash != reqHash {
+					// The same key arrived twice at once with DIFFERENT bodies:
+					// the in-flight one answers for its own body only. Same
+					// 409 as a stored mismatch.
+					writeIdempError(w, r, http.StatusConflict, "idempotency.body_mismatch", ErrConflict.Error())
+					return
+				}
 				if opts.OnReplay != nil {
 					opts.OnReplay()
 				}
