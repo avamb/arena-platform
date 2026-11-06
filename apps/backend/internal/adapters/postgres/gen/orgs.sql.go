@@ -420,8 +420,8 @@ func (q *Queries) GetSenderIdentityByTicketID(ctx context.Context, ticketID uuid
 // change resets verification: callers cannot mark an address verified.
 const updateOrganizationSenderEmail = `-- name: UpdateOrganizationSenderEmail :one
 UPDATE organizations
-SET sender_email = $2,
-    sender_verification_status = CASE WHEN $2 IS NULL THEN 'not_configured' ELSE 'pending' END,
+SET sender_email = $2::text,
+    sender_verification_status = CASE WHEN $2::text IS NULL THEN 'not_configured' ELSE 'pending' END,
     sender_verified_at = NULL,
     updated_at = now()
 WHERE id = $1 AND deleted_at IS NULL
