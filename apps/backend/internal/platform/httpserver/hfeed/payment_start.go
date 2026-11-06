@@ -781,6 +781,11 @@ type hostedPaymentInput struct {
 	ExpiresAt     time.Time
 }
 
+// hostedPaymentStartTimeout bounds the post-commit payment step (provider
+// call plus the payment_intents writes) once it is detached from the
+// client's request context.
+const hostedPaymentStartTimeout = 45 * time.Second
+
 // startHostedPayment creates the provider-hosted payment page and records the
 // payment_intents row, returning the URL to redirect the buyer to.
 //
@@ -795,6 +800,12 @@ func (h *Handler) startHostedPayment(
 	r *http.Request,
 	in hostedPaymentInput,
 ) (redirectURL string, ok bool) {
+	// The checkout transaction has already committed: a buyer who closes the
+	// tab now must not abort the provider call or the writes after it, or
+	// the order exists with no payment behind it. Detached from the client,
+	// bounded on its own.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), hostedPaymentStartTimeout)
+	defer cancel()
 	if h.paymentStarter == nil {
 		// Loud on purpose: a deployment that confirms carts it cannot charge
 		// is misconfigured, and every buyer hitting this loses their seats.

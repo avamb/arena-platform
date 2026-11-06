@@ -349,7 +349,9 @@ func Middleware(store Store, opts Options) func(http.Handler) http.Handler {
 					rec.Header().Del(persistedHeader)
 				} else if rec.status >= 200 && rec.status < 300 {
 					now := time.Now().UTC()
-					saveErr := store.Save(r.Context(), key, scope, opts.ActorID(r.Context()), StoredResponse{
+					// WithoutCancel: the client may have dropped the connection after
+					// the handler answered — exactly the retry case this row exists for.
+					saveErr := store.Save(context.WithoutCancel(r.Context()), key, scope, opts.ActorID(r.Context()), StoredResponse{
 						Status:      rec.status,
 						ContentType: rec.Header().Get("Content-Type"),
 						Body:        rec.body.Bytes(),
