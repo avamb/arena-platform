@@ -6255,7 +6255,7 @@ other = "Tracking number: {{.Text}}"
 other = "📝 <b>Note</b> ({{.By}}, {{.When}}): {{.Text}}"
 
 ["bot.sh.ship_btn"]
-other = "📦 Shipped"
+other = "🚚 Handed to courier"
 
 ["bot.sh.track_btn"]
 other = "✏️ Tracking number"
@@ -6291,7 +6291,7 @@ other = "📦 Order №{{.Num}}: write the tracking number, or press «No number
 other = "No number"
 
 ["bot.sh.ship_done"]
-other = "✔ Order №{{.Num}} is marked as shipped."
+other = "✔ Order №{{.Num}} is handed to the courier."
 
 ["bot.sh.note_ask"]
 other = "📝 Order №{{.Num}}: write the note. Only you and your colleagues see it, the buyer does not."
@@ -6484,6 +6484,86 @@ other = "This order has no such letter."
 
 ["bot.sh.err_unavailable"]
 other = "The bot could not save the operation, so nothing was sent. Try again."
+["bot.sh.tab_failed"]
+other = "Not delivered"
+
+["bot.sh.empty_failed"]
+other = "No orders with a failed delivery."
+
+["bot.sh.letter_delivered"]
+other = "Order delivered"
+
+["bot.sh.card_step"]
+other = "🚚 <b>Delivery:</b> {{.Step}}"
+
+["bot.sh.step_line"]
+other = "• {{.Step}} · {{.Who}} · {{.When}}{{.Extra}}"
+
+["bot.sh.step_track"]
+other = "No. {{.Text}}"
+
+["bot.sh.step_reason"]
+other = "reason: {{.Text}}"
+
+["bot.sh.step_waiting"]
+other = "Waiting to be packed"
+
+["bot.sh.step_packed"]
+other = "Packed"
+
+["bot.sh.step_handed_over"]
+other = "Handed to courier"
+
+["bot.sh.step_delivered"]
+other = "Delivered"
+
+["bot.sh.step_failed"]
+other = "Not delivered"
+
+["bot.sh.reason_no_answer"]
+other = "No answer on the phone"
+
+["bot.sh.reason_not_home"]
+other = "Not at home"
+
+["bot.sh.reason_wrong_address"]
+other = "Wrong address"
+
+["bot.sh.reason_refused"]
+other = "Refused to accept"
+
+["bot.sh.reason_other"]
+other = "Other"
+
+["bot.sh.packed_btn"]
+other = "📦 Packed"
+
+["bot.sh.delivered_btn"]
+other = "✅ Delivered"
+
+["bot.sh.failed_btn"]
+other = "❌ Not delivered"
+
+["bot.sh.failed_ask"]
+other = "❌ Order №{{.Num}}: why was it not delivered? Choose a reason."
+
+["bot.sh.reason_text_ask"]
+other = "✏️ Order №{{.Num}}: write the reason (up to 500 characters)."
+
+["bot.sh.step_done"]
+other = "✔ Order №{{.Num}}: {{.Step}}."
+
+["bot.sh.err_closed"]
+other = "The order was refunded or canceled, so there is nothing to send."
+
+["bot.sh.err_unpaid"]
+other = "The order is not paid yet, so it cannot move to a delivery step."
+
+["bot.sh.err_in_review"]
+other = "The order waits for your decision. Settle it first. Until then it can only be handed to the courier."
+
+["bot.sh.err_reason_long"]
+other = "The reason is too long. Use up to 500 characters."
 # --- salesnotify delivery steps and the sales bot (spec 61 section 7b) ---
 ["salesnotify.shop.step.waiting"]
 other = "⏳ Waiting to be packed"

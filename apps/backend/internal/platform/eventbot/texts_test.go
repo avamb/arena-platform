@@ -57,7 +57,7 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		// the Disputes screens (disputes_keys.go)
 		"Size": "12 KB", "Tag": " (t)",
 		// the Shop screens (shop_keys.go)
-		"ToShip": 3, "Review": "1", "Unpaid": 2, "Country": "ES", "Domain": "shop.example.test", "ReasonLine": "", "Seconds": 60,
+		"ToShip": 3, "Review": "1", "Unpaid": 2, "Country": "ES", "Domain": "shop.example.test", "ReasonLine": "", "Seconds": 60, "Who": "who",
 	}
 	for _, loc := range SupportedLocales {
 		for _, key := range MessageKeys {

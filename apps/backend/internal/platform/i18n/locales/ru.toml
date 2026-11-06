@@ -6249,7 +6249,7 @@ other = "Номер отправления: {{.Text}}"
 other = "📝 <b>Заметка</b> ({{.By}}, {{.When}}): {{.Text}}"
 
 ["bot.sh.ship_btn"]
-other = "📦 Отправлен"
+other = "🚚 Передан курьеру"
 
 ["bot.sh.track_btn"]
 other = "✏️ Номер отправления"
@@ -6285,7 +6285,7 @@ other = "📦 Заказ №{{.Num}}: напишите номер отправл
 other = "Без номера"
 
 ["bot.sh.ship_done"]
-other = "✔ Заказ №{{.Num}} отмечен отправленным."
+other = "✔ Заказ №{{.Num}} передан курьеру."
 
 ["bot.sh.note_ask"]
 other = "📝 Заказ №{{.Num}}: напишите заметку. Её видите только вы и коллеги, покупатель не видит."
@@ -6478,6 +6478,86 @@ other = "У этого заказа нет такого письма."
 
 ["bot.sh.err_unavailable"]
 other = "Бот не смог сохранить операцию, поэтому ничего не отправлено. Попробуйте ещё раз."
+["bot.sh.tab_failed"]
+other = "Не доставлены"
+
+["bot.sh.empty_failed"]
+other = "Недоставленных заказов нет."
+
+["bot.sh.letter_delivered"]
+other = "Заказ доставлен"
+
+["bot.sh.card_step"]
+other = "🚚 <b>Доставка:</b> {{.Step}}"
+
+["bot.sh.step_line"]
+other = "• {{.Step}} · {{.Who}} · {{.When}}{{.Extra}}"
+
+["bot.sh.step_track"]
+other = "номер {{.Text}}"
+
+["bot.sh.step_reason"]
+other = "причина: {{.Text}}"
+
+["bot.sh.step_waiting"]
+other = "Ждёт сборки"
+
+["bot.sh.step_packed"]
+other = "Собран"
+
+["bot.sh.step_handed_over"]
+other = "Передан курьеру"
+
+["bot.sh.step_delivered"]
+other = "Доставлен"
+
+["bot.sh.step_failed"]
+other = "Не доставлен"
+
+["bot.sh.reason_no_answer"]
+other = "Не дозвонились"
+
+["bot.sh.reason_not_home"]
+other = "Нет дома"
+
+["bot.sh.reason_wrong_address"]
+other = "Неверный адрес"
+
+["bot.sh.reason_refused"]
+other = "Отказ от получения"
+
+["bot.sh.reason_other"]
+other = "Другое"
+
+["bot.sh.packed_btn"]
+other = "📦 Собран"
+
+["bot.sh.delivered_btn"]
+other = "✅ Доставлен"
+
+["bot.sh.failed_btn"]
+other = "❌ Не доставлен"
+
+["bot.sh.failed_ask"]
+other = "❌ Заказ №{{.Num}}: почему не доставлен? Выберите причину."
+
+["bot.sh.reason_text_ask"]
+other = "✏️ Заказ №{{.Num}}: напишите причину (до 500 знаков)."
+
+["bot.sh.step_done"]
+other = "✔ Заказ №{{.Num}}: {{.Step}}."
+
+["bot.sh.err_closed"]
+other = "Заказ возвращён или отменён, отправлять нечего."
+
+["bot.sh.err_unpaid"]
+other = "Заказ ещё не оплачен, поэтому этап доставки отметить нельзя."
+
+["bot.sh.err_in_review"]
+other = "Заказ ждёт вашего решения. Сначала примите его. До этого заказ можно только передать курьеру."
+
+["bot.sh.err_reason_long"]
+other = "Причина слишком длинная. Напишите не больше 500 знаков."
 # --- salesnotify delivery steps and the sales bot (spec 61 section 7b) ---
 ["salesnotify.shop.step.waiting"]
 other = "⏳ Ждёт сборки"

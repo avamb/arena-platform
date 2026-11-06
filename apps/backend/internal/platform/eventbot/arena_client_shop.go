@@ -31,6 +31,9 @@ func shopOrderPath(orgID, orderID uuid.UUID) string {
 type ShopOrderQuery struct {
 	View   string
 	Status string
+	// Step narrows the list to one delivery step (waiting, packed, handed_over,
+	// delivered, failed) among the paid, shipped and partly refunded orders.
+	Step   string
 	Q      string
 	Limit  int
 	Offset int
@@ -49,6 +52,9 @@ func (c *ArenaClient) ShopOrders(ctx context.Context, jwt string, orgID uuid.UUI
 		if q.Status != "" {
 			body.Status = &q.Status
 		}
+		if q.Step != "" {
+			body.FulfillmentStep = &q.Step
+		}
 		if q.Limit > 0 {
 			body.Limit = &q.Limit
 		}
@@ -64,6 +70,9 @@ func (c *ArenaClient) ShopOrders(ctx context.Context, jwt string, orgID uuid.UUI
 	}
 	if q.Status != "" {
 		v.Set("status", q.Status)
+	}
+	if q.Step != "" {
+		v.Set("fulfillment_step", q.Step)
 	}
 	if q.Limit > 0 {
 		v.Set("limit", strconv.Itoa(q.Limit))
@@ -101,11 +110,27 @@ func (c *ArenaClient) ShopCourierText(ctx context.Context, jwt string, orgID, or
 	return string(out), err
 }
 
-// ShopShip marks an order shipped with an optional tracking note.
-func (c *ArenaClient) ShopShip(ctx context.Context, jwt string, orgID, orderID uuid.UUID, tracking string) (openapi.ShopOrder, error) {
+// ShopFulfillment moves an order to a delivery step (spec 61 section 7b): the
+// one writer the event center and the delivery group use too. The client
+// sends X-Client-Channel: telegram_bot on every call, so the order's history
+// says where the step came from. tracking is the shipment number of
+// handed_over (nil keeps the stored one), reason is why a delivery failed.
+func (c *ArenaClient) ShopFulfillment(ctx context.Context, jwt string, orgID, orderID uuid.UUID, step string, tracking *string, reason string) (openapi.ShopOrder, error) {
 	var out openapi.ShopOrder
-	err := c.do(ctx, http.MethodPost, shopOrderPath(orgID, orderID)+"/ship", jwt, openapi.ShopShipRequest{TrackingNote: &tracking}, &out)
+	body := openapi.ShopFulfillmentRequest{Step: step, Tracking: tracking}
+	if reason != "" {
+		body.Reason = &reason
+	}
+	err := c.do(ctx, http.MethodPost, shopOrderPath(orgID, orderID)+"/fulfillment", jwt, body, &out)
 	return out, err
+}
+
+// ShopShip hands an order to the courier with an optional tracking number. It
+// is the delivery step handed_over through the fulfillment route, the same
+// behaviour as the old "ship" call (status shipped, the buyer's letter once),
+// and repeating it only stores the number: an empty one clears it.
+func (c *ArenaClient) ShopShip(ctx context.Context, jwt string, orgID, orderID uuid.UUID, tracking string) (openapi.ShopOrder, error) {
+	return c.ShopFulfillment(ctx, jwt, orgID, orderID, "handed_over", &tracking, "")
 }
 
 // ShopNote replaces the internal note of an order (an empty text erases it).
@@ -115,7 +140,7 @@ func (c *ArenaClient) ShopNote(ctx context.Context, jwt string, orgID, orderID u
 	return out, err
 }
 
-// ShopResend queues a buyer letter again: received, shipped or refunded.
+// ShopResend queues a buyer letter again: received, shipped, delivered or refunded.
 func (c *ArenaClient) ShopResend(ctx context.Context, jwt string, orgID, orderID uuid.UUID, kind string) error {
 	return c.do(ctx, http.MethodPost, shopOrderPath(orgID, orderID)+"/resend-email", jwt, openapi.ShopResendEmailRequest{Kind: kind}, nil)
 }

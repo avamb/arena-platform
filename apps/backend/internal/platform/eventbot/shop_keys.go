@@ -39,7 +39,13 @@ var shopKeys = []string{
 	"bot.sh.err_payment_unconfirmed", "bot.sh.err_not_resolvable", "bot.sh.err_not_in_review",
 	"bot.sh.err_money_failed", "bot.sh.err_changed", "bot.sh.err_postal_required", "bot.sh.err_invalid_postal",
 	"bot.sh.err_too_long", "bot.sh.err_rate_limited", "bot.sh.err_no_email", "bot.sh.err_letter_unavailable",
-	"bot.sh.err_unavailable",
+	"bot.sh.err_unavailable", "bot.sh.tab_failed", "bot.sh.empty_failed", "bot.sh.letter_delivered",
+	"bot.sh.card_step", "bot.sh.step_line", "bot.sh.step_track", "bot.sh.step_reason", "bot.sh.step_waiting",
+	"bot.sh.step_packed", "bot.sh.step_handed_over", "bot.sh.step_delivered", "bot.sh.step_failed",
+	"bot.sh.reason_no_answer", "bot.sh.reason_not_home", "bot.sh.reason_wrong_address", "bot.sh.reason_refused",
+	"bot.sh.reason_other", "bot.sh.packed_btn", "bot.sh.delivered_btn", "bot.sh.failed_btn", "bot.sh.failed_ask",
+	"bot.sh.reason_text_ask", "bot.sh.step_done", "bot.sh.err_closed", "bot.sh.err_unpaid", "bot.sh.err_in_review",
+	"bot.sh.err_reason_long",
 }
 
 func init() {
