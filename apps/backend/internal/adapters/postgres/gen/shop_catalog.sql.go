@@ -34,17 +34,25 @@ type ShopSettingsRow struct {
 	MaxLineQty       int32      `json:"max_line_qty"`
 	UpdatedAt        time.Time  `json:"updated_at"`
 	ShopDomain       *string    `json:"shop_domain"`
+	// ShopName is the shop's own name (letters, storefront); nil = the
+	// organization's name.
+	ShopName *string `json:"shop_name"`
+	// SenderEmail is the From address of the shop letters; nil = the
+	// organization's sender, else the platform address.
+	SenderEmail *string `json:"sender_email"`
 }
 
 const shopSettingsColumns = `s.org_id, s.currency, s.shipping_fee_minor, s.shipping_label, s.country_iso2,
        s.age_gate_min_age, s.announcement_text, s.contact_email, s.logistics_note,
-       s.sales_channel_id, s.enabled, s.max_line_qty, s.updated_at, o.shop_domain`
+       s.sales_channel_id, s.enabled, s.max_line_qty, s.updated_at, o.shop_domain,
+       s.shop_name, s.sender_email`
 
 func scanShopSettingsRow(row interface{ Scan(dest ...any) error }) (ShopSettingsRow, error) {
 	var s ShopSettingsRow
 	err := row.Scan(&s.OrgID, &s.Currency, &s.ShippingFeeMinor, &s.ShippingLabel, &s.CountryISO2,
 		&s.AgeGateMinAge, &s.AnnouncementText, &s.ContactEmail, &s.LogisticsNote,
-		&s.SalesChannelID, &s.Enabled, &s.MaxLineQty, &s.UpdatedAt, &s.ShopDomain)
+		&s.SalesChannelID, &s.Enabled, &s.MaxLineQty, &s.UpdatedAt, &s.ShopDomain,
+		&s.ShopName, &s.SenderEmail)
 	return s, err
 }
 
@@ -83,15 +91,16 @@ func (q *Queries) EnsureShopSettings(ctx context.Context, orgID uuid.UUID) error
 const upsertShopSettings = `-- name: UpsertShopSettings :exec
 INSERT INTO shop_settings (org_id, currency, shipping_fee_minor, shipping_label, country_iso2,
                            age_gate_min_age, announcement_text, contact_email, logistics_note,
-                           sales_channel_id, enabled, max_line_qty, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
+                           sales_channel_id, enabled, max_line_qty, shop_name, sender_email, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, now())
 ON CONFLICT (org_id) DO UPDATE SET
     currency = EXCLUDED.currency, shipping_fee_minor = EXCLUDED.shipping_fee_minor,
     shipping_label = EXCLUDED.shipping_label, country_iso2 = EXCLUDED.country_iso2,
     age_gate_min_age = EXCLUDED.age_gate_min_age, announcement_text = EXCLUDED.announcement_text,
     contact_email = EXCLUDED.contact_email, logistics_note = EXCLUDED.logistics_note,
     sales_channel_id = EXCLUDED.sales_channel_id, enabled = EXCLUDED.enabled,
-    max_line_qty = EXCLUDED.max_line_qty, updated_at = now()`
+    max_line_qty = EXCLUDED.max_line_qty, shop_name = EXCLUDED.shop_name,
+    sender_email = EXCLUDED.sender_email, updated_at = now()`
 
 // UpsertShopSettingsParams is the whole settings row (PUT replaces it).
 type UpsertShopSettingsParams struct {
@@ -107,13 +116,15 @@ type UpsertShopSettingsParams struct {
 	SalesChannelID   *uuid.UUID
 	Enabled          bool
 	MaxLineQty       int32
+	ShopName         *string
+	SenderEmail      *string
 }
 
 // UpsertShopSettings writes the settings row of an organization.
 func (q *Queries) UpsertShopSettings(ctx context.Context, p UpsertShopSettingsParams) error {
 	_, err := q.db.Exec(ctx, upsertShopSettings, p.OrgID, p.Currency, p.ShippingFeeMinor, p.ShippingLabel,
 		p.CountryISO2, p.AgeGateMinAge, p.AnnouncementText, p.ContactEmail, p.LogisticsNote, p.SalesChannelID,
-		p.Enabled, p.MaxLineQty)
+		p.Enabled, p.MaxLineQty, p.ShopName, p.SenderEmail)
 	return err
 }
 

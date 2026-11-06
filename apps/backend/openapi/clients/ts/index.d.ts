@@ -35267,6 +35267,10 @@ export interface components {
             sales_channel_id?: string | null;
             /** @description Host name of the storefront, set by the platform operator; null when none. */
             shop_domain?: string | null;
+            /** @description The shop's own name, printed by the storefront and in the header and the From display name of the shop letters; null means the organization's name. */
+            shop_name?: string | null;
+            /** @description From address of the shop letters, set by the platform operator once the domain is authenticated with the e-mail provider; null means the organization's verified sender, else the platform address. */
+            sender_email?: string | null;
             /**
              * Format: int32
              * @description How many units of one variant an order may hold (1-99, 24 by default).
@@ -35560,6 +35564,10 @@ export interface components {
             sales_channel_id?: string | null;
             /** @description Storefront host (platform superadmin only); absent or null keeps it, an empty string clears it. */
             shop_domain?: string | null;
+            /** @description The shop's own name, up to 100 characters; absent or null keeps it, an empty string clears it (the organization's name again). */
+            shop_name?: string | null;
+            /** @description From address of the shop letters (platform superadmin only, 403 `shop.sender_superadmin_only` otherwise); absent or null keeps it, an empty string clears it. */
+            sender_email?: string | null;
             /**
              * Format: int32
              * @description How many units of one variant an order may hold, 1-99; absent or null keeps the stored value (24 for a new shop).
@@ -36547,6 +36555,8 @@ export interface components {
              * @description How many units of one variant an order may hold; the quantity picker stops there.
              */
             max_line_qty?: number;
+            /** @description The shop's own name; absent when it has none, and the storefront then prints its built-in name. */
+            shop_name?: string;
             /** @description Cloudflare Turnstile site key the checkout form renders its widget with; the widget's token goes to checkout as `captcha_token`. Absent while the shop's checkout has no captcha. */
             captcha_site_key?: string;
             /** @description True while the shop runs a "Refer a friend" programme; the checkout then offers a promo-code field. An older server leaves it out, read that as false. */
@@ -78498,7 +78508,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Caller lacks `shop.manage`, is not a member, or is not a platform superadmin and tried to change `shop_domain` (`shop.domain_superadmin_only`). */
+            /** @description Caller lacks `shop.manage`, is not a member, or is not a platform superadmin and tried to change `shop_domain` (`shop.domain_superadmin_only`) or `sender_email` (`shop.sender_superadmin_only`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -78525,7 +78535,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`, `shop.invalid_max_line_qty`), the payment provider of the sales channel cannot charge in the currency (`shop.currency_unsupported`; AllPay charges ILS, USD and EUR only), or `enabled` true cannot open the storefront yet (`shop.cannot_open`, `details.blockers` lists `no_active_product` and/or `payment_not_configured`). */
+            /** @description A field is invalid (`shop.invalid_currency`, `shop.invalid_shipping_fee`, `shop.invalid_country`, `shop.invalid_age_gate`, `shop.invalid_contact_email`, `shop.text_too_long`, `shop.invalid_channel`, `shop.invalid_domain`, `shop.invalid_max_line_qty`, `shop.invalid_shop_name`, `shop.invalid_sender_email`), the payment provider of the sales channel cannot charge in the currency (`shop.currency_unsupported`; AllPay charges ILS, USD and EUR only), or `enabled` true cannot open the storefront yet (`shop.cannot_open`, `details.blockers` lists `no_active_product` and/or `payment_not_configured`). */
             422: {
                 headers: {
                     [name: string]: unknown;

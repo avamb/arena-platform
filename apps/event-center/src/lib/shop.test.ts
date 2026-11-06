@@ -423,10 +423,20 @@ describe("the settings form", () => {
       contact_email: null,
       logistics_note: "Call first",
       sales_channel_id: null,
+      shop_name: "",
       max_line_qty: 24,
     });
     expect(body).not.toHaveProperty("shop_domain");
     expect(body).not.toHaveProperty("enabled");
+    // The sender address is the platform operator's: the form never sends it.
+    expect(body).not.toHaveProperty("sender_email");
+  });
+
+  it("sends the shop's own name trimmed, and an empty one to clear it", () => {
+    expect(settingsRequest({ ...settingsDraft(settings), shopName: "  Einat Winery " }).shop_name).toBe("Einat Winery");
+    expect(settingsDraft({ ...settings, shop_name: "Einat Winery" }).shopName).toBe("Einat Winery");
+    expect(checkSettings({ ...settingsDraft(settings), shopName: "x".repeat(101) })).toEqual({ shopName: true });
+    expect(checkSettings({ ...settingsDraft(settings), shopName: "x".repeat(100) })).toEqual({});
   });
 
   it("names what does not fit", () => {

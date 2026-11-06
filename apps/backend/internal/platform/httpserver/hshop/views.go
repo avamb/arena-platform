@@ -24,6 +24,8 @@ type settingsJSON struct {
 	LogisticsNote    string     `json:"logistics_note"`
 	SalesChannelID   *string    `json:"sales_channel_id"`
 	ShopDomain       *string    `json:"shop_domain"`
+	ShopName         *string    `json:"shop_name"`
+	SenderEmail      *string    `json:"sender_email"`
 	MaxLineQty       int32      `json:"max_line_qty"`
 	Enabled          bool       `json:"enabled"`
 	UpdatedAt        *time.Time `json:"updated_at"`
@@ -37,6 +39,16 @@ type settingsJSON struct {
 	// OpenBlockers lists what keeps the storefront from opening (never null).
 	OpenBlockers []string `json:"open_blockers"`
 }
+
+// optStr is an optional string for an audit field ("" for none).
+func optStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func sameOptStr(a, b *string) bool { return optStr(a) == optStr(b) }
 
 func uuidPtrStr(id *uuid.UUID) *string {
 	if id == nil {
@@ -52,6 +64,7 @@ func toSettingsJSON(v shop.SettingsView) settingsJSON {
 		ShippingFeeMinor: v.ShippingFeeMinor, ShippingLabel: v.ShippingLabel, CountryISO2: v.CountryISO2,
 		AgeGateMinAge: v.AgeGateMinAge, AnnouncementText: v.AnnouncementText, ContactEmail: v.ContactEmail,
 		LogisticsNote: v.LogisticsNote, SalesChannelID: uuidPtrStr(v.SalesChannelID), ShopDomain: v.ShopDomain,
+		ShopName: v.ShopName, SenderEmail: v.SenderEmail,
 		MaxLineQty: v.MaxLineQty, Enabled: v.Enabled, OpenBlockers: []string{},
 	}
 	if v.Configured {

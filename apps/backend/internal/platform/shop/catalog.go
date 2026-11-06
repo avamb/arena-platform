@@ -97,7 +97,20 @@ type SettingsInput struct {
 	// saved meanwhile), the write is refused with 409 shop.settings_changed
 	// and nothing is applied. nil skips the check.
 	ExpectedUpdatedAt *time.Time
+	// ShopName is the shop's own name for the storefront and the shop
+	// letters: nil keeps the stored one, "" clears it (the organization's
+	// name again), anything else is 1-100 characters.
+	ShopName *string
+	// SenderEmail is the From address of the shop letters: nil keeps it, ""
+	// clears it. Only a caller with MayChangeSender may change it (403
+	// shop.sender_superadmin_only otherwise).
+	SenderEmail *string
+	// MayChangeSender lets the caller set the sender (a platform superadmin).
+	MayChangeSender bool
 }
+
+// MaxShopNameLen caps the shop's own name.
+const MaxShopNameLen = 100
 
 // CurrencySource tells which currencies a payment provider can charge in.
 // An empty answer means the provider does not restrict the currency (or is
@@ -199,8 +212,44 @@ func validateSettings(in *SettingsInput) error {
 	if !textOK(in.ShippingLabel, MaxShortTextLen) || !textOK(in.AnnouncementText, MaxAnnouncement) || !textOK(in.LogisticsNote, MaxNoteLen) {
 		return invalid("shop.text_too_long", "shipping_label is limited to 200 characters, announcement_text to 500, logistics_note to 2000")
 	}
+	if in.ShopName != nil {
+		n := strings.TrimSpace(*in.ShopName)
+		if !textOK(n, MaxShopNameLen) {
+			return invalid("shop.invalid_shop_name", "shop_name is limited to 100 characters")
+		}
+		in.ShopName = &n
+	}
+	if in.SenderEmail != nil {
+		e := strings.ToLower(strings.TrimSpace(*in.SenderEmail))
+		if e != "" && !ValidEmail(e) {
+			return invalid("shop.invalid_sender_email", "sender_email is not a valid e-mail address")
+		}
+		in.SenderEmail = &e
+	}
 	return nil
 }
+
+// keepOrSet resolves a "nil keeps, empty clears" field against the stored
+// value.
+func keepOrSet(stored, in *string) *string {
+	if in == nil {
+		return stored
+	}
+	if *in == "" {
+		return nil
+	}
+	return in
+}
+
+// sameStr compares two optional strings.
+func sameStr(a, b *string) bool {
+	return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
+}
+
+// errSenderNotAllowed refuses a change of the shop's From address by anyone
+// but the platform operator.
+var errSenderNotAllowed = newErr(http.StatusForbidden, "shop.sender_superadmin_only",
+	"only the platform operator can change the sender address of the shop letters")
 
 // PutSettings validates and writes the settings and returns them.
 func (s *Service) PutSettings(ctx context.Context, orgID uuid.UUID, in SettingsInput) (SettingsView, error) {
@@ -302,12 +351,17 @@ func (s *Service) PutSettings(ctx context.Context, orgID uuid.UUID, in SettingsI
 				}
 			}
 		}
+		sender := keepOrSet(cur.SenderEmail, in.SenderEmail)
+		if !sameStr(sender, cur.SenderEmail) && !in.MayChangeSender {
+			return errSenderNotAllowed
+		}
 		return q.UpsertShopSettings(ctx, gen.UpsertShopSettingsParams{
 			OrgID: orgID, Currency: in.Currency, ShippingFeeMinor: in.ShippingFeeMinor,
 			ShippingLabel: in.ShippingLabel, CountryISO2: in.CountryISO2, AgeGateMinAge: in.AgeGateMinAge,
 			AnnouncementText: in.AnnouncementText, ContactEmail: in.ContactEmail,
 			LogisticsNote: in.LogisticsNote, SalesChannelID: in.SalesChannelID,
 			Enabled: enabled, MaxLineQty: maxLine,
+			ShopName: keepOrSet(cur.ShopName, in.ShopName), SenderEmail: sender,
 		})
 	})
 	if err != nil {
