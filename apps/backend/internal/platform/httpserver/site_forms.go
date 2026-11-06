@@ -7,11 +7,13 @@ package httpserver
 // Turnstile check of package hsite.
 
 import (
+	"context"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hfeed"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/honboarding"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hsite"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/idempotency"
@@ -87,4 +89,22 @@ func (s *Server) handleSiteSubscribe(w http.ResponseWriter, r *http.Request) {
 		Pool: s.pgxPool, Guard: s.siteFormGuard(),
 		TrustedProxies: s.siteFormTrustedProxies(), Logger: s.logger,
 	}).HandleSubscribe(w, r)
+}
+
+// myTicketsCaptcha is the Turnstile gate of the "my tickets" link request: the
+// site forms' guard with action my_tickets, required only for a channel that
+// lists site origins. Nil without a database (the route then answers 503 on
+// its own).
+func (s *Server) myTicketsCaptcha() hfeed.MyTicketsCaptcha {
+	if s.pgxPool == nil {
+		return nil
+	}
+	guard := s.siteFormGuard()
+	pool := s.pgxPool
+	lookup := func(ctx context.Context, feedToken string) (hsite.Channel, error) {
+		return hsite.ChannelByFeedToken(ctx, pool, feedToken)
+	}
+	return func(ctx context.Context, feedToken, captchaToken, ip string) hsite.CaptchaOutcome {
+		return guard.CaptchaForFeed(ctx, lookup, feedToken, captchaToken, ip, hsite.ActionMyTickets)
+	}
 }

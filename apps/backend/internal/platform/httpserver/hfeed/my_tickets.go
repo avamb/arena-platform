@@ -14,6 +14,7 @@ package hfeed
 // who has bought. Nothing here logs an address, a token or a session.
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -30,6 +31,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hsite"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/humancode"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mytickets"
@@ -40,6 +42,19 @@ import (
 func (h *Handler) WithMyTickets(svc *mytickets.Service, ipSalt string) *Handler {
 	h.myTickets = svc
 	h.myTicketsSalt = ipSalt
+	return h
+}
+
+// MyTicketsCaptcha checks the Turnstile token of a link request for the feed
+// token's channel (hsite.Guard.CaptchaForFeed with action my_tickets): a
+// channel with site origins must send a valid token, any other channel is not
+// gated.
+type MyTicketsCaptcha func(ctx context.Context, feedToken, captchaToken, ip string) hsite.CaptchaOutcome
+
+// WithMyTicketsCaptcha wires the Turnstile gate of the link request. Returns
+// the receiver for chaining.
+func (h *Handler) WithMyTicketsCaptcha(fn MyTicketsCaptcha) *Handler {
+	h.myTicketsCaptcha = fn
 	return h
 }
 
@@ -80,6 +95,9 @@ type MyTicketsLinkRequest struct {
 	// origin is allowed to call this API; otherwise the tickets site's own
 	// /my-tickets page is linked.
 	PageURL string `json:"page_url"`
+	// TurnstileToken is the Cloudflare Turnstile token (action my_tickets).
+	// Required when the channel lists site origins, ignored otherwise.
+	TurnstileToken string `json:"turnstile_token,omitempty"`
 }
 
 // HandleMyTicketsRequestLink serves the link request.
@@ -100,6 +118,12 @@ func (h *Handler) HandleMyTicketsRequestLink(w http.ResponseWriter, r *http.Requ
 			"my_tickets.invalid_json", "The request body is not valid JSON. Fix it and send it again.", r,
 		))
 		return
+	}
+	if h.myTicketsCaptcha != nil {
+		outcome := h.myTicketsCaptcha(r.Context(), feedToken, req.TurnstileToken, h.clientIP(r))
+		if !hsite.WriteCaptchaOutcome(w, r, "my_tickets", outcome) {
+			return
+		}
 	}
 	page := ""
 	if h.returnURLPolicy.AllowsOrigin(req.PageURL) {

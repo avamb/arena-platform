@@ -11627,6 +11627,12 @@ type MyTicketsLinkRequest struct {
 	// PageUrl The site page the letter links to (it receives `?t=<token>`). Used only
 	// when its origin is on the return-URL allow-list.
 	PageUrl *string `json:"page_url,omitempty"`
+
+	// TurnstileToken Cloudflare Turnstile token solved with the action `my_tickets` on
+	// one of the channel's site origins (`settings.site.origins`).
+	// Required when the channel lists site origins (a static site such
+	// as Vino&Co), ignored for any other channel.
+	TurnstileToken *string `json:"turnstile_token,omitempty"`
 }
 
 // MyTicketsOrder One listed order.

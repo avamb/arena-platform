@@ -7777,7 +7777,10 @@ export interface paths {
          *     `POST /v1/public/my-tickets/session`, never by opening the page. Limits:
          *     3 letters an hour per address, 10 an hour per client address, and the
          *     feed-token and per-IP buckets. `page_url` is used only when its origin is
-         *     on the return-URL allow-list. No JWT is required.
+         *     on the return-URL allow-list. When the channel lists site origins
+         *     (`settings.site.origins`) the request also needs a `turnstile_token`
+         *     (action `my_tickets`), checked by the same guard as the site forms;
+         *     any other channel is not gated by a captcha. No JWT is required.
          */
         post: operations["requestPublicMyTicketsLink"];
         delete?: never;
@@ -27688,6 +27691,13 @@ export interface components {
              *     when its origin is on the return-URL allow-list.
              */
             page_url?: string;
+            /**
+             * @description Cloudflare Turnstile token solved with the action `my_tickets` on
+             *     one of the channel's site origins (`settings.site.origins`).
+             *     Required when the channel lists site origins (a static site such
+             *     as Vino&Co), ignored for any other channel.
+             */
+            turnstile_token?: string;
         };
         /** @description Body of `POST /v1/public/my-tickets/session`. */
         MyTicketsExchangeRequest: {
@@ -63629,6 +63639,15 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /** @description `my_tickets.captcha_failed` - the channel lists site origins and the Turnstile token is missing or wrong. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description `feed.token_not_found` - the feed token is unknown or revoked. */
             404: {
                 headers: {
@@ -63647,7 +63666,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `dependency.database_unavailable` - the service is not wired. */
+            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.captcha_not_configured` or `my_tickets.captcha_unavailable` - the anti-robot check cannot run now. */
             503: {
                 headers: {
                     [name: string]: unknown;

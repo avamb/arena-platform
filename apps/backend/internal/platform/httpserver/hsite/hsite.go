@@ -213,3 +213,32 @@ func HashIP(salt, ip string) string {
 	sum := sha256.Sum256([]byte(salt + "|contact|" + ip))
 	return hex.EncodeToString(sum[:])
 }
+
+// ChannelLookup resolves the site channel of a feed token; ChannelByFeedToken
+// bound to a pool in production, a fake in tests.
+type ChannelLookup func(ctx context.Context, feedToken string) (Channel, error)
+
+// CaptchaForFeed is the Turnstile gate of a route that is addressed by a
+// feed token but existed before the site forms (the "my tickets" link
+// request, action my_tickets). A channel that lists site origins
+// (settings.site.origins) must send a token solved on one of them; a channel
+// without origins, or an unknown token, is not gated here at all, so the
+// route keeps working as before for a hosted page or a WordPress site (its
+// own limits still apply, and an unknown token still answers its 404). A
+// failed channel lookup reports CaptchaUnavailable (503), never a silent pass.
+func (g Guard) CaptchaForFeed(ctx context.Context, lookup ChannelLookup, feedToken, token, ip, action string) CaptchaOutcome {
+	if lookup == nil {
+		return CaptchaOK
+	}
+	ch, err := lookup(ctx, feedToken)
+	if errors.Is(err, ErrNoChannel) {
+		return CaptchaOK
+	}
+	if err != nil {
+		if g.Logger != nil {
+			g.Logger.Warn("site form: channel lookup failed", slog.String("action", action), slog.String("error", err.Error()))
+		}
+		return CaptchaUnavailable
+	}
+	return g.Captcha(ctx, ch, token, ip, action)
+}

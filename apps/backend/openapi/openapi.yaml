@@ -16761,6 +16761,14 @@ components:
           description: |
             The site page the letter links to (it receives `?t=<token>`). Used only
             when its origin is on the return-URL allow-list.
+        turnstile_token:
+          type: string
+          maxLength: 2048
+          description: |
+            Cloudflare Turnstile token solved with the action `my_tickets` on
+            one of the channel's site origins (`settings.site.origins`).
+            Required when the channel lists site origins (a static site such
+            as Vino&Co), ignored for any other channel.
     MyTicketsExchangeRequest:
       type: object
       description: Body of `POST /v1/public/my-tickets/session`.
@@ -54292,7 +54300,10 @@ paths:
         `POST /v1/public/my-tickets/session`, never by opening the page. Limits:
         3 letters an hour per address, 10 an hour per client address, and the
         feed-token and per-IP buckets. `page_url` is used only when its origin is
-        on the return-URL allow-list. No JWT is required.
+        on the return-URL allow-list. When the channel lists site origins
+        (`settings.site.origins`) the request also needs a `turnstile_token`
+        (action `my_tickets`), checked by the same guard as the site forms;
+        any other channel is not gated by a captcha. No JWT is required.
       tags: [v1, public]
       parameters:
         - name: feed_token
@@ -54320,6 +54331,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: "`my_tickets.captcha_failed` - the channel lists site origins and the Turnstile token is missing or wrong."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "404":
           description: "`feed.token_not_found` - the feed token is unknown or revoked."
           content:
@@ -54333,7 +54350,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
-          description: "`dependency.database_unavailable` - the service is not wired."
+          description: "`dependency.database_unavailable` - the service is not wired; `my_tickets.captcha_not_configured` or `my_tickets.captcha_unavailable` - the anti-robot check cannot run now."
           content:
             application/json:
               schema:

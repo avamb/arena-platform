@@ -106,8 +106,11 @@ type Handler struct {
 	// (WithSaleSubscriptions, sale_subscribe.go); nil answers 503.
 	saleSubscribe *salesubscribe.Service
 	// myTickets / myTicketsSalt serve "my tickets by link" (my_tickets.go).
-	myTickets         *mytickets.Service
-	myTicketsSalt     string
+	myTickets     *mytickets.Service
+	myTicketsSalt string
+	// myTicketsCaptcha is the Turnstile gate of the link request (hsite,
+	// action my_tickets); nil leaves the route on its rate limits only.
+	myTicketsCaptcha  MyTicketsCaptcha
 	saleSubscribeSalt string
 	// paymentStarter creates the provider-hosted payment page after the
 	// checkout transaction has committed. Nil means this deployment cannot
