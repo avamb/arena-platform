@@ -21264,6 +21264,20 @@ type TicketTierItem struct {
 	// for `pricing_mode = free`; must be > 0 for `pricing_mode = fixed`.
 	PriceAmount int64 `json:"price_amount"`
 
+	// PriceStep Public feed only. Present on a category that sells in steps by
+	// tickets sold (a chain whose next category is dearer): how many
+	// tickets are left at this price and where the sale goes next.
+	PriceStep *struct {
+		// NextPrice The price of the next step in minor units.
+		NextPrice *int64 `json:"next_price,omitempty"`
+
+		// NextTierId The id of the next category in the chain, where the sale goes after this step; null when unknown.
+		NextTierId *openapi_types.UUID `json:"next_tier_id"`
+
+		// RemainingAtPrice How many tickets are left at the current price, null when unknown.
+		RemainingAtPrice *int `json:"remaining_at_price"`
+	} `json:"price_step,omitempty"`
+
 	// PricingMode Pricing model for the tier. Drives validation of `price_amount`
 	// and the optional `pwyw_min` / `pwyw_max` bounds.
 	PricingMode TicketTierItemPricingMode `json:"pricing_mode"`

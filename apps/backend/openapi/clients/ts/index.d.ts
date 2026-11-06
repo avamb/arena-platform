@@ -24506,6 +24506,25 @@ export interface components {
              */
             next_price_change_at?: string | null;
             /**
+             * @description Public feed only. Present on a category that sells in steps by
+             *     tickets sold (a chain whose next category is dearer): how many
+             *     tickets are left at this price and where the sale goes next.
+             */
+            price_step?: {
+                /** @description How many tickets are left at the current price, null when unknown. */
+                remaining_at_price?: number | null;
+                /**
+                 * Format: int64
+                 * @description The price of the next step in minor units.
+                 */
+                next_price?: number;
+                /**
+                 * Format: uuid
+                 * @description The id of the next category in the chain, where the sale goes after this step; null when unknown.
+                 */
+                next_tier_id?: string | null;
+            };
+            /**
              * @description Whether the category is open for sale. A closed category
              *     (false) accepts no NEW holds; places already held or sold are
              *     untouched and an order already placed can still be paid. Always

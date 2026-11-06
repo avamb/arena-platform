@@ -38,7 +38,8 @@ func TestBuildChainView_SmartChainShowsOneCardUnderTheFirstName(t *testing.T) {
 	left := 7
 	tr := publicFeedTierResponse{CurrentPrice: 2200, Available: &left}
 	ps := v.priceStep(ids[1], tr, map[uuid.UUID]priceresolve.Effective{}, tiers)
-	if ps == nil || ps.NextPrice != 2400 || *ps.RemainingAtPrice != 7 {
+	if ps == nil || ps.NextPrice != 2400 || *ps.RemainingAtPrice != 7 ||
+		ps.NextTierID == nil || *ps.NextTierID != ids[2].String() {
 		t.Fatalf("price step = %+v", ps)
 	}
 	if v.priceStep(ids[2], publicFeedTierResponse{CurrentPrice: 2400}, nil, tiers) != nil {
