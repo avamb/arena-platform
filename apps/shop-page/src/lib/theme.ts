@@ -34,6 +34,8 @@ export interface ThemeConfig {
   homeDescription: string;
   /** The age gate popup of the live site is in Hebrew (the buyers are in Israel). */
   ageGate: { heading: string; mark: string; allow: string; deny: string; exitUrl: string; lang: string };
+  /** Meta pixel of the old store (Facebook & Instagram app); fires on `domains` only, see lib/pixel.ts. */
+  metaPixelId?: string;
 }
 
 export const EINAT_THEME: ThemeConfig = {
@@ -76,4 +78,5 @@ export const EINAT_THEME: ThemeConfig = {
     exitUrl: 'https://www.google.com/',
     lang: 'he',
   },
+  metaPixelId: '1352226752766944',
 };

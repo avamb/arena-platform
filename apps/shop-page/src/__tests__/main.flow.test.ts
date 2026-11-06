@@ -93,6 +93,11 @@ beforeAll(async () => {
 });
 
 describe('storefront wiring', () => {
+  it('the platform host carries no Meta pixel: it belongs to the shop domain only', () => {
+    expect((window as unknown as { fbq?: unknown }).fbq).toBeUndefined();
+    expect(document.querySelector('script[src*="connect.facebook.net"]')).toBeNull();
+  });
+
   it('SA-03 / SA-22: boot drops the unknown line, cuts to the stock, saves, counts only visible units', () => {
     expect(savedCart()).toEqual([{ variant_id: 'a1', qty: 3 }]);
     expect(document.querySelectorAll('.cart-item').length).toBe(1);

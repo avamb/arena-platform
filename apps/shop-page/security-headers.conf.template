@@ -11,7 +11,10 @@
 # hosted payment page with a plain navigation.
 # challenges.cloudflare.com (script-src, frame-src) is the Turnstile captcha
 # of the checkout form (loaded only when the shop publishes a site key).
+# connect.facebook.net (script-src, connect-src) and www.facebook.com (connect-src)
+# are the Meta pixel (src/lib/pixel.ts), loaded only on the organizer's own
+# domains; its image fallback is covered by img-src https:.
 add_header X-Content-Type-Options "nosniff" always;
 add_header X-Frame-Options "DENY" always;
 add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; img-src 'self' __API_ORIGIN__ https: data:; font-src 'self' data:; connect-src 'self' __API_ORIGIN__; frame-src https://challenges.cloudflare.com; object-src 'none'; form-action 'self' https:; frame-ancestors 'none'; base-uri 'self'" always;
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://connect.facebook.net; style-src 'self' 'unsafe-inline'; img-src 'self' __API_ORIGIN__ https: data:; font-src 'self' data:; connect-src 'self' __API_ORIGIN__ https://connect.facebook.net https://www.facebook.com; frame-src https://challenges.cloudflare.com; object-src 'none'; form-action 'self' https:; frame-ancestors 'none'; base-uri 'self'" always;
