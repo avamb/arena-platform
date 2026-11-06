@@ -6357,6 +6357,31 @@ type ConnectShopModuleRequest struct {
 	StartsOn *openapi_types.Date `json:"starts_on"`
 }
 
+// ConversionSettings An organization's server-side conversion credentials. The two secrets
+// are write-only: only whether one is set is reported.
+type ConversionSettings struct {
+	// Ga4ApiSecretSet A Measurement Protocol API secret is stored.
+	Ga4ApiSecretSet bool `json:"ga4_api_secret_set"`
+
+	// Ga4MeasurementId GA4 measurement id (G-XXXXXXXXXX), empty when not set.
+	Ga4MeasurementId string `json:"ga4_measurement_id"`
+
+	// MetaCapiTokenSet A Conversions API access token is stored.
+	MetaCapiTokenSet bool `json:"meta_capi_token_set"`
+
+	// MetaPixelId Meta pixel id, empty when not set.
+	MetaPixelId string `json:"meta_pixel_id"`
+
+	// MetaTestEventCode Meta test event code used for orders of a test channel, empty when not set.
+	MetaTestEventCode string `json:"meta_test_event_code"`
+}
+
+// ConversionSettingsEnvelope Envelope of the conversion-settings routes.
+type ConversionSettingsEnvelope struct {
+	// ConversionSettings The settings as stored after the call.
+	ConversionSettings ConversionSettings `json:"conversion_settings"`
+}
+
 // CopyEventMaterialsResponse What `POST .../materials/copy-from/{source_event_id}` copied.
 type CopyEventMaterialsResponse struct {
 	// EventId UUIDv7 of the event that received the materials.
@@ -15246,6 +15271,35 @@ type PublicBuyerInfo struct {
 	Phone *string `json:"phone"`
 }
 
+// PublicCheckoutBuyerContext Browser identifiers for server-side conversions. Every string is at most
+// 256 characters (`page_url` 2048, `tracking_consent_text_version` 64) with
+// no control characters; a longer value is dropped, not truncated.
+type PublicCheckoutBuyerContext struct {
+	// Fbc Value of the `_fbc` cookie.
+	Fbc *string `json:"fbc,omitempty"`
+
+	// Fbclid Meta click id from the landing URL.
+	Fbclid *string `json:"fbclid,omitempty"`
+
+	// Fbp Value of the `_fbp` cookie.
+	Fbp *string `json:"fbp,omitempty"`
+
+	// GaClientId GA4 client id (the `_ga` cookie value after `GA1.1.`).
+	GaClientId *string `json:"ga_client_id,omitempty"`
+
+	// Gclid Google click id from the landing URL.
+	Gclid *string `json:"gclid,omitempty"`
+
+	// PageUrl The page the checkout started on, sent to Meta as event_source_url.
+	PageUrl *string `json:"page_url,omitempty"`
+
+	// TrackingConsent The buyer's cookie-banner answer (analytics and advertising together).
+	TrackingConsent *bool `json:"tracking_consent,omitempty"`
+
+	// TrackingConsentTextVersion Version of the banner text the answer was given to.
+	TrackingConsentTextVersion *string `json:"tracking_consent_text_version,omitempty"`
+}
+
 // PublicCheckoutConsent The buyer's answer to the checkout consent checkbox (P2).
 type PublicCheckoutConsent struct {
 	// Accepted True when the buyer ticked the checkbox.
@@ -15371,6 +15425,14 @@ type PublicFeedCheckoutStartRequest struct {
 	// `name` and `phone` are optional unless the channel's `buyer_fields`
 	// mark them `required`.
 	Buyer *PublicBuyerInfo `json:"buyer,omitempty"`
+
+	// BuyerContext The browser's tracking context (spec 62 sections 8.1 and 8.3),
+	// optional. Kept beside the order for the organization's server-side
+	// Meta CAPI and GA4 conversions; the server adds the client IP and
+	// User-Agent itself. A malformed or oversized object is ignored, never
+	// an error. Without `tracking_consent: true` at send time no
+	// conversion leaves the platform.
+	BuyerContext *PublicCheckoutBuyerContext `json:"buyer_context,omitempty"`
 
 	// Consent The buyer's tick on "I accept the sale terms (seller: <legal
 	// name>) and the privacy policy" (P2). Required (with
@@ -21662,6 +21724,25 @@ type UpdateChannelRequestPaymentMode string
 // `channel.invalid_config`.
 type UpdateChannelRequestProvider string
 
+// UpdateConversionSettingsRequest Every key is optional, at least one is required. An absent key keeps the
+// stored value; an empty string or null clears it.
+type UpdateConversionSettingsRequest struct {
+	// Ga4ApiSecret Measurement Protocol API secret, 8-512 characters. Write-only.
+	Ga4ApiSecret *string `json:"ga4_api_secret"`
+
+	// Ga4MeasurementId GA4 measurement id, G- followed by capital letters and digits.
+	Ga4MeasurementId *string `json:"ga4_measurement_id"`
+
+	// MetaCapiToken Conversions API access token, 8-512 characters. Write-only.
+	MetaCapiToken *string `json:"meta_capi_token"`
+
+	// MetaPixelId Numeric Meta pixel id (422 `conversions.invalid_field` otherwise).
+	MetaPixelId *string `json:"meta_pixel_id"`
+
+	// MetaTestEventCode Meta test event code, up to 64 letters, digits, - or _.
+	MetaTestEventCode *string `json:"meta_test_event_code"`
+}
+
 // UpdateEventPartnerLinkRequest Body of PATCH .../partner-links/{link_id}. At least one member is required; an absent member keeps its stored value.
 type UpdateEventPartnerLinkRequest struct {
 	// SellerName A new seller name, 1 to 120 characters. Blank keeps the current name (or, when the address changed and the name was derived from the old one, derives it again).
@@ -24940,6 +25021,9 @@ type CreateOrgCityJSONRequestBody = CreateOrgCityRequest
 
 // CreateComplimentaryIssuanceJSONRequestBody defines body for CreateComplimentaryIssuance for application/json ContentType.
 type CreateComplimentaryIssuanceJSONRequestBody = ComplimentaryCreateRequest
+
+// UpdateConversionSettingsJSONRequestBody defines body for UpdateConversionSettings for application/json ContentType.
+type UpdateConversionSettingsJSONRequestBody = UpdateConversionSettingsRequest
 
 // PutV1OrganizationsOrgIdDisputeSettingsJSONRequestBody defines body for PutV1OrganizationsOrgIdDisputeSettings for application/json ContentType.
 type PutV1OrganizationsOrgIdDisputeSettingsJSONRequestBody = DisputeSettingsRequest
