@@ -401,3 +401,12 @@ describe('stage C: C-02 hint panel, C-03 robots.txt, C-04 notes, C-07 phone summ
     expect([1, 2, 4, 5, 11, 12, 21, 22, 25].map(itemsLabel)).toEqual(['1 товар', '2 товара', '4 товара', '5 товаров', '11 товаров', '12 товаров', '21 товар', '22 товара', '25 товаров']);
   });
 });
+
+describe('phone side padding', () => {
+  it('every .page-width block but the product main section gets a side gap below 750px, at zero specificity', () => {
+    const css = readFileSync(join(__dirname, '../theme/shop.css'), 'utf8');
+    expect(css).toMatch(
+      /@media screen and \(max-width: 749px\) \{\s*:where\(\.page-width:not\(\.section-product__main-padding\)\) \{\s*padding-left: 2rem;\s*padding-right: 2rem;/,
+    );
+  });
+});
