@@ -8560,8 +8560,15 @@ type EventItem struct {
 	// Tri-state PATCH: absent=keep, null=clear, value=set.
 	ShortDescription *string `json:"short_description"`
 
-	// Slug URL-safe marketing slug for the event page (AB-45c, migration 0051).
-	// Set via PATCH with the tri-state field: absent=keep, null=clear, value=set.
+	// Slug The event's public page address (AB-45c, migration 0051):
+	// `<tickets origin>/<page>/<slug>`. Latin letters, digits and single
+	// hyphens, 1-120 characters, unique per organization. Set via PATCH
+	// with the tri-state field: absent=keep, null=clear, value=set; a
+	// typed value is lower-cased, a malformed one is 400
+	// `event.invalid_slug`, a taken one 409 `event.duplicate_slug`. An
+	// event without a slug gets one when it is published. The public
+	// feed returns it as well (null while there is none); the same goes
+	// for `age_rating` and `short_description`.
 	Slug *string `json:"slug"`
 
 	// Status Lifecycle status.

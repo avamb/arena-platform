@@ -20847,8 +20847,15 @@ export interface components {
              */
             poster_media_id?: string | null;
             /**
-             * @description URL-safe marketing slug for the event page (AB-45c, migration 0051).
-             *     Set via PATCH with the tri-state field: absent=keep, null=clear, value=set.
+             * @description The event's public page address (AB-45c, migration 0051):
+             *     `<tickets origin>/<page>/<slug>`. Latin letters, digits and single
+             *     hyphens, 1-120 characters, unique per organization. Set via PATCH
+             *     with the tri-state field: absent=keep, null=clear, value=set; a
+             *     typed value is lower-cased, a malformed one is 400
+             *     `event.invalid_slug`, a taken one 409 `event.duplicate_slug`. An
+             *     event without a slug gets one when it is published. The public
+             *     feed returns it as well (null while there is none); the same goes
+             *     for `age_rating` and `short_description`.
              * @example summer-festival-2026
              */
             slug?: string | null;
@@ -49885,7 +49892,8 @@ export interface operations {
              * @description Body invalid. Possible error codes:
              *     `event.invalid_body`, `event.empty_body`, `event.invalid_json`,
              *     `event.invalid_visibility`, `event.invalid_description_format`,
-             *     `event.invalid_email_note_format`.
+             *     `event.invalid_email_note_format`, `event.invalid_slug` (the typed
+             *     `slug` is not 1-120 characters of Latin letters, digits and single hyphens).
              */
             400: {
                 headers: {
@@ -49918,6 +49926,18 @@ export interface operations {
              *     different organization (owner gate resolves to 404).
              */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `event.duplicate_slug`: another active event of the organization
+             *     already uses the typed `slug` (compared case-insensitively).
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
