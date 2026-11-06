@@ -183,11 +183,45 @@ func TestCleanBuyerContext(t *testing.T) {
 	if err := json.Unmarshal(out, &bc); err != nil {
 		t.Fatal(err)
 	}
-	if bc.FBP != "fb.1.2.3" || bc.FBCLID != "" || !bc.TrackingConsent || bc.ClientIP != "198.51.100.1" || bc.UserAgent != "Mozilla" {
+	if bc.FBP != "fb.1.2.3" || bc.FBCLID != "" || bc.ClientIP != "198.51.100.1" || bc.UserAgent != "Mozilla" {
 		t.Fatalf("%+v", bc)
+	}
+	// The consent is never kept in the context row: it lives on
+	// checkout_sessions (package trackingconsent).
+	if strings.Contains(string(out), "tracking_consent") {
+		t.Fatalf("the stored context carries the consent: %s", out)
 	}
 	if CleanBuyerContext(nil, "1.1.1.1", "x") != nil || CleanBuyerContext(json.RawMessage(`[1]`), "1.1.1.1", "x") != nil {
 		t.Fatal("empty or non-object must be nil")
+	}
+}
+
+func TestConsentFromBuyerContext(t *testing.T) {
+	for _, tc := range []struct {
+		raw     string
+		nilWant bool
+		granted bool
+		version string
+	}{
+		{`{"tracking_consent":true,"tracking_consent_text_version":"2026-11"}`, false, true, "2026-11"},
+		{`{"tracking_consent":false,"tracking_consent_text_version":"2026-11"}`, false, false, "2026-11"},
+		{`{"tracking_consent":false}`, false, false, UnstatedTextVersion},
+		{`{"tracking_consent":true}`, true, false, ""}, // a yes needs its text version
+		{`{"fbp":"fb.1.2.3"}`, true, false, ""},
+		{`{"tracking_consent":"yes","tracking_consent_text_version":"v"}`, true, false, ""},
+		{`[1]`, true, false, ""},
+		{``, true, false, ""},
+	} {
+		got := ConsentFromBuyerContext(json.RawMessage(tc.raw))
+		if tc.nilWant {
+			if got != nil {
+				t.Errorf("%s: want nil, got %+v", tc.raw, got)
+			}
+			continue
+		}
+		if got == nil || got.Granted == nil || *got.Granted != tc.granted || got.Version != tc.version {
+			t.Errorf("%s: got %+v", tc.raw, got)
+		}
 	}
 }
 

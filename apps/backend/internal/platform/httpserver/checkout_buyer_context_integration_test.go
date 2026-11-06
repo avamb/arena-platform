@@ -85,9 +85,22 @@ func TestCheckoutBuyerContext_StartStoresContextWithServerSideIPAndUA(t *testing
 			}
 			var got map[string]any
 			_ = json.Unmarshal(stored, &got)
-			if got["fbp"] != "fb.1.1.2" || got["ga_client_id"] != "111.222" || got["tracking_consent"] != true ||
-				got["tracking_consent_text_version"] != "2026-11" {
+			if got["fbp"] != "fb.1.1.2" || got["ga_client_id"] != "111.222" {
 				t.Errorf("stored context: %s", stored)
+			}
+			// The consent has ONE stored truth: the checkout_sessions columns
+			// of P-20, which PATCH .../consent and the conversions sweep use.
+			if _, ok := got["tracking_consent"]; ok {
+				t.Errorf("the consent was copied into the context row: %s", stored)
+			}
+			var granted *bool
+			var version *string
+			if err := pool.QueryRow(ctx, `SELECT tracking_consent_granted, tracking_consent_version FROM checkout_sessions WHERE id = $1`, csID).
+				Scan(&granted, &version); err != nil {
+				t.Fatal(err)
+			}
+			if granted == nil || !*granted || version == nil || *version != "2026-11" {
+				t.Errorf("checkout consent: granted=%v version=%v", granted, version)
 			}
 			if got["client_ip"] != "203.0.113.7" || got["user_agent"] != "TestAgent/1.0" {
 				t.Errorf("server-side ip/ua: %s", stored)

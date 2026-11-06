@@ -10,6 +10,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/trackingconsent"
 )
 
 // Settings are one organization's server-side conversion credentials. The two
@@ -58,8 +60,9 @@ type Store interface {
 	Order(ctx context.Context, orderID uuid.UUID) (OrderData, error)
 	// ConsentForOrder is the ONE place the tracking consent is read from. It is
 	// asked at SEND time (spec 62 section 8.1): a refusal after the payment
-	// started but before the send stops the conversion. Point it at
-	// checkout_sessions.tracking_consent once the consent route (П-20) lands.
+	// started but before the send stops the conversion. It reads the
+	// checkout_sessions columns of P-20 (trackingconsent.ForOrder), which
+	// checkout/start and PATCH /v1/public/checkout/{token}/consent write.
 	ConsentForOrder(ctx context.Context, orderID uuid.UUID) (bool, error)
 	MarkSent(ctx context.Context, id uuid.UUID) error
 	MarkSkipped(ctx context.Context, id uuid.UUID, reason string) error
@@ -155,16 +158,18 @@ func (s *PGStore) Order(ctx context.Context, orderID uuid.UUID) (OrderData, erro
 	return od, nil
 }
 
-// ConsentForOrder reads the buyer's tracking consent kept with the order.
+// ConsentForOrder reads the buyer's tracking consent the order's checkout
+// carries now (trackingconsent.ForOrder, then Allows: only an explicit yes).
+// An unknown order, or one without a checkout, reads as no.
 func (s *PGStore) ConsentForOrder(ctx context.Context, orderID uuid.UUID) (bool, error) {
-	var granted bool
-	err := s.pool.QueryRow(ctx, `
-		SELECT COALESCE((context ->> 'tracking_consent')::boolean, false)
-		  FROM checkout_buyer_contexts WHERE order_id = $1`, orderID).Scan(&granted)
+	st, err := trackingconsent.ForOrder(ctx, s.pool, orderID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}
-	return granted, err
+	if err != nil {
+		return false, err
+	}
+	return st.Allows(), nil
 }
 
 // MarkSent records a delivered conversion.

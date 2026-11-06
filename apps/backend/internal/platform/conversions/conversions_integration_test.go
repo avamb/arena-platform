@@ -19,6 +19,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/trackingconsent"
 )
 
 // TestConversions_PaidOrderToStubs_LiveDB drives the real SQL: the leg queues
@@ -86,11 +87,18 @@ func TestConversions_PaidOrderToStubs_LiveDB(t *testing.T) {
 		      VALUES ($1, $2, $3, $4, $5, $6, $7, 'public_feed', 'paid', 'ILS', 1890, 0, 0, 1890, 'B', 'b@example.test', '+972501234567')`,
 			ids[2], orgID, chanID, evtID, sessID, ids[1], ids[0])
 	}
-	// Order 1 granted tracking consent, order 2 refused; both carry a context.
+	// Both orders carry a context and both granted tracking consent at
+	// checkout/start; the consent lives on checkout_sessions (P-20), never in
+	// the context row. Order 2 withdraws it after the conversions are queued
+	// (PATCH .../consent), so the sweep must read it at send time.
 	exec(`INSERT INTO checkout_buyer_contexts (checkout_session_id, order_id, context)
-	      VALUES ($1, $2, '{"fbp":"fb.1.1.2","ga_client_id":"9.9","tracking_consent":true,"client_ip":"203.0.113.9","user_agent":"UA"}')`, csID, orderID)
+	      VALUES ($1, $2, '{"fbp":"fb.1.1.2","ga_client_id":"9.9","client_ip":"203.0.113.9","user_agent":"UA"}')`, csID, orderID)
 	exec(`INSERT INTO checkout_buyer_contexts (checkout_session_id, order_id, context)
-	      VALUES ($1, $2, '{"tracking_consent":false}')`, cs2ID, order2ID)
+	      VALUES ($1, $2, '{"fbp":"fb.1.9.9"}')`, cs2ID, order2ID)
+	for _, id := range []uuid.UUID{csID, cs2ID} {
+		exec(`UPDATE checkout_sessions SET tracking_consent_granted = true, tracking_consent_version = 'v1',
+		             tracking_consent_at = now() - interval '1 hour', tracking_consent_received_at = now() WHERE id = $1`, id)
+	}
 
 	store := NewPGStore(pool)
 	leg := NewDispatcher(store, slog.Default())
@@ -128,6 +136,11 @@ func TestConversions_PaidOrderToStubs_LiveDB(t *testing.T) {
 	}))
 	defer ga.Close()
 	senders := Senders{Meta: MetaSender{BaseURL: meta.URL}, GA4: GA4Sender{BaseURL: ga.URL}}
+
+	// Order 2's buyer says no after the deliveries were queued.
+	if applied, err := trackingconsent.Store(ctx, pool, cs2ID, trackingconsent.Consent{Granted: false, Version: "v1", At: time.Now()}); err != nil || !applied {
+		t.Fatalf("withdraw consent: applied=%v err=%v", applied, err)
+	}
 
 	// Make our rows due and run the sweep until it has nothing left of ours.
 	exec(`UPDATE conversion_deliveries SET next_attempt_at = now() - interval '1 minute' WHERE org_id = $1`, orgID)

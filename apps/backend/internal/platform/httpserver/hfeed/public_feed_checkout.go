@@ -135,7 +135,8 @@ type PublicFeedCheckoutStartRequest struct {
 	Attribution json.RawMessage `json:"attribution,omitempty"`
 	// BuyerContext is the browser's tracking context (spec 62 section 8.1 and
 	// 8.3): fbclid, gclid, fbp, fbc, ga_client_id, page_url and the
-	// tracking_consent answer with its text version. Optional and bounded;
+	// tracking_consent answer with its text version (stored on
+	// checkout_sessions, not in the context row). Optional and bounded;
 	// the server adds the client IP and User-Agent. It feeds the server-side
 	// Meta CAPI / GA4 conversions and is never logged.
 	BuyerContext json.RawMessage `json:"buyer_context,omitempty"`
@@ -149,7 +150,9 @@ type PublicFeedCheckoutStartRequest struct {
 	// anything is held (see refuseChangedPrice).
 	ExpectedTotal *int64 `json:"expected_total,omitempty"`
 	// TrackingConsent is the buyer's answer to the site's cookie banner
-	// (spec 62 §8.1, П-20): {granted, version, at}. Stored on the checkout;
+	// (spec 62 §8.1, П-20): {granted, version, at}. Deprecated alias of
+	// buyer_context.tracking_consent + tracking_consent_text_version: both
+	// write the same checkout_sessions columns. Stored on the checkout;
 	// the conversion sender reads it from there at send time. Optional, and
 	// an unreadable one is dropped, never a reason to refuse the purchase.
 	TrackingConsent *trackingconsent.Input `json:"tracking_consent,omitempty"`
@@ -580,6 +583,13 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 	}
 	growth := growthCheckout{grant: grantFor(mk, r, checkCtx.OrgID, publicOrderBuyer{Email: req.HolderEmail, Name: buyerName}, buyerLocale, "")}
 	growth.tracking = h.trackingConsentFromStart(req.TrackingConsent)
+	if growth.tracking == nil {
+		// buyer_context.tracking_consent (spec 62 section 8.1) is the same
+		// answer: it lands in the same checkout_sessions columns, never in the
+		// stored buyer context. The top-level object, when readable, wins: it
+		// carries the time of the choice.
+		growth.tracking = h.trackingConsentFromStart(conversions.ConsentFromBuyerContext(req.BuyerContext))
+	}
 
 	// ── 9. Mint checkout_token ────────────────────────────────────────────────
 	checkoutToken, err := mintCheckoutToken()

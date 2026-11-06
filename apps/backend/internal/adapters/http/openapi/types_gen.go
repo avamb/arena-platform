@@ -15532,10 +15532,15 @@ type PublicCheckoutBuyerContext struct {
 	// PageUrl The page the checkout started on, sent to Meta as event_source_url.
 	PageUrl *string `json:"page_url,omitempty"`
 
-	// TrackingConsent The buyer's cookie-banner answer (analytics and advertising together).
+	// TrackingConsent The buyer's cookie-banner answer (analytics and advertising
+	// together). Stored on the checkout (spec 62 П-20), not in the
+	// context; `PATCH /v1/public/checkout/{checkout_token}/consent`
+	// changes it later. A yes counts only together with
+	// `tracking_consent_text_version`.
 	TrackingConsent *bool `json:"tracking_consent,omitempty"`
 
-	// TrackingConsentTextVersion Version of the banner text the answer was given to.
+	// TrackingConsentTextVersion Version of the banner text the answer was given to. Required for a
+	// yes; a no without it is stored with the version `unstated`.
 	TrackingConsentTextVersion *string `json:"tracking_consent_text_version,omitempty"`
 }
 
@@ -15669,8 +15674,11 @@ type PublicFeedCheckoutStartRequest struct {
 	// optional. Kept beside the order for the organization's server-side
 	// Meta CAPI and GA4 conversions; the server adds the client IP and
 	// User-Agent itself. A malformed or oversized object is ignored, never
-	// an error. Without `tracking_consent: true` at send time no
-	// conversion leaves the platform.
+	// an error. Its `tracking_consent` and `tracking_consent_text_version`
+	// are NOT kept in the context: they are stored on the checkout (the
+	// same place `PATCH /v1/public/checkout/{checkout_token}/consent`
+	// updates) and read from there at send time. Without an explicit yes
+	// stored at send time no conversion leaves the platform.
 	BuyerContext *PublicCheckoutBuyerContext `json:"buyer_context,omitempty"`
 
 	// Consent The buyer's tick on "I accept the sale terms (seller: <legal
@@ -15754,13 +15762,18 @@ type PublicFeedCheckoutStartRequest struct {
 	// TierId Deprecated: use ga_items instead.
 	TierId *openapi_types.UUID `json:"tier_id,omitempty"`
 
-	// TrackingConsent The buyer's answer to the site's cookie banner (spec 62 §8.1,
+	// TrackingConsent Deprecated alias of `buyer_context.tracking_consent` +
+	// `tracking_consent_text_version`; both write the same stored
+	// consent on the checkout. When both are sent and this object is
+	// readable, it wins (it carries the time of the choice).
+	// The buyer's answer to the site's cookie banner (spec 62 §8.1,
 	// П-20), optional. Stored on the checkout; a conversion sender
 	// (GA4 Measurement Protocol, Meta CAPI) reads it from the order at
 	// send time and sends nothing unless it is an explicit yes. An
 	// unreadable object is dropped, never a reason to refuse the
 	// purchase. A later change goes through
 	// `PATCH /v1/public/checkout/{checkout_token}/consent`.
+	// Deprecated:
 	TrackingConsent *TrackingConsent `json:"tracking_consent,omitempty"`
 }
 

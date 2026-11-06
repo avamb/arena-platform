@@ -27925,8 +27925,11 @@ export interface components {
              *     optional. Kept beside the order for the organization's server-side
              *     Meta CAPI and GA4 conversions; the server adds the client IP and
              *     User-Agent itself. A malformed or oversized object is ignored, never
-             *     an error. Without `tracking_consent: true` at send time no
-             *     conversion leaves the platform.
+             *     an error. Its `tracking_consent` and `tracking_consent_text_version`
+             *     are NOT kept in the context: they are stored on the checkout (the
+             *     same place `PATCH /v1/public/checkout/{checkout_token}/consent`
+             *     updates) and read from there at send time. Without an explicit yes
+             *     stored at send time no conversion leaves the platform.
              */
             buyer_context?: components["schemas"]["PublicCheckoutBuyerContext"];
             /**
@@ -27951,7 +27954,12 @@ export interface components {
              */
             expected_total?: number;
             /**
-             * @description The buyer's answer to the site's cookie banner (spec 62 §8.1,
+             * @deprecated
+             * @description Deprecated alias of `buyer_context.tracking_consent` +
+             *     `tracking_consent_text_version`; both write the same stored
+             *     consent on the checkout. When both are sent and this object is
+             *     readable, it wins (it carries the time of the choice).
+             *     The buyer's answer to the site's cookie banner (spec 62 §8.1,
              *     П-20), optional. Stored on the checkout; a conversion sender
              *     (GA4 Measurement Protocol, Meta CAPI) reads it from the order at
              *     send time and sends nothing unless it is an explicit yes. An
@@ -28042,9 +28050,18 @@ export interface components {
             ga_client_id?: string;
             /** @description The page the checkout started on, sent to Meta as event_source_url. */
             page_url?: string;
-            /** @description The buyer's cookie-banner answer (analytics and advertising together). */
+            /**
+             * @description The buyer's cookie-banner answer (analytics and advertising
+             *     together). Stored on the checkout (spec 62 П-20), not in the
+             *     context; `PATCH /v1/public/checkout/{checkout_token}/consent`
+             *     changes it later. A yes counts only together with
+             *     `tracking_consent_text_version`.
+             */
             tracking_consent?: boolean;
-            /** @description Version of the banner text the answer was given to. */
+            /**
+             * @description Version of the banner text the answer was given to. Required for a
+             *     yes; a no without it is stored with the version `unstated`.
+             */
             tracking_consent_text_version?: string;
         };
         /**
