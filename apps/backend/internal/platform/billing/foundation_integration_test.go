@@ -119,9 +119,10 @@ func TestFoundation_StandardPriceListIsFoundFrom2026(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// Four rules from 0157 plus the white label subscription (0188).
-			if len(rules) != 5 {
-				t.Fatalf("%s: %d rules, want 5", cur, len(rules))
+			// Four rules from 0157 plus the white label subscription (0188)
+			// and the shop module subscription (0198, free by default).
+			if len(rules) != 6 {
+				t.Fatalf("%s: %d rules, want 6", cur, len(rules))
 			}
 			for _, r := range rules {
 				if r.RuleType == "low_price_formula" && (r.SaleCurrency == nil || *r.SaleCurrency != cur) {
@@ -134,17 +135,22 @@ func TestFoundation_StandardPriceListIsFoundFrom2026(t *testing.T) {
 				"credit_pack":               `{"seated_surcharge_minor":35}`,
 				"percent_of_price_with_cap": `{"pct_bp":200,"cap_minor":300}`,
 				"subscription":              `{"monthly_minor":4500}`,
+				"subscription:shop":         `{"monthly_minor":0}`,
 			}
 			for _, r := range rules {
 				var got, want map[string]any
 				if err := json.Unmarshal(r.Params, &got); err != nil {
 					t.Fatal(err)
 				}
-				if err := json.Unmarshal([]byte(wantParams[r.RuleType]), &want); err != nil {
-					t.Fatalf("%s: unexpected rule type %q", cur, r.RuleType)
+				key := r.RuleType
+				if r.RuleType == "subscription" && r.EventKind == "shop_module_month" {
+					key = "subscription:shop"
+				}
+				if err := json.Unmarshal([]byte(wantParams[key]), &want); err != nil {
+					t.Fatalf("%s: unexpected rule type %q", cur, key)
 				}
 				if !reflect.DeepEqual(got, want) {
-					t.Fatalf("%s %s params = %s, want %s", cur, r.RuleType, r.Params, wantParams[r.RuleType])
+					t.Fatalf("%s %s params = %s, want %s", cur, key, r.Params, wantParams[key])
 				}
 			}
 			packs, err := q.ListPriceListPacks(ctx, pl.ID)

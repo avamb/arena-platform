@@ -10,6 +10,7 @@ import type {
   BillingAccountInvoice,
   BillingAccountInvoiceList,
   BillingBalanceResponse,
+  OrgBillingModulesResponse,
   BillingChargeList,
   BillingEventSummary,
   BillingLedgerResponse,
@@ -1175,6 +1176,11 @@ export function fetchBillingEventSummary(orgId: string, eventId: string): Promis
 /** The credit balance of each billing account (one per currency). */
 export function fetchBillingBalance(orgId: string): Promise<BillingBalanceResponse> {
   return call<BillingBalanceResponse>({ route: API.billingBalance, params: { org_id: orgId } });
+}
+
+/** The paid modules of the organization (the shop) with the price that applies today; read only (spec 61). */
+export function fetchBillingModules(orgId: string): Promise<OrgBillingModulesResponse> {
+  return call<OrgBillingModulesResponse>({ route: API.billingModules, params: { org_id: orgId } });
 }
 
 /** The credit packs on offer, with the fee a card payment adds. */

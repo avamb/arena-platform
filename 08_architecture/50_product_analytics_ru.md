@@ -190,6 +190,7 @@ e-mail и id сущностей в свойствах.
 | `wizard_input_error` | бот | `step`, `reason` |
 | `wizard_exit` | бот | `step`, `how` (cancel/keep/drop/done/expired) |
 | `draft_reminder` | бот | `step` |
+| `bot_shop` | бот | `action` (open/orders/ship/resend/cancel/refund/resolve/storefront_open/storefront_close) |
 | `funnel_*` (счётчики) | виджет, страницы | см. раздел 6.1 |
 
 Сценарии ивент-центра первой волны (`flow`): `event_create`, `event_edit`, `payment_connect`, `refund`,

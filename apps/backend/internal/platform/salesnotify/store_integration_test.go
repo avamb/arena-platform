@@ -74,7 +74,7 @@ func TestPGStore_SubscriptionsQueriesAndBookkeeping_LiveDB(t *testing.T) {
 		t.Fatalf("allowed subscriptions = %+v", mine)
 	}
 	// A row created before kinds existed (no kinds in the INSERT) hears tickets.
-	if len(mine[0].Kinds) != 1 || mine[0].Kinds[0] != KindTickets || !mine[0].Hears(KindTickets) || mine[0].Hears(KindShop) {
+	if len(mine[0].Kinds) != 1 || mine[0].Kinds[0] != KindTickets || !mine[0].Hears(KindTickets) || mine[0].Hears(KindShopDelivery) || mine[0].Hears(KindShopSale) {
 		t.Fatalf("default kinds = %v; want {tickets}", mine[0].Kinds)
 	}
 
@@ -167,5 +167,52 @@ func TestPGStore_SubscriptionsQueriesAndBookkeeping_LiveDB(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT COALESCE(last_error, '') FROM sales_notification_subscriptions WHERE id = $1`,
 		subID).Scan(&lastErr); err != nil || lastErr != "" {
 		t.Fatalf("a success must clear last_error, got %q (%v)", lastErr, err)
+	}
+}
+
+// A group upgraded to a supergroup keeps hearing: the move to the new chat id
+// clears the "bot removed" mark that the old group's left update may have put
+// on the row first, and the stale send error. A later left update for the old
+// id finds no live row.
+func TestMigrateChat_ClearsRemovedMarkAndError_LiveDB(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	nonce := fmt.Sprintf("%d", time.Now().UnixNano())
+	oldID, newID := "mig-"+nonce+"-old", "mig-"+nonce+"-new"
+	defer func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM sales_notification_subscriptions WHERE chat_id LIKE $1`, "mig-"+nonce+"%")
+	}()
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO sales_notification_subscriptions (org_id, name, chat_id, last_error)
+		VALUES (NULL, 'mig-test', $1, 'chat not found')`, oldID); err != nil {
+		t.Fatal(err)
+	}
+	// The left update of the old group arrives before the migration message.
+	if n, err := MarkBotRemoved(ctx, pool, oldID, time.Now()); err != nil || n != 1 {
+		t.Fatalf("mark removed = %d %v", n, err)
+	}
+	if err := MigrateChat(ctx, pool, oldID, newID); err != nil {
+		t.Fatal(err)
+	}
+	var removed, lastErr *string
+	var chat string
+	if err := pool.QueryRow(ctx, `SELECT chat_id, bot_removed_at::text, last_error FROM sales_notification_subscriptions WHERE chat_id = $1`, newID).
+		Scan(&chat, &removed, &lastErr); err != nil {
+		t.Fatalf("the migrated row is missing: %v", err)
+	}
+	if removed != nil || lastErr != nil {
+		t.Fatalf("after the migration bot_removed_at = %v last_error = %v; want both NULL", removed, lastErr)
+	}
+	// A left update for the old id after the move touches nothing.
+	if n, err := MarkBotRemoved(ctx, pool, oldID, time.Now()); err != nil || n != 0 {
+		t.Fatalf("a late left update marked %d rows (%v)", n, err)
 	}
 }

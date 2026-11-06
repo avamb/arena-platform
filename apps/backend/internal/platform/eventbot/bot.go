@@ -607,6 +607,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.guestListCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "gl:"))
 	case "or":
 		b.ordersCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "or:"))
+	case "sh":
+		b.shopCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "sh:"))
 	case "iv":
 		b.inviteCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "iv:"))
 	case "rq":
@@ -818,6 +820,9 @@ func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *model
 	}
 	if canViewSales(id) {
 		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.ord.btn", nil), CallbackData: "or:new"}})
+	}
+	if row := b.shopMenuRow(loc, id); row != nil { // the shop (spec 61, stage M3)
+		rows = append(rows, row)
 	}
 	if row := b.queueMenuRow(loc, id); row != nil { // refunds (EC-23)
 		rows = append(rows, row)

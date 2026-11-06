@@ -32,9 +32,9 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ConfirmWordDialog } from "@/components/ConfirmWordDialog";
 import { ErrorNotice } from "@/components/ErrorNotice";
-import { TextAreaField, TextField } from "@/components/FormField";
+import { SelectField, TextAreaField, TextField } from "@/components/FormField";
 import { useStepUp } from "@/components/StepUpDialog";
-import { cancelShopOrder, fetchCourierText, fetchShopOrder, refundShopOrder, resendShopOrderEmail, resolveShopOrder, shipShopOrder } from "@/lib/api/shopApi";
+import { cancelShopOrder, fetchCourierText, fetchShopOrder, refundShopOrder, resendShopOrderEmail, resolveShopOrder, setShopOrderFulfillment } from "@/lib/api/shopApi";
 import { ApiError } from "@/lib/api/http";
 import type { ShopOrder, ShopOrderResolveAction, ShopRefund } from "@/lib/api/types";
 import { formatMoney } from "@/lib/format";
@@ -42,16 +42,24 @@ import { useI18n, type MessageKey } from "@/lib/i18n";
 import { forgetRefundKey, refundKeyFor } from "@/lib/shopRefundKeys";
 import { StepUpCancelled, withStepUp } from "@/lib/stepUp";
 import {
+  EMPTY_STEP_FORM,
+  FAILED_REASONS,
+  canEditHandOver,
+  offeredSteps,
+  reasonLabelKey,
+  stepLabelKey,
+  stepRequest,
+  type FulfillmentStep,
+  type StepForm,
+} from "@/lib/shopFulfillment";
+import {
   SHOP_LIMITS,
   canCancelShopOrder,
   canResolveShopOrder,
-  canEditTracking,
   canRefundShopOrder,
-  canShip,
   checkRefund,
   copyText,
   courierText,
-  isShipped,
   isShopOrderStatus,
   itemLabel,
   refundBody,
@@ -79,7 +87,7 @@ export interface ShopOrderActionsProps {
   country?: string | null;
 }
 
-type Panel = "ship" | "refund" | "resend" | null;
+type Panel = "ship" | "failed" | "refund" | "resend" | null;
 
 export function ShopOrderActions({ orgId, order, canManage, canRefund, country }: ShopOrderActionsProps) {
   const { t, locale } = useI18n();
@@ -89,6 +97,9 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
   const [cancelOpen, setCancelOpen] = useState(false);
   const [wordOpen, setWordOpen] = useState(false);
   const [tracking, setTracking] = useState(order.tracking_note);
+  // The reason of "not delivered": a button code, or the typed text of "other".
+  const [failForm, setFailForm] = useState<StepForm>(EMPTY_STEP_FORM);
+  const [failProblem, setFailProblem] = useState<MessageKey | null>(null);
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [refundProblem, setRefundProblem] = useState<MessageKey | null>(null);
@@ -146,22 +157,21 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
     }
   };
 
-  const onShip = async (e: FormEvent) => {
-    e.preventDefault();
-    if ([...tracking.trim()].length > SHOP_LIMITS.trackingNote) {
-      setNote({ key: "shop.act.ship.tooLong", params: { max: String(SHOP_LIMITS.trackingNote) }, bad: true });
-      return;
-    }
+  // One writer for every delivery step: packed, handed over, delivered, not delivered (spec 61 section 7b). The card
+  // is refreshed from the answer. When the step moved meanwhile (a colleague, the delivery group) the order is read
+  // again, so the buttons show what is possible now.
+  const runStep = async (body: { step: FulfillmentStep; tracking?: string; reason?: string }, doneKey: MessageKey) => {
     setBusy(true);
     setFailure(null);
     setNote(null);
     try {
-      store(await shipShopOrder(orgId, order.id, tracking));
+      store(await setShopOrderFulfillment(orgId, order.id, body));
       setPanel(null);
-      setNote({ key: "shop.act.ship.done" });
+      setFailForm(EMPTY_STEP_FORM);
+      focusNote.current = true;
+      setNote({ key: doneKey, params: { step: t(stepLabelKey(body.step)) } });
     } catch (error) {
       setFailure(error);
-      // The order may have moved on (a late payment, a refund): read it again so the card shows its real state.
       if (error instanceof ApiError && error.status === 409) {
         try {
           store(await fetchShopOrder(orgId, order.id));
@@ -172,6 +182,29 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
     } finally {
       setBusy(false);
     }
+  };
+
+  const onShip = async (e: FormEvent) => {
+    e.preventDefault();
+    const built = stepRequest("handed_over", { ...EMPTY_STEP_FORM, tracking });
+    if (!built.ok) {
+      setNote({ key: "shop.act.ship.tooLong", params: { max: String(SHOP_LIMITS.trackingNote) }, bad: true });
+      return;
+    }
+    // Handed over again only stores the number, and an empty one clears it: send it then, not only when typed.
+    const body = editingHandOver ? { step: "handed_over" as const, tracking: tracking.trim() } : built.body;
+    await runStep(body, editingHandOver ? "shop.act.ship.saved" : "shop.act.ship.done");
+  };
+
+  const onFailed = async (e: FormEvent) => {
+    e.preventDefault();
+    const built = stepRequest("failed", failForm);
+    if (!built.ok) {
+      setFailProblem(built.problem === "reasonLong" ? "shop.act.step.err.reasonLong" : "shop.act.step.err.reason");
+      return;
+    }
+    setFailProblem(null);
+    await runStep(built.body, "shop.act.step.done");
   };
 
   const onCancel = async () => {
@@ -322,10 +355,14 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
     }
   };
 
-  const shipLabel = canEditTracking(order.status, canManage, order.shipped_at) ? "shop.act.editTracking" : "shop.act.ship";
   // M-03: no delivery (a file, a service): nothing to ship and no parcel for a courier.
   const noDelivery = order.delivery_kind === "none";
-  const showShip = canShip(order.status, canManage, order.delivery_kind, order.shipped_at) || canEditTracking(order.status, canManage, order.shipped_at);
+  const offered = offeredSteps(order, canManage);
+  // "Handed to courier" is the old "Mark shipped": from waiting, packed or not delivered it hands the parcel over,
+  // from handed over it only changes the tracking number.
+  const editingHandOver = canEditHandOver(order, canManage);
+  const shipLabel = editingHandOver ? "shop.act.editTracking" : "shop.act.ship";
+  const showShip = offered.includes("handed_over") || editingHandOver;
 
   return (
     <section aria-labelledby="shop-order-actions" data-testid="shop-order-actions">
@@ -336,6 +373,29 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
         {showShip && (
           <button type="button" className="btn btn-primary" onClick={() => setPanel(panel === "ship" ? null : "ship")} data-testid="shop-order-ship">
             {t(shipLabel)}
+          </button>
+        )}
+        {offered.includes("packed") && (
+          <button type="button" className="btn" disabled={busy} onClick={() => void runStep({ step: "packed" }, "shop.act.step.done")} data-testid="shop-order-packed">
+            {t("shop.act.packed")}
+          </button>
+        )}
+        {offered.includes("delivered") && (
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void runStep({ step: "delivered" }, "shop.act.step.done")} data-testid="shop-order-delivered">
+            {t("shop.act.delivered")}
+          </button>
+        )}
+        {offered.includes("failed") && (
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              setFailProblem(null);
+              setPanel(panel === "failed" ? null : "failed");
+            }}
+            data-testid="shop-order-failed"
+          >
+            {t("shop.act.failed")}
           </button>
         )}
         {canRefundShopOrder(order, canManage && canRefund) && (
@@ -419,7 +479,43 @@ export function ShopOrderActions({ orgId, order, canManage, canRefund, country }
           />
           <p>
             <button type="submit" className="btn btn-primary" disabled={busy} data-testid="shop-ship-submit">
-              {isShipped(order) ? t("shop.act.ship.save") : t("shop.act.ship.confirm")}
+              {editingHandOver ? t("shop.act.ship.save") : t("shop.act.ship.confirm")}
+            </button>
+          </p>
+        </form>
+      )}
+
+      {panel === "failed" && (
+        <form onSubmit={(e) => void onFailed(e)} noValidate data-testid="shop-failed-form">
+          <h3>{t("shop.act.failed.title")}</h3>
+          <SelectField
+            label={t("shop.act.failed.reason")}
+            error={failProblem === "shop.act.step.err.reason" ? t(failProblem) : undefined}
+            value={failForm.reason}
+            onChange={(v) => setFailForm({ ...failForm, reason: (FAILED_REASONS as readonly string[]).includes(v) ? (v as StepForm["reason"]) : "" })}
+            testId="shop-failed-reason"
+          >
+            <option value="">{t("shop.act.failed.choose")}</option>
+            {FAILED_REASONS.map((r) => (
+              <option key={r} value={r}>
+                {r === "other" ? t("shop.fulfillment.reason.other") : t(reasonLabelKey(r) as MessageKey)}
+              </option>
+            ))}
+          </SelectField>
+          {failForm.reason === "other" && (
+            <TextField
+              label={t("shop.act.failed.text")}
+              error={failProblem === "shop.act.step.err.reasonLong" ? t(failProblem, { max: 500 }) : undefined}
+              value={failForm.reasonText}
+              maxLength={500}
+              onChange={(v) => setFailForm({ ...failForm, reasonText: v })}
+              testId="shop-failed-text"
+            />
+          )}
+          <p className="field-hint">{t("shop.act.failed.hint")}</p>
+          <p>
+            <button type="submit" className="btn btn-primary" disabled={busy} data-testid="shop-failed-submit">
+              {t("shop.act.failed.confirm")}
             </button>
           </p>
         </form>

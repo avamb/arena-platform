@@ -95,16 +95,25 @@ func (s *Service) SetStaffNote(ctx context.Context, orgID, id uuid.UUID, note st
 	return s.view(ctx, s.q, out)
 }
 
+// IsEmailKind reports whether kind is a letter of a shop order.
+func IsEmailKind(kind string) bool {
+	switch kind {
+	case EmailReceived, EmailShipped, EmailRefunded, EmailDelivered:
+		return true
+	}
+	return false
+}
+
 // ResendEmail queues the buyer's e-mail of an order once more. kind is
-// EmailReceived, EmailShipped or EmailRefunded. The letter is the one the worker writes for
+// EmailReceived, EmailShipped, EmailRefunded or EmailDelivered. The letter is the one the worker writes for
 // the first time (shop.order_email), with Resend set so the "already sent"
 // marker does not swallow it. It refuses what the worker would skip: no
 // address, an order that was never paid or is closed unpaid, a "shipped"
 // letter for an order that did not ship or has nothing to ship, a "refunded"
 // letter for an order with no succeeded refund.
 func (s *Service) ResendEmail(ctx context.Context, orgID, id uuid.UUID, kind string) error {
-	if kind != EmailReceived && kind != EmailShipped && kind != EmailRefunded {
-		return newErr(http.StatusBadRequest, "shop.invalid_email_kind", "kind must be received, shipped or refunded")
+	if !IsEmailKind(kind) {
+		return newErr(http.StatusBadRequest, "shop.invalid_email_kind", "kind must be received, shipped, delivered or refunded")
 	}
 	if err := s.ready(); err != nil {
 		return err
@@ -128,6 +137,15 @@ func (s *Service) ResendEmail(ctx context.Context, orgID, id uuid.UUID, kind str
 		}
 		if kind == EmailShipped && (o.DeliveryKind == DeliveryNone || o.ShippedAt == nil) {
 			return newErr(http.StatusConflict, "shop.order_email_unavailable", "the shipping letter exists only for an order that was shipped")
+		}
+		if kind == EmailDelivered {
+			had, err := q.ShopOrderHadStep(ctx, o.ID, StepDelivered)
+			if err != nil {
+				return err
+			}
+			if o.DeliveryKind == DeliveryNone || !had {
+				return newErr(http.StatusConflict, "shop.order_email_unavailable", "the delivery letter exists only for an order that was delivered")
+			}
 		}
 		payload := OrderEmailPayload{OrderID: o.ID.String(), OrgID: o.OrgID.String(), Kind: kind, Resend: true}
 		if kind == EmailRefunded {

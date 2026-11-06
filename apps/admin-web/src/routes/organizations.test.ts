@@ -390,6 +390,8 @@ describe("Drawer tab model (feature #240)", () => {
       "channels",
       "payments",
       "api_keys",
+      "modules",
+      "telegram_chats",
     ]);
   });
 

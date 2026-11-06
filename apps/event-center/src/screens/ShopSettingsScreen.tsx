@@ -3,10 +3,11 @@
  * country, age check, announcement, contact e-mail, the note for the
  * logistician and the sales channel whose payment provider takes the money.
  *
- * The storefront domain and the open/closed flag belong to the platform
- * operator: they are shown read only, and become editable only for a platform
- * superadmin (the API refuses them for anybody else, so the screen never sends
- * them for an organizer).
+ * The storefront domain belongs to the platform operator: it is shown read only, and becomes editable only
+ * for a platform superadmin (the API refuses it for anybody else, so the screen never sends it for an
+ * organizer). The open/closed switch is the organization's own (spec 61): the panel above the form
+ * (`ShopStorefront`) uses `PUT .../shop/storefront`, never the settings form, so the form can never open
+ * the shop by accident and a switch never rewrites the other settings.
  *
  * The form is a pure component (`ShopSettingsForm`); the screen owns the
  * queries and the save. PUT replaces the whole row, so the form always sends
@@ -17,15 +18,16 @@
  * to reload. While anything is unsaved, leaving the page asks first (`UnsavedChangesGuard`, as on the product card).
  * SA-23: with no sales channel chosen the form warns where the shop's money goes.
  */
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { SelectField, TextAreaField, TextField } from "@/components/FormField";
 import { NoShopAccess, ShopNav, ShopReadOnlyNote } from "@/components/ShopNav";
+import { ShopStorefront } from "@/components/ShopStorefront";
 import { ReferralSection } from "@/components/ReferralSection";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { ErrorBox, Loading } from "@/components/ui";
-import { fetchShopSettings, listSalesChannels, listShopProducts, saveShopSettings } from "@/lib/api/shopApi";
+import { fetchShopSettings, listSalesChannels, listShopProducts, saveShopSettings, setShopStorefront } from "@/lib/api/shopApi";
 import { listCountries } from "@/lib/api/endpoints";
 import type { ShopSettingsUpdateRequest } from "@/lib/api/types";
 import { currencyLabel, regionName } from "@/lib/format";
@@ -45,6 +47,7 @@ import {
   type SettingsProblem,
   type ShopSettingsView,
 } from "@/lib/shop";
+import { blockersOf, blockersOfError, withBlockers } from "@/lib/shopStorefront";
 import { useOrg } from "@/screens/OrgLayout";
 
 const PROBLEM_KEY: Record<SettingsProblem, MessageKey> = {
@@ -71,12 +74,10 @@ export interface ShopSettingsFormProps {
   /** The list of channels is still on its way: the channel warning waits for it. */
   channelsLoading?: boolean;
   settings: ShopSettingsView;
-  /** The platform operator: may change the domain and the open flag. */
+  /** The platform operator: may change the domain. */
   operator: boolean;
   operatorDomain: string;
   onOperatorDomain: (v: string) => void;
-  operatorEnabled: boolean;
-  onOperatorEnabled: (v: boolean) => void;
   /**
    * How many products the shop has: with at least one the currency is shown, not typed (every price
    * is stored in it). null while it is not known; undefined means none.
@@ -278,21 +279,10 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
       <fieldset disabled={!p.operator || p.busy} data-testid="shop-settings-operator">
         <legend>{t("shop.settings.f.domain")}</legend>
         {p.operator ? (
-          <>
-            <TextField label={t("shop.settings.f.domain")} value={p.operatorDomain} onChange={p.onOperatorDomain} testId="shop-settings-domain" />
-            <p>
-              <label>
-                <input type="checkbox" checked={p.operatorEnabled} onChange={(e) => p.onOperatorEnabled(e.target.checked)} data-testid="shop-settings-enabled" />{" "}
-                {t("shop.settings.f.enabledOn")}
-              </label>
-            </p>
-          </>
+          <TextField label={t("shop.settings.f.domain")} value={p.operatorDomain} onChange={p.onOperatorDomain} testId="shop-settings-domain" />
         ) : (
           <>
             <p data-testid="shop-settings-domain-value">{settings.shop_domain !== null && settings.shop_domain !== undefined && settings.shop_domain !== "" ? settings.shop_domain : t("shop.settings.f.domainNone")}</p>
-            <p data-testid="shop-settings-enabled-value">
-              <strong>{t("shop.settings.f.enabled")}:</strong> {settings.enabled ? t("shop.settings.f.enabledOn") : t("shop.settings.f.enabledOff")}
-            </p>
             <p className="field-hint">{t("shop.settings.operatorOnly")}</p>
           </>
         )}
@@ -318,17 +308,24 @@ export function SettingsPage({ settings }: { settings: ShopSettingsView }) {
   const operator = access.data?.platform_superadmin === true;
   const [draft, setDraft] = useState<SettingsDraft>(() => settingsDraft(settings));
   const [domain, setDomain] = useState(settings.shop_domain ?? "");
-  const [enabled, setEnabled] = useState(settings.enabled);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [reloaded, setReloaded] = useState(false);
   const [failure, setFailure] = useState<unknown>(null);
+  // The storefront switch has its own call and its own failure (spec 61). `switched` is the last answer of the
+  // switch; a newer read of the settings (a refetch, a save) takes over again.
+  const [switched, setSwitched] = useState<ShopSettingsView | null>(null);
+  const [switching, setSwitching] = useState(false);
+  const [switchFailure, setSwitchFailure] = useState<unknown>(null);
   // The settings the form was built from. The query may refresh behind the form (a colleague saved): the form
   // keeps its own baseline, so the version it sends back is the one the person actually saw.
   const [baseline, setBaseline] = useState<ShopSettingsView>(settings);
   const allowLeave = useRef(false);
   const saving = useRef(false);
+
+  useEffect(() => setSwitched(null), [settings]);
+  const storefront = switched ?? settings;
 
   const countries = useQuery({ queryKey: ["geo", "countries", locale], queryFn: () => listCountries(locale), staleTime: Number.POSITIVE_INFINITY, retry: false });
   const canChannels = access.can("channel.read");
@@ -340,7 +337,7 @@ export function SettingsPage({ settings }: { settings: ShopSettingsView }) {
   const currencyLocked = currencyState(productCount) !== "editable";
 
   const problems = tried ? checkSettings(draft, { currencyLocked }) : {};
-  const dirty = canManage && (settingsDirty(draft, baseline) || (operator && (domain !== (baseline.shop_domain ?? "") || enabled !== baseline.enabled)));
+  const dirty = canManage && (settingsDirty(draft, baseline) || (operator && domain !== (baseline.shop_domain ?? "")));
 
   /** Saves the form; true when the settings were stored (the question on leaving the page uses it). */
   const submit = async (): Promise<boolean> => {
@@ -353,7 +350,6 @@ export function SettingsPage({ settings }: { settings: ShopSettingsView }) {
     const body: ShopSettingsUpdateRequest = settingsRequest(draft, baseline.updated_at);
     if (operator) {
       if (domain !== (baseline.shop_domain ?? "")) body.shop_domain = domain.trim();
-      if (enabled !== baseline.enabled) body.enabled = enabled;
     }
     saving.current = true;
     setBusy(true);
@@ -364,7 +360,6 @@ export function SettingsPage({ settings }: { settings: ShopSettingsView }) {
       setBaseline(stored);
       setDraft(settingsDraft(stored));
       setDomain(stored.shop_domain ?? "");
-      setEnabled(stored.enabled);
       setSaved(true);
       return true;
     } catch (error) {
@@ -373,6 +368,26 @@ export function SettingsPage({ settings }: { settings: ShopSettingsView }) {
     } finally {
       saving.current = false;
       setBusy(false);
+    }
+  };
+
+  /** Opens or closes the storefront. The form is untouched, only the version it will send back moves on. */
+  const toggleStorefront = async (next: boolean) => {
+    setSwitching(true);
+    setSwitchFailure(null);
+    try {
+      const stored = await setShopStorefront(orgId, next);
+      queryClient.setQueryData(["shopSettings", orgId], stored);
+      setSwitched(stored);
+      // The switch may move `updated_at`: the next save of the form must send the version that now stands.
+      setBaseline((b) => ({ ...b, updated_at: stored.updated_at, enabled: stored.enabled }));
+    } catch (error) {
+      setSwitchFailure(error);
+      // A refused opening names what is missing right now: show exactly that.
+      const blockers = blockersOfError(error);
+      if (blockers !== null) setSwitched(withBlockers(storefront, blockers));
+    } finally {
+      setSwitching(false);
     }
   };
 
@@ -386,7 +401,6 @@ export function SettingsPage({ settings }: { settings: ShopSettingsView }) {
       setBaseline(fresh);
       setDraft(settingsDraft(fresh));
       setDomain(fresh.shop_domain ?? "");
-      setEnabled(fresh.enabled);
       setTried(false);
       setReloaded(true);
     } catch (error) {
@@ -404,6 +418,16 @@ export function SettingsPage({ settings }: { settings: ShopSettingsView }) {
           {t("shop.settings.notConfigured")}
         </p>
       )}
+      <ShopStorefront
+        orgId={orgId}
+        enabled={storefront.enabled}
+        blockers={blockersOf(storefront)}
+        canManage={canManage}
+        canOpenOrgData={access.can("org.update")}
+        busy={switching || busy}
+        error={switchFailure}
+        onToggle={(next) => void toggleStorefront(next)}
+      />
       <ShopSettingsForm
         draft={draft}
         onDraft={setDraft}
@@ -422,8 +446,6 @@ export function SettingsPage({ settings }: { settings: ShopSettingsView }) {
         operator={operator}
         operatorDomain={domain}
         onOperatorDomain={setDomain}
-        operatorEnabled={enabled}
-        onOperatorEnabled={setEnabled}
         canManage={canManage}
         busy={busy}
         onSubmit={() => void submit()}

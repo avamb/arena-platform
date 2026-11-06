@@ -32,10 +32,16 @@ func DaysInMonth(month time.Time) int64 {
 	return int64(MonthStart(month).AddDate(0, 1, -1).Day())
 }
 
-// WhiteLabelActiveDays counts the days of the calendar month starting at
-// month that the period [startsOn, endsOn] covers, both ends inclusive; a nil
-// endsOn means the period has no end. Dates are calendar days in UTC.
+// WhiteLabelActiveDays is PeriodActiveDays for a white label period.
 func WhiteLabelActiveDays(startsOn time.Time, endsOn *time.Time, month time.Time) int64 {
+	return PeriodActiveDays(startsOn, endsOn, month)
+}
+
+// PeriodActiveDays counts the days of the calendar month starting at month
+// that the period [startsOn, endsOn] covers, both ends inclusive; a nil endsOn
+// means the period has no end. Dates are calendar days in UTC. White label
+// and module periods share it.
+func PeriodActiveDays(startsOn time.Time, endsOn *time.Time, month time.Time) int64 {
 	first := MonthStart(month)
 	last := first.AddDate(0, 1, -1)
 	from := dayOf(startsOn)
@@ -54,21 +60,32 @@ func WhiteLabelActiveDays(startsOn time.Time, endsOn *time.Time, month time.Time
 	return int64(to.Sub(from).Hours()/24) + 1
 }
 
-// WhiteLabelMonthOccurredAt is the instant a brand-month is billed at: noon
-// UTC on the last day of the month, so the month is the same in every zone an
-// invoice is cut in.
-func WhiteLabelMonthOccurredAt(month time.Time) time.Time {
+// WhiteLabelMonthOccurredAt is MonthOccurredAt for a brand-month.
+func WhiteLabelMonthOccurredAt(month time.Time) time.Time { return MonthOccurredAt(month) }
+
+// MonthOccurredAt is the instant a month of a monthly service is billed at:
+// noon UTC on the last day of the month, so the month is the same in every
+// zone an invoice is cut in.
+func MonthOccurredAt(month time.Time) time.Time {
 	return MonthStart(month).AddDate(0, 1, -1).Add(12 * time.Hour)
 }
 
 // WhiteLabelFromAttributes copies the proration of a white_label_month event
 // into ev. Unreadable attributes leave ev as it is; Rate then refuses the
 // event (days_in_month 0), so a broken row is never charged at zero.
-func WhiteLabelFromAttributes(raw []byte, ev *Event) {
+func WhiteLabelFromAttributes(raw []byte, ev *Event) { prorationFromAttributes(raw, ev) }
+
+// prorationFromAttributes copies days_active, days_in_month and
+// monthly_price_minor, the attributes every monthly-service event shares.
+func prorationFromAttributes(raw []byte, ev *Event) {
 	if len(raw) == 0 {
 		return
 	}
-	var m WhiteLabelMonth
+	var m struct {
+		DaysActive        int64  `json:"days_active"`
+		DaysInMonth       int64  `json:"days_in_month"`
+		MonthlyPriceMinor *int64 `json:"monthly_price_minor"`
+	}
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return
 	}

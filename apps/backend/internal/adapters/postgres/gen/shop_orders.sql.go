@@ -62,6 +62,10 @@ type ShopOrderRow struct {
 	// PromoCodeID is the personal "Refer a friend" code the order was bought
 	// with (migration 0191); discount holds what it took off the goods.
 	PromoCodeID *uuid.UUID `json:"promo_code_id"`
+	// FulfillmentStep is the parcel's progress (migration 0199): waiting,
+	// packed, handed_over, delivered or failed; nil for an unpaid order or one
+	// with nothing to ship.
+	FulfillmentStep *string `json:"fulfillment_step"`
 }
 
 const shopOrderColumns = `id, org_id, number, order_token, customer_id, status, buyer_name, buyer_email, buyer_phone,
@@ -69,7 +73,7 @@ const shopOrderColumns = `id, org_id, number, order_token, customer_id, status, 
        delivery_note, currency, subtotal, discount, shipping_fee, total, refunded_minor,
        payment_intent_id, provider, buyer_locale, source, external_ref, paid_at, shipped_at,
        cancelled_at, tracking_note, expires_at, metadata, created_at, updated_at,
-       staff_note, staff_note_by, staff_note_at, review_reason, promo_code_id`
+       staff_note, staff_note_by, staff_note_at, review_reason, promo_code_id, fulfillment_step`
 
 func scanShopOrderRow(row interface{ Scan(dest ...any) error }) (ShopOrderRow, error) {
 	var o ShopOrderRow
@@ -79,7 +83,7 @@ func scanShopOrderRow(row interface{ Scan(dest ...any) error }) (ShopOrderRow, e
 		&o.Discount, &o.ShippingFee, &o.Total, &o.RefundedMinor, &o.PaymentIntentID, &o.Provider,
 		&o.BuyerLocale, &o.Source, &o.ExternalRef, &o.PaidAt, &o.ShippedAt, &o.CancelledAt,
 		&o.TrackingNote, &o.ExpiresAt, &o.Metadata, &o.CreatedAt, &o.UpdatedAt,
-		&o.StaffNote, &o.StaffNoteBy, &o.StaffNoteAt, &o.ReviewReason, &o.PromoCodeID)
+		&o.StaffNote, &o.StaffNoteBy, &o.StaffNoteAt, &o.ReviewReason, &o.PromoCodeID, &o.FulfillmentStep)
 	return o, err
 }
 
@@ -363,7 +367,11 @@ type ListShopOrdersParams struct {
 	// View is a ready-made tab of the order list ("" = none): to_ship (paid
 	// or partly refunded, something to hand over, not shipped yet), unpaid,
 	// shipped or refunds. It narrows the list together with Status.
-	View   string
+	View string
+	// Step narrows the list to one delivery step (fulfillment_step) among
+	// the orders that can still move: paid, shipped or partly refunded.
+	// "" lists every step.
+	Step   string
 	Query  string
 	From   *time.Time
 	To     *time.Time
@@ -391,12 +399,13 @@ WHERE  org_id = $1
   AND  ($4::timestamptz IS NULL OR created_at >= $4)
   AND  ($5::timestamptz IS NULL OR created_at < $5)
   AND  (` + shopOrderViewCondition + `)
+  AND  ($9::text = '' OR (fulfillment_step = $9 AND status IN ('paid', 'shipped', 'partially_refunded')))
 ORDER  BY created_at DESC, id DESC
 LIMIT  $6 OFFSET $7`
 
 // ListShopOrders lists one page of an organization's orders, newest first.
 func (q *Queries) ListShopOrders(ctx context.Context, p ListShopOrdersParams) ([]ShopOrderRow, error) {
-	rows, err := q.db.Query(ctx, listShopOrders, p.OrgID, p.Status, p.Query, p.From, p.To, p.Limit, p.Offset, p.View)
+	rows, err := q.db.Query(ctx, listShopOrders, p.OrgID, p.Status, p.Query, p.From, p.To, p.Limit, p.Offset, p.View, p.Step)
 	if err != nil {
 		return nil, err
 	}
@@ -416,6 +425,8 @@ const setShopOrderStatus = `-- name: SetShopOrderStatus :one
 UPDATE shop_orders
 SET    status = $2,
        paid_at = CASE WHEN $2 = 'paid' THEN COALESCE(paid_at, now()) ELSE paid_at END,
+       fulfillment_step = CASE WHEN $2 = 'paid' AND delivery_kind <> 'none'
+                               THEN COALESCE(fulfillment_step, 'waiting') ELSE fulfillment_step END,
        review_reason = CASE WHEN $2 = 'manual_review' THEN review_reason ELSE NULL END,
        shipped_at = CASE WHEN $2 = 'shipped' THEN now() ELSE shipped_at END,
        cancelled_at = CASE WHEN $2 = 'cancelled' THEN now() ELSE cancelled_at END,
@@ -426,6 +437,7 @@ WHERE  id = $1
 RETURNING ` + shopOrderColumns
 
 // SetShopOrderStatus moves an order to status, stamping paid_at (paid only: a
+// paid order with something to ship also starts at fulfillment_step waiting; a
 // parked order gets its paid_at from SetShopOrderReview, and only when money
 // was really taken), shipped_at or cancelled_at for those statuses, and
 // clearing review_reason once the order leaves manual_review. trackingNote nil keeps the note; meta is
@@ -696,14 +708,34 @@ type ShopOrderCounts struct {
 	Unpaid  int64 `json:"unpaid"`
 	Shipped int64 `json:"shipped"`
 	Refunds int64 `json:"refunds"`
+	// Steps counts the orders that can still move (paid, shipped or partly
+	// refunded) by delivery step, like the list's step filter.
+	Steps ShopOrderStepCounts `json:"steps"`
 }
+
+// ShopOrderStepCounts is how many orders stand at each delivery step.
+type ShopOrderStepCounts struct {
+	Waiting    int64 `json:"waiting"`
+	Packed     int64 `json:"packed"`
+	HandedOver int64 `json:"handed_over"`
+	Delivered  int64 `json:"delivered"`
+	Failed     int64 `json:"failed"`
+}
+
+// shopOrderStepOpen opens the FILTER of one step count.
+const shopOrderStepOpen = `status IN ('paid', 'shipped', 'partially_refunded') AND fulfillment_step = `
 
 const countShopOrders = `-- name: CountShopOrders :one
 SELECT count(*),
        count(*) FILTER (WHERE status IN ('paid', 'partially_refunded') AND delivery_kind <> 'none' AND shipped_at IS NULL),
        count(*) FILTER (WHERE status = 'pending_payment'),
        count(*) FILTER (WHERE status = 'shipped'),
-       count(*) FILTER (WHERE status IN ('refunded', 'partially_refunded'))
+       count(*) FILTER (WHERE status IN ('refunded', 'partially_refunded')),
+       count(*) FILTER (WHERE ` + shopOrderStepOpen + `'waiting'),
+       count(*) FILTER (WHERE ` + shopOrderStepOpen + `'packed'),
+       count(*) FILTER (WHERE ` + shopOrderStepOpen + `'handed_over'),
+       count(*) FILTER (WHERE ` + shopOrderStepOpen + `'delivered'),
+       count(*) FILTER (WHERE ` + shopOrderStepOpen + `'failed')
 FROM   shop_orders
 WHERE  org_id = $1`
 
@@ -711,7 +743,8 @@ WHERE  org_id = $1`
 // in one pass. The conditions are the ones of shopOrderViewCondition.
 func (q *Queries) CountShopOrders(ctx context.Context, orgID uuid.UUID) (ShopOrderCounts, error) {
 	var c ShopOrderCounts
-	err := q.db.QueryRow(ctx, countShopOrders, orgID).Scan(&c.All, &c.ToShip, &c.Unpaid, &c.Shipped, &c.Refunds)
+	err := q.db.QueryRow(ctx, countShopOrders, orgID).Scan(&c.All, &c.ToShip, &c.Unpaid, &c.Shipped, &c.Refunds,
+		&c.Steps.Waiting, &c.Steps.Packed, &c.Steps.HandedOver, &c.Steps.Delivered, &c.Steps.Failed)
 	return c, err
 }
 

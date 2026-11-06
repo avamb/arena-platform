@@ -52,7 +52,7 @@ var saleUnsubscribeNotes = map[string]string{
 // noteFor is the note the letters of a kind end with.
 func noteFor(kind, loc string) string {
 	switch kind {
-	case TemplateKindShopOrderReceived, TemplateKindShopOrderShipped, TemplateKindShopOrderRefunded:
+	case TemplateKindShopOrderReceived, TemplateKindShopOrderShipped, TemplateKindShopOrderDelivered, TemplateKindShopOrderRefunded:
 		return shopUnsubscribeNotes[loc]
 	case TemplateKindSaleSubscribeConfirm, TemplateKindSaleOpen, TemplateKindMarketingConfirm:
 		return saleUnsubscribeNotes[loc]
@@ -73,6 +73,7 @@ func buyerLetterKinds() map[string]Data {
 		TemplateKindRefund:                      refundData(),
 		TemplateKindShopOrderReceived:           shopTestData(),
 		TemplateKindShopOrderShipped:            shopTestData(),
+		TemplateKindShopOrderDelivered:          shopTestData(),
 		TemplateKindShopOrderRefunded:           shopRefundTestData(),
 		TemplateKindSaleSubscribeConfirm:        {EventName: "E", RecipientEmail: "x@y.z", SaleNotice: SaleNoticeData{URL: "https://t.example/c", When: "w"}},
 		TemplateKindSaleOpen:                    {EventName: "E", RecipientEmail: "x@y.z", SaleNotice: SaleNoticeData{URL: "https://t.example/b", When: "w"}},

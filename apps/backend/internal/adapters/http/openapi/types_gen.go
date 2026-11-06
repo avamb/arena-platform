@@ -1160,6 +1160,21 @@ type AdminMemberItem struct {
 	UserId openapi_types.UUID `json:"user_id"`
 }
 
+// AdminOrgModulesResponse Every module period of an organization and the state of its shop.
+type AdminOrgModulesResponse struct {
+	// Items Every period, oldest first per module.
+	Items []OrgModulePeriod `json:"items"`
+
+	// Modules The modules connected today, sorted.
+	Modules []string `json:"modules"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Shop The shop's mode, storefront and price today.
+	Shop OrgModuleShopState `json:"shop"`
+}
+
 // AdminSeatRow AB-39 admin-only seat row: the fields the operator table
 // (`ID | Sector | Row | Seat | Category | Price | Status`) needs
 // to render the mandatory seat inventory. The public seat-status
@@ -4965,6 +4980,24 @@ type BindSessionSeatingResponse struct {
 	} `json:"session"`
 }
 
+// BotDeliveryButton One inline button of a delivery card.
+type BotDeliveryButton struct {
+	// Data The callback data, at most 64 bytes: `sd:<op>:<lang>:<order id>`.
+	Data string `json:"data"`
+
+	// Text The label in the organization's language.
+	Text string `json:"text"`
+}
+
+// BotDeliveryCard The delivery card as the group must see it now (Telegram HTML).
+type BotDeliveryCard struct {
+	// Rows The button rows; empty when nothing can be pressed (delivered, refunded).
+	Rows [][]BotDeliveryButton `json:"rows"`
+
+	// Text The card text with the status line of the current step.
+	Text string `json:"text"`
+}
+
 // BotGuestListDeliveriesResponse Answer of POST /v1/bot/guest-list-deliveries/claim.
 type BotGuestListDeliveriesResponse struct {
 	// Deliveries The lists taken for this call.
@@ -5229,6 +5262,117 @@ type BotInvitationRevokeResponse struct {
 	Revoked bool `json:"revoked"`
 }
 
+// BotSalesChatConnectRequest `/connect <code>` written in a group.
+type BotSalesChatConnectRequest struct {
+	// ChatId The Telegram chat.
+	ChatId string `json:"chat_id"`
+
+	// ChatTitle The group's title.
+	ChatTitle *string `json:"chat_title,omitempty"`
+
+	// Code The code from the admin screen.
+	Code string `json:"code"`
+
+	// TelegramName Their name.
+	TelegramName *string `json:"telegram_name,omitempty"`
+
+	// TelegramUserId Who wrote the command.
+	TelegramUserId *int64 `json:"telegram_user_id,omitempty"`
+}
+
+// BotSalesChatConnectResponse The chat the code bound.
+type BotSalesChatConnectResponse struct {
+	// Chat The chat row.
+	Chat SalesChat `json:"chat"`
+
+	// Locale The organization's language (`en` for an operator chat).
+	Locale string `json:"locale"`
+
+	// Operator The chat hears every organization.
+	Operator bool `json:"operator"`
+
+	// OrgName The organization's name, empty for an operator chat.
+	OrgName string `json:"org_name"`
+}
+
+// BotSalesChatMigratedRequest A group became a supergroup.
+type BotSalesChatMigratedRequest struct {
+	// FromChatId The old chat id.
+	FromChatId string `json:"from_chat_id"`
+
+	// ToChatId The new chat id.
+	ToChatId string `json:"to_chat_id"`
+}
+
+// BotSalesChatMigratedResponse The chat rows now use the new id.
+type BotSalesChatMigratedResponse struct {
+	// Migrated Always true.
+	Migrated bool `json:"migrated"`
+}
+
+// BotSalesChatRemovedRequest Telegram said the bot left or was removed from a chat.
+type BotSalesChatRemovedRequest struct {
+	// ChatId The Telegram chat.
+	ChatId string `json:"chat_id"`
+}
+
+// BotSalesChatRemovedResponse How many chat rows were marked.
+type BotSalesChatRemovedResponse struct {
+	// Marked Rows marked as removed.
+	Marked int64 `json:"marked"`
+}
+
+// BotShopDeliveryAnswer What a press did and the card to show.
+type BotShopDeliveryAnswer struct {
+	// Card The card to put in place of the pressed one.
+	Card BotDeliveryCard `json:"card"`
+
+	// FulfillmentStep The step now.
+	FulfillmentStep *string `json:"fulfillment_step"`
+
+	// Locale The organization's language the card is written in.
+	Locale string `json:"locale"`
+
+	// OrderNumber The order number.
+	OrderNumber int64 `json:"order_number"`
+
+	// Outcome `applied` (the step was set), `unchanged` (it already was), `stale` (somebody moved the order on: the card shows the current step) or `closed` (refunded or cancelled: do not ship, the card has no buttons).
+	Outcome string `json:"outcome"`
+}
+
+// BotShopDeliveryCardRequest Which card to render.
+type BotShopDeliveryCardRequest struct {
+	// ChatId The Telegram chat the card is in.
+	ChatId string `json:"chat_id"`
+
+	// OrderId The shop order.
+	OrderId openapi_types.UUID `json:"order_id"`
+}
+
+// BotShopDeliveryStepRequest A member of a delivery group pressed a step of a card.
+type BotShopDeliveryStepRequest struct {
+	// ChatId The Telegram chat the card is in.
+	ChatId string `json:"chat_id"`
+
+	// OrderId The shop order.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// Reason The reason of `failed` (a code of the buttons or a typed text).
+	Reason *string `json:"reason,omitempty"`
+
+	// Step `packed`, `handed_over`, `delivered` or `failed`.
+	Step string `json:"step"`
+
+	// TelegramName Their name as Telegram shows it.
+	TelegramName *string `json:"telegram_name,omitempty"`
+
+	// TelegramUserId Who pressed.
+	TelegramUserId int64 `json:"telegram_user_id"`
+
+	// Tracking The shipment number of `handed_over`.
+	Tracking *string `json:"tracking"`
+}
+
 // BotTeamMember One member of the organization as the Telegram event-center bot shows it.
 type BotTeamMember struct {
 	// Email The member's e-mail, the name the bot shows.
@@ -5305,6 +5449,9 @@ type BotWebLoginCodeRequest struct {
 	// SessionId The session whose invitations the mini app opens. Required for `kind: invitations`, ignored otherwise.
 	SessionId *openapi_types.UUID `json:"session_id,omitempty"`
 
+	// Target Optional (spec 61 section 4.5), used only for `purpose: web`. A relative path of the web event center to open after the sign-in: `/o/{org_id}/shop` or `/o/{org_id}/shop/...` (letters, digits, `-` and `_` in the segments) where `org_id` is an organization the person works in. Anything else, or a path of an organization the person does not belong to, is ignored without an error and the link opens the home page. An accepted target is appended to the fragment of the link as `&next=<url-encoded path>`.
+	Target *string `json:"target,omitempty"`
+
 	// TelegramUserId The Telegram account that pressed "Open in browser" or "Edit in the editor".
 	TelegramUserId int64 `json:"telegram_user_id"`
 }
@@ -5314,7 +5461,7 @@ type BotWebLoginCodeResponse struct {
 	// ExpiresAt When the link stops working (5 minutes after it was issued).
 	ExpiresAt time.Time `json:"expires_at"`
 
-	// Url `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>`, or for `purpose: miniapp` `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=<kind>&event=<event_id>`, or for `kind: invitations` `<EVENT_CENTER_PUBLIC_URL>/tg/invitations?session=<session_id>&event=<event_id>#code=<code>`. The code is after `#`, so it never reaches a server log.
+	// Url `<EVENT_CENTER_PUBLIC_URL>/login/link#code=<code>` (with `&next=<url-encoded target>` when an accepted `target` was sent), or for `purpose: miniapp` `<EVENT_CENTER_PUBLIC_URL>/tg/edit#code=<code>&kind=<kind>&event=<event_id>`, or for `kind: invitations` `<EVENT_CENTER_PUBLIC_URL>/tg/invitations?session=<session_id>&event=<event_id>#code=<code>`. The code is after `#`, so it never reaches a server log.
 	Url string `json:"url"`
 }
 
@@ -6179,6 +6326,24 @@ type ConfirmCheckoutRequest struct {
 	// `tier_id` if supplied. Returns `422 checkout.pricing_mismatch`
 	// on disagreement.
 	TierId *openapi_types.UUID `json:"tier_id"`
+}
+
+// ConnectShopModuleRequest Connects the shop module for a period.
+type ConnectShopModuleRequest struct {
+	// Currency Currency of the individual price; absent with a price means the organization's billing currency.
+	Currency *string `json:"currency"`
+
+	// EndsOn Last day (UTC, inclusive); absent or null has no end.
+	EndsOn *openapi_types.Date `json:"ends_on"`
+
+	// MonthlyPriceMinor Individual monthly price in minor units, 0 is free; absent or null is the price list (0 today).
+	MonthlyPriceMinor *int64 `json:"monthly_price_minor"`
+
+	// Reason Why the module is connected, stored on the period; absent uses X-Admin-Reason.
+	Reason *string `json:"reason"`
+
+	// StartsOn First day (UTC); absent or null is today.
+	StartsOn *openapi_types.Date `json:"starts_on"`
 }
 
 // CopyEventMaterialsResponse What `POST .../materials/copy-from/{source_event_id}` copied.
@@ -7829,6 +7994,15 @@ type EchoResponse struct {
 
 	// TraceId Distributed trace ID
 	TraceId string `json:"trace_id"`
+}
+
+// EndOrgModuleRequest Sets the last day of a module period.
+type EndOrgModuleRequest struct {
+	// EndsOn The last day (UTC, inclusive). Never later than the current end; the day before the period starts ends it before it began.
+	EndsOn openapi_types.Date `json:"ends_on"`
+
+	// Reason Why the module is ended, recorded in the audit row; absent uses X-Admin-Reason.
+	Reason *string `json:"reason"`
 }
 
 // ErrorEnvelope defines model for ErrorEnvelope.
@@ -11069,6 +11243,10 @@ type MeOrganizationMembership struct {
 	// JoinedAt When the membership was granted
 	JoinedAt time.Time `json:"joined_at"`
 
+	// Modules The paid modules the organization has today (UTC day), sorted; empty
+	// when none (spec 61 section 4.3). Today the only module is `shop`.
+	Modules []string `json:"modules"`
+
 	// OrgDisplayNumber Short operator-facing org number (AB-31); UUID remains the API key
 	OrgDisplayNumber int64 `json:"org_display_number"`
 
@@ -11080,6 +11258,14 @@ type MeOrganizationMembership struct {
 
 	// Role Role name held by the user inside the organization
 	Role string `json:"role"`
+
+	// ShopMode How much of the shop the organization has: `full` while the shop
+	// module is connected today; `orders_only` after the module ended,
+	// for good, while the organization has at least one shop order that
+	// was ever paid or any open one (awaiting payment or in manual
+	// review), when only the order routes work (list, card, shipping and
+	// refunds); null when it has no shop section at all.
+	ShopMode *string `json:"shop_mode"`
 
 	// Status Membership lifecycle status (always "active" in this response)
 	Status string `json:"status"`
@@ -13211,6 +13397,63 @@ type OrderTicketSummary struct {
 	Vip bool `json:"vip"`
 }
 
+// OrgBillingModulePeriod One module period as the organization sees it, with the price that applies to it.
+type OrgBillingModulePeriod struct {
+	// CreatedAt When the period was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Currency Currency of the individual price.
+	Currency *string `json:"currency"`
+
+	// EffectiveCurrency Currency of `effective_monthly_minor`.
+	EffectiveCurrency *string `json:"effective_currency"`
+
+	// EffectiveMonthlyMinor The monthly price of this period, its individual price else the price list's; null when unknown.
+	EffectiveMonthlyMinor *int64 `json:"effective_monthly_minor"`
+
+	// EndedAt When the period was last ended; null when never.
+	EndedAt *time.Time `json:"ended_at"`
+
+	// EndsOn Last day of the period (UTC, inclusive); null when it has no end.
+	EndsOn *openapi_types.Date `json:"ends_on"`
+
+	// Id Id of the period.
+	Id openapi_types.UUID `json:"id"`
+
+	// Module The module, today always `shop`.
+	Module string `json:"module"`
+
+	// MonthlyPriceMinor Individual monthly price in minor units of `currency`; null means the price list.
+	MonthlyPriceMinor *int64 `json:"monthly_price_minor"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// StartsOn First day of the period (UTC calendar day).
+	StartsOn openapi_types.Date `json:"starts_on"`
+
+	// Status `scheduled`, `in_force` or `ended`.
+	Status string `json:"status"`
+}
+
+// OrgBillingModulesResponse The organization's module periods and the monthly price that applies today.
+type OrgBillingModulesResponse struct {
+	// Currency Currency of `effective_monthly_minor`.
+	Currency *string `json:"currency"`
+
+	// EffectiveMonthlyMinor The monthly price that applies today, the individual price of the period covering today else the price list's.
+	EffectiveMonthlyMinor *int64 `json:"effective_monthly_minor"`
+
+	// Items Every period, oldest first.
+	Items []OrgBillingModulePeriod `json:"items"`
+
+	// PriceListMonthlyMinor The price list's monthly price of the shop module for the organization's billing account; null when unknown.
+	PriceListMonthlyMinor *int64 `json:"price_list_monthly_minor"`
+
+	// PriceSource `individual` or `price_list`; null when no price is known.
+	PriceSource *string `json:"price_source"`
+}
+
 // OrgCityResponse Response of POST /v1/organizations/{org_id}/cities. `city` has the
 // GET /v1/geo/cities item shape.
 type OrgCityResponse struct {
@@ -13261,6 +13504,81 @@ type OrgMeResponse struct {
 	// `platform_superadmin`) and any roles of the token. Empty for an
 	// API key.
 	Roles []string `json:"roles"`
+}
+
+// OrgModulePeriod One period of a paid module of an organization (org_module_periods,
+// migration 0198). The module is connected on every UTC day from
+// `starts_on` to `ends_on`, both inclusive. A period is ended, never
+// deleted. Admin answers carry every field.
+type OrgModulePeriod struct {
+	// CreatedAt When the period was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CreatedBy Superadmin who created the period (admin answers only).
+	CreatedBy *openapi_types.UUID `json:"created_by"`
+
+	// Currency ISO 4217 code of the individual price; null with a null price.
+	Currency *string `json:"currency"`
+
+	// EndedAt When the period was last ended or cut short; null when never.
+	EndedAt *time.Time `json:"ended_at"`
+
+	// EndedBy Superadmin who last ended the period (admin answers only).
+	EndedBy *openapi_types.UUID `json:"ended_by"`
+
+	// EndsOn Last day of the period (UTC, inclusive); null when it has no end.
+	EndsOn *openapi_types.Date `json:"ends_on"`
+
+	// Id Id of the period.
+	Id openapi_types.UUID `json:"id"`
+
+	// Module The module, today always `shop`.
+	Module string `json:"module"`
+
+	// MonthlyPriceMinor Individual monthly price in minor units of `currency`; null means the price list, 0 is free.
+	MonthlyPriceMinor *int64 `json:"monthly_price_minor"`
+
+	// OrgId The organization.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// Reason Why the period was created (admin answers only).
+	Reason *string `json:"reason,omitempty"`
+
+	// StartsOn First day of the period (UTC calendar day).
+	StartsOn openapi_types.Date `json:"starts_on"`
+
+	// Status `scheduled` (starts later), `in_force` (covers today) or `ended`.
+	Status string `json:"status"`
+}
+
+// OrgModuleShopState The state of an organization's shop today, for the superadmin.
+type OrgModuleShopState struct {
+	// Currency Currency of `effective_monthly_minor`.
+	Currency *string `json:"currency"`
+
+	// EffectiveMonthlyMinor The monthly price that applies today, in minor units of `currency`: the
+	// individual price of the period covering today, else the price list's
+	// `subscription` rule for `shop_module_month` in the organization's billing
+	// currency; null when neither is known.
+	EffectiveMonthlyMinor *int64 `json:"effective_monthly_minor"`
+
+	// Enabled The storefront switch the organization controls (false when the settings were never saved).
+	Enabled bool `json:"enabled"`
+
+	// Mode `full`, `orders_only` or null (no shop section).
+	Mode *string `json:"mode"`
+
+	// ModuleActive True when a shop period covers today.
+	ModuleActive bool `json:"module_active"`
+
+	// OpenShopOrders True when the organization has an open shop order (awaiting payment, in manual review, or paid and not shipped).
+	OpenShopOrders bool `json:"open_shop_orders"`
+
+	// PriceSource `individual` or `price_list`; null when no price is known.
+	PriceSource *string `json:"price_source"`
+
+	// ShopDomain The storefront host, set by a platform superadmin; null when none.
+	ShopDomain *string `json:"shop_domain"`
 }
 
 // OrgWhiteLabelList The organization's white label periods and the price list's monthly price.
@@ -13386,6 +13704,12 @@ type OrganizationItem struct {
 	// free-form UUID.
 	LogoMediaId *openapi_types.UUID `json:"logo_media_id"`
 
+	// Modules Only on GET /v1/organizations (the list): the paid modules the
+	// organization has today (UTC day), sorted, empty when none (spec 61
+	// section 4.3). Today the only module is `shop`. The Telegram bot lists
+	// a platform superadmin's organizations from it.
+	Modules *[]string `json:"modules,omitempty"`
+
 	// Name Human-readable display name (unique among active organizations)
 	Name string `json:"name"`
 
@@ -13395,6 +13719,12 @@ type OrganizationItem struct {
 
 	// ReservationTtlSeconds Seat-hold expiry window in seconds (default 1200 = 20 minutes)
 	ReservationTtlSeconds int `json:"reservation_ttl_seconds"`
+
+	// ShopMode Only on GET /v1/organizations (the list): `full` while the shop
+	// module is connected today, `orders_only` after it ended while the
+	// organization has a paid or an open shop order, with no end date
+	// (only the order routes work), null for no shop section.
+	ShopMode *string `json:"shop_mode"`
 
 	// Slug URL-safe identifier (unique among active organizations, lowercase)
 	Slug string `json:"slug"`
@@ -15855,6 +16185,21 @@ type RegisterWebhookSubscriberResponse struct {
 	SubscriberId openapi_types.UUID `json:"subscriber_id"`
 }
 
+// RepriceOrgModuleRequest Changes the monthly price of a module from a day on.
+type RepriceOrgModuleRequest struct {
+	// Currency Currency of the new price; absent with a price means the organization's billing currency.
+	Currency *string `json:"currency"`
+
+	// From First day of the new price (UTC); not before the period starts.
+	From openapi_types.Date `json:"from"`
+
+	// MonthlyPriceMinor New individual monthly price in minor units, 0 is free; absent or null returns to the price list.
+	MonthlyPriceMinor *int64 `json:"monthly_price_minor"`
+
+	// Reason Why the price changes, stored on the new period; absent uses X-Admin-Reason.
+	Reason *string `json:"reason"`
+}
+
 // Reservation A reservation holds capacity for a buyer within a session (and
 // optionally a specific ticket tier). The state machine is:
 // `draft -> active -> converted | expired | cancelled`.
@@ -15970,6 +16315,111 @@ type RevokeMembershipRequest struct {
 
 // RevokeMembershipRequestRole The specific role binding to revoke. org_admin is the organization owner; the last active owner cannot be revoked (409 `membership.last_owner`).
 type RevokeMembershipRequestRole string
+
+// SalesChat A Telegram chat of the sales bot (sales_notification_subscriptions), as the admin screen shows it.
+type SalesChat struct {
+	// Allowed The operator's on/off switch.
+	Allowed bool `json:"allowed"`
+
+	// BotRemovedAt When Telegram reported the bot removed from the chat; nothing is sent there until a new `/connect`.
+	BotRemovedAt *time.Time `json:"bot_removed_at"`
+
+	// ChatId Telegram's chat id, written by the bot on `/connect`.
+	ChatId string `json:"chat_id"`
+
+	// ChatTitle The group's title when it was connected.
+	ChatTitle *string `json:"chat_title"`
+
+	// ConnectedAt When the chat was last bound with a code.
+	ConnectedAt *time.Time `json:"connected_at"`
+
+	// CreatedAt When the row was created.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id The chat row.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kinds What the chat hears: `tickets` (ticket sales and refunds), `shop_sale` (the fact of a shop sale, no buyer data), `shop_delivery` (the full shop order card with the step buttons, for a delivery group).
+	Kinds []string `json:"kinds"`
+
+	// LastError The last delivery error reported by Telegram, null after a success.
+	LastError *string `json:"last_error"`
+
+	// Name The operator's name of the chat.
+	Name string `json:"name"`
+
+	// OnOrderPaid The chat hears sales.
+	OnOrderPaid bool `json:"on_order_paid"`
+
+	// OnTicketRefunded The chat hears refunds.
+	OnTicketRefunded bool `json:"on_ticket_refunded"`
+
+	// OrgId The organization; null for an operator chat, which hears every organization.
+	OrgId *openapi_types.UUID `json:"org_id"`
+
+	// UpdatedAt Last change.
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// SalesChatConnectCode A one-time connection code. Only its hash is stored, so this answer is the only place it appears.
+type SalesChatConnectCode struct {
+	// Code The code, ten characters shown as XXXXX-XXXXX.
+	Code string `json:"code"`
+
+	// Command What to write in the group after adding the sales bot: `/connect <code>` (or `/connect@<bot> <code>` when the group has other bots).
+	Command string `json:"command"`
+
+	// ExpiresAt The code works for 30 minutes, once.
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// Id The code row.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kinds What the chat will hear.
+	Kinds []string `json:"kinds"`
+
+	// Name The chat's name.
+	Name string `json:"name"`
+}
+
+// SalesChatConnectCodeRequest The chat a connection code will bind.
+type SalesChatConnectCodeRequest struct {
+	// Kinds What it will hear: one or more of `tickets`, `shop_sale`, `shop_delivery`.
+	Kinds []string `json:"kinds"`
+
+	// Name The chat's name in the admin screen, 1-200 characters.
+	Name string `json:"name"`
+}
+
+// SalesChatDeleted The chat was marked deleted.
+type SalesChatDeleted struct {
+	// Deleted Always true.
+	Deleted bool `json:"deleted"`
+
+	// Id The chat row.
+	Id openapi_types.UUID `json:"id"`
+}
+
+// SalesChatList The chats of an organization, or the operator's (deleted chats left out).
+type SalesChatList struct {
+	// Items The chats, oldest first.
+	Items []SalesChat `json:"items"`
+
+	// OrgId The organization, null for the operator's list.
+	OrgId *openapi_types.UUID `json:"org_id"`
+}
+
+// SalesChatPatchRequest An edit of a chat; absent members stay.
+type SalesChatPatchRequest struct {
+	// Allowed Switch the chat on or off.
+	Allowed *bool `json:"allowed,omitempty"`
+
+	// Kinds The new list of kinds.
+	Kinds *[]string `json:"kinds,omitempty"`
+
+	// Name A new name, 1-200 characters.
+	Name *string `json:"name,omitempty"`
+}
 
 // SalesFunnelGateway The sites that sell through the Bil24 gateway protocol (WordPress
 // plugins, channels with a gateway credential). They have no client
@@ -18797,6 +19247,21 @@ type ShopDownloadList struct {
 	Downloads []ShopDownload `json:"downloads"`
 }
 
+// ShopFulfillmentRequest The next delivery step of a shop order.
+type ShopFulfillmentRequest struct {
+	// Note A free remark for the history, up to 2000 characters.
+	Note *string `json:"note,omitempty"`
+
+	// Reason Why the delivery failed, required with `failed` (up to 500 characters).
+	Reason *string `json:"reason,omitempty"`
+
+	// Step `packed`, `handed_over`, `delivered` or `failed`. From `waiting`: `packed`, `handed_over` or `failed`; from `packed`: `handed_over` or `failed`; from `handed_over`: `delivered` or `failed`; from `failed`: `handed_over` (another try). The current step again changes nothing.
+	Step string `json:"step"`
+
+	// Tracking The shipment number of `handed_over`, up to 2000 characters; absent or null keeps the stored one. `handed_over` again with another number only stores it.
+	Tracking *string `json:"tracking"`
+}
+
 // ShopImage A picture of a product.
 type ShopImage struct {
 	// Alt Alternative text.
@@ -18859,11 +19324,17 @@ type ShopOrder struct {
 	// Discount Discount, minor units.
 	Discount int64 `json:"discount"`
 
+	// Events The history of the delivery steps, oldest first. Only the answers about one order carry it (read, ship, fulfillment, note and the other single-order routes); the list leaves it out.
+	Events *[]ShopOrderEvent `json:"events,omitempty"`
+
 	// ExpiresAt Until when an unpaid order holds its goods.
 	ExpiresAt *time.Time `json:"expires_at"`
 
 	// ExternalRef Order number in the system the order was imported from.
 	ExternalRef *string `json:"external_ref"`
+
+	// FulfillmentStep The delivery step, apart from the money status (spec 61 section 7b): `waiting` (paid, waits for packing), `packed`, `handed_over` (shipped: `shipped_at`, `tracking_note`), `delivered` or `failed` (not delivered; it may be handed over again). Null for an order that is not paid yet or has nothing to ship (`delivery_kind` `none`). A refund does not change it. Set it with `POST .../shop/orders/{order_id}/fulfillment`.
+	FulfillmentStep *string `json:"fulfillment_step"`
 
 	// Id The order.
 	Id openapi_types.UUID `json:"id"`
@@ -18931,11 +19402,50 @@ type ShopOrderCounts struct {
 	// Shipped Shipped orders.
 	Shipped int64 `json:"shipped"`
 
+	// Steps How many orders that can still move (paid, shipped or partly refunded) stand at each delivery step, the numbers behind the list's `fulfillment_step` filter.
+	Steps ShopOrderStepCounts `json:"steps"`
+
 	// ToShip Paid or partly refunded orders with something to hand over (shipping or pickup) that are not shipped yet. An order of digital products or services only is never counted.
 	ToShip int64 `json:"to_ship"`
 
 	// Unpaid Orders still waiting for their payment (`pending_payment`).
 	Unpaid int64 `json:"unpaid"`
+}
+
+// ShopOrderEvent One change of the delivery step of a shop order.
+type ShopOrderEvent struct {
+	// ActorName The name shown for the actor (the user's name or e-mail, the Telegram name, `API key`).
+	ActorName string `json:"actor_name"`
+
+	// ActorTelegramId The Telegram account of the delivery group member who pressed the button, null otherwise.
+	ActorTelegramId *int64 `json:"actor_telegram_id"`
+
+	// ActorUserId The platform user who set the step, null for a member of the delivery group.
+	ActorUserId *openapi_types.UUID `json:"actor_user_id"`
+
+	// CreatedAt When the step was set.
+	CreatedAt time.Time `json:"created_at"`
+
+	// FromStep The step before the change.
+	FromStep *string `json:"from_step"`
+
+	// Id The history row.
+	Id openapi_types.UUID `json:"id"`
+
+	// Note A free remark, empty when none was given.
+	Note string `json:"note"`
+
+	// Reason Why a `failed` delivery failed: `no_answer`, `not_home`, `wrong_address`, `refused` (the buttons of the delivery group) or a person's text.
+	Reason string `json:"reason"`
+
+	// Step The step set: `packed`, `handed_over`, `delivered` or `failed`.
+	Step string `json:"step"`
+
+	// Tracking The shipment number stored with a `handed_over` step, empty otherwise.
+	Tracking string `json:"tracking"`
+
+	// Via Where the step was set: `delivery_group` (a button of the delivery card in Telegram), `telegram_bot`, `event_center_web`, `admin_web`, `api` (an organization API key) or `system`.
+	Via string `json:"via"`
 }
 
 // ShopOrderItem One line of an order, as sold.
@@ -19003,6 +19513,9 @@ type ShopOrderSearchRequest struct {
 	// From Created at or after this instant (RFC 3339 with a zone, or YYYY-MM-DD for UTC midnight).
 	From *string `json:"from,omitempty"`
 
+	// FulfillmentStep Only orders at this delivery step (`waiting`, `packed`, `handed_over`, `delivered`, `failed`) among the paid, shipped and partly refunded ones.
+	FulfillmentStep *string `json:"fulfillment_step,omitempty"`
+
 	// Limit Page size, 1-200 (default 50).
 	Limit *int `json:"limit,omitempty"`
 
@@ -19020,6 +19533,24 @@ type ShopOrderSearchRequest struct {
 
 	// View A tab of the list: `to_ship`, `unpaid`, `shipped` or `refunds`.
 	View *string `json:"view,omitempty"`
+}
+
+// ShopOrderStepCounts Orders per delivery step, among the paid, shipped and partly refunded ones.
+type ShopOrderStepCounts struct {
+	// Delivered Delivered.
+	Delivered int64 `json:"delivered"`
+
+	// Failed Not delivered; they wait for another delivery or a refund.
+	Failed int64 `json:"failed"`
+
+	// HandedOver Handed to the courier (shipped).
+	HandedOver int64 `json:"handed_over"`
+
+	// Packed Packed, not handed over yet.
+	Packed int64 `json:"packed"`
+
+	// Waiting Paid, waiting to be packed.
+	Waiting int64 `json:"waiting"`
 }
 
 // ShopPage A static storefront page.
@@ -19387,7 +19918,7 @@ type ShopRefundResponse struct {
 
 // ShopResendEmailRequest Which buyer letter to send once more.
 type ShopResendEmailRequest struct {
-	// Kind `received` (the order is confirmed), `shipped` (the order is on its way) or `refunded` (money of the order went back to the buyer).
+	// Kind `received` (the order is confirmed), `shipped` (the order is on its way), `delivered` (the order arrived; only for an order that reached the step `delivered`) or `refunded` (money of the order went back to the buyer).
 	Kind string `json:"kind"`
 }
 
@@ -19429,6 +19960,9 @@ type ShopSettings struct {
 	// AnnouncementText Text of the storefront's announcement bar.
 	AnnouncementText string `json:"announcement_text"`
 
+	// CanOpen True when the storefront could be opened now, the module is connected and `open_blockers` is empty.
+	CanOpen bool `json:"can_open"`
+
 	// Configured False while the settings were never saved (defaults are shown and the storefront is closed).
 	Configured bool `json:"configured"`
 
@@ -19441,7 +19975,10 @@ type ShopSettings struct {
 	// Currency ISO 4217 code of every price in the shop.
 	Currency string `json:"currency"`
 
-	// Enabled Whether the storefront and its checkout are open. Only the platform operator opens or closes a shop; it starts closed.
+	// Enabled Whether the storefront and its checkout are open. It starts closed;
+	// the organization opens and closes it itself (owner, manager or
+	// platform superadmin, `PUT .../shop/storefront`). While the shop
+	// module is not connected the storefront is closed whatever this says.
 	Enabled bool `json:"enabled"`
 
 	// LogisticsNote Internal note for whoever ships the orders.
@@ -19449,6 +19986,20 @@ type ShopSettings struct {
 
 	// MaxLineQty How many units of one variant an order may hold (1-99, 24 by default).
 	MaxLineQty int32 `json:"max_line_qty"`
+
+	// ModuleActive True when the shop module is connected today (spec 61). The settings
+	// routes answer 404 `shop.module_not_enabled` otherwise, so on them it
+	// is true.
+	ModuleActive bool `json:"module_active"`
+
+	// OpenBlockers What keeps the storefront from opening, in this order:
+	// `settings_not_saved` (the settings were never saved),
+	// `no_active_product` (no product has status active) and
+	// `payment_not_configured` (the shop's sales channel, or the
+	// organization's live channels when the settings name none, has no
+	// active payment provider config the provider has verified). Empty when
+	// it can be opened. Computed also while the storefront is open.
+	OpenBlockers []string `json:"open_blockers"`
 
 	// OrgId The organization.
 	OrgId openapi_types.UUID `json:"org_id"`
@@ -19464,6 +20015,9 @@ type ShopSettings struct {
 
 	// ShopDomain Host name of the storefront, set by the platform operator; null when none.
 	ShopDomain *string `json:"shop_domain"`
+
+	// ShopMode The organization's shop mode, `full` or `orders_only`, or null for none.
+	ShopMode *string `json:"shop_mode"`
 
 	// UpdatedAt When the settings were last saved; null when never.
 	UpdatedAt *time.Time `json:"updated_at"`
@@ -19486,7 +20040,7 @@ type ShopSettingsUpdateRequest struct {
 	// Currency ISO 4217 code, e.g. EUR or ILS.
 	Currency string `json:"currency"`
 
-	// Enabled Opens (true) or closes (false) the storefront and its checkout, platform superadmin only; absent, null or the current value keeps it.
+	// Enabled Opens (true) or closes (false) the storefront and its checkout under the rules of `PUT .../shop/storefront`; absent, null or the current value keeps it.
 	Enabled *bool `json:"enabled"`
 
 	// ExpectedUpdatedAt The `updated_at` the editor loaded the settings with, sent back unchanged.
@@ -19530,6 +20084,12 @@ type ShopStaffNote struct {
 
 	// Text The note, up to 2000 characters; empty when there is none.
 	Text string `json:"text"`
+}
+
+// ShopStorefrontRequest Opens or closes the storefront and its checkout.
+type ShopStorefrontRequest struct {
+	// Enabled True opens the storefront, false closes it.
+	Enabled bool `json:"enabled"`
 }
 
 // ShopVariant A variant as the organization sees it.
@@ -22338,6 +22898,18 @@ type SuperadminListOrdersParams struct {
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 }
 
+// PostV1AdminOrgModuleEndParams defines parameters for PostV1AdminOrgModuleEnd.
+type PostV1AdminOrgModuleEndParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminOrgModuleRepriceParams defines parameters for PostV1AdminOrgModuleReprice.
+type PostV1AdminOrgModuleRepriceParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // SuperadminListOrganizationsParams defines parameters for SuperadminListOrganizations.
 type SuperadminListOrganizationsParams struct {
 	// Q Case-insensitive substring search across organization name and slug.
@@ -22398,6 +22970,18 @@ type PatchV1AdminOrganizationsOrgIdMembersMembershipIdParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// PostV1AdminOrganizationModuleShopParams defines parameters for PostV1AdminOrganizationModuleShop.
+type PostV1AdminOrganizationModuleShopParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// CreateAdminOrgSalesChatCodeParams defines parameters for CreateAdminOrgSalesChatCode.
+type CreateAdminOrgSalesChatCodeParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // SuperadminListRefundsParams defines parameters for SuperadminListRefunds.
 type SuperadminListRefundsParams struct {
 	// Limit Maximum number of rows to return.
@@ -22405,6 +22989,24 @@ type SuperadminListRefundsParams struct {
 
 	// Offset Number of rows to skip before returning results.
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// CreateAdminOperatorSalesChatCodeParams defines parameters for CreateAdminOperatorSalesChatCode.
+type CreateAdminOperatorSalesChatCodeParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// DeleteAdminSalesChatParams defines parameters for DeleteAdminSalesChat.
+type DeleteAdminSalesChatParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PatchAdminSalesChatParams defines parameters for PatchAdminSalesChat.
+type PatchAdminSalesChatParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
 }
 
 // SuperadminListTicketsParams defines parameters for SuperadminListTickets.
@@ -22840,6 +23442,12 @@ type GetV1OrgBillingLedgerParams struct {
 
 	// Limit Page size, 1 to 200. Default 50.
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetV1OrganizationBillingModulesParams defines parameters for GetV1OrganizationBillingModules.
+type GetV1OrganizationBillingModulesParams struct {
+	// XAdminReason Why a platform superadmin acts here. Required (400 `superadmin.missing_reason`) for a platform superadmin reading an organization they are not a member of; ignored for everybody else.
+	XAdminReason *string `json:"X-Admin-Reason,omitempty"`
 }
 
 // PostV1OrgBillingPackOrderParams defines parameters for PostV1OrgBillingPackOrder.
@@ -23491,6 +24099,9 @@ type ListShopOrdersParams struct {
 	// View A tab of the order list, combined with `status` when both are given: `to_ship` (paid or partly refunded, something to hand over, not shipped yet), `unpaid`, `shipped` or `refunds`. `GET .../shop/orders/counts` gives the size of each.
 	View *string `form:"view,omitempty" json:"view,omitempty"`
 
+	// FulfillmentStep Only orders at this delivery step (`waiting`, `packed`, `handed_over`, `delivered`, `failed`) among the paid, shipped and partly refunded ones; `GET .../shop/orders/counts` gives the size of each in `steps`.
+	FulfillmentStep *string `form:"fulfillment_step,omitempty" json:"fulfillment_step,omitempty"`
+
 	// Q Order number, or part of the buyer's e-mail or name.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
@@ -23914,6 +24525,12 @@ type RequestOnboardingInfoJSONRequestBody = OnboardingRequestInfoRequest
 // UpdateOnboardingSettingsJSONRequestBody defines body for UpdateOnboardingSettings for application/json ContentType.
 type UpdateOnboardingSettingsJSONRequestBody = OnboardingSettingsRequest
 
+// PostV1AdminOrgModuleEndJSONRequestBody defines body for PostV1AdminOrgModuleEnd for application/json ContentType.
+type PostV1AdminOrgModuleEndJSONRequestBody = EndOrgModuleRequest
+
+// PostV1AdminOrgModuleRepriceJSONRequestBody defines body for PostV1AdminOrgModuleReprice for application/json ContentType.
+type PostV1AdminOrgModuleRepriceJSONRequestBody = RepriceOrgModuleRequest
+
 // PostV1AdminOrganizationsJSONRequestBody defines body for PostV1AdminOrganizations for application/json ContentType.
 type PostV1AdminOrganizationsJSONRequestBody = CreateOrganizationRequest
 
@@ -23925,6 +24542,18 @@ type PostV1AdminOrganizationsOrgIdMembersJSONRequestBody = AdminAddMemberRequest
 
 // PatchV1AdminOrganizationsOrgIdMembersMembershipIdJSONRequestBody defines body for PatchV1AdminOrganizationsOrgIdMembersMembershipId for application/json ContentType.
 type PatchV1AdminOrganizationsOrgIdMembersMembershipIdJSONRequestBody = AdminChangeMemberRoleRequest
+
+// PostV1AdminOrganizationModuleShopJSONRequestBody defines body for PostV1AdminOrganizationModuleShop for application/json ContentType.
+type PostV1AdminOrganizationModuleShopJSONRequestBody = ConnectShopModuleRequest
+
+// CreateAdminOrgSalesChatCodeJSONRequestBody defines body for CreateAdminOrgSalesChatCode for application/json ContentType.
+type CreateAdminOrgSalesChatCodeJSONRequestBody = SalesChatConnectCodeRequest
+
+// CreateAdminOperatorSalesChatCodeJSONRequestBody defines body for CreateAdminOperatorSalesChatCode for application/json ContentType.
+type CreateAdminOperatorSalesChatCodeJSONRequestBody = SalesChatConnectCodeRequest
+
+// PatchAdminSalesChatJSONRequestBody defines body for PatchAdminSalesChat for application/json ContentType.
+type PatchAdminSalesChatJSONRequestBody = SalesChatPatchRequest
 
 // PostV1AdminUsersJSONRequestBody defines body for PostV1AdminUsers for application/json ContentType.
 type PostV1AdminUsersJSONRequestBody = AdminCreateUserRequest
@@ -24015,6 +24644,21 @@ type GetBotOnboardingSiteLinkJSONRequestBody = OnboardingBotActionRequest
 
 // SubmitBotOnboardingApplicationJSONRequestBody defines body for SubmitBotOnboardingApplication for application/json ContentType.
 type SubmitBotOnboardingApplicationJSONRequestBody = OnboardingBotActionRequest
+
+// PostBotSalesChatConnectJSONRequestBody defines body for PostBotSalesChatConnect for application/json ContentType.
+type PostBotSalesChatConnectJSONRequestBody = BotSalesChatConnectRequest
+
+// PostBotSalesChatMigratedJSONRequestBody defines body for PostBotSalesChatMigrated for application/json ContentType.
+type PostBotSalesChatMigratedJSONRequestBody = BotSalesChatMigratedRequest
+
+// PostBotSalesChatRemovedJSONRequestBody defines body for PostBotSalesChatRemoved for application/json ContentType.
+type PostBotSalesChatRemovedJSONRequestBody = BotSalesChatRemovedRequest
+
+// PostBotShopDeliveryCardJSONRequestBody defines body for PostBotShopDeliveryCard for application/json ContentType.
+type PostBotShopDeliveryCardJSONRequestBody = BotShopDeliveryCardRequest
+
+// PostBotShopDeliveryStepJSONRequestBody defines body for PostBotShopDeliveryStep for application/json ContentType.
+type PostBotShopDeliveryStepJSONRequestBody = BotShopDeliveryStepRequest
 
 // CreateBotWebLoginCodeJSONRequestBody defines body for CreateBotWebLoginCode for application/json ContentType.
 type CreateBotWebLoginCodeJSONRequestBody = BotWebLoginCodeRequest
@@ -24358,6 +25002,9 @@ type SearchShopOrdersJSONRequestBody = ShopOrderSearchRequest
 // UpdateShopOrderNoteJSONRequestBody defines body for UpdateShopOrderNote for application/json ContentType.
 type UpdateShopOrderNoteJSONRequestBody = ShopOrderNoteRequest
 
+// SetShopOrderFulfillmentJSONRequestBody defines body for SetShopOrderFulfillment for application/json ContentType.
+type SetShopOrderFulfillmentJSONRequestBody = ShopFulfillmentRequest
+
 // RefundShopOrderJSONRequestBody defines body for RefundShopOrder for application/json ContentType.
 type RefundShopOrderJSONRequestBody = ShopRefundRequest
 
@@ -24390,6 +25037,9 @@ type PutV1OrganizationsOrgIdShopReferralProgramJSONRequestBody = ReferralProgram
 
 // PutShopSettingsJSONRequestBody defines body for PutShopSettings for application/json ContentType.
 type PutShopSettingsJSONRequestBody = ShopSettingsUpdateRequest
+
+// PutShopStorefrontJSONRequestBody defines body for PutShopStorefront for application/json ContentType.
+type PutShopStorefrontJSONRequestBody = ShopStorefrontRequest
 
 // PostV1OrganizationsOrgIdTextsFormatJSONRequestBody defines body for PostV1OrganizationsOrgIdTextsFormat for application/json ContentType.
 type PostV1OrganizationsOrgIdTextsFormatJSONRequestBody = TextFormatRequest

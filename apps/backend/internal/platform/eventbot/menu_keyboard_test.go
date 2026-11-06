@@ -121,7 +121,7 @@ func TestLeaveAllDialogs_EndsEveryDialogKind(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			kept := exempt[kind] || (keepRefund && kind == refundDialogKind)
+			kept := exempt[kind] || (keepRefund && (kind == refundDialogKind || kind == shopRefundDialogKind))
 			if found != kept {
 				t.Errorf("keepRefund=%v: dialog %s (%q) open=%v, want open=%v", keepRefund, name, kind, found, kept)
 			}

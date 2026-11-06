@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * M-10: a refund overwrites the status of a shipped order, but the order stays shipped. The "Mark shipped"
+ * M-10: a refund overwrites the status of a shipped order, but the order stays shipped. The "Handed to courier"
  * button must not come back once shipped_at is set; the tracking note can still be changed after a partial
  * refund (the same button, labelled for the note).
  */
@@ -14,7 +14,7 @@ vi.mock("@/lib/api/shopApi", () => ({
   cancelShopOrder: vi.fn(),
   fetchShopOrder: vi.fn(),
   refundShopOrder: vi.fn(),
-  shipShopOrder: vi.fn(),
+  setShopOrderFulfillment: vi.fn(),
 }));
 
 import { ShopOrderActions } from "@/components/ShopOrderActions";
@@ -81,9 +81,9 @@ const shipButton = (el: HTMLElement) => el.querySelector('[data-testid="shop-ord
 describe("the ship button across status and shipped_at", () => {
   const cases: Array<[string, string | null, string | null]> = [
     // status, shipped_at, label of the button (null: no button)
-    ["paid", null, "Mark shipped"],
-    ["manual_review", null, "Mark shipped"],
-    ["partially_refunded", null, "Mark shipped"],
+    ["paid", null, "Handed to courier"],
+    ["manual_review", null, "Handed to courier"],
+    ["partially_refunded", null, "Handed to courier"],
     ["shipped", SHIPPED, "Change the note"],
     ["partially_refunded", SHIPPED, "Change the note"],
     ["refunded", SHIPPED, null],

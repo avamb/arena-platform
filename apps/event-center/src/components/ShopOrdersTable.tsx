@@ -4,6 +4,7 @@
  * is given. On a phone every row becomes a card (the `.table` rules).
  */
 import { Link } from "@tanstack/react-router";
+import { ShopStepBadge } from "@/components/ShopOrderDelivery";
 import { Badge } from "@/components/ui";
 import { formatMoney } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
@@ -38,6 +39,7 @@ export function ShopOrdersTable({ orgId, orders, country }: { orgId: string; ord
             <th scope="col">{t("shop.orders.col.total")}</th>
             <th scope="col">{t("shop.orders.col.status")}</th>
             <th scope="col">{t("shop.orders.col.delivery")}</th>
+            <th scope="col">{t("shop.orders.col.step")}</th>
           </tr>
         </thead>
         <tbody>
@@ -58,6 +60,9 @@ export function ShopOrdersTable({ orgId, orders, country }: { orgId: string; ord
                 <ShopOrderStatusBadge status={o.status} shippedAt={o.shipped_at} />
               </td>
               <td data-label={t("shop.orders.col.delivery")}>{t(deliveryLabel(o.delivery_kind))}</td>
+              <td data-label={t("shop.orders.col.step")} data-testid="shop-order-step-cell">
+                <ShopStepBadge order={o} />
+              </td>
             </tr>
           ))}
         </tbody>

@@ -55,6 +55,11 @@ var dialogOwners = map[string]dialogOwner{
 		leave:  (*Bot).leaveOrders,
 		narrow: (*Bot).narrowOrderCancel,
 	},
+	// The shop's screens and its typed steps (spec 61): any press of the
+	// section keeps the dialog, any other ends it.
+	shopDialogKind: {owns: prefixIs("sh"), leave: (*Bot).leaveShop},
+	// A shop refund that may have started is parked with its key, never dropped.
+	shopRefundDialogKind: {owns: shopRefundOwns, leave: (*Bot).leaveIdleShopRefund},
 	// A refund already with the server, or one that may have started, is
 	// kept or parked with its key by leaveIdleRefund, never dropped.
 	refundDialogKind:        {owns: dataHasPrefix("or:f:"), leave: (*Bot).leaveIdleRefund},
@@ -84,6 +89,8 @@ var dialogOwners = map[string]dialogOwner{
 var dialogTexts = map[string]dialogTextHandler{
 	eventsDialogKind:        (*Bot).eventsText,
 	ordersDialogKind:        (*Bot).ordersText,
+	shopDialogKind:          (*Bot).shopText,
+	shopRefundDialogKind:    (*Bot).shopRefundText,
 	refundDialogKind:        (*Bot).refundText,
 	scanExcDialogKind:       (*Bot).scanExcText,
 	resendDialogKind:        (*Bot).resendText,
@@ -143,7 +150,7 @@ func (b *Bot) narrowOrderCancel(ctx context.Context, tg int64, data string) {
 
 // dialogOwnerOrder is the fixed order dialogs are ended in (a map has none).
 var dialogOwnerOrder = []string{
-	eventsDialogKind, ordersDialogKind, refundDialogKind, scanExcDialogKind,
+	eventsDialogKind, ordersDialogKind, shopDialogKind, shopRefundDialogKind, refundDialogKind, scanExcDialogKind,
 	resendDialogKind, evsDialogKind, inviteDialogKind, promoDialogKind,
 	promoterDialogKind, referralDialogKind, categoryDialogKind, seatLayoutDialogKind, orgDataDialogKind, sesDialogKind,
 	materialsDialogKind, teamDialogKind, salesLinkDialogKind, salesLinkListDialogKind, tfDialogKind,

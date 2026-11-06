@@ -22,6 +22,10 @@ const settings: ShopSettings = {
   max_line_qty: 24,
   enabled: false,
   updated_at: "2026-10-01T10:00:00Z",
+  module_active: true,
+  shop_mode: "full",
+  can_open: true,
+  open_blockers: [],
 };
 
 function render(over: Partial<ShopSettingsFormProps> = {}, extra: Record<string, unknown> = {}, locale: "en" | "ru" | "es" = "en"): string {
@@ -41,8 +45,6 @@ function render(over: Partial<ShopSettingsFormProps> = {}, extra: Record<string,
     operator: false,
     operatorDomain: "",
     onOperatorDomain: () => undefined,
-    operatorEnabled: false,
-    onOperatorEnabled: () => undefined,
     canManage: true,
     busy: false,
     onSubmit: () => undefined,
@@ -68,20 +70,21 @@ describe("ShopSettingsForm", () => {
     expect(html).toContain('data-testid="shop-settings-save"');
   });
 
-  it("shows the domain and the open flag read only for an organizer, and says who changes them", () => {
+  it("shows the domain read only for an organizer, and says who changes it", () => {
     const html = render({}, { enabled: true });
     expect(html).toContain('data-testid="shop-settings-domain-value"');
     expect(html).toContain("shop.example.com");
-    expect(html).toContain("Open to buyers");
-    expect(html).toContain("platform operator");
+    expect(html).toContain("platform operator sets the domain");
+    // The open flag has its own panel (spec 61): the form neither shows it nor offers it to the operator.
+    expect(html).not.toContain("Open to buyers");
     expect(html).not.toContain('data-testid="shop-settings-domain"');
     expect(html).toMatch(/<fieldset disabled="" data-testid="shop-settings-operator">/);
   });
 
-  it("lets the platform operator change the domain and the flag", () => {
-    const html = render({ operator: true, operatorDomain: "shop.example.com", operatorEnabled: true });
+  it("lets the platform operator change the domain, and only the domain", () => {
+    const html = render({ operator: true, operatorDomain: "shop.example.com" });
     expect(html).toContain('data-testid="shop-settings-domain"');
-    expect(html).toContain('data-testid="shop-settings-enabled"');
+    expect(html).not.toContain('data-testid="shop-settings-enabled"');
     expect(html).not.toMatch(/<fieldset disabled="" data-testid="shop-settings-operator">/);
   });
 

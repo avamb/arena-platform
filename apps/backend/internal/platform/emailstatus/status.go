@@ -50,6 +50,8 @@ const (
 	KindShopReceived = "shop_received"
 	KindShopShipped  = "shop_shipped"
 	KindShopRefunded = "shop_refunded"
+	// KindShopDelivered: the "your order was delivered" letter (migration 0199).
+	KindShopDelivered = "shop_delivered"
 	// The letters to a referrer of "Refer a friend" (migration 0191): the
 	// cashback went back to their card, or could not be returned. They name
 	// order_id (the referrer's order) and are no refund letters.

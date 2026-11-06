@@ -130,6 +130,7 @@ export const API = {
   billingLedger: { method: "GET", path: "/v1/organizations/{org_id}/billing/ledger" },
   billingServiceFeeQuote: { method: "GET", path: "/v1/organizations/{org_id}/billing/service-fee-quote" },
   billingPayer: { method: "PUT", path: "/v1/organizations/{org_id}/billing/payer" },
+  billingModules: { method: "GET", path: "/v1/organizations/{org_id}/billing/modules" },
   // 4-4: invitations (free tickets for named guests).
   complimentaryList: { method: "GET", path: "/v1/organizations/{org_id}/complimentary" },
   complimentaryIssue: { method: "POST", path: "/v1/organizations/{org_id}/complimentary" },
@@ -286,6 +287,7 @@ export const API = {
   channels: { method: "GET", path: "/v1/organizations/{org_id}/channels" },
   shopSettings: { method: "GET", path: "/v1/organizations/{org_id}/shop/settings" },
   shopSettingsPut: { method: "PUT", path: "/v1/organizations/{org_id}/shop/settings" },
+  shopStorefront: { method: "PUT", path: "/v1/organizations/{org_id}/shop/storefront" },
   shopProducts: { method: "GET", path: "/v1/organizations/{org_id}/shop/products" },
   shopProductCreate: { method: "POST", path: "/v1/organizations/{org_id}/shop/products" },
   shopProduct: { method: "GET", path: "/v1/organizations/{org_id}/shop/products/{product_id}" },
@@ -302,6 +304,7 @@ export const API = {
   shopOrderNote: { method: "PATCH", path: "/v1/organizations/{org_id}/shop/orders/{order_id}" },
   shopOrderResendEmail: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/resend-email" },
   shopOrderShip: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/ship" },
+  shopOrderFulfillment: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/fulfillment" },
   shopOrderCancel: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/cancel" },
   // Waits for the backend lane: the operator decision on an order in manual_review (shop.manage + refund.create, step-up, Idempotency-Key).
   shopOrderResolve: { method: "POST", path: "/v1/organizations/{org_id}/shop/orders/{order_id}/resolve" },

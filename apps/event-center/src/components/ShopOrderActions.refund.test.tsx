@@ -14,7 +14,7 @@ vi.mock("@/lib/api/shopApi", () => ({
   cancelShopOrder: vi.fn(),
   fetchShopOrder: vi.fn(),
   refundShopOrder: vi.fn(),
-  shipShopOrder: vi.fn(),
+  setShopOrderFulfillment: vi.fn(),
   fetchCourierText: vi.fn(),
 }));
 // The password question is not what these tests are about: the money request just goes out.
@@ -26,7 +26,7 @@ vi.mock("@/lib/stepUp", async (importOriginal) => ({
 import { ShopOrderActions } from "@/components/ShopOrderActions";
 import { StepUpProvider } from "@/components/StepUpDialog";
 import { ApiError } from "@/lib/api/http";
-import { fetchCourierText, fetchShopOrder, refundShopOrder, shipShopOrder } from "@/lib/api/shopApi";
+import { fetchCourierText, fetchShopOrder, refundShopOrder, setShopOrderFulfillment } from "@/lib/api/shopApi";
 import type { ShopOrder } from "@/lib/api/types";
 import { I18nProvider } from "@/lib/i18n";
 
@@ -64,7 +64,7 @@ function order(over: Record<string, unknown> = {}): ShopOrder {
 const refundAnswer = { order: order({ status: "partially_refunded", refunded_minor: 1000 }), refund: { id: "r1", state: "succeeded", amount: 1000, currency: "EUR" } };
 
 beforeEach(() => {
-  for (const fn of [fetchCourierText, fetchShopOrder, refundShopOrder, shipShopOrder]) vi.mocked(fn).mockReset();
+  for (const fn of [fetchCourierText, fetchShopOrder, refundShopOrder, setShopOrderFulfillment]) vi.mocked(fn).mockReset();
   vi.mocked(fetchShopOrder).mockResolvedValue(order());
 });
 afterEach(() => {
@@ -216,7 +216,7 @@ describe("the refund of a shop order: one operation, one Idempotency-Key (SA-01)
 
 describe("shipping an order whose goods are gone (SA-19)", () => {
   it("lists the lines that are short, by name", async () => {
-    vi.mocked(shipShopOrder).mockRejectedValue(new ApiError(409, "shop.out_of_stock", "short", undefined, { items: [{ variant_id: "v1", ordered: 2, available: 1 }] }));
+    vi.mocked(setShopOrderFulfillment).mockRejectedValue(new ApiError(409, "shop.out_of_stock", "short", undefined, { items: [{ variant_id: "v1", ordered: 2, available: 1 }] }));
     const el = await mount(order({ status: "manual_review" }));
     await press(el, "shop-order-ship");
     await press(el, "shop-ship-submit");

@@ -292,6 +292,15 @@ func (s *Service) placeOrderTx(ctx context.Context, tx pgx.Tx, q *gen.Queries, i
 		if !settings.Enabled {
 			return ErrShopNotFound
 		}
+		// The module is checked on this transaction: a shop switched off
+		// today takes no new order, whatever enabled says (spec 61 4.2).
+		closed, err := moduleClosed(ctx, q, in.OrgID, now)
+		if err != nil {
+			return err
+		}
+		if closed {
+			return ErrShopNotFound
+		}
 		if settings.AgeGateMinAge != nil && !in.AgeConfirmed {
 			return invalid("shop.age_confirmation_required",
 				fmt.Sprintf("confirm that you are at least %d years old to buy here", *settings.AgeGateMinAge))

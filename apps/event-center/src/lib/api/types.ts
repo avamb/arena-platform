@@ -164,6 +164,8 @@ export type BillingChargeSessionLine = S["BillingChargeSessionLine"];
 export type BillingEventSummary = S["BillingEventSummary"];
 // B3-3/B4: the organizer's billing account (balance, packs, invoices, journal, payer).
 export type BillingBalanceResponse = S["BillingBalanceResponse"];
+export type OrgBillingModulesResponse = S["OrgBillingModulesResponse"];
+export type OrgBillingModulePeriod = S["OrgBillingModulePeriod"];
 export type BillingAccountBalance = S["BillingAccountBalance"];
 export type BillingCreditLot = S["BillingCreditLot"];
 export type BillingCurrentRate = S["BillingCurrentRate"];

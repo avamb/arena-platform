@@ -52,6 +52,7 @@ import { ShopProductEditScreen, ShopProductNewScreen } from "@/screens/ShopProdu
 import { ShopOrdersScreen } from "@/screens/ShopOrdersScreen";
 import { ShopOrderScreen } from "@/screens/ShopOrderScreen";
 import { ShopSettingsScreen } from "@/screens/ShopSettingsScreen";
+import { shopGated } from "@/screens/ShopGate";
 import { parseProductCardSearch, parseProductsSearch, parseShopOrdersSearch } from "@/lib/shop";
 
 const rootRoute = createRootRoute({ component: RootLayout, notFoundComponent: NotFoundScreen });
@@ -317,7 +318,8 @@ const linkRoute = createRoute({
 });
 
 // The shop (spec 47). Every screen explains itself to a person without shop.read. "new" is listed before
-// "$productId" so it is never read as an id.
+// "$productId" so it is never read as an id. Spec 61: every shop screen passes the gate (no module: "not
+// connected", module ended: orders only); the route ids stay the same, so the analytics screen names do too.
 const shopRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/shop",
@@ -330,39 +332,39 @@ const shopProductsRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/shop/products",
   validateSearch: parseProductsSearch,
-  component: ShopProductsScreen,
+  component: shopGated(ShopProductsScreen),
 });
 
 const shopProductNewRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/shop/products/new",
-  component: ShopProductNewScreen,
+  component: shopGated(ShopProductNewScreen),
 });
 
 const shopProductRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/shop/products/$productId",
   validateSearch: parseProductCardSearch,
-  component: ShopProductEditScreen,
+  component: shopGated(ShopProductEditScreen),
 });
 
 const shopOrdersRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/shop/orders",
   validateSearch: parseShopOrdersSearch,
-  component: ShopOrdersScreen,
+  component: shopGated(ShopOrdersScreen),
 });
 
 const shopOrderRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/shop/orders/$orderId",
-  component: ShopOrderScreen,
+  component: shopGated(ShopOrderScreen),
 });
 
 const shopSettingsRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/shop/settings",
-  component: ShopSettingsScreen,
+  component: shopGated(ShopSettingsScreen),
 });
 
 export const routeTree = rootRoute.addChildren([

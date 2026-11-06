@@ -95,6 +95,11 @@ type meMembershipDTO struct {
 	JoinedAt         string `json:"joined_at"`
 	// Archived is true when a platform superadmin archived the organization.
 	Archived bool `json:"archived"`
+	// Modules are the paid modules the organization has today (spec 61
+	// section 4.3), sorted; never null.
+	Modules []string `json:"modules"`
+	// ShopMode is "full", "orders_only" or null (no shop section).
+	ShopMode *string `json:"shop_mode"`
 }
 
 // meNetworkDTO mirrors a single row from assigned_networks.
@@ -279,6 +284,13 @@ func (h *Handler) HandleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dtos := membershipsToDTO(memberships)
+	if err := h.fillMembershipModules(ctx, memberships, dtos); err != nil {
+		logger.Warn("me: OrgModuleStates failed", "err", err)
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "could not load organization modules", r))
+		return
+	}
+
 	staff, err := h.meQueries.IsPlatformStaff(ctx, userID)
 	if err != nil {
 		logger.Warn("me: IsPlatformStaff failed", "err", err)
@@ -297,7 +309,7 @@ func (h *Handler) HandleMe(w http.ResponseWriter, r *http.Request) {
 		},
 		Roles:                   roles,
 		Permissions:             permissions,
-		OrganizationMemberships: membershipsToDTO(memberships),
+		OrganizationMemberships: dtos,
 		AssignedNetworks:        networksToDTO(networks),
 		AvailableScopes:         ComputeAvailableScopes(roles, memberships, networks),
 		// A signed role claim (service tokens, impersonation) counts like a
@@ -388,6 +400,7 @@ func membershipsToDTO(rows []gen.MembershipRow) []meMembershipDTO {
 			Status:           m.Status,
 			JoinedAt:         m.JoinedAt.UTC().Format(time.RFC3339Nano),
 			Archived:         m.OrgArchived,
+			Modules:          []string{},
 		})
 	}
 	return out

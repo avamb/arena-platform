@@ -245,6 +245,30 @@ other = "💸 Vráceno: <b>{{.Amount}}</b>"
 ["salesnotify.shop.refunded_so_far"]
 other = "💸 Vráceno celkem: {{.Amount}} z {{.Total}}"
 
+["salesnotify.shop.sale_title"]
+other = "🛍 <b>Prodej v obchodě</b> — {{.Org}}"
+
+["salesnotify.shop.sale_items"]
+other = "🛒 Položky ({{.Count}}): {{.List}}"
+
+["salesnotify.shop.sale_item"]
+other = "{{.Name}} ×{{.Qty}}"
+
+["salesnotify.shop.sale_refund_full"]
+other = "↩️ Objednávka vrácena celá"
+
+["salesnotify.shop.sale_refund_part"]
+other = "↩️ Částečné vrácení: {{.Amount}} z {{.Total}}"
+
+["salesnotify.shop.refund_do_not_ship"]
+other = "🛑 Neodesílejte, dokud organizátor nepotvrdí, co poslat: část objednávky je vrácena."
+
+["salesnotify.shop.refund_stop_shipment"]
+other = "🛑 Neodesílejte. Zastavte odeslání: celá objednávka je vrácena."
+
+["salesnotify.shop.refund_already_shipped"]
+other = "📮 Už odesláno. Vrácení peněz balíček nezastaví."
+
 ["salesnotify.shop.review_title"]
 other = "⚠️ <b>Objednávka v obchodě vyžaduje pozornost</b> — {{.Org}}"
 
@@ -326,3 +350,101 @@ other = "Odměna {{.Amount}} za objednávku kamaráda č. {{.Number}} (kód <b>{
 
 ["salesnotify.referral.unpaid_body_provider"]
 other = "Odměna {{.Amount}} za objednávku kamaráda č. {{.Number}} (kód <b>{{.Code}}</b>) nebyla vyplacena: platební poskytovatel vrácení odmítl. Kupujícího, který kamaráda přivedl, jsme požádali, aby se obrátil na vás. Vyrovnejte se s ním sami, například promo kódem."
+
+# --- salesnotify delivery steps and the sales bot (spec 61 section 7b) ---
+["salesnotify.shop.step.waiting"]
+other = "⏳ Čeká na zabalení"
+
+["salesnotify.shop.step.packed"]
+other = "📦 Zabaleno"
+
+["salesnotify.shop.step.handed_over"]
+other = "🚚 Předáno kurýrovi"
+
+["salesnotify.shop.step.delivered"]
+other = "✅ Doručeno"
+
+["salesnotify.shop.step.failed"]
+other = "❌ Nedoručeno"
+
+["salesnotify.shop.step_tracking"]
+other = "č. {{.Tracking}}"
+
+["salesnotify.shop.card_closed"]
+other = "🛑 Objednávka vrácena: neodesílat"
+
+["salesnotify.shop.reason.no_answer"]
+other = "Nedovolali jsme se"
+
+["salesnotify.shop.reason.not_home"]
+other = "Nikdo doma"
+
+["salesnotify.shop.reason.wrong_address"]
+other = "Chybná adresa"
+
+["salesnotify.shop.reason.refused"]
+other = "Odmítnuto převzetí"
+
+["salesnotify.shop.reason.other"]
+other = "Jiné"
+
+["salesnotify.shop.btn_no_tracking"]
+other = "🚚 Bez čísla"
+
+["salesnotify.shop.btn_back"]
+other = "↩️ Zpět"
+
+["salesnotify.shop.failed_title"]
+other = "❌ <b>Objednávka z obchodu nedoručena</b> — {{.Org}}"
+
+["salesnotify.shop.failed_body"]
+other = "Objednávka č. {{.Number}}: {{.Reason}}. Rozhodněte v event centru: nové doručení, nebo vrácení peněz."
+
+["salesnotify.shop.ask_tracking"]
+other = "🚚 Číslo zásilky: odpovězte na tuto zprávu číslem, nebo pod kartou stiskněte «Bez čísla»."
+
+["salesnotify.shop.ask_reason"]
+other = "❌ Proč nebylo doručeno? Odpovězte na tuto zprávu důvodem."
+
+["salesnotify.bot.toast_done"]
+other = "Hotovo: {{.Step}}"
+
+["salesnotify.bot.toast_stale"]
+other = "Už nastaveno: {{.Step}}"
+
+["salesnotify.bot.toast_closed"]
+other = "Objednávka vrácena, neodesílat"
+
+["salesnotify.bot.toast_error"]
+other = "Nepodařilo se, zkuste to znovu"
+
+["salesnotify.bot.toast_not_connected"]
+other = "Tento chat není připojen k doručování"
+
+["salesnotify.bot.prompt_expired"]
+other = "Tato otázka vypršela: stiskněte tlačítko na kartě znovu."
+
+["salesnotify.bot.connected"]
+other = "✅ Chat připojen: {{.Org}}\nDostává: {{.Kinds}}"
+
+["salesnotify.bot.connect_failed"]
+other = "Kód nefunguje nebo vypršel. Požádejte o nový kód v administraci."
+
+["salesnotify.bot.connect_usage"]
+other = "Napište /connect a kód z administrace."
+
+["salesnotify.bot.connect_group_only"]
+other = "Připojit lze jen skupinu: přidejte bota do skupiny a pošlete kód tam."
+
+["salesnotify.bot.operator"]
+other = "Platforma (všechny organizace)"
+
+["salesnotify.bot.kind.tickets"]
+other = "prodej vstupenek"
+
+["salesnotify.bot.kind.shop_sale"]
+other = "prodeje obchodu (bez údajů kupujícího)"
+
+["salesnotify.bot.kind.shop_delivery"]
+other = "objednávky obchodu k doručení"
+

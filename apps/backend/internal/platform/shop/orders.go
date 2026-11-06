@@ -21,6 +21,9 @@ type OrderView struct {
 	gen.ShopOrderRow
 	Items   []gen.ShopOrderItemRow
 	Payment *gen.PaymentIntentRow
+	// Events is the history of the delivery steps, oldest first. Only the
+	// single-order answers read it; a list leaves it nil.
+	Events []gen.ShopOrderEventRow
 }
 
 func (s *Service) view(ctx context.Context, q *gen.Queries, o gen.ShopOrderRow) (OrderView, error) {
@@ -28,7 +31,11 @@ func (s *Service) view(ctx context.Context, q *gen.Queries, o gen.ShopOrderRow) 
 	if err != nil {
 		return OrderView{}, err
 	}
-	v := OrderView{ShopOrderRow: o, Items: items}
+	events, err := q.ListShopOrderEvents(ctx, o.ID, o.OrgID)
+	if err != nil {
+		return OrderView{}, err
+	}
+	v := OrderView{ShopOrderRow: o, Items: items, Events: events}
 	if o.PaymentIntentID != nil {
 		pi, err := q.GetPaymentIntentByID(ctx, *o.PaymentIntentID)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -62,7 +69,10 @@ type OrderFilter struct {
 	Status string
 	// View is a tab of the list: ViewToShip, ViewUnpaid, ViewShipped or
 	// ViewRefunds. "" is the whole list.
-	View   string
+	View string
+	// Step is a delivery step (fulfillment_step) among the orders that can
+	// still move; "" is every step.
+	Step   string
 	Query  string
 	From   *time.Time
 	To     *time.Time
@@ -116,6 +126,10 @@ func (s *Service) ListOrdersPage(ctx context.Context, orgID uuid.UUID, f OrderFi
 	if f.View != "" && !orderViews[f.View] {
 		return nil, false, newErr(http.StatusBadRequest, "shop.invalid_filter", "view must be to_ship, unpaid, shipped or refunds")
 	}
+	if f.Step != "" && !fulfillmentSteps[f.Step] {
+		return nil, false, newErr(http.StatusBadRequest, "shop.invalid_filter",
+			"fulfillment_step must be waiting, packed, handed_over, delivered or failed")
+	}
 	if f.Limit <= 0 {
 		f.Limit = 50
 	}
@@ -123,7 +137,7 @@ func (s *Service) ListOrdersPage(ctx context.Context, orgID uuid.UUID, f OrderFi
 		return nil, false, newErr(http.StatusBadRequest, "shop.invalid_filter", "limit must be 1-200 and offset zero or more")
 	}
 	rows, err := s.q.ListShopOrders(ctx, gen.ListShopOrdersParams{
-		OrgID: orgID, Status: f.Status, View: f.View, Query: strings.TrimSpace(f.Query), From: f.From, To: f.To,
+		OrgID: orgID, Status: f.Status, View: f.View, Step: f.Step, Query: strings.TrimSpace(f.Query), From: f.From, To: f.To,
 		Limit: int32(f.Limit + 1), Offset: int32(f.Offset), //nolint:gosec // bounded above
 	})
 	if err != nil {
@@ -154,15 +168,30 @@ func (s *Service) ListOrdersPage(ctx context.Context, orgID uuid.UUID, f OrderFi
 	return out, more, nil
 }
 
-// Ship marks a paid order shipped and writes v1.shop.order.shipped. Shipping
-// an order that is shipped already only updates its tracking note. Shipping
-// an order parked in manual_review means the operator found the goods: they
-// are taken off the shelf now, but only when they are free (stock left after
-// every live hold); otherwise 409 shop.out_of_stock lists the short lines.
-func (s *Service) Ship(ctx context.Context, orgID, id uuid.UUID, trackingNote string) (OrderView, error) {
+// Ship marks a paid order shipped: the delivery step handed_over
+// (SetFulfillmentStep), which writes v1.shop.order.shipped and the buyer's
+// letter the first time. Shipping an order that is shipped already, and at
+// handed_over, delivered or failed, only replaces its tracking note under the
+// order's row lock: no step moves (a delivered order stays delivered, a
+// failed one stays failed), no history row, no outbox event and no letter. A
+// new try of a failed delivery is an explicit handed_over step
+// (ApplyFulfillmentStep), not a note edit. Shipping an order parked in
+// manual_review means the operator found the goods: they are taken off the
+// shelf now, but only when they are free (stock left after every live hold);
+// otherwise 409 shop.out_of_stock lists the short lines. actor names who did
+// it and from where (its Tracking is ignored: trackingNote is the note).
+func (s *Service) Ship(ctx context.Context, orgID, id uuid.UUID, trackingNote string, actor StepInput) (OrderView, error) {
+	if err := s.ready(); err != nil {
+		return OrderView{}, err
+	}
 	trackingNote = strings.TrimSpace(trackingNote)
-	if !textOK(trackingNote, MaxNoteLen) {
-		return OrderView{}, invalid("shop.text_too_long", "tracking_note is limited to 2000 characters")
+	actor.Tracking = &trackingNote
+	if err := validateStepInput(StepHandedOver, &actor); err != nil {
+		return OrderView{}, err
+	}
+	if actor.ActorName == "" && actor.ActorUserID != nil {
+		// Read on the pool BEFORE the transaction opens.
+		actor.ActorName = s.authorName(ctx, StaffNoteAuthor{UserID: actor.ActorUserID})
 	}
 	var out gen.ShopOrderRow
 	err := s.inTx(ctx, func(tx pgx.Tx, q *gen.Queries) error {
@@ -173,76 +202,35 @@ func (s *Service) Ship(ctx context.Context, orgID, id uuid.UUID, trackingNote st
 		if err != nil {
 			return err
 		}
-		if o.DeliveryKind == DeliveryNone {
-			// Digital or service goods: there is no parcel, no address and no
-			// letter, so "shipped" would only write a false event (SA-32).
-			return newErr(http.StatusConflict, "shop.order_not_shippable",
-				"this order has nothing to ship: it holds only digital or service goods")
-		}
-		switch o.Status {
-		case StatusShipped:
-			out, err = q.SetShopOrderStatus(ctx, o.ID, StatusShipped, &trackingNote, nil)
-			return err
-		case StatusPartiallyRefunded:
-			if o.ShippedAt != nil {
-				// Shipped before the refund (M-10): the parcel has gone, so it is
-				// not shipped a second time and no second letter is sent. Only
-				// the note can change, and the refund status stays.
-				out, err = q.SetShopOrderStatus(ctx, o.ID, StatusPartiallyRefunded, &trackingNote, nil)
-				return err
+		if trackingOnly(o) {
+			out = o
+			if o.TrackingNote != trackingNote {
+				out, err = q.SetShopOrderTracking(ctx, o.ID, trackingNote)
 			}
-		case StatusPaid:
-		case StatusManualReview:
-			if reviewReasonIs(o, ReviewPaymentUnconfirmed) {
-				// Parked because its PAYMENT waits for a human (an amount
-				// mismatch, a refund at the provider before arena confirmed
-				// it): the goods go out only once that payment is settled.
-				if err := requireSucceededPayment(ctx, q, o); err != nil {
-					return err
-				}
-			}
-			if err := q.LockShopOrderVariants(ctx, o.ID); err != nil {
-				return err
-			}
-			lines, err := q.ShopOrderShortages(ctx, o.ID)
-			if err != nil {
-				return err
-			}
-			if short := shortLines(lines); len(short) > 0 {
-				e := newErr(http.StatusConflict, "shop.out_of_stock",
-					"the goods of this order are not free on the shelf; add stock or refund the order")
-				e.Details = map[string]any{"items": short}
-				return e
-			}
-			if err := s.applySaleTx(ctx, q, o); err != nil {
-				return err
-			}
-		default:
-			return newErr(http.StatusConflict, "shop.order_not_shippable", "only a paid order can be shipped; this one is "+o.Status)
-		}
-		out, err = q.SetShopOrderStatus(ctx, o.ID, StatusShipped, &trackingNote, nil)
-		if err != nil {
 			return err
 		}
-		if err := s.appendEvent(ctx, tx, EventOrderShipped, out, map[string]any{"tracking_note": trackingNote}); err != nil {
-			return err
-		}
-		s.enqueueOrderEmailTx(ctx, tx, EmailShipped, out)
-		if o.RefundedMinor > 0 {
-			// Part of the order was refunded before it was handed over: the
-			// shipment must not erase that. The status follows the money
-			// again through the one rule every refund writer uses (SA-10).
-			out, err = s.syncRefundsTx(ctx, tx, q, out)
-			if err != nil {
-				return err
-			}
-		}
-		return nil
+		res, err := s.SetFulfillmentStep(ctx, tx, orgID, id, StepHandedOver, actor)
+		out = res.Order
+		return err
 	})
 	if err != nil {
 		return OrderView{}, err
 	}
 	return s.view(ctx, s.q, out)
+}
+
+// trackingOnly: the order was handed over already and sits at a step after
+// that, so Ship edits the note and nothing else. A closed order (refunded,
+// cancelled, expired) goes through the step machine, which refuses it.
+func trackingOnly(o gen.ShopOrderRow) bool {
+	if o.ShippedAt == nil || o.DeliveryKind == DeliveryNone || OrderClosed(o) {
+		return false
+	}
+	switch CurrentStep(o) {
+	case StepHandedOver, StepDelivered, StepFailed:
+		return true
+	}
+	return false
 }
 
 // Cancel cancels an order that is still waiting for its payment; its goods go

@@ -13,6 +13,7 @@
 import { useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { BillingNav } from "@/components/BillingNav";
+import { BillingShopModule } from "@/components/BillingShopModule";
 import { Badge, Empty, ErrorBox, Loading } from "@/components/ui";
 import { fetchBillingEventSummary, listBillingCharges, listEvents } from "@/lib/api/endpoints";
 import type { BillingChargeItem, BillingChargeTotal } from "@/lib/api/types";
@@ -228,6 +229,9 @@ export function BillingScreen() {
       <p className="notice" role="status" data-testid="billing-preliminary">
         {t("billing.preliminary")}
       </p>
+
+      {/* Spec 61: the shop module, one read-only line (since when, price per month). */}
+      <BillingShopModule orgId={orgId} />
 
       <div className="tabs" role="group" aria-label={t("billing.month.label")}>
         <button type="button" className="btn" onClick={() => setMonth(shiftMonth(month, -1))} data-testid="billing-month-prev">

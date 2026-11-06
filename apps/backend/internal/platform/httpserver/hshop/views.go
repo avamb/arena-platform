@@ -27,6 +27,15 @@ type settingsJSON struct {
 	MaxLineQty       int32      `json:"max_line_qty"`
 	Enabled          bool       `json:"enabled"`
 	UpdatedAt        *time.Time `json:"updated_at"`
+	// ModuleActive: the shop module is connected today (spec 61 4.3).
+	ModuleActive bool `json:"module_active"`
+	// ShopMode is "full", "orders_only" or null.
+	ShopMode *string `json:"shop_mode"`
+	// CanOpen: the storefront may be opened now (module connected, nothing
+	// in OpenBlockers).
+	CanOpen bool `json:"can_open"`
+	// OpenBlockers lists what keeps the storefront from opening (never null).
+	OpenBlockers []string `json:"open_blockers"`
 }
 
 func uuidPtrStr(id *uuid.UUID) *string {
@@ -43,7 +52,7 @@ func toSettingsJSON(v shop.SettingsView) settingsJSON {
 		ShippingFeeMinor: v.ShippingFeeMinor, ShippingLabel: v.ShippingLabel, CountryISO2: v.CountryISO2,
 		AgeGateMinAge: v.AgeGateMinAge, AnnouncementText: v.AnnouncementText, ContactEmail: v.ContactEmail,
 		LogisticsNote: v.LogisticsNote, SalesChannelID: uuidPtrStr(v.SalesChannelID), ShopDomain: v.ShopDomain,
-		MaxLineQty: v.MaxLineQty, Enabled: v.Enabled,
+		MaxLineQty: v.MaxLineQty, Enabled: v.Enabled, OpenBlockers: []string{},
 	}
 	if v.Configured {
 		t := v.UpdatedAt
@@ -277,37 +286,69 @@ type staffNoteJSON struct {
 	At   *time.Time `json:"at"`
 }
 
+// orderEventJSON is one step of the delivery history.
+type orderEventJSON struct {
+	ID              string    `json:"id"`
+	Step            string    `json:"step"`
+	FromStep        *string   `json:"from_step"`
+	Tracking        string    `json:"tracking"`
+	Reason          string    `json:"reason"`
+	Note            string    `json:"note"`
+	ActorUserID     *string   `json:"actor_user_id"`
+	ActorTelegramID *int64    `json:"actor_telegram_id"`
+	ActorName       string    `json:"actor_name"`
+	Via             string    `json:"via"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+func toOrderEventsJSON(rows []gen.ShopOrderEventRow) *[]orderEventJSON {
+	out := make([]orderEventJSON, 0, len(rows))
+	for _, e := range rows {
+		out = append(out, orderEventJSON{
+			ID: e.ID.String(), Step: e.Step, FromStep: e.FromStep, Tracking: e.Tracking, Reason: e.Reason, Note: e.Note,
+			ActorUserID: uuidPtrStr(e.ActorUserID), ActorTelegramID: e.ActorTelegramID, ActorName: e.ActorName,
+			Via: e.Via, CreatedAt: e.CreatedAt,
+		})
+	}
+	return &out
+}
+
 // orderJSON is an order as the organization routes answer it.
 type orderJSON struct {
-	ID            string          `json:"id"`
-	OrgID         string          `json:"org_id"`
-	Number        int64           `json:"number"`
-	Status        string          `json:"status"`
-	ReviewReason  *string         `json:"review_reason"`
-	Source        string          `json:"source"`
-	ExternalRef   *string         `json:"external_ref"`
-	CustomerID    *string         `json:"customer_id"`
-	Buyer         buyerJSON       `json:"buyer"`
-	Ship          addressJSON     `json:"ship"`
-	DeliveryKind  string          `json:"delivery_kind"`
-	DeliveryNote  string          `json:"delivery_note"`
-	Currency      string          `json:"currency"`
-	Subtotal      int64           `json:"subtotal"`
-	Discount      int64           `json:"discount"`
-	ShippingFee   int64           `json:"shipping_fee"`
-	Total         int64           `json:"total"`
-	RefundedMinor int64           `json:"refunded_minor"`
-	BuyerLocale   *string         `json:"buyer_locale"`
-	TrackingNote  string          `json:"tracking_note"`
-	StaffNote     staffNoteJSON   `json:"staff_note"`
-	Items         []orderItemJSON `json:"items"`
-	Payment       *paymentJSON    `json:"payment"`
-	ExpiresAt     *time.Time      `json:"expires_at"`
-	PaidAt        *time.Time      `json:"paid_at"`
-	ShippedAt     *time.Time      `json:"shipped_at"`
-	CancelledAt   *time.Time      `json:"cancelled_at"`
-	CreatedAt     time.Time       `json:"created_at"`
-	UpdatedAt     time.Time       `json:"updated_at"`
+	ID            string      `json:"id"`
+	OrgID         string      `json:"org_id"`
+	Number        int64       `json:"number"`
+	Status        string      `json:"status"`
+	ReviewReason  *string     `json:"review_reason"`
+	Source        string      `json:"source"`
+	ExternalRef   *string     `json:"external_ref"`
+	CustomerID    *string     `json:"customer_id"`
+	Buyer         buyerJSON   `json:"buyer"`
+	Ship          addressJSON `json:"ship"`
+	DeliveryKind  string      `json:"delivery_kind"`
+	DeliveryNote  string      `json:"delivery_note"`
+	Currency      string      `json:"currency"`
+	Subtotal      int64       `json:"subtotal"`
+	Discount      int64       `json:"discount"`
+	ShippingFee   int64       `json:"shipping_fee"`
+	Total         int64       `json:"total"`
+	RefundedMinor int64       `json:"refunded_minor"`
+	BuyerLocale   *string     `json:"buyer_locale"`
+	TrackingNote  string      `json:"tracking_note"`
+	// FulfillmentStep is the delivery step (nil: unpaid or nothing to ship).
+	FulfillmentStep *string `json:"fulfillment_step"`
+	// Events is the history of the delivery steps, only in the answers about
+	// one order (the list leaves it out).
+	Events      *[]orderEventJSON `json:"events,omitempty"`
+	StaffNote   staffNoteJSON     `json:"staff_note"`
+	Items       []orderItemJSON   `json:"items"`
+	Payment     *paymentJSON      `json:"payment"`
+	ExpiresAt   *time.Time        `json:"expires_at"`
+	PaidAt      *time.Time        `json:"paid_at"`
+	ShippedAt   *time.Time        `json:"shipped_at"`
+	CancelledAt *time.Time        `json:"cancelled_at"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
 }
 
 func toOrderJSON(v shop.OrderView) orderJSON {
@@ -321,9 +362,13 @@ func toOrderJSON(v shop.OrderView) orderJSON {
 		DeliveryKind: o.DeliveryKind, DeliveryNote: o.DeliveryNote, Currency: o.Currency,
 		Subtotal: o.Subtotal, Discount: o.Discount, ShippingFee: o.ShippingFee, Total: o.Total,
 		RefundedMinor: o.RefundedMinor, BuyerLocale: o.BuyerLocale, TrackingNote: o.TrackingNote,
-		StaffNote: staffNoteJSON{Text: o.StaffNote, By: o.StaffNoteBy, At: o.StaffNoteAt},
-		Items:     toItemsJSON(v.Items), ExpiresAt: o.ExpiresAt, PaidAt: o.PaidAt, ShippedAt: o.ShippedAt,
+		FulfillmentStep: o.FulfillmentStep,
+		StaffNote:       staffNoteJSON{Text: o.StaffNote, By: o.StaffNoteBy, At: o.StaffNoteAt},
+		Items:           toItemsJSON(v.Items), ExpiresAt: o.ExpiresAt, PaidAt: o.PaidAt, ShippedAt: o.ShippedAt,
 		CancelledAt: o.CancelledAt, CreatedAt: o.CreatedAt, UpdatedAt: o.UpdatedAt,
+	}
+	if v.Events != nil {
+		out.Events = toOrderEventsJSON(v.Events)
 	}
 	if v.Payment != nil {
 		out.Payment = &paymentJSON{ID: v.Payment.ID.String(), Provider: v.Payment.Provider, State: v.Payment.State,

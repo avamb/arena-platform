@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/orgmodules"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/outbox"
 )
 
@@ -110,6 +111,8 @@ type fakeStore struct {
 	claimed  map[string]bool
 	chatIDs  map[string]string
 	lastErrs map[string]string
+	// modes is the shop mode per organization; a missing entry is full.
+	modes map[string]orgmodules.Mode
 }
 
 func newFakeStore(subs ...Subscription) *fakeStore {
@@ -131,6 +134,12 @@ func (f *fakeStore) ShopOrder(_ context.Context, _, id string) (ShopOrder, error
 		return ShopOrder{}, ErrNotFound
 	}
 	return o, nil
+}
+func (f *fakeStore) ShopMode(_ context.Context, orgID string) (orgmodules.Mode, error) {
+	if m, ok := f.modes[orgID]; ok {
+		return m, nil
+	}
+	return orgmodules.ModeFull, nil
 }
 func (f *fakeStore) RefundByTicket(_ context.Context, id string) (Refund, error) {
 	r, ok := f.refunds[id]

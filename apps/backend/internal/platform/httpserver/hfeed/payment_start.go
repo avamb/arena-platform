@@ -351,6 +351,10 @@ type hostedPaymentConfig struct {
 	// of guessing (2026-09-20). Never log the key itself.
 	configID string
 	mode     string
+	// verification is the config's verification_status: what the provider
+	// itself said about the credential the last time arena asked ("ok",
+	// "failed" or "unverified").
+	verification string
 }
 
 // resolveConfig is the ONE implementation of "can this org take money on this
@@ -409,10 +413,11 @@ func (s *StripePaymentStarter) resolveConfig(ctx context.Context, orgID, channel
 		}
 	}
 	return hostedPaymentConfig{
-		entry:    entry,
-		secrets:  payments.SecretsFromJSON(cfg.Secrets),
-		configID: cfg.ID.String(),
-		mode:     cfg.Mode,
+		entry:        entry,
+		secrets:      payments.SecretsFromJSON(cfg.Secrets),
+		configID:     cfg.ID.String(),
+		mode:         cfg.Mode,
+		verification: cfg.VerificationStatus,
 	}, nil
 }
 
@@ -430,6 +435,36 @@ func (s *StripePaymentStarter) receiptEmail(ctx context.Context, orgID uuid.UUID
 		return email
 	}
 	return ""
+}
+
+// PaymentVerifier is the stricter pre-flight a shop storefront is OPENED
+// with (spec 61 section 3.4): CheckPaymentConfigured, plus the provider having
+// accepted the very credential the checkout would use
+// (verification_status 'ok'). A buyer's checkout keeps the plain pre-flight.
+type PaymentVerifier interface {
+	CheckPaymentVerified(ctx context.Context, orgID, channelID uuid.UUID) error
+}
+
+// ErrCodePaymentNotVerified refuses a credential the provider has not
+// accepted yet (verification_status other than 'ok').
+const ErrCodePaymentNotVerified = "checkout.payment_not_verified"
+
+// CheckPaymentVerified implements PaymentVerifier through the same
+// resolveConfig the checkout uses, so the two can never pick different
+// configs.
+func (s *StripePaymentStarter) CheckPaymentVerified(ctx context.Context, orgID, channelID uuid.UUID) error {
+	cfg, err := s.resolveConfig(ctx, orgID, channelID)
+	if err != nil {
+		return err
+	}
+	if cfg.verification != "ok" {
+		return &PaymentStartError{
+			Code:    ErrCodePaymentNotVerified,
+			Message: "the payment provider has not confirmed this organization's credentials yet; check them in the payment settings",
+			Status:  422,
+		}
+	}
+	return nil
 }
 
 // CheckPaymentConfigured implements the PaymentStarter pre-flight: the

@@ -163,6 +163,13 @@ var Events = map[string]EventDef{
 		"step": identProp,
 		"how":  {Kind: PropString, MaxLen: 16, OneOfStrings: []string{"cancel", "keep", "drop", "done", "expired"}},
 	}},
+	// bot_shop: an action in the bot's Shop section (spec 61, stage M3).
+	// action is a constant of the code (open, orders, ship, resend, cancel,
+	// refund, resolve, storefront_open, storefront_close), never a value a
+	// person typed and never an id.
+	"bot_shop": {Surfaces: bot(), Props: map[string]PropDef{
+		"action": identProp,
+	}},
 	// draft_reminder: the one-day "you have an unfinished event" message of
 	// draft_sweep.go. The deletion of the same draft is wizard_exit expired.
 	"draft_reminder": {Surfaces: bot(), Props: map[string]PropDef{

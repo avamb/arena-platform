@@ -17,7 +17,7 @@ func TestNew_ParsesAllEmbeddedFiles(t *testing.T) {
 	for _, kind := range []string{
 		TemplateKindTicket, TemplateKindInvitation,
 		TemplateKindChange, TemplateKindCancel, TemplateKindRefundBlocked, TemplateKindScanException, TemplateKindRefund,
-		TemplateKindShopOrderReceived, TemplateKindShopOrderShipped, TemplateKindShopOrderRefunded, TemplateKindSalesAlert,
+		TemplateKindShopOrderReceived, TemplateKindShopOrderShipped, TemplateKindShopOrderDelivered, TemplateKindShopOrderRefunded, TemplateKindSalesAlert,
 		TemplateKindSaleSubscribeConfirm, TemplateKindSaleOpen,
 		TemplateKindReferralCashbackSent, TemplateKindReferralCashbackUnavailable, TemplateKindReferralReversalOrganizer,
 		TemplateKindReferralPayoutOrganizer,
@@ -42,7 +42,7 @@ func TestSupportedLocalesMatchEmbeddedFiles(t *testing.T) {
 		for _, kind := range []string{
 			TemplateKindTicket, TemplateKindInvitation,
 			TemplateKindChange, TemplateKindCancel, TemplateKindRefundBlocked, TemplateKindScanException, TemplateKindRefund,
-			TemplateKindShopOrderReceived, TemplateKindShopOrderShipped, TemplateKindShopOrderRefunded, TemplateKindSalesAlert,
+			TemplateKindShopOrderReceived, TemplateKindShopOrderShipped, TemplateKindShopOrderDelivered, TemplateKindShopOrderRefunded, TemplateKindSalesAlert,
 			TemplateKindSaleSubscribeConfirm, TemplateKindSaleOpen,
 			TemplateKindReferralCashbackSent, TemplateKindReferralCashbackUnavailable, TemplateKindReferralReversalOrganizer,
 			TemplateKindReferralPayoutOrganizer,

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/google/uuid"
 
@@ -34,16 +35,34 @@ var currencyCode = regexp.MustCompile(`^[A-Z]{3}$`)
 // the screen refuses it instead of letting an operator believe it works.
 type ruleShape struct {
 	lines []string
-	kind  EventKind
+	kinds []EventKind
 }
 
 var ruleShapes = map[RuleType]ruleShape{
-	RuleFixedPerTicket:        {lines: []string{lineStandard}, kind: KindTicketSold},
-	RuleLowPriceFormula:       {lines: []string{lineStandard}, kind: KindTicketSold},
-	RuleCreditPack:            {lines: []string{lineStandard}, kind: KindTicketSold},
-	RulePercentOfPriceWithCap: {lines: []string{lineVenue}, kind: KindTicketSold},
-	RuleFixedPerEvent:         {lines: []string{lineStandard, lineVenue}, kind: KindEventPublished},
-	RuleSubscription:          {lines: []string{lineStandard}, kind: KindWhiteLabelMonth},
+	RuleFixedPerTicket:        {lines: []string{lineStandard}, kinds: []EventKind{KindTicketSold}},
+	RuleLowPriceFormula:       {lines: []string{lineStandard}, kinds: []EventKind{KindTicketSold}},
+	RuleCreditPack:            {lines: []string{lineStandard}, kinds: []EventKind{KindTicketSold}},
+	RulePercentOfPriceWithCap: {lines: []string{lineVenue}, kinds: []EventKind{KindTicketSold}},
+	RuleFixedPerEvent:         {lines: []string{lineStandard, lineVenue}, kinds: []EventKind{KindEventPublished}},
+	RuleSubscription:          {lines: []string{lineStandard}, kinds: []EventKind{KindWhiteLabelMonth, KindShopModuleMonth}},
+}
+
+func (s ruleShape) hasKind(kind string) bool {
+	for _, k := range s.kinds {
+		if string(k) == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// kindNames lists the event kinds of a shape for an error message.
+func (s ruleShape) kindNames() string {
+	names := make([]string, len(s.kinds))
+	for i, k := range s.kinds {
+		names[i] = string(k)
+	}
+	return strings.Join(names, " or ")
 }
 
 // CheckRuleInput validates one rule of a NEW version against priceListCurrency
@@ -63,8 +82,8 @@ func CheckRuleInput(in RuleInput, priceListCurrency string) (Rule, error) {
 	if !contains(shape.lines, in.Line) {
 		return Rule{}, fmt.Errorf("%w: rule %s is not used on line %q", ErrRuleInput, typ, in.Line)
 	}
-	if in.EventKind != string(shape.kind) {
-		return Rule{}, fmt.Errorf("%w: rule %s applies to the event kind %q, not %q", ErrRuleInput, typ, shape.kind, in.EventKind)
+	if !shape.hasKind(in.EventKind) {
+		return Rule{}, fmt.Errorf("%w: rule %s applies to the event kind %q, not %q", ErrRuleInput, typ, shape.kindNames(), in.EventKind)
 	}
 	var sale *string
 	switch {

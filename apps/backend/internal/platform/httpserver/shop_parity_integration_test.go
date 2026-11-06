@@ -97,7 +97,7 @@ func TestShopParity_OrderTabsAndCounts(t *testing.T) {
 	}
 
 	// An order with nothing to hand over (digital, service) is never "to ship".
-	f.exec(`UPDATE shop_orders SET delivery_kind = 'none' WHERE id = $1`, paid)
+	f.exec(`UPDATE shop_orders SET delivery_kind = 'none', fulfillment_step = NULL WHERE id = $1`, paid)
 	wantCounts(t, f.counts(f.ownerA, f.orgA), 2, 0, 1, 0, 0)
 	f.exec(`UPDATE shop_orders SET delivery_kind = 'shipping' WHERE id = $1`, paid)
 

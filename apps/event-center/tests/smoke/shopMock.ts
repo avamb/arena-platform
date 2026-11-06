@@ -89,6 +89,26 @@ const product = (id: string, title: string, variants: Variant[], extra: Partial<
   ...extra,
 });
 
+interface FulfillmentEvent {
+  id: string;
+  step: string;
+  actor_name: string;
+  via: string;
+  tracking: string;
+  reason: string;
+  note: string;
+  created_at: string;
+}
+
+/** The steps a person may set from a step: the server's table (shopFulfillment.ts mirrors it). */
+const NEXT_STEPS: Record<string, string[]> = {
+  waiting: ["packed", "handed_over", "failed"],
+  packed: ["handed_over", "failed"],
+  handed_over: ["delivered", "failed"],
+  delivered: [],
+  failed: ["handed_over"],
+};
+
 function order(id: string, number: number, status: string, extra: Record<string, unknown> = {}) {
   return {
     id,
@@ -107,6 +127,9 @@ function order(id: string, number: number, status: string, extra: Record<string,
     total: 4490,
     refunded_minor: 0,
     tracking_note: "",
+    // The delivery step (spec 61 section 7b): a paid order with something to ship starts at "waiting".
+    fulfillment_step: "waiting" as string | null,
+    events: [] as FulfillmentEvent[],
     staff_note: { text: "", by: "", at: null as string | null },
     items: [{ variant_id: "v1", product_kind: "physical", product_title: "Riesling", variant_title: "2021 / 0.75 l", sku: "RIE-21", qty: 2, unit_price_minor: 2000, total_minor: 4000 }],
     payment: { id: "pay1", provider: "stripe", state: "succeeded", amount: 4490, currency: "EUR" },
@@ -152,6 +175,16 @@ function inView(o: ReturnType<typeof order>, view: string): boolean {
   }
 }
 
+/** Orders that can still move (paid, shipped, partly refunded), counted by delivery step. */
+function stepCounts(orders: ReturnType<typeof order>[]): Record<string, number> {
+  const counts: Record<string, number> = { waiting: 0, packed: 0, handed_over: 0, delivered: 0, failed: 0 };
+  for (const o of orders) {
+    if (!["paid", "shipped", "partially_refunded"].includes(o.status) || o.fulfillment_step === null) continue;
+    counts[o.fulfillment_step] = (counts[o.fulfillment_step] ?? 0) + 1;
+  }
+  return counts;
+}
+
 function json(route: Route, status: number, body: unknown) {
   return route.fulfill({ status, contentType: "application/json", headers: CORS, body: JSON.stringify(body) });
 }
@@ -183,18 +216,19 @@ export async function mockShop(page: Page, permissions: string[] = MANAGER): Pro
     ],
     orders: [
       order(ORDER_PAID, 1042, "paid"),
-      order(ORDER_REVIEW, 1043, "manual_review", { buyer: { name: "Boris Mock", email: "boris@example.test" } }),
+      order(ORDER_REVIEW, 1043, "manual_review", { fulfillment_step: null, buyer: { name: "Boris Mock", email: "boris@example.test" } }),
       order(ORDER_DIGITAL, 1045, "paid", {
         buyer: { name: "Dora Digital", email: "dora@example.test" },
         ship: { address1: "", city: "", country: "" },
         delivery_kind: "none",
+        fulfillment_step: null,
         delivery_note: "",
         shipping_fee: 0,
         subtotal: 1500,
         total: 1500,
         items: [{ variant_id: "v4", product_kind: "digital", product_title: "Wine guide", variant_title: "Default Title", sku: null, qty: 1, unit_price_minor: 1500, total_minor: 1500 }],
       }),
-      order(ORDER_UNPAID, 1044, "pending_payment", { payment: null, paid_at: null, expires_at: "2026-10-05T10:33:00Z", delivery_kind: "pickup" }),
+      order(ORDER_UNPAID, 1044, "pending_payment", { payment: null, paid_at: null, expires_at: "2026-10-05T10:33:00Z", delivery_kind: "pickup", fulfillment_step: null }),
     ],
     settings: {
       org_id: ORG_A,
@@ -212,6 +246,10 @@ export async function mockShop(page: Page, permissions: string[] = MANAGER): Pro
       max_line_qty: 24,
       enabled: true,
       updated_at: "2026-10-01T10:00:00Z",
+      module_active: true,
+      shop_mode: "full",
+      can_open: true,
+      open_blockers: [],
     },
   };
 
@@ -249,6 +287,12 @@ export async function mockShop(page: Page, permissions: string[] = MANAGER): Pro
     if (!path.startsWith("/shop/")) return route.fallback();
     if (!state.permissions.includes("shop.read")) return json(route, 403, { error: { code: "permissions.denied", message: "no" } });
 
+    if (path === "/shop/storefront" && m === "PUT") {
+      const body = req.postDataJSON() as { enabled: boolean };
+      write(JSON.stringify(body));
+      state.settings = { ...state.settings, enabled: body.enabled, updated_at: "2026-10-06T10:00:00Z" };
+      return json(route, 200, state.settings);
+    }
     if (path === "/shop/settings") {
       if (m === "PUT") {
         const body = req.postDataJSON() as Record<string, unknown>;
@@ -314,18 +358,20 @@ export async function mockShop(page: Page, permissions: string[] = MANAGER): Pro
         unpaid: state.orders.filter((o) => inView(o, "unpaid")).length,
         shipped: state.orders.filter((o) => inView(o, "shipped")).length,
         refunds: state.orders.filter((o) => inView(o, "refunds")).length,
+        steps: stepCounts(state.orders),
       });
     }
     if (path === "/shop/orders/search" && m === "POST") {
       // The filters are in the JSON body (SA-17), never in the address.
       expect(url.search).toBe("");
-      const body = (req.postDataJSON() ?? {}) as { status?: string; view?: string; q?: string };
+      const body = (req.postDataJSON() ?? {}) as { status?: string; view?: string; q?: string; fulfillment_step?: string };
       state.orderQueries.push(JSON.stringify(body));
       const q = (body.q ?? "").toLowerCase();
       const rows = state.orders.filter(
         (o) =>
           (body.status === undefined || o.status === body.status) &&
           (body.view === undefined || inView(o, body.view)) &&
+          (body.fulfillment_step === undefined || (o.fulfillment_step === body.fulfillment_step && ["paid", "shipped", "partially_refunded"].includes(o.status))) &&
           (q === "" || o.buyer.name.toLowerCase().includes(q) || o.buyer.email.includes(q) || String(o.number) === q),
       );
       return json(route, 200, { orders: rows, next_offset: null });
@@ -350,6 +396,27 @@ export async function mockShop(page: Page, permissions: string[] = MANAGER): Pro
         state.resent.push(String(body.kind));
         write(JSON.stringify(body));
         return json(route, 202, { queued: true, kind: body.kind });
+      }
+      if (action === "/fulfillment") {
+        // The delivery steps (spec 61 section 7b). handed_over is the old "ship": status shipped, the tracking number.
+        const step = String(body.step ?? "");
+        // An order parked for a check has no step yet: the operator can only hand it over (the goods were found).
+        const from = o.fulfillment_step ?? (o.status === "manual_review" ? "waiting" : null);
+        if (from === null || !(NEXT_STEPS[from] ?? []).includes(step)) {
+          return json(route, 409, { error: { code: "shop.fulfillment_invalid_step", message: "not possible from this step", details: { allowed: from === null ? [] : (NEXT_STEPS[from] ?? []) } } });
+        }
+        write(JSON.stringify(body));
+        const tracking = typeof body.tracking === "string" ? body.tracking : "";
+        const reason = typeof body.reason === "string" ? body.reason : "";
+        o.fulfillment_step = step;
+        if (step === "handed_over") {
+          o.status = o.status === "paid" ? "shipped" : o.status;
+          o.shipped_at = o.shipped_at ?? "2026-10-06T09:00:00Z";
+          // Handed over again only stores the number; an empty one clears it.
+          if (typeof body.tracking === "string") o.tracking_note = tracking;
+        }
+        o.events.push({ id: `ev${o.events.length + 1}`, step, actor_name: "Dana Levi", via: "event_center_web", tracking, reason, note: "", created_at: "2026-10-06T09:00:00Z" });
+        return json(route, 200, o);
       }
       if (action === "/ship") {
         write(JSON.stringify(body));

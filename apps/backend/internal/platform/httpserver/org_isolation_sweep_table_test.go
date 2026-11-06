@@ -311,6 +311,7 @@ var orgIsolationAuditedSafe = map[string]string{
 	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/resend-email":            "shop",
 	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/resolve":                 "shop",
 	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/ship":                    "shop",
+	"POST /v1/organizations/{org_id}/shop/orders/{order_id}/fulfillment":             "shop",
 	"POST /v1/organizations/{org_id}/shop/products/{product_id}/images":              "shop",
 	"PUT /v1/organizations/{org_id}/shop/pages/{slug}":                               "shop",
 	"PUT /v1/organizations/{org_id}/shop/products/{product_id}/variants":             "shop",

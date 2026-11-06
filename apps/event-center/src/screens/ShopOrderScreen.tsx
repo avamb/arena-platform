@@ -8,6 +8,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { NoShopAccess, ShopNav } from "@/components/ShopNav";
 import { ShopOrderActions } from "@/components/ShopOrderActions";
+import { ShopOrderDelivery } from "@/components/ShopOrderDelivery";
 import { ShopOrderNote } from "@/components/ShopOrderNote";
 import { ShopOrderStatusBadge, deliveryLabel } from "@/components/ShopOrdersTable";
 import { ErrorBox, Loading } from "@/components/ui";
@@ -75,6 +76,8 @@ export function ShopOrderCard({ order, orgId, actions, note, country }: { order:
       {actions}
 
       {note}
+
+      <ShopOrderDelivery order={order} country={country} />
 
       <section aria-labelledby="shop-order-buyer">
         <h2 id="shop-order-buyer">{t("shop.order.buyer")}</h2>

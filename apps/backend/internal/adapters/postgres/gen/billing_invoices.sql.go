@@ -423,11 +423,15 @@ type UninvoicedChargeRow struct {
 	Currency       string    `json:"currency"`
 	AmountMinor    int64     `json:"amount_minor"`
 	UncoveredMinor int64     `json:"uncovered_minor"`
+	// EventKind is the kind of the billable event the charge rates (told
+	// apart for subscription charges: white label vs shop module).
+	EventKind string `json:"event_kind"`
 }
 
 const listUninvoicedCharges = `-- name: ListUninvoicedCharges :many
 SELECT c.id, c.rule_type, c.currency, c.amount_minor,
-       (c.amount_minor - COALESCE((SELECT SUM(a.amount_minor) FROM charge_allocations a WHERE a.charge_id = c.id), 0))::bigint
+       (c.amount_minor - COALESCE((SELECT SUM(a.amount_minor) FROM charge_allocations a WHERE a.charge_id = c.id), 0))::bigint,
+       be.kind
 FROM   charges c
 JOIN   billable_events be ON be.id = c.billable_event_id
 WHERE  c.account_id = $1
@@ -450,7 +454,7 @@ func (q *Queries) ListUninvoicedCharges(ctx context.Context, accountID uuid.UUID
 	var out []UninvoicedChargeRow
 	for rows.Next() {
 		var r UninvoicedChargeRow
-		if err := rows.Scan(&r.ChargeID, &r.RuleType, &r.Currency, &r.AmountMinor, &r.UncoveredMinor); err != nil {
+		if err := rows.Scan(&r.ChargeID, &r.RuleType, &r.Currency, &r.AmountMinor, &r.UncoveredMinor, &r.EventKind); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

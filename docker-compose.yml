@@ -266,6 +266,9 @@ services:
       WORKER_METRICS_ADDR: ":9091"
       # Invitation deep links of the event-center bot (bot.invitation_email).
       EVENTS_TELEGRAM_BOT_USERNAME: "${EVENTS_TELEGRAM_BOT_USERNAME:-ArenaEventsCentrBot}"
+      # Step buttons on the delivery group's order card (spec 61 section 7b).
+      # Off = plain text message. Turn on only with arena-bot receiving presses.
+      SHOP_DELIVERY_BUTTONS_ENABLED: "${SHOP_DELIVERY_BUTTONS_ENABLED:-false}"
       HEALTH_ADDR: "http://localhost:9091"
 
       DEFAULT_LOCALE: "en"
@@ -336,6 +339,9 @@ services:
       BOT_SERVICE_TOKEN: "${BOT_SERVICE_TOKEN:-dev-bot-service-token}"
       BOT_ARENA_API_URL: "http://api:8080"
       BOT_METRICS_ADDR: ":9092"
+      # The sales bot's token (spec 61 section 7b.3): when set, the bot also
+      # receives the delivery group's buttons and /connect. Empty = off.
+      SALES_TELEGRAM_BOT_TOKEN: "${SALES_TELEGRAM_BOT_TOKEN:-}"
       HEALTH_ADDR: "http://localhost:9092"
 
       DEFAULT_LOCALE: "en"

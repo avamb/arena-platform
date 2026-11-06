@@ -61,7 +61,8 @@ func (s *Service) GetSettings(ctx context.Context, orgID uuid.UUID) (SettingsVie
 
 // SettingsInput is the whole settings row (PUT replaces it). ShopDomain nil
 // keeps the storefront host, "" clears it; only a caller with
-// MayChangeDomain (a platform superadmin) may change it.
+// MayChangeDomain (a platform superadmin) may change it. Enabled is the
+// organization's own switch (MayChangeEnabled), see storefront.go.
 type SettingsInput struct {
 	Currency         string
 	ShippingFeeMinor int64
@@ -78,9 +79,19 @@ type SettingsInput struct {
 	// the stored value (24 for a new shop).
 	MaxLineQty *int32
 	// Enabled opens (true) or closes (false) the storefront and its
-	// checkout; nil keeps it. Like ShopDomain, only a caller with
-	// MayChangeDomain (a platform superadmin) may change it.
+	// checkout; nil keeps it. Only a caller with MayChangeEnabled may change
+	// it (the organization routes grant it to every holder of shop.manage
+	// while the shop module is connected: owner, manager, superadmin), and
+	// an opening needs an active product and PaymentReady (422
+	// shop.cannot_open otherwise, spec 61 section 3.4).
 	Enabled *bool
+	// MayChangeEnabled lets the caller open or close the storefront.
+	MayChangeEnabled bool
+	// PaymentReady is the payment pre-flight verdict for the sales channel
+	// these settings name (or the organization's live channels when they name
+	// none): a usable, verified provider config. Read on the pool before the
+	// transaction; only an opening looks at it.
+	PaymentReady bool
 	// ExpectedUpdatedAt is the updated_at the editor loaded the settings
 	// with. When it is set and the stored row has moved on (a colleague
 	// saved meanwhile), the write is refused with 409 shop.settings_changed
@@ -197,8 +208,8 @@ func (s *Service) PutSettings(ctx context.Context, orgID uuid.UUID, in SettingsI
 		return SettingsView{}, err
 	}
 	err := s.inTx(ctx, func(_ pgx.Tx, q *gen.Queries) error {
-		// Locked: an owner's save must not write a stale enabled (or
-		// max_line_qty) back over the operator's change made meanwhile.
+		// Locked: a save must not write a stale enabled (or max_line_qty)
+		// back over a colleague's change made meanwhile.
 		cur, err := q.GetShopSettingsForUpdate(ctx, orgID)
 		existing := true
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -238,10 +249,16 @@ func (s *Service) PutSettings(ctx context.Context, orgID uuid.UUID, in SettingsI
 		}
 		enabled := cur.Enabled
 		if in.Enabled != nil && *in.Enabled != cur.Enabled {
-			if !in.MayChangeDomain {
-				return newErr(http.StatusForbidden, "shop.enabled_superadmin_only", "only the platform operator can open or close the shop")
+			if !in.MayChangeEnabled {
+				return errEnabledNotAllowed
 			}
 			enabled = *in.Enabled
+			if enabled {
+				// This save writes the settings row, so it counts as saved.
+				if err := checkOpenTx(ctx, q, orgID, true, in.PaymentReady); err != nil {
+					return err
+				}
+			}
 		}
 		if in.SalesChannelID != nil {
 			if _, err := q.GetSalesChannelByID(ctx, *in.SalesChannelID, orgID); err != nil {
@@ -1059,9 +1076,9 @@ type Storefront struct {
 }
 
 // StorefrontBySlug resolves the public shop of an organization slug. An
-// organization without saved shop settings, or whose shop the platform
-// operator has not enabled, has no storefront (404 shop.not_found), whatever
-// products it may have drafted.
+// organization without saved shop settings, whose storefront is not open, or
+// without the shop module today (spec 61 section 4.1) has no storefront (404
+// shop.not_found), whatever products it may have drafted.
 func (s *Service) StorefrontBySlug(ctx context.Context, orgSlug string) (Storefront, error) {
 	if err := s.ready(); err != nil {
 		return Storefront{}, err
@@ -1082,6 +1099,13 @@ func (s *Service) StorefrontBySlug(ctx context.Context, orgSlug string) (Storefr
 		return Storefront{}, err
 	}
 	if !st.Configured || !st.Enabled {
+		return Storefront{}, ErrShopNotFound
+	}
+	closed, err := moduleClosed(ctx, s.q, org.ID, time.Now())
+	if err != nil {
+		return Storefront{}, err
+	}
+	if closed {
 		return Storefront{}, ErrShopNotFound
 	}
 	return Storefront{Org: org, Settings: st}, nil

@@ -10,6 +10,7 @@ export function errorKey(err: unknown): MessageKey {
   if (err instanceof ApiError) {
     if (err.status === 0) return "common.error.network";
     if (err.status === 403) return "common.error.forbidden";
+    if (err.code === "shop.module_not_enabled") return "shop.notConnected.body";
     if (err.status === 404) return "common.error.notFound";
     if (err.code === "export.too_many_rows" || err.status === 413) return "common.download.tooMany";
   }
@@ -214,6 +215,14 @@ export type ApiErrorStem =
   | "shopSettingsChanged"
   | "shopCurrencyLocked"
   | "shopCurrencyUnsupported"
+  | "shopModuleOff"
+  | "shopCannotOpen"
+  | "shopFulfillmentClosed"
+  | "shopFulfillmentUnpaid"
+  | "shopFulfillmentInReview"
+  | "shopFulfillmentInvalidStep"
+  | "shopFulfillmentBadStep"
+  | "shopFulfillmentReason"
   // Refer a friend (spec 52)
   | "referralTerms"
   | "referralProvider"
@@ -264,6 +273,10 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "shopStockChanged", "shopDuplicateSlug", "shopVariantsInvalid", "shopMediaInvalid", "shopNotShippable", "shopNotCancellable", "shopNotRefundable", "shopRefundAmount", "shopCurrency", "shopOperatorOnly",
   "shopNothingToRefund", "shopOutOfStock", "shopOrderChanged", "shopOrderEmailUnavailable", "shopOrderNoBuyerEmail", "shopDuplicateDomain",
   "shopVariantsChanged", "shopSettingsChanged", "shopCurrencyLocked", "shopCurrencyUnsupported",
+  // Spec 61: the shop as a paid module, the storefront switch
+  "shopModuleOff", "shopCannotOpen",
+  // Spec 61 section 7b: the delivery steps
+  "shopFulfillmentClosed", "shopFulfillmentUnpaid", "shopFulfillmentInReview", "shopFulfillmentInvalidStep", "shopFulfillmentBadStep", "shopFulfillmentReason",
   // Refer a friend (spec 52)
   "referralTerms", "referralProvider", "referralNoProgram",
   "growthCodeNotFound", "growthCodeOnePerBuyer",
@@ -484,13 +497,20 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "shop.settings_changed": "shopSettingsChanged",
   "shop.currency_locked": "shopCurrencyLocked",
   "shop.currency_unsupported": "shopCurrencyUnsupported",
+  "shop.module_not_enabled": "shopModuleOff",
+  "shop.cannot_open": "shopCannotOpen",
+  "shop.fulfillment_order_closed": "shopFulfillmentClosed",
+  "shop.fulfillment_order_unpaid": "shopFulfillmentUnpaid",
+  "shop.fulfillment_order_in_review": "shopFulfillmentInReview",
+  "shop.fulfillment_invalid_step": "shopFulfillmentInvalidStep",
+  "shop.invalid_fulfillment_step": "shopFulfillmentBadStep",
+  "shop.fulfillment_reason_required": "shopFulfillmentReason",
   // Refer a friend (spec 52)
   "referral.terms_not_accepted": "referralTerms",
   "referral.provider_unsupported": "referralProvider",
   "referral.program_not_found": "referralNoProgram",
   "shop.invalid_refund_amount": "shopRefundAmount",
   "shop.invalid_currency": "shopCurrency",
-  "shop.enabled_superadmin_only": "shopOperatorOnly",
   "shop.domain_superadmin_only": "shopOperatorOnly",
   "shop.invalid_digital_media": "shopMediaInvalid",
   "shop.invalid_body_html": "textRefused",

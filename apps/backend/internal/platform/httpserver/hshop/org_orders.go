@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
@@ -35,13 +36,13 @@ func parseTimeParam(raw string) (*time.Time, bool) {
 // listFilter is the filter of the order list as the caller spelled it: the
 // query string of GET .../shop/orders, or the body of POST .../shop/orders/search.
 type listFilter struct {
-	Status, View, Q, From, To string
-	Limit, Offset             *int
+	Status, View, Step, Q, From, To string
+	Limit, Offset                   *int
 }
 
 // toFilter validates it into a shop.OrderFilter.
 func (l listFilter) toFilter() (shop.OrderFilter, bool) {
-	f := shop.OrderFilter{Status: l.Status, View: l.View, Query: l.Q}
+	f := shop.OrderFilter{Status: l.Status, View: l.View, Step: l.Step, Query: l.Q}
 	var okFrom, okTo bool
 	f.From, okFrom = parseTimeParam(l.From)
 	f.To, okTo = parseTimeParam(l.To)
@@ -60,7 +61,7 @@ func (l listFilter) toFilter() (shop.OrderFilter, bool) {
 	return f, true
 }
 
-// HandleListOrders serves GET .../shop/orders?status=&view=&q=&from=&to=&limit=&offset=.
+// HandleListOrders serves GET .../shop/orders?status=&view=&fulfillment_step=&q=&from=&to=&limit=&offset=.
 // The buyer's name or e-mail in `q` would land in the access logs of the
 // proxy and of Cloudflare, so the web event center searches through
 // POST .../shop/orders/search (HandleSearchOrders) with the same filters in
@@ -71,7 +72,7 @@ func (h *Handler) HandleListOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	qs := r.URL.Query()
-	l := listFilter{Status: qs.Get("status"), View: qs.Get("view"), Q: qs.Get("q"), From: qs.Get("from"), To: qs.Get("to")}
+	l := listFilter{Status: qs.Get("status"), View: qs.Get("view"), Step: qs.Get("fulfillment_step"), Q: qs.Get("q"), From: qs.Get("from"), To: qs.Get("to")}
 	for name, dst := range map[string]**int{"limit": &l.Limit, "offset": &l.Offset} {
 		if v := strings.TrimSpace(qs.Get(name)); v != "" {
 			n, err := strconv.Atoi(v)
@@ -86,7 +87,7 @@ func (h *Handler) HandleListOrders(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleSearchOrders serves POST .../shop/orders/search with the filters of
-// the list in a JSON body: {q, view, status, from, to, limit, offset}. from
+// the list in a JSON body: {q, view, fulfillment_step, status, from, to, limit, offset}. from
 // is the first moment and to the first moment NOT included, each an RFC 3339
 // time with a zone (the web sends the shop's day boundaries) or a
 // YYYY-MM-DD date (UTC midnight). The answer is the list's.
@@ -98,6 +99,7 @@ func (h *Handler) HandleSearchOrders(w http.ResponseWriter, r *http.Request) {
 	var b struct {
 		Q      string `json:"q"`
 		View   string `json:"view"`
+		Step   string `json:"fulfillment_step"`
 		Status string `json:"status"`
 		From   string `json:"from"`
 		To     string `json:"to"`
@@ -107,7 +109,7 @@ func (h *Handler) HandleSearchOrders(w http.ResponseWriter, r *http.Request) {
 	if !readBody(w, r, &b, true) {
 		return
 	}
-	h.writeOrderPage(w, r, org, listFilter{Status: b.Status, View: b.View, Q: b.Q, From: b.From, To: b.To, Limit: b.Limit, Offset: b.Offset})
+	h.writeOrderPage(w, r, org, listFilter{Status: b.Status, View: b.View, Step: b.Step, Q: b.Q, From: b.From, To: b.To, Limit: b.Limit, Offset: b.Offset})
 }
 
 func (h *Handler) writeOrderPage(w http.ResponseWriter, r *http.Request, org uuid.UUID, l listFilter) {
@@ -135,7 +137,8 @@ func (h *Handler) writeOrderPage(w http.ResponseWriter, r *http.Request, org uui
 }
 
 // HandleOrderCounts serves GET .../shop/orders/counts: how many orders each
-// tab of the list holds (all, to_ship, unpaid, shipped, refunds).
+// tab of the list holds (all, to_ship, unpaid, shipped, refunds) and how
+// many orders that can still move stand at each delivery step (steps).
 func (h *Handler) HandleOrderCounts(w http.ResponseWriter, r *http.Request) {
 	org, ok := orgID(w, r)
 	if !ok {
@@ -193,7 +196,7 @@ func (h *Handler) HandlePatchOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleResendEmail serves POST .../shop/orders/{order_id}/resend-email
-// {kind: received|shipped|refunded}: queues the buyer's letter once more. One request
+// {kind: received|shipped|delivered|refunded}: queues the buyer's letter once more. One request
 // per order per minute (429 shop.rate_limited and Retry-After).
 func (h *Handler) HandleResendEmail(w http.ResponseWriter, r *http.Request) {
 	org, ok := orgID(w, r)
@@ -210,8 +213,8 @@ func (h *Handler) HandleResendEmail(w http.ResponseWriter, r *http.Request) {
 	if !readBody(w, r, &b, false) {
 		return
 	}
-	if b.Kind != shop.EmailReceived && b.Kind != shop.EmailShipped && b.Kind != shop.EmailRefunded {
-		writeErr(w, r, http.StatusBadRequest, "shop.invalid_email_kind", "kind must be received, shipped or refunded")
+	if !shop.IsEmailKind(b.Kind) {
+		writeErr(w, r, http.StatusBadRequest, "shop.invalid_email_kind", "kind must be received, shipped, delivered or refunded")
 		return
 	}
 	// The budget is per order, and the order is looked up with its organization
@@ -269,13 +272,80 @@ func (h *Handler) HandleShipOrder(w http.ResponseWriter, r *http.Request) {
 	if !readBody(w, r, &b, true) {
 		return
 	}
-	o, err := h.o.Service.Ship(r.Context(), org, id, b.TrackingNote)
+	o, err := h.o.Service.Ship(r.Context(), org, id, b.TrackingNote, StepActor(r.Context()))
 	if err != nil {
 		h.fail(w, r, "ship order", err)
 		return
 	}
 	h.writeAudit(r, "v1.shop.order.ship", "shop_order", id.String(), org, map[string]any{"number": o.Number})
 	httputil.WriteJSON(w, http.StatusOK, toOrderJSON(o))
+}
+
+// HandleFulfillment serves POST .../shop/orders/{order_id}/fulfillment
+// {step, tracking?, reason?, note?}: the order's next delivery step (packed,
+// handed_over, delivered, failed) through shop.SetFulfillmentStep, the one
+// writer of every surface. handed_over is "ship" (the shipped letter the first
+// time), delivered queues the "delivered" letter once; repeating the current
+// step changes nothing (handed_over with a new number only stores it). The
+// answer is the order with its history.
+func (h *Handler) HandleFulfillment(w http.ResponseWriter, r *http.Request) {
+	org, ok := orgID(w, r)
+	if !ok {
+		return
+	}
+	id, ok := pathID(w, r, "order_id", shop.ErrOrderNotFound)
+	if !ok {
+		return
+	}
+	var b struct {
+		Step     string  `json:"step"`
+		Tracking *string `json:"tracking"`
+		Reason   string  `json:"reason"`
+		Note     string  `json:"note"`
+	}
+	if !readBody(w, r, &b, false) {
+		return
+	}
+	in := StepActor(r.Context())
+	in.Tracking, in.Reason, in.Note = b.Tracking, b.Reason, b.Note
+	o, res, err := h.o.Service.ApplyFulfillmentStep(r.Context(), org, id, b.Step, in)
+	if err != nil {
+		h.fail(w, r, "set delivery step", err)
+		return
+	}
+	if res.Changed {
+		h.writeAudit(r, "v1.shop.order.fulfillment", "shop_order", id.String(), org, map[string]any{
+			"number": o.Number, "step": b.Step, "previous_step": res.Previous,
+		})
+	}
+	httputil.WriteJSON(w, http.StatusOK, toOrderJSON(o))
+}
+
+// StepActor names who sets a delivery step from an authenticated request and
+// through which client: the X-Client-Channel header when it names one
+// (telegram_bot, event_center_web, admin_web), else api for an organization
+// API key and admin_web for a signed-in user.
+func StepActor(ctx context.Context) shop.StepInput {
+	in := shop.StepInput{Via: shop.ViaAdminWeb}
+	actor, ok := auth.ActorFromContext(ctx)
+	if ok && actor.Type == auth.ActorTypeUser {
+		if uid, err := uuid.Parse(actor.ID); err == nil {
+			in.ActorUserID = &uid
+		}
+	} else if ok {
+		in.Via, in.ActorName = shop.ViaAPI, "API key"
+	}
+	if ch, ok := audit.ClientChannelFromContext(ctx); ok {
+		switch ch {
+		case audit.ChannelTelegramBot:
+			in.Via = shop.ViaTelegramBot
+		case audit.ChannelEventCenterWeb:
+			in.Via = shop.ViaEventCenterWeb
+		case audit.ChannelAdminWeb:
+			in.Via = shop.ViaAdminWeb
+		}
+	}
+	return in
 }
 
 // HandleCancelOrder serves POST .../shop/orders/{order_id}/cancel.
