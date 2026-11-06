@@ -36,3 +36,32 @@ func TestPaymentDescription_NoBundleIsEnglish(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestReceiptSeller_BrandWithLegalSeller(t *testing.T) {
+	name := func(s string) *string { return &s }
+	cases := []struct {
+		shop *string
+		org  string
+		want string
+	}{
+		{name("Einat Winery"), "Vino&Co", "Einat Winery (Vino&Co)"},
+		{name("  Einat Winery "), " Vino&Co ", "Einat Winery (Vino&Co)"},
+		{nil, "Vino&Co", "Vino&Co"},
+		{name(""), "Vino&Co", "Vino&Co"},
+		{name("vino&co"), "Vino&Co", "Vino&Co"},
+		{name("Einat Winery"), "", "Einat Winery"},
+	}
+	for _, c := range cases {
+		if got := receiptSeller(c.shop, c.org); got != c.want {
+			t.Errorf("receiptSeller(%v, %q) = %q, want %q", c.shop, c.org, got, c.want)
+		}
+	}
+	b, err := i18n.NewBundle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := receiptLines(b, "ru", receiptSeller(name("Einat Winery"), "Vino&Co"), 1003206377, 25000, 5000)
+	if len(lines) != 2 || lines[0].Name != "Einat Winery (Vino&Co), заказ № 1003206377" || lines[0].Amount != 20000 {
+		t.Fatalf("receipt lines = %+v", lines)
+	}
+}
