@@ -302,11 +302,15 @@
   opacity: 0.8;
 }
 
-/* Dawn's .page-width has no side padding below 750px (its sections add their own); checkout has no such section. */
+/* The live theme's .page-width has no side padding below 750px, so page text, the catalog and
+   cart headings and "related products" touched the screen edge on a phone. :where() keeps the
+   rule at zero specificity: the header, footer, sliders and modals that set their own padding
+   still win. The product's main section is left out: the theme gives its .product a 20px margin
+   on a phone already. */
 @media screen and (max-width: 749px) {
-  .page-width.section-checkout-padding {
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
+  :where(.page-width:not(.section-product__main-padding)) {
+    padding-left: 2rem;
+    padding-right: 2rem;
   }
 }
 
