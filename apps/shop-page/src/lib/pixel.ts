@@ -16,6 +16,9 @@
 /** Where Meta serves the pixel script; the CSP allows this origin (security-headers.conf.template). */
 export const PIXEL_SCRIPT_URL = 'https://connect.facebook.net/en_US/fbevents.js';
 
+/** How long after the load event Meta's script is fetched (see initPixel). */
+export const PIXEL_DELAY_MS = 1500;
+
 type Fbq = ((...args: unknown[]) => void) & { queue?: unknown[][]; callMethod?: (...args: unknown[]) => void; loaded?: boolean; version?: string; push?: unknown };
 
 interface PixelWindow {
@@ -74,7 +77,14 @@ export function initPixel(id: string | undefined, host: string, domains: string[
     const script = w.document.createElement('script');
     script.async = true;
     script.src = PIXEL_SCRIPT_URL;
-    w.document.head.appendChild(script);
+    // Meta's script is over 100 KB and on a phone it took the bandwidth the product pictures
+    // (the largest paint) needed: it is fetched once the page has loaded and settled. The
+    // events queue in the stub meanwhile, none is lost.
+    const attach = (): void => {
+      w.setTimeout(() => w.document.head.appendChild(script), PIXEL_DELAY_MS);
+    };
+    if (w.document.readyState === 'complete') attach();
+    else w.addEventListener('load', attach, { once: true });
   }
   (pw.fbq as Fbq)('init', id);
   active = true;

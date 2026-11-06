@@ -17,6 +17,7 @@ import {
   getShop,
   isPolicySlug,
   resolveHost,
+  takePrefetch,
   type OrderStatus,
   type ShopData,
   type ShopProduct,
@@ -115,12 +116,17 @@ async function orgForHost(host: string): Promise<string> {
     /* no cache */
   }
   const r = await resolveHost(host);
+  rememberHost(host, r.org_slug);
+  return r.org_slug;
+}
+
+/** The host's organization for an hour (public/boot.js reads the same key). */
+function rememberHost(host: string, slug: string): void {
   try {
-    localStorage.setItem(HOST_CACHE_KEY + host, JSON.stringify({ slug: r.org_slug, at: Date.now() }));
+    localStorage.setItem(HOST_CACHE_KEY + host, JSON.stringify({ slug, at: Date.now() }));
   } catch {
     /* no cache */
   }
-  return r.org_slug;
 }
 
 // ---- rendering ------------------------------------------------------------------
@@ -1192,8 +1198,19 @@ async function boot(): Promise<void> {
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   const loc = locate(location.hostname, location.pathname, location.search);
   let org = loc.orgSlug;
+  // On a custom domain public/boot.js has usually asked for the organization and the catalog already.
+  let prefetched: Promise<ShopData> | null = null;
   try {
-    if (org === null) org = await orgForHost(location.hostname);
+    if (org === null) {
+      const pre = await takePrefetch(location.hostname);
+      if (pre) {
+        org = pre.slug;
+        rememberHost(location.hostname, org);
+        prefetched = pre.shop;
+      } else {
+        org = await orgForHost(location.hostname);
+      }
+    }
     if (!org) {
       // The bare platform address on a platform host: nobody's shop.
       if (isPlatformHost(location.hostname) && location.pathname.replace(/\/+$/, '') === '') {
@@ -1203,7 +1220,7 @@ async function boot(): Promise<void> {
       }
       return;
     }
-    const shop = await getShop(org);
+    const shop = await (prefetched ?? getShop(org));
     // A product that was hidden or deleted since the basket was saved must not stay in it.
     const stored = loadCart(org);
     const cart = reconcileCart(stored, shop.products, shop.settings.max_line_qty);

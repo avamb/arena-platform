@@ -6,7 +6,7 @@
 import type { ShopProduct } from '../lib/api';
 import { sized } from '../lib/cdn';
 import { esc } from '../lib/html';
-import { icon, productCard, type Ctx } from './common';
+import { EAGER_CARDS, icon, productCard, type Ctx } from './common';
 import { T } from '../lib/i18n';
 
 const BANNER_WIDTHS = [375, 550, 750, 1100, 1500, 1780, 2000, 3000, 3840];
@@ -104,7 +104,7 @@ function featuredCollection(ctx: Ctx, products: ShopProduct[]): string {
             class="grid__item slider__slide"
 
           >
-            ${productCard(ctx, p, { sectionId: sid, showSecondary: true, quickAdd: false })}
+            ${productCard(ctx, p, { sectionId: sid, showSecondary: true, quickAdd: false, lazy: i >= EAGER_CARDS })}
           </li>`,
     )
     .join('');
@@ -136,7 +136,7 @@ export function collectionView(ctx: Ctx): string {
             class="grid__item"
           >
 
-${productCard(ctx, p, { sectionId: sid, showSecondary: true, quickAdd: true })}
+${productCard(ctx, p, { sectionId: sid, showSecondary: true, quickAdd: true, lazy: i >= EAGER_CARDS })}
           </li>`,
     )
     .join('');

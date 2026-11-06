@@ -172,6 +172,13 @@ export interface CardOpts {
   lazy?: boolean;
 }
 
+/**
+ * Cards of a grid whose first picture loads at once and first (fetchpriority high): the first
+ * row on a phone, two cards wide. A lazy picture above the fold waits for layout and was the
+ * largest paint of the home and catalog pages.
+ */
+export const EAGER_CARDS = 2;
+
 function cardImage(img: ShopImage, alt: string, lazy: boolean, sectionPageWidth: number): string {
   const sizes = `(min-width: ${sectionPageWidth}px) ${Math.floor((sectionPageWidth - 130) / 4)}px, (min-width: 990px) calc((100vw - 130px) / 4), (min-width: 750px) calc((100vw - 120px) / 3), calc((100vw - 35px) / 2)`;
   const ss = srcset(img.url, img.width, CARD_WIDTHS);
@@ -181,7 +188,8 @@ function cardImage(img: ShopImage, alt: string, lazy: boolean, sectionPageWidth:
                 sizes="${esc(sizes)}"` : ''}
                 alt="${esc(alt)}"
                 class="motion-reduce"${lazy ? `
-                loading="lazy"` : ''}${img.width ? `
+                loading="lazy"` : `
+                fetchpriority="high"`}${img.width ? `
                 width="${img.width}"
                 height="${img.height ?? ''}"` : ''}
               >`;
