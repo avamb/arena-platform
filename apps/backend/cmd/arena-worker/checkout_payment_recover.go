@@ -60,7 +60,7 @@ func buildPaymentRecoverer(pool *pgxpool.Pool, cfg *config.Config, logger *slog.
 		hcheckout.PricingRules{},
 		"", "", // legacy-route webhook secrets: unused here
 		nil, nil, nil,
-	)
+	).WithLatePaymentHold(httpserver.WidgetPaymentWindow(cfg), httpserver.WidgetPaymentGrace(cfg))
 	return &hfeed.PaymentRecoverer{
 		Store:    q,
 		Provider: starter,

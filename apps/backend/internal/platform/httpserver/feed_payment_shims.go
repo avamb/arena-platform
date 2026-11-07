@@ -68,6 +68,9 @@ func CheckoutReturnURLPolicy(cfg *config.Config) hfeed.ReturnURLPolicy {
 	return policy
 }
 
+// WidgetPaymentWindow exports the widget payment window for arena-worker.
+func WidgetPaymentWindow(cfg *config.Config) time.Duration { return widgetPaymentWindow(cfg) }
+
 // WidgetPaymentGrace exports the widget payment grace for arena-worker.
 func WidgetPaymentGrace(cfg *config.Config) time.Duration { return widgetPaymentGrace(cfg) }
 

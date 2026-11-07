@@ -48,9 +48,26 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
 
-// lateReholdTTL is how long a re-acquired hold lives: only until the
-// reservation conversion the same webhook queues turns it into a sale.
-const lateReholdTTL = 15 * time.Minute
+// lateReholdMinTTL is the shortest life of a re-acquired hold. The hold only
+// has to last until the reservation conversion the same webhook queues turns
+// it into a sale, but that is a worker job: a busy or restarting worker must
+// not let the hold expire under a payment already taken.
+const lateReholdMinTTL = 15 * time.Minute
+
+// WithLatePaymentHold sets the life of a re-acquired hold to the widget
+// payment window plus its grace, the expiry the normal path gives a hold
+// (hfeed checkout/start), never below lateReholdMinTTL. Returns the receiver
+// for chaining.
+func (h *Handler) WithLatePaymentHold(window, grace time.Duration) *Handler {
+	h.lateHoldTTL = window + grace
+	return h
+}
+
+// lateReholdTTL is the life of a re-acquired hold for a configured
+// window-plus-grace: max(lateReholdMinTTL, configured).
+func lateReholdTTL(configured time.Duration) time.Duration {
+	return max(lateReholdMinTTL, configured)
+}
 
 // errLateAmountMismatch: the re-priced order does not equal the money taken.
 var errLateAmountMismatch = errors.New("hcheckout: the re-acquired order total differs from the payment")
@@ -262,7 +279,7 @@ func (h *Handler) reholdForLatePaymentTx(ctx context.Context, q *gen.Queries, pi
 		id := gaLines[0].TierID
 		tierID = &id
 	}
-	expires := time.Now().UTC().Add(lateReholdTTL)
+	expires := time.Now().UTC().Add(lateReholdTTL(h.lateHoldTTL))
 	newRes, err := q.InsertReservation(ctx, orig.OrgID, orig.ChannelID, orig.SessionID, tierID, nil, seatQty+gaQty, expires)
 	if err != nil {
 		return fmt.Errorf("insert reservation: %w", err)
