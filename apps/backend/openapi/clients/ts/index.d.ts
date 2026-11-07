@@ -10120,6 +10120,87 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sales summary of the whole organization
+         * @description The accountant's view of an organization (EC-V1): one card per session
+         *     and currency for the sessions that START in the range, with what was
+         *     sold, invited, refunded and earned, and under each card the "price x
+         *     category" breakdown with the promo codes used. It is the
+         *     organization-wide counterpart of `GET .../sessions/{session_id}/summary`
+         *     and reads the same figures: revenue is `orders.total` of the orders
+         *     paid at some point (paid, partially refunded, refunded), refunded the
+         *     SUCCEEDED refunds of both settlements (arena's own provider and money a
+         *     selling site returned itself), net revenue minus refunded minus the
+         *     "Refer a friend" cashback, all in minor units.
+         *
+         *     `sold` counts the tickets that were not invitations, whatever became of
+         *     them since; `complimentary` the invitations; `refunded_tickets` those of
+         *     the sold ones cancelled with money returned; `active_tickets` the valid
+         *     tickets of every kind. Orders from a test sales channel are in none of
+         *     the figures and are counted apart in `test_orders`. A session with
+         *     nothing sold, invited or refunded has no entry. At most 500 sessions
+         *     are read, oldest first; `truncated` says when more matched. Read-only
+         *     and free of buyer data. Requires the `order.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/exports/accounting.xlsx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Accounting workbook of the organization
+         * @description The Excel file for the accountant (EC-V2): three sheets over the
+         *     sessions that start in the range.
+         *
+         *     1. "By sessions" (`По сеансам`): one row per session and currency with
+         *        the figures of `GET .../summary` (orders, sold, invitations,
+         *        refunded and active tickets, revenue, refunded, net).
+         *     2. "By prices" (`По ценам`): one row per session, category, price and
+         *        promo code with the tickets, the discount and the revenue.
+         *     3. "Tickets" (`Билеты`): one row per ticket with its number, order
+         *        number, buyer name, e-mail and phone, category, price paid, status,
+         *        invitation flag, refund amount, refund settlement (`provider` or
+         *        `external`) and the refund reference (the provider's id, or the
+         *        reason a selling site gave for an external refund).
+         *
+         *     Orders from a test sales channel are left out of every sheet; the
+         *     ticket sheet keeps the `Test` column of the CSV exports, which is
+         *     therefore always `no`. Money is in major units with two decimals.
+         *     Headers and tab names follow `locale` (`en`, `ru`, `es`); values stay
+         *     as the API spells them. Same csvexport rules and 50 000-ticket cap as
+         *     the sales file. The file names buyers and their contacts: a person
+         *     downloads it, an organization API key is refused. Every download is
+         *     audited (`v1.org.accounting_export.download`).
+         *
+         *     Requires `order.read` AND `session.read`.
+         */
+        get: operations["getV1OrganizationsOrgIdExportsAccountingXlsx"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/sessions/{session_id}/seat-layout/algorithms": {
         parameters: {
             query?: never;
@@ -20156,6 +20237,190 @@ export interface components {
              *     deleted event or an unknown id has no entry.
              */
             items: components["schemas"]["EventSalesSummary"][];
+        };
+        /** @description The units sold at one price in one category with one promo code. */
+        OrgSummaryBreakdownItem: {
+            /**
+             * Format: uuid
+             * @description The category.
+             */
+            tier_id: string;
+            /** @description Name of the category. */
+            tier_name: string;
+            /**
+             * Format: int64
+             * @description Price the unit was sold at, before discount and service charge, in minor units.
+             */
+            unit_price: number;
+            /** @description Promo code on the order, null for units sold without one. */
+            promo_code: string | null;
+            /**
+             * Format: int64
+             * @description Units in the group.
+             */
+            tickets: number;
+            /**
+             * Format: int64
+             * @description Discount given on those units, in minor units.
+             */
+            discount: number;
+            /**
+             * Format: int64
+             * @description What the buyers paid for those units after discount and service charge, in minor units.
+             */
+            revenue: number;
+        };
+        /** @description One session in one currency, money in minor units. */
+        OrgSummaryCard: {
+            /** @description ISO 4217 code. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Orders paid at some point.
+             */
+            orders: number;
+            /**
+             * Format: int64
+             * @description Tickets that were not invitations, whatever became of them since.
+             */
+            sold: number;
+            /**
+             * Format: int64
+             * @description Invitations.
+             */
+            complimentary: number;
+            /**
+             * Format: int64
+             * @description Sold tickets cancelled with money returned.
+             */
+            refunded_tickets: number;
+            /**
+             * Format: int64
+             * @description Valid tickets of every kind.
+             */
+            active_tickets: number;
+            /**
+             * Format: int64
+             * @description Sum of `orders.total` of the orders paid at some point.
+             */
+            revenue: number;
+            /**
+             * Format: int64
+             * @description Succeeded refunds to buyers, both settlements (provider and external).
+             */
+            refunded: number;
+            /**
+             * Format: int64
+             * @description Succeeded "Refer a friend" cashback paid to referrers.
+             */
+            cashback: number;
+            /**
+             * Format: int64
+             * @description Revenue minus refunded minus cashback.
+             */
+            net: number;
+            /** @description Price x category rows, by category, price and promo code. */
+            breakdown: components["schemas"]["OrgSummaryBreakdownItem"][];
+            /** @description Promo codes the paid orders used, with order and redemption counts. */
+            promos: components["schemas"]["SummaryPromoItem"][];
+        };
+        /** @description A session with its cards, one per currency. */
+        OrgSummarySession: {
+            /**
+             * Format: uuid
+             * @description The session.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Its event.
+             */
+            event_id: string;
+            /** @description Name of the event. */
+            event_name: string;
+            /**
+             * Format: date-time
+             * @description Start of the session, UTC.
+             */
+            start_at: string;
+            /** @description Session status. */
+            status: string;
+            /** @description Name of the venue, null when it has none. */
+            venue_name: string | null;
+            /** @description IANA zone of the venue, null when it has none. */
+            venue_timezone: string | null;
+            /**
+             * Format: int64
+             * @description Paid orders of this session that came through a test sales channel.
+             */
+            test_orders: number;
+            /** @description One card per currency, sorted by currency. */
+            cards: components["schemas"]["OrgSummaryCard"][];
+        };
+        /** @description The cards of one currency added up, money in minor units. */
+        OrgSummaryTotal: {
+            /** @description ISO 4217 code. */
+            currency: string;
+            /**
+             * Format: int64
+             * @description Orders paid at some point.
+             */
+            orders: number;
+            /**
+             * Format: int64
+             * @description Tickets that were not invitations.
+             */
+            sold: number;
+            /**
+             * Format: int64
+             * @description Invitations.
+             */
+            complimentary: number;
+            /**
+             * Format: int64
+             * @description Sold tickets cancelled with money returned.
+             */
+            refunded_tickets: number;
+            /**
+             * Format: int64
+             * @description Valid tickets of every kind.
+             */
+            active_tickets: number;
+            /**
+             * Format: int64
+             * @description Revenue of the orders paid at some point.
+             */
+            revenue: number;
+            /**
+             * Format: int64
+             * @description Succeeded refunds to buyers, both settlements.
+             */
+            refunded: number;
+            /**
+             * Format: int64
+             * @description Succeeded "Refer a friend" cashback.
+             */
+            cashback: number;
+            /**
+             * Format: int64
+             * @description Revenue minus refunded minus cashback.
+             */
+            net: number;
+        };
+        /** @description The sales summary of an organization for a date range. */
+        OrgSummary: {
+            /** @description Sessions with sales, invitations or refunds in the range, oldest first. */
+            sessions: components["schemas"]["OrgSummarySession"][];
+            /** @description The cards added up per currency, sorted by currency. */
+            totals: components["schemas"]["OrgSummaryTotal"][];
+            /**
+             * Format: int64
+             * @description Paid orders of every session read that came through a test sales
+             *     channel. They are in none of the figures.
+             */
+            test_orders: number;
+            /** @description True when more than 500 sessions matched and only the oldest were read. */
+            truncated: boolean;
         };
         /**
          * @description A single active venue (physical event location owned by one organization).
@@ -71539,6 +71804,180 @@ export interface operations {
                 };
             };
             /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdSummary: {
+        parameters: {
+            query?: {
+                /** @description First day included, `YYYY-MM-DD` (UTC), or an RFC 3339 time. Sessions starting earlier are left out. */
+                from?: string;
+                /** @description Last day included, `YYYY-MM-DD` (UTC); with an RFC 3339 time the bound is exclusive. Sessions starting later are left out. */
+                to?: string;
+                /** @description Only the sessions of this event. An event of another organization simply has no sessions here. */
+                event_id?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cards of the sessions in the range. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrgSummary"];
+                };
+            };
+            /**
+             * @description org_id is not a valid UUID, or the range is wrong
+             *     (`summary.invalid_range`: not a date, or `to` before `from`), or
+             *     `event_id` is not a UUID (`summary.invalid_event_id`).
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (`order.read`) in this organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order queries unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdExportsAccountingXlsx: {
+        parameters: {
+            query?: {
+                /** @description First day included, `YYYY-MM-DD` (UTC), or an RFC 3339 time. */
+                from?: string;
+                /** @description Last day included, `YYYY-MM-DD` (UTC); with an RFC 3339 time the bound is exclusive. */
+                to?: string;
+                /** @description Only the sessions of this event. */
+                event_id?: string;
+                /** @description Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The workbook attachment, `Content-Disposition: attachment;
+             *     filename="accounting_<from>_<to>.xlsx"` (`accounting_<today>.xlsx`
+             *     without a range).
+             */
+            200: {
+                headers: {
+                    /** @description Number of data rows in the "Tickets" sheet, the header row not counted. */
+                    "X-Row-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+                };
+            };
+            /** @description org_id is not a valid UUID, or the range is wrong (`summary.invalid_range`, `summary.invalid_event_id`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `order.read` or `session.read`, is not a member of the organization, or is an API key (`accounting.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The range holds more than 5 000 sessions (`export.too_many_sessions`)
+             *     or more than 50 000 tickets (`export.too_many_rows`); narrow the dates.
+             */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Export store unavailable (database not wired). */
             503: {
                 headers: {
                     [name: string]: unknown;

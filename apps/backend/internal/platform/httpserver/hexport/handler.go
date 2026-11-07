@@ -32,6 +32,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/csvexport"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
@@ -47,6 +48,7 @@ type Handler struct {
 	queries *gen.Queries
 	logger  *slog.Logger
 	maxRows int64
+	audit   audit.Writer
 }
 
 // New constructs a Handler. A nil queries is allowed; handlers self-gate
@@ -62,6 +64,13 @@ func New(queries *gen.Queries, logger *slog.Logger) *Handler {
 // without seeding fifty thousand tickets.
 func (h *Handler) WithMaxRows(n int64) *Handler {
 	h.maxRows = n
+	return h
+}
+
+// WithAudit sets the writer of the audit rows the file exports leave (the
+// accounting workbook); without one a download is simply not audited.
+func (h *Handler) WithAudit(w audit.Writer) *Handler {
+	h.audit = w
 	return h
 }
 

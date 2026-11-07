@@ -7934,6 +7934,202 @@ components:
           items:
             $ref: "#/components/schemas/EventSalesSummary"
 
+    OrgSummaryBreakdownItem:
+      type: object
+      required: [tier_id, tier_name, unit_price, promo_code, tickets, discount, revenue]
+      description: The units sold at one price in one category with one promo code.
+      properties:
+        tier_id:
+          type: string
+          format: uuid
+          description: The category.
+        tier_name:
+          type: string
+          description: Name of the category.
+        unit_price:
+          type: integer
+          format: int64
+          description: Price the unit was sold at, before discount and service charge, in minor units.
+        promo_code:
+          type: [string, "null"]
+          description: Promo code on the order, null for units sold without one.
+        tickets:
+          type: integer
+          format: int64
+          description: Units in the group.
+        discount:
+          type: integer
+          format: int64
+          description: Discount given on those units, in minor units.
+        revenue:
+          type: integer
+          format: int64
+          description: What the buyers paid for those units after discount and service charge, in minor units.
+
+    OrgSummaryCard:
+      type: object
+      required: [currency, orders, sold, complimentary, refunded_tickets, active_tickets, revenue, refunded, cashback, net, breakdown, promos]
+      description: One session in one currency, money in minor units.
+      properties:
+        currency:
+          type: string
+          description: ISO 4217 code.
+        orders:
+          type: integer
+          format: int64
+          description: Orders paid at some point.
+        sold:
+          type: integer
+          format: int64
+          description: Tickets that were not invitations, whatever became of them since.
+        complimentary:
+          type: integer
+          format: int64
+          description: Invitations.
+        refunded_tickets:
+          type: integer
+          format: int64
+          description: Sold tickets cancelled with money returned.
+        active_tickets:
+          type: integer
+          format: int64
+          description: Valid tickets of every kind.
+        revenue:
+          type: integer
+          format: int64
+          description: Sum of `orders.total` of the orders paid at some point.
+        refunded:
+          type: integer
+          format: int64
+          description: Succeeded refunds to buyers, both settlements (provider and external).
+        cashback:
+          type: integer
+          format: int64
+          description: Succeeded "Refer a friend" cashback paid to referrers.
+        net:
+          type: integer
+          format: int64
+          description: Revenue minus refunded minus cashback.
+        breakdown:
+          type: array
+          description: Price x category rows, by category, price and promo code.
+          items:
+            $ref: "#/components/schemas/OrgSummaryBreakdownItem"
+        promos:
+          type: array
+          description: Promo codes the paid orders used, with order and redemption counts.
+          items:
+            $ref: "#/components/schemas/SummaryPromoItem"
+
+    OrgSummarySession:
+      type: object
+      required: [id, event_id, event_name, start_at, status, venue_name, venue_timezone, test_orders, cards]
+      description: A session with its cards, one per currency.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The session.
+        event_id:
+          type: string
+          format: uuid
+          description: Its event.
+        event_name:
+          type: string
+          description: Name of the event.
+        start_at:
+          type: string
+          format: date-time
+          description: Start of the session, UTC.
+        status:
+          type: string
+          description: Session status.
+        venue_name:
+          type: [string, "null"]
+          description: Name of the venue, null when it has none.
+        venue_timezone:
+          type: [string, "null"]
+          description: IANA zone of the venue, null when it has none.
+        test_orders:
+          type: integer
+          format: int64
+          description: Paid orders of this session that came through a test sales channel.
+        cards:
+          type: array
+          description: One card per currency, sorted by currency.
+          items:
+            $ref: "#/components/schemas/OrgSummaryCard"
+
+    OrgSummaryTotal:
+      type: object
+      required: [currency, orders, sold, complimentary, refunded_tickets, active_tickets, revenue, refunded, cashback, net]
+      description: The cards of one currency added up, money in minor units.
+      properties:
+        currency:
+          type: string
+          description: ISO 4217 code.
+        orders:
+          type: integer
+          format: int64
+          description: Orders paid at some point.
+        sold:
+          type: integer
+          format: int64
+          description: Tickets that were not invitations.
+        complimentary:
+          type: integer
+          format: int64
+          description: Invitations.
+        refunded_tickets:
+          type: integer
+          format: int64
+          description: Sold tickets cancelled with money returned.
+        active_tickets:
+          type: integer
+          format: int64
+          description: Valid tickets of every kind.
+        revenue:
+          type: integer
+          format: int64
+          description: Revenue of the orders paid at some point.
+        refunded:
+          type: integer
+          format: int64
+          description: Succeeded refunds to buyers, both settlements.
+        cashback:
+          type: integer
+          format: int64
+          description: Succeeded "Refer a friend" cashback.
+        net:
+          type: integer
+          format: int64
+          description: Revenue minus refunded minus cashback.
+
+    OrgSummary:
+      type: object
+      required: [sessions, totals, test_orders, truncated]
+      description: The sales summary of an organization for a date range.
+      properties:
+        sessions:
+          type: array
+          description: Sessions with sales, invitations or refunds in the range, oldest first.
+          items:
+            $ref: "#/components/schemas/OrgSummarySession"
+        totals:
+          type: array
+          description: The cards added up per currency, sorted by currency.
+          items:
+            $ref: "#/components/schemas/OrgSummaryTotal"
+        test_orders:
+          type: integer
+          format: int64
+          description: |
+            Paid orders of every session read that came through a test sales
+            channel. They are in none of the figures.
+        truncated:
+          type: boolean
+          description: True when more than 500 sessions matched and only the oldest were read.
+
     VenueItem:
       type: object
       required: [id, org_id, name, status, created_at, updated_at]
@@ -61467,6 +61663,208 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Order queries unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/summary:
+    get:
+      operationId: getV1OrganizationsOrgIdSummary
+      summary: Sales summary of the whole organization
+      description: |
+        The accountant's view of an organization (EC-V1): one card per session
+        and currency for the sessions that START in the range, with what was
+        sold, invited, refunded and earned, and under each card the "price x
+        category" breakdown with the promo codes used. It is the
+        organization-wide counterpart of `GET .../sessions/{session_id}/summary`
+        and reads the same figures: revenue is `orders.total` of the orders
+        paid at some point (paid, partially refunded, refunded), refunded the
+        SUCCEEDED refunds of both settlements (arena's own provider and money a
+        selling site returned itself), net revenue minus refunded minus the
+        "Refer a friend" cashback, all in minor units.
+
+        `sold` counts the tickets that were not invitations, whatever became of
+        them since; `complimentary` the invitations; `refunded_tickets` those of
+        the sold ones cancelled with money returned; `active_tickets` the valid
+        tickets of every kind. Orders from a test sales channel are in none of
+        the figures and are counted apart in `test_orders`. A session with
+        nothing sold, invited or refunded has no entry. At most 500 sessions
+        are read, oldest first; `truncated` says when more matched. Read-only
+        and free of buyer data. Requires the `order.read` permission.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: false
+          description: First day included, `YYYY-MM-DD` (UTC), or an RFC 3339 time. Sessions starting earlier are left out.
+          schema: { type: string }
+        - name: to
+          in: query
+          required: false
+          description: Last day included, `YYYY-MM-DD` (UTC); with an RFC 3339 time the bound is exclusive. Sessions starting later are left out.
+          schema: { type: string }
+        - name: event_id
+          in: query
+          required: false
+          description: Only the sessions of this event. An event of another organization simply has no sessions here.
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The cards of the sessions in the range.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgSummary"
+        "400":
+          description: |
+            org_id is not a valid UUID, or the range is wrong
+            (`summary.invalid_range`: not a date, or `to` before `from`), or
+            `event_id` is not a UUID (`summary.invalid_event_id`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor does not hold the required permission (`order.read`) in this organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Order queries unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/exports/accounting.xlsx:
+    get:
+      operationId: getV1OrganizationsOrgIdExportsAccountingXlsx
+      summary: Accounting workbook of the organization
+      description: |
+        The Excel file for the accountant (EC-V2): three sheets over the
+        sessions that start in the range.
+
+        1. "By sessions" (`По сеансам`): one row per session and currency with
+           the figures of `GET .../summary` (orders, sold, invitations,
+           refunded and active tickets, revenue, refunded, net).
+        2. "By prices" (`По ценам`): one row per session, category, price and
+           promo code with the tickets, the discount and the revenue.
+        3. "Tickets" (`Билеты`): one row per ticket with its number, order
+           number, buyer name, e-mail and phone, category, price paid, status,
+           invitation flag, refund amount, refund settlement (`provider` or
+           `external`) and the refund reference (the provider's id, or the
+           reason a selling site gave for an external refund).
+
+        Orders from a test sales channel are left out of every sheet; the
+        ticket sheet keeps the `Test` column of the CSV exports, which is
+        therefore always `no`. Money is in major units with two decimals.
+        Headers and tab names follow `locale` (`en`, `ru`, `es`); values stay
+        as the API spells them. Same csvexport rules and 50 000-ticket cap as
+        the sales file. The file names buyers and their contacts: a person
+        downloads it, an organization API key is refused. Every download is
+        audited (`v1.org.accounting_export.download`).
+
+        Requires `order.read` AND `session.read`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          required: false
+          description: First day included, `YYYY-MM-DD` (UTC), or an RFC 3339 time.
+          schema: { type: string }
+        - name: to
+          in: query
+          required: false
+          description: Last day included, `YYYY-MM-DD` (UTC); with an RFC 3339 time the bound is exclusive.
+          schema: { type: string }
+        - name: event_id
+          in: query
+          required: false
+          description: Only the sessions of this event.
+          schema: { type: string, format: uuid }
+        - name: locale
+          in: query
+          required: false
+          description: Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+          schema: { type: string }
+      responses:
+        "200":
+          description: |
+            The workbook attachment, `Content-Disposition: attachment;
+            filename="accounting_<from>_<to>.xlsx"` (`accounting_<today>.xlsx`
+            without a range).
+          headers:
+            X-Row-Count:
+              description: Number of data rows in the "Tickets" sheet, the header row not counted.
+              schema: { type: integer }
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+                description: Three sheets, see the route description.
+        "400":
+          description: org_id is not a valid UUID, or the range is wrong (`summary.invalid_range`, `summary.invalid_event_id`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `order.read` or `session.read`, is not a member of the organization, or is an API key (`accounting.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: |
+            The range holds more than 5 000 sessions (`export.too_many_sessions`)
+            or more than 50 000 tickets (`export.too_many_rows`); narrow the dates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Export store unavailable (database not wired).
           content:
             application/json:
               schema:

@@ -99,26 +99,60 @@ func Build(s Sheet) ([]byte, error) {
 }
 
 // Write writes the workbook to w.
-func Write(w io.Writer, s Sheet) error {
-	if len(s.Rows)+1 > MaxRows {
-		return ErrTooManyRows
+func Write(w io.Writer, s Sheet) error { return WriteBook(w, []Sheet{s}) }
+
+// BuildBook returns a workbook of several sheets as bytes, in the order
+// given; the first one is the sheet Excel opens on.
+func BuildBook(sheets []Sheet) ([]byte, error) {
+	var buf bytes.Buffer
+	if err := WriteBook(&buf, sheets); err != nil {
+		return nil, err
 	}
-	if len(s.Columns) == 0 {
-		return errors.New("xlsxexport: a sheet needs at least one column")
+	return buf.Bytes(), nil
+}
+
+// WriteBook writes a workbook of one or more sheets to w. Tab names are
+// made unique (a repeat gets " 2", " 3", ...), each sheet has its own frozen
+// header and autofilter.
+func WriteBook(w io.Writer, sheets []Sheet) error {
+	if len(sheets) == 0 {
+		return errors.New("xlsxexport: a workbook needs at least one sheet")
 	}
-	name := SheetName(s.Name)
-	sheetXML := sheet(s)
+	names := make([]string, len(sheets))
+	used := map[string]bool{}
+	for i, s := range sheets {
+		if len(s.Rows)+1 > MaxRows {
+			return ErrTooManyRows
+		}
+		if len(s.Columns) == 0 {
+			return errors.New("xlsxexport: a sheet needs at least one column")
+		}
+		name := SheetName(s.Name)
+		for n := 2; used[strings.ToLower(name)]; n++ {
+			suffix := " " + strconv.Itoa(n)
+			base := []rune(SheetName(s.Name))
+			if len(base)+len(suffix) > 31 {
+				base = base[:31-len(suffix)]
+			}
+			name = string(base) + suffix
+		}
+		used[strings.ToLower(name)] = true
+		names[i] = name
+	}
 	zw := zip.NewWriter(w)
-	parts := []struct {
+	type part struct {
 		name string
 		body []byte
-	}{
-		{"[Content_Types].xml", []byte(contentTypes)},
+	}
+	parts := []part{
+		{"[Content_Types].xml", []byte(contentTypesFor(len(sheets)))},
 		{"_rels/.rels", []byte(rootRels)},
-		{"xl/workbook.xml", workbook(name, len(s.Columns), len(s.Rows))},
-		{"xl/_rels/workbook.xml.rels", []byte(workbookRels)},
+		{"xl/workbook.xml", workbookFor(names, sheets)},
+		{"xl/_rels/workbook.xml.rels", []byte(workbookRelsFor(len(sheets)))},
 		{"xl/styles.xml", []byte(styles)},
-		{"xl/worksheets/sheet1.xml", sheetXML},
+	}
+	for i, s := range sheets {
+		parts = append(parts, part{"xl/worksheets/sheet" + strconv.Itoa(i+1) + ".xml", sheet(s, i == 0)})
 	}
 	for _, p := range parts {
 		f, err := zw.CreateHeader(&zip.FileHeader{Name: p.name, Method: zip.Deflate, Modified: zipTime})
@@ -134,7 +168,7 @@ func Write(w io.Writer, s Sheet) error {
 
 // sheet renders xl/worksheets/sheet1.xml. The data goes into its own buffer
 // first, because the column widths come before it in the file.
-func sheet(s Sheet) []byte {
+func sheet(s Sheet, selected bool) []byte {
 	ncol := len(s.Columns)
 	widths := make([]int, ncol)
 	var data bytes.Buffer
@@ -180,7 +214,11 @@ func sheet(s Sheet) []byte {
 	b.WriteString(xmlHeader)
 	b.WriteString(`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`)
 	b.WriteString(`<dimension ref="A1:` + last + `"/>`)
-	b.WriteString(`<sheetViews><sheetView tabSelected="1" workbookViewId="0">`)
+	if selected {
+		b.WriteString(`<sheetViews><sheetView tabSelected="1" workbookViewId="0">`)
+	} else {
+		b.WriteString(`<sheetViews><sheetView workbookViewId="0">`)
+	}
 	b.WriteString(`<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>`)
 	b.WriteString(`<selection pane="bottomLeft" activeCell="A2" sqref="A2"/>`)
 	b.WriteString(`</sheetView></sheetViews>`)
@@ -349,38 +387,58 @@ func SheetName(name string) string {
 	return s
 }
 
-func workbook(name string, ncol, nrow int) []byte {
+func workbookFor(names []string, sheets []Sheet) []byte {
 	var b bytes.Buffer
 	b.WriteString(xmlHeader)
 	b.WriteString(`<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`)
-	b.WriteString(`<bookViews><workbookView/></bookViews><sheets><sheet name="`)
-	escape(&b, name)
-	b.WriteString(`" sheetId="1" r:id="rId1"/></sheets>`)
-	// The autofilter's range, as Excel itself records it.
-	b.WriteString(`<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">`)
-	escape(&b, "'"+strings.ReplaceAll(name, "'", "''")+"'!$A$1:$"+colName(ncol-1)+"$"+strconv.Itoa(nrow+1))
-	b.WriteString(`</definedName></definedNames></workbook>`)
+	b.WriteString(`<bookViews><workbookView/></bookViews><sheets>`)
+	for i, name := range names {
+		n := strconv.Itoa(i + 1)
+		b.WriteString(`<sheet name="`)
+		escape(&b, name)
+		b.WriteString(`" sheetId="` + n + `" r:id="rId` + n + `"/>`)
+	}
+	b.WriteString(`</sheets>`)
+	// The autofilter's range of each sheet, as Excel itself records it.
+	b.WriteString(`<definedNames>`)
+	for i, name := range names {
+		b.WriteString(`<definedName name="_xlnm._FilterDatabase" localSheetId="` + strconv.Itoa(i) + `" hidden="1">`)
+		escape(&b, "'"+strings.ReplaceAll(name, "'", "''")+"'!$A$1:$"+colName(len(sheets[i].Columns)-1)+"$"+strconv.Itoa(len(sheets[i].Rows)+1))
+		b.WriteString(`</definedName>`)
+	}
+	b.WriteString(`</definedNames></workbook>`)
 	return b.Bytes()
 }
 
 const xmlHeader = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` + "\n"
 
-const contentTypes = xmlHeader + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
-	`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
-	`<Default Extension="xml" ContentType="application/xml"/>` +
-	`<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
-	`<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>` +
-	`<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>` +
-	`</Types>`
+func contentTypesFor(n int) string {
+	var b strings.Builder
+	b.WriteString(xmlHeader + `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+		`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+		`<Default Extension="xml" ContentType="application/xml"/>` +
+		`<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>`)
+	for i := 1; i <= n; i++ {
+		b.WriteString(`<Override PartName="/xl/worksheets/sheet` + strconv.Itoa(i) + `.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`)
+	}
+	b.WriteString(`<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`)
+	return b.String()
+}
 
 const rootRels = xmlHeader + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
 	`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>` +
 	`</Relationships>`
 
-const workbookRels = xmlHeader + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
-	`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>` +
-	`<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>` +
-	`</Relationships>`
+func workbookRelsFor(n int) string {
+	var b strings.Builder
+	b.WriteString(xmlHeader + `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`)
+	for i := 1; i <= n; i++ {
+		id := strconv.Itoa(i)
+		b.WriteString(`<Relationship Id="rId` + id + `" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet` + id + `.xml"/>`)
+	}
+	b.WriteString(`<Relationship Id="rId` + strconv.Itoa(n+1) + `" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`)
+	return b.String()
+}
 
 // styles holds the four cell styles: default, bold header, "@" text and
 // bold "@" text (numFmt 49 is Excel's built-in text format).

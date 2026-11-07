@@ -13964,6 +13964,148 @@ type OrgModuleShopState struct {
 	ShopDomain *string `json:"shop_domain"`
 }
 
+// OrgSummary The sales summary of an organization for a date range.
+type OrgSummary struct {
+	// Sessions Sessions with sales, invitations or refunds in the range, oldest first.
+	Sessions []OrgSummarySession `json:"sessions"`
+
+	// TestOrders Paid orders of every session read that came through a test sales
+	// channel. They are in none of the figures.
+	TestOrders int64 `json:"test_orders"`
+
+	// Totals The cards added up per currency, sorted by currency.
+	Totals []OrgSummaryTotal `json:"totals"`
+
+	// Truncated True when more than 500 sessions matched and only the oldest were read.
+	Truncated bool `json:"truncated"`
+}
+
+// OrgSummaryBreakdownItem The units sold at one price in one category with one promo code.
+type OrgSummaryBreakdownItem struct {
+	// Discount Discount given on those units, in minor units.
+	Discount int64 `json:"discount"`
+
+	// PromoCode Promo code on the order, null for units sold without one.
+	PromoCode *string `json:"promo_code"`
+
+	// Revenue What the buyers paid for those units after discount and service charge, in minor units.
+	Revenue int64 `json:"revenue"`
+
+	// Tickets Units in the group.
+	Tickets int64 `json:"tickets"`
+
+	// TierId The category.
+	TierId openapi_types.UUID `json:"tier_id"`
+
+	// TierName Name of the category.
+	TierName string `json:"tier_name"`
+
+	// UnitPrice Price the unit was sold at, before discount and service charge, in minor units.
+	UnitPrice int64 `json:"unit_price"`
+}
+
+// OrgSummaryCard One session in one currency, money in minor units.
+type OrgSummaryCard struct {
+	// ActiveTickets Valid tickets of every kind.
+	ActiveTickets int64 `json:"active_tickets"`
+
+	// Breakdown Price x category rows, by category, price and promo code.
+	Breakdown []OrgSummaryBreakdownItem `json:"breakdown"`
+
+	// Cashback Succeeded "Refer a friend" cashback paid to referrers.
+	Cashback int64 `json:"cashback"`
+
+	// Complimentary Invitations.
+	Complimentary int64 `json:"complimentary"`
+
+	// Currency ISO 4217 code.
+	Currency string `json:"currency"`
+
+	// Net Revenue minus refunded minus cashback.
+	Net int64 `json:"net"`
+
+	// Orders Orders paid at some point.
+	Orders int64 `json:"orders"`
+
+	// Promos Promo codes the paid orders used, with order and redemption counts.
+	Promos []SummaryPromoItem `json:"promos"`
+
+	// Refunded Succeeded refunds to buyers, both settlements (provider and external).
+	Refunded int64 `json:"refunded"`
+
+	// RefundedTickets Sold tickets cancelled with money returned.
+	RefundedTickets int64 `json:"refunded_tickets"`
+
+	// Revenue Sum of `orders.total` of the orders paid at some point.
+	Revenue int64 `json:"revenue"`
+
+	// Sold Tickets that were not invitations, whatever became of them since.
+	Sold int64 `json:"sold"`
+}
+
+// OrgSummarySession A session with its cards, one per currency.
+type OrgSummarySession struct {
+	// Cards One card per currency, sorted by currency.
+	Cards []OrgSummaryCard `json:"cards"`
+
+	// EventId Its event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// EventName Name of the event.
+	EventName string `json:"event_name"`
+
+	// Id The session.
+	Id openapi_types.UUID `json:"id"`
+
+	// StartAt Start of the session, UTC.
+	StartAt time.Time `json:"start_at"`
+
+	// Status Session status.
+	Status string `json:"status"`
+
+	// TestOrders Paid orders of this session that came through a test sales channel.
+	TestOrders int64 `json:"test_orders"`
+
+	// VenueName Name of the venue, null when it has none.
+	VenueName *string `json:"venue_name"`
+
+	// VenueTimezone IANA zone of the venue, null when it has none.
+	VenueTimezone *string `json:"venue_timezone"`
+}
+
+// OrgSummaryTotal The cards of one currency added up, money in minor units.
+type OrgSummaryTotal struct {
+	// ActiveTickets Valid tickets of every kind.
+	ActiveTickets int64 `json:"active_tickets"`
+
+	// Cashback Succeeded "Refer a friend" cashback.
+	Cashback int64 `json:"cashback"`
+
+	// Complimentary Invitations.
+	Complimentary int64 `json:"complimentary"`
+
+	// Currency ISO 4217 code.
+	Currency string `json:"currency"`
+
+	// Net Revenue minus refunded minus cashback.
+	Net int64 `json:"net"`
+
+	// Orders Orders paid at some point.
+	Orders int64 `json:"orders"`
+
+	// Refunded Succeeded refunds to buyers, both settlements.
+	Refunded int64 `json:"refunded"`
+
+	// RefundedTickets Sold tickets cancelled with money returned.
+	RefundedTickets int64 `json:"refunded_tickets"`
+
+	// Revenue Revenue of the orders paid at some point.
+	Revenue int64 `json:"revenue"`
+
+	// Sold Tickets that were not invitations.
+	Sold int64 `json:"sold"`
+}
+
 // OrgWhiteLabelList The organization's white label periods and the price list's monthly price.
 type OrgWhiteLabelList struct {
 	// Currency Currency of the organization's billing account, empty when it cannot be read.
@@ -24404,6 +24546,21 @@ type UpdateEventArtistJSONBody struct {
 	SortOrder *int32 `json:"sort_order,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdExportsAccountingXlsxParams defines parameters for GetV1OrganizationsOrgIdExportsAccountingXlsx.
+type GetV1OrganizationsOrgIdExportsAccountingXlsxParams struct {
+	// From First day included, `YYYY-MM-DD` (UTC), or an RFC 3339 time.
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day included, `YYYY-MM-DD` (UTC); with an RFC 3339 time the bound is exclusive.
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+
+	// EventId Only the sessions of this event.
+	EventId *openapi_types.UUID `form:"event_id,omitempty" json:"event_id,omitempty"`
+
+	// Locale Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
 // CreateExternalAllocationJSONBody defines parameters for CreateExternalAllocation.
 type CreateExternalAllocationJSONBody struct {
 	PartnerId openapi_types.UUID `json:"partner_id"`
@@ -24842,6 +24999,18 @@ type GetV1OrganizationsOrgIdShopReferralRewardsParams struct {
 
 	// Cursor The `next_cursor` of the previous page.
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// GetV1OrganizationsOrgIdSummaryParams defines parameters for GetV1OrganizationsOrgIdSummary.
+type GetV1OrganizationsOrgIdSummaryParams struct {
+	// From First day included, `YYYY-MM-DD` (UTC), or an RFC 3339 time. Sessions starting earlier are left out.
+	From *string `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Last day included, `YYYY-MM-DD` (UTC); with an RFC 3339 time the bound is exclusive. Sessions starting later are left out.
+	To *string `form:"to,omitempty" json:"to,omitempty"`
+
+	// EventId Only the sessions of this event. An event of another organization simply has no sessions here.
+	EventId *openapi_types.UUID `form:"event_id,omitempty" json:"event_id,omitempty"`
 }
 
 // PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClearJSONBody defines parameters for PostV1OrganizationsOrgIdTicketsTicketIdReviewHoldClear.

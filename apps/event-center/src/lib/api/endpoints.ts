@@ -40,6 +40,7 @@ import type {
   EventContactResponse,
   EventListResponse,
   EventSummary,
+  OrgSummary,
   GeoCitiesResponse,
   GeoCountriesResponse,
   GeoCountryCurrencyResponse,
@@ -133,6 +134,35 @@ export function listEvents(orgId: string, lang?: string): Promise<EventListRespo
 
 export function fetchEventSummary(orgId: string, eventId: string): Promise<EventSummary> {
   return call<EventSummary>({ route: API.eventSummary, params: { org_id: orgId, event_id: eventId } });
+}
+
+/** The range of the organization summary and of the accounting workbook; empty bounds are open. */
+export interface OrgSummaryRange {
+  /** First day, `YYYY-MM-DD`. */
+  from?: string;
+  /** Last day included, `YYYY-MM-DD`. */
+  to?: string;
+  eventId?: string;
+}
+
+/** EC-V1: a card per session and currency for the sessions that start in the range. */
+export function fetchOrgSummary(orgId: string, range: OrgSummaryRange): Promise<OrgSummary> {
+  return call<OrgSummary>({
+    route: API.orgSummary,
+    params: { org_id: orgId },
+    query: { from: range.from, to: range.to, event_id: range.eventId },
+  });
+}
+
+/** EC-V2: the accountant's Excel workbook (by sessions, by prices, tickets). */
+export function downloadAccountingXlsx(orgId: string, range: OrgSummaryRange, locale: string): Promise<DownloadedFile> {
+  return download({
+    route: API.accountingXlsx,
+    params: { org_id: orgId },
+    query: { from: range.from, to: range.to, event_id: range.eventId, locale },
+    accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    fallbackName: "accounting.xlsx",
+  });
 }
 
 export function listSessions(orgId: string, eventId: string): Promise<SessionListResponse> {

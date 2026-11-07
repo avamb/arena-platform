@@ -41,6 +41,9 @@ export const API = {
   },
   eventSummary: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/summary" },
   sessionSummary: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/summary" },
+  // EC-V1 and EC-V2 (spec 62 section 12.2): the whole organization in a date range, and the accountant's workbook.
+  orgSummary: { method: "GET", path: "/v1/organizations/{org_id}/summary" },
+  accountingXlsx: { method: "GET", path: "/v1/organizations/{org_id}/exports/accounting.xlsx" },
   eventSalesCsv: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/sales.csv" },
   sessionSalesCsv: { method: "GET", path: "/v1/organizations/{org_id}/sessions/{session_id}/sales.csv" },
   sessionSummaryCsv: {

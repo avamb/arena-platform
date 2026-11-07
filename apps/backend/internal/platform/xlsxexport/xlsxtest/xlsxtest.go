@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"io"
+	"strconv"
 	"testing"
 )
 
@@ -73,8 +74,20 @@ type StyleSheet struct {
 	} `xml:"cellXfs"`
 }
 
-// Open reads a workbook built by this package.
+// Open reads a one-sheet workbook built by this package.
 func Open(t testing.TB, body []byte) Parsed {
+	t.Helper()
+	sheets := OpenBook(t, body)
+	if len(sheets) != 1 {
+		t.Fatalf("sheets = %d", len(sheets))
+	}
+	return sheets[0]
+}
+
+// OpenBook reads a workbook of any number of sheets, one Parsed per sheet in
+// tab order (SheetName and Sheet are that sheet's; Styles and Parts are the
+// workbook's).
+func OpenBook(t testing.TB, body []byte) []Parsed {
 	t.Helper()
 	zr, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
 	if err != nil {
@@ -105,9 +118,6 @@ func Open(t testing.TB, body []byte) Parsed {
 			}
 		}
 	}
-	if err := xml.Unmarshal(p.Parts["xl/worksheets/sheet1.xml"], &p.Sheet); err != nil {
-		t.Fatal(err)
-	}
 	if err := xml.Unmarshal(p.Parts["xl/styles.xml"], &p.Styles); err != nil {
 		t.Fatal(err)
 	}
@@ -119,11 +129,21 @@ func Open(t testing.TB, body []byte) Parsed {
 	if err := xml.Unmarshal(p.Parts["xl/workbook.xml"], &wb); err != nil {
 		t.Fatal(err)
 	}
-	if len(wb.Sheets) != 1 {
-		t.Fatalf("sheets = %d", len(wb.Sheets))
+	var out []Parsed
+	for i, sh := range wb.Sheets {
+		q := p
+		q.SheetName = sh.Name
+		part := "xl/worksheets/sheet" + strconv.Itoa(i+1) + ".xml"
+		b, ok := p.Parts[part]
+		if !ok {
+			t.Fatalf("part %s is missing", part)
+		}
+		if err := xml.Unmarshal(b, &q.Sheet); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, q)
 	}
-	p.SheetName = wb.Sheets[0].Name
-	return p
+	return out
 }
 
 // Cell is one cell read back: its type, style and text.
