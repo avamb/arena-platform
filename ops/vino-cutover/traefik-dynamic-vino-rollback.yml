@@ -1,0 +1,33 @@
+# Vino&Co cutover rollback before T2 (spec 62 section 14.5, step 2): the public pages go back to
+# WordPress, the new site keeps ONLY the paths a buyer of the new channel still needs.
+# Render with the same sed as traefik-dynamic-vino-site.yml and put it into
+# /etc/dokploy/traefik/dynamic/ INSTEAD of that file (same name, vino-site.yml), so one file
+# is replaced and Traefik reloads once:
+#
+#   sed -e 's|__HOST__|vinoandco.events|' -e 's|__SITE_URL__|http://<prod site web container>:80|' \
+#       -e 's|__CERT_RESOLVER__|letsencrypt|' ops/vino-cutover/traefik-dynamic-vino-rollback.yml \
+#       > /etc/dokploy/traefik/dynamic/vino-site.yml
+#
+# Everything else on the host answers from the WordPress labels routers again, including the old
+# /payment-successful/ and /my-account/ pages (they belong wholly to WP while rolled back).
+http:
+  routers:
+    vino-site-always:
+      rule: >-
+        Host(`__HOST__`) && (
+        PathPrefix(`/order-status/`) || PathPrefix(`/my-tickets/`) ||
+        PathPrefix(`/en/order-status/`) || PathPrefix(`/en/my-tickets/`) ||
+        PathPrefix(`/he/order-status/`) || PathPrefix(`/he/my-tickets/`) ||
+        PathPrefix(`/_site/`))
+      priority: 3000
+      service: vino-site-svc
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: "__CERT_RESOLVER__"
+  services:
+    vino-site-svc:
+      loadBalancer:
+        servers:
+          - url: "__SITE_URL__"
+        passHostHeader: true

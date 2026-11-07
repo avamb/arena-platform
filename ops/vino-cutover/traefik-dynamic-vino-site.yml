@@ -1,0 +1,172 @@
+# Vino&Co cutover (spec 62 section 14.2 item 4): public pages of vinoandco.events go to the new
+# static site, a short list of paths stays on WordPress. Traefik file-provider fragment for
+# /etc/dokploy/traefik/dynamic/ on lead-parser (Traefik v3.1.2, default rule syntax v3).
+#
+# NOT installed by committing it. Render it with sed and copy it in at T0 (runbook section 5, with WP and SITE read from `docker ps`):
+#
+#   sed -e 's|__HOST__|vinoandco.events|' \
+#       -e 's|__SITE_URL__|http://<prod site web container>:80|' \
+#       -e "s|__WP_URL__|http://$WP:80|" \
+#       -e 's|__CERT_RESOLVER__|letsencrypt|' \
+#       ops/vino-cutover/traefik-dynamic-vino-site.yml > /tmp/vino-site.yml
+#
+# Placeholders (the only things to fill in):
+#   __HOST__           vinoandco.events in production. A made-up name for the rehearsal
+#                      (curl --resolve ... -k reaches it, no DNS and no certificate needed).
+#   __SITE_URL__       the site's web container on the shared docker network dokploy-network,
+#                      http://<container name>:80. Staging: the vinoandco-site-staging-*-web-1 container.
+#                      Production: the second Dokploy compose vinoandco_site_prod gets its own
+#                      generated name (<appName>-web-1), read it with docker ps after its first
+#                      Deploy. A container name, not an ip, so a recreated container is found again.
+#   __WP_URL__         the WordPress container, the same way. Defined here as a service of its own
+#                      instead of a reference to the label service (<appName>-<n>-websecure@docker): the
+#                      number in that name belongs to a Dokploy domain row and is not ours to rely on.
+#   __CERT_RESOLVER__  letsencrypt in production, EMPTY for the rehearsal. In production keep it:
+#                      after WordPress is stopped (T2) the Dokploy labels disappear, and this file
+#                      is then the only router that keeps the vinoandco.events certificate renewed.
+#
+# What stays untouched: the WordPress labels routers (Host rule, no priority = priority 25) and
+# vino-webhook.yml (deploy.andreevmaster.com, the WP rebuild webhook). Port 80 is not routed here:
+# the WP "-web" router keeps answering http with a 301 to https, as today. www.vinoandco.events is
+# not in any rule and keeps answering 404.
+#
+# Priorities (higher wins; the WP labels sit at 25):
+#   3000  paths the new site ALWAYS owns, also during a rollback (spec 4.1): the router cannot
+#         see a token that lives in sessionStorage, it sees the path.
+#   2000  paths that stay on WordPress (old payments, webhooks, the operator's wp-admin).
+#   1500  operator's admin assets, only with the WordPress login cookie.
+#   1000  everything else on the host: the new site.
+# Rollback before T2 (14.5): replace THIS file with traefik-dynamic-vino-rollback.yml (the same name
+# vino-site.yml, rendered the same way): it keeps only the 3000 router, so /order-status/,
+# /my-tickets/ and /_site/ stay on the site and everything else goes back to the WP labels routers
+# within seconds. Deleting the file outright is the rollback of a rehearsal, not of production.
+#
+# Matchers: Traefik v3 only. Query(`k`, `v`) is an exact value, QueryRegexp(`k`, `.+`) means "the
+# parameter is present and not empty". In v2 these would not exist in this form (v2 had
+# Query(`k=v`) and no regexp), so do not copy this file to a v2 Traefik.
+
+http:
+  routers:
+
+    # ---- 3000: the new site always -------------------------------------------------------------
+    vino-site-always:
+      rule: >-
+        Host(`__HOST__`) && (
+        PathPrefix(`/order-status/`) || PathPrefix(`/my-tickets/`) ||
+        PathPrefix(`/en/order-status/`) || PathPrefix(`/en/my-tickets/`) ||
+        PathPrefix(`/he/order-status/`) || PathPrefix(`/he/my-tickets/`) ||
+        PathPrefix(`/_site/`))
+      priority: 3000
+      service: vino-site-svc
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: "__CERT_RESOLVER__"
+
+    # ---- 2000: stays on WordPress ----------------------------------------------------------------
+    # AllPay IPN of old payments: the callback address stored in AllPay is exactly /?wc-api=allpay
+    # (class-allpay.php notifications_url). The /wc-api/allpay form is the same WooCommerce endpoint
+    # with pretty permalinks, kept for safety.
+    vino-wp-allpay-ipn:
+      rule: >-
+        Host(`__HOST__`) && (Query(`wc-api`, `allpay`) || PathPrefix(`/wc-api/allpay`))
+      priority: 2000
+      service: vino-wp-svc
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: "__CERT_RESOLVER__"
+
+    # Brevo status webhooks (lampyris-ops REST namespace lops/v1).
+    vino-wp-lops-rest:
+      rule: Host(`__HOST__`) && PathPrefix(`/wp-json/lops/`)
+      priority: 2000
+      service: vino-wp-svc
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: "__CERT_RESOLVER__"
+
+    # AllPay "back to the site" link of old payments: /?vino_pay_back=<order id>&key=<order key>
+    # (vino-allpay-payment-window.php back_url, home_url('/') plus the two parameters).
+    vino-wp-pay-back:
+      rule: Host(`__HOST__`) && QueryRegexp(`vino_pay_back`, `.+`)
+      priority: 2000
+      service: vino-wp-svc
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: "__CERT_RESOLVER__"
+
+    # Old WooCommerce pages of the three languages, only WITH the parameters of an old order or of a
+    # WordPress password reset (order_id, order_key, key, login). The same paths without them are
+    # 301 to /order-status/ and /my-tickets/ in the site (redirects.yaml). The order-received
+    # endpoint (/payment-successful/order-received/<id>/?key=...) is under the same prefixes.
+    #   ru  /payment-successful/  /my-account/
+    #   en  /en/payment-successful/  /en/my-account/
+    #   he  /he/hthshlw-hslyx/  /he/hxshbw-shly/
+    vino-wp-old-order-pages:
+      rule: >-
+        Host(`__HOST__`) && (
+        PathPrefix(`/payment-successful/`) || PathPrefix(`/my-account/`) ||
+        PathPrefix(`/en/payment-successful/`) || PathPrefix(`/en/my-account/`) ||
+        PathPrefix(`/he/hthshlw-hslyx/`) || PathPrefix(`/he/hxshbw-shly/`)) && (
+        QueryRegexp(`order_id`, `.+`) || QueryRegexp(`order_key`, `.+`) ||
+        QueryRegexp(`key`, `.+`) || QueryRegexp(`login`, `.+`))
+      priority: 2000
+      service: vino-wp-svc
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: "__CERT_RESOLVER__"
+
+    # The operator's WordPress admin for the transition period. Same host, because WordPress's own
+    # address is vinoandco.events (a separate hostname would need siteurl changes). The site
+    # answers 410 for these paths otherwise. To protect it further use a Cloudflare access rule on
+    # these two paths, not a Traefik middleware (the client address behind Cloudflare is the
+    # edge's, see the runbook).
+    vino-wp-admin:
+      rule: Host(`__HOST__`) && (PathPrefix(`/wp-admin/`) || Path(`/wp-login.php`))
+      priority: 2000
+      service: vino-wp-svc
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: "__CERT_RESOLVER__"
+
+    # ---- 1500: assets and REST the admin screens need, only with the WP login cookie ------------
+    # The site answers 410 on /wp-json/, /wp-content/ and /wp-includes/. wp-admin without them is
+    # unstyled and half dead, so a request that carries the WordPress login cookie goes to WP.
+    # The cookie is trivial to forge, which gains nothing: WordPress does its own authentication.
+    vino-wp-operator-assets:
+      rule: >-
+        Host(`__HOST__`) && HeaderRegexp(`Cookie`, `wordpress_logged_in_`) && (
+        PathPrefix(`/wp-json/`) || PathPrefix(`/wp-content/`) || PathPrefix(`/wp-includes/`))
+      priority: 1500
+      service: vino-wp-svc
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: "__CERT_RESOLVER__"
+
+    # ---- 1000: the rest of the host is the new site ----------------------------------------------
+    vino-site:
+      rule: Host(`__HOST__`)
+      priority: 1000
+      service: vino-site-svc
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: "__CERT_RESOLVER__"
+
+  services:
+    vino-site-svc:
+      loadBalancer:
+        servers:
+          - url: "__SITE_URL__"
+        passHostHeader: true
+    vino-wp-svc:
+      loadBalancer:
+        servers:
+          - url: "__WP_URL__"
+        passHostHeader: true
