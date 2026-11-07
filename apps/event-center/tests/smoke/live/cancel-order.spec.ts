@@ -157,7 +157,9 @@ test.describe("cancel an unpaid order (live)", () => {
   test("owner: the ORDER word in Russian cancels too", async ({ page }) => {
     await openCard(page, "org_admin", ORDER_OWNER);
     // The language chooser is on every screen of the org shell.
+    await page.getByTestId("nav-more").click();
     await page.getByLabel("Language").selectOption("ru");
+    await page.getByTestId("more-close").click();
     await page.getByTestId("cancel-order").click();
     await expect(page.getByTestId("confirm-word")).toContainText("ОТМЕНИТЬ ЗАКАЗ");
     await page.getByTestId("confirm-word").getByRole("textbox").fill("отменить заказ");

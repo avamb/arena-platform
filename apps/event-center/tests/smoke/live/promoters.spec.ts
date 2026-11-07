@@ -276,9 +276,9 @@ test.describe("promoters (live, three roles)", () => {
 
     await signInAs(page, person(env, "agent"));
     await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
-    await page.getByTestId("nav-more").click();
     const link = page.getByRole("link", { name: "Promoters" });
     if (!canRead) {
+      await page.getByTestId("nav-more").click();
       await expect(link).toHaveCount(0);
       await page.goto(`/o/${env.org_id}/promoters`);
       await expect(page.getByTestId("promoters-no-access")).toBeVisible();
