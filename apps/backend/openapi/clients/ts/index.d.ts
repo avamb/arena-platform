@@ -27639,8 +27639,9 @@ export interface components {
         };
         /**
          * @description An event that left a public feed token's list (spec 62 §6.1, item P-6).
-         *     `name`, `slug` and `display_number` are null when the event row no
-         *     longer exists.
+         *     One item per event. An `unpublished` or `deleted` event carries only
+         *     `id`, `status` and `removed_at`: `name`, `slug`, `display_number` and
+         *     `last_session_at` are null for it.
          */
         PublicFeedRemovedEvent: {
             /**
@@ -27650,17 +27651,18 @@ export interface components {
             id: string;
             /**
              * Format: int64
-             * @description The event's display number; null when the event row is gone.
+             * @description The event's display number; null for an unpublished or deleted event.
              */
             display_number?: number | null;
-            /** @description The event's name; null when the event row is gone. */
+            /** @description The event's name; null for an unpublished or deleted event. */
             name?: string | null;
-            /** @description The event's page address; null when none was assigned or the row is gone. */
+            /** @description The event's page address; null when none was assigned, or for an unpublished or deleted event. */
             slug?: string | null;
             /**
              * @description Why the event left the list: `unpublished` (the publication to
-             *     this token was deleted, or the event went back to draft),
-             *     `cancelled`, `archived` or `deleted` (soft- or hard-deleted).
+             *     this token was deleted; a draft merely attached to the token was
+             *     never on the list and is not reported), `cancelled`, `archived`
+             *     or `deleted` (soft- or hard-deleted).
              */
             status: string;
             /**
@@ -27670,7 +27672,7 @@ export interface components {
             removed_at: string;
             /**
              * Format: date-time
-             * @description End of the event's last session, RFC 3339 UTC; null without sessions.
+             * @description End of the event's last session, RFC 3339 UTC; null without sessions, or for an unpublished or deleted event.
              */
             last_session_at?: string | null;
         };

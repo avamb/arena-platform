@@ -84,6 +84,7 @@ type removedList struct {
 	RemovedEvents []struct {
 		ID        string  `json:"id"`
 		Name      *string `json:"name"`
+		Slug      *string `json:"slug"`
 		Status    string  `json:"status"`
 		RemovedAt string  `json:"removed_at"`
 	} `json:"removed_events"`
@@ -133,7 +134,8 @@ func TestSiteP6_FeedMarksRemovedEvents(t *testing.T) {
 		t.Fatalf("unpublished: events=%d removed=%d", len(got.Events), len(got.RemovedEvents))
 	}
 	r := got.RemovedEvents[0]
-	if r.ID != f.eventID.String() || r.Status != "unpublished" || r.Name == nil || r.RemovedAt == "" {
+	// An unpublished event carries only id, status and removed_at.
+	if r.ID != f.eventID.String() || r.Status != "unpublished" || r.Name != nil || r.Slug != nil || r.RemovedAt == "" {
 		t.Fatalf("unpublished item = %+v", r)
 	}
 	if _, raw := feedList(t, h, f.token, false); raw["removed_events"] != nil {
@@ -150,19 +152,54 @@ func TestSiteP6_FeedMarksRemovedEvents(t *testing.T) {
 	}
 
 	// Still attached but no longer published: the terminal status says why.
-	for _, c := range []struct{ set, want string }{
-		{`status = 'cancelled'`, "cancelled"},
-		{`status = 'archived'`, "archived"},
-		{`status = 'draft'`, "unpublished"},
-		{`status = 'archived', deleted_at = now()`, "deleted"},
+	// Cancelled and archived keep the name, deleted carries none.
+	for _, c := range []struct {
+		set, want string
+		named     bool
+	}{
+		{`status = 'cancelled'`, "cancelled", true},
+		{`status = 'archived'`, "archived", true},
+		{`status = 'archived', deleted_at = now()`, "deleted", false},
 	} {
 		siteExec(t, pool, `UPDATE events SET `+c.set+` WHERE id = $1`, f.eventID)
 		got, _ = feedList(t, h, f.token, true)
-		if len(got.Events) != 0 || len(got.RemovedEvents) != 1 || got.RemovedEvents[0].Status != c.want {
-			t.Fatalf("%s: events=%d removed=%+v, want status %s", c.set, len(got.Events), got.RemovedEvents, c.want)
+		if len(got.Events) != 0 || len(got.RemovedEvents) != 1 || got.RemovedEvents[0].Status != c.want ||
+			(got.RemovedEvents[0].Name != nil) != c.named {
+			t.Fatalf("%s: events=%d removed=%+v, want status %s named=%v", c.set, len(got.Events), got.RemovedEvents, c.want, c.named)
 		}
 		siteExec(t, pool, `UPDATE events SET status = 'published', deleted_at = NULL WHERE id = $1`, f.eventID)
 	}
+
+	// A draft merely attached to the token was never on the list: not
+	// reported, however often it is edited (updated_at is no removal time).
+	siteExec(t, pool, `UPDATE events SET status = 'draft' WHERE id = $1`, f.eventID)
+	siteExec(t, pool, `UPDATE events SET name = name || ' (edited)', updated_at = now() WHERE id = $1`, f.eventID)
+	if got, _ = feedList(t, h, f.token, true); len(got.RemovedEvents) != 0 {
+		t.Fatalf("attached draft reported: %+v", got.RemovedEvents)
+	}
+
+	// A never-published draft bound to the token and then unbound is
+	// reported by id only: its name and slug never leave the server.
+	siteExec(t, pool, `DELETE FROM event_publications WHERE event_id = $1`, f.eventID)
+	got, _ = feedList(t, h, f.token, true)
+	if len(got.RemovedEvents) != 1 || got.RemovedEvents[0].Status != "unpublished" ||
+		got.RemovedEvents[0].Name != nil || got.RemovedEvents[0].Slug != nil {
+		t.Fatalf("unbound draft: %+v", got.RemovedEvents)
+	}
+
+	// Soft-deleted while still attached AND carrying a tombstone: one row,
+	// the latest removal wins.
+	if _, err := f.q.PublishEvent(context.Background(), f.eventID, f.tokenID, nil); err != nil {
+		t.Fatal(err)
+	}
+	siteExec(t, pool, `UPDATE events SET status = 'published', deleted_at = now() WHERE id = $1`, f.eventID)
+	siteExec(t, pool, `INSERT INTO event_publication_removals (feed_token_id, event_id, removed_at) VALUES ($1, $2, now() - interval '1 day')`, f.tokenID, f.eventID)
+	got, _ = feedList(t, h, f.token, true)
+	if len(got.RemovedEvents) != 1 || got.RemovedEvents[0].Status != "deleted" {
+		t.Fatalf("deleted and unpublished: %+v, want one deleted row", got.RemovedEvents)
+	}
+	siteExec(t, pool, `UPDATE events SET deleted_at = NULL WHERE id = $1`, f.eventID)
+	siteExec(t, pool, `DELETE FROM event_publication_removals WHERE event_id = $1`, f.eventID)
 
 	// A removal older than 30 days is not reported.
 	siteExec(t, pool, `DELETE FROM event_publications WHERE event_id = $1`, f.eventID)

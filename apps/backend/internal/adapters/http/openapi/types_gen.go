@@ -15896,30 +15896,32 @@ type PublicFeedCheckoutStartResponse struct {
 }
 
 // PublicFeedRemovedEvent An event that left a public feed token's list (spec 62 §6.1, item P-6).
-// `name`, `slug` and `display_number` are null when the event row no
-// longer exists.
+// One item per event. An `unpublished` or `deleted` event carries only
+// `id`, `status` and `removed_at`: `name`, `slug`, `display_number` and
+// `last_session_at` are null for it.
 type PublicFeedRemovedEvent struct {
-	// DisplayNumber The event's display number; null when the event row is gone.
+	// DisplayNumber The event's display number; null for an unpublished or deleted event.
 	DisplayNumber *int64 `json:"display_number"`
 
 	// Id The event id the builder knows the page by.
 	Id openapi_types.UUID `json:"id"`
 
-	// LastSessionAt End of the event's last session, RFC 3339 UTC; null without sessions.
+	// LastSessionAt End of the event's last session, RFC 3339 UTC; null without sessions, or for an unpublished or deleted event.
 	LastSessionAt *time.Time `json:"last_session_at"`
 
-	// Name The event's name; null when the event row is gone.
+	// Name The event's name; null for an unpublished or deleted event.
 	Name *string `json:"name"`
 
 	// RemovedAt When the event left the list, RFC 3339 UTC.
 	RemovedAt time.Time `json:"removed_at"`
 
-	// Slug The event's page address; null when none was assigned or the row is gone.
+	// Slug The event's page address; null when none was assigned, or for an unpublished or deleted event.
 	Slug *string `json:"slug"`
 
 	// Status Why the event left the list: `unpublished` (the publication to
-	// this token was deleted, or the event went back to draft),
-	// `cancelled`, `archived` or `deleted` (soft- or hard-deleted).
+	// this token was deleted; a draft merely attached to the token was
+	// never on the list and is not reported), `cancelled`, `archived`
+	// or `deleted` (soft- or hard-deleted).
 	Status string `json:"status"`
 }
 
