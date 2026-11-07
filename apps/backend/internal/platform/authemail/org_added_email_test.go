@@ -45,8 +45,8 @@ func TestOrgAddedLetter_RendersInEveryLanguageWithTheEventCenterAndNoToken(t *te
 				t.Fatalf("subject %q does not name the organization", m.Subject)
 			}
 			for name, body := range map[string]string{"text": m.TextBody, "html": m.HTMLBody} {
-				if !strings.Contains(body, testEventCenter+"/login") {
-					t.Fatalf("%s has no sign-in address:\n%s", name, body)
+				if !strings.Contains(body, testEventCenter+"/login?email=anna%40example.test") {
+					t.Fatalf("%s has no sign-in address naming the account:\n%s", name, body)
 				}
 				if !strings.Contains(body, testEventCenter+"/forgot-password") {
 					t.Fatalf("%s has no way to a new password:\n%s", name, body)

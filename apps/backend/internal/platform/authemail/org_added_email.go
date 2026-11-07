@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 
 	emailadapter "github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
@@ -124,7 +125,9 @@ func renderOrgAddedEmail(locale, orgName, email, base string) (subject, htmlBody
 	lang := organizerLocale(locale)
 	t := orgAddedTexts[lang]
 	orgName = strings.Join(strings.Fields(orgName), " ")
-	loginURL := base + "/login"
+	// The address names the account, so a browser already signed in to
+	// another one asks before entering it (event center LoginScreen).
+	loginURL := base + "/login?email=" + url.QueryEscape(email)
 	forgot := base + "/forgot-password"
 
 	l := organizerLetter{lang: lang, title: t.title, stepsIntro: t.stepsIntro, fallback: t.fallback, button: t.button}

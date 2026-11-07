@@ -8,6 +8,15 @@ import type { OrderTab } from "@/lib/api/endpoints";
 export interface LoginSearch {
   redirect?: string;
   expired?: boolean;
+  /** The account a letter's link asks to sign in with. */
+  email?: string;
+}
+
+/** An e-mail carried in a letter's link, or nothing for anything else. */
+export function letterEmail(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const email = value.trim();
+  return email.includes("@") && email.length <= 320 ? email : undefined;
 }
 
 /** Only a path inside this app is a safe place to return to. */
@@ -22,6 +31,8 @@ export function parseLoginSearch(raw: Record<string, unknown>): LoginSearch {
   const redirect = safeRedirect(raw.redirect);
   if (redirect !== undefined) out.redirect = redirect;
   if (raw.expired === true || raw.expired === "1" || raw.expired === 1) out.expired = true;
+  const email = letterEmail(raw.email);
+  if (email !== undefined) out.email = email;
   return out;
 }
 
@@ -40,8 +51,8 @@ export function parsePasswordLink(query: string): PasswordLinkSearch {
   const out: PasswordLinkSearch = {};
   const token = params.get("token")?.trim() ?? "";
   if (token.length > 0) out.token = token;
-  const email = params.get("email")?.trim() ?? "";
-  if (email.includes("@") && email.length <= 320) out.email = email;
+  const email = letterEmail(params.get("email"));
+  if (email !== undefined) out.email = email;
   return out;
 }
 

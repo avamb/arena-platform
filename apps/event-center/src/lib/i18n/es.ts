@@ -97,6 +97,9 @@ export const es: Record<MessageKey, string> = {
   "login.error.rateLimited": "Hubo demasiados intentos. Espera un minuto y vuelve a intentarlo.",
   "login.error.empty": "Escribe tu correo y tu contraseña.",
   "login.expired": "Has salido del centro de eventos. Vuelve a entrar.",
+  "login.otherSession": "Este navegador ya tiene abierto el centro de eventos. Para entrar como {email}, sal primero.",
+  "login.otherSession.signOut": "Salir",
+  "login.otherSession.continue": "Seguir en la cuenta abierta",
 
   "forgot.title": "Nueva contraseña",
   "forgot.intro": "Escribe el correo de tu cuenta de Arena. Te enviamos un enlace para crear una contraseña nueva.",
@@ -167,6 +170,8 @@ export const es: Record<MessageKey, string> = {
   "password.working": "Guardando…",
   "password.done": "La contraseña está guardada. Entra con tu correo y la contraseña nueva.",
   "password.signIn": "Ir a la pantalla de acceso",
+  "password.otherSession": "Este navegador ya tiene abierto el centro de eventos. Cuando guardes la contraseña, cerraremos esa sesión aquí para que entres con la contraseña nueva.",
+  "password.otherSessionEmail": "Este navegador ya tiene abierto el centro de eventos. Cuando guardes la contraseña, cerraremos esa sesión aquí para que entres como {email}.",
   "password.missing.title": "El enlace está incompleto",
   "password.missing.text": "Abre el enlace del correo tal como es. Si sigue sin funcionar, pide un correo nuevo.",
   "password.newLink": "Pedir un correo nuevo",

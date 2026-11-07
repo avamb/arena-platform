@@ -97,6 +97,9 @@ export const en = {
   "login.error.rateLimited": "There were too many attempts. Wait one minute and try again.",
   "login.error.empty": "Type your e-mail and your password.",
   "login.expired": "Your session ended. Sign in again.",
+  "login.otherSession": "This browser is already signed in to the event center. To sign in as {email}, sign out first.",
+  "login.otherSession.signOut": "Sign out",
+  "login.otherSession.continue": "Stay in the open account",
 
   "forgot.title": "Set a new password",
   "forgot.intro": "Type the e-mail of your Arena account. We send you a link to set a new password.",
@@ -167,6 +170,8 @@ export const en = {
   "password.working": "Saving…",
   "password.done": "The password is saved. Sign in with your e-mail and the new password.",
   "password.signIn": "Go to sign in",
+  "password.otherSession": "This browser is already signed in to the event center. When you save the password, we sign out here, so that you sign in with the new password.",
+  "password.otherSessionEmail": "This browser is already signed in to the event center. When you save the password, we sign out here, so that you sign in as {email}.",
   "password.missing.title": "The link is not complete",
   "password.missing.text": "Open the link from the letter exactly as it is. If it still does not work, ask for a new letter.",
   "password.newLink": "Ask for a new letter",

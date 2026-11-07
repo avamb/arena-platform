@@ -97,6 +97,9 @@ export const ru: Record<MessageKey, string> = {
   "login.error.rateLimited": "Слишком много попыток. Подождите минуту и попробуйте ещё раз.",
   "login.error.empty": "Введите e-mail и пароль.",
   "login.expired": "Вы вышли из ивент-центра. Войдите снова.",
+  "login.otherSession": "В этом браузере уже открыт ивент-центр. Чтобы войти как {email}, сначала выйдите.",
+  "login.otherSession.signOut": "Выйти",
+  "login.otherSession.continue": "Остаться в открытом аккаунте",
 
   "forgot.title": "Новый пароль",
   "forgot.intro": "Введите e-mail вашей учётной записи Arena. Мы пришлём ссылку для нового пароля.",
@@ -167,6 +170,8 @@ export const ru: Record<MessageKey, string> = {
   "password.working": "Сохраняем…",
   "password.done": "Пароль сохранён. Войдите с вашим e-mail и новым паролем.",
   "password.signIn": "Перейти ко входу",
+  "password.otherSession": "В этом браузере уже открыт ивент-центр. Когда вы сохраните пароль, мы выйдем из него здесь, чтобы вы вошли с новым паролем.",
+  "password.otherSessionEmail": "В этом браузере уже открыт ивент-центр. Когда вы сохраните пароль, мы выйдем из него здесь, чтобы вы вошли как {email}.",
   "password.missing.title": "Ссылка неполная",
   "password.missing.text": "Откройте ссылку из письма целиком. Если она всё равно не работает, запросите новое письмо.",
   "password.newLink": "Запросить новое письмо",

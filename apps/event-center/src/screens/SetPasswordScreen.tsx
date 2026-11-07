@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { confirmPasswordReset } from "@/lib/api/http";
+import { useAuth } from "@/lib/auth";
 import { setPasswordErrorKey } from "@/lib/errors";
 import { useI18n, type MessageKey } from "@/lib/i18n";
 import { parsePasswordLink } from "@/lib/search";
@@ -28,6 +29,7 @@ export function checkNewPassword(password: string, repeat: string): MessageKey |
  */
 export function SetPasswordScreen({ mode }: { mode: "reset" | "invite" }) {
   const { t } = useI18n();
+  const { status, logout } = useAuth();
   const [link] = useState(() => parsePasswordLink(window.location.search));
   const [password, setPassword] = useState("");
   const [repeat, setRepeat] = useState("");
@@ -65,6 +67,10 @@ export function SetPasswordScreen({ mode }: { mode: "reset" | "invite" }) {
     setError(null);
     try {
       await confirmPasswordReset(token, password);
+      // The letter's account is the one to sign in with next. A session
+      // already open in this browser (often the inviter's own) is signed
+      // out here, or "Go to sign in" carries the person straight into it.
+      if (status !== "signedOut") await logout();
       setDone(true);
       setPassword("");
       setRepeat("");
@@ -97,7 +103,7 @@ export function SetPasswordScreen({ mode }: { mode: "reset" | "invite" }) {
               {t("password.done")}
             </p>
             <p>
-              <Link to="/login" className="btn btn-primary">
+              <Link to="/login" search={link.email !== undefined ? { email: link.email } : {}} className="btn btn-primary">
                 {t("password.signIn")}
               </Link>
             </p>
@@ -105,6 +111,13 @@ export function SetPasswordScreen({ mode }: { mode: "reset" | "invite" }) {
         ) : (
           <>
             <p className="muted">{intro}</p>
+            {status === "signedIn" && (
+              <p className="notice" role="status" data-testid="password-other-session">
+                {link.email !== undefined
+                  ? t("password.otherSessionEmail", { email: link.email })
+                  : t("password.otherSession")}
+              </p>
+            )}
             <form onSubmit={onSubmit} noValidate>
               {link.email !== undefined && (
                 // Visible and read-only: password managers save the new
