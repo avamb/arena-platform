@@ -27817,7 +27817,9 @@ export interface components {
             locale?: string;
             /**
              * @description The site page the letter links to (it receives `?t=<token>`). Used only
-             *     when its origin is on the return-URL allow-list.
+             *     when its origin is one of the feed token's own channel site origins
+             *     (`settings.site.origins`); otherwise the letter links the tickets
+             *     site's `/my-tickets` page.
              */
             page_url?: string;
             /**

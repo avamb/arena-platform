@@ -108,3 +108,18 @@ func (s *Server) myTicketsCaptcha() hfeed.MyTicketsCaptcha {
 		return guard.CaptchaForFeed(ctx, lookup, feedToken, captchaToken, ip, hsite.ActionMyTickets)
 	}
 }
+
+// myTicketsPageCheck accepts the link request's page_url only on the feed
+// token's own channel site origins. A channel without origins, an unknown
+// token or a failed lookup links the tickets site instead. Nil without a
+// database.
+func (s *Server) myTicketsPageCheck() hfeed.MyTicketsPageCheck {
+	if s.pgxPool == nil {
+		return nil
+	}
+	pool := s.pgxPool
+	return func(ctx context.Context, feedToken, pageURL string) bool {
+		ch, err := hsite.ChannelByFeedToken(ctx, pool, feedToken)
+		return err == nil && ch.AllowsPage(pageURL)
+	}
+}

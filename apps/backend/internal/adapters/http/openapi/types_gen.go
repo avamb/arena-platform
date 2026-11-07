@@ -11704,7 +11704,9 @@ type MyTicketsLinkRequest struct {
 	Locale *string `json:"locale,omitempty"`
 
 	// PageUrl The site page the letter links to (it receives `?t=<token>`). Used only
-	// when its origin is on the return-URL allow-list.
+	// when its origin is one of the feed token's own channel site origins
+	// (`settings.site.origins`); otherwise the letter links the tickets
+	// site's `/my-tickets` page.
 	PageUrl *string `json:"page_url,omitempty"`
 
 	// TurnstileToken Cloudflare Turnstile token solved with the action `my_tickets` on

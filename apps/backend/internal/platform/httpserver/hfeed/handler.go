@@ -110,7 +110,10 @@ type Handler struct {
 	myTicketsSalt string
 	// myTicketsCaptcha is the Turnstile gate of the link request (hsite,
 	// action my_tickets); nil leaves the route on its rate limits only.
-	myTicketsCaptcha  MyTicketsCaptcha
+	myTicketsCaptcha MyTicketsCaptcha
+	// myTicketsPage decides whether the link request's page_url lies on the
+	// feed token's own site (settings.site.origins); nil never accepts one.
+	myTicketsPage     MyTicketsPageCheck
 	saleSubscribeSalt string
 	// paymentStarter creates the provider-hosted payment page after the
 	// checkout transaction has committed. Nil means this deployment cannot

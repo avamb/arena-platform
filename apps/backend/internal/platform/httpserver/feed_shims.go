@@ -67,6 +67,7 @@ func (s *Server) feedHandler() *hfeed.Handler {
 		WithSaleSubscriptions(s.saleSubscriptionService(), s.saleSubscriptionSalt()).
 		WithMyTickets(s.myTicketsService(), s.saleSubscriptionSalt()).
 		WithMyTicketsCaptcha(s.myTicketsCaptcha()).
+		WithMyTicketsPageCheck(s.myTicketsPageCheck()).
 		WithTicketAccessLog(s.ticketAccessRecorder()).
 		WithCheckoutIdempotency(s.checkoutStartIdempotency()).
 		WithPaymentApplier(s.confirmedPaymentApplier())

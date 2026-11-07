@@ -58,6 +58,20 @@ func (h *Handler) WithMyTicketsCaptcha(fn MyTicketsCaptcha) *Handler {
 	return h
 }
 
+// MyTicketsPageCheck reports whether pageURL lies on one of the site origins
+// of the feed token's OWN channel (settings.site.origins). The global CORS
+// allow-list is not enough: it holds every organizer's site, so a token of
+// one organizer could mail a genuine link pointing at another's page.
+type MyTicketsPageCheck func(ctx context.Context, feedToken, pageURL string) bool
+
+// WithMyTicketsPageCheck wires the page_url check of the link request.
+// Without it every request links the tickets site's own /my-tickets page.
+// Returns the receiver for chaining.
+func (h *Handler) WithMyTicketsPageCheck(fn MyTicketsPageCheck) *Handler {
+	h.myTicketsPage = fn
+	return h
+}
+
 func (h *Handler) myTicketsIPHash(r *http.Request) string {
 	ip := h.clientIP(r)
 	if ip == "" {
@@ -92,8 +106,8 @@ type MyTicketsLinkRequest struct {
 	Email  string `json:"email"`
 	Locale string `json:"locale"`
 	// PageURL is the site page the letter links to. It is used only when its
-	// origin is allowed to call this API; otherwise the tickets site's own
-	// /my-tickets page is linked.
+	// origin is one of the feed token's own channel site origins; otherwise
+	// the tickets site's own /my-tickets page is linked.
 	PageURL string `json:"page_url"`
 	// TurnstileToken is the Cloudflare Turnstile token (action my_tickets).
 	// Required when the channel lists site origins, ignored otherwise.
@@ -126,7 +140,7 @@ func (h *Handler) HandleMyTicketsRequestLink(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	page := ""
-	if h.returnURLPolicy.AllowsOrigin(req.PageURL) {
+	if strings.TrimSpace(req.PageURL) != "" && h.myTicketsPage != nil && h.myTicketsPage(r.Context(), feedToken, req.PageURL) {
 		page = req.PageURL
 	}
 	err = h.myTickets.RequestLink(r.Context(), mytickets.LinkInput{
