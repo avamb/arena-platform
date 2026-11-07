@@ -71,14 +71,14 @@ func TestMyTicketsLinkHandler_MintsTheTokenAtSendTimeAndMailsIt(t *testing.T) {
 		t.Fatalf("letters sent = %d, want 1", len(sender.sent))
 	}
 	msg := sender.sent[0]
-	if msg.To != addr || !strings.Contains(msg.TextBody, "https://vinoandco.events/my-tickets/?t=") {
+	if msg.To != addr || !strings.Contains(msg.TextBody, "https://vinoandco.events/my-tickets/#t=") {
 		t.Fatalf("letter = %+v", msg)
 	}
 	// The organization's language (ru) was used.
 	if !strings.Contains(msg.Subject, "Ваши билеты") {
 		t.Errorf("subject = %q, want the Russian one", msg.Subject)
 	}
-	tok := msg.TextBody[strings.Index(msg.TextBody, "?t=")+3:]
+	tok := msg.TextBody[strings.Index(msg.TextBody, "#t=")+3:]
 	tok = strings.Fields(tok)[0]
 	var stored string
 	if err := pool.QueryRow(ctx, `SELECT token_hash FROM my_tickets_link_requests WHERE id = $1`, reqID).Scan(&stored); err != nil {

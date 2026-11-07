@@ -27816,7 +27816,8 @@ export interface components {
             /** @description Language of the letter (a short tag such as `ru`); the organization's language when omitted. */
             locale?: string;
             /**
-             * @description The site page the letter links to (it receives `?t=<token>`). Used only
+             * @description The site page the letter links to (it receives the token in the URL
+             *     fragment, `#t=<token>`, never in the query). Used only
              *     when its origin is one of the feed token's own channel site origins
              *     (`settings.site.origins`); otherwise the letter links the tickets
              *     site's `/my-tickets` page.
@@ -27832,7 +27833,7 @@ export interface components {
         };
         /** @description Body of `POST /v1/public/my-tickets/session`. */
         MyTicketsExchangeRequest: {
-            /** @description The one-time token from the e-mailed link (query parameter `t`). */
+            /** @description The one-time token from the e-mailed link (fragment `#t=`; links mailed before the switch carry it as the query parameter `t`). */
             token: string;
         };
         /** @description A "my tickets" session. */

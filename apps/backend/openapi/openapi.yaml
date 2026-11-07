@@ -16836,7 +16836,8 @@ components:
         page_url:
           type: string
           description: |
-            The site page the letter links to (it receives `?t=<token>`). Used only
+            The site page the letter links to (it receives the token in the URL
+            fragment, `#t=<token>`, never in the query). Used only
             when its origin is one of the feed token's own channel site origins
             (`settings.site.origins`); otherwise the letter links the tickets
             site's `/my-tickets` page.
@@ -16855,7 +16856,7 @@ components:
       properties:
         token:
           type: string
-          description: The one-time token from the e-mailed link (query parameter `t`).
+          description: The one-time token from the e-mailed link (fragment `#t=`; links mailed before the switch carry it as the query parameter `t`).
     MyTicketsSession:
       type: object
       description: A "my tickets" session.

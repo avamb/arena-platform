@@ -11691,7 +11691,7 @@ type MembershipItemStatus string
 
 // MyTicketsExchangeRequest Body of `POST /v1/public/my-tickets/session`.
 type MyTicketsExchangeRequest struct {
-	// Token The one-time token from the e-mailed link (query parameter `t`).
+	// Token The one-time token from the e-mailed link (fragment `#t=`; links mailed before the switch carry it as the query parameter `t`).
 	Token string `json:"token"`
 }
 
@@ -11703,7 +11703,8 @@ type MyTicketsLinkRequest struct {
 	// Locale Language of the letter (a short tag such as `ru`); the organization's language when omitted.
 	Locale *string `json:"locale,omitempty"`
 
-	// PageUrl The site page the letter links to (it receives `?t=<token>`). Used only
+	// PageUrl The site page the letter links to (it receives the token in the URL
+	// fragment, `#t=<token>`, never in the query). Used only
 	// when its origin is one of the feed token's own channel site origins
 	// (`settings.site.origins`); otherwise the letter links the tickets
 	// site's `/my-tickets` page.

@@ -7,6 +7,7 @@
 // origins when the request was taken), else at /my-tickets on the tickets
 // site. The page is expected to show a button and only the button press
 // exchanges the token, so a mail scanner opening the link spends nothing.
+// The token rides in the fragment (#t=), so the page's analytics never see it.
 package delivery
 
 import (
@@ -50,16 +51,23 @@ func MyTicketsLinkTarget(page, ticketsBase string) string {
 	return base + "/my-tickets"
 }
 
-// MyTicketsLinkURL puts the token on the target as the query parameter t.
+// MyTicketsLinkURL puts the token on the target in the URL FRAGMENT as t
+// ("#t=<token>"), never in the query: the organizer's page runs analytics
+// (GA page_location, Meta pixel, the Referer of every embedded request) that
+// would carry a query token off the site, while a fragment never leaves the
+// browser. The page reads the fragment first and, for the transition, falls
+// back to a query t. A stray t in the target's own query is dropped.
 func MyTicketsLinkURL(target, token string) (string, error) {
 	u, err := url.Parse(target)
 	if err != nil {
 		return "", err
 	}
-	q := u.Query()
-	q.Set("t", token)
-	u.RawQuery = q.Encode()
-	return u.String(), nil
+	if q := u.Query(); q.Has("t") {
+		q.Del("t")
+		u.RawQuery = q.Encode()
+	}
+	u.Fragment, u.RawFragment = "", ""
+	return u.String() + "#" + url.Values{"t": {token}}.Encode(), nil
 }
 
 // NewMyTicketsLinkHandler builds the handler of mytickets.JobTypeLinkEmail.
