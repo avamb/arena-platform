@@ -82,9 +82,13 @@ func NewLatePaymentEmailHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 		if lp.BuyerLocale != nil {
 			locale = *lp.BuyerLocale
 		}
+		style, err := loadOrgLetterStyle(ctx, opts.DB, lp.OrgID)
+		if err != nil {
+			return err
+		}
 		data := templates.Data{
 			RecipientEmail: to,
-			Branding:       templates.Branding{},
+			Branding:       style.branding(ctx, opts.Media, logger),
 			LatePayment: templates.LatePaymentData{
 				BuyerCancelled: lp.LateCase == latepayment.CaseBuyerCancelled,
 				Refunding:      lp.Outcome == latepayment.OutcomeRefundRequested,
@@ -126,6 +130,7 @@ func NewLatePaymentEmailHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 			TemplateVersion: templateVersion(r, templates.TemplateKindLatePayment, locale),
 		}
 		msg := email.Message{To: to, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}
+		style.applySender(&msg)
 		applyWhiteLabelSender(&msg, whiteLabel, brand)
 
 		claimed, err := q.MarkLatePaymentNotified(ctx, piID)

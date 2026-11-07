@@ -391,7 +391,12 @@ func TestMarketingConsent_DiscountOnlyWithTheTick(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The confirmation letter, then the link.
+	// The confirmation letter, then the link. It leaves from the
+	// organization's verified sender, under its accent (2026-11-07).
+	if _, err := pool.Exec(ctx, `UPDATE organizations SET sender_email = 'news@growth.test', sender_verification_status = 'verified',
+		branding = COALESCE(branding, '{}'::jsonb) || '{"primary": "#822121"}'::jsonb WHERE id = $1`, f.orgID); err != nil {
+		t.Fatal(err)
+	}
 	sender := &growthSender{}
 	h := delivery.NewMarketingConfirmHandler(delivery.GrowthLetterOptions{Sender: sender, DB: pool, APIBaseURL: growthAPIBase})
 	payload, _ := json.Marshal(marketing.JobPayload{SubscriptionID: subID.String()})
@@ -399,6 +404,16 @@ func TestMarketingConsent_DiscountOnlyWithTheTick(t *testing.T) {
 		t.Fatalf("confirm letter: %v", err)
 	}
 	letter := sender.last(t)
+	if letter.From != "news@growth.test" || letter.FromName == "" {
+		t.Fatalf("confirmation From = %q %q, want the organization's verified sender and its name", letter.FromName, letter.From)
+	}
+	if !strings.Contains(letter.HTMLBody, "background:#822121") {
+		t.Fatalf("confirmation letter lacks the organization's accent:\n%s", letter.HTMLBody)
+	}
+	// A consent ticked at checkout is described as one, not as a website subscription.
+	if strings.Contains(letter.HTMLBody, "on the website") || strings.Contains(letter.HTMLBody, "на сайте на новости") {
+		t.Fatalf("a checkout consent is described as a website subscription:\n%s", letter.HTMLBody)
+	}
 	m := confirmTokenRe.FindStringSubmatch(letter.HTMLBody)
 	if m == nil {
 		t.Fatalf("no confirmation link in:\n%s", letter.HTMLBody)

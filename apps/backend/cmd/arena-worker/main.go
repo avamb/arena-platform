@@ -747,13 +747,7 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	// Spec 51-1: the one reminder about an unpaid widget order (the sweep
 	// picks the orders, the letter checks them again) and the confirmation of
 	// a marketing consent ticked at checkout.
-	growthLetters := delivery.GrowthLetterOptions{
-		Sender:     deliveryOpts.Sender,
-		Templates:  deliveryOpts.Templates,
-		DB:         pool,
-		APIBaseURL: cfg.APIPublicBaseURL(),
-		Logger:     logger,
-	}
+	growthLetters := buildGrowthLetterOptions(deliveryOpts, pool, cfg, logger)
 	reg.Register(cartreminder.JobTypeSweep, cartreminder.NewSweepHandler(pool, logger))
 	reg.Register(cartreminder.JobTypeEmail, delivery.NewCartReminderHandler(growthLetters))
 	reg.Register(marketing.JobTypeConfirmEmail, delivery.NewMarketingConfirmHandler(growthLetters))

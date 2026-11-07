@@ -42,6 +42,9 @@ type GrowthLetterOptions struct {
 	// the confirmation and withdraw links point there.
 	APIBaseURL string
 	Logger     *slog.Logger
+	// Media resolves the organization's logo for the header. Nil keeps the
+	// organization's name as the header.
+	Media MediaResolver
 	// Now is time.Now when nil (tests pin it).
 	Now func() time.Time
 }
@@ -134,10 +137,14 @@ func NewCartReminderHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 			locale = in.OrgLocale
 		}
 		whiteLabel, brand := whiteLabelForSession(ctx, opts.DB, logger, o.SessionID)
+		style, err := loadOrgLetterStyle(ctx, opts.DB, o.OrgID)
+		if err != nil {
+			return err
+		}
 		data := templates.Data{
 			EventName:      in.EventName,
 			RecipientEmail: o.BuyerEmail,
-			Branding:       templates.Branding{OrgName: in.OrgName},
+			Branding:       style.branding(ctx, opts.Media, logger),
 			WhiteLabel:     whiteLabel,
 			CartReminder: templates.CartReminderData{
 				URL:         base + ResumePath(o.CheckoutToken),
@@ -162,6 +169,7 @@ func NewCartReminderHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 			TemplateVersion: templateVersion(r, templates.TemplateKindCheckoutReminder, locale),
 		}
 		msg := email.Message{To: o.BuyerEmail, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}
+		style.applySender(&msg)
 		applyWhiteLabelSender(&msg, whiteLabel, brand)
 		// The reminder is taken before it is sent, so a retry or a second
 		// claim of this job never sends it twice (the letter says it is the
@@ -208,13 +216,13 @@ func NewMarketingConfirmHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 			return fmt.Errorf("delivery: the marketing confirmation needs the API public base URL")
 		}
 		var (
-			addr, locale, status, withdraw, orgName, orgLocale string
-			orgID                                              uuid.UUID
+			addr, locale, status, withdraw, orgName, orgLocale, source string
+			orgID                                                      uuid.UUID
 		)
 		err = opts.DB.QueryRow(ctx, `
-			SELECT s.email, s.locale, s.status, s.unsubscribe_token, o.name, COALESCE(o.default_locale, ''), s.org_id
+			SELECT s.email, s.locale, s.status, s.unsubscribe_token, o.name, COALESCE(o.default_locale, ''), s.org_id, s.source
 			FROM   marketing_subscriptions s JOIN organizations o ON o.id = s.org_id
-			WHERE  s.id = $1`, id).Scan(&addr, &locale, &status, &withdraw, &orgName, &orgLocale, &orgID)
+			WHERE  s.id = $1`, id).Scan(&addr, &locale, &status, &withdraw, &orgName, &orgLocale, &orgID, &source)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
@@ -247,19 +255,28 @@ func NewMarketingConfirmHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 		// The consent is given to the organization, so its own white label
 		// decides (a promoter's period does not cover it).
 		whiteLabel := whiteLabelForOrg(ctx, whiteLabelResolver(opts.DB), logger, orgID)
+		// The letter leaves from the organization's verified sender, under its
+		// logo and accent, like the ticket letters (and names the website when
+		// the address was left there, not at a checkout).
+		style, err := loadOrgLetterStyle(ctx, opts.DB, orgID)
+		if err != nil {
+			return err
+		}
 		out, err := r.Render(templates.TemplateKindMarketingConfirm, locale, templates.Data{
 			RecipientEmail: addr,
-			Branding:       templates.Branding{OrgName: orgName},
+			Branding:       style.branding(ctx, opts.Media, logger),
 			WhiteLabel:     whiteLabel,
 			Marketing: templates.MarketingConfirmData{
 				ConfirmURL:  base + marketing.ConfirmPath(url.QueryEscape(token)),
 				WithdrawURL: base + marketing.WithdrawPath(url.QueryEscape(withdraw)),
+				FromSite:    source == marketing.SourceSite,
 			},
 		})
 		if err != nil {
 			return err
 		}
 		msg := email.Message{To: addr, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}
+		style.applySender(&msg)
 		applyWhiteLabelSender(&msg, whiteLabel, orgName)
 		return opts.Sender.Send(ctx, msg)
 	}

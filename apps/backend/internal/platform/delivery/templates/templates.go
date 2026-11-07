@@ -450,6 +450,10 @@ type CartReminderData struct {
 type MarketingConfirmData struct {
 	ConfirmURL  string
 	WithdrawURL string
+	// FromSite is a subscription left on the organization's website form
+	// (marketing.SourceSite); false is the consent ticked at checkout, which
+	// the letter's first sentence names.
+	FromSite bool
 }
 
 // SalesAlertData is the content of a sales alert.
