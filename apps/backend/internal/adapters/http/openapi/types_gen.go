@@ -11161,6 +11161,30 @@ type InvitationChargePreview struct {
 	Tickets int `json:"tickets"`
 }
 
+// InvitationReissueOptions The check screen of a reissue for an invitation without an order.
+type InvitationReissueOptions struct {
+	// Blocked The error code a reissue would answer now, null when it may run.
+	Blocked *string `json:"blocked"`
+
+	// GuestEmail The guest's current address.
+	GuestEmail string `json:"guest_email"`
+
+	// InvitationId UUID of the invitation (complimentary issuance).
+	InvitationId openapi_types.UUID `json:"invitation_id"`
+
+	// InvitationStatus The invitation status; only `issued` can be replaced.
+	InvitationStatus string `json:"invitation_status"`
+
+	// PendingReissue A reissue that has not been applied, when there is one.
+	PendingReissue *ReissuePending `json:"pending_reissue,omitempty"`
+
+	// Tickets Every ticket of the invitation.
+	Tickets []ReissueTicketOption `json:"tickets"`
+
+	// VenueTimezone The IANA time zone of the event's venue, to print scanned_at in; empty when unknown.
+	VenueTimezone *string `json:"venue_timezone,omitempty"`
+}
+
 // LegalDocument One version of a terms template (P3a). Immutable once published.
 type LegalDocument struct {
 	// BodyTemplate The template text with its placeholders.
@@ -16910,6 +16934,225 @@ type RegisterWebhookSubscriberResponse struct {
 
 	// SubscriberId Newly assigned subscriber UUID.
 	SubscriberId openapi_types.UUID `json:"subscriber_id"`
+}
+
+// ReissueEntry One reissue of the order.
+type ReissueEntry struct {
+	// ActorId UUID of the person who made the reissue.
+	ActorId *string `json:"actor_id"`
+
+	// ActorType `user` or `superadmin`.
+	ActorType string `json:"actor_type"`
+
+	// AppliedAt When the letter left and the order moved to the new address.
+	AppliedAt *time.Time `json:"applied_at"`
+
+	// CreatedAt When the reissue was made.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUID of the reissue.
+	Id openapi_types.UUID `json:"id"`
+
+	// LetterFailedAt When the relay last refused the letter.
+	LetterFailedAt *time.Time `json:"letter_failed_at"`
+
+	// NewEmail The address the new tickets went to.
+	NewEmail string `json:"new_email"`
+
+	// Note The operator's note.
+	Note string `json:"note"`
+
+	// OldCodeScannedAt The first entry with a replaced code before the reissue.
+	OldCodeScannedAt *time.Time `json:"old_code_scanned_at"`
+
+	// OldEmail The order's address before the reissue.
+	OldEmail string `json:"old_email"`
+
+	// ProviderEmailState What happened to the address at the payment provider: `queued`, `updated`, `failed`, `manual` (the provider cannot be told, the organizer may resend its document) or `not_applicable`.
+	ProviderEmailState *string `json:"provider_email_state"`
+
+	// Reason The reason the operator stated.
+	Reason string `json:"reason"`
+
+	// State `pending`, `applied` or `send_failed`.
+	State string `json:"state"`
+
+	// Tickets The replaced tickets.
+	Tickets []ReissuePair `json:"tickets"`
+
+	// Via The client the reissue came from.
+	Via *string `json:"via"`
+}
+
+// ReissueHistory The reissues of an order.
+type ReissueHistory struct {
+	// Provider The order's payment provider, absent without a payment.
+	Provider *ReissueProvider `json:"provider,omitempty"`
+
+	// Reissues Newest first.
+	Reissues []ReissueEntry `json:"reissues"`
+}
+
+// ReissueOptions The check screen of a ticket reissue.
+type ReissueOptions struct {
+	// Blocked The error code a reissue would answer now, null when it may run.
+	Blocked *string `json:"blocked"`
+
+	// BuyerName The buyer's name, to compare with the person asking.
+	BuyerName string `json:"buyer_name"`
+
+	// BuyerPhone The buyer's phone, to compare with the person asking.
+	BuyerPhone string `json:"buyer_phone"`
+
+	// OrderEmail The order's current buyer e-mail.
+	OrderEmail string `json:"order_email"`
+
+	// OrderId UUID of the order.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// OrderNumber The buyer-facing order number.
+	OrderNumber int64 `json:"order_number"`
+
+	// OrderStatus The order status.
+	OrderStatus string `json:"order_status"`
+
+	// PendingReissue A reissue that has not been applied, when there is one.
+	PendingReissue *ReissuePending `json:"pending_reissue,omitempty"`
+
+	// Provider The payment provider, absent for an order without a payment.
+	Provider *ReissueProvider `json:"provider,omitempty"`
+
+	// Route `arena`, or `seller_site` while a live selling site writes the order's letters.
+	Route string `json:"route"`
+
+	// Tickets Every ticket of the order.
+	Tickets []ReissueTicketOption `json:"tickets"`
+
+	// VenueTimezone The IANA time zone of the event's venue, to print scanned_at in; empty when unknown.
+	VenueTimezone *string `json:"venue_timezone,omitempty"`
+}
+
+// ReissuePair One replaced ticket.
+type ReissuePair struct {
+	// Category The category of both tickets.
+	Category string `json:"category"`
+
+	// NewNumber The new ticket's number.
+	NewNumber int64 `json:"new_number"`
+
+	// NewTicketId UUID of the new ticket.
+	NewTicketId openapi_types.UUID `json:"new_ticket_id"`
+
+	// OldCodeScannedAt When the closed ticket's code was used at the door before the reissue.
+	OldCodeScannedAt *time.Time `json:"old_code_scanned_at"`
+
+	// OldNumber The closed ticket's number.
+	OldNumber int64 `json:"old_number"`
+
+	// OldTicketId UUID of the closed ticket.
+	OldTicketId openapi_types.UUID `json:"old_ticket_id"`
+
+	// Seat Sector, row and seat of both tickets.
+	Seat string `json:"seat"`
+}
+
+// ReissuePending A reissue of the order that has not been applied yet.
+type ReissuePending struct {
+	// CreatedAt When the reissue was made.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Id UUID of the reissue.
+	Id openapi_types.UUID `json:"id"`
+
+	// NewEmail The address the new tickets go to.
+	NewEmail string `json:"new_email"`
+
+	// State `pending` or `send_failed`.
+	State string `json:"state"`
+}
+
+// ReissueProvider The payment provider of the order.
+type ReissueProvider struct {
+	// EmailUpdatable True when arena moves the provider's receipt address after the reissue. Otherwise the provider keeps the earlier address and the organizer may resend its document by hand.
+	EmailUpdatable bool `json:"email_updatable"`
+
+	// Name The provider's registry name.
+	Name string `json:"name"`
+
+	// Title The provider's human name.
+	Title string `json:"title"`
+}
+
+// ReissueResendResponse The letter of a reissue was queued again.
+type ReissueResendResponse struct {
+	// Letter `queued`.
+	Letter string `json:"letter"`
+
+	// ReissueId UUID of the reissue.
+	ReissueId openapi_types.UUID `json:"reissue_id"`
+
+	// State `pending`.
+	State string `json:"state"`
+}
+
+// ReissueTicketOption One ticket of the order on the check screen.
+type ReissueTicketOption struct {
+	// Category The ticket category name.
+	Category string `json:"category"`
+
+	// Number The buyer-facing ticket number.
+	Number int64 `json:"number"`
+
+	// Reason Why the ticket is not replaced. `not_active` is skipped; `review_hold` and `refund_in_progress` block the whole reissue.
+	Reason *string `json:"reason,omitempty"`
+
+	// Reissuable True when the ticket will be replaced.
+	Reissuable bool `json:"reissuable"`
+
+	// ScannedAt When the ticket's code was first used at the door. The reissue still runs.
+	ScannedAt *time.Time `json:"scanned_at"`
+
+	// Seat Sector, row and seat, empty for general admission.
+	Seat string `json:"seat"`
+
+	// Status The ticket status.
+	Status string `json:"status"`
+
+	// TicketId UUID of the ticket.
+	TicketId openapi_types.UUID `json:"ticket_id"`
+}
+
+// ReissueTicketsRequest A ticket reissue.
+type ReissueTicketsRequest struct {
+	// Email The buyer's real address. It may equal the current one, then only the barcodes change.
+	Email string `json:"email"`
+
+	// Note The operator's note, at most 500 characters. Kept in the journal, never sent to the buyer.
+	Note *string `json:"note,omitempty"`
+
+	// Reason `sent_to_wrong_address`, `forwarded_to_stranger` or `other`.
+	Reason string `json:"reason"`
+}
+
+// ReissueTicketsResponse The result of a reissue.
+type ReissueTicketsResponse struct {
+	// Letter `queued`.
+	Letter string `json:"letter"`
+
+	// RecipientMasked The new address with most characters hidden.
+	RecipientMasked string `json:"recipient_masked"`
+
+	// ReissueId UUID of the reissue.
+	ReissueId openapi_types.UUID `json:"reissue_id"`
+
+	// Replayed True when this answers an earlier request with the same Idempotency-Key.
+	Replayed bool `json:"replayed"`
+
+	// State `pending` until the relay accepts the letter, then `applied`.
+	State string `json:"state"`
+
+	// Tickets The replaced tickets.
+	Tickets []ReissuePair `json:"tickets"`
 }
 
 // RepriceOrgModuleRequest Changes the monthly price of a module from a day on.
@@ -24477,6 +24720,12 @@ type ListComplimentaryIssuancesParams struct {
 	SessionId *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
 }
 
+// PostV1OrganizationsOrgIdComplimentaryIdReissueTicketsParams defines parameters for PostV1OrganizationsOrgIdComplimentaryIdReissueTickets.
+type PostV1OrganizationsOrgIdComplimentaryIdReissueTicketsParams struct {
+	// IdempotencyKey The operation's key, at most 200 characters. A repeat with the same key answers the first result.
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
 // GetV1OrganizationsOrgIdCustomersParams defines parameters for GetV1OrganizationsOrgIdCustomers.
 type GetV1OrganizationsOrgIdCustomersParams struct {
 	// Q Search text (exact identity match or ILIKE substring on display_name), max 200 chars.
@@ -24799,6 +25048,12 @@ type PostV1OrganizationsOrgIdOrdersIdCancelJSONBody struct {
 // PostV1OrganizationsOrgIdOrdersOrderIdRefundsParams defines parameters for PostV1OrganizationsOrgIdOrdersOrderIdRefunds.
 type PostV1OrganizationsOrgIdOrdersOrderIdRefundsParams struct {
 	// IdempotencyKey Client-chosen key of 1 to 255 characters that identifies this operation.
+	IdempotencyKey string `json:"Idempotency-Key"`
+}
+
+// PostV1OrganizationsOrgIdOrdersOrderIdReissueTicketsParams defines parameters for PostV1OrganizationsOrgIdOrdersOrderIdReissueTickets.
+type PostV1OrganizationsOrgIdOrdersOrderIdReissueTicketsParams struct {
+	// IdempotencyKey The operation's key, at most 200 characters. A repeat with the same key answers the first result.
 	IdempotencyKey string `json:"Idempotency-Key"`
 }
 
@@ -25791,6 +26046,9 @@ type CreateOrgCityJSONRequestBody = CreateOrgCityRequest
 // CreateComplimentaryIssuanceJSONRequestBody defines body for CreateComplimentaryIssuance for application/json ContentType.
 type CreateComplimentaryIssuanceJSONRequestBody = ComplimentaryCreateRequest
 
+// PostV1OrganizationsOrgIdComplimentaryIdReissueTicketsJSONRequestBody defines body for PostV1OrganizationsOrgIdComplimentaryIdReissueTickets for application/json ContentType.
+type PostV1OrganizationsOrgIdComplimentaryIdReissueTicketsJSONRequestBody = ReissueTicketsRequest
+
 // UpdateConversionSettingsJSONRequestBody defines body for UpdateConversionSettings for application/json ContentType.
 type UpdateConversionSettingsJSONRequestBody = UpdateConversionSettingsRequest
 
@@ -25955,6 +26213,9 @@ type PostV1OrganizationsOrgIdOrdersOrderIdExternalRefundJSONRequestBody = Extern
 
 // PostV1OrganizationsOrgIdOrdersOrderIdRefundsJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersOrderIdRefunds for application/json ContentType.
 type PostV1OrganizationsOrgIdOrdersOrderIdRefundsJSONRequestBody = CreateOrderRefundsRequest
+
+// PostV1OrganizationsOrgIdOrdersOrderIdReissueTicketsJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersOrderIdReissueTickets for application/json ContentType.
+type PostV1OrganizationsOrgIdOrdersOrderIdReissueTicketsJSONRequestBody = ReissueTicketsRequest
 
 // PostV1OrganizationsOrgIdOrdersOrderIdResendTicketsJSONRequestBody defines body for PostV1OrganizationsOrgIdOrdersOrderIdResendTickets for application/json ContentType.
 type PostV1OrganizationsOrgIdOrdersOrderIdResendTicketsJSONRequestBody = OrderResendTicketsRequest

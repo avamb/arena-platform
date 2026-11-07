@@ -1,4 +1,4 @@
-{{define "subject"}}{{if gt (len .Tickets) 1}}Ваши билеты — {{.EventName}}{{else}}Ваш билет — {{.EventName}}{{end}}{{end}}
+{{define "subject"}}{{with .Reissue}}Ваши новые билеты — {{$.EventName}}{{else}}{{if gt (len .Tickets) 1}}Ваши билеты — {{.EventName}}{{else}}Ваш билет — {{.EventName}}{{end}}{{end}}{{end}}
 
 {{define "html"}}<!DOCTYPE html>
 <html lang="ru" dir="ltr">
@@ -9,7 +9,7 @@
   {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
   <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
   <tr><td style="padding:28px 32px 8px 32px;color:#22333D;font-size:16px;">Здравствуйте{{with .HolderName}}, {{.}}{{end}}!</td></tr>
-  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">{{if gt (len .Tickets) 1}}Спасибо за покупку. Ваши билеты на «{{.EventName}}» — во вложении к этому письму (PDF-файлы).{{else}}Спасибо за покупку. Ваш билет на «{{.EventName}}» — во вложении к этому письму (PDF).{{end}}</td></tr>
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">{{with .Reissue}}{{if .Typo}}При покупке в адресе электронной почты была опечатка, поэтому первое письмо с билетами ушло на другой адрес. Вы обратились к организатору и подтвердили свои данные. Мы выпустили для вас новые билеты, они во вложении.<br><br>Билеты из первого письма больше не действуют. На вход пустят только по новым билетам.{{else}}По вашей просьбе мы выпустили новые билеты взамен прежних. Они во вложении.<br><br>Прежние билеты больше не действуют. На вход пустят только по новым билетам.{{end}}<br><br>Места и оплата не изменились.{{with .OrderNumber}} Номер заказа: {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}Спасибо за покупку. Ваши билеты на «{{.EventName}}» — во вложении к этому письму (PDF-файлы).{{else}}Спасибо за покупку. Ваш билет на «{{.EventName}}» — во вложении к этому письму (PDF).{{end}}{{end}}</td></tr>
   <tr><td style="padding:8px 32px;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:4px solid {{.Accent}};background:#f8f9fa;"><tr><td style="padding:12px 16px;color:#22333D;font-size:14px;line-height:1.6;">
       <strong>{{.EventName}}</strong>{{with .SessionStart}}<br>{{.}}{{end}}{{with .DoorsOpen}}<br>Вход с {{.}}{{end}}{{with .VenueName}}<br>{{.}}{{end}}{{with .Directions.GoogleURL}}<br>Как добраться: <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a>{{end}}
@@ -64,7 +64,13 @@
 
 Здравствуйте{{with .HolderName}}, {{.}}{{end}}!
 
-{{if gt (len .Tickets) 1}}Спасибо за покупку. Ваши билеты на «{{.EventName}}» — во вложении к этому письму (PDF-файлы).{{else}}Спасибо за покупку. Ваш билет на «{{.EventName}}» — во вложении к этому письму (PDF).{{end}}
+{{with .Reissue}}{{if .Typo}}При покупке в адресе электронной почты была опечатка, поэтому первое письмо с билетами ушло на другой адрес. Вы обратились к организатору и подтвердили свои данные. Мы выпустили для вас новые билеты, они во вложении.
+
+Билеты из первого письма больше не действуют. На вход пустят только по новым билетам.{{else}}По вашей просьбе мы выпустили новые билеты взамен прежних. Они во вложении.
+
+Прежние билеты больше не действуют. На вход пустят только по новым билетам.{{end}}
+
+Места и оплата не изменились.{{with .OrderNumber}} Номер заказа: {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}Спасибо за покупку. Ваши билеты на «{{.EventName}}» — во вложении к этому письму (PDF-файлы).{{else}}Спасибо за покупку. Ваш билет на «{{.EventName}}» — во вложении к этому письму (PDF).{{end}}{{end}}
 
 {{.EventName}}
 {{with .SessionStart}}{{.}}

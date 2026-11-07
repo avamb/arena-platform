@@ -138,6 +138,17 @@ export type ApiErrorStem =
   | "batchEmptyFile"
   | "batchHeader"
   | "batchInvalid"
+  // Spec 63: replace the tickets of an order
+  | "orderNotPaid"
+  | "reissueNothing"
+  | "reissueTicketHeld"
+  | "reissueSessionClosed"
+  | "reissueInProgress"
+  | "reissueKeyReused"
+  | "reissueApplied"
+  | "reissueEmail"
+  | "reissueInvalid"
+  | "reissueInvitationNotIssued"
   | "batchTimeout"
   // 4-5
   | "resendTooSoon"
@@ -280,6 +291,9 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   // Refer a friend (spec 52)
   "referralTerms", "referralProvider", "referralNoProgram",
   "growthCodeNotFound", "growthCodeOnePerBuyer",
+  // Spec 63: replace the tickets of an order
+  "orderNotPaid", "reissueNothing", "reissueTicketHeld", "reissueSessionClosed", "reissueInProgress", "reissueKeyReused",
+  "reissueApplied", "reissueEmail", "reissueInvalid", "reissueInvitationNotIssued",
 ];
 
 /**
@@ -515,6 +529,21 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "shop.invalid_digital_media": "shopMediaInvalid",
   "shop.invalid_body_html": "textRefused",
   "shop.text_too_long": "textRefused",
+  // Spec 63: replace the tickets of an order
+  "order.not_paid": "orderNotPaid",
+  "reissue.nothing_to_reissue": "reissueNothing",
+  "reissue.ticket_not_reissuable": "reissueTicketHeld",
+  "reissue.session_closed": "reissueSessionClosed",
+  "reissue.in_progress": "reissueInProgress",
+  "reissue.idempotency_key_reused": "reissueKeyReused",
+  "reissue.idempotency_key_required": "reissueInvalid",
+  "reissue.already_applied": "reissueApplied",
+  "reissue.invalid_email": "reissueEmail",
+  "reissue.invalid_reason": "reissueInvalid",
+  "reissue.note_too_long": "reissueInvalid",
+  "reissue.invalid_body": "reissueInvalid",
+  "reissue.api_key_forbidden": "apiKeyForbidden",
+  "reissue.invitation_not_issued": "reissueInvitationNotIssued",
   "auth.step_up_required": "stepUpRequired",
   "auth.step_up_wrong_password": "stepUpWrong",
   "permissions.denied": "forbidden",

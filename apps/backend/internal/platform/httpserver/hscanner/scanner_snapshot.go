@@ -394,10 +394,22 @@ func (h *Handler) HandleScannerValidate(w http.ResponseWriter, r *http.Request) 
 			resp.InvalidReason = "ticket_" + t.Status
 		}
 	}
-	switch barcode.Status {
-	case "revoked":
+	reissued := false
+	if barcode.TicketID != nil {
+		if t, tErr := h.barcodeQueries.GetTicketByID(ctx, *barcode.TicketID); tErr == nil &&
+			t.Status == "transferred" && t.CancellationReason != nil && *t.CancellationReason == "reissued" {
+			reissued = true
+		}
+	}
+	switch {
+	case reissued:
+		// Spec 63, decision R-11: the door shows "ticket replaced", the
+		// person decides.
+		resp.Valid = false
+		resp.InvalidReason = "ticket_reissued"
+	case barcode.Status == "revoked":
 		resp.InvalidReason = "barcode_revoked"
-	case "scanned":
+	case barcode.Status == "scanned":
 		resp.InvalidReason = "already_scanned"
 	}
 

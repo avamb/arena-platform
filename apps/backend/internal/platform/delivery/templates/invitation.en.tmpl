@@ -1,4 +1,4 @@
-{{define "subject"}}You're invited — {{.EventName}}{{end}}
+{{define "subject"}}{{with .Reissue}}Your new invitation — {{$.EventName}}{{else}}You're invited — {{.EventName}}{{end}}{{end}}
 
 {{define "html"}}<!DOCTYPE html>
 <html lang="en" dir="ltr">
@@ -11,7 +11,8 @@
   <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
   <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">You're invited!</h1>
   <p style="margin:0 0 12px 0;">Hello{{with .HolderName}} {{.}}{{end}},</p>
-  <p style="margin:0 0 12px 0;">You have been issued a complimentary invitation ticket for
+{{with .Reissue}}<p style="margin:0 0 12px 0;">{{if .Typo}}There was a typo in your e-mail address, so the first letter with your invitation went to another address. You contacted the organizer and confirmed your details. We have issued a new invitation for you.<br><br>The invitation from the first letter is no longer valid. Only the new one will get you in.{{else}}At your request we have issued a new invitation to replace the earlier one.<br><br>The earlier invitation is no longer valid. Only the new one will get you in.{{end}}</p>
+{{end}}  <p style="margin:0 0 12px 0;">You have been issued a complimentary invitation ticket for
      <strong>{{.EventName}}</strong>. Please find the PDF attached.</p>
   <p style="margin:0 0 12px 0;">This ticket is a complimentary invitation — no payment is required.</p>
   {{with .Directions.GoogleURL}}<p style="margin:0 0 12px 0;">{{with $.VenueName}}{{.}}<br>{{end}}Directions: <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a></p>{{end}}
@@ -48,7 +49,13 @@ You're invited!
 
 Hello{{with .HolderName}} {{.}}{{end}},
 
-You have been issued a complimentary invitation ticket for {{.EventName}}.
+{{with .Reissue}}{{if .Typo}}There was a typo in your e-mail address, so the first letter with your invitation went to another address. You contacted the organizer and confirmed your details. We have issued a new invitation for you.
+
+The invitation from the first letter is no longer valid. Only the new one will get you in.{{else}}At your request we have issued a new invitation to replace the earlier one.
+
+The earlier invitation is no longer valid. Only the new one will get you in.{{end}}
+
+{{end}}You have been issued a complimentary invitation ticket for {{.EventName}}.
 Please find the PDF attached.
 
 This ticket is a complimentary invitation — no payment is required.

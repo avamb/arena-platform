@@ -195,6 +195,16 @@ type ShopOrderData struct {
 // Data is the value passed to every template. Fields are intentionally
 // strings (not domain structs) so the template author can ignore nil checks
 // and {{with}} blocks handle the "empty means omit" presentation rule.
+// ReissueData is the explanation of a letter with replacement tickets.
+type ReissueData struct {
+	// Typo: the first letter went to a mistyped address (reason
+	// sent_to_wrong_address); otherwise the tickets were replaced at the
+	// buyer's request.
+	Typo bool
+	// OrderNumber is the buyer-facing order number, "" when unknown.
+	OrderNumber string
+}
+
 type Data struct {
 	// TicketID is the printable ticket UUID.
 	TicketID string
@@ -301,6 +311,10 @@ type Data struct {
 	// letters. Build it with eventnote.Build; the zero value prints nothing.
 	// The other kinds ignore it.
 	EventNote eventnote.Block
+
+	// Reissue explains a letter with replacement tickets (spec 63 section
+	// 4.6). Only the "ticket" kind prints it; nil is an ordinary letter.
+	Reissue *ReissueData
 
 	// WithdrawalNotice prints the sentence that tickets for an event on a
 	// specific date carry no right of withdrawal (EU/EEA sellers, ticket

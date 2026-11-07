@@ -1,4 +1,4 @@
-{{define "subject"}}Vous êtes invité(e) — {{.EventName}}{{end}}
+{{define "subject"}}{{with .Reissue}}Votre nouvelle invitation — {{$.EventName}}{{else}}Vous êtes invité(e) — {{.EventName}}{{end}}{{end}}
 
 {{define "html"}}<!DOCTYPE html>
 <html lang="fr" dir="ltr">
@@ -11,7 +11,8 @@
   <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
   <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">Vous êtes invité(e) !</h1>
   <p style="margin:0 0 12px 0;">Bonjour{{with .HolderName}} {{.}}{{end}},</p>
-  <p style="margin:0 0 12px 0;">Vous avez reçu une invitation gratuite pour
+{{with .Reissue}}<p style="margin:0 0 12px 0;">{{if .Typo}}L'adresse e-mail contenait une faute de frappe : le premier e-mail avec votre invitation est donc parti vers une autre adresse. Vous avez contacté l'organisateur et confirmé vos coordonnées. Nous avons émis une nouvelle invitation pour vous.<br><br>L'invitation du premier e-mail n'est plus valable. Seule la nouvelle invitation permet d'entrer.{{else}}À votre demande, nous avons émis une nouvelle invitation pour remplacer la précédente.<br><br>L'invitation précédente n'est plus valable. Seule la nouvelle invitation permet d'entrer.{{end}}</p>
+{{end}}  <p style="margin:0 0 12px 0;">Vous avez reçu une invitation gratuite pour
      <strong>{{.EventName}}</strong>. Le PDF est joint à ce message.</p>
   <p style="margin:0 0 12px 0;">Ce billet est une invitation gratuite — aucun paiement n'est requis.</p>
   {{with .Directions.GoogleURL}}<p style="margin:0 0 12px 0;">{{with $.VenueName}}{{.}}<br>{{end}}Itinéraire : <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a></p>{{end}}
@@ -48,7 +49,13 @@ Vous êtes invité(e) !
 
 Bonjour{{with .HolderName}} {{.}}{{end}},
 
-Vous avez reçu une invitation gratuite pour {{.EventName}}.
+{{with .Reissue}}{{if .Typo}}L'adresse e-mail contenait une faute de frappe : le premier e-mail avec votre invitation est donc parti vers une autre adresse. Vous avez contacté l'organisateur et confirmé vos coordonnées. Nous avons émis une nouvelle invitation pour vous.
+
+L'invitation du premier e-mail n'est plus valable. Seule la nouvelle invitation permet d'entrer.{{else}}À votre demande, nous avons émis une nouvelle invitation pour remplacer la précédente.
+
+L'invitation précédente n'est plus valable. Seule la nouvelle invitation permet d'entrer.{{end}}
+
+{{end}}Vous avez reçu une invitation gratuite pour {{.EventName}}.
 Le PDF est joint à ce message.
 
 Ce billet est une invitation gratuite — aucun paiement n'est requis.

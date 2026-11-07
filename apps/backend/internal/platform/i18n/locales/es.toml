@@ -1965,6 +1965,9 @@ other = "Cancelar pedido sin pagar"
 ["bot.ord.cancel_word"]
 other = "CANCELAR PEDIDO"
 
+["bot.reissue.word"]
+other = "REEMITIR ENTRADAS"
+
 ["bot.ord.cancel_ask"]
 other = "⚠️ <b>Último paso: todavía no se ha cancelado nada.</b>\n\nPedido №{{.Num}} · {{.Amount}}\nEl pedido se cierra y la reserva de sus plazas termina. Las plazas vuelven a la venta. Esto no se puede deshacer.\n\nPara cancelar, <b>escribe {{.Word}}</b> y envíalo como mensaje. Para conservar el pedido, pulsa «Atrás»."
 
@@ -6487,4 +6490,211 @@ other = "ventas de la tienda (sin datos del comprador)"
 
 ["salesnotify.bot.kind.shop_delivery"]
 other = "pedidos de la tienda para entregar"
+
+["bot.reissue.btn"]
+other = "🔁 Reemitir entradas"
+
+["bot.reissue.private_only"]
+other = "Las direcciones de los compradores se muestran y se escriben solo en el chat privado con el bot. Abre el pedido allí."
+
+["bot.reissue.site"]
+other = "El pedido №{{.Num}} se vendió en el sitio propio del vendedor. El sitio envía los correos con las entradas, así que aquí no se pueden reemitir. Pide al sitio que envíe las entradas a la dirección correcta."
+
+["bot.reissue.err_not_paid"]
+other = "El pedido №{{.Num}} no está pagado, así que no hay nada que reemitir. Solo se reemiten las entradas de un pedido pagado."
+
+["bot.reissue.err_nothing"]
+other = "El pedido №{{.Num}} no tiene entradas válidas, así que no hay nada que reemitir. Las entradas devueltas y canceladas no se reemiten."
+
+["bot.reissue.err_closed"]
+other = "La sesión del pedido №{{.Num}} está cancelada o ya pasó, así que sus entradas no se pueden reemitir. No ha cambiado nada."
+
+["bot.reissue.err_in_progress"]
+other = "Una reemisión anterior del pedido №{{.Num}} aún no se ha enviado. Abre el pedido otra vez: el bot muestra su estado y ofrece enviar el correo de nuevo."
+
+["bot.reissue.err_ticket_review"]
+other = "La entrada {{.Ticket}} del pedido №{{.Num}} está en revisión, así que las entradas no se han reemitido. No ha cambiado nada. Escribe al soporte de Arena y te ayudaremos."
+
+["bot.reissue.err_ticket_refund"]
+other = "Hay una devolución en curso de la entrada {{.Ticket}} del pedido №{{.Num}}, así que las entradas no se han reemitido. No ha cambiado nada. Espera a que termine la devolución y empieza de nuevo."
+
+["bot.reissue.err_key_reused"]
+other = "Los datos cambiaron después de la revisión. Revísalos otra vez: todavía no se ha reemitido nada."
+
+["bot.reissue.err_applied"]
+other = "El correo con las entradas nuevas del pedido №{{.Num}} ya salió, y el pedido ya tiene la dirección nueva. Si el correo no llegó, pulsa «Reenviar entradas» en la ficha del pedido."
+
+["bot.reissue.bad_email"]
+other = "Eso no parece una dirección de e-mail. Escríbela de nuevo, por ejemplo nombre@ejemplo.com, o pulsa «Atrás»."
+
+["bot.reissue.err_reason"]
+other = "El motivo no es válido, así que no se ha reemitido nada. Abre el pedido y empieza de nuevo."
+
+["bot.reissue.note_bad"]
+other = "La nota puede tener como máximo 500 caracteres. Acórtala y envíala de nuevo, o pulsa «Sin nota»."
+
+["bot.reissue.err_refused"]
+other = "Arena no aceptó la reemisión, así que no ha cambiado nada. Abre el pedido y empieza de nuevo. Si vuelve a pasar, escribe al soporte."
+
+["bot.reissue.maybe_done"]
+other = "No llegó respuesta al último intento. Puede que las entradas ya estén reemitidas, así que ahora no se pueden cambiar los datos."
+
+["bot.reissue.cancelled"]
+other = "Reemisión cancelada. Las entradas del pedido №{{.Num}} no han cambiado."
+
+["bot.reissue.pending_head"]
+other = "🔁 <b>Reemisión de entradas</b> · pedido №{{.Num}}\n\nLa reemisión del {{.When}} aún no ha terminado. Las entradas nuevas esperan para ir a {{.Email}}."
+
+["bot.reissue.pending_queued"]
+other = "El correo está en la cola. La dirección del pedido cambia cuando sale el correo."
+
+["bot.reissue.pending_failed"]
+other = "El servidor de correo no aceptó el mensaje. Pulsa «Enviar el correo otra vez»: las entradas y la dirección siguen siendo las mismas."
+
+["bot.reissue.pending_resend_btn"]
+other = "✉️ Enviar el correo otra vez"
+
+["bot.reissue.no_address"]
+other = "el pedido no tiene dirección"
+
+["bot.reissue.case"]
+other = "🔁 <b>Reemitir entradas</b> · pedido №{{.Num}}\n\nDirección del pedido: {{.Email}}\nEntradas a reemitir: {{.N}}\n\n¿Desde qué dirección escribe el comprador?\n• Desde la dirección del pedido. Pide reenviar las entradas a otro buzón. Las entradas siguen siendo las mismas y las enviamos otra vez.\n• Desde otra dirección. El pedido tiene una dirección equivocada. Todas las entradas se reemiten y van a la dirección correcta."
+
+["bot.reissue.case_order_btn"]
+other = "Desde la dirección del pedido"
+
+["bot.reissue.case_other_btn"]
+other = "Desde otra dirección"
+
+["bot.reissue.email_ask"]
+other = "🔁 <b>La dirección correcta</b> · pedido №{{.Num}}\n\nCompara los datos con el comprador:\nNombre: {{.Name}}\nTeléfono: {{.Contact}}\nDirección del pedido: {{.Email}}\n\nEscribe como mensaje el e-mail correcto del comprador:"
+
+["bot.reissue.reason_ask"]
+other = "🔁 <b>Motivo</b>\n\nDirección nueva: {{.Email}}\n\n¿Por qué reemites las entradas? El motivo queda en el historial del pedido."
+
+["bot.reissue.reason_sent_to_wrong_address"]
+other = "Dirección equivocada al comprar"
+
+["bot.reissue.reason_forwarded_to_stranger"]
+other = "Entradas reenviadas a un desconocido"
+
+["bot.reissue.reason_other"]
+other = "Otro motivo"
+
+["bot.reissue.note_ask"]
+other = "Añade una nota para el historial del pedido, por ejemplo «El comprador llamó, nombre y teléfono comprobados». El comprador no la ve.\n\nEscribe la nota como mensaje o pulsa «Sin nota»."
+
+["bot.reissue.no_note_btn"]
+other = "Sin nota"
+
+["bot.reissue.cancel_btn"]
+other = "✖ Cancelar"
+
+["bot.reissue.check"]
+other = "⚠️ <b>Revisa la reemisión</b> · pedido №{{.Num}}\n\nTodas las entradas del pedido ({{.N}}) dejan de dar acceso. El comprador recibe entradas nuevas en {{.Email}}. Las plazas y el pago no cambian. La dirección del pedido cambia cuando sale el correo. La reemisión no se puede deshacer.\n\nMotivo: {{.Reason}}"
+
+["bot.reissue.check_note"]
+other = "Nota: {{.Text}}"
+
+["bot.reissue.check_scanned"]
+other = "⚠️ La entrada {{.Ticket}} ya se usó en el acceso el {{.When}}. La entrada nueva también da acceso."
+
+["bot.reissue.check_provider"]
+other = "ℹ️ El sistema de pago {{.Provider}} conserva la dirección anterior del comprador. Si el comprador necesita su justificante de pago, reenvíaselo a mano."
+
+["bot.reissue.confirm_btn"]
+other = "Todo correcto, seguir"
+
+["bot.reissue.word_ask"]
+other = "⚠️ <b>Último paso: todavía no se ha reemitido nada.</b>\n\nPedido №{{.Num}} · entradas: {{.N}}\n\nPara reemitir las entradas, <b>escribe {{.Word}}</b> y envíalo como mensaje. Para dejarlo todo como está, pulsa «Cancelar»."
+
+["bot.reissue.word_wrong"]
+other = "El texto no coincide, así que no se ha reemitido nada. Para reemitir las entradas, escribe exactamente: {{.Word}}"
+
+["bot.reissue.err_unknown"]
+other = "Arena no respondió a tiempo. Puede que las entradas ya estén reemitidas. Escribe la palabra otra vez: el bot repite la misma solicitud y las entradas no se reemiten dos veces."
+
+["bot.reissue.err_forbidden"]
+other = "No tienes permiso para reemitir entradas en esta organización. Puede hacerlo el propietario o un gestor."
+
+["bot.reissue.err_unavailable"]
+other = "Arena no está disponible ahora, así que no se ha reemitido nada. Espera un minuto y escribe la palabra otra vez."
+
+["bot.reissue.replayed"]
+other = "Esta reemisión ya se hizo antes. Este es su resultado."
+
+["bot.reissue.done_head"]
+other = "✔ <b>Las entradas del pedido №{{.Num}} están reemitidas</b> ({{.N}}). Números nuevos:"
+
+["bot.reissue.done_line"]
+other = "№{{.Old}} → №{{.New}}{{.Seat}}"
+
+["bot.reissue.done_letter"]
+other = "El correo con las entradas nuevas está en la cola para {{.Email}}. La dirección del pedido cambia cuando sale el correo. Las entradas anteriores ya no dan acceso."
+
+["bot.reissue.resent"]
+other = "✔ El correo con las entradas nuevas del pedido №{{.Num}} está otra vez en la cola."
+
+["bot.reissue.inv_btn"]
+other = "🔁 Reemitir invitación"
+
+["bot.reissue.inv_email_ask"]
+other = "🔁 <b>La dirección correcta del invitado</b>\n\nDirección de la invitación: {{.Email}}\nEntradas a reemitir: {{.N}}\n\nCompara los datos con el invitado y escribe como mensaje su e-mail correcto:"
+
+["bot.reissue.inv_reason_ask"]
+other = "🔁 <b>Motivo</b>\n\nDirección nueva: {{.Email}}\n\n¿Por qué reemites la invitación? El motivo queda en el historial de la invitación."
+
+["bot.reissue.inv_note_ask"]
+other = "Añade una nota para el historial de la invitación, por ejemplo «El invitado llamó, nombre comprobado». El invitado no la ve.\n\nEscribe la nota como mensaje o pulsa «Sin nota»."
+
+["bot.reissue.inv_check"]
+other = "⚠️ <b>Revisa la reemisión de la invitación</b>\n\nTodas las entradas de la invitación ({{.N}}) dejan de dar acceso. El invitado recibe entradas nuevas en {{.Email}}. Las plazas no cambian. La dirección de la invitación cambia cuando sale el correo. La reemisión no se puede deshacer.\n\nMotivo: {{.Reason}}"
+
+["bot.reissue.inv_word_ask"]
+other = "⚠️ <b>Último paso: todavía no se ha reemitido nada.</b>\n\nInvitación · entradas: {{.N}}\n\nPara reemitir las entradas, <b>escribe {{.Word}}</b> y envíalo como mensaje. Para dejarlo todo como está, pulsa «Cancelar»."
+
+["bot.reissue.inv_done_head"]
+other = "✔ <b>La invitación está reemitida</b> ({{.N}}). Números nuevos:"
+
+["bot.reissue.inv_done_letter"]
+other = "El correo con las entradas nuevas está en la cola para {{.Email}}. La dirección de la invitación cambia cuando sale el correo. Las entradas anteriores ya no dan acceso."
+
+["bot.reissue.inv_cancelled"]
+other = "Reemisión cancelada. La invitación no ha cambiado."
+
+["bot.reissue.inv_pending_head"]
+other = "🔁 <b>Reemisión de la invitación</b>\n\nLa reemisión del {{.When}} aún no ha terminado. Las entradas nuevas esperan para ir a {{.Email}}."
+
+["bot.reissue.inv_pending_queued"]
+other = "El correo está en la cola. La dirección de la invitación cambia cuando sale el correo."
+
+["bot.reissue.inv_err_nothing"]
+other = "La invitación no tiene entradas válidas, así que no hay nada que reemitir."
+
+["bot.reissue.inv_err_closed"]
+other = "La sesión de la invitación está cancelada o ya pasó, así que sus entradas no se pueden reemitir. No ha cambiado nada."
+
+["bot.reissue.inv_err_in_progress"]
+other = "Una reemisión anterior de esta invitación aún no se ha enviado. Abre la invitación otra vez: el bot muestra su estado y ofrece enviar el correo de nuevo."
+
+["bot.reissue.inv_err_ticket_review"]
+other = "La entrada {{.Ticket}} de la invitación está en revisión, así que las entradas no se han reemitido. No ha cambiado nada. Escribe al soporte de Arena y te ayudaremos."
+
+["bot.reissue.inv_err_ticket_refund"]
+other = "Hay una devolución en curso de la entrada {{.Ticket}} de la invitación, así que las entradas no se han reemitido. No ha cambiado nada. Espera a que termine la devolución y empieza de nuevo."
+
+["bot.reissue.inv_err_applied"]
+other = "El correo con las entradas nuevas de la invitación ya salió, y la invitación ya tiene la dirección nueva. No hace falta enviarlo otra vez."
+
+["bot.reissue.inv_err_refused"]
+other = "Arena no aceptó la reemisión, así que no ha cambiado nada. Abre la invitación y empieza de nuevo. Si vuelve a pasar, escribe al soporte."
+
+["bot.reissue.inv_err_reason"]
+other = "El motivo no es válido, así que no se ha reemitido nada. Abre la invitación y empieza de nuevo."
+
+["bot.reissue.inv_err_not_issued"]
+other = "Esta invitación está revocada o aún no se ha emitido, así que no se puede reemitir. No ha cambiado nada. Para que el invitado entre, emite una invitación nueva."
+
+["bot.reissue.inv_resent"]
+other = "✔ El correo con las entradas nuevas de la invitación está otra vez en la cola."
 

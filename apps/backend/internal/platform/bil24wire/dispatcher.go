@@ -50,10 +50,14 @@ const (
 	EventTicketCancelled = "v1.ticket.cancelled"
 	EventTicketRefunded  = "v1.ticket.refunded"
 	EventTicketRevoked   = "v1.ticket.revoked"
-	EventEventPublished  = "v1.event.published"
-	EventEventUpdated    = "v1.event.updated"
-	EventSessionUpdated  = "v1.session.updated"
-	EventSessionCancel   = "v1.session.cancelled"
+	// EventTicketReissued closes a ticket a reissue replaced (spec 63). A
+	// reissue is refused while a site sells the order, so a site meets it
+	// only for an order it no longer writes the letters of.
+	EventTicketReissued = "v1.ticket.reissued"
+	EventEventPublished = "v1.event.published"
+	EventEventUpdated   = "v1.event.updated"
+	EventSessionUpdated = "v1.session.updated"
+	EventSessionCancel  = "v1.session.cancelled"
 )
 
 // Bil24 site-facing event types (spec §9.2). `test` is emitted by the
@@ -82,7 +86,7 @@ func siteEventType(platformEventType string) (string, bool) {
 		return SiteEventOrderPaid, true
 	case EventOrderCancelled:
 		return SiteEventOrderCancelled, true
-	case EventTicketCancelled, EventTicketRefunded, EventTicketRevoked:
+	case EventTicketCancelled, EventTicketRefunded, EventTicketRevoked, EventTicketReissued:
 		return SiteEventTicketRefunded, true
 	case EventEventPublished:
 		return SiteEventEventCreated, true
@@ -210,7 +214,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, ev outbox.Event) error {
 		return d.dispatchOrderPaid(ctx, ev, siteType)
 	case EventOrderCancelled:
 		return d.dispatchOrderCancelled(ctx, ev, siteType)
-	case EventTicketCancelled, EventTicketRefunded, EventTicketRevoked:
+	case EventTicketCancelled, EventTicketRefunded, EventTicketRevoked, EventTicketReissued:
 		return d.dispatchTicketRefunded(ctx, ev, siteType)
 	default:
 		return d.dispatchCatalog(ctx, ev, siteType)

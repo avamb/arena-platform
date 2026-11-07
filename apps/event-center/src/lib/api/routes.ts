@@ -88,6 +88,18 @@ export const API = {
   },
   // 4-1: the ticket letter of a paid order again, to its own or a one-time address.
   resendTickets: { method: "POST", path: "/v1/organizations/{org_id}/orders/{order_id}/resend-tickets" },
+  // Spec 63: replace every ticket of an order emailed to a wrong address (new barcodes, letter to the right one).
+  reissueOptions: { method: "GET", path: "/v1/organizations/{org_id}/orders/{order_id}/reissue-options" },
+  reissueTickets: { method: "POST", path: "/v1/organizations/{org_id}/orders/{order_id}/reissue-tickets" },
+  reissueResend: { method: "POST", path: "/v1/organizations/{org_id}/orders/{order_id}/reissues/{reissue_id}/resend" },
+  reissueHistory: { method: "GET", path: "/v1/organizations/{org_id}/orders/{order_id}/reissues" },
+  // Spec 63 R-5: the same for an invitation issued before spec 46 (no order).
+  invitationReissueOptions: { method: "GET", path: "/v1/organizations/{org_id}/complimentary/{id}/reissue-options" },
+  invitationReissueTickets: { method: "POST", path: "/v1/organizations/{org_id}/complimentary/{id}/reissue-tickets" },
+  invitationReissueResend: {
+    method: "POST",
+    path: "/v1/organizations/{org_id}/complimentary/{id}/reissues/{reissue_id}/resend",
+  },
   // 4-2: cancel an unpaid order. Asks for the password again (spec 37 4.6).
   cancelOrder: { method: "POST", path: "/v1/organizations/{org_id}/orders/{id}/cancel" },
   // 8-1: refund tickets of an order. The create asks for the password again (spec 37 4.6).

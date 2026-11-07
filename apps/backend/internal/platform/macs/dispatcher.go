@@ -43,6 +43,11 @@ const (
 	EventTicketRefunded  = "v1.ticket.refunded"
 	EventTicketCancelled = "v1.ticket.cancelled"
 	EventTicketRevoked   = "v1.ticket.revoked"
+	// EventTicketReissued closes a ticket a reissue replaced (spec 63): its
+	// number no longer admits. EventTicketReissueIssued is its replacement,
+	// delivered as an order.paid of exactly that one ticket.
+	EventTicketReissued      = "v1.ticket.reissued"
+	EventTicketReissueIssued = "v1.ticket.reissue_issued"
 )
 
 // macsEventType maps a platform event type to the corresponding MACS webhook
@@ -53,9 +58,9 @@ const (
 // it — see Dispatch.
 func macsEventType(platformEventType string) (string, bool) {
 	switch platformEventType {
-	case EventOrderPaid, EventTicketIssued:
+	case EventOrderPaid, EventTicketIssued, EventTicketReissueIssued:
 		return "order.paid", true
-	case EventTicketRefunded, EventTicketCancelled, EventTicketRevoked:
+	case EventTicketRefunded, EventTicketCancelled, EventTicketRevoked, EventTicketReissued:
 		return "ticket.refunded", true
 	default:
 		return "", false
@@ -145,7 +150,12 @@ func (d *Dispatcher) Dispatch(ctx context.Context, ev outbox.Event) error {
 		return d.dispatchOrderPaid(ctx, ev)
 	case EventTicketIssued:
 		return d.dispatchComplimentaryPaid(ctx, ev)
-	case EventTicketRefunded, EventTicketCancelled, EventTicketRevoked:
+	case EventTicketReissueIssued:
+		// A replacement belongs to an order, but the order's own order.paid
+		// went out long ago with the old numbers: this one ticket is told
+		// on its own, exactly like an invitation.
+		return d.dispatchSingleTicketPaid(ctx, ev)
+	case EventTicketRefunded, EventTicketCancelled, EventTicketRevoked, EventTicketReissued:
 		return d.dispatchTicketRefunded(ctx, ev)
 	default:
 		// Not a MACS event — let the outbox mark it processed.
@@ -221,6 +231,20 @@ func (d *Dispatcher) dispatchComplimentaryPaid(ctx context.Context, ev outbox.Ev
 	}
 	if hasOrder {
 		// The order aggregate publishes v1.order.paid for this sale.
+		return nil
+	}
+	return d.dispatchSingleTicketPaid(ctx, ev)
+}
+
+// dispatchSingleTicketPaid delivers order.paid for exactly one ticket: an
+// invitation without an order, or a ticket issued by a reissue (spec 63).
+func (d *Dispatcher) dispatchSingleTicketPaid(ctx context.Context, ev outbox.Event) error {
+	ticketIDStr, _ := ev.Payload["ticket_id"].(string)
+	if ticketIDStr == "" {
+		return nil
+	}
+	ticketID, err := uuid.Parse(ticketIDStr)
+	if err != nil {
 		return nil
 	}
 

@@ -53,6 +53,12 @@ import type {
   OrderListResponse,
   OrderRefundOptions,
   OrderResendTicketsResponse,
+  ReissueHistory,
+  InvitationReissueOptions,
+  ReissueOptions,
+  ReissueResendResponse,
+  ReissueTicketsRequest,
+  ReissueTicketsResponse,
   ExternalRefundRequest,
   ExternalRefundResponse,
   RefundProblemQueue,
@@ -446,6 +452,75 @@ export function resendOrderTickets(orgId: string, orderId: string, email?: strin
     params: { org_id: orgId, order_id: orderId },
     body: email !== undefined && email !== "" ? { email } : undefined,
   });
+}
+
+// ─── Spec 63: replace the tickets of an order ───────────────────────────────
+
+/** The check screen of a ticket reissue: the tickets, the route, what blocks it now. */
+export function fetchReissueOptions(orgId: string, orderId: string): Promise<ReissueOptions> {
+  return call<ReissueOptions>({ route: API.reissueOptions, params: { org_id: orgId, order_id: orderId } });
+}
+
+/**
+ * Replaces every active ticket of the order. `key` is the operation's
+ * Idempotency-Key: the same key with the same body answers the first
+ * operation (`replayed: true`) and writes nothing.
+ */
+export function reissueOrderTickets(
+  orgId: string,
+  orderId: string,
+  body: ReissueTicketsRequest,
+  key: string,
+): Promise<ReissueTicketsResponse> {
+  return call<ReissueTicketsResponse>({
+    route: API.reissueTickets,
+    params: { org_id: orgId, order_id: orderId },
+    body,
+    headers: { "Idempotency-Key": key },
+  });
+}
+
+/** Queues the letter of a reissue that was not applied yet again, to the same address. */
+export function resendReissueLetter(orgId: string, orderId: string, reissueId: string): Promise<ReissueResendResponse> {
+  return call<ReissueResendResponse>({
+    route: API.reissueResend,
+    params: { org_id: orgId, order_id: orderId, reissue_id: reissueId },
+    body: {},
+  });
+}
+
+/** The check screen of an invitation that has no order (spec 63 R-5). */
+export function fetchInvitationReissueOptions(orgId: string, invitationId: string): Promise<InvitationReissueOptions> {
+  return call<InvitationReissueOptions>({ route: API.invitationReissueOptions, params: { org_id: orgId, id: invitationId } });
+}
+
+/** Replaces the tickets of an invitation; the same key rules as an order. */
+export function reissueInvitationTickets(
+  orgId: string,
+  invitationId: string,
+  body: ReissueTicketsRequest,
+  key: string,
+): Promise<ReissueTicketsResponse> {
+  return call<ReissueTicketsResponse>({
+    route: API.invitationReissueTickets,
+    params: { org_id: orgId, id: invitationId },
+    body,
+    headers: { "Idempotency-Key": key },
+  });
+}
+
+/** Queues the letter of an invitation's reissue again. */
+export function resendInvitationReissueLetter(orgId: string, invitationId: string, reissueId: string): Promise<ReissueResendResponse> {
+  return call<ReissueResendResponse>({
+    route: API.invitationReissueResend,
+    params: { org_id: orgId, id: invitationId, reissue_id: reissueId },
+    body: {},
+  });
+}
+
+/** The reissues of an order, newest first. */
+export function fetchReissueHistory(orgId: string, orderId: string): Promise<ReissueHistory> {
+  return call<ReissueHistory>({ route: API.reissueHistory, params: { org_id: orgId, order_id: orderId } });
 }
 
 /**

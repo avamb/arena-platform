@@ -12,7 +12,7 @@
  */
 import type { Locale } from "@/lib/i18n";
 
-export const CONFIRM_KINDS = ["cancel_order", "cancel_session", "delete_event", "refund", "annul_invitation", "delete_promo", "shop_fulfil"] as const;
+export const CONFIRM_KINDS = ["cancel_order", "cancel_session", "delete_event", "refund", "annul_invitation", "delete_promo", "shop_fulfil", "reissue"] as const;
 export type ConfirmKind = (typeof CONFIRM_KINDS)[number];
 
 export const CONFIRM_WORDS: Record<ConfirmKind, Record<Locale, string>> = {
@@ -25,6 +25,8 @@ export const CONFIRM_WORDS: Record<ConfirmKind, Record<Locale, string>> = {
   delete_promo: { en: "DELETE", ru: "УДАЛИТЬ", es: "ELIMINAR" },
   // Web only: the shop operator fulfilling an order that waited for a check. The bot has no such dialog.
   shop_fulfil: { en: "PROCESS ORDER", ru: "ПРОВЕСТИ ЗАКАЗ", es: "TRAMITAR PEDIDO" },
+  // Spec 63 (decision R-5): replace every ticket of an order, new barcodes, old ones stop admitting.
+  reissue: { en: "REISSUE TICKETS", ru: "ЗАМЕНИТЬ БИЛЕТЫ", es: "REEMITIR ENTRADAS" },
 };
 
 /** The bot catalog key that holds each word. Used by the drift test. */
@@ -35,6 +37,7 @@ export const BOT_KEYS: Partial<Record<ConfirmKind, string>> = {
   refund: "bot.ref.word",
   annul_invitation: "bot.inv.revoke_word",
   delete_promo: "bot.promo.delete_word",
+  reissue: "bot.reissue.word",
 };
 
 /**

@@ -14,11 +14,16 @@ const (
 	resendOrderID    = "fe0000e2-0000-7000-8000-000000000111" // a paid order of the platform's own sales page
 	resendSiteOrder  = "fe0000e2-0000-7000-8000-000000000112" // the same, sold through a seller's own site
 	resendBuyerEmail = "resend-buyer@example.test"
+	// The seller site's channel: a live site (active bil24_wp subscriber)
+	// writes its letters. Since spec 63 decision R-8 the live site decides,
+	// not orders.source, so the site order needs a channel of its own.
+	resendSiteChannelID = "fe0000e2-0000-7000-8000-000000000102"
+	resendSiteHookID    = "fe0000e2-0000-7000-8000-000000000103"
 )
 
 // resendOrder describes one paid one-ticket order of the fixture.
 type resendOrder struct {
-	orderID, reservationID, checkoutID, ticketID, itemID, source, buyerName string
+	orderID, reservationID, checkoutID, ticketID, itemID, source, buyerName, channelID string
 }
 
 func resendOrders() []resendOrder {
@@ -26,10 +31,12 @@ func resendOrders() []resendOrder {
 		{
 			orderID: resendOrderID, reservationID: "fe0000e2-0000-7000-8000-000000000121", checkoutID: "fe0000e2-0000-7000-8000-000000000131",
 			ticketID: "fe0000e2-0000-7000-8000-000000000141", itemID: "fe0000e2-0000-7000-8000-000000000151", source: "public_feed", buyerName: "Resend Buyer",
+			channelID: resendChannelID,
 		},
 		{
 			orderID: resendSiteOrder, reservationID: "fe0000e2-0000-7000-8000-000000000122", checkoutID: "fe0000e2-0000-7000-8000-000000000132",
 			ticketID: "fe0000e2-0000-7000-8000-000000000142", itemID: "fe0000e2-0000-7000-8000-000000000152", source: "bil24_gateway", buyerName: "Site Buyer",
+			channelID: resendSiteChannelID,
 		},
 	}
 }
@@ -52,25 +59,37 @@ func applyResendOrders(ctx context.Context, tx pgx.Tx) error {
 		ON CONFLICT (id) DO NOTHING`, resendChannelID, orgID); err != nil {
 		return err
 	}
+	if err := step("resend site channel", `
+		INSERT INTO sales_channels (id, org_id, name, settings)
+		VALUES ($1, $2, 'E2E Resend Site', '{}'::jsonb)
+		ON CONFLICT (id) DO NOTHING`, resendSiteChannelID, orgID); err != nil {
+		return err
+	}
+	if err := step("resend site subscriber", `
+		INSERT INTO webhook_subscribers (id, site_url, callback_url, signing_secret, event_types, active, kind, channel_id)
+		VALUES ($1, 'https://resend-site.example.test', 'https://resend-site.example.test/hook', 'whsec_e2e_resend_site', '{}', true, 'bil24_wp', $2)
+		ON CONFLICT (id) DO UPDATE SET active = true`, resendSiteHookID, resendSiteChannelID); err != nil {
+		return err
+	}
 	for _, o := range resendOrders() {
 		if err := step("resend reservation", `
 			INSERT INTO reservations (id, org_id, channel_id, session_id, quantity, state, expires_at, converted_at)
 			VALUES ($1, $2, $3, $4, 1, 'converted', now() + interval '1 hour', now())
-			ON CONFLICT (id) DO NOTHING`, o.reservationID, orgID, resendChannelID, sessionID); err != nil {
+			ON CONFLICT (id) DO UPDATE SET channel_id = EXCLUDED.channel_id`, o.reservationID, orgID, o.channelID, sessionID); err != nil {
 			return err
 		}
 		if err := step("resend checkout", `
 			INSERT INTO checkout_sessions (id, org_id, channel_id, reservation_id, state)
 			VALUES ($1, $2, $3, $4, 'completed')
-			ON CONFLICT (id) DO NOTHING`, o.checkoutID, orgID, resendChannelID, o.reservationID); err != nil {
+			ON CONFLICT (id) DO UPDATE SET channel_id = EXCLUDED.channel_id`, o.checkoutID, orgID, o.channelID, o.reservationID); err != nil {
 			return err
 		}
 		if err := step("resend order", `
 			INSERT INTO orders (id, org_id, channel_id, event_id, session_id, checkout_session_id, reservation_id,
 			                    source, status, currency, subtotal, discount, charge, total, buyer_name, buyer_email, paid_at)
 			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'paid', 'EUR', 2500, 0, 0, 2500, $9, $10, now())
-			ON CONFLICT (id) DO NOTHING`,
-			o.orderID, orgID, resendChannelID, eventID, sessionID, o.checkoutID, o.reservationID, o.source, o.buyerName, resendBuyerEmail); err != nil {
+			ON CONFLICT (id) DO UPDATE SET channel_id = EXCLUDED.channel_id`,
+			o.orderID, orgID, o.channelID, eventID, sessionID, o.checkoutID, o.reservationID, o.source, o.buyerName, resendBuyerEmail); err != nil {
 			return err
 		}
 		if err := step("resend ticket", `

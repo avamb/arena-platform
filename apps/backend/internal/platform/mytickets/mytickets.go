@@ -118,8 +118,13 @@ type JobPayload struct {
 const ticketOrderSources = `('public_feed','bil24_gateway','checkout_api','complimentary')`
 
 // orderVisible is the SQL condition for an order a buyer may see: it was paid
-// at some time. Unpaid carts and expired holds are not tickets.
-const orderVisible = `(o.paid_at IS NOT NULL OR o.status IN ('paid','refunded','partially_refunded'))`
+// at some time. Unpaid carts and expired holds are not tickets. An order whose
+// tickets are being replaced (spec 63, a reissue not yet applied) is shown
+// under no address: its letter has not reached the real buyer yet, and the
+// order still carries the mistyped address until it does.
+const orderVisible = `(o.paid_at IS NOT NULL OR o.status IN ('paid','refunded','partially_refunded'))
+		  AND NOT EXISTS (SELECT 1 FROM ticket_reissues tr
+		                  WHERE tr.order_id = o.id AND tr.state IN ('pending','send_failed'))`
 
 // EscapeLike makes s safe as an ILIKE pattern that matches s exactly.
 func EscapeLike(s string) string {

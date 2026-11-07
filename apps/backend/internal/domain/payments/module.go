@@ -89,6 +89,10 @@ type Capabilities struct {
 	// hosted-checkout module may honour CreateHostedCheckoutRequest.
 	// ReceiptEmail on its own; this flag is about the archive only.
 	ProviderReceipt bool
+	// ReceiptEmailUpdate: the module can move the address the provider
+	// sends its receipts to after the payment (ReceiptEmailUpdater). Used
+	// when a reissue changes the buyer's address (spec 63, decision R-17).
+	ReceiptEmailUpdate bool
 	// BuyerReturnsByPOST: the provider may bring the buyer back to the
 	// return URL with a POST, so the hosted checkout must route the return
 	// through arena's own GET|POST payment-return hop rather than straight
@@ -569,6 +573,14 @@ type Receipt struct {
 // ErrReceiptNotReady, so the caller retries later.
 type ReceiptFetcher interface {
 	FetchReceipt(ctx context.Context, paymentRef string) (Receipt, error)
+}
+
+// ReceiptEmailUpdater moves the address a paid payment's provider receipts go
+// to. paymentRef is what arena stored as payment_intents.provider_charge_ref,
+// else provider_payment_id. The provider may send a new receipt to the new
+// address at once (Stripe does). idempotencyKey makes a retry safe.
+type ReceiptEmailUpdater interface {
+	UpdateReceiptEmail(ctx context.Context, paymentRef, email, idempotencyKey string) error
 }
 
 // ErrReceiptNotReady means the provider has no receipt for the payment yet.

@@ -1,4 +1,4 @@
-{{define "subject"}}{{if gt (len .Tickets) 1}}Vos billets — {{.EventName}}{{else}}Votre billet — {{.EventName}}{{end}}{{end}}
+{{define "subject"}}{{with .Reissue}}Vos nouveaux billets — {{$.EventName}}{{else}}{{if gt (len .Tickets) 1}}Vos billets — {{.EventName}}{{else}}Votre billet — {{.EventName}}{{end}}{{end}}{{end}}
 
 {{define "html"}}<!DOCTYPE html>
 <html lang="fr" dir="ltr">
@@ -9,7 +9,7 @@
   {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
   <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
   <tr><td style="padding:28px 32px 8px 32px;color:#22333D;font-size:16px;">Bonjour{{with .HolderName}} {{.}}{{end}} !</td></tr>
-  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">{{if gt (len .Tickets) 1}}Merci pour votre achat. Vos billets pour « {{.EventName}} » sont joints à cet e-mail (fichiers PDF).{{else}}Merci pour votre achat. Votre billet pour « {{.EventName}} » est joint à cet e-mail (PDF).{{end}}</td></tr>
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;">{{with .Reissue}}{{if .Typo}}Lors de l'achat, l'adresse e-mail contenait une faute de frappe : le premier e-mail avec vos billets est donc parti vers une autre adresse. Vous avez contacté l'organisateur et confirmé vos coordonnées. Nous avons émis de nouveaux billets pour vous, ils sont joints.<br><br>Les billets du premier e-mail ne sont plus valables. Seuls les nouveaux billets permettent d'entrer.{{else}}À votre demande, nous avons émis de nouveaux billets pour remplacer les précédents. Ils sont joints.<br><br>Les billets précédents ne sont plus valables. Seuls les nouveaux billets permettent d'entrer.{{end}}<br><br>Vos places et votre paiement n'ont pas changé.{{with .OrderNumber}} Numéro de commande : {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}Merci pour votre achat. Vos billets pour « {{.EventName}} » sont joints à cet e-mail (fichiers PDF).{{else}}Merci pour votre achat. Votre billet pour « {{.EventName}} » est joint à cet e-mail (PDF).{{end}}{{end}}</td></tr>
   <tr><td style="padding:8px 32px;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-left:4px solid {{.Accent}};background:#f8f9fa;"><tr><td style="padding:12px 16px;color:#22333D;font-size:14px;line-height:1.6;">
       <strong>{{.EventName}}</strong>{{with .SessionStart}}<br>{{.}}{{end}}{{with .DoorsOpen}}<br>Ouverture des portes {{.}}{{end}}{{with .VenueName}}<br>{{.}}{{end}}{{with .Directions.GoogleURL}}<br>Itinéraire : <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a>{{end}}
@@ -64,7 +64,13 @@
 
 Bonjour{{with .HolderName}} {{.}}{{end}} !
 
-{{if gt (len .Tickets) 1}}Merci pour votre achat. Vos billets pour « {{.EventName}} » sont joints à cet e-mail (fichiers PDF).{{else}}Merci pour votre achat. Votre billet pour « {{.EventName}} » est joint à cet e-mail (PDF).{{end}}
+{{with .Reissue}}{{if .Typo}}Lors de l'achat, l'adresse e-mail contenait une faute de frappe : le premier e-mail avec vos billets est donc parti vers une autre adresse. Vous avez contacté l'organisateur et confirmé vos coordonnées. Nous avons émis de nouveaux billets pour vous, ils sont joints.
+
+Les billets du premier e-mail ne sont plus valables. Seuls les nouveaux billets permettent d'entrer.{{else}}À votre demande, nous avons émis de nouveaux billets pour remplacer les précédents. Ils sont joints.
+
+Les billets précédents ne sont plus valables. Seuls les nouveaux billets permettent d'entrer.{{end}}
+
+Vos places et votre paiement n'ont pas changé.{{with .OrderNumber}} Numéro de commande : {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}Merci pour votre achat. Vos billets pour « {{.EventName}} » sont joints à cet e-mail (fichiers PDF).{{else}}Merci pour votre achat. Votre billet pour « {{.EventName}} » est joint à cet e-mail (PDF).{{end}}{{end}}
 
 {{.EventName}}
 {{with .SessionStart}}{{.}}

@@ -26,6 +26,10 @@ func (s *Server) mountOrderRoutes(r chi.Router) {
 		// Every open and click of the order's letters with the reader's
 		// browser string (U-7): dispute evidence, same audience as consents.
 		pr.Get("/organizations/{org_id}/orders/{order_id}/letter-interactions", s.handleOrderLetterInteractions)
+		// The order's ticket reissues with both addresses (spec 63): members only.
+		pr.Get("/organizations/{org_id}/orders/{order_id}/reissues", s.handleReissueHistory)
+		// The same for an invitation without an order (spec 63 R-5).
+		pr.Get("/organizations/{org_id}/complimentary/{id}/reissues", s.handleInvitationReissueHistory)
 		// One-screen session overview: places, categories, money, tickets, refunds.
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/summary", s.handleSessionSummary)
 		// The tickets of a session with their entry at the door, filterable to
@@ -59,5 +63,13 @@ func (s *Server) mountOrderRoutes(r chi.Router) {
 		pr.Post("/organizations/{org_id}/orders/{order_id}/resend-tickets", s.handleResendOrderTickets)
 		// The organizer's private VIP mark of one ticket (V1).
 		pr.Patch("/organizations/{org_id}/tickets/{ticket_id}/vip", s.handleSetTicketVIP)
+		// Replace every ticket of an order sent to a wrong address (spec 63):
+		// the check screen, the replacement, and the letter again.
+		pr.Get("/organizations/{org_id}/orders/{order_id}/reissue-options", s.handleReissueOptions)
+		pr.Post("/organizations/{org_id}/orders/{order_id}/reissue-tickets", s.handleReissueTickets)
+		pr.Post("/organizations/{org_id}/orders/{order_id}/reissues/{reissue_id}/resend", s.handleReissueResend)
+		pr.Get("/organizations/{org_id}/complimentary/{id}/reissue-options", s.handleInvitationReissueOptions)
+		pr.Post("/organizations/{org_id}/complimentary/{id}/reissue-tickets", s.handleInvitationReissue)
+		pr.Post("/organizations/{org_id}/complimentary/{id}/reissues/{reissue_id}/resend", s.handleInvitationReissueResend)
 	})
 }

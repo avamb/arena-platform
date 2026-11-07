@@ -20,6 +20,8 @@ Naming convention: `v1.<aggregate>.<verb-past-tense>`.
 | `v1.order.cancelled`   | `order`        | order UUID                   | An order is cancelled (`ordering.Cancel`); the Bil24-site dispatcher turns it into `order.cancelled`. |
 | `v1.ticket.cancelled`  | `ticket`       | ticket UUID                  | An operator cancels a ticket (`POST /v1/tickets/{id}/cancel`); it stops admitting at once.          |
 | `v1.ticket.scanned`    | `ticket`       | ticket UUID                  | A door scan is recorded: arena's own scanner callback (`POST /v1/scanner/scan-events`) or MACS (`POST /v1/macs/scan-events`, task M1). One per new `scan_events` row with a known ticket, admitted or denied; a replayed scan emits nothing. |
+| `v1.ticket.reissued`   | `ticket`       | ticket UUID (old ticket)     | A ticket reissue (spec 63) closed the ticket as `transferred`: its codes stop admitting. MACS and the sites hear it as `ticket.refunded` of the old number; no money moved. |
+| `v1.ticket.reissue_issued` | `ticket`   | ticket UUID (new ticket)     | The replacement of a reissued ticket, same order and seat, new number and barcode. MACS hears it as `order.paid` of that one ticket. |
 | `v1.refund.blocked_scanned` | `ticket`  | ticket UUID                  | A refund of a ticket already scanned at the gate was refused (once per ticket and actor per day). |
 | `v1.refund.scan_exception_granted` | `ticket` | ticket UUID          | A platform superadmin allowed one refund of a scanned ticket.                                       |
 | `v1.shop.order.paid`   | `shop_order`   | shop order UUID              | A merchandise-shop order is marked paid (payment webhook or a free order); stock is taken off the shelf in the same transaction. |
@@ -85,6 +87,37 @@ sourced from a complimentary issuance.
 
 `previous_status` is omitted when not available; `event_id` is included for
 routing convenience.
+
+### `v1.ticket.reissued` and `v1.ticket.reissue_issued`
+
+Written in the SAME transaction as the reissue (spec 63): first one
+`v1.ticket.reissued` per closed ticket, then one `v1.ticket.reissue_issued` per
+new ticket. A consumer may receive them in any order; neither depends on the
+other. Neither reaches the sales chat or billing: the order, its money and its
+places do not change.
+
+```json
+{
+  "ticket_id":     "<uuid of the old ticket>",
+  "new_ticket_id": "<uuid>",
+  "order_id":      "<uuid>",
+  "org_id":        "<uuid>",
+  "session_id":    "<uuid>",
+  "reason":        "reissued"
+}
+```
+
+```json
+{
+  "ticket_id":          "<uuid of the new ticket>",
+  "replaces_ticket_id": "<uuid>",
+  "order_id":           "<uuid>",
+  "org_id":             "<uuid>",
+  "session_id":         "<uuid>"
+}
+```
+
+No address is in either payload.
 
 ### `v1.ticket.scanned`
 

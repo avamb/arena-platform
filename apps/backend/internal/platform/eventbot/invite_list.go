@@ -250,6 +250,12 @@ func (b *Bot) showInviteCard(ctx context.Context, chatID int64, editMsgID *int, 
 	if it.State == invStateValid {
 		kb = append(kb, []models.InlineKeyboardButton{b.invButton(loc, "bot.inv.revoke_btn", "iv:rv")})
 	}
+	if invitationReissueOffered(id, it, chatID == id.Link.TelegramUserID) {
+		// Spec 63 R-5: the letter went to a wrong address (reissue.go).
+		kb = append(kb, []models.InlineKeyboardButton{{
+			Text: b.texts.T(loc, "bot.reissue.inv_btn", nil), CallbackData: "or:x:si:" + it.Id.String(),
+		}})
+	}
 	kb = append(kb, b.invNav(loc, "iv:bk"))
 	b.reply(ctx, chatID, editMsgID, clipMessage(text, maxMessageRunes), b.invMarkup(kb...))
 }
