@@ -31,6 +31,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/pdf"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hsite"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/humancode"
@@ -79,6 +80,31 @@ func (h *Handler) myTicketsIPHash(r *http.Request) string {
 	}
 	sum := sha256.Sum256([]byte(h.myTicketsSalt + "|my-tickets|" + ip))
 	return hex.EncodeToString(sum[:])
+}
+
+// myTicketsExchangeBucket is the rate-limit bucket of a token exchange: the
+// client address when one is known. Without one (no address could be read)
+// the bucket is the token's own hash, never one shared key, so a single
+// client cannot lock every buyer out of their links.
+func (h *Handler) myTicketsExchangeBucket(r *http.Request, token string) string {
+	if ip := h.myTicketsIPHash(r); ip != "" {
+		return "mt-exchange|" + ip
+	}
+	sum := sha256.Sum256([]byte("my-tickets-exchange|" + token))
+	return "mt-exchange-token|" + hex.EncodeToString(sum[:16])
+}
+
+// myTicketsPDFNumber is the ticket number the PDF file is named by
+// (pdf.DisplayNumber): the ticket's system id, else the short form of its
+// id. The buyer never sees a ticket UUID.
+func (h *Handler) myTicketsPDFNumber(ctx context.Context, ticketID uuid.UUID) string {
+	number := ""
+	if h.ticketQueries != nil {
+		if t, err := h.ticketQueries.GetTicketByID(ctx, ticketID); err == nil && t.SystemTicketID > 0 {
+			number = strconv.FormatInt(t.SystemTicketID, 10)
+		}
+	}
+	return pdf.DisplayNumber(number, ticketID.String())
 }
 
 func (h *Handler) myTicketsUnavailable(w http.ResponseWriter, r *http.Request) {
@@ -186,8 +212,8 @@ func (h *Handler) HandleMyTicketsExchange(w http.ResponseWriter, r *http.Request
 		))
 		return
 	}
-	// Per-IP only: the link token is the credential being guessed here.
-	if !h.enforceRateLimit(w, r, "my_tickets.rate_limited", h.rl.CheckCheckoutToken, "mt-exchange|"+h.myTicketsIPHash(r)) {
+	// Per client address: the link token is the credential being guessed here.
+	if !h.enforceRateLimit(w, r, "my_tickets.rate_limited", h.rl.CheckCheckoutToken, h.myTicketsExchangeBucket(r, req.Token)) {
 		return
 	}
 	token, expires, err := h.myTickets.Exchange(r.Context(), req.Token)
@@ -410,7 +436,7 @@ func (h *Handler) HandleMyTicketsPDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", "inline; filename=\"ticket-"+ticketID.String()+".pdf\"")
+	w.Header().Set("Content-Disposition", "inline; filename=\"ticket-"+h.myTicketsPDFNumber(r.Context(), ticketID)+".pdf\"")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(pdfBytes)
 }

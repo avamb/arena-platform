@@ -514,6 +514,16 @@ func TestSiteP7_MyTicketsByLink(t *testing.T) {
 	}
 	if w := pdf(o.orderID, o.ticketID); w.Code != 200 || !bytes.HasPrefix(w.Body.Bytes(), []byte("%PDF")) {
 		t.Fatalf("own pdf: %d", w.Code)
+	} else {
+		// The file is named by the ticket number, never by its UUID.
+		var sysID int64
+		if err := pool.QueryRow(context.Background(), `SELECT system_ticket_id FROM tickets WHERE id = $1`, o.ticketID).Scan(&sysID); err != nil {
+			t.Fatal(err)
+		}
+		cd := w.Header().Get("Content-Disposition")
+		if strings.Contains(cd, o.ticketID.String()) || !strings.Contains(cd, fmt.Sprintf("ticket-%d.pdf", sysID)) {
+			t.Fatalf("Content-Disposition = %q, want ticket-%d.pdf", cd, sysID)
+		}
 	}
 	if w := pdf(other.orderID, other.ticketID); w.Code != 404 {
 		t.Fatalf("foreign organization pdf: %d", w.Code)
