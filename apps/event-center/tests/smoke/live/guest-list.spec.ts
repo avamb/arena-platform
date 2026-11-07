@@ -100,7 +100,7 @@ test.describe("guest list on the three roles (live)", () => {
       expect(sheet).toContain('<col min="5" max="5" width="');
       expect(sheet).toMatch(/<col min="5" max="5" width="\d+" customWidth="1" style="2"\/>/);
       expect(sheet).toContain('state="frozen"');
-      expect(sheet).toContain('<autoFilter ref="A1:L5"/>');
+      expect(sheet).toContain('<autoFilter ref="A1:M5"/>');
 
       // ── the CSV for import (the secondary link) ────────────────────────
       const [download] = await Promise.all([
@@ -111,9 +111,9 @@ test.describe("guest list on the three roles (live)", () => {
       const path = await download.path();
       const text = (await readFile(path, "utf8")).replace(/^﻿/, "");
       const lines = text.trimEnd().split("\r\n");
-      expect(lines[0]).toBe('"Guest";"Category";"Seat";"Ticket";"Barcode";"VIP";"Entered";"Entry time";"Order";"E-mail";"Phone";"Invitation"');
+      expect(lines[0]).toBe('"Guest";"Category";"Seat";"Ticket";"Barcode";"VIP";"Entered";"Entry time";"Order";"E-mail";"Phone";"Invitation";"Test"');
       expect(lines).toHaveLength(5); // the header and the four active tickets
-      expect(lines.filter((l) => l.endsWith('"yes"'))).toHaveLength(1); // one invitation
+      expect(lines.filter((l) => l.endsWith('"yes";"no"'))).toHaveLength(1); // one invitation
 
       // ── the setting ────────────────────────────────────────────────────
       const box = page.getByTestId("guest-list-subscription");

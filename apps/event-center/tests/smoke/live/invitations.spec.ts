@@ -243,7 +243,9 @@ test.describe("invitations (live)", () => {
     const old = page.getByTestId("earlier-invitations");
     await expect(old).toContainText("Earlier invitations");
     await expect(oldRow(page, "inv-ru@example.test")).toHaveCount(1);
+    await page.getByTestId("nav-more").click();
     await page.getByLabel("Language").selectOption("ru");
+    await page.getByTestId("more-close").click();
     await oldRow(page, "inv-ru@example.test").getByTestId("invitation-annul").click();
     await expect(page.getByTestId("confirm-word")).toContainText("ОТМЕНИТЬ ПРИГЛАШЕНИЕ");
     await typeWord2(page, "отменить приглашение");

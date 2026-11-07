@@ -245,7 +245,9 @@ test.describe("move or cancel a session (live)", () => {
 
   test("owner: the SESSION word in Russian cancels too", async ({ page }) => {
     await openSession(page, "org_admin", S_EMPTY);
+    await page.getByTestId("nav-more").click();
     await page.getByLabel("Language").selectOption("ru");
+    await page.getByTestId("more-close").click();
     await page.getByTestId("session-cancel-open").click();
     // Nobody bought: no contact needed, nothing blocked.
     await page.getByTestId("session-cancel-continue").click();
