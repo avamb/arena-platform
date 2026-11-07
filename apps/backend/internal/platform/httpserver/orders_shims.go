@@ -78,6 +78,15 @@ func (s *Server) handleEventSummary(w http.ResponseWriter, r *http.Request) {
 	s.ordersHandler().HandleEventSummary(w, r)
 }
 
+// handleOrgSummary serves GET .../summary (EC-V1): every session of the
+// organization in a date range, a card per session and currency.
+func (s *Server) handleOrgSummary(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.ordersHandler().HandleOrgSummary(w, r)
+}
+
 func (s *Server) handleEventSalesSummaries(w http.ResponseWriter, r *http.Request) {
 	if !s.enforceOrgMembership(w, r, "org_id") {
 		return

@@ -36,6 +36,9 @@ func (s *Server) mountOrderRoutes(r chi.Router) {
 		// The sales figures of a list of events in one request (WEB-LIST): the
 		// same numbers as the event summary's top level, up to 50 ids.
 		pr.Get("/organizations/{org_id}/events/sales-summary", s.handleEventSalesSummaries)
+		// The whole organization in a date range: a card per session and
+		// currency with the price x category breakdown (EC-V1).
+		pr.Get("/organizations/{org_id}/summary", s.handleOrgSummary)
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "order.write", "orders")

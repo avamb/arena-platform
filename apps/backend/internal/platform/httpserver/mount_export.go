@@ -28,6 +28,9 @@ func (s *Server) mountExportRoutes(r chi.Router) {
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/summary.csv", s.handleExportSessionSummary)
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/guest-list.xlsx", s.handleExportSessionGuestListXLSX)
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/guest-list.csv", s.handleExportSessionGuestList)
+		// The accountant's workbook for a date range (EC-V2): per session, per
+		// price, per ticket. Buyers' contacts: an API key is refused.
+		pr.Get("/organizations/{org_id}/exports/accounting.xlsx", s.handleExportAccounting)
 	})
 	// The automatic guest list is a setting of the calling person (package
 	// guestlist); it needs order.read because the file it sends holds buyers.
@@ -46,7 +49,7 @@ func (s *Server) mountExportRoutes(r chi.Router) {
 // per-domain handlers (orders_shims.go), so a test may lower the row cap
 // through exportMaxRows without rebuilding the server.
 func (s *Server) exportHandler() *hexport.Handler {
-	h := hexport.New(s.customerQueries, s.logger)
+	h := hexport.New(s.customerQueries, s.logger).WithAudit(s.audit)
 	if s.exportMaxRows > 0 {
 		h.WithMaxRows(s.exportMaxRows)
 	}
@@ -107,4 +110,11 @@ func (s *Server) handleExportPromoRedemptions(w http.ResponseWriter, r *http.Req
 		return
 	}
 	s.exportHandler().HandlePromoRedemptions(w, r)
+}
+
+func (s *Server) handleExportAccounting(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.exportHandler().HandleAccountingXLSX(w, r)
 }

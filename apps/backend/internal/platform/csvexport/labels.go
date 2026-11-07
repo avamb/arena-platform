@@ -54,6 +54,20 @@ const (
 	ColVIP
 	ColInvitation
 	ColTest
+	// The accounting workbook (EC-V2).
+	ColEvent
+	ColOrdersCount
+	ColSold
+	ColComplimentary
+	ColRefundedTickets
+	ColActiveTickets
+	ColRefundedAmount
+	ColNet
+	ColTicketsCount
+	ColPricePaid
+	ColRefundAmount
+	ColRefundSettlement
+	ColRefundRef
 )
 
 // SupportedLocales are the header languages, in the order they are offered.
@@ -77,6 +91,10 @@ var labels = map[string]map[Column]string{
 		ColCount: "Count", ColSuspectCount: "Suspected bots",
 		ColEnteredAt: "Entry time", ColEnteredSource: "Entry source", ColEnteredScanner: "Scanner / gate",
 		ColGuest: "Guest", ColSeat: "Seat", ColTicket: "Ticket", ColVIP: "VIP", ColInvitation: "Invitation", ColTest: "Test",
+		ColEvent: "Event", ColOrdersCount: "Orders", ColSold: "Sold", ColComplimentary: "Invitations",
+		ColRefundedTickets: "Refunded tickets", ColActiveTickets: "Active tickets", ColRefundedAmount: "Refunded",
+		ColNet: "Net", ColTicketsCount: "Tickets", ColPricePaid: "Price paid", ColRefundAmount: "Refund amount",
+		ColRefundSettlement: "Refund settlement", ColRefundRef: "Refund reference",
 	},
 	"ru": {
 		ColOrder: "Заказ", ColOrderStatus: "Статус заказа", ColDate: "Дата",
@@ -92,6 +110,10 @@ var labels = map[string]map[Column]string{
 		ColCount: "Количество", ColSuspectCount: "Из них боты",
 		ColEnteredAt: "Время входа", ColEnteredSource: "Источник входа", ColEnteredScanner: "Сканер / вход",
 		ColGuest: "Гость", ColSeat: "Место", ColTicket: "Билет", ColVIP: "VIP", ColInvitation: "Пригласительный", ColTest: "Тест",
+		ColEvent: "Мероприятие", ColOrdersCount: "Заказов", ColSold: "Продано", ColComplimentary: "Пригласительных",
+		ColRefundedTickets: "Возвращено билетов", ColActiveTickets: "Активных билетов", ColRefundedAmount: "Возвращено",
+		ColNet: "Нетто", ColTicketsCount: "Билетов", ColPricePaid: "Оплачено", ColRefundAmount: "Сумма возврата",
+		ColRefundSettlement: "Способ возврата", ColRefundRef: "Ссылка на возврат",
 	},
 	"es": {
 		ColOrder: "Pedido", ColOrderStatus: "Estado del pedido", ColDate: "Fecha",
@@ -107,6 +129,10 @@ var labels = map[string]map[Column]string{
 		ColCount: "Cantidad", ColSuspectCount: "De ellos, bots",
 		ColEnteredAt: "Hora de entrada", ColEnteredSource: "Origen de la entrada", ColEnteredScanner: "Escáner / acceso",
 		ColGuest: "Invitado", ColSeat: "Asiento", ColTicket: "Entrada", ColVIP: "VIP", ColInvitation: "Invitación", ColTest: "Prueba",
+		ColEvent: "Evento", ColOrdersCount: "Pedidos", ColSold: "Vendidas", ColComplimentary: "Invitaciones",
+		ColRefundedTickets: "Entradas devueltas", ColActiveTickets: "Entradas activas", ColRefundedAmount: "Devuelto",
+		ColNet: "Neto", ColTicketsCount: "Entradas", ColPricePaid: "Precio pagado", ColRefundAmount: "Importe devuelto",
+		ColRefundSettlement: "Forma de devolución", ColRefundRef: "Referencia de la devolución",
 	},
 }
 
