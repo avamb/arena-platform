@@ -80,8 +80,9 @@ type Report struct {
 	OrdersImport        Counter
 	OrderLinesMatched   int
 	OrderLinesUnmatched int
-	// OrdersNotShipped counts paid orders Shopify never marked as fulfilled.
-	OrdersNotShipped int
+	// OrdersShippedAssumed counts paid orders Shopify never marked as
+	// fulfilled, stored as shipped (owner decision 2026-11-07).
+	OrdersShippedAssumed int
 	// BodyImagesDropped and BodyTablesDropped count pictures and tables the
 	// shop's rich-text profile removed from descriptions and pages.
 	BodyImagesDropped int
@@ -166,9 +167,9 @@ func (r *Report) Write(w io.Writer) {
 		fmt.Fprintf(w, "  order lines: %d matched to a product of the shop, %d kept as text only (no product of that name)\n",
 			r.OrderLinesMatched, r.OrderLinesUnmatched)
 	}
-	if r.OrdersNotShipped > 0 {
-		fmt.Fprintf(w, "  orders: %d paid orders were never marked as fulfilled in Shopify; they are kept as paid and are not offered under \"to ship\"\n",
-			r.OrdersNotShipped)
+	if r.OrdersShippedAssumed > 0 {
+		fmt.Fprintf(w, "  orders: %d paid orders were never marked as fulfilled in Shopify; they are stored as shipped, at the time of payment\n",
+			r.OrdersShippedAssumed)
 	}
 	if r.BodyImagesDropped > 0 || r.BodyTablesDropped > 0 {
 		fmt.Fprintf(w, "  texts: the shop's sanitizer removed %d pictures and %d tables from descriptions and pages\n",

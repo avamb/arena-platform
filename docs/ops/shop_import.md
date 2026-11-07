@@ -285,7 +285,11 @@ What an order becomes:
   refunded amount and the paid / shipped / cancelled times of known ones; it
   never duplicates. The list also finds an imported order by its old number
   (`#1872` or `1872`).
-* **Status:** `paid` + fulfilled = `shipped`; `paid` + unfulfilled = `paid`;
+* **Status:** `paid` + fulfilled = `shipped`; `paid` + unfulfilled = `shipped`
+  too, with the shipping time set to the payment time (owner decision
+  2026-11-07: Shopify's "unfulfilled" on a paid order is a forgotten mark;
+  `metadata.shipped_assumed` records it, the report counts them; a re-run that
+  finds a real fulfilment date in Shopify replaces the assumed time);
   `refunded` = `refunded` (refunded amount = total); `partially_refunded` =
   `partially_refunded` with Shopify's refunded amount (no amount: just paid);
   `voided` / `expired`, or cancelled after payment with no refund = `cancelled`.
@@ -311,8 +315,7 @@ What an order becomes:
 * **A record, not a sale.** No payment intent, no stock move, no letter, no
   Telegram message, no delivery step. The shop answers `shop.order_historic`
   (409) to ship, e-mail or refund an imported order, the event center hides
-  those buttons, and an imported order is never counted under "to ship" even
-  when Shopify never marked it fulfilled (the report counts those orders).
+  those buttons, and an imported order is never counted under "to ship".
   Internal notes still work; the card shows `Shopify #1872 (imported order
   history)` as the first note.
 * The report carries counts and amounts only, never a buyer's name, e-mail or

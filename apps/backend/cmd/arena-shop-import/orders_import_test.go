@@ -50,7 +50,7 @@ func TestPlanOrder_PaidAndFulfilledIsShipped(t *testing.T) {
 	if err != nil || skip != "" {
 		t.Fatalf("skip=%q err=%v", skip, err)
 	}
-	if p.Status != "shipped" || p.ShippedAt == nil || p.PaidAt == nil || p.NotShipped {
+	if p.Status != "shipped" || p.ShippedAt == nil || p.PaidAt == nil || p.ShippedAssumed {
 		t.Fatalf("plan: %+v", p)
 	}
 	if p.Subtotal != 83000 || p.Discount != 0 || p.ShippingFee != 5000 || p.Total != 88000 || p.DeliveryKind != "shipping" {
@@ -64,15 +64,19 @@ func TestPlanOrder_PaidAndFulfilledIsShipped(t *testing.T) {
 	}
 }
 
-func TestPlanOrder_UnfulfilledStaysPaidAndIsFlagged(t *testing.T) {
+func TestPlanOrder_UnfulfilledPaidIsStoredAsShippedAtPaymentTime(t *testing.T) {
 	o := parseHist(t, `#2,a@b.co,paid,2026-10-17 12:00:01 +0300,unfulfilled,,ILS,200.00,0.00,0,200.00,,0.00,2026-10-17 12:00:00 +0300,1,Gift Set - Large,200.00,,0.00,,,,,,,,,2
 `)[0]
 	p, _, err := planOrder(o, histIndex(), importedAt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Status != "paid" || !p.NotShipped || p.ShippedAt != nil || p.DeliveryKind != "pickup" {
+	// Owner decision 2026-11-07: Shopify's "unfulfilled" on a paid order is a forgotten mark, not a parcel to send.
+	if p.Status != "shipped" || !p.ShippedAssumed || p.ShippedAt == nil || p.PaidAt == nil || !p.ShippedAt.Equal(*p.PaidAt) || p.DeliveryKind != "pickup" {
 		t.Fatalf("plan: %+v", p)
+	}
+	if !strings.Contains(string(p.Metadata), `"shipped_assumed":true`) {
+		t.Fatalf("the assumption must be recorded: %s", p.Metadata)
 	}
 	if p.Lines[0].VariantTitle != "Large" || p.Lines[0].ProductTitle != "Gift Set" {
 		t.Fatalf("line: %+v", p.Lines[0])
@@ -105,7 +109,7 @@ func TestPlanOrder_RefundedAndPartlyRefunded(t *testing.T) {
 	part := parseHist(t, `#5,a@b.co,partially_refunded,2026-10-17 12:00:01 +0300,unfulfilled,,ILS,100.00,0.00,0,100.00,,0.00,2026-10-17 12:00:00 +0300,1,Red Wine,100.00,,25.00,,,,,,,,,5
 `)[0]
 	p, _, err = planOrder(part, histIndex(), importedAt)
-	if err != nil || p.Status != "partially_refunded" || p.Refunded != 2500 || !p.NotShipped {
+	if err != nil || p.Status != "partially_refunded" || p.Refunded != 2500 || !p.ShippedAssumed || p.ShippedAt == nil {
 		t.Fatalf("partial: %+v err=%v", p, err)
 	}
 	// A "partly refunded" order that names no amount is just a paid one.

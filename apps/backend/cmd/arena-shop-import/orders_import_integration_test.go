@@ -133,7 +133,7 @@ func TestShopImport_OrderHistory(t *testing.T) {
 		g.createdAt != "2026-10-17 09:00:00" || g.shippedAt != "2026-10-18 06:00:00" || g.step != "" || !g.hasCustomer {
 		t.Fatalf("#1001: %+v", g)
 	}
-	if g := read("#1002"); g.status != "paid" || g.shippedAt != "" {
+	if g := read("#1002"); g.status != "shipped" || g.shippedAt != "2026-10-17 09:00:01" { // never marked fulfilled in Shopify: shipped at the time of payment
 		t.Fatalf("#1002: %+v", g)
 	}
 	if g := read("#1003"); g.status != "refunded" || g.refunded != 20000 {

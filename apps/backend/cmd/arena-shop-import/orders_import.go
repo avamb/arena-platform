@@ -182,8 +182,10 @@ type plannedOrder struct {
 	StaffNote    string
 	Metadata     []byte
 	Lines        []plannedLine
-	// NotShipped is a paid order Shopify never marked as fulfilled.
-	NotShipped bool
+	// ShippedAssumed is a paid order Shopify never marked as fulfilled: the
+	// owner decided (2026-11-07) that these were shipped and only forgotten, so
+	// the import stores them as shipped, at the time of the payment.
+	ShippedAssumed bool
 	// Unmatched counts lines no variant of the shop could be matched to.
 	Unmatched int
 }
@@ -292,7 +294,13 @@ func planOrder(o ImportOrder, idx *variantIndex, importedAt time.Time) (p planne
 			p.Status = shop.StatusShipped
 		}
 	}
-	p.NotShipped = p.Status == shop.StatusPaid || (p.Status == shop.StatusPartiallyRefunded && p.ShippedAt == nil)
+	if o.Fulfillment != "fulfilled" && p.PaidAt != nil && (p.Status == shop.StatusPaid || p.Status == shop.StatusPartiallyRefunded) {
+		t := *p.PaidAt
+		p.ShippedAt, p.ShippedAssumed = &t, true
+		if p.Status == shop.StatusPaid {
+			p.Status = shop.StatusShipped
+		}
+	}
 	p.UpdatedAt = latestOf(o.CreatedAt, o.PaidAt, o.FulfilledAt, o.CancelledAt)
 
 	// Buyer and delivery.
@@ -320,7 +328,8 @@ func planOrder(o ImportOrder, idx *variantIndex, importedAt time.Time) (p planne
 			"discount_code": o.DiscountCode, "shipping_method": o.ShippingMethod,
 			"taxes_minor": o.TaxesMinor,
 		},
-		"imported_at": importedAt.Format(time.RFC3339),
+		"shipped_assumed": p.ShippedAssumed,
+		"imported_at":     importedAt.Format(time.RFC3339),
 	}
 	if p.Metadata, err = json.Marshal(meta); err != nil {
 		return p, "", err
@@ -380,8 +389,8 @@ func (im *Importer) ImportOrders(ctx context.Context, of *OrdersFile) error {
 		}
 		im.rep.OrderLinesMatched += len(plan.Lines) - plan.Unmatched
 		im.rep.OrderLinesUnmatched += plan.Unmatched
-		if plan.NotShipped {
-			im.rep.OrdersNotShipped++
+		if plan.ShippedAssumed {
+			im.rep.OrdersShippedAssumed++
 		}
 		if im.offline() {
 			im.rep.OrdersImport.add(outCreated, "")
