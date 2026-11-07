@@ -202,6 +202,9 @@ func (s *Service) Ship(ctx context.Context, orgID, id uuid.UUID, trackingNote st
 		if err != nil {
 			return err
 		}
+		if o.Source == OrderSourceShopify {
+			return ErrOrderHistoric
+		}
 		if trackingOnly(o) {
 			out = o
 			if o.TrackingNote != trackingNote {
@@ -384,6 +387,9 @@ func (s *Service) Refund(ctx context.Context, in RefundInput) (RefundResult, err
 			}
 			refundID, amount, replayed = prior.ID, prior.Amount, true
 			return nil
+		}
+		if o.Source == OrderSourceShopify {
+			return ErrOrderHistoric
 		}
 		switch o.Status {
 		case StatusPaid, StatusShipped, StatusPartiallyRefunded, StatusManualReview:

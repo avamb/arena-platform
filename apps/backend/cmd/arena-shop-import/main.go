@@ -8,7 +8,7 @@
 //	--customers Shopify Customers CSV -> customers (customers.Resolve), org
 //	                                     link, marketing consent
 //	--pages     folder of rendered theme HTML + --pages-map JSON -> shop pages
-//	--orders    Shopify Orders CSV    -> parsed and summed only (second wave)
+//	--orders    Shopify Orders CSV    -> shop_orders with source shopify (history only)
 //
 // It is idempotent. A product is keyed by its slug, which is the Shopify
 // handle; a variant by SKU, then option values, then title; a picture by the
@@ -94,7 +94,7 @@ func parseFlags(args []string) (*cliFlags, error) {
 	fs.StringVar(&f.org, "org", "", "UUID of the organization that owns the shop (required)")
 	fs.StringVar(&f.products, "products", "", "Shopify Products CSV")
 	fs.StringVar(&f.customers, "customers", "", "Shopify Customers CSV")
-	fs.StringVar(&f.orders, "orders", "", "Shopify Orders CSV (parsed and summed only)")
+	fs.StringVar(&f.orders, "orders", "", "Shopify Orders CSV (imported as order history: no e-mails, no stock moves)")
 	fs.StringVar(&f.pagesDir, "pages", "", "folder with the rendered theme pages (html)")
 	fs.StringVar(&f.pagesMap, "pages-map", "", "JSON file mapping page files to slugs (required with --pages)")
 	fs.StringVar(&f.imagesDir, "images-dir", "", "folder with local copies of the pictures (by file name); otherwise they are downloaded from the CSV url")
@@ -275,7 +275,9 @@ func run(args []string, out io.Writer) error {
 		}
 	}
 	if of != nil {
-		im.NoteOrders(of)
+		if err := im.ImportOrders(ctx, of); err != nil {
+			return err
+		}
 	}
 
 	im.Report().Write(out)
@@ -296,7 +298,7 @@ func hasImages(pf *ProductsFile, includeDrafts bool) bool {
 }
 
 func failures(r *Report) int {
-	return r.Products.Failed + r.Images.Failed + r.Customers.Failed + r.Pages.Failed + r.Settings.Failed
+	return r.Products.Failed + r.Images.Failed + r.Customers.Failed + r.Pages.Failed + r.Settings.Failed + r.OrdersImport.Failed
 }
 
 // buildMedia opens the media store the way arena-api and arena-worker do.

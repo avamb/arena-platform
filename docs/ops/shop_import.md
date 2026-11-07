@@ -18,7 +18,7 @@ that can reach the database.
 | Customers CSV | `customers` through `customers.Resolve` (e-mail and phone identities, name, locale `ru` on create), `customer_org_links` (source `import`), marketing consents (see below) | e-mail and phone identity |
 | Rendered theme pages + a mapping file | `shop_pages` | slug from the mapping file |
 | Settings (see below) | `shop_settings` | one row per organization |
-| Orders CSV | parsed and summed only, nothing is written (second wave) | - |
+| Orders CSV | `shop_orders` with source `shopify` (order history, see "Order history" below) | Shopify order name (`#1872`) |
 
 Rules that matter:
 
@@ -268,6 +268,59 @@ pictures, untouched. A picture added by hand after this change gets its size
 at upload (`POST /v1/media` reads it); one added by hand before it and not in
 the CSV stays without a size, and the storefront has to fall back for it.
 
+## Order history (`--orders`)
+
+Run it AFTER the products and the customers are in (the lines are matched to the
+shop's products, the buyers to its customers) and with the export taken on the
+day of the switch: Shopify's orders file is the whole history up to that day.
+
+```
+... --org <organization uuid> --orders "/import/orders_export_1.csv" [--dry-run]
+```
+
+What an order becomes:
+
+* **Key:** the Shopify order name (`#1872`) is `shop_orders.external_ref` with
+  source `shopify`. A re-run adds the new orders and refreshes the status,
+  refunded amount and the paid / shipped / cancelled times of known ones; it
+  never duplicates. The list also finds an imported order by its old number
+  (`#1872` or `1872`).
+* **Status:** `paid` + fulfilled = `shipped`; `paid` + unfulfilled = `shipped`
+  too, with the shipping time set to the payment time (owner decision
+  2026-11-07: Shopify's "unfulfilled" on a paid order is a forgotten mark;
+  `metadata.shipped_assumed` records it, the report counts them; a re-run that
+  finds a real fulfilment date in Shopify replaces the assumed time);
+  `refunded` = `refunded` (refunded amount = total); `partially_refunded` =
+  `partially_refunded` with Shopify's refunded amount (no amount: just paid);
+  `voided` / `expired`, or cancelled after payment with no refund = `cancelled`.
+  Orders that were never paid (`pending`, `authorized`, ...) are skipped.
+* **Money:** Shopify's `Subtotal` is already after the discount, so the order
+  stores subtotal = sum of the lines, discount = `Discount Amount`, shipping,
+  total = Shopify's total. An order whose numbers do not add up
+  (`lines - discount + shipping != total`, for instance a tax-exclusive store)
+  fails and is listed; nothing is rounded to make it fit. VAT is kept in the
+  order's metadata only.
+* **Dates:** created, paid, fulfilled and cancelled times are Shopify's, so the
+  list is in the real order.
+* **Delivery:** an order with a shipping address or a shipping fee is
+  `shipping`, any other is `pickup`. Address, buyer name, phone and the
+  customer's note come from the file.
+* **Lines:** matched to a variant by the line's name (`Product - Variant`, or
+  `Product` for a product without options; the file has no SKU). A line with
+  no such product (a product removed from Shopify) is kept as text with its
+  quantity and price. Both counts are in the report.
+* **Customer:** every order is tied to the customer found or created through
+  `customers.Resolve` (marketing consent is NOT touched: only the customers
+  file brings it).
+* **A record, not a sale.** No payment intent, no stock move, no letter, no
+  Telegram message, no delivery step. The shop answers `shop.order_historic`
+  (409) to ship, e-mail or refund an imported order, the event center hides
+  those buttons, and an imported order is never counted under "to ship".
+  Internal notes still work; the card shows `Shopify #1872 (imported order
+  history)` as the first note.
+* The report carries counts and amounts only, never a buyer's name, e-mail or
+  phone.
+
 ## Dry run on the real export (counts only)
 
 Fresh scratch database, organization with no shop yet. Default selection
@@ -282,7 +335,7 @@ pages:     9 would be created (2 pages carry a picture that still points at the 
 customers: 932 would be created
 consents:  290 would be created (642 customers say no: nothing recorded)
 money (ILS): prices 200.00 - 550.00, stock value 102630.00
-orders file (parsed, NOT imported): 872 orders, 911 lines, 1 without e-mail,
+orders file: 872 orders, 911 lines, 1 without e-mail,
            2 cancelled, 0 unreadable; paid 798, refunded 62, partially refunded 12
            ILS: total 469610.40, subtotal 459260.40, shipping 10350.00,
            discounts 3141.60, refunded 33342.80
@@ -303,9 +356,8 @@ all 39 products `physical`, option names set on the 9 that have real options
 
 ## Known limits
 
-* Orders are not imported yet (`shop_orders` with source `shopify`). The orders
-  file is parsed and its totals are printed so they can be compared with
-  Shopify's own report.
+* An imported order is a record only (see "Order history"): it has no payment,
+  so the shop cannot refund it, and it is not shipped or e-mailed from here.
 * Pictures inside pages (3 on `events`, 1 on `partners` for client-4) are
   kept by the page sanitizer, but they still load from Shopify. Every `<img>`
   of a stored page or description that is still on Shopify (`cdn.shopify.com`, any `*.shopify.com` or
