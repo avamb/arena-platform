@@ -23,12 +23,14 @@ func stub(t *testing.T, domainsStatus int) (*httptest.Server, func() []string) {
 		switch r.URL.Path {
 		case "/v3/senders":
 			_, _ = w.Write([]byte(`{"senders":[{"id":1,"name":"A","email":"other@example.org","active":true},{"id":2,"name":"T","email":"Tickets@Example.com","active":true,"ips":[]}]}`))
-		case "/v3/senders/domains":
+		case "/v3/senders/domains/example.com":
 			if domainsStatus != http.StatusOK {
 				w.WriteHeader(domainsStatus)
 				return
 			}
-			_, _ = w.Write([]byte(`{"domains":[{"id":9,"domain_name":"example.org","authenticated":false},{"id":10,"domain_name":"example.com","authenticated":true,"verified":true,"extra":1,"dns_records":{"dkim_record":{"type":"TXT","value":"dkim-value","host_name":"mail._domainkey"},"brevo_code":{"type":"TXT","value":"brevo-code:abc","host_name":""},"dmarc_record":{"type":"TXT","value":"v=DMARC1","host_name":"_dmarc"}}}]}`))
+			_, _ = w.Write([]byte(`{"domain":"example.com","verified":true,"authenticated":true,"dns_records":{"dkim_record":null,"dkim1Record":{"type":"CNAME","value":"b1.dkim.brevo.com","host_name":"brevo1._domainkey","status":true},"dkim2Record":{"type":"CNAME","value":"b2.dkim.brevo.com","host_name":"brevo2._domainkey"},"brevo_code":{"type":"TXT","value":"brevo-code:abc","host_name":"@"},"dmarc_record":{"type":"TXT","value":"v=DMARC1","host_name":"_dmarc"}}}`))
+		case "/v3/senders/domains":
+			w.WriteHeader(http.StatusNotFound)
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
@@ -44,14 +46,14 @@ func stub(t *testing.T, domainsStatus int) (*httptest.Server, func() []string) {
 func TestGetSenderListsSendersAndReadsDomainRecords(t *testing.T) {
 	s, paths := stub(t, http.StatusOK)
 	got, err := New("test-key", s.URL, s.Client()).GetSender(context.Background(), "tickets@example.com")
-	if err != nil || !got.Active || !got.DomainVerified || len(got.DNSRecords) != 3 {
+	if err != nil || !got.Active || !got.DomainVerified || len(got.DNSRecords) != 4 {
 		t.Fatalf("sender=%+v err=%v", got, err)
 	}
-	if got.DNSRecords[0].Type != "DKIM" || got.DNSRecords[0].Host != "mail._domainkey" {
+	if got.DNSRecords[0].Type != "DKIM" || got.DNSRecords[0].Host != "brevo1._domainkey" {
 		t.Fatalf("records=%+v", got.DNSRecords)
 	}
 	for _, p := range paths() {
-		if p != "/v3/senders" && p != "/v3/senders/domains" {
+		if p != "/v3/senders" && p != "/v3/senders/domains/example.com" {
 			t.Fatalf("unexpected path requested: %q", p)
 		}
 	}

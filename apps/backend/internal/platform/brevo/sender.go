@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -111,36 +112,28 @@ func (c *Client) GetSender(ctx context.Context, email string) (Sender, error) {
 		return out, nil
 	}
 	domain := strings.ToLower(strings.TrimSpace(out.Email[at+1:]))
-	var doms struct {
-		Domains []struct {
-			DomainName    string `json:"domain_name"`
-			Authenticated bool   `json:"authenticated"`
-			Verified      bool   `json:"verified"`
-			DNSRecords    struct {
-				Dkim      *wireRecord `json:"dkim_record"`
-				BrevoCode *wireRecord `json:"brevo_code"`
-				Dmarc     *wireRecord `json:"dmarc_record"`
-				Spf       *wireRecord `json:"spf_record"`
-			} `json:"dns_records"`
-		} `json:"domains"`
+	var d struct {
+		Authenticated bool `json:"authenticated"`
+		Verified      bool `json:"verified"`
+		DNSRecords    struct {
+			Dkim      *wireRecord `json:"dkim_record"`
+			Dkim1     *wireRecord `json:"dkim1Record"`
+			Dkim2     *wireRecord `json:"dkim2Record"`
+			BrevoCode *wireRecord `json:"brevo_code"`
+			Dmarc     *wireRecord `json:"dmarc_record"`
+		} `json:"dns_records"`
 	}
-	if err := c.getJSON(ctx, "/v3/senders/domains", &doms); err != nil {
+	if err := c.getJSON(ctx, "/v3/senders/domains/"+url.PathEscape(domain), &d); err != nil {
 		return out, nil
 	}
-	for _, d := range doms.Domains {
-		if strings.ToLower(d.DomainName) != domain {
-			continue
+	out.DomainVerified = d.Authenticated || d.Verified
+	for _, r := range []struct {
+		kind string
+		rec  *wireRecord
+	}{{"DKIM", d.DNSRecords.Dkim}, {"DKIM", d.DNSRecords.Dkim1}, {"DKIM", d.DNSRecords.Dkim2}, {"BREVO_CODE", d.DNSRecords.BrevoCode}, {"DMARC", d.DNSRecords.Dmarc}} {
+		if r.rec != nil && r.rec.Value != "" {
+			out.DNSRecords = append(out.DNSRecords, DNSRecord{Type: r.kind, Host: r.rec.HostName, Value: r.rec.Value})
 		}
-		out.DomainVerified = d.Authenticated || d.Verified
-		for _, r := range []struct {
-			kind string
-			rec  *wireRecord
-		}{{"DKIM", d.DNSRecords.Dkim}, {"SPF", d.DNSRecords.Spf}, {"BREVO_CODE", d.DNSRecords.BrevoCode}, {"DMARC", d.DNSRecords.Dmarc}} {
-			if r.rec != nil && r.rec.Value != "" {
-				out.DNSRecords = append(out.DNSRecords, DNSRecord{Type: r.kind, Host: r.rec.HostName, Value: r.rec.Value})
-			}
-		}
-		break
 	}
 	return out, nil
 }
