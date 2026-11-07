@@ -40,6 +40,7 @@ import (
 	"fmt"
 	"html"
 	"log/slog"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -216,6 +217,9 @@ type message struct {
 	Phone           string
 	DoneTo          []string
 	TopicRecipients []byte
+	OrgSenderEmail  string
+	OrgSenderStatus string
+	SiteOrigins     []byte
 }
 
 const loadMessageSQL = `
@@ -224,7 +228,8 @@ SELECT m.id, m.org_id, m.page_slug, m.sender_name, m.sender_email, m.message,
        o.name, o.default_locale, o.contact_form_to_telegram,
        sc.settings #> '{hosted_page,public_contact}', COALESCE(o.contact_email, ''),
        COALESCE(` + gen.OwnerRecipientSQL + `, ''), sc.deleted_at IS NOT NULL,
-       m.topic, m.last_name, m.phone, m.email_done_to, sc.settings #> '{contact_form,recipients}'
+       m.topic, m.last_name, m.phone, m.email_done_to, sc.settings #> '{contact_form,recipients}',
+       COALESCE(o.sender_email, ''), COALESCE(o.sender_verification_status, ''), sc.settings #> '{site,origins}'
 FROM organizer_contact_messages m
 JOIN organizations o ON o.id = m.org_id
 JOIN sales_channels sc ON sc.id = m.channel_id
@@ -247,6 +252,7 @@ func (h *Handler) Handle(ctx context.Context, payload []byte) error {
 		&m.EmailSent, &m.EmailMailed, &m.TelegramSent, &m.OrgName, &m.OrgLocale, &m.ToTelegram,
 		&m.PublicContact, &m.OrgEmail, &m.OwnerEmail, &m.ChannelDeleted,
 		&m.Topic, &m.LastName, &m.Phone, &m.DoneTo, &m.TopicRecipients,
+		&m.OrgSenderEmail, &m.OrgSenderStatus, &m.SiteOrigins,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Purged or never committed: nothing to deliver.
@@ -292,7 +298,8 @@ func (h *Handler) Handle(ctx context.Context, payload []byte) error {
 			// leg still runs and says so.
 			h.logger.Warn("contactform: no usable address; message not mailed", slog.String("message_id", id.String()))
 		} else {
-			subject, htmlBody, textBody := RenderEmailTopic(m.OrgLocale, m.OrgName, m.PageSlug, fullName, m.SenderEmail, m.Phone, m.Topic, m.Body)
+			subject, htmlBody, textBody := RenderEmailTopic(m.OrgLocale, m.OrgName, pageRef(m.PageSlug, m.SiteOrigins), fullName, m.SenderEmail, m.Phone, m.Topic, m.Body)
+			from, fromName := organizerFrom(m.OrgSenderEmail, m.OrgSenderStatus, m.OrgName)
 			done := map[string]bool{}
 			for _, d := range m.DoneTo {
 				done[d] = true
@@ -303,7 +310,7 @@ func (h *Handler) Handle(ctx context.Context, payload []byte) error {
 					continue
 				}
 				if err := h.sender.Send(ctx, emailadapter.Message{
-					To: to, ReplyTo: m.SenderEmail, Subject: subject, HTMLBody: htmlBody, TextBody: textBody,
+					To: to, From: from, FromName: fromName, ReplyTo: m.SenderEmail, Subject: subject, HTMLBody: htmlBody, TextBody: textBody,
 				}); err != nil {
 					failed = append(failed, err.Error())
 					continue
@@ -346,7 +353,7 @@ func (h *Handler) Handle(ctx context.Context, payload []byte) error {
 	if !m.TelegramSent {
 		posted := false
 		if m.ToTelegram && h.announcer != nil {
-			text := FormatTelegram(m.OrgName, m.PageSlug, FullName(m.SenderName, m.LastName), m.SenderEmail, m.Body, leg)
+			text := FormatTelegram(m.OrgName, pageRef(m.PageSlug, m.SiteOrigins), FullName(m.SenderName, m.LastName), m.SenderEmail, m.Body, leg)
 			chats, delivered, err := h.announcer.AnnounceToOrg(ctx, m.OrgID.String(), text)
 			if err != nil {
 				return errors.Join(sendErr, fmt.Errorf("contactform: post message %s to the sales chats: %w", id, err))
@@ -558,14 +565,14 @@ func RenderEmailTopic(locale, orgName, pageSlug, senderName, senderEmail, phone,
 		`<p>` + esc(intro) + `</p>` +
 		`<p><b>` + esc(from) + `:</b> ` + esc(name) + ` &lt;<span dir="ltr">` + esc(senderEmail) + `</span>&gt;<br>` +
 		phoneHTML(phone, esc) +
-		`<b>` + esc(page) + `:</b> ` + esc(orgName) + ` (/` + esc(pageSlug) + `)` + esc(pageTag) + `</p>` +
+		`<b>` + esc(page) + `:</b> ` + esc(orgName) + ` ` + esc(pageParen(pageSlug)) + esc(pageTag) + `</p>` +
 		`<div style="white-space:pre-wrap;border-left:3px solid #4f46e5;padding:8px 12px;background:#f6f6fb">` + esc(body) + `</div>` +
 		`<p>` + esc(reply) + `</p>` +
 		`<p style="font-size:12px;color:#888">` + esc(footer) + `</p></body></html>`
 	textBody = strings.Join([]string{
 		intro, "",
 		from + ": " + name + " <" + senderEmail + ">" + phoneText(phone),
-		page + ": " + orgName + " (/" + pageSlug + ")" + pageTag, "",
+		strings.TrimSpace(page+": "+orgName+" "+pageParen(pageSlug)) + pageTag, "",
 		body, "",
 		reply, "",
 		footer,
@@ -580,7 +587,7 @@ func RenderEmailTopic(locale, orgName, pageSlug, senderName, senderEmail, phone,
 func FormatTelegram(orgName, pageSlug, senderName, senderEmail, body string, leg EmailLeg) string {
 	esc := opsalert.EscapeHTML
 	head := "✉️ <b>Message from a buyer</b>\n" +
-		"Sales page: " + esc(orgName) + " (/" + esc(pageSlug) + ")\n" +
+		strings.TrimSpace("Sales page: "+esc(orgName)+" "+esc(pageParen(pageSlug))) + "\n" +
 		"From: " + esc(strings.Join(strings.Fields(senderName), " ")) + " &lt;" + esc(senderEmail) + "&gt;\n\n"
 	tail := "\n\nThe same message went to your e-mail. Reply to the buyer from there."
 	switch leg {
@@ -646,4 +653,49 @@ func phoneText(phone string) string {
 		return ""
 	}
 	return "\n\u260e " + phone
+}
+
+// siteFormMarker is the page_slug the static-site form stores (hsite/contact.go):
+// not a page, only a marker that the message came from the channel's site.
+const siteFormMarker = "feed-site"
+
+// pageRef turns a stored page_slug into the page reference the letters print:
+// a slug stays a slug, the site marker becomes the host of the site's first
+// origin in parentheses ("" when the channel has none). RenderEmailTopic and
+// FormatTelegram take this value in their pageSlug argument.
+func pageRef(pageSlug string, originsJSON []byte) string {
+	if pageSlug != siteFormMarker {
+		return pageSlug
+	}
+	var origins []string
+	if err := json.Unmarshal(originsJSON, &origins); err != nil {
+		return ""
+	}
+	for _, o := range origins {
+		if u, err := url.Parse(strings.TrimSpace(o)); err == nil && u.Host != "" {
+			return "(" + u.Host + ")"
+		}
+	}
+	return ""
+}
+
+// pageParen is the parenthesised page reference: "(/slug)", "(host)" or "".
+func pageParen(ref string) string {
+	switch {
+	case ref == "":
+		return ""
+	case strings.HasPrefix(ref, "("):
+		return ref
+	}
+	return "(/" + ref + ")"
+}
+
+// organizerFrom is the From of the organizer-facing letter: the organization's
+// own sender only when it is verified, like the ticket letters. An empty From
+// leaves the platform default to the e-mail adapter.
+func organizerFrom(senderEmail, status, orgName string) (from, fromName string) {
+	if status == "verified" && senderEmail != "" {
+		from = senderEmail
+	}
+	return from, orgName
 }

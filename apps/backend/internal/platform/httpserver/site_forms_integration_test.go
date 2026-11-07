@@ -135,6 +135,9 @@ func TestSiteContact_TopicRecipientsAndRetryNeverRepeatAnAddress(t *testing.T) {
 	payload, _ := json.Marshal(contactform.Payload{MessageID: id.String()})
 
 	// The second address fails: the first is mailed and remembered, the job errors.
+	if _, err := pool.Exec(ctx, `UPDATE organizations SET sender_email = 'tickets@own-sender.example', sender_verification_status = 'verified' WHERE id = $1`, sf.f.orgID); err != nil {
+		t.Fatal(err)
+	}
 	mail := &scriptedMail{failFor: map[string]bool{siteMailB: true}}
 	h := contactform.New(contactform.Options{Pool: pool, Sender: mail})
 	if err := h.Handle(ctx, payload); err == nil {
@@ -146,6 +149,12 @@ func TestSiteContact_TopicRecipientsAndRetryNeverRepeatAnAddress(t *testing.T) {
 	if !strings.Contains(mail.sent[0].TextBody, "Anna Cohen") || !strings.Contains(mail.sent[0].TextBody, "+972 50 123 4567") ||
 		!strings.Contains(mail.sent[0].TextBody, "private_event") {
 		t.Errorf("the letter lacks the sender's full name, phone or topic:\n%s", mail.sent[0].TextBody)
+	}
+	if mail.sent[0].From != "tickets@own-sender.example" || mail.sent[0].FromName == "" {
+		t.Errorf("a verified sender must be the From: from=%q name=%q", mail.sent[0].From, mail.sent[0].FromName)
+	}
+	if page == "feed-site" && strings.Contains(mail.sent[0].TextBody, "/feed-site") {
+		t.Errorf("the site marker leaked into the letter:\n%s", mail.sent[0].TextBody)
 	}
 	var lastErr string
 	var sentAt *string
