@@ -185,6 +185,74 @@ func TestExternalRefund_FinalAmountPerTicket(t *testing.T) {
 	}
 }
 
+// TestExternalRefund_CappedByEarlierProviderRefunds: a partial provider
+// refund that left the ticket active lowers what an external refund may still
+// book. 10.00 of a 25.00 ticket went back through the provider, so 15.01 is
+// refused and 15.00 is accepted.
+func TestExternalRefund_CappedByEarlierProviderRefunds(t *testing.T) {
+	srv, _ := productionIntegrationServerCfg(t, nil)
+	ts := httptest.NewServer(srv.Router())
+	t.Cleanup(ts.Close)
+	pf := &prom0113Fixture{ts: ts, client: ts.Client(), q: gen.New(srv.pgxPool)}
+	user, err := pf.q.InsertUser(context.Background(), "extref-cap-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf.userID = user.ID
+	org := pf.org(t, "EXTREFCAP")
+	key := pf.key(t, org, "refund.create", "order.read")
+	ctx := context.Background()
+
+	f := newPay03Order(t, srv.pgxPool, org, "stripe")
+	t.Cleanup(func() {
+		for _, s := range []string{
+			`UPDATE tickets SET refund_id = NULL WHERE order_id = $1`,
+			`DELETE FROM refunds WHERE order_id = $1 AND settlement = 'external'`,
+			`DELETE FROM barcodes WHERE ticket_id IN (SELECT id FROM tickets WHERE order_id = $1)`,
+		} {
+			if _, err := srv.pgxPool.Exec(context.Background(), s, f.order); err != nil {
+				t.Logf("cleanup %q: %v", s, err)
+			}
+		}
+		_, _ = srv.pgxPool.Exec(context.Background(),
+			`DELETE FROM outbox_events WHERE aggregate_id = ANY($1::text[])`, []string{f.tickets[0].String(), f.tickets[1].String()})
+	})
+	// The earlier partial provider refund: succeeded, the ticket stays active.
+	if _, err := srv.pgxPool.Exec(ctx, `
+		INSERT INTO refunds (org_id, payment_intent_id, order_id, ticket_id, amount, currency, state,
+		                     settlement, provider, cancel_ticket, succeeded_at)
+		VALUES ($1, $2, $3, $4, 1000, 'EUR', 'succeeded', 'provider', 'stripe', false, now())`,
+		org, f.pay, f.order, f.tickets[0]); err != nil {
+		t.Fatal(err)
+	}
+	// A failed provider refund does not count against the price.
+	if _, err := srv.pgxPool.Exec(ctx, `
+		INSERT INTO refunds (org_id, payment_intent_id, order_id, ticket_id, amount, currency, state,
+		                     settlement, provider, cancel_ticket)
+		VALUES ($1, $2, $3, $4, 900, 'EUR', 'failed', 'provider', 'stripe', false)`,
+		org, f.pay, f.order, f.tickets[0]); err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/v1/organizations/%s/orders/%s/external-refund", org, f.order)
+	one := func(amount int64) string {
+		return fmt.Sprintf(`{"items":[{"ticket_id":%q,"amount_minor":%d,"provider_refund_ref":"AP-CAP"}]}`, f.tickets[0], amount)
+	}
+
+	st, out := pf.do(t, http.MethodPost, path, key, one(1501))
+	if st != http.StatusUnprocessableEntity || prom0113Code(out) != "order.refund_exceeds_price" {
+		t.Fatalf("over the remainder: %d %v; want 422 order.refund_exceeds_price", st, out)
+	}
+	if d := extRefundDetails(out); d["remaining_minor"] != float64(1500) || d["refunded_minor"] != float64(1000) {
+		t.Fatalf("details = %v; want remaining 1500 after 1000 refunded", d)
+	}
+	if s, _ := f.ticket(t, 0); s != "active" {
+		t.Fatalf("ticket 0 = %s after a refused call; want active", s)
+	}
+	if st, out = pf.do(t, http.MethodPost, path, key, one(1500)); st != http.StatusOK {
+		t.Fatalf("exactly the remainder: %d %v; want 200", st, out)
+	}
+}
+
 func extRefundDetails(m map[string]any) map[string]any {
 	if e, ok := m["error"].(map[string]any); ok {
 		if d, ok := e["details"].(map[string]any); ok {
