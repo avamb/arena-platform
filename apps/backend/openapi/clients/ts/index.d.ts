@@ -11295,6 +11295,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/refunds/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Failed refunds and undelivered buyer letters
+         * @description Everything the organizer has to look at in one answer (EC-V5, spec 62
+         *     section 12.2): `refunds` are failed refunds nobody retried, refunds
+         *     parked for review (`manual_review`) and refunds the provider accepted
+         *     but did not settle within 30 minutes; `letters` are orders whose buyer
+         *     most likely has no letter (a ticket letter that failed, is stuck, or
+         *     bounced; a change, cancellation or refund letter that failed and was
+         *     not followed by a newer one). Test orders are left out and so are
+         *     letters older than 60 days. Each list holds at most 50 rows; `count`
+         *     is the number the nav badge shows. A refund is retried with
+         *     `POST .../refunds/{refund_id}/retry`, a letter is sent again with
+         *     `POST .../orders/{order_id}/resend-tickets`. Requires the
+         *     `refund.read` permission.
+         */
+        get: operations["getV1OrganizationsOrgIdRefundsQueue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/refunds/{refund_id}": {
         parameters: {
             query?: never;
@@ -17412,6 +17443,49 @@ export interface components {
             /** @description True when another page follows. */
             has_more: boolean;
         };
+        /** @description An order whose buyer most likely has no letter. */
+        UndeliveredLetter: {
+            /**
+             * Format: uuid
+             * @description UUID of the order.
+             */
+            order_id: string;
+            /**
+             * Format: int64
+             * @description The order's number (`orders.system_id`).
+             */
+            order_number: number;
+            /** @description Name of the event of the order. */
+            event_name: string;
+            /** @description `ticket` for the order's ticket letters, else the kind of the letter (change, cancel, refund, ...). */
+            kind: string;
+            /** @description `failed` (refused or bounced) or `stuck` (no delivery was ever reported, or the job never ran). */
+            problem: string;
+            /** @description How many tickets' letters are affected (0 for a letter that is not a ticket letter). */
+            tickets: number;
+            /** @description Address the letter went or goes to. */
+            recipient: string;
+            /** @description The failure reason, e-mail addresses removed and cut to 200 characters; empty when none is known. */
+            reason: string;
+            /**
+             * Format: date-time
+             * @description When the problem began.
+             */
+            since: string;
+        };
+        /** @description The refunds and the letters an organizer has to look at. */
+        OrderRefundProblemQueue: {
+            /** @description Up to 50 refunds, newest first. */
+            refunds: components["schemas"]["OrderRefundQueueItem"][];
+            /** @description Up to 50 orders with an undelivered letter, newest problem first. */
+            letters: components["schemas"]["UndeliveredLetter"][];
+            /** @description How many refunds need attention in all. */
+            refunds_total: number;
+            /** @description How many letters are listed (at most 50). */
+            letters_total: number;
+            /** @description refunds_total plus letters_total, the nav badge. */
+            count: number;
+        };
         /** @description One step of a refund's life, read from the audit trail. */
         OrderRefundHistoryEntry: {
             /** @description Audit action, such as `v1.refund.batch_create` or `v1.refund.provider_result`. */
@@ -17872,10 +17946,52 @@ export interface components {
              * @description Only orders created at or before this RFC3339 timestamp.
              */
             to?: string;
+            /**
+             * Format: date-time
+             * @description Only orders whose session starts at or after this RFC3339 timestamp.
+             */
+            session_from?: string;
+            /**
+             * Format: date-time
+             * @description Only orders whose session starts at or before this RFC3339 timestamp.
+             */
+            session_to?: string;
             /** @description Page size, 1-200 (default 50). */
             limit?: number;
             /** @description Pagination offset (default 0). */
             offset?: number;
+        };
+        /**
+         * @description A ticket of an order as the expanded list card shows it (EC-V3): its
+         *     number, status, category, seat, the price paid for it and the state of
+         *     its letter.
+         */
+        OrderListTicket: {
+            /**
+             * Format: uuid
+             * @description UUID of the ticket.
+             */
+            id: string;
+            /**
+             * Format: int64
+             * @description The ticket's number as the buyer sees it.
+             */
+            system_ticket_id: number;
+            /** @description Ticket status (active, cancelled, ...). */
+            status: string;
+            /** @description Name of the ticket category. */
+            tier_name: string | null;
+            /** @description Sector / row / seat, null for general admission. */
+            seat_label: string | null;
+            /**
+             * Format: int64
+             * @description What the buyer paid for this unit, in minor currency units.
+             */
+            price: number;
+            /** @description State of the ticket's letter job - pending, processing, sent, failed, skipped, disabled, or none when it has no job. */
+            delivery_status: string;
+            /** @description Address the ticket's letter goes to, null when the job has none. */
+            recipient_email: string | null;
         };
         /**
          * @description One row of the org-scoped order list (EC-04): the order plus the
@@ -17909,6 +18025,8 @@ export interface components {
              *     without opening every order.
              */
             delivery_state?: string;
+            /** @description The order's issued tickets in line order, for the expanded card of the list (EC-V3). */
+            tickets?: components["schemas"]["OrderListTicket"][];
         };
         /** @description One line item of an order (feature */
         OrderItemSummary: {
@@ -69388,7 +69506,8 @@ export interface operations {
                  *     both sides), on a 9+ digit suffix of them (a national number
                  *     typed without its country code) and on the customer's phone
                  *     identities; anything else is the pg_trgm similarity over
-                 *     buyer_name / buyer_email / buyer_phone. A bare number is ALSO
+                 *     buyer_name / buyer_email / buyer_phone, OR a part of the event
+                 *     name (case-insensitive, EC-V3). A bare number is ALSO
                  *     tried as a phone, so a national number typed without + still
                  *     finds its order.
                  */
@@ -69424,6 +69543,10 @@ export interface operations {
                 from?: string;
                 /** @description Only orders created at or before this RFC3339 timestamp. */
                 to?: string;
+                /** @description Only orders whose session starts at or after this RFC3339 timestamp (EC-V3). */
+                session_from?: string;
+                /** @description Only orders whose session starts at or before this RFC3339 timestamp (EC-V3). */
+                session_to?: string;
                 /** @description Page size, 1-200 (default 50). */
                 limit?: number;
                 /** @description Pagination offset (default 0). */
@@ -75075,6 +75198,74 @@ export interface operations {
                 };
             };
             /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Refunds are not available (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdRefundsQueue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The queue. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderRefundProblemQueue"];
+                };
+            };
+            /** @description org_id is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor does not hold the required permission (refund.read) or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`refund.queue_failed`). */
             500: {
                 headers: {
                     [name: string]: unknown;
