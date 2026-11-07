@@ -94,6 +94,9 @@ export const API = {
   refundOptions: { method: "GET", path: "/v1/organizations/{org_id}/orders/{order_id}/refund-options" },
   externalRefund: { method: "POST", path: "/v1/organizations/{org_id}/orders/{order_id}/external-refund" },
   refundCreate: { method: "POST", path: "/v1/organizations/{org_id}/orders/{order_id}/refunds" },
+  // EC-V5: failed and stuck refunds plus undelivered buyer letters, and the retry of one refund (asks for the password again).
+  refundQueue: { method: "GET", path: "/v1/organizations/{org_id}/refunds/queue" },
+  refundRetry: { method: "POST", path: "/v1/organizations/{org_id}/refunds/{refund_id}/retry" },
   // "Refer a friend" (spec 52): the programme of an event, its pause/resume/end, totals and rewards.
   referralProgram: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/referral-program" },
   referralProgramPut: { method: "PUT", path: "/v1/organizations/{org_id}/events/{event_id}/referral-program" },

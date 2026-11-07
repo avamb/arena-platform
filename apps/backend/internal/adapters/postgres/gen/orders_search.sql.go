@@ -37,13 +37,17 @@ type OrderSearchParams struct {
 	EventID   *uuid.UUID
 	From      *time.Time
 	To        *time.Time
+	// SessionFrom / SessionTo bound sessions.start_at (EC-V3: "the show of
+	// 12 November"); From / To bound the order date.
+	SessionFrom *time.Time
+	SessionTo   *time.Time
 
 	Barcode        string // exact 13-digit EAN-13 of a ticket of the order
 	LegacyTicketID *int64 // tickets.system_ticket_id decoded from a legacy PlatformCode
 	SystemID       *int64 // orders.system_id exact
 	Email          string // lower-cased exact e-mail
 	PhoneDigits    string // digits only, no leading 00/+
-	Text           string // pg_trgm similarity over buyer name/email/phone
+	Text           string // pg_trgm similarity over buyer name/email/phone, or a part of the event name (EC-V3)
 }
 
 // searchOrdersByOrgSelect is the projection of SearchOrdersByOrg: OrderRow's
@@ -74,6 +78,8 @@ WHERE  o.org_id = $1
   AND  ($5::uuid IS NULL OR o.event_id = $5)
   AND  ($6::timestamptz IS NULL OR o.created_at >= $6)
   AND  ($7::timestamptz IS NULL OR o.created_at <= $7)
+  AND  ($14::timestamptz IS NULL OR s.start_at >= $14)
+  AND  ($15::timestamptz IS NULL OR s.start_at <= $15)
   AND  (
         ($8 = '' AND $9::bigint IS NULL AND $10::bigint IS NULL AND $11 = '' AND $12 = '' AND $13 = '')
      OR ($8 <> '' AND o.id IN (
@@ -100,14 +106,15 @@ WHERE  o.org_id = $1
          OR o.customer_id IN (
             SELECT ci.customer_id FROM customer_identities ci
             WHERE  ci.kind = 'phone' AND ci.value_normalized IN ('+' || $12, $12))))
-     OR ($13 <> '' AND (o.buyer_name % $13 OR o.buyer_email % $13 OR o.buyer_phone % $13))
+     OR ($13 <> '' AND (o.buyer_name % $13 OR o.buyer_email % $13 OR o.buyer_phone % $13
+                        OR strpos(lower(e.name), lower($13)) > 0))
   )
 `
 
 const searchOrdersByOrg = searchOrdersByOrgSelect + searchOrdersByOrgWhere +
 	`ORDER  BY (CASE WHEN $10::bigint IS NOT NULL AND o.system_id = $10 THEN 0 ELSE 1 END),
           o.created_at DESC, o.id DESC
-LIMIT  $14 OFFSET $15`
+LIMIT  $16 OFFSET $17`
 
 const countOrdersByOrg = `-- name: CountOrdersByOrg :one
 SELECT count(*)
@@ -117,6 +124,7 @@ func (p OrderSearchParams) filterArgs() []any {
 	return []any{
 		p.OrgID, p.Status, p.Tab, p.SessionID, p.EventID, p.From, p.To,
 		p.Barcode, p.LegacyTicketID, p.SystemID, p.Email, p.PhoneDigits, p.Text,
+		p.SessionFrom, p.SessionTo,
 	}
 }
 
@@ -234,6 +242,58 @@ func (q *Queries) ListOrderTicketDetails(ctx context.Context, orderID uuid.UUID)
 			&r.BarcodeStr, &r.UsedAt, &r.VIP,
 			&r.DeliveryStatus, &r.DeliverySentAt, &r.DeliveryError,
 		); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ListOrdersTicketCards
+// ─────────────────────────────────────────────────────────────────────────────
+
+// OrderTicketCardRow is one ticket of an order as the expanded list card
+// shows it (EC-V3): status, category, seat, price and the state of its
+// letter.
+type OrderTicketCardRow struct {
+	OrderID        uuid.UUID
+	TicketID       uuid.UUID
+	SystemTicketID int64
+	Status         string
+	TierName       *string
+	SeatSector     *string
+	SeatRow        *string
+	SeatNumber     *string
+	Price          int64
+	DeliveryStatus *string
+	RecipientEmail *string
+}
+
+const listOrdersTicketCards = `-- name: ListOrdersTicketCards :many
+SELECT oi.order_id, t.id, t.system_ticket_id, t.status, tt.name,
+       t.seat_sector, t.seat_row, t.seat_number, oi.total,
+       dj.status, dj.recipient_email
+FROM   order_items oi
+JOIN   tickets t ON t.id = oi.ticket_id
+LEFT JOIN ticket_tiers tt ON tt.id = oi.tier_id
+LEFT JOIN delivery_jobs dj ON dj.ticket_id = t.id
+WHERE  oi.order_id = ANY($1)
+ORDER  BY oi.order_id, oi.ordinal ASC`
+
+// ListOrdersTicketCards lists the issued tickets of a page of orders in one
+// query (EC-V3), so the expanded list never asks per order.
+func (q *Queries) ListOrdersTicketCards(ctx context.Context, orderIDs []uuid.UUID) ([]OrderTicketCardRow, error) {
+	rows, err := q.db.Query(ctx, listOrdersTicketCards, orderIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []OrderTicketCardRow
+	for rows.Next() {
+		var r OrderTicketCardRow
+		if err := rows.Scan(&r.OrderID, &r.TicketID, &r.SystemTicketID, &r.Status, &r.TierName,
+			&r.SeatSector, &r.SeatRow, &r.SeatNumber, &r.Price, &r.DeliveryStatus, &r.RecipientEmail); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

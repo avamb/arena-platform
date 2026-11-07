@@ -26,6 +26,7 @@ import { OrdersScreen } from "@/screens/OrdersScreen";
 import { OrderScreen } from "@/screens/OrderScreen";
 import { NotificationsScreen } from "@/screens/NotificationsScreen";
 import { SummaryScreen } from "@/screens/SummaryScreen";
+import { RefundQueueScreen } from "@/screens/RefundQueueScreen";
 import { GrowthScreen } from "@/screens/GrowthScreen";
 import { BillingBalanceScreen } from "@/screens/BillingBalanceScreen";
 import { BillingInvoicesScreen } from "@/screens/BillingInvoicesScreen";
@@ -192,6 +193,13 @@ const orderRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/orders/$orderId",
   component: OrderScreen,
+});
+
+// EC-V5: "Refunds" of the bottom bar, the queue of what needs a person.
+const refundQueueRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/refunds",
+  component: RefundQueueScreen,
 });
 
 // Spec 62 §12.1: "Summary" of the bottom bar, the organization-wide summary and the accounting workbook (EC-V1, EC-V2).
@@ -396,6 +404,7 @@ export const routeTree = rootRoute.addChildren([
     sessionInvitationsRoute,
     ordersRoute,
     orderRoute,
+    refundQueueRoute,
     summaryRoute,
     notificationsRoute,
     growthRoute,

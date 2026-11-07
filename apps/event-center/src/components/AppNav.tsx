@@ -6,8 +6,11 @@
  * language and Sign out.
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useRouterState } from "@tanstack/react-router";
+import { fetchRefundQueue } from "@/lib/api/endpoints";
 import type { OrgAccess } from "@/lib/auth";
+import { badgeText, queueCount } from "@/lib/refundQueue";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
 import { shopNavTarget, showShopNav, type ShopMode } from "@/lib/shopModule";
@@ -31,6 +34,7 @@ export function navSectionOf(pathname: string, search: unknown): NavSection {
   if (rest === "" || rest === "/" || rest.startsWith("/events")) {
     return rest.startsWith("/events/new") ? "more" : "events";
   }
+  if (rest.startsWith("/refunds")) return "refunds";
   if (rest.startsWith("/orders")) {
     const tab = typeof search === "object" && search !== null ? (search as { tab?: unknown }).tab : undefined;
     return tab === "refunds" ? "refunds" : "orders";
@@ -79,6 +83,31 @@ function Icon({ name }: { name: NavSection }) {
   );
 }
 
+/**
+ * The counter on «Refunds» (EC-V5): failed or stuck refunds plus undelivered
+ * letters, the same `count` the queue screen shows. It rides the queue's own
+ * query, so opening the screen costs no second request, and it asks again
+ * every minute. A failed read shows no number rather than a wrong one.
+ */
+export function RefundsBadge({ orgId }: { orgId: string }) {
+  const { t } = useI18n();
+  const queue = useQuery({
+    queryKey: ["refund-queue", orgId],
+    queryFn: () => fetchRefundQueue(orgId),
+    refetchInterval: 60_000,
+  });
+  const text = badgeText(queueCount(queue.data));
+  if (text === null) return null;
+  return (
+    <>
+      <span className="tab-badge" data-testid="nav-refunds-badge" aria-hidden="true">
+        {text}
+      </span>
+      <span className="visually-hidden">{t("nav.refunds.badge", { count: queueCount(queue.data) })}</span>
+    </>
+  );
+}
+
 interface NavProps {
   orgId: string;
   access: OrgAccess;
@@ -94,6 +123,7 @@ export function TabBar({ orgId, access, shopMode, orgCount, onLogout }: NavProps
   const section = navSectionOf(location.pathname, location.search);
   const [moreOpen, setMoreOpen] = useState(false);
   const canOrders = access.can("order.read");
+  const canRefunds = access.can("refund.read");
   const cur = (s: NavSection) => (section === s && !moreOpen ? { "aria-current": "page" as const, className: "tab-item active" } : { className: "tab-item" });
 
   return (
@@ -109,10 +139,11 @@ export function TabBar({ orgId, access, shopMode, orgCount, onLogout }: NavProps
             <span>{t("nav.orders")}</span>
           </Link>
         )}
-        {canOrders && (
-          <Link to="/o/$orgId/orders" params={{ orgId }} search={{ tab: "refunds" }} {...cur("refunds")} data-testid="nav-refunds">
+        {canRefunds && (
+          <Link to="/o/$orgId/refunds" params={{ orgId }} {...cur("refunds")} data-testid="nav-refunds">
             <Icon name="refunds" />
             <span>{t("nav.refunds")}</span>
+            <RefundsBadge orgId={orgId} />
           </Link>
         )}
         <Link to="/o/$orgId/summary" params={{ orgId }} {...cur("summary")} data-testid="nav-summary">

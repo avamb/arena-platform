@@ -2851,3 +2851,160 @@ fieldset legend {
 .page .notice h2 {
   margin: 0;
 }
+
+/* The expanded order cards of the list (EC-V3) and the date filters. */
+.order-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.order-cards:empty {
+  display: none;
+}
+.order-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.875rem;
+  display: grid;
+  gap: 0.5rem;
+}
+.oc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+.oc-num {
+  font-weight: 700;
+  color: var(--accent);
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+.oc-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.oc-total {
+  margin-inline-start: auto;
+  white-space: nowrap;
+}
+.oc-event {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.5rem;
+}
+.oc-tickets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+  border-block-start: 1px solid var(--border);
+  padding-block-start: 0.5rem;
+}
+.oc-ticket {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  gap: 0.125rem 0.5rem;
+  align-items: center;
+}
+.oc-tk-what {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.oc-tk-badges {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.oc-tk-to {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+.oc-foot {
+  margin: 0;
+}
+@media (min-width: 640px) {
+  .oc-tk-badges {
+    grid-column: auto;
+  }
+  .oc-ticket {
+    grid-template-columns: 6rem minmax(0, 1fr) 6rem max-content;
+  }
+  .oc-tk-to {
+    grid-column: 2 / -1;
+  }
+}
+.date-filters {
+  display: grid;
+  gap: 0.5rem;
+}
+.date-filters fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.date-filters legend {
+  font-weight: 600;
+  padding: 0;
+  margin-block-end: 0.25rem;
+}
+.date-filters input[type="date"] {
+  font-size: 1rem;
+  min-height: 44px;
+}
+
+/* The refund queue (EC-V5) and the badge on its nav item. */
+.queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+.queue-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.625rem 0.875rem;
+  display: grid;
+  gap: 0.25rem;
+}
+.queue-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+}
+.queue-item p {
+  margin: 0;
+}
+.tab-item {
+  position: relative;
+}
+.tab-badge {
+  position: absolute;
+  top: 2px;
+  inset-inline-start: calc(50% + 6px);
+  min-width: 18px;
+  height: 18px;
+  padding-inline: 4px;
+  border-radius: 9px;
+  background: #b3261e;
+  color: #fff;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}

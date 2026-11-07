@@ -15,6 +15,8 @@ import {
   newRefundKey,
   outcomeUnknown,
   partialAllowed,
+  setPart,
+  wholeOrder,
   planRefund,
   providerName,
   refundEntry,
@@ -100,18 +102,28 @@ describe("the choice", () => {
     expect(d.selected).toEqual([]);
     expect(d.notifyBuyer).toBe(true);
   });
-  it("select all takes only refundable tickets and drops a part", () => {
-    const d = selectAll(draft({ selected: ["a"], partial: true, partText: "5" }), options());
+  it("select all takes only refundable tickets and drops every typed part", () => {
+    const d = selectAll(draft({ selected: ["a"], parts: { a: "5" } }), options());
     expect(d.selected).toEqual(["a", "b"]);
-    expect(d.partial).toBe(false);
+    expect(d.parts).toEqual({});
   });
-  it("offers a part only for one ticket and a provider that can", () => {
+  it("the whole order is every refundable ticket at its full amount", () => {
+    const o = options();
+    const d = wholeOrder(draft({ selected: ["a"], parts: { a: "5" } }), o);
+    expect(d.selected).toEqual(["a", "b"]);
+    const p = planRefund(d, o, t);
+    expect(p.ok && p.value.total).toBe(5000);
+    expect(p.ok && p.value.partial).toBe(false);
+  });
+  it("offers a part for any ticked ticket when the provider can", () => {
+    expect(partialAllowed(draft({}), options())).toBe(false);
     expect(partialAllowed(draft({ selected: ["a"] }), options())).toBe(true);
-    expect(partialAllowed(draft({ selected: ["a", "b"] }), options())).toBe(false);
+    expect(partialAllowed(draft({ selected: ["a", "b"] }), options())).toBe(true);
     expect(partialAllowed(draft({ selected: ["a"] }), options({ partial_refund: false }))).toBe(false);
-    // ticking a second ticket drops the part
-    expect(toggleTicket(draft({ selected: ["a"], partial: true }), "b").partial).toBe(false);
-    expect(toggleTicket(draft({ selected: ["a", "b"] }), "b").selected).toEqual(["a"]);
+    // unticking a ticket drops the amount typed for it, the others keep theirs
+    const d = toggleTicket(setPart(setPart(draft({ selected: ["a", "b"] }), "a", "5"), "b", "7"), "a");
+    expect(d.selected).toEqual(["b"]);
+    expect(d.parts).toEqual({ b: "7" });
   });
 });
 
@@ -122,7 +134,9 @@ describe("the plan", () => {
     expect(planRefund(draft({ selected: ["a"], reason: "other", reasonText: "  " }), options(), t)).toEqual({ ok: false, error: "refund.err.reason" });
     expect(planRefund(draft({ selected: ["a"], reason: "other", reasonText: "x".repeat(301) }), options(), t).ok).toBe(false);
     for (const part of ["0", "25.01", "abc", "1,000", "-1"]) {
-      expect(planRefund(draft({ selected: ["a"], partial: true, partText: part }), options(), t), part).toEqual({ ok: false, error: "refund.err.part" });
+      expect(planRefund(draft({ selected: ["a"], parts: { a: part } }), options(), t), part).toEqual({ ok: false, error: "refund.err.part" });
+      // a bad amount on the SECOND of several tickets refuses the whole action
+      expect(planRefund(draft({ selected: ["a", "b"], parts: { b: part } }), options(), t), part).toEqual({ ok: false, error: "refund.err.part" });
     }
     // the scanned ticket, or one that left the list, can never be sent
     expect(planRefund(draft({ selected: ["c"] }), options(), t)).toEqual({ ok: false, error: "refund.err.changed" });
@@ -142,14 +156,28 @@ describe("the plan", () => {
     });
   });
   it("sends a part of one ticket and the letter choice", () => {
-    const p = planRefund(draft({ selected: ["a"], partial: true, partText: "10,50", notifyBuyer: false, reason: "other", reasonText: " Late start " }), options(), t);
+    const p = planRefund(draft({ selected: ["a"], parts: { a: "10,50" }, notifyBuyer: false, reason: "other", reasonText: " Late start " }), options(), t);
     expect(p.ok).toBe(true);
     if (!p.ok) return;
     expect(refundRequest(p.value)).toEqual({ items: [{ ticket_id: "a", amount: 1050 }], reason: "Late start", notify_buyer: false });
     expect(p.value.partial).toBe(true);
   });
+  it("sends a part on several tickets in one action, a blank one means the whole ticket", () => {
+    const p = planRefund(draft({ selected: ["a", "b"], parts: { a: "10", b: " " } }), options(), t);
+    expect(p.ok).toBe(true);
+    if (!p.ok) return;
+    expect(refundRequest(p.value).items).toEqual([
+      { ticket_id: "a", amount: 1000 },
+      { ticket_id: "b", amount: 2500 },
+    ]);
+    expect(p.value.total).toBe(3500);
+    expect(p.value.partial).toBe(true);
+    // typing the whole amount is not a part
+    const full = planRefund(draft({ selected: ["a"], parts: { a: "25" } }), options(), t);
+    expect(full.ok && full.value.partial).toBe(false);
+  });
   it("ignores a part the provider cannot do", () => {
-    const p = planRefund(draft({ selected: ["a"], partial: true, partText: "10" }), options({ partial_refund: false }), t);
+    const p = planRefund(draft({ selected: ["a"], parts: { a: "10" } }), options({ partial_refund: false }), t);
     expect(p.ok && p.value.total).toBe(2500);
   });
 });
@@ -213,7 +241,7 @@ describe("an operation whose answer may be missing", () => {
     };
   }
   const plan = () => {
-    const p = planRefund(draft({ selected: ["a"], partial: true, partText: "10" }), options(), t);
+    const p = planRefund(draft({ selected: ["a"], parts: { a: "10" } }), options(), t);
     if (!p.ok) throw new Error("plan");
     return p.value;
   };

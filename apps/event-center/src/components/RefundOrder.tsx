@@ -6,13 +6,18 @@
  * 1. The button reads GET .../refund-options and branches on the SERVER's
  *    `route`: arena returns the money (choose tickets), or an explanation for
  *    a seller's site, an unsupported provider, an order without payment.
- * 2. The person ticks tickets (none at the start), may return a part of ONE
- *    ticket, picks a reason and the buyer letter.
+ * 2. The person ticks tickets (none at the start), may return a part of ANY
+ *    of them (several in one action), or presses "Refund the whole order"
+ *    (every refundable ticket at its full amount), picks a reason and the
+ *    buyer letter.
  * 3. "Continue" shows the final check: tickets, amount, letter, and that the
  *    tickets stop being valid even for a part of their price.
- * 4. "Refund <amount>" opens the typed word (REFUND / ВЕРНУТЬ / DEVOLVER,
- *    ConfirmWordDialog); the right word asks for the password again
- *    (`withStepUp`, spec 37 4.6) and only then sends the request.
+ * 4. "Refund <amount>" asks for the password again (`withStepUp`, spec 37
+ *    4.6) and only then sends the request. The typed word (REFUND / ВЕРНУТЬ /
+ *    DEVOLVER) of the first version is gone (owner decision 2026-11-07, spec
+ *    62 EC-V4): the final check is the first confirmation, the password the
+ *    second, and a typed word on top only slowed the manager down. The shop's
+ *    refund and the cancellations keep their words.
  *
  * One operation has one Idempotency-Key, minted at the final check and kept
  * while the plan is the same. When the answer is lost (network, timeout, a
@@ -22,7 +27,6 @@
  */
 import { useEffect, useId, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ConfirmWordDialog } from "@/components/ConfirmWordDialog";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { TextField } from "@/components/FormField";
 import { useStepUp } from "@/components/StepUpDialog";
@@ -55,8 +59,10 @@ import {
   scannedRefusal,
   scannedTickets,
   selectAll,
+  setPart,
   ticketLabel,
   toggleTicket,
+  wholeOrder,
   type RefundDraft,
   type RefundPlan,
   type ScannedRefusal,
@@ -97,7 +103,7 @@ export function RefundOrder({ orgId, orderId, systemId, status, canCreate, canAp
   const [problem, setProblem] = useState<MessageKey | null>(null);
   const [plan, setPlan] = useState<RefundPlan | null>(null);
   const [held, setHeld] = useState<HeldKey | null>(null);
-  const [wordOpen, setWordOpen] = useState(false);
+  const [sending, setSending] = useState(false);
   const [unknown, setUnknown] = useState(false);
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<CreateOrderRefundsResponse | null>(null);
@@ -163,7 +169,6 @@ export function RefundOrder({ orgId, orderId, systemId, status, canCreate, canAp
 
   const closePanel = () => {
     setOpen(false);
-    setWordOpen(false);
   };
 
   /** Sends the plan with its key, behind the password question. */
@@ -222,21 +227,20 @@ export function RefundOrder({ orgId, orderId, systemId, status, canCreate, canAp
   };
 
   const onConfirm = async () => {
-    if (plan === null || held === null) return;
-    let res: CreateOrderRefundsResponse;
+    if (plan === null || held === null || sending) return; // one press at a time
+    setSending(true);
+    setFailure(null);
     try {
-      res = await send(plan, held);
+      await finished(await send(plan, held));
     } catch (err) {
-      // The person closed the password question: nothing was sent, the dialog stays.
+      // The person closed the password question: nothing was sent, the final check stays.
       if (err instanceof StepUpCancelled) return;
-      if (await refused(err)) {
-        setWordOpen(false);
-        return;
-      }
-      throw err; // the dialog shows what went wrong and what to do
+      if (await refused(err)) return;
+      // Any other refusal (400, 403, ...): the final check stays and says why.
+      setFailure({ error: err });
+    } finally {
+      setSending(false);
     }
-    setWordOpen(false);
-    await finished(res);
   };
 
   const checkAgain = async () => {
@@ -325,9 +329,10 @@ export function RefundOrder({ orgId, orderId, systemId, status, canCreate, canAp
               canApprove={canApprove}
               onContinue={() => toFinal(options.data as OrderRefundOptions)}
               onBack={() => setStep("pick")}
+              sending={sending}
               onGo={() => {
                 flow.mark("confirm");
-                setWordOpen(true);
+                void onConfirm();
               }}
               money={money}
             />
@@ -338,18 +343,6 @@ export function RefundOrder({ orgId, orderId, systemId, status, canCreate, canAp
             </button>
           </p>
         </section>
-      )}
-      {wordOpen && plan !== null && (
-        <ConfirmWordDialog
-          kind="refund"
-          subject={t("refund.word.subject", {
-            amount: money(plan.total, plan.currency),
-            count: plan.tickets.length,
-            number,
-          })}
-          onConfirm={onConfirm}
-          onCancel={() => setWordOpen(false)}
-        />
       )}
     </>
   );
@@ -367,6 +360,7 @@ interface BodyProps {
   onContinue: () => void;
   onBack: () => void;
   onGo: () => void;
+  sending: boolean;
   money: (minor: number, currency: string) => string;
 }
 
@@ -376,7 +370,7 @@ function ticketText(tk: OrderRefundTicketOption): string {
     : ticketLabel(tk);
 }
 
-function RefundBody({ o, number, step, draft, setDraft, problem, plan, canApprove, onContinue, onBack, onGo, money }: BodyProps) {
+function RefundBody({ o, number, step, draft, setDraft, problem, plan, canApprove, onContinue, onBack, onGo, sending, money }: BodyProps) {
   const { t } = useI18n();
   const ids = useId();
   const provider = providerName(o.provider);
@@ -464,7 +458,7 @@ function RefundBody({ o, number, step, draft, setDraft, problem, plan, canApprov
           </p>
         )}
         <div className="actions">
-          <button type="button" className="btn btn-primary" onClick={onGo} data-testid="refund-go" data-track="refund_review_go">
+          <button type="button" className="btn btn-primary" onClick={onGo} disabled={sending} data-testid="refund-go" data-track="refund_review_go">
             {t("refund.final.go", { amount: money(plan.total, plan.currency) })}
           </button>
           <button type="button" className="btn" onClick={onBack} data-testid="refund-back">
@@ -477,7 +471,7 @@ function RefundBody({ o, number, step, draft, setDraft, problem, plan, canApprov
 
   const open = refundableTickets(o);
   const partialOk = partialAllowed(draft, o);
-  const onlyOne = open.find((x) => x.ticket_id === draft.selected[0]);
+  const chosen = open.filter((x) => draft.selected.includes(x.ticket_id));
   return (
     <form
       noValidate
@@ -509,33 +503,37 @@ function RefundBody({ o, number, step, draft, setDraft, problem, plan, canApprov
             </li>
           ))}
         </ul>
-        {open.length > 1 && (
-          <button type="button" className="btn" onClick={() => setDraft(selectAll(draft, o))} data-testid="refund-select-all">
-            {t("refund.selectAll")}
+        <div className="actions">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setDraft(wholeOrder(draft, o))}
+            data-testid="refund-whole-order"
+          >
+            {t("refund.wholeOrder", { amount: money(open.reduce((sum, x) => sum + x.refundable, 0), o.currency) })}
           </button>
-        )}
+          {open.length > 1 && (
+            <button type="button" className="btn" onClick={() => setDraft(selectAll(draft, o))} data-testid="refund-select-all">
+              {t("refund.selectAll")}
+            </button>
+          )}
+        </div>
       </fieldset>
 
-      {partialOk && onlyOne !== undefined && (
-        <fieldset>
+      {partialOk && chosen.length > 0 && (
+        <fieldset data-testid="refund-parts">
           <legend>{t("refund.amount")}</legend>
-          <label className="check">
-            <input type="radio" name={`${ids}-part`} checked={!draft.partial} onChange={() => setDraft({ ...draft, partial: false })} data-testid="refund-whole" />
-            <span>{t("refund.whole", { amount: money(onlyOne.refundable, o.currency) })}</span>
-          </label>
-          <label className="check">
-            <input type="radio" name={`${ids}-part`} checked={draft.partial} onChange={() => setDraft({ ...draft, partial: true })} data-testid="refund-partial" />
-            <span>{t("refund.partial")}</span>
-          </label>
-          {draft.partial && (
+          <p className="muted small">{t("refund.partHint")}</p>
+          {chosen.map((tk) => (
             <TextField
-              label={t("refund.partLabel", { amount: money(onlyOne.refundable, o.currency) })}
-              value={draft.partText}
-              onChange={(v) => setDraft({ ...draft, partText: v })}
-              testId="refund-part"
+              key={tk.ticket_id}
+              label={t("refund.partTicket", { ticket: ticketText(tk), amount: money(tk.refundable, o.currency) })}
+              value={draft.parts[tk.ticket_id] ?? ""}
+              onChange={(v) => setDraft(setPart(draft, tk.ticket_id, v))}
+              testId={`refund-part-${tk.ticket_id}`}
               maxLength={16}
             />
-          )}
+          ))}
         </fieldset>
       )}
 

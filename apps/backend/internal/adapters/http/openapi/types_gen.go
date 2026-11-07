@@ -13212,11 +13212,43 @@ type OrderListItem struct {
 	// SystemId Bigint id surfaced to Bil24-compat clients.
 	SystemId int64 `json:"system_id"`
 
+	// Tickets The order's issued tickets in line order, for the expanded card of the list (EC-V3).
+	Tickets *[]OrderListTicket `json:"tickets,omitempty"`
+
 	// Total Order total, in minor currency units.
 	Total int `json:"total"`
 
 	// UpdatedAt When the order was last updated.
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// OrderListTicket A ticket of an order as the expanded list card shows it (EC-V3): its
+// number, status, category, seat, the price paid for it and the state of
+// its letter.
+type OrderListTicket struct {
+	// DeliveryStatus State of the ticket's letter job - pending, processing, sent, failed, skipped, disabled, or none when it has no job.
+	DeliveryStatus string `json:"delivery_status"`
+
+	// Id UUID of the ticket.
+	Id openapi_types.UUID `json:"id"`
+
+	// Price What the buyer paid for this unit, in minor currency units.
+	Price int64 `json:"price"`
+
+	// RecipientEmail Address the ticket's letter goes to, null when the job has none.
+	RecipientEmail *string `json:"recipient_email"`
+
+	// SeatLabel Sector / row / seat, null for general admission.
+	SeatLabel *string `json:"seat_label"`
+
+	// Status Ticket status (active, cancelled, ...).
+	Status string `json:"status"`
+
+	// SystemTicketId The ticket's number as the buyer sees it.
+	SystemTicketId int64 `json:"system_ticket_id"`
+
+	// TierName Name of the ticket category.
+	TierName *string `json:"tier_name"`
 }
 
 // OrderPaymentSummary The payment intent the order card speaks about: a succeeded one if
@@ -13453,6 +13485,24 @@ type OrderRefundOptions struct {
 	Tickets []OrderRefundTicketOption `json:"tickets"`
 }
 
+// OrderRefundProblemQueue The refunds and the letters an organizer has to look at.
+type OrderRefundProblemQueue struct {
+	// Count refunds_total plus letters_total, the nav badge.
+	Count int `json:"count"`
+
+	// Letters Up to 50 orders with an undelivered letter, newest problem first.
+	Letters []UndeliveredLetter `json:"letters"`
+
+	// LettersTotal How many letters are listed (at most 50).
+	LettersTotal int `json:"letters_total"`
+
+	// Refunds Up to 50 refunds, newest first.
+	Refunds []OrderRefundQueueItem `json:"refunds"`
+
+	// RefundsTotal How many refunds need attention in all.
+	RefundsTotal int `json:"refunds_total"`
+}
+
 // OrderRefundQueue One page of the organization's refunds, newest first.
 type OrderRefundQueue struct {
 	// HasMore True when another page follows.
@@ -13607,8 +13657,14 @@ type OrderSearchRequest struct {
 	// Q One search value (barcode, order number, e-mail, phone or name), classified like the GET `q`.
 	Q *string `json:"q,omitempty"`
 
+	// SessionFrom Only orders whose session starts at or after this RFC3339 timestamp.
+	SessionFrom *time.Time `json:"session_from,omitempty"`
+
 	// SessionId Only orders of this session of the organization.
 	SessionId *openapi_types.UUID `json:"session_id,omitempty"`
+
+	// SessionTo Only orders whose session starts at or before this RFC3339 timestamp.
+	SessionTo *time.Time `json:"session_to,omitempty"`
 
 	// Status Order lifecycle status filter.
 	Status *string `json:"status,omitempty"`
@@ -22193,6 +22249,36 @@ type TransitionPaymentIntentRequest struct {
 // TransitionPaymentIntentRequestState Target state.
 type TransitionPaymentIntentRequestState string
 
+// UndeliveredLetter An order whose buyer most likely has no letter.
+type UndeliveredLetter struct {
+	// EventName Name of the event of the order.
+	EventName string `json:"event_name"`
+
+	// Kind `ticket` for the order's ticket letters, else the kind of the letter (change, cancel, refund, ...).
+	Kind string `json:"kind"`
+
+	// OrderId UUID of the order.
+	OrderId openapi_types.UUID `json:"order_id"`
+
+	// OrderNumber The order's number (`orders.system_id`).
+	OrderNumber int64 `json:"order_number"`
+
+	// Problem `failed` (refused or bounced) or `stuck` (no delivery was ever reported, or the job never ran).
+	Problem string `json:"problem"`
+
+	// Reason The failure reason, e-mail addresses removed and cut to 200 characters; empty when none is known.
+	Reason string `json:"reason"`
+
+	// Recipient Address the letter went or goes to.
+	Recipient string `json:"recipient"`
+
+	// Since When the problem began.
+	Since time.Time `json:"since"`
+
+	// Tickets How many tickets' letters are affected (0 for a letter that is not a ticket letter).
+	Tickets int `json:"tickets"`
+}
+
 // UpdateBankAccountRequest Request body for PATCH /v1/organizations/{org_id}/bank-accounts/{id}.
 // Omitted fields are left unchanged. Sending `is_primary: true`
 // atomically demotes any previously primary account in the same
@@ -24649,7 +24735,8 @@ type GetV1OrganizationsOrgIdOrdersParams struct {
 	// both sides), on a 9+ digit suffix of them (a national number
 	// typed without its country code) and on the customer's phone
 	// identities; anything else is the pg_trgm similarity over
-	// buyer_name / buyer_email / buyer_phone. A bare number is ALSO
+	// buyer_name / buyer_email / buyer_phone, OR a part of the event
+	// name (case-insensitive, EC-V3). A bare number is ALSO
 	// tried as a phone, so a national number typed without + still
 	// finds its order.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
@@ -24684,6 +24771,12 @@ type GetV1OrganizationsOrgIdOrdersParams struct {
 
 	// To Only orders created at or before this RFC3339 timestamp.
 	To *time.Time `form:"to,omitempty" json:"to,omitempty"`
+
+	// SessionFrom Only orders whose session starts at or after this RFC3339 timestamp (EC-V3).
+	SessionFrom *time.Time `form:"session_from,omitempty" json:"session_from,omitempty"`
+
+	// SessionTo Only orders whose session starts at or before this RFC3339 timestamp (EC-V3).
+	SessionTo *time.Time `form:"session_to,omitempty" json:"session_to,omitempty"`
 
 	// Limit Page size, 1-200 (default 50).
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
