@@ -194,7 +194,7 @@ const orderRoute = createRoute({
   component: OrderScreen,
 });
 
-// Spec 62 §12.1: "Summary" of the bottom bar. The organization-wide summary is EC-V1; until then it lists the events.
+// Spec 62 §12.1: "Summary" of the bottom bar, the organization-wide summary and the accounting workbook (EC-V1, EC-V2).
 const summaryRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/summary",
