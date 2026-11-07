@@ -126,6 +126,17 @@ func AsError(err error) (*Error, bool) {
 	return nil, false
 }
 
+// OrderSourceShopify is shop_orders.source of an order imported from a
+// Shopify store (cmd/arena-shop-import). Such an order is a record of what
+// happened before the shop moved here: it has no payment intent, took no
+// stock, and the shop never ships, e-mails or refunds it.
+const OrderSourceShopify = "shopify"
+
+// ErrOrderHistoric refuses an action that would act on a real parcel, buyer
+// or payment for an imported order.
+var ErrOrderHistoric = newErr(http.StatusConflict, "shop.order_historic",
+	"this order was imported from the old store: it is a record, so it cannot be shipped, e-mailed or refunded here")
+
 // Common refusals.
 var (
 	ErrShopNotFound    = newErr(http.StatusNotFound, "shop.not_found", "this shop does not exist")

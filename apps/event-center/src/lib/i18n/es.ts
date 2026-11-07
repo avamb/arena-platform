@@ -2753,6 +2753,7 @@ export const es: Record<MessageKey, string> = {
   "shop.order.source": "Origen: {source}",
   "shop.order.source.web": "tienda",
   "shop.order.source.shopify": "importado de Shopify",
+  "shop.order.historic": "Este es el registro de un pedido antiguo de Shopify. Desde aquí no se puede enviar, reembolsar ni escribir al comprador.",
   "shop.order.review.title": "Este pedido requiere revisión.",
   "shop.order.review.text": "El pago llegó cuando la reserva ya había terminado y el producto ya no estaba libre. El dinero está registrado y nada salió del almacén. Al marcar el pedido como enviado, el producto sale del almacén en ese momento. Un reembolso completo cierra el pedido.",
   "shop.timeline.title": "Historial",

@@ -75,6 +75,13 @@ type Report struct {
 	MinPriceMinor   int64
 	MaxPriceMinor   int64
 	Orders          *OrdersSummary
+	// OrdersImport counts the shop_orders of the orders file; the lines of the
+	// written orders are matched to the shop's variants by name.
+	OrdersImport        Counter
+	OrderLinesMatched   int
+	OrderLinesUnmatched int
+	// OrdersNotShipped counts paid orders Shopify never marked as fulfilled.
+	OrdersNotShipped int
 	// BodyImagesDropped and BodyTablesDropped count pictures and tables the
 	// shop's rich-text profile removed from descriptions and pages.
 	BodyImagesDropped int
@@ -154,6 +161,15 @@ func (r *Report) Write(w io.Writer) {
 	writeCounter(w, "consents", &r.Consents, r.DryRun)
 	writeCounter(w, "sms", &r.ConsentsSMS, r.DryRun)
 	writeCounter(w, "whatsapp", &r.ConsentsWhatsApp, r.DryRun)
+	writeCounter(w, "orders", &r.OrdersImport, r.DryRun)
+	if r.OrderLinesMatched+r.OrderLinesUnmatched > 0 {
+		fmt.Fprintf(w, "  order lines: %d matched to a product of the shop, %d kept as text only (no product of that name)\n",
+			r.OrderLinesMatched, r.OrderLinesUnmatched)
+	}
+	if r.OrdersNotShipped > 0 {
+		fmt.Fprintf(w, "  orders: %d paid orders were never marked as fulfilled in Shopify; they are kept as paid and are not offered under \"to ship\"\n",
+			r.OrdersNotShipped)
+	}
 	if r.BodyImagesDropped > 0 || r.BodyTablesDropped > 0 {
 		fmt.Fprintf(w, "  texts: the shop's sanitizer removed %d pictures and %d tables from descriptions and pages\n",
 			r.BodyImagesDropped, r.BodyTablesDropped)
@@ -164,7 +180,7 @@ func (r *Report) Write(w io.Writer) {
 			FormatMinor(r.StockValueMinor, r.Currency))
 	}
 	if o := r.Orders; o != nil {
-		fmt.Fprintf(w, "  orders file (parsed, NOT imported): %d orders, %d lines, %d without e-mail, %d cancelled, %d unreadable\n",
+		fmt.Fprintf(w, "  orders file: %d orders, %d lines, %d without e-mail, %d cancelled, %d unreadable\n",
 			o.Orders, o.Lines, o.WithoutEmail, o.Cancelled, o.TotalProblems)
 		var states []string
 		for _, k := range sortedKeys(o.ByState) {

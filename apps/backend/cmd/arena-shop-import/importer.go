@@ -946,13 +946,4 @@ func countChannel(c *Counter, wanted, created bool) {
 // Orders
 // ─────────────────────────────────────────────────────────────────────────────
 
-// NoteOrders records the parsed orders file in the report. The second wave
-// (shop_orders with source shopify) is deliberately not written.
-func (im *Importer) NoteOrders(of *OrdersFile) {
-	s := SummarizeOrders(of)
-	im.rep.Orders = &s
-	for _, p := range of.Problems {
-		im.rep.problem("orders: %s", p)
-	}
-	im.rep.note("orders are only parsed and summed in this version: shop_orders with source shopify are the second wave")
-}
+// (The orders themselves are written by ImportOrders, orders_import.go.)

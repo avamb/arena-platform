@@ -38,6 +38,12 @@ const (
 // "shipped" letter.
 const DeliveryNone = "none"
 
+// The other two delivery kinds of shop_orders (shop_orders_delivery_kind_check).
+const (
+	DeliveryShipping = "shipping"
+	DeliveryPickup   = "pickup"
+)
+
 // OrderEmailPayload is the payload of JobTypeOrderEmail.
 type OrderEmailPayload struct {
 	OrderID string `json:"order_id"`

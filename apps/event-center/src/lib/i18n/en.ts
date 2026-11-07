@@ -2753,6 +2753,7 @@ export const en = {
   "shop.order.source": "Source: {source}",
   "shop.order.source.web": "storefront",
   "shop.order.source.shopify": "imported from Shopify",
+  "shop.order.historic": "This is a record of an old Shopify order. It cannot be shipped, refunded or e-mailed from here.",
   "shop.order.review.title": "This order needs a check.",
   "shop.order.review.text": "The payment came after the hold ended, and the goods were no longer free. The money is recorded and nothing left the shelf. Marking the order shipped takes the goods off the shelf at that moment. A full refund closes the order.",
   "shop.timeline.title": "History",
