@@ -237,7 +237,7 @@ export async function mockApi(
         membership_roles: [manager ? "organizer" : "agent"],
         roles: [manager ? "organizer" : "agent"],
         permissions: manager
-          ? ["event.read", "order.read", "session.read", "tier.read", "ticket.update"]
+          ? ["event.read", "order.read", "session.read", "tier.read", "ticket.update", "refund.read"]
           : ["event.read", "ticket.read"],
         platform_superadmin: opts.superadmin === true,
       });
