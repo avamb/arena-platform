@@ -80,7 +80,15 @@ func Backoff(attempts int) time.Duration {
 	return d
 }
 
+// ContextPurger is the optional part of a Store that empties old buyer
+// contexts (PGStore.PurgeContexts).
+type ContextPurger interface {
+	PurgeContexts(ctx context.Context, olderThan time.Time) (int64, error)
+}
+
 // RunOnce sends one batch of due conversions and returns how many it handled.
+// It also empties the buyer contexts older than ContextRetention when the
+// store can: a context is never kept indefinitely, consent or not.
 func RunOnce(ctx context.Context, store Store, senders Senders, logger *slog.Logger, now time.Time) (int, error) {
 	due, err := store.ClaimDue(ctx, batchSize)
 	if err != nil {
@@ -88,6 +96,11 @@ func RunOnce(ctx context.Context, store Store, senders Senders, logger *slog.Log
 	}
 	for _, d := range due {
 		handle(ctx, store, senders, logger, d, now)
+	}
+	if p, ok := store.(ContextPurger); ok {
+		if _, err := p.PurgeContexts(ctx, now.Add(-ContextRetention)); err != nil {
+			logger.Warn("conversions: could not purge old buyer contexts", "error", scrub(err.Error()))
+		}
 	}
 	return len(due), nil
 }
