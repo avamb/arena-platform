@@ -128,6 +128,10 @@ GROUP  BY t.session_id;
 -- session of its payment intent. `origin` keeps the "Refer a friend" cashback
 -- (referral_cashback, spec 52) apart: it is money returned to a referrer, not
 -- a refund to a buyer, and the assembly shows it on its own line.
+-- Only refunds of orders that were paid count (the rule of
+-- ListSessionSummarySources): the late-payment refund of an expired or
+-- cancelled order returns money the summary never counted as sold, and
+-- counting it would drive the net below zero.
 SELECT COALESCE(ro.session_id, rt.session_id, po.session_id) AS session_id,
        r.settlement, r.state, r.currency, r.origin,
        count(*)                   AS refunds,
@@ -135,10 +139,12 @@ SELECT COALESCE(ro.session_id, rt.session_id, po.session_id) AS session_id,
 FROM   refunds r
 LEFT JOIN orders          ro ON ro.id = r.order_id
 LEFT JOIN tickets         rt ON rt.id = r.ticket_id
+LEFT JOIN orders          tro ON tro.id = rt.order_id
 LEFT JOIN payment_intents pi ON pi.id = r.payment_intent_id
 LEFT JOIN orders          po ON po.checkout_session_id = pi.checkout_session_id
 WHERE  COALESCE(ro.session_id, rt.session_id, po.session_id) = ANY($1::uuid[])
-  AND  NOT COALESCE(ro.is_test, po.is_test, false)
+  AND  COALESCE(ro.status, tro.status, po.status) IN ('paid', 'partially_refunded', 'refunded')
+  AND  NOT COALESCE(ro.is_test, tro.is_test, po.is_test, false)
 GROUP  BY COALESCE(ro.session_id, rt.session_id, po.session_id), r.settlement, r.state, r.currency, r.origin;
 
 -- name: ListSessionSummaryPromos :many

@@ -70,11 +70,38 @@ const (
 // ValidTopic reports whether t is one of the allow-listed topics.
 func ValidTopic(t string) bool { return t == TopicContact || t == TopicPrivateEvent }
 
+// MaxRecipientsPerTopic bounds how many addresses one topic of a channel's
+// contact form is mailed to. Checked when the channel settings are written
+// (ValidateRecipients) and again when they are read (RecipientsFor), so a
+// public form can never fan one message out to a mailing list.
+const MaxRecipientsPerTopic = 10
+
+// ValidateRecipients checks a channel's settings.contact_form.recipients
+// object as it is written: every topic lists at most MaxRecipientsPerTopic
+// addresses. An absent object is valid. It returns a readable message, or ""
+// when the object is acceptable.
+func ValidateRecipients(raw []byte) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	var m map[string]any
+	if json.Unmarshal(raw, &m) != nil {
+		return "settings.contact_form.recipients must be an object mapping a topic to a list of addresses"
+	}
+	for topic, v := range m {
+		if list, ok := v.([]any); ok && len(list) > MaxRecipientsPerTopic {
+			return fmt.Sprintf("settings.contact_form.recipients.%s may list at most %d addresses", topic, MaxRecipientsPerTopic)
+		}
+	}
+	return ""
+}
+
 // RecipientsFor reads the addresses a topic is mailed to from a channel's
 // settings (sales_channels.settings.contact_form.recipients, a map topic ->
 // list of addresses). raw is that settings.contact_form.recipients object.
 // Only valid addresses survive, lower-cased and without duplicates; the order
-// is kept. An unmapped topic gives nil, which means "the usual chain".
+// is kept, and at most MaxRecipientsPerTopic are returned. An unmapped topic
+// gives nil, which means "the usual chain".
 func RecipientsFor(raw []byte, topic string) []string {
 	if len(raw) == 0 {
 		return nil
@@ -100,6 +127,9 @@ func RecipientsFor(raw []byte, topic string) []string {
 		}
 		seen[to] = true
 		out = append(out, to)
+		if len(out) == MaxRecipientsPerTopic {
+			break
+		}
 	}
 	return out
 }

@@ -182,4 +182,48 @@ func TestConversions_PaidOrderToStubs_LiveDB(t *testing.T) {
 	if ev["event_id"] != orderID.String() {
 		t.Fatalf("event_id = %v, want the order id", ev["event_id"])
 	}
+
+	// Every delivery of both orders is final (sent / skipped no_consent): the
+	// stored IP, User-Agent and click ids are forgotten, the rows stay so a
+	// repeated order.paid still queues nothing.
+	for _, cs := range []uuid.UUID{csID, cs2ID} {
+		var stored string
+		if err := pool.QueryRow(ctx, `SELECT context::text FROM checkout_buyer_contexts WHERE checkout_session_id = $1`, cs).Scan(&stored); err != nil {
+			t.Fatalf("context row of %s: %v", cs, err)
+		}
+		if stored != "{}" {
+			t.Errorf("context of %s = %s after the final delivery, want {}", cs, stored)
+		}
+	}
+	_ = leg.Dispatch(ctx, outbox.Event{EventType: EventOrderPaid, AggregateID: orderID.String()})
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM conversion_deliveries WHERE org_id = $1`, orgID).Scan(&n)
+	if n != 4 {
+		t.Fatalf("a repeated order.paid after forgetting queued again: %d rows", n)
+	}
+
+	// A context is never kept past ContextRetention: an old one without any
+	// delivery is emptied by the sweep, a fresh one is left alone.
+	oldResv, oldCS, freshResv, freshCS := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	for _, ids := range [][2]uuid.UUID{{oldResv, oldCS}, {freshResv, freshCS}} {
+		exec(`INSERT INTO reservations (id, org_id, channel_id, session_id, quantity, state, expires_at)
+		      VALUES ($1, $2, $3, $4, 1, 'expired', now())`, ids[0], orgID, chanID, sessID)
+		exec(`INSERT INTO checkout_sessions (id, org_id, channel_id, reservation_id, state)
+		      VALUES ($1, $2, $3, $4, 'expired')`, ids[1], orgID, chanID, ids[0])
+	}
+	exec(`INSERT INTO checkout_buyer_contexts (checkout_session_id, context, created_at)
+	      VALUES ($1, '{"client_ip":"203.0.113.10"}', now() - interval '31 days')`, oldCS)
+	exec(`INSERT INTO checkout_buyer_contexts (checkout_session_id, context)
+	      VALUES ($1, '{"client_ip":"203.0.113.11"}')`, freshCS)
+	if _, err := RunOnce(ctx, store, senders, slog.Default(), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	for cs, want := range map[uuid.UUID]string{oldCS: "{}", freshCS: `{"client_ip": "203.0.113.11"}`} {
+		var stored string
+		if err := pool.QueryRow(ctx, `SELECT context::text FROM checkout_buyer_contexts WHERE checkout_session_id = $1`, cs).Scan(&stored); err != nil {
+			t.Fatal(err)
+		}
+		if stored != want {
+			t.Errorf("context of %s = %s, want %s", cs, stored, want)
+		}
+	}
 }

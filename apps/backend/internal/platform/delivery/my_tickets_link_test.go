@@ -16,12 +16,20 @@ func TestMyTicketsLinkTarget(t *testing.T) {
 	}
 }
 
-func TestMyTicketsLinkURL_PutsTheTokenInQueryParameterT(t *testing.T) {
-	got, err := MyTicketsLinkURL("https://vinoandco.events/my-tickets/?lang=he", "abc123")
-	if err != nil {
-		t.Fatal(err)
+func TestMyTicketsLinkURL_PutsTheTokenInTheFragment(t *testing.T) {
+	cases := []struct{ target, want string }{
+		{"https://vinoandco.events/my-tickets/?lang=he", "https://vinoandco.events/my-tickets/?lang=he#t=abc123"},
+		{"https://tickets.example/my-tickets", "https://tickets.example/my-tickets#t=abc123"},
+		// A stale t in the query and an old fragment never survive.
+		{"https://vinoandco.events/my-tickets/?t=old&lang=he#top", "https://vinoandco.events/my-tickets/?lang=he#t=abc123"},
 	}
-	if got != "https://vinoandco.events/my-tickets/?lang=he&t=abc123" {
-		t.Errorf("link = %q", got)
+	for _, c := range cases {
+		got, err := MyTicketsLinkURL(c.target, "abc123")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != c.want {
+			t.Errorf("MyTicketsLinkURL(%q) = %q, want %q", c.target, got, c.want)
+		}
 	}
 }

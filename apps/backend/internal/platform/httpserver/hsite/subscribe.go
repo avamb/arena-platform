@@ -198,6 +198,6 @@ func (h *SubscribeHandler) HandleSubscribe(w http.ResponseWriter, r *http.Reques
 
 func (h *SubscribeHandler) fail(w http.ResponseWriter, r *http.Request, op string, err error) {
 	h.logger().Error("site subscription: "+op+" failed", slog.String("error", err.Error()))
-	httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+	httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 		"subscription.failed", "We could not save the subscription. Try again in a minute.", r))
 }

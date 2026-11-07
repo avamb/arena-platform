@@ -28022,8 +28022,9 @@ export interface components {
         };
         /**
          * @description An event that left a public feed token's list (spec 62 §6.1, item P-6).
-         *     `name`, `slug` and `display_number` are null when the event row no
-         *     longer exists.
+         *     One item per event. An `unpublished` or `deleted` event carries only
+         *     `id`, `status` and `removed_at`: `name`, `slug`, `display_number` and
+         *     `last_session_at` are null for it.
          */
         PublicFeedRemovedEvent: {
             /**
@@ -28033,17 +28034,18 @@ export interface components {
             id: string;
             /**
              * Format: int64
-             * @description The event's display number; null when the event row is gone.
+             * @description The event's display number; null for an unpublished or deleted event.
              */
             display_number?: number | null;
-            /** @description The event's name; null when the event row is gone. */
+            /** @description The event's name; null for an unpublished or deleted event. */
             name?: string | null;
-            /** @description The event's page address; null when none was assigned or the row is gone. */
+            /** @description The event's page address; null when none was assigned, or for an unpublished or deleted event. */
             slug?: string | null;
             /**
              * @description Why the event left the list: `unpublished` (the publication to
-             *     this token was deleted, or the event went back to draft),
-             *     `cancelled`, `archived` or `deleted` (soft- or hard-deleted).
+             *     this token was deleted; a draft merely attached to the token was
+             *     never on the list and is not reported), `cancelled`, `archived`
+             *     or `deleted` (soft- or hard-deleted).
              */
             status: string;
             /**
@@ -28053,7 +28055,7 @@ export interface components {
             removed_at: string;
             /**
              * Format: date-time
-             * @description End of the event's last session, RFC 3339 UTC; null without sessions.
+             * @description End of the event's last session, RFC 3339 UTC; null without sessions, or for an unpublished or deleted event.
              */
             last_session_at?: string | null;
         };
@@ -28199,8 +28201,11 @@ export interface components {
             /** @description Language of the letter (a short tag such as `ru`); the organization's language when omitted. */
             locale?: string;
             /**
-             * @description The site page the letter links to (it receives `?t=<token>`). Used only
-             *     when its origin is on the return-URL allow-list.
+             * @description The site page the letter links to (it receives the token in the URL
+             *     fragment, `#t=<token>`, never in the query). Used only
+             *     when its origin is one of the feed token's own channel site origins
+             *     (`settings.site.origins`); otherwise the letter links the tickets
+             *     site's `/my-tickets` page.
              */
             page_url?: string;
             /**
@@ -28213,7 +28218,7 @@ export interface components {
         };
         /** @description Body of `POST /v1/public/my-tickets/session`. */
         MyTicketsExchangeRequest: {
-            /** @description The one-time token from the e-mailed link (query parameter `t`). */
+            /** @description The one-time token from the e-mailed link (fragment `#t=`; links mailed before the switch carry it as the query parameter `t`). */
             token: string;
         };
         /** @description A "my tickets" session. */
@@ -64332,7 +64337,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `dependency.database_unavailable` - the service is not wired. */
+            /** @description `dependency.database_unavailable` - the service is not wired; `subscription.failed` - a transient failure, retry. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -64404,7 +64409,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.captcha_not_configured` or `my_tickets.captcha_unavailable` - the anti-robot check cannot run now. */
+            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry; `my_tickets.captcha_not_configured` or `my_tickets.captcha_unavailable` - the anti-robot check cannot run now. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -64464,7 +64469,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `dependency.database_unavailable` - the service is not wired. */
+            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -64512,7 +64517,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `dependency.database_unavailable` - the service is not wired. */
+            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -64574,7 +64579,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `dependency.database_unavailable` - the service is not wired. */
+            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -64650,7 +64655,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `dependency.database_unavailable` - the service is not wired. */
+            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -65265,8 +65270,8 @@ export interface operations {
                 };
             };
             /**
-             * @description Internal server error while retrieving the checkout session or
-             *     reservation (`checkout.lookup_failed`, `checkout.reservation_failed`).
+             * @description Internal server error while retrieving the reservation
+             *     (`checkout.reservation_failed`).
              */
             500: {
                 headers: {
@@ -65276,7 +65281,10 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database unavailable (`dependency.database_unavailable`). */
+            /**
+             * @description Database unavailable (`dependency.database_unavailable`) or the
+             *     checkout could not be read (`checkout.lookup_failed`); retry.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -65357,16 +65365,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The message could not be stored (`contact.send_failed`). */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Database unavailable, or the captcha is not configured or cannot be checked. */
+            /** @description Database unavailable, the message could not be stored (`contact.send_failed`, retry), or the captcha is not configured or cannot be checked. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -65465,16 +65464,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The message could not be stored (`contact.send_failed`). */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Database unavailable, or the captcha is not configured or cannot be checked (`contact.captcha_not_configured`, `contact.captcha_unavailable`). */
+            /** @description Database unavailable, the message could not be stored (`contact.send_failed`, retry), or the captcha is not configured or cannot be checked (`contact.captcha_not_configured`, `contact.captcha_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -65564,16 +65554,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The subscription could not be stored (`subscription.failed`). */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Database unavailable, or the captcha is not configured or cannot be checked (`subscription.captcha_not_configured`, `subscription.captcha_unavailable`). */
+            /** @description Database unavailable, the subscription could not be stored (`subscription.failed`, retry), or the captcha is not configured or cannot be checked (`subscription.captcha_not_configured`, `subscription.captcha_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -65721,9 +65702,8 @@ export interface operations {
                 };
             };
             /**
-             * @description Internal server error (`checkout.lookup_failed`,
-             *     `reservation.insert_failed`, `checkout.update_failed`,
-             *     `checkout.confirm_failed`).
+             * @description Internal server error (`reservation.insert_failed`,
+             *     `checkout.update_failed`, `checkout.confirm_failed`).
              */
             500: {
                 headers: {
@@ -65733,7 +65713,10 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database unavailable (`dependency.database_unavailable`). */
+            /**
+             * @description Database unavailable (`dependency.database_unavailable`) or the
+             *     checkout could not be read (`checkout.lookup_failed`); retry.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -65798,17 +65781,9 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The checkout could not be read (`checkout.lookup_failed`). */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
             /**
-             * @description Database unavailable (`dependency.database_unavailable`) or the
+             * @description Database unavailable (`dependency.database_unavailable`), the
+             *     checkout could not be read (`checkout.lookup_failed`) or the
              *     cancel could not be written (`checkout.cancel_failed`); retry.
              */
             503: {
@@ -65949,9 +65924,8 @@ export interface operations {
                 };
             };
             /**
-             * @description Internal server error (`checkout.lookup_failed`,
-             *     `checkout.tickets_failed`, `checkout.credential_failed`,
-             *     `checkout.credential_malformed`).
+             * @description Internal server error (`checkout.tickets_failed`,
+             *     `checkout.credential_failed`, `checkout.credential_malformed`).
              */
             500: {
                 headers: {
@@ -65961,7 +65935,10 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database unavailable (`dependency.database_unavailable`). */
+            /**
+             * @description Database unavailable (`dependency.database_unavailable`) or the
+             *     checkout could not be read (`checkout.lookup_failed`); retry.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;

@@ -106,29 +106,39 @@ type Querier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-// Store writes c onto the checkout. A choice older than the stored one (two
+// Store writes c onto the checkout. A "yes" older than the stored choice (two
 // tabs, a request overtaken by a later one) does not overwrite it; it
 // answers whether c was written.
+//
+// A withdrawal (granted=false) ALWAYS applies: the ordering is by the
+// browser's own clock, which may run up to maxFutureSkew ahead, so an
+// earlier "yes" stamped in the future must never block a later "no". The
+// withdrawal keeps the later of the two times, so a stale "yes" arriving
+// after it is still refused.
 func Store(ctx context.Context, db Execer, checkoutSessionID uuid.UUID, c Consent) (bool, error) {
 	var cats any
 	if len(c.Categories) > 0 {
 		cats = []byte(c.Categories)
 	}
-	tag, err := db.Exec(ctx, `
-		UPDATE checkout_sessions
-		   SET tracking_consent_granted     = $2,
-		       tracking_consent_version     = $3,
-		       tracking_consent_at          = $4,
-		       tracking_consent_categories  = $5::jsonb,
-		       tracking_consent_received_at = now()
-		 WHERE id = $1
-		   AND (tracking_consent_at IS NULL OR tracking_consent_at <= $4)`,
-		checkoutSessionID, c.Granted, c.Version, c.At, cats)
+	tag, err := db.Exec(ctx, storeSQL, checkoutSessionID, c.Granted, c.Version, c.At, cats)
 	if err != nil {
 		return false, fmt.Errorf("trackingconsent: store: %w", err)
 	}
 	return tag.RowsAffected() > 0, nil
 }
+
+// storeSQL is the statement Store runs ($1 checkout, $2 granted, $3 version,
+// $4 at, $5 categories).
+const storeSQL = `
+		UPDATE checkout_sessions
+		   SET tracking_consent_granted     = $2,
+		       tracking_consent_version     = $3,
+		       tracking_consent_at          = CASE WHEN $2::boolean THEN $4::timestamptz
+		                                           ELSE GREATEST(COALESCE(tracking_consent_at, $4::timestamptz), $4::timestamptz) END,
+		       tracking_consent_categories  = $5::jsonb,
+		       tracking_consent_received_at = now()
+		 WHERE id = $1
+		   AND (NOT $2::boolean OR tracking_consent_at IS NULL OR tracking_consent_at <= $4::timestamptz)`
 
 // ForCheckout reads the consent a checkout carries now.
 func ForCheckout(ctx context.Context, db Querier, checkoutSessionID uuid.UUID) (Stored, error) {

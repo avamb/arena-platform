@@ -13,11 +13,16 @@ package hfeed
 //
 // Terminal statuses:
 //
-//	unpublished  the publication to this token was deleted (or the event went
-//	             back to draft)
+//	unpublished  the publication to this token was deleted (the tombstone of
+//	             event_publication_removals is the only source: a draft merely
+//	             attached to the token was never on the list and is not listed)
 //	cancelled    the event was cancelled
 //	archived     the event was archived
 //	deleted      the event was soft- or hard-deleted
+//
+// An unpublished or deleted event carries only id, status and removed_at: its
+// name, slug, display number and last session are not public any more (and
+// the event may never have been public under that name).
 
 import (
 	"context"
@@ -43,8 +48,9 @@ const (
 	RemovedStatusDeleted     = "deleted"
 )
 
-// publicFeedRemovedEvent is one item of `removed_events`. Name, slug and
-// display_number are null for an event whose row no longer exists.
+// publicFeedRemovedEvent is one item of `removed_events`. Name, slug,
+// display_number and last_session_at are null for an unpublished or deleted
+// event.
 type publicFeedRemovedEvent struct {
 	ID            string  `json:"id"`
 	DisplayNumber *int64  `json:"display_number"`
@@ -79,14 +85,17 @@ func (h *Handler) loadRemovedFeedEvents(ctx context.Context, feedToken string, n
 	}
 	out := make([]publicFeedRemovedEvent, 0, len(rows))
 	for _, r := range rows {
+		status := removedFeedStatus(r)
 		item := publicFeedRemovedEvent{
-			ID:            r.EventID.String(),
-			DisplayNumber: r.DisplayNumber,
-			Name:          r.Name,
-			Slug:          r.Slug,
-			Status:        removedFeedStatus(r),
-			RemovedAt:     r.RemovedAt.UTC().Format(time.RFC3339),
+			ID:        r.EventID.String(),
+			Status:    status,
+			RemovedAt: r.RemovedAt.UTC().Format(time.RFC3339),
 		}
+		if status == RemovedStatusUnpublished || status == RemovedStatusDeleted {
+			out = append(out, item)
+			continue
+		}
+		item.DisplayNumber, item.Name, item.Slug = r.DisplayNumber, r.Name, r.Slug
 		if r.LastSessionAt != nil {
 			s := r.LastSessionAt.UTC().Format(time.RFC3339)
 			item.LastSessionAt = &s

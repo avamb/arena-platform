@@ -7,6 +7,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/promoattempts"
 
@@ -301,6 +302,10 @@ type Handler struct {
 	// with (WithModuleOptions). A module that confirms an event with its
 	// provider (AllPay reads a paid order back) calls that root.
 	moduleOptions payments.Options
+	// lateHoldTTL is the widget payment window plus grace a re-acquired
+	// late-payment hold lives for (WithLatePaymentHold); zero falls back to
+	// lateReholdMinTTL.
+	lateHoldTTL time.Duration
 }
 
 // WithModuleOptions sets the deployment seams (provider API roots) every

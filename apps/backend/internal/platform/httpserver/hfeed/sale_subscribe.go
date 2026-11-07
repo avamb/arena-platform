@@ -75,7 +75,7 @@ func SaleSubscriptionError(err error) (status int, code, message string) {
 	case errors.Is(err, salesubscribe.ErrRateLimited):
 		return http.StatusTooManyRequests, "subscription.rate_limited", "Too many attempts. Try again in an hour."
 	}
-	return http.StatusInternalServerError, "subscription.failed", "We could not save the request. Try again in a minute."
+	return http.StatusServiceUnavailable, "subscription.failed", "We could not save the request. Try again in a minute."
 }
 
 // HandleCreateSaleSubscription serves the POST.
@@ -116,7 +116,7 @@ func (h *Handler) HandleCreateSaleSubscription(w http.ResponseWriter, r *http.Re
 	}
 	if err != nil {
 		h.logger.Error("sale_subscribe: context lookup failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"subscription.failed", "We could not save the request. Try again in a minute.", r,
 		))
 		return

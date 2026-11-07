@@ -37,6 +37,10 @@ func TestSessionSummary_LiveDB(t *testing.T) {
 		chanID, resvID, csID, orderID = uuid.New(), uuid.New(), uuid.New(), uuid.New()
 		tierID, tktID, itemID, refID  = uuid.New(), uuid.New(), uuid.New(), uuid.New()
 		nonce                         = orgID.String()[:8]
+		// The late-payment refund of an order that expired before its
+		// payment arrived: money returned that was never counted as sold.
+		lateOrderID, latePIID, lateRefID = uuid.New(), uuid.New(), uuid.New()
+		lateResvID, lateCSID             = uuid.New(), uuid.New()
 	)
 
 	cleanup := func() {
@@ -47,6 +51,11 @@ func TestSessionSummary_LiveDB(t *testing.T) {
 		}{
 			{`UPDATE tickets SET refund_id = NULL WHERE id = $1`, tktID},
 			{`DELETE FROM refunds WHERE id = $1`, refID},
+			{`DELETE FROM refunds WHERE id = $1`, lateRefID},
+			{`DELETE FROM payment_intents WHERE id = $1`, latePIID},
+			{`DELETE FROM orders WHERE id = $1`, lateOrderID},
+			{`DELETE FROM checkout_sessions WHERE id = $1`, lateCSID},
+			{`DELETE FROM reservations WHERE id = $1`, lateResvID},
 			{`DELETE FROM order_items WHERE id = $1`, itemID},
 			{`DELETE FROM tickets WHERE id = $1`, tktID},
 			{`DELETE FROM orders WHERE id = $1`, orderID},
@@ -107,6 +116,18 @@ func TestSessionSummary_LiveDB(t *testing.T) {
 	      VALUES ($1, $2, 1, 'ticket', $3, $4, 50000, 1000, 2000, 51000)`, itemID, orderID, tierID, tktID)
 	exec(`INSERT INTO refunds (id, org_id, amount, currency, state, settlement, order_id, ticket_id, succeeded_at)
 	      VALUES ($1, $2, 51000, 'CZK', 'succeeded', 'external', $3, $4, now())`, refID, orgID, orderID, tktID)
+	exec(`INSERT INTO reservations (id, org_id, channel_id, session_id, quantity, state, expires_at)
+	      VALUES ($1, $2, $3, $4, 1, 'expired', now() - interval '1 hour')`, lateResvID, orgID, chanID, sessID)
+	exec(`INSERT INTO checkout_sessions (id, org_id, channel_id, reservation_id, state)
+	      VALUES ($1, $2, $3, $4, 'expired')`, lateCSID, orgID, chanID, lateResvID)
+	exec(`INSERT INTO orders (id, org_id, channel_id, event_id, session_id, checkout_session_id, reservation_id,
+	                          source, status, currency, subtotal, discount, charge, total, buyer_name, buyer_email)
+	      VALUES ($1, $2, $3, $4, $5, $6, $7, 'public_feed', 'expired', 'CZK', 30000, 0, 0, 30000, 'y', 'y@example.test')`,
+		lateOrderID, orgID, chanID, evtID, sessID, lateCSID, lateResvID)
+	exec(`INSERT INTO payment_intents (id, org_id, provider, amount, currency, state)
+	      VALUES ($1, $2, 'stripe', 30000, 'CZK', 'succeeded')`, latePIID, orgID)
+	exec(`INSERT INTO refunds (id, org_id, amount, currency, state, settlement, order_id, payment_intent_id, succeeded_at)
+	      VALUES ($1, $2, 30000, 'CZK', 'succeeded', 'provider', $3, $4, now())`, lateRefID, orgID, lateOrderID, latePIID)
 
 	q := gen.New(pool)
 
@@ -150,8 +171,18 @@ func TestSessionSummary_LiveDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSessionSummaryOrders: %v", err)
 	}
-	if len(orders) != 1 || orders[0].Status != "paid" || orders[0].Orders != 1 ||
-		orders[0].Total != 51000 || orders[0].Charge != 2000 || orders[0].Discount != 1000 {
+	// One paid row and one expired row (the late-payment order).
+	paidRows := 0
+	for _, o := range orders {
+		if o.Status != "paid" {
+			continue
+		}
+		paidRows++
+		if o.Orders != 1 || o.Total != 51000 || o.Charge != 2000 || o.Discount != 1000 {
+			t.Errorf("paid orders: %+v", o)
+		}
+	}
+	if len(orders) != 2 || paidRows != 1 {
 		t.Errorf("orders: %+v", orders)
 	}
 
@@ -190,6 +221,8 @@ func TestSessionSummary_LiveDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSessionSummaryRefunds: %v", err)
 	}
+	// The late-payment refund of the expired order is not in the summary: it
+	// would drive the net below what was ever sold.
 	if len(refunds) != 1 || refunds[0].Settlement != "external" || refunds[0].State != "succeeded" ||
 		refunds[0].Refunds != 1 || refunds[0].Amount != 51000 {
 		t.Errorf("refunds: %+v", refunds)

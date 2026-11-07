@@ -172,20 +172,73 @@ func (s *PGStore) ConsentForOrder(ctx context.Context, orderID uuid.UUID) (bool,
 	return st.Allows(), nil
 }
 
+// markTerminal moves one delivery to a final state and, in the same
+// transaction, forgets the buyer context of its checkout once no delivery of
+// that order is still pending (forgetContextSQL).
+func (s *PGStore) markTerminal(ctx context.Context, id uuid.UUID, sql string, args ...any) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+	if _, err := tx.Exec(ctx, sql, append([]any{id}, args...)...); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, forgetContextSQL, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// forgetContextSQL empties the stored buyer context (IP, User-Agent, fbp,
+// fbc, gclid, client id, page URL) of the delivery's order when every
+// delivery of that order has reached sent, failed or skipped: nothing will
+// read it again. The row itself stays, Enqueue keys on it, so a repeated
+// order.paid still queues nothing twice. The column is NOT NULL, so
+// "forgotten" is the empty object.
+const forgetContextSQL = `
+	UPDATE checkout_buyer_contexts bc
+	   SET context = '{}'::jsonb
+	 WHERE bc.order_id = (SELECT order_id FROM conversion_deliveries WHERE id = $1)
+	   AND bc.context <> '{}'::jsonb
+	   AND NOT EXISTS (SELECT 1 FROM conversion_deliveries d
+	                    WHERE d.order_id = bc.order_id AND d.status = 'pending')`
+
+// ContextRetention is how long a buyer context is kept at most, whatever
+// happened to its conversions (an unpaid checkout, an organization without
+// conversion settings).
+const ContextRetention = 30 * 24 * time.Hour
+
+// purgeBatch bounds one purge statement.
+const purgeBatch = 1000
+
+// PurgeContexts empties the buyer contexts written before olderThan and
+// returns how many it emptied (at most purgeBatch per call).
+func (s *PGStore) PurgeContexts(ctx context.Context, olderThan time.Time) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE checkout_buyer_contexts SET context = '{}'::jsonb
+		 WHERE checkout_session_id IN (
+		       SELECT checkout_session_id FROM checkout_buyer_contexts
+		        WHERE created_at < $1 AND context <> '{}'::jsonb
+		        LIMIT $2)`, olderThan, purgeBatch)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 // MarkSent records a delivered conversion.
 func (s *PGStore) MarkSent(ctx context.Context, id uuid.UUID) error {
-	_, err := s.pool.Exec(ctx, `
+	return s.markTerminal(ctx, id, `
 		UPDATE conversion_deliveries
 		   SET status = 'sent', attempts = attempts + 1, sent_at = now(), last_error = NULL, updated_at = now()
-		 WHERE id = $1`, id)
-	return err
+		 WHERE id = $1`)
 }
 
 // MarkSkipped records a conversion that is deliberately not sent.
 func (s *PGStore) MarkSkipped(ctx context.Context, id uuid.UUID, reason string) error {
-	_, err := s.pool.Exec(ctx, `
-		UPDATE conversion_deliveries SET status = 'skipped', last_error = $2, updated_at = now() WHERE id = $1`, id, reason)
-	return err
+	return s.markTerminal(ctx, id, `
+		UPDATE conversion_deliveries SET status = 'skipped', last_error = $2, updated_at = now() WHERE id = $1`, reason)
 }
 
 // MarkRetry schedules the next attempt.
@@ -199,9 +252,8 @@ func (s *PGStore) MarkRetry(ctx context.Context, id uuid.UUID, next time.Time, e
 
 // MarkFailed gives the row up for good.
 func (s *PGStore) MarkFailed(ctx context.Context, id uuid.UUID, errMsg string) error {
-	_, err := s.pool.Exec(ctx, `
+	return s.markTerminal(ctx, id, `
 		UPDATE conversion_deliveries
 		   SET status = 'failed', attempts = attempts + 1, last_error = $2, updated_at = now()
-		 WHERE id = $1`, id, errMsg)
-	return err
+		 WHERE id = $1`, errMsg)
 }

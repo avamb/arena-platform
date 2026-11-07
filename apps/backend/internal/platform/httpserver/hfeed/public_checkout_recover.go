@@ -110,7 +110,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 			slog.String("checkout_token", checkoutToken),
 			slog.String("error", err.Error()),
 		)
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"checkout.lookup_failed", "We could not load this checkout. Try again in a minute.", r,
 		))
 		return
@@ -595,7 +595,7 @@ func (h *Handler) HandlePublicCheckoutRecover(w http.ResponseWriter, r *http.Req
 			slog.String("checkout_session_id", cs.ID.String()),
 			slog.String("error", orderErr.Error()),
 		)
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"checkout.lookup_failed", "We could not load this checkout. Try again in a minute.", r,
 		))
 		return

@@ -11,9 +11,11 @@ import (
 )
 
 // PublicFeedRemovedEventRow is one event that left a feed token's list:
-// unpublished from the token (tombstone row of migration 0204) or still
-// attached to it but no longer 'published' / soft-deleted. The event columns
-// are nil when the event row no longer exists.
+// unpublished from the token (tombstone row of migration 0204, the only
+// source of "unpublished") or still attached to it but cancelled, archived or
+// soft-deleted. A draft that is merely attached to the token is never listed:
+// it was never on the list. The event columns are nil when the event row no
+// longer exists.
 type PublicFeedRemovedEventRow struct {
 	EventID       uuid.UUID
 	DisplayNumber *int64
@@ -25,27 +27,34 @@ type PublicFeedRemovedEventRow struct {
 	RemovedAt     time.Time
 }
 
+// One row per event (DISTINCT ON keeps the latest removal), newest first.
 const listPublicFeedRemovedEvents = `-- name: ListPublicFeedRemovedEvents :many
-SELECT x.event_id, e.display_number, e.name, e.slug, e.status, e.deleted_at,
-       e.last_session_at, x.removed_at
+SELECT y.event_id, y.display_number, y.name, y.slug, y.status, y.deleted_at,
+       y.last_session_at, y.removed_at
 FROM (
-    SELECT ep.event_id, COALESCE(ev.deleted_at, ev.updated_at) AS removed_at
-    FROM event_publications ep
-    JOIN agent_feed_tokens ft ON ft.id = ep.feed_token_id
-    JOIN events ev ON ev.id = ep.event_id
-    WHERE ft.token = $1
-      AND ft.is_active = true
-      AND (ev.status <> 'published' OR ev.deleted_at IS NOT NULL)
-    UNION ALL
-    SELECT r.event_id, r.removed_at
-    FROM event_publication_removals r
-    JOIN agent_feed_tokens ft ON ft.id = r.feed_token_id
-    WHERE ft.token = $1
-      AND ft.is_active = true
-) x
-LEFT JOIN events e ON e.id = x.event_id
-WHERE x.removed_at > $2
-ORDER BY x.removed_at DESC, x.event_id ASC
+    SELECT DISTINCT ON (x.event_id)
+           x.event_id, e.display_number, e.name, e.slug, e.status, e.deleted_at,
+           e.last_session_at, x.removed_at
+    FROM (
+        SELECT ep.event_id, COALESCE(ev.deleted_at, ev.updated_at) AS removed_at
+        FROM event_publications ep
+        JOIN agent_feed_tokens ft ON ft.id = ep.feed_token_id
+        JOIN events ev ON ev.id = ep.event_id
+        WHERE ft.token = $1
+          AND ft.is_active = true
+          AND (ev.status IN ('cancelled', 'archived') OR ev.deleted_at IS NOT NULL)
+        UNION ALL
+        SELECT r.event_id, r.removed_at
+        FROM event_publication_removals r
+        JOIN agent_feed_tokens ft ON ft.id = r.feed_token_id
+        WHERE ft.token = $1
+          AND ft.is_active = true
+    ) x
+    LEFT JOIN events e ON e.id = x.event_id
+    WHERE x.removed_at > $2
+    ORDER BY x.event_id, x.removed_at DESC
+) y
+ORDER BY y.removed_at DESC, y.event_id ASC
 LIMIT $3`
 
 // ListPublicFeedRemovedEvents lists the events that left the feed token's

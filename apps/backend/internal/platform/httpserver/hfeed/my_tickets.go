@@ -31,6 +31,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/pdf"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hsite"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/humancode"
@@ -58,6 +59,20 @@ func (h *Handler) WithMyTicketsCaptcha(fn MyTicketsCaptcha) *Handler {
 	return h
 }
 
+// MyTicketsPageCheck reports whether pageURL lies on one of the site origins
+// of the feed token's OWN channel (settings.site.origins). The global CORS
+// allow-list is not enough: it holds every organizer's site, so a token of
+// one organizer could mail a genuine link pointing at another's page.
+type MyTicketsPageCheck func(ctx context.Context, feedToken, pageURL string) bool
+
+// WithMyTicketsPageCheck wires the page_url check of the link request.
+// Without it every request links the tickets site's own /my-tickets page.
+// Returns the receiver for chaining.
+func (h *Handler) WithMyTicketsPageCheck(fn MyTicketsPageCheck) *Handler {
+	h.myTicketsPage = fn
+	return h
+}
+
 func (h *Handler) myTicketsIPHash(r *http.Request) string {
 	ip := h.clientIP(r)
 	if ip == "" {
@@ -65,6 +80,31 @@ func (h *Handler) myTicketsIPHash(r *http.Request) string {
 	}
 	sum := sha256.Sum256([]byte(h.myTicketsSalt + "|my-tickets|" + ip))
 	return hex.EncodeToString(sum[:])
+}
+
+// myTicketsExchangeBucket is the rate-limit bucket of a token exchange: the
+// client address when one is known. Without one (no address could be read)
+// the bucket is the token's own hash, never one shared key, so a single
+// client cannot lock every buyer out of their links.
+func (h *Handler) myTicketsExchangeBucket(r *http.Request, token string) string {
+	if ip := h.myTicketsIPHash(r); ip != "" {
+		return "mt-exchange|" + ip
+	}
+	sum := sha256.Sum256([]byte("my-tickets-exchange|" + token))
+	return "mt-exchange-token|" + hex.EncodeToString(sum[:16])
+}
+
+// myTicketsPDFNumber is the ticket number the PDF file is named by
+// (pdf.DisplayNumber): the ticket's system id, else the short form of its
+// id. The buyer never sees a ticket UUID.
+func (h *Handler) myTicketsPDFNumber(ctx context.Context, ticketID uuid.UUID) string {
+	number := ""
+	if h.ticketQueries != nil {
+		if t, err := h.ticketQueries.GetTicketByID(ctx, ticketID); err == nil && t.SystemTicketID > 0 {
+			number = strconv.FormatInt(t.SystemTicketID, 10)
+		}
+	}
+	return pdf.DisplayNumber(number, ticketID.String())
 }
 
 func (h *Handler) myTicketsUnavailable(w http.ResponseWriter, r *http.Request) {
@@ -92,8 +132,8 @@ type MyTicketsLinkRequest struct {
 	Email  string `json:"email"`
 	Locale string `json:"locale"`
 	// PageURL is the site page the letter links to. It is used only when its
-	// origin is allowed to call this API; otherwise the tickets site's own
-	// /my-tickets page is linked.
+	// origin is one of the feed token's own channel site origins; otherwise
+	// the tickets site's own /my-tickets page is linked.
 	PageURL string `json:"page_url"`
 	// TurnstileToken is the Cloudflare Turnstile token (action my_tickets).
 	// Required when the channel lists site origins, ignored otherwise.
@@ -126,7 +166,7 @@ func (h *Handler) HandleMyTicketsRequestLink(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	page := ""
-	if h.returnURLPolicy.AllowsOrigin(req.PageURL) {
+	if strings.TrimSpace(req.PageURL) != "" && h.myTicketsPage != nil && h.myTicketsPage(r.Context(), feedToken, req.PageURL) {
 		page = req.PageURL
 	}
 	err = h.myTickets.RequestLink(r.Context(), mytickets.LinkInput{
@@ -145,7 +185,7 @@ func (h *Handler) HandleMyTicketsRequestLink(w http.ResponseWriter, r *http.Requ
 		))
 	default:
 		h.logger.Error("my_tickets: link request failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"my_tickets.failed", "We could not process the request. Try again in a minute.", r,
 		))
 	}
@@ -172,8 +212,8 @@ func (h *Handler) HandleMyTicketsExchange(w http.ResponseWriter, r *http.Request
 		))
 		return
 	}
-	// Per-IP only: the link token is the credential being guessed here.
-	if !h.enforceRateLimit(w, r, "my_tickets.rate_limited", h.rl.CheckCheckoutToken, "mt-exchange|"+h.myTicketsIPHash(r)) {
+	// Per client address: the link token is the credential being guessed here.
+	if !h.enforceRateLimit(w, r, "my_tickets.rate_limited", h.rl.CheckCheckoutToken, h.myTicketsExchangeBucket(r, req.Token)) {
 		return
 	}
 	token, expires, err := h.myTickets.Exchange(r.Context(), req.Token)
@@ -185,7 +225,7 @@ func (h *Handler) HandleMyTicketsExchange(w http.ResponseWriter, r *http.Request
 	}
 	if err != nil {
 		h.logger.Error("my_tickets: exchange failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"my_tickets.failed", "We could not process the request. Try again in a minute.", r,
 		))
 		return
@@ -221,7 +261,7 @@ func (h *Handler) myTicketsSession(w http.ResponseWriter, r *http.Request) (myti
 	}
 	if err != nil {
 		h.logger.Error("my_tickets: session lookup failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"my_tickets.failed", "We could not process the request. Try again in a minute.", r,
 		))
 		return mytickets.Session{}, false
@@ -237,7 +277,7 @@ func (h *Handler) HandleMyTicketsLogout(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := h.myTickets.Revoke(r.Context(), sess); err != nil {
 		h.logger.Error("my_tickets: revoke failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"my_tickets.failed", "We could not process the request. Try again in a minute.", r,
 		))
 		return
@@ -291,7 +331,7 @@ func (h *Handler) HandleMyTicketsOrders(w http.ResponseWriter, r *http.Request) 
 	orders, total, err := h.myTickets.ListOrders(r.Context(), sess, page)
 	if err != nil {
 		h.logger.Error("my_tickets: list failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"my_tickets.failed", "We could not process the request. Try again in a minute.", r,
 		))
 		return
@@ -363,7 +403,7 @@ func (h *Handler) HandleMyTicketsPDF(w http.ResponseWriter, r *http.Request) {
 	owns, err := h.myTickets.OwnsTicket(r.Context(), sess, orderID, ticketID)
 	if err != nil {
 		h.logger.Error("my_tickets: ownership check failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"my_tickets.failed", "We could not process the request. Try again in a minute.", r,
 		))
 		return
@@ -396,7 +436,7 @@ func (h *Handler) HandleMyTicketsPDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", "inline; filename=\"ticket-"+ticketID.String()+".pdf\"")
+	w.Header().Set("Content-Disposition", "inline; filename=\"ticket-"+h.myTicketsPDFNumber(r.Context(), ticketID)+".pdf\"")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(pdfBytes)
 }

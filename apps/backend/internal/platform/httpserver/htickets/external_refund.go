@@ -38,6 +38,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/refunds"
 )
 
 const (
@@ -223,6 +224,15 @@ func (h *Handler) ExternalRefundOrder(ctx context.Context, p ExternalRefundParam
 	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 	txq := h.ticketQueries.WithTx(tx)
 
+	// The refund engine's payment lock comes FIRST, before the order row, in
+	// the order the engine itself takes them: a provider refund of the same
+	// ticket racing this one must see the external amount, or the two
+	// together could return more than the ticket was paid. An order without
+	// a payment (a gateway order) has nothing to lock.
+	if lerr := lockOrderPayments(ctx, tx, p.OrderID, p.OrgID); lerr != nil {
+		return res, extInternal("order.external_refund_failed", "failed to lock the order's payment", lerr)
+	}
+
 	// A foreign organization's order is indistinguishable from a missing one.
 	order, err := txq.LockOrderForUpdate(ctx, p.OrderID, p.OrgID)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -270,10 +280,21 @@ func (h *Handler) ExternalRefundOrder(ctx context.Context, p ExternalRefundParam
 				"only an active ticket can be refunded", map[string]any{
 					"ticket_id": it.TicketID.String(), "current_status": line.Status})
 		}
-		if it.AmountMinor > line.Price {
+		// What is left of the ticket's price after every earlier refund
+		// that may still return money (a partial provider refund leaves the
+		// ticket active).
+		var refunded int64
+		if serr := tx.QueryRow(ctx, `
+			SELECT COALESCE(SUM(amount), 0)::bigint FROM refunds
+			WHERE  ticket_id = $1 AND state NOT IN ('failed', 'rejected')`, it.TicketID).Scan(&refunded); serr != nil {
+			return res, extInternal("order.external_refund_failed", "failed to sum earlier refunds", serr)
+		}
+		if remaining := line.Price - refunded; it.AmountMinor > remaining {
 			return res, extFail(http.StatusUnprocessableEntity, "order.refund_exceeds_price",
-				"the amount is more than the ticket was paid", map[string]any{
-					"ticket_id": it.TicketID.String(), "price_minor": line.Price, "amount_minor": it.AmountMinor})
+				"the amount is more than what is left of the ticket's price", map[string]any{
+					"ticket_id": it.TicketID.String(), "price_minor": line.Price,
+					"refunded_minor": refunded, "remaining_minor": max(remaining, 0),
+					"amount_minor": it.AmountMinor})
 		}
 	}
 
@@ -382,4 +403,37 @@ func actorLabel(id string) string {
 		return "operator"
 	}
 	return "user:" + id
+}
+
+// lockOrderPayments takes the refund engine's advisory lock
+// (refunds.LockPayment) on every succeeded payment of the order's checkout,
+// in id order so two callers never wait on each other crosswise.
+func lockOrderPayments(ctx context.Context, tx pgx.Tx, orderID, orgID uuid.UUID) error {
+	rows, err := tx.Query(ctx, `
+		SELECT pi.id FROM orders o
+		JOIN   payment_intents pi ON pi.checkout_session_id = o.checkout_session_id AND pi.org_id = o.org_id
+		WHERE  o.id = $1 AND o.org_id = $2 AND pi.state = 'succeeded'
+		ORDER  BY pi.id`, orderID, orgID)
+	if err != nil {
+		return err
+	}
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := refunds.LockPayment(ctx, tx, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }

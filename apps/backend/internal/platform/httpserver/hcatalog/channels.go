@@ -30,6 +30,7 @@ import (
 	paymodules "github.com/abhteam/arena_new/apps/backend/internal/app/payments"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/contactform"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
@@ -196,8 +197,17 @@ func NormalizeChannelSettings(raw json.RawMessage) (json.RawMessage, string) {
 	if err := json.Unmarshal(raw, &probe); err != nil {
 		return nil, "settings must be a valid JSON object"
 	}
-	if _, ok := probe.(map[string]any); !ok {
+	obj, ok := probe.(map[string]any)
+	if !ok {
 		return nil, "settings must be a JSON object (not an array or scalar)"
+	}
+	if cf, ok := obj["contact_form"].(map[string]any); ok {
+		if rec, present := cf["recipients"]; present {
+			b, _ := json.Marshal(rec)
+			if msg := contactform.ValidateRecipients(b); msg != "" {
+				return nil, msg
+			}
+		}
 	}
 	return raw, ""
 }
