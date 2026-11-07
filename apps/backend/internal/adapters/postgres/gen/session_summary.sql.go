@@ -417,10 +417,12 @@ SELECT COALESCE(ro.session_id, rt.session_id, po.session_id) AS session_id,
 FROM   refunds r
 LEFT JOIN orders          ro ON ro.id = r.order_id
 LEFT JOIN tickets         rt ON rt.id = r.ticket_id
+LEFT JOIN orders          tro ON tro.id = rt.order_id
 LEFT JOIN payment_intents pi ON pi.id = r.payment_intent_id
 LEFT JOIN orders          po ON po.checkout_session_id = pi.checkout_session_id
 WHERE  COALESCE(ro.session_id, rt.session_id, po.session_id) = ANY($1::uuid[])
-  AND  NOT COALESCE(ro.is_test, po.is_test, false)
+  AND  COALESCE(ro.status, tro.status, po.status) IN ('paid', 'partially_refunded', 'refunded')
+  AND  NOT COALESCE(ro.is_test, tro.is_test, po.is_test, false)
 GROUP  BY COALESCE(ro.session_id, rt.session_id, po.session_id), r.settlement, r.state, r.currency, r.origin`
 
 // SessionSummaryRefundsRow totals the refunds of one (session, settlement,
