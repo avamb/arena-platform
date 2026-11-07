@@ -35,6 +35,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/pdf"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/directions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventnote"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
@@ -361,6 +362,7 @@ func (h *changeEmail) buildMessage(
 		SessionStart:   formatSessionForEmail(first.SessionStart, first.SessionTZ),
 		DoorsOpen:      formatClockForEmail(first.DoorsOpenAt, first.SessionTZ),
 		VenueName:      joinNonEmpty(", ", first.VenueName, first.VenueCity),
+		Directions:     directions.Build(first.VenueLat, first.VenueLng, first.VenueAddress, first.VenueCity),
 		Branding:       branding,
 		EventNote:      changeEventNote(moves, first.EventEmailNote, first.EventEmailNoteFormat),
 		WhiteLabel:     whiteLabelForTicket(ctx, whiteLabelResolver(h.opts.DB), h.logger, tickets[0].TicketID.String()),

@@ -23,6 +23,7 @@
     {{if not .Change.Date}}{{with .SessionStart}}<tr><td><strong>Termín</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
     {{with .DoorsOpen}}<tr><td><strong>Vstup od</strong></td><td>{{.}}</td></tr>{{end}}
     {{if not .Change.Venue}}{{with .VenueName}}<tr><td><strong>Místo konání</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{with .Directions.GoogleURL}}<tr><td><strong>Jak se tam dostat</strong></td><td><a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a></td></tr>{{end}}
     {{with .TierName}}<tr><td><strong>Kategorie</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatSector}}<tr><td><strong>Sektor</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatRow}}<tr><td><strong>Řada</strong></td><td>{{.}}</td></tr>{{end}}
@@ -77,7 +78,8 @@ Akce: {{.EventName}}
 {{if not .Change.Date}}{{with .SessionStart}}Termín: {{.}}
 {{end}}{{end}}{{with .DoorsOpen}}Vstup od {{.}}
 {{end}}{{if not .Change.Venue}}{{with .VenueName}}Místo konání: {{.}}
-{{end}}{{end}}{{with .TierName}}Kategorie: {{.}}
+{{end}}{{end}}{{with .Directions.GoogleURL}}Jak se tam dostat:: Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
+{{end}}{{with .TierName}}Kategorie: {{.}}
 {{end}}{{with .SeatSector}}Sektor: {{.}}
 {{end}}{{with .SeatRow}}Řada: {{.}}
 {{end}}{{with .SeatNumber}}Místo: {{.}}

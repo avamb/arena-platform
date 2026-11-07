@@ -42,10 +42,11 @@ type ticketStrings struct {
 	KeepNote  string // the closing footer note
 
 	// ── arena additions ───────────────────────────────────────────────
-	Holder    string // info-cell label above the ticket holder's name
-	Contact   string // footer prefix before the contact e-mail
-	NotFiscal string // the "not a fiscal receipt" disclosure sentence
-	Doors     string // prefix of the doors-open time under the weekday ("Doors open 19:30")
+	Holder     string // info-cell label above the ticket holder's name
+	Contact    string // footer prefix before the contact e-mail
+	NotFiscal  string // the "not a fiscal receipt" disclosure sentence
+	Doors      string // prefix of the doors-open time under the weekday ("Doors open 19:30")
+	Directions string // label of the map-links line under the venue ("Directions: Google Maps Waze")
 	// Invitation is printed in the Price cell of a complimentary ticket instead
 	// of a price (U-3): the same ticket, only the price is the word.
 	Invitation string
@@ -66,6 +67,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Contact:    "Contact",
 		NotFiscal:  "This document is not a fiscal receipt.",
 		Doors:      "Doors open",
+		Directions: "Directions",
 		Invitation: "Invitation",
 	},
 	"ru": {
@@ -77,6 +79,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Contact:    "Контакт",
 		NotFiscal:  "Этот документ не является фискальным чеком.",
 		Doors:      "Вход с",
+		Directions: "Как добраться",
 		Invitation: "Пригласительный",
 	},
 	"cs": {
@@ -88,6 +91,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Contact:    "Kontakt",
 		NotFiscal:  "Tento dokument není daňovým dokladem.",
 		Doors:      "Vstup od",
+		Directions: "Jak se tam dostat",
 		Invitation: "Pozvánka",
 	},
 	"es": {
@@ -99,6 +103,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Contact:    "Contacto",
 		NotFiscal:  "Este documento no es un recibo fiscal.",
 		Doors:      "Apertura de puertas",
+		Directions: "Cómo llegar",
 		Invitation: "Invitación",
 	},
 	"de": {
@@ -110,6 +115,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Contact:    "Kontakt",
 		NotFiscal:  "Dieses Dokument ist kein Steuerbeleg.",
 		Doors:      "Einlass ab",
+		Directions: "Anfahrt",
 		Invitation: "Einladung",
 	},
 	"fr": {
@@ -121,6 +127,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Contact:    "Contact",
 		NotFiscal:  "Ce document n’est pas un reçu fiscal.",
 		Doors:      "Ouverture des portes",
+		Directions: "Itinéraire",
 		Invitation: "Invitation",
 	},
 	"it": {
@@ -132,6 +139,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Contact:    "Contatto",
 		NotFiscal:  "Questo documento non è una ricevuta fiscale.",
 		Doors:      "Apertura porte",
+		Directions: "Come arrivare",
 		Invitation: "Invito",
 	},
 	"pl": {
@@ -143,6 +151,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Contact:    "Kontakt",
 		NotFiscal:  "Ten dokument nie jest paragonem fiskalnym.",
 		Doors:      "Wejście od",
+		Directions: "Dojazd",
 		Invitation: "Zaproszenie",
 	},
 	"uk": {
@@ -154,6 +163,7 @@ var ticketStringsByLocale = map[string]ticketStrings{
 		Contact:    "Контакт",
 		NotFiscal:  "Цей документ не є фіскальним чеком.",
 		Doors:      "Вхід з",
+		Directions: "Як дістатися",
 		Invitation: "Запрошення",
 	},
 }

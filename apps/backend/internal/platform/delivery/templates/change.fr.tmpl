@@ -23,6 +23,7 @@
     {{if not .Change.Date}}{{with .SessionStart}}<tr><td><strong>Séance</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
     {{with .DoorsOpen}}<tr><td><strong>Ouverture des portes</strong></td><td>{{.}}</td></tr>{{end}}
     {{if not .Change.Venue}}{{with .VenueName}}<tr><td><strong>Lieu</strong></td><td>{{.}}</td></tr>{{end}}{{end}}
+    {{with .Directions.GoogleURL}}<tr><td><strong>Itinéraire</strong></td><td><a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a></td></tr>{{end}}
     {{with .TierName}}<tr><td><strong>Catégorie</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatSector}}<tr><td><strong>Secteur</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatRow}}<tr><td><strong>Rang</strong></td><td>{{.}}</td></tr>{{end}}
@@ -77,7 +78,8 @@ L'organisateur a modifié les informations de {{.EventName}}. Voici ce qui chang
 {{if not .Change.Date}}{{with .SessionStart}}Séance : {{.}}
 {{end}}{{end}}{{with .DoorsOpen}}Ouverture des portes {{.}}
 {{end}}{{if not .Change.Venue}}{{with .VenueName}}Lieu : {{.}}
-{{end}}{{end}}{{with .TierName}}Catégorie : {{.}}
+{{end}}{{end}}{{with .Directions.GoogleURL}}Itinéraire : Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
+{{end}}{{with .TierName}}Catégorie : {{.}}
 {{end}}{{with .SeatSector}}Secteur : {{.}}
 {{end}}{{with .SeatRow}}Rang : {{.}}
 {{end}}{{with .SeatNumber}}Place : {{.}}

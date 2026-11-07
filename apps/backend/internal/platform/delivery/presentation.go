@@ -131,6 +131,10 @@ func applyPresentation(p *Payload, row gen.TicketPresentationRow) {
 		}
 	}
 
+	if p.VenueLat == nil && p.VenueLng == nil && row.VenueGeoLat != nil && row.VenueGeoLng != nil {
+		lat, lng := *row.VenueGeoLat, *row.VenueGeoLng
+		p.VenueLat, p.VenueLng = &lat, &lng
+	}
 	if p.DoorsOpenAt == nil && row.DoorsOpenAt != nil {
 		d := *row.DoorsOpenAt
 		p.DoorsOpenAt = &d

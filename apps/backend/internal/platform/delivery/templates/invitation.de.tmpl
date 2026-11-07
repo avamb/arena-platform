@@ -14,6 +14,7 @@
   <p style="margin:0 0 12px 0;">Sie haben eine kostenlose Einladungs-Karte für
      <strong>{{.EventName}}</strong> erhalten. Das PDF finden Sie im Anhang.</p>
   <p style="margin:0 0 12px 0;">Diese Karte ist eine kostenlose Einladung — es ist keine Zahlung erforderlich.</p>
+  {{with .Directions.GoogleURL}}<p style="margin:0 0 12px 0;">{{with $.VenueName}}{{.}}<br>{{end}}Anfahrt: <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a></p>{{end}}
   {{if gt (len .Tickets) 1}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">{{range .Tickets}}<tr><td>Nr. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td></tr>{{end}}</table>{{else if or .SeatSector .SeatRow .SeatNumber}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">
     {{with .SeatSector}}<tr><td><strong>Sektor</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatRow}}<tr><td><strong>Reihe</strong></td><td>{{.}}</td></tr>{{end}}
@@ -52,7 +53,10 @@ Das PDF finden Sie im Anhang.
 
 Diese Karte ist eine kostenlose Einladung — es ist keine Zahlung erforderlich.
 
-{{if gt (len .Tickets) 1}}{{range .Tickets}}- Nr. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}
+{{with .Directions.GoogleURL}}{{with $.VenueName}}{{.}}
+{{end}}Anfahrt:: Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
+
+{{end}}{{if gt (len .Tickets) 1}}{{range .Tickets}}- Nr. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}
 {{end}}{{else}}{{with .SeatSector}}Sektor: {{.}}
 {{end}}{{with .SeatRow}}Reihe: {{.}}
 {{end}}{{with .SeatNumber}}Platz: {{.}}

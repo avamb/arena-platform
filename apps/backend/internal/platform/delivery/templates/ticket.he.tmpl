@@ -12,7 +12,7 @@
   <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;text-align:right;">{{if gt (len .Tickets) 1}}תודה על הרכישה. הכרטיסים שלך ל„{{.EventName}}” מצורפים למייל זה (קובצי PDF).{{else}}תודה על הרכישה. הכרטיס שלך ל„{{.EventName}}” מצורף למייל זה (PDF).{{end}}</td></tr>
   <tr><td style="padding:8px 32px;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-right:4px solid {{.Accent}};background:#f8f9fa;"><tr><td style="padding:12px 16px;color:#22333D;font-size:14px;line-height:1.6;text-align:right;">
-      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br><span dir="ltr">{{.}}</span>{{end}}{{with .DoorsOpen}}<br>פתיחת דלתות <span dir="ltr">{{.}}</span>{{end}}{{with .VenueName}}<br>{{.}}{{end}}
+      <strong>{{.EventName}}</strong>{{with .SessionStart}}<br><span dir="ltr">{{.}}</span>{{end}}{{with .DoorsOpen}}<br>פתיחת דלתות <span dir="ltr">{{.}}</span>{{end}}{{with .VenueName}}<br>{{.}}{{end}}{{with .Directions.GoogleURL}}<br>הוראות הגעה: <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a>{{end}}
     </td></tr></table>
   </td></tr>
   <tr><td style="padding:8px 32px;text-align:right;">
@@ -70,6 +70,7 @@
 {{with .SessionStart}}{{.}}
 {{end}}{{with .DoorsOpen}}פתיחת דלתות {{.}}
 {{end}}{{with .VenueName}}{{.}}
+{{end}}{{with .Directions.GoogleURL}}הוראות הגעה:: Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
 {{end}}
 {{if gt (len .Tickets) 1}}כרטיסים ({{len .Tickets}}){{else}}כרטיס{{end}}:
 {{range .Tickets}}- מס׳ {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}{{with .Price}} · {{.}}{{end}}{{with .DownloadURL}}

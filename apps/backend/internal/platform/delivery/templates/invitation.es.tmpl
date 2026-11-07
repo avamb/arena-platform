@@ -14,6 +14,7 @@
   <p style="margin:0 0 12px 0;">Has recibido una entrada de cortesía para
      <strong>{{.EventName}}</strong>. El PDF está adjunto a este correo.</p>
   <p style="margin:0 0 12px 0;">Esta entrada es una invitación gratuita — no se requiere pago.</p>
+  {{with .Directions.GoogleURL}}<p style="margin:0 0 12px 0;">{{with $.VenueName}}{{.}}<br>{{end}}Cómo llegar: <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a></p>{{end}}
   {{if gt (len .Tickets) 1}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">{{range .Tickets}}<tr><td>N.º {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td></tr>{{end}}</table>{{else if or .SeatSector .SeatRow .SeatNumber}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">
     {{with .SeatSector}}<tr><td><strong>Sector</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatRow}}<tr><td><strong>Fila</strong></td><td>{{.}}</td></tr>{{end}}
@@ -52,7 +53,10 @@ El PDF está adjunto a este correo.
 
 Esta entrada es una invitación gratuita — no se requiere pago.
 
-{{if gt (len .Tickets) 1}}{{range .Tickets}}- N.º {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}
+{{with .Directions.GoogleURL}}{{with $.VenueName}}{{.}}
+{{end}}Cómo llegar:: Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
+
+{{end}}{{if gt (len .Tickets) 1}}{{range .Tickets}}- N.º {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}
 {{end}}{{else}}{{with .SeatSector}}Sector: {{.}}
 {{end}}{{with .SeatRow}}Fila: {{.}}
 {{end}}{{with .SeatNumber}}Asiento: {{.}}

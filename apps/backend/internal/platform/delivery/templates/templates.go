@@ -37,6 +37,7 @@ import (
 	"strings"
 	texttemplate "text/template"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/directions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventnote"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
 )
@@ -211,6 +212,10 @@ type Data struct {
 	DoorsOpen string
 	// VenueName may be empty if the venue is not yet resolved.
 	VenueName string
+	// Directions are the Google Maps / Waze links of the venue (built by
+	// internal/platform/directions). Zero prints no line. The ticket, change
+	// and invitation letters read it; the cancel letter does not.
+	Directions directions.Links
 	// TierName may be empty for GA / untiered tickets.
 	TierName string
 

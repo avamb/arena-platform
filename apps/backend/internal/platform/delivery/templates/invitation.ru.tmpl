@@ -14,6 +14,7 @@
   <p style="margin:0 0 12px 0;">Вам оформлен бесплатный пригласительный билет на
      <strong>{{.EventName}}</strong>. PDF-файл прикреплён к этому письму.</p>
   <p style="margin:0 0 12px 0;">Этот билет является бесплатным приглашением — оплата не требуется.</p>
+  {{with .Directions.GoogleURL}}<p style="margin:0 0 12px 0;">{{with $.VenueName}}{{.}}<br>{{end}}Как добраться: <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a></p>{{end}}
   {{if gt (len .Tickets) 1}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">{{range .Tickets}}<tr><td>№ {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td></tr>{{end}}</table>{{else if or .SeatSector .SeatRow .SeatNumber}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">
     {{with .SeatSector}}<tr><td><strong>Сектор</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatRow}}<tr><td><strong>Ряд</strong></td><td>{{.}}</td></tr>{{end}}
@@ -52,7 +53,10 @@ PDF-файл прикреплён к этому письму.
 
 Этот билет является бесплатным приглашением — оплата не требуется.
 
-{{if gt (len .Tickets) 1}}{{range .Tickets}}- № {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}
+{{with .Directions.GoogleURL}}{{with $.VenueName}}{{.}}
+{{end}}Как добраться:: Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
+
+{{end}}{{if gt (len .Tickets) 1}}{{range .Tickets}}- № {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}
 {{end}}{{else}}{{with .SeatSector}}Сектор: {{.}}
 {{end}}{{with .SeatRow}}Ряд: {{.}}
 {{end}}{{with .SeatNumber}}Место: {{.}}

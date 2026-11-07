@@ -152,6 +152,7 @@ func siblingPayload(p Payload, ticketID uuid.UUID) Payload {
 	sp.SessionStart = time.Time{}
 	sp.SessionTZ = ""
 	sp.DoorsOpenAt = nil
+	sp.VenueLat, sp.VenueLng = nil, nil
 	sp.VenueName = ""
 	sp.VenueAddress = ""
 	sp.VenueCity = ""

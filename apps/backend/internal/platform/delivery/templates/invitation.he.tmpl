@@ -14,6 +14,7 @@
   <p style="margin:0 0 12px 0;">הונפקה עבורך הזמנה לכרטיס חינם עבור
      <strong>{{.EventName}}</strong>. קובץ ה-PDF מצורף להודעה זו.</p>
   <p style="margin:0 0 12px 0;">זוהי הזמנה אישית — אין צורך בתשלום.</p>
+  {{with .Directions.GoogleURL}}<p style="margin:0 0 12px 0;">{{with $.VenueName}}{{.}}<br>{{end}}הוראות הגעה: <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a></p>{{end}}
   {{if gt (len .Tickets) 1}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px;direction:rtl">{{range .Tickets}}<tr><td>מס׳ {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td></tr>{{end}}</table>{{else if or .SeatSector .SeatRow .SeatNumber}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px;direction:rtl">
     {{with .SeatSector}}<tr><td><strong>אזור</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatRow}}<tr><td><strong>שורה</strong></td><td>{{.}}</td></tr>{{end}}
@@ -52,7 +53,10 @@
 
 זוהי הזמנה אישית — אין צורך בתשלום.
 
-{{if gt (len .Tickets) 1}}{{range .Tickets}}- מס׳ {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}
+{{with .Directions.GoogleURL}}{{with $.VenueName}}{{.}}
+{{end}}הוראות הגעה:: Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
+
+{{end}}{{if gt (len .Tickets) 1}}{{range .Tickets}}- מס׳ {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}
 {{end}}{{else}}{{with .SeatSector}}אזור: {{.}}
 {{end}}{{with .SeatRow}}שורה: {{.}}
 {{end}}{{with .SeatNumber}}מקום: {{.}}

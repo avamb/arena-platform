@@ -229,7 +229,9 @@ SELECT t.system_ticket_id,
        epr.name                      AS promoter_name,
        s.doors_open_at               AS doors_open_at,
        een.note                      AS email_note,
-       een.note_format               AS email_note_format
+       een.note_format               AS email_note_format,
+       v.geo_lat::float8             AS venue_geo_lat,
+       v.geo_lng::float8             AS venue_geo_lng
 FROM       tickets t
 LEFT JOIN  sessions      s  ON s.id  = t.session_id
 LEFT JOIN  events        e  ON e.id  = s.event_id

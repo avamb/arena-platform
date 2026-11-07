@@ -53,6 +53,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/pdf"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/directions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailstatus"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
@@ -131,10 +132,15 @@ type Payload struct {
 	// migration 0128). Resolved at render time like the other hints; nil
 	// prints no doors line.
 	DoorsOpenAt *time.Time `json:"doors_open_at,omitempty"`
-	VenueName   string     `json:"venue_name,omitempty"`
-	VenueCity   string     `json:"venue_city,omitempty"`
-	TierName    string     `json:"tier_name,omitempty"`
-	HolderName  string     `json:"holder_name,omitempty"`
+	// VenueLat / VenueLng are the venue's coordinates (venues.geo_lat/geo_lng).
+	// Presentation hints like the rest: resolved at render time, never set by
+	// an enqueuer. They count only as a pair (see internal/platform/directions).
+	VenueLat   *float64 `json:"venue_lat,omitempty"`
+	VenueLng   *float64 `json:"venue_lng,omitempty"`
+	VenueName  string   `json:"venue_name,omitempty"`
+	VenueCity  string   `json:"venue_city,omitempty"`
+	TierName   string   `json:"tier_name,omitempty"`
+	HolderName string   `json:"holder_name,omitempty"`
 	// OrderNumber is the buyer-facing order reference printed in the PDF
 	// footer ("Order 9096") — orders.system_id, the same integer the Bil24
 	// wire calls orderId. Resolved at render time; empty drops the line.
@@ -614,6 +620,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				SessionStart:   formatSessionForEmail(p.SessionStart, p.SessionTZ),
 				DoorsOpen:      formatClockForEmail(p.DoorsOpenAt, p.SessionTZ),
 				VenueName:      joinNonEmpty(", ", p.VenueName, p.VenueCity),
+				Directions:     directions.Build(p.VenueLat, p.VenueLng, p.VenueAddress, p.VenueCity),
 				TierName:       p.TierName,
 				SeatSector:     p.SeatSector,
 				SeatRow:        p.SeatRow,
@@ -897,6 +904,7 @@ func buildPDFTicket(ticketID uuid.UUID, p Payload, branding templates.Branding, 
 	// now carries the ticket's EAN-13 digits — the same value as the printed
 	// barcode, and the only value entrance control can resolve. It used to
 	// encode the ticket UUID, which nothing could scan into anything.
+	dir := directions.Build(p.VenueLat, p.VenueLng, p.VenueAddress, p.VenueCity)
 	t := pdf.Ticket{
 		TicketID:               ticketID.String(),
 		TicketNumber:           p.TicketNumber,
@@ -906,6 +914,8 @@ func buildPDFTicket(ticketID uuid.UUID, p Payload, branding templates.Branding, 
 		SessionStart:           defaultTime(p.SessionStart),
 		SessionTZ:              p.SessionTZ,
 		DoorsOpenAt:            p.DoorsOpenAt,
+		DirectionsGoogleURL:    dir.GoogleURL,
+		DirectionsWazeURL:      dir.WazeURL,
 		VenueName:              p.VenueName,
 		VenueAddress:           p.VenueAddress,
 		VenueCity:              p.VenueCity,

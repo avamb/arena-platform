@@ -14,6 +14,7 @@
   <p style="margin:0 0 12px 0;">Byla vám vystavena bezplatná pozvánka na
      <strong>{{.EventName}}</strong>. PDF naleznete v příloze.</p>
   <p style="margin:0 0 12px 0;">Tato vstupenka je bezplatnou pozvánkou — platba se nevyžaduje.</p>
+  {{with .Directions.GoogleURL}}<p style="margin:0 0 12px 0;">{{with $.VenueName}}{{.}}<br>{{end}}Jak se tam dostat: <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a></p>{{end}}
   {{if gt (len .Tickets) 1}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">{{range .Tickets}}<tr><td>č. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}</td></tr>{{end}}</table>{{else if or .SeatSector .SeatRow .SeatNumber}}<table cellpadding="4" style="border-collapse:collapse;font-size:14px">
     {{with .SeatSector}}<tr><td><strong>Sektor</strong></td><td>{{.}}</td></tr>{{end}}
     {{with .SeatRow}}<tr><td><strong>Řada</strong></td><td>{{.}}</td></tr>{{end}}
@@ -52,7 +53,10 @@ PDF naleznete v příloze.
 
 Tato vstupenka je bezplatnou pozvánkou — platba se nevyžaduje.
 
-{{if gt (len .Tickets) 1}}{{range .Tickets}}- č. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}
+{{with .Directions.GoogleURL}}{{with $.VenueName}}{{.}}
+{{end}}Jak se tam dostat:: Google Maps {{.}} · Waze {{$.Directions.WazeURL}}
+
+{{end}}{{if gt (len .Tickets) 1}}{{range .Tickets}}- č. {{.Number}}{{with .Tier}} · {{.}}{{end}}{{with .Seat}} · {{.}}{{end}}
 {{end}}{{else}}{{with .SeatSector}}Sektor: {{.}}
 {{end}}{{with .SeatRow}}Řada: {{.}}
 {{end}}{{with .SeatNumber}}Místo: {{.}}
