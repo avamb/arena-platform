@@ -231,7 +231,7 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 		h.logger.Error("public_checkout_status: session lookup failed",
 			slog.String("error", err.Error()),
 		)
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"checkout.lookup_failed", "We could not load this checkout. Try again in a minute.", r,
 		))
 		return
@@ -559,7 +559,7 @@ func (h *Handler) HandleGetPublicTicketPDF(w http.ResponseWriter, r *http.Reques
 		h.logger.Error("public_ticket_pdf: session lookup failed",
 			slog.String("error", err.Error()),
 		)
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"checkout.lookup_failed", "We could not load this checkout. Try again in a minute.", r,
 		))
 		return

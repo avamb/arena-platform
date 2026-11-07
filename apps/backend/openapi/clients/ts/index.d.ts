@@ -63954,7 +63954,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `dependency.database_unavailable` - the service is not wired. */
+            /** @description `dependency.database_unavailable` - the service is not wired; `subscription.failed` - a transient failure, retry. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -64026,7 +64026,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.captcha_not_configured` or `my_tickets.captcha_unavailable` - the anti-robot check cannot run now. */
+            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry; `my_tickets.captcha_not_configured` or `my_tickets.captcha_unavailable` - the anti-robot check cannot run now. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -64086,7 +64086,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `dependency.database_unavailable` - the service is not wired. */
+            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -64134,7 +64134,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `dependency.database_unavailable` - the service is not wired. */
+            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -64196,7 +64196,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `dependency.database_unavailable` - the service is not wired. */
+            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -64272,7 +64272,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description `dependency.database_unavailable` - the service is not wired. */
+            /** @description `dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -64887,8 +64887,8 @@ export interface operations {
                 };
             };
             /**
-             * @description Internal server error while retrieving the checkout session or
-             *     reservation (`checkout.lookup_failed`, `checkout.reservation_failed`).
+             * @description Internal server error while retrieving the reservation
+             *     (`checkout.reservation_failed`).
              */
             500: {
                 headers: {
@@ -64898,7 +64898,10 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database unavailable (`dependency.database_unavailable`). */
+            /**
+             * @description Database unavailable (`dependency.database_unavailable`) or the
+             *     checkout could not be read (`checkout.lookup_failed`); retry.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -64979,16 +64982,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The message could not be stored (`contact.send_failed`). */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Database unavailable, or the captcha is not configured or cannot be checked. */
+            /** @description Database unavailable, the message could not be stored (`contact.send_failed`, retry), or the captcha is not configured or cannot be checked. */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -65087,16 +65081,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The message could not be stored (`contact.send_failed`). */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Database unavailable, or the captcha is not configured or cannot be checked (`contact.captcha_not_configured`, `contact.captcha_unavailable`). */
+            /** @description Database unavailable, the message could not be stored (`contact.send_failed`, retry), or the captcha is not configured or cannot be checked (`contact.captcha_not_configured`, `contact.captcha_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -65186,16 +65171,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The subscription could not be stored (`subscription.failed`). */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
-            /** @description Database unavailable, or the captcha is not configured or cannot be checked (`subscription.captcha_not_configured`, `subscription.captcha_unavailable`). */
+            /** @description Database unavailable, the subscription could not be stored (`subscription.failed`, retry), or the captcha is not configured or cannot be checked (`subscription.captcha_not_configured`, `subscription.captcha_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -65343,9 +65319,8 @@ export interface operations {
                 };
             };
             /**
-             * @description Internal server error (`checkout.lookup_failed`,
-             *     `reservation.insert_failed`, `checkout.update_failed`,
-             *     `checkout.confirm_failed`).
+             * @description Internal server error (`reservation.insert_failed`,
+             *     `checkout.update_failed`, `checkout.confirm_failed`).
              */
             500: {
                 headers: {
@@ -65355,7 +65330,10 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database unavailable (`dependency.database_unavailable`). */
+            /**
+             * @description Database unavailable (`dependency.database_unavailable`) or the
+             *     checkout could not be read (`checkout.lookup_failed`); retry.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -65420,17 +65398,9 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The checkout could not be read (`checkout.lookup_failed`). */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
             /**
-             * @description Database unavailable (`dependency.database_unavailable`) or the
+             * @description Database unavailable (`dependency.database_unavailable`), the
+             *     checkout could not be read (`checkout.lookup_failed`) or the
              *     cancel could not be written (`checkout.cancel_failed`); retry.
              */
             503: {
@@ -65571,9 +65541,8 @@ export interface operations {
                 };
             };
             /**
-             * @description Internal server error (`checkout.lookup_failed`,
-             *     `checkout.tickets_failed`, `checkout.credential_failed`,
-             *     `checkout.credential_malformed`).
+             * @description Internal server error (`checkout.tickets_failed`,
+             *     `checkout.credential_failed`, `checkout.credential_malformed`).
              */
             500: {
                 headers: {
@@ -65583,7 +65552,10 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Database unavailable (`dependency.database_unavailable`). */
+            /**
+             * @description Database unavailable (`dependency.database_unavailable`) or the
+             *     checkout could not be read (`checkout.lookup_failed`); retry.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;

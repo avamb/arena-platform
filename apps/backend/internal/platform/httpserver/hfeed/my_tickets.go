@@ -159,7 +159,7 @@ func (h *Handler) HandleMyTicketsRequestLink(w http.ResponseWriter, r *http.Requ
 		))
 	default:
 		h.logger.Error("my_tickets: link request failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"my_tickets.failed", "We could not process the request. Try again in a minute.", r,
 		))
 	}
@@ -199,7 +199,7 @@ func (h *Handler) HandleMyTicketsExchange(w http.ResponseWriter, r *http.Request
 	}
 	if err != nil {
 		h.logger.Error("my_tickets: exchange failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"my_tickets.failed", "We could not process the request. Try again in a minute.", r,
 		))
 		return
@@ -235,7 +235,7 @@ func (h *Handler) myTicketsSession(w http.ResponseWriter, r *http.Request) (myti
 	}
 	if err != nil {
 		h.logger.Error("my_tickets: session lookup failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"my_tickets.failed", "We could not process the request. Try again in a minute.", r,
 		))
 		return mytickets.Session{}, false
@@ -251,7 +251,7 @@ func (h *Handler) HandleMyTicketsLogout(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := h.myTickets.Revoke(r.Context(), sess); err != nil {
 		h.logger.Error("my_tickets: revoke failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"my_tickets.failed", "We could not process the request. Try again in a minute.", r,
 		))
 		return
@@ -305,7 +305,7 @@ func (h *Handler) HandleMyTicketsOrders(w http.ResponseWriter, r *http.Request) 
 	orders, total, err := h.myTickets.ListOrders(r.Context(), sess, page)
 	if err != nil {
 		h.logger.Error("my_tickets: list failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"my_tickets.failed", "We could not process the request. Try again in a minute.", r,
 		))
 		return
@@ -377,7 +377,7 @@ func (h *Handler) HandleMyTicketsPDF(w http.ResponseWriter, r *http.Request) {
 	owns, err := h.myTickets.OwnsTicket(r.Context(), sess, orderID, ticketID)
 	if err != nil {
 		h.logger.Error("my_tickets: ownership check failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"my_tickets.failed", "We could not process the request. Try again in a minute.", r,
 		))
 		return

@@ -54597,7 +54597,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
-          description: "`dependency.database_unavailable` - the service is not wired."
+          description: "`dependency.database_unavailable` - the service is not wired; `subscription.failed` - a transient failure, retry."
           content:
             application/json:
               schema:
@@ -54668,7 +54668,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
-          description: "`dependency.database_unavailable` - the service is not wired; `my_tickets.captcha_not_configured` or `my_tickets.captcha_unavailable` - the anti-robot check cannot run now."
+          description: "`dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry; `my_tickets.captcha_not_configured` or `my_tickets.captcha_unavailable` - the anti-robot check cannot run now."
           content:
             application/json:
               schema:
@@ -54717,7 +54717,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
-          description: "`dependency.database_unavailable` - the service is not wired."
+          description: "`dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry."
           content:
             application/json:
               schema:
@@ -54752,7 +54752,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
-          description: "`dependency.database_unavailable` - the service is not wired."
+          description: "`dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry."
           content:
             application/json:
               schema:
@@ -54808,7 +54808,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
-          description: "`dependency.database_unavailable` - the service is not wired."
+          description: "`dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry."
           content:
             application/json:
               schema:
@@ -54880,7 +54880,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
-          description: "`dependency.database_unavailable` - the service is not wired."
+          description: "`dependency.database_unavailable` - the service is not wired; `my_tickets.failed` - a transient failure, retry."
           content:
             application/json:
               schema:
@@ -55487,15 +55487,16 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: |
-            Internal server error while retrieving the checkout session or
-            reservation (`checkout.lookup_failed`, `checkout.reservation_failed`).
+            Internal server error while retrieving the reservation
+            (`checkout.reservation_failed`).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: |
-            Database unavailable (`dependency.database_unavailable`).
+            Database unavailable (`dependency.database_unavailable`) or the
+            checkout could not be read (`checkout.lookup_failed`); retry.
           content:
             application/json:
               schema:
@@ -55572,14 +55573,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
-        "500":
-          description: The message could not be stored (`contact.send_failed`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
-          description: Database unavailable, or the captcha is not configured or cannot be checked.
+          description: Database unavailable, the message could not be stored (`contact.send_failed`, retry), or the captcha is not configured or cannot be checked.
           content:
             application/json:
               schema:
@@ -55680,14 +55675,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
-        "500":
-          description: The message could not be stored (`contact.send_failed`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
-          description: Database unavailable, or the captcha is not configured or cannot be checked (`contact.captcha_not_configured`, `contact.captcha_unavailable`).
+          description: Database unavailable, the message could not be stored (`contact.send_failed`, retry), or the captcha is not configured or cannot be checked (`contact.captcha_not_configured`, `contact.captcha_unavailable`).
           content:
             application/json:
               schema:
@@ -55781,14 +55770,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
-        "500":
-          description: The subscription could not be stored (`subscription.failed`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
-          description: Database unavailable, or the captcha is not configured or cannot be checked (`subscription.captcha_not_configured`, `subscription.captcha_unavailable`).
+          description: Database unavailable, the subscription could not be stored (`subscription.failed`, retry), or the captcha is not configured or cannot be checked (`subscription.captcha_not_configured`, `subscription.captcha_unavailable`).
           content:
             application/json:
               schema:
@@ -55963,16 +55946,16 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: |
-            Internal server error (`checkout.lookup_failed`,
-            `reservation.insert_failed`, `checkout.update_failed`,
-            `checkout.confirm_failed`).
+            Internal server error (`reservation.insert_failed`,
+            `checkout.update_failed`, `checkout.confirm_failed`).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: |
-            Database unavailable (`dependency.database_unavailable`).
+            Database unavailable (`dependency.database_unavailable`) or the
+            checkout could not be read (`checkout.lookup_failed`); retry.
           content:
             application/json:
               schema:
@@ -56039,15 +56022,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
-        "500":
-          description: The checkout could not be read (`checkout.lookup_failed`).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: |
-            Database unavailable (`dependency.database_unavailable`) or the
+            Database unavailable (`dependency.database_unavailable`), the
+            checkout could not be read (`checkout.lookup_failed`) or the
             cancel could not be written (`checkout.cancel_failed`); retry.
           content:
             application/json:
@@ -56188,16 +56166,16 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: |
-            Internal server error (`checkout.lookup_failed`,
-            `checkout.tickets_failed`, `checkout.credential_failed`,
-            `checkout.credential_malformed`).
+            Internal server error (`checkout.tickets_failed`,
+            `checkout.credential_failed`, `checkout.credential_malformed`).
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: |
-            Database unavailable (`dependency.database_unavailable`).
+            Database unavailable (`dependency.database_unavailable`) or the
+            checkout could not be read (`checkout.lookup_failed`); retry.
           content:
             application/json:
               schema:

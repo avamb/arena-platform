@@ -91,7 +91,7 @@ func (h *Handler) HandlePublicCheckoutCancel(w http.ResponseWriter, r *http.Requ
 			return
 		}
 		h.logger.Error("public_checkout_cancel: session lookup failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
 			"checkout.lookup_failed", "We could not load this checkout. Try again in a minute.", r,
 		))
 		return
