@@ -134,7 +134,7 @@ func TestGA4Sender_PurchaseMajorUnits(t *testing.T) {
 
 func TestNoConsentSendsNothing(t *testing.T) {
 	hit := false
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { hit = true }))
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) { hit = true }))
 	defer srv.Close()
 	f, _ := newFake("meta", false)
 	_, _ = RunOnce(context.Background(), f, Senders{Meta: MetaSender{BaseURL: srv.URL}}, slog.Default(), time.Now())
@@ -145,7 +145,7 @@ func TestNoConsentSendsNothing(t *testing.T) {
 
 func TestRetryThenPermanent(t *testing.T) {
 	code := 500
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(code) }))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(code) }))
 	defer srv.Close()
 	f, _ := newFake("ga4", true)
 	now := time.Now()
