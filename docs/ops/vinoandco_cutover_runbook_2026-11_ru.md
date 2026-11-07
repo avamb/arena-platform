@@ -107,7 +107,7 @@ python3 -c "import json;d=json.load(open('/root/vino-cutover/inventory-baseline.
 |---|---|
 | Тип, источник | Docker Compose, репозиторий `avamb/vinoandco-site`, ветка `main`, файл `./docker-compose.yml` (как на стейджинге) |
 | Имя | `vinoandco_site_prod` (имя контейнеров Dokploy сгенерирует само: `<appName>-web-1`, `<appName>-builder-1`) |
-| **Домен в Dokploy** | **нет** (маршрут задаёт динамический файл, раздел 5). Следствие: Dokploy присоединяет сервисы к `dokploy-network` вместе с доменом, без домена — возможно нет. Проверить сразу после первого Deploy (команда ниже) |
+| **Домен в Dokploy** | технический, **не** `vinoandco.events`: host `vinoandco-site-prod.invalid`, сервис `web`, порт 80, **https выключен**. Маршрут настоящего хоста задаёт динамический файл (раздел 5). Проверено 07.11 на стейджинге по сгенерированному compose: Dokploy добавляет `dokploy-network` только сервису, у которого есть домен (у `builder` её нет), поэтому без домена `web` для Traefik невидим. Технический домен даёт лишь http-роутер `Host(vinoandco-site-prod.invalid)`, который никому не отвечает; ACME для него не запрашивается, потому что https выключен |
 | `SITE_URL` | `https://vinoandco.events` |
 | `SITE_INDEXING` | `true` (на стейджинге `false`) |
 | `PUBLIC_ARENA_API` | `https://api.arenasoldout.com` |
@@ -378,8 +378,7 @@ docker logs dokploy-traefik --since 1m 2>&1 | grep -iE 'vino|error' | head
 
 ## 11. Открытые вопросы к владельцу
 
-1. **Сеть prod-compose без домена** (шаг 3.2): присоединится ли `web` к `dokploy-network` без домена Dokploy — не проверено,
-   на стейджинге домен есть. Решить, правится ли `docker-compose.yml` сайта (вариант 1) или заводится технический домен.
+1. ~~Сеть prod-compose без домена~~ — закрыто 07.11: без домена Dokploy сеть не подключает (проверено по compose стейджинга), заводится технический домен без https (шаг 3.2).
 2. **Вход в wp-admin на переходный период** (спека оставляет «решить при репетиции»): в файле заложен тот же хост,
    `/wp-admin/` и `/wp-login.php` открыты всем, как сегодня, защищают плагины WP. Нужна ли дополнительная защита
    правилом Cloudflare на эти два пути.
