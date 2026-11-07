@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/brevo"
@@ -33,6 +34,10 @@ func (s *Server) handleAdminOrganizationSenderDNS(w http.ResponseWriter, r *http
 		return
 	}
 	sender, err := brevo.New(s.cfg.BrevoAPIKey, s.cfg.BrevoAPIBaseURL, nil).GetSender(r.Context(), *org.SenderEmail)
+	if errors.Is(err, brevo.ErrSenderNotFound) {
+		httputil.WriteJSON(w, http.StatusOK, map[string]any{"sender_email": *org.SenderEmail, "status": "pending", "dns_records": []brevo.DNSRecord{}})
+		return
+	}
 	if err != nil {
 		s.logger.Warn("sender identity lookup failed", "error", err)
 		httputil.WriteJSON(w, http.StatusBadGateway, httputil.ErrorEnvelope("sender_identity.lookup_failed", "could not fetch sender verification records", r))

@@ -2,24 +2,78 @@ package brevo
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 )
 
-func TestGetSenderReadsBrevoDNSRecords(t *testing.T) {
+func stub(t *testing.T, domainsStatus int) (*httptest.Server, func() []string) {
+	t.Helper()
+	var mu sync.Mutex
+	var paths []string
 	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		paths = append(paths, r.URL.Path)
+		mu.Unlock()
 		if r.Header.Get("api-key") != "test-key" {
-			t.Fatal("missing Brevo API key")
+			t.Error("missing Brevo API key")
 		}
-		if r.URL.Path != "/v3/senders/tickets@example.com" {
-			t.Fatalf("path = %q", r.URL.Path)
+		switch r.URL.Path {
+		case "/v3/senders":
+			_, _ = w.Write([]byte(`{"senders":[{"id":1,"name":"A","email":"other@example.org","active":true},{"id":2,"name":"T","email":"Tickets@Example.com","active":true,"ips":[]}]}`))
+		case "/v3/senders/domains":
+			if domainsStatus != http.StatusOK {
+				w.WriteHeader(domainsStatus)
+				return
+			}
+			_, _ = w.Write([]byte(`{"domains":[{"id":9,"domain_name":"example.org","authenticated":false},{"id":10,"domain_name":"example.com","authenticated":true,"verified":true,"extra":1,"dns_records":{"dkim_record":{"type":"TXT","value":"dkim-value","host_name":"mail._domainkey"},"brevo_code":{"type":"TXT","value":"brevo-code:abc","host_name":""},"dmarc_record":{"type":"TXT","value":"v=DMARC1","host_name":"_dmarc"}}}]}`))
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
 		}
-		_, _ = w.Write([]byte(`{"email":"tickets@example.com","active":true,"dkimRecord":{"hostName":"mail._domainkey","value":"dkim-value"},"spfRecord":{"hostName":"@","value":"v=spf1 include:spf.brevo.com ~all"}}`))
 	}))
-	defer s.Close()
+	t.Cleanup(s.Close)
+	return s, func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), paths...)
+	}
+}
+
+func TestGetSenderListsSendersAndReadsDomainRecords(t *testing.T) {
+	s, paths := stub(t, http.StatusOK)
 	got, err := New("test-key", s.URL, s.Client()).GetSender(context.Background(), "tickets@example.com")
-	if err != nil || !got.Active || len(got.DNSRecords) != 2 {
+	if err != nil || !got.Active || !got.DomainVerified || len(got.DNSRecords) != 3 {
+		t.Fatalf("sender=%+v err=%v", got, err)
+	}
+	if got.DNSRecords[0].Type != "DKIM" || got.DNSRecords[0].Host != "mail._domainkey" {
+		t.Fatalf("records=%+v", got.DNSRecords)
+	}
+	for _, p := range paths() {
+		if p != "/v3/senders" && p != "/v3/senders/domains" {
+			t.Fatalf("unexpected path requested: %q", p)
+		}
+	}
+}
+
+func TestGetSenderNotFound(t *testing.T) {
+	s, paths := stub(t, http.StatusOK)
+	_, err := New("test-key", s.URL, s.Client()).GetSender(context.Background(), "nobody@example.com")
+	if !errors.Is(err, ErrSenderNotFound) {
+		t.Fatalf("err=%v", err)
+	}
+	for _, p := range paths() {
+		if p == "/v3/senders/nobody@example.com" {
+			t.Fatal("old per-address route was requested")
+		}
+	}
+}
+
+func TestGetSenderToleratesDomainsFailure(t *testing.T) {
+	s, _ := stub(t, http.StatusInternalServerError)
+	got, err := New("test-key", s.URL, s.Client()).GetSender(context.Background(), "tickets@example.com")
+	if err != nil || !got.Active || len(got.DNSRecords) != 0 {
 		t.Fatalf("sender=%+v err=%v", got, err)
 	}
 }
