@@ -61,6 +61,11 @@ func TestMyTicketsLinkHandler_MintsTheTokenAtSendTimeAndMailsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if _, err := pool.Exec(ctx, `UPDATE organizations SET sender_email = $2, sender_verification_status = 'verified' WHERE id = $1`,
+		orgID, "tickets-"+run+"@example.org"); err != nil {
+		t.Fatal(err)
+	}
+
 	sender := &myTicketsCaptureSender{}
 	h := NewMyTicketsLinkHandler(MyTicketsLinkOptions{Sender: sender, DB: pool})
 	payload, _ := json.Marshal(mytickets.JobPayload{RequestID: reqID.String()})
@@ -73,6 +78,9 @@ func TestMyTicketsLinkHandler_MintsTheTokenAtSendTimeAndMailsIt(t *testing.T) {
 	msg := sender.sent[0]
 	if msg.To != addr || !strings.Contains(msg.TextBody, "https://vinoandco.events/my-tickets/#t=") {
 		t.Fatalf("letter = %+v", msg)
+	}
+	if msg.From != "tickets-"+run+"@example.org" || msg.FromName != "Letter Org "+run {
+		t.Errorf("verified sender: From=%q FromName=%q", msg.From, msg.FromName)
 	}
 	// The organization's language (ru) was used.
 	if !strings.Contains(msg.Subject, "Ваши билеты") {
@@ -90,8 +98,24 @@ func TestMyTicketsLinkHandler_MintsTheTokenAtSendTimeAndMailsIt(t *testing.T) {
 	if _, _, err := mytickets.New(pool, nil).Exchange(ctx, tok); err != nil {
 		t.Fatalf("the mailed token must exchange: %v", err)
 	}
+	// A sender that is not verified is not used as From.
+	reqID2 := uuid.New()
+	if _, err := pool.Exec(ctx, `UPDATE organizations SET sender_verification_status = 'pending' WHERE id = $1`, orgID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO my_tickets_link_requests (id, org_id, email_normalized, page_url)
+	      VALUES ($1,$2,$3,'https://vinoandco.events/my-tickets/')`, reqID2, orgID, addr); err != nil {
+		t.Fatal(err)
+	}
+	payload2, _ := json.Marshal(mytickets.JobPayload{RequestID: reqID2.String()})
+	if err := h(ctx, payload2); err != nil || len(sender.sent) != 2 {
+		t.Fatalf("second letter: err=%v sent=%d", err, len(sender.sent))
+	}
+	if m2 := sender.sent[1]; m2.From != "" || m2.FromName != "Letter Org "+run {
+		t.Errorf("pending sender: From=%q FromName=%q", m2.From, m2.FromName)
+	}
 	// A retry of a spent request sends nothing more.
-	if err := h(ctx, payload); err != nil || len(sender.sent) != 1 {
+	if err := h(ctx, payload); err != nil || len(sender.sent) != 2 {
 		t.Fatalf("retry after use: err=%v sent=%d", err, len(sender.sent))
 	}
 }

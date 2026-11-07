@@ -33,6 +33,9 @@ type MyTicketsLinkOptions struct {
 	Sender    email.Sender
 	Templates *templates.Renderer
 	DB        ScannedAlertDB
+	// Media resolves the organization's logo for the header. Nil keeps the
+	// organization's name as the header.
+	Media MediaResolver
 	// TicketsBaseURL is the fallback site when the request named no page.
 	TicketsBaseURL string
 	Logger         *slog.Logger
@@ -91,14 +94,19 @@ func NewMyTicketsLinkHandler(opts MyTicketsLinkOptions) worker.HandlerFunc {
 		}
 		var (
 			addr, locale, page, orgName, orgLocale string
+			senderEmail, senderStatus, accent      string
+			logoID                                 *uuid.UUID
 			used                                   bool
 		)
 		err = opts.DB.QueryRow(ctx, `
 			SELECT r.email_normalized, COALESCE(r.locale, ''), COALESCE(r.page_url, ''),
-			       o.name, COALESCE(o.default_locale, ''), r.used_at IS NOT NULL
+			       o.name, COALESCE(o.default_locale, ''), r.used_at IS NOT NULL,
+			       COALESCE(o.sender_email, ''), COALESCE(o.sender_verification_status, ''),
+			       COALESCE(o.branding->>'primary', ''), o.logo_media_id
 			FROM   my_tickets_link_requests r
 			JOIN   organizations o ON o.id = r.org_id
-			WHERE  r.id = $1`, id).Scan(&addr, &locale, &page, &orgName, &orgLocale, &used)
+			WHERE  r.id = $1`, id).Scan(&addr, &locale, &page, &orgName, &orgLocale, &used,
+			&senderEmail, &senderStatus, &accent, &logoID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
@@ -146,14 +154,42 @@ func NewMyTicketsLinkHandler(opts MyTicketsLinkOptions) worker.HandlerFunc {
 		if loc == "" {
 			loc = "en"
 		}
+		branding := myTicketsBranding(ctx, opts.Media, orgName, accent, logoID, logger)
 		out, err := r.Render(templates.TemplateKindMyTicketsLink, loc, templates.Data{
 			RecipientEmail: addr,
-			Branding:       templates.Branding{OrgName: orgName},
+			Branding:       branding,
 			MyTickets:      templates.MyTicketsLinkData{URL: link},
 		})
 		if err != nil {
 			return err
 		}
-		return opts.Sender.Send(ctx, email.Message{To: addr, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody})
+		return opts.Sender.Send(ctx, myTicketsLinkMessage(addr, orgName, senderEmail, senderStatus, out))
+	}
+}
+
+// myTicketsBranding is the header of the letter: the organization's name,
+// logo and accent, resolved like the ticket letter's (resolveBranding). Without
+// a logo (or a resolver) the header carries the name only.
+func myTicketsBranding(ctx context.Context, m MediaResolver, orgName, accent string, logoID *uuid.UUID, logger *slog.Logger) templates.Branding {
+	p := Payload{OrgName: orgName, OrgAccentColor: accent}
+	if logoID != nil {
+		p.OrgLogoMediaID = logoID.String()
+	}
+	b := resolveBranding(ctx, m, p, logger).Branding
+	b.LogoAlt = orgName
+	return b
+}
+
+// myTicketsLinkMessage leaves from the organization's own sender only when it
+// is verified, like the ticket letters, and shows the organization's name as
+// the sender name. An empty From leaves the platform default to the adapter.
+func myTicketsLinkMessage(to, orgName, senderEmail, senderStatus string, out templates.Rendered) email.Message {
+	from := ""
+	if senderStatus == "verified" {
+		from = strings.TrimSpace(senderEmail)
+	}
+	return email.Message{
+		To: to, From: from, FromName: strings.TrimSpace(orgName),
+		Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody,
 	}
 }

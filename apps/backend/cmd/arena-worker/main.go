@@ -739,6 +739,7 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 		Sender:         deliveryOpts.Sender,
 		Templates:      deliveryOpts.Templates,
 		DB:             pool,
+		Media:          deliveryOpts.Media,
 		TicketsBaseURL: cfg.PublicTicketsBaseURL,
 		Logger:         logger,
 	}))
