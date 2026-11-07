@@ -23,7 +23,7 @@ func (s ctxCheckingStore) Save(ctx context.Context, key, scope, actorID string, 
 func TestMiddleware_SavesWhenClientContextCancelled(t *testing.T) {
 	store := ctxCheckingStore{newInMemoryStore()}
 	ctx, cancel := context.WithCancel(context.Background())
-	h := Middleware(store, Options{Scope: testScope})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := Middleware(store, Options{Scope: testScope})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"ok":true}`))
@@ -51,7 +51,7 @@ func TestMiddleware_SavesWhenClientContextCancelled(t *testing.T) {
 func TestMiddleware_ConflictIsNotStored(t *testing.T) {
 	store := newInMemoryStore()
 	calls := 0
-	h := Middleware(store, Options{Scope: testScope})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := Middleware(store, Options{Scope: testScope})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls++
 		w.WriteHeader(http.StatusConflict)
 		_, _ = w.Write([]byte(`{"error":{"code":"checkout.price_changed"}}`))
