@@ -115,7 +115,13 @@ func (h *Handler) processOne(ctx context.Context, subID, orgID uuid.UUID, s scan
 	}
 
 	first := false
-	if s.storedResult == "admitted" && t.Status == "active" && t.UsedAt == nil {
+	if s.storedResult == "admitted" && t.BarcodeRevoked {
+		// MACS admitted a code the platform took back (a replaced or cancelled
+		// ticket, spec 63 R-1): kept as a fact, never a first admission.
+		h.logger.Warn("macs_scan_events: admitted a revoked barcode",
+			slog.String("scan_id", id), slog.String("ticket_id", t.TicketID.String()))
+	}
+	if s.storedResult == "admitted" && t.Status == "active" && t.UsedAt == nil && !t.BarcodeRevoked {
 		// The ticket row is locked (FOR UPDATE in resolveTicket), so "used_at
 		// was empty" is exact. Only a valid ticket is stamped: an offline
 		// scanner may admit a ticket cancelled meanwhile, which is recorded as
@@ -200,6 +206,9 @@ func resolveTicket(ctx context.Context, q *gen.Queries, s scan, orgID uuid.UUID)
 	if !haveID {
 		t = byCode
 	}
+	// A taken-back code stays taken back even when MACS also named the
+	// ticket by its number.
+	t.BarcodeRevoked = byCode.BarcodeRevoked
 	if t.OrgID != orgID {
 		return gen.MACSScanTicketRow{}, errNotFound
 	}
@@ -266,5 +275,6 @@ func scannedPayload(s scan, row gen.ScanEventRow, t gen.MACSScanTicketRow, orgID
 		"macs_result":      s.in.Result,
 		"system_ticket_id": t.SystemTicketID,
 		"first_admission":  first,
+		"barcode_revoked":  t.BarcodeRevoked,
 	}
 }

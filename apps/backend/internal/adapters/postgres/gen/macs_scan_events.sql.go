@@ -100,6 +100,9 @@ type MACSScanTicketRow struct {
 	Status         string     `json:"status"`
 	UsedAt         *time.Time `json:"used_at"`
 	SystemTicketID int64      `json:"system_ticket_id"`
+	// BarcodeRevoked is set only by ResolveMACSScanTicketByBarcode: the code
+	// MACS sent was taken back (spec 63, R-1).
+	BarcodeRevoked bool `json:"barcode_revoked"`
 }
 
 func scanMACSScanTicketRow(row pgx.Row) (MACSScanTicketRow, error) {
@@ -129,7 +132,7 @@ func (q *Queries) ResolveMACSScanTicketBySystemID(ctx context.Context, systemTic
 
 const resolveMACSScanTicketByBarcode = `-- name: ResolveMACSScanTicketByBarcode :one
 SELECT t.id, t.session_id, s.event_id, e.org_id, t.status, t.used_at,
-       t.system_ticket_id
+       t.system_ticket_id, (b.status = 'revoked') AS barcode_revoked
 FROM   barcodes b
 JOIN   tickets  t ON t.id = b.ticket_id
 JOIN   sessions s ON s.id = t.session_id
@@ -145,7 +148,11 @@ FOR UPDATE OF t`
 // barcodes.external_ref (any authority: the minted EAN-13 credential is
 // written there with the same value, an imported legacy barcode lives only
 // there) inside orgID. Returns pgx.ErrNoRows when no ticket of orgID
-// carries the code.
+// carries the code. BarcodeRevoked tells whether that code was taken back.
 func (q *Queries) ResolveMACSScanTicketByBarcode(ctx context.Context, barcode string, orgID uuid.UUID) (MACSScanTicketRow, error) {
-	return scanMACSScanTicketRow(q.db.QueryRow(ctx, resolveMACSScanTicketByBarcode, barcode, orgID))
+	var r MACSScanTicketRow
+	err := q.db.QueryRow(ctx, resolveMACSScanTicketByBarcode, barcode, orgID).Scan(
+		&r.TicketID, &r.SessionID, &r.EventID, &r.OrgID,
+		&r.Status, &r.UsedAt, &r.SystemTicketID, &r.BarcodeRevoked)
+	return r, err
 }

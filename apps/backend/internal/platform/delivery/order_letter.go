@@ -363,6 +363,14 @@ func ticketPDFBytes(
 	}
 
 	cred, credErr := opts.CredentialQueries.GetCredentialByTicketID(ctx, ticketID, "pdf")
+	if credErr == nil && cred.RevokedAt != nil {
+		// A revoked PDF carries a barcode that no longer admits (spec 63, R-1):
+		// it is never attached again. The ticket is drawn afresh with its
+		// current EAN-13; only an active ticket gets the fresh PDF stored (the
+		// upsert clears the revocation), so a letter about a cancelled ticket
+		// never revives its PDF on the public routes.
+		return freshTicketPDF(ctx, opts, logger, ticketID, p, branding, logoBytes)
+	}
 	if credErr != nil {
 		if !errors.Is(credErr, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("delivery: get pdf credential for ticket %s: %w", ticketID, credErr)
@@ -388,4 +396,36 @@ func ticketPDFBytes(
 		return nil, fmt.Errorf("delivery: decode pdf payload for ticket %s: %w", ticketID, decErr)
 	}
 	return pdfBytes, nil
+}
+
+// freshTicketPDF renders the ticket again in place of a revoked PDF
+// credential and stores the render only when the ticket is active.
+func freshTicketPDF(
+	ctx context.Context,
+	opts HandlerOptions,
+	logger *slog.Logger,
+	ticketID uuid.UUID,
+	p Payload,
+	branding templates.Branding,
+	logoBytes []byte,
+) ([]byte, error) {
+	poster := resolvePoster(ctx, opts.Media, p.PosterMediaID, logger)
+	pdfPayload, err := renderTicketPDF(ctx, ticketID, p, branding, logoBytes, poster)
+	if err != nil {
+		return nil, fmt.Errorf("delivery: render pdf for ticket %s: %w", ticketID, err)
+	}
+	if opts.TicketQueries == nil {
+		return pdfPayload, nil
+	}
+	t, err := opts.TicketQueries.GetTicketByID(ctx, ticketID)
+	if err != nil {
+		return nil, fmt.Errorf("delivery: get ticket %s: %w", ticketID, err)
+	}
+	if t.Status == "active" {
+		encoded := base64.StdEncoding.EncodeToString(pdfPayload)
+		if _, err := opts.CredentialQueries.InsertTicketCredential(ctx, ticketID, "pdf", encoded); err != nil {
+			return nil, fmt.Errorf("delivery: store pdf credential for ticket %s: %w", ticketID, err)
+		}
+	}
+	return pdfPayload, nil
 }

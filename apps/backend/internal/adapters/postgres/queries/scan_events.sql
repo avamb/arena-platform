@@ -143,9 +143,11 @@ FOR UPDATE OF t;
 -- The ticket behind a 13-digit barcode MACS printed (macs export `barcode`).
 -- Goes through barcodes.external_ref (indexed, migration 0106): the minted
 -- EAN-13 credential is written there first with the same value, and an
--- imported legacy barcode lives only there.
+-- imported legacy barcode lives only there. barcode_revoked reports a code
+-- taken back (a cancelled, refunded or replaced ticket): MACS may still admit
+-- it, the platform never stamps it as the ticket's entry.
 SELECT t.id, t.session_id, s.event_id, e.org_id, t.status, t.used_at,
-       t.system_ticket_id
+       t.system_ticket_id, (b.status = 'revoked') AS barcode_revoked
 FROM   barcodes b
 JOIN   tickets  t ON t.id = b.ticket_id
 JOIN   sessions s ON s.id = t.session_id

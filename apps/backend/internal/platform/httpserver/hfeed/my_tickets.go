@@ -428,6 +428,10 @@ func (h *Handler) HandleMyTicketsPDF(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	if cred.RevokedAt != nil {
+		writeTicketNotValid(w, r)
+		return
+	}
 	pdfBytes, err := base64.StdEncoding.DecodeString(cred.Payload)
 	if err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(

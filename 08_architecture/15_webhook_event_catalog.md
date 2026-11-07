@@ -110,7 +110,10 @@ transaction right after the insert.
 A MACS scan adds `source: "macs"`, `scanner_label`, `external_scan_id`,
 `subscriber_id`, `macs_result` (`admitted` / `rejected` / `duplicate`; the
 latter two are stored as `result: "denied"`), `system_ticket_id` and
-`first_admission` (true when this scan stamped `tickets.used_at`). A payload
+`first_admission` (true when this scan stamped `tickets.used_at`) and
+`barcode_revoked` (true when the code MACS sent was taken back by the platform:
+a cancelled, refunded or replaced ticket; such a scan never stamps
+`used_at`, spec 63). A payload
 without `source` comes from arena's own scanner. `scanned_at` is the moment
 of the scan, which may lie days before the event was written (an offline
 scanner's backlog): order by it, not by arrival.

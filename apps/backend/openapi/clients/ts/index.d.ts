@@ -6578,7 +6578,7 @@ export interface paths {
         };
         /**
          * Download an offline-validation barcode snapshot
-         * @description Returns a paginated snapshot of all non-revoked barcodes for the
+         * @description Returns a paginated snapshot of the barcodes of the
          *     tickets in a session (feature #144,
          *     `apps/backend/internal/platform/httpserver/hscanner/
          *     scanner_snapshot.go` HandleScannerSnapshot). Offline scanners
@@ -6586,6 +6586,11 @@ export interface paths {
          *     network connectivity, then poll with the `since` cursor for
          *     delta updates (store `last_updated_at` from each response and
          *     pass it as `since` on the next request).
+         *
+         *     The full snapshot (no `since`) leaves revoked codes out. A delta
+         *     lists a code revoked since the cursor with `status: revoked`, so
+         *     the device drops it from its cache (a cancelled, refunded or
+         *     replaced ticket).
          *
          *     Rate limited per client IP (600 req/min) and per session
          *     (300 req/min); excess requests return 429 `scanner.rate_limited`.
@@ -64646,6 +64651,19 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description `checkout.ticket_not_valid` - the ticket no longer admits
+             *     (cancelled, refunded or replaced), or its stored PDF was revoked.
+             *     The PDF is not handed out.
+             */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description `my_tickets.rate_limited` - too many requests. */
             429: {
                 headers: {
@@ -65907,6 +65925,19 @@ export interface operations {
              *     PDF has not yet been generated (`checkout.pdf_not_found`).
              */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `checkout.ticket_not_valid` - the ticket no longer admits
+             *     (cancelled, refunded or replaced), or its stored PDF was revoked.
+             *     The PDF is not handed out.
+             */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };

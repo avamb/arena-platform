@@ -359,7 +359,7 @@ func (s *Service) ListOrders(ctx context.Context, sess Session, page int) ([]Ord
 		SELECT t.checkout_session_id, t.id, t.status, t.seat_sector, t.seat_row, t.seat_number, tt.name, c.human_code
 		FROM   tickets t
 		LEFT   JOIN ticket_tiers tt ON tt.id = t.tier_id
-		LEFT   JOIN ticket_credentials c ON c.ticket_id = t.id AND c.type = 'static_qr'
+		LEFT   JOIN ticket_credentials c ON c.ticket_id = t.id AND c.type = 'static_qr' AND c.revoked_at IS NULL
 		WHERE  t.checkout_session_id = ANY($1)
 		ORDER  BY t.checkout_session_id, t.ordinal`, checkoutIDs)
 	if err != nil {

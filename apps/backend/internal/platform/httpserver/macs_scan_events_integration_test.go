@@ -395,3 +395,43 @@ func TestMACSScanEvents_UnstorableValueIsNotRetryable(t *testing.T) {
 		t.Fatalf("scan rows: %d, want 0", c)
 	}
 }
+
+// TestMACSScanEvents_RevokedBarcodeIsNeverAnEntry: a code the platform took
+// back (a cancelled, refunded or replaced ticket, spec 63 R-1) that MACS still
+// admits is kept as a fact, but it never stamps the ticket's used_at, and the
+// outbox row says the code was revoked.
+func TestMACSScanEvents_RevokedBarcodeIsNeverAnEntry(t *testing.T) {
+	m := newMACSScanEnv(t)
+	ctx := context.Background()
+	t0 := m.f.tickets[0]
+	code := m.storedBarcode(t, t0)
+	m.exec(t, `UPDATE barcodes SET status = 'revoked', updated_at = now() WHERE external_ref = $1`, code)
+	id := "m1-revoked-" + uuid.NewString()[:8]
+	at := time.Now().UTC().Add(-time.Hour).Truncate(time.Second).Format(time.RFC3339)
+
+	st, out, _, _ := m.signedPost(t, []map[string]any{
+		{"scan_id": id, "barcode": code, "result": "admitted", "scanned_at": at, "scanner_id": "dev-9", "gate": "Main"},
+	})
+	if st != http.StatusAccepted {
+		t.Fatalf("batch: %d %v", st, out)
+	}
+	res := resultsOf(t, out)
+	if len(res) != 1 || res[0]["status"] != hmacsscan.StatusAccepted || res[0]["first_admission"] != false {
+		t.Fatalf("result: %v", out)
+	}
+	var used *time.Time
+	if err := m.srv.pgxPool.QueryRow(ctx, `SELECT used_at FROM tickets WHERE id = $1`, t0).Scan(&used); err != nil {
+		t.Fatal(err)
+	}
+	if used != nil {
+		t.Fatalf("a revoked code stamped used_at: %v", used)
+	}
+	if n := m.count(t, `SELECT count(*) FROM scan_events WHERE subscriber_id = $1 AND external_scan_id = $2 AND result = 'admitted'`, m.subID, id); n != 1 {
+		t.Fatalf("the MACS fact is kept: %d rows", n)
+	}
+	if n := m.count(t, `SELECT count(*) FROM outbox_events WHERE event_type = 'v1.ticket.scanned' AND aggregate_id = $1
+		AND payload->>'external_scan_id' = $2 AND (payload->>'barcode_revoked')::boolean AND NOT (payload->>'first_admission')::boolean`,
+		t0.String(), id); n != 1 {
+		t.Fatalf("outbox row with barcode_revoked: %d", n)
+	}
+}

@@ -92,9 +92,11 @@ func (h *Handler) barcodeQueriesAvailable(w http.ResponseWriter, r *http.Request
 // GET /v1/scanner/snapshot
 // ─────────────────────────────────────────────────────────────────────────────
 
-// HandleScannerSnapshot returns a paginated list of non-revoked barcodes for all
+// HandleScannerSnapshot returns a paginated list of the barcodes of all
 // tickets in the given session. Supports delta updates via the since query
-// parameter (RFC3339 timestamp).
+// parameter (RFC3339 timestamp). The full snapshot leaves revoked codes out;
+// a delta lists them with status "revoked", so a device that cached a code
+// before it was taken back (a cancelled, refunded or replaced ticket) drops it.
 //
 // Query parameters:
 //
@@ -157,7 +159,7 @@ func (h *Handler) HandleScannerSnapshot(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// ── Parse since cursor (optional) ─────────────────────────────────────────
-	// Zero time means "no cursor" — returns all non-revoked barcodes for session.
+	// Zero time means "no cursor" — the full snapshot, without revoked codes.
 	var since time.Time // zero value = 1970-01-01 00:00:00 UTC
 	if sinceStr := r.URL.Query().Get("since"); sinceStr != "" {
 		since, err = time.Parse(time.RFC3339, sinceStr)
