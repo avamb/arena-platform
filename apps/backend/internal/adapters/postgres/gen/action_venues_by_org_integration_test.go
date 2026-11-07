@@ -46,7 +46,7 @@ func TestListActionVenuesByOrg_LiveDB(t *testing.T) {
 
 	q := gen.New(pool)
 
-	rows, err := q.ListActionVenuesByOrg(ctx, f.orgID, "ru")
+	rows, err := q.ListActionVenuesByOrg(ctx, f.orgID, "ru", nil)
 	if err != nil {
 		t.Fatalf("ListActionVenuesByOrg: %v", err)
 	}

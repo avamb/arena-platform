@@ -72,7 +72,7 @@ type catalogAction struct {
 // would unpublish live events on the site. handleBil24GetAllActions therefore
 // turns it into a -99 envelope rather than degrading.
 func (h *Handler) loadActionEvents(
-	ctx context.Context, orgID uuid.UUID, feePercent float64,
+	ctx context.Context, orgID uuid.UUID, feePercent float64, hiddenEvents []uuid.UUID,
 ) (map[uuid.UUID]catalogAction, error) {
 	sessions, err := h.eventQueries.ListActionEventsByOrg(ctx, orgID)
 	if err != nil {
@@ -82,6 +82,7 @@ func (h *Handler) loadActionEvents(
 	if err != nil {
 		return nil, err
 	}
+	sessions, tiers = withoutHiddenSessions(sessions, tiers, hiddenEvents)
 
 	// Feature #498 (W1-B3b): batch-resolve every action_event / venue / city /
 	// category_price id up front — one EnsureMany round-trip pair per kind for
@@ -519,4 +520,54 @@ func (h *Handler) venueLocation(orgID uuid.UUID, s gen.ActionEventRow) *time.Loc
 		return nil
 	}
 	return loc
+}
+
+// withoutHiddenEvents drops the events a non-test channel must not see
+// (published only into test channels). An empty hidden set returns events as is.
+func withoutHiddenEvents(events []gen.EventRow, hidden []uuid.UUID) []gen.EventRow {
+	if len(hidden) == 0 {
+		return events
+	}
+	skip := make(map[uuid.UUID]struct{}, len(hidden))
+	for _, id := range hidden {
+		skip[id] = struct{}{}
+	}
+	out := make([]gen.EventRow, 0, len(events))
+	for _, e := range events {
+		if _, no := skip[e.ID]; !no {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// withoutHiddenSessions drops the sessions of hidden events and the tiers of
+// those sessions, so no hidden event reaches the actionEventList, the price
+// envelope or the id pre-warm.
+func withoutHiddenSessions(
+	sessions []gen.ActionEventRow, tiers []gen.ActionEventTierRow, hidden []uuid.UUID,
+) ([]gen.ActionEventRow, []gen.ActionEventTierRow) {
+	if len(hidden) == 0 {
+		return sessions, tiers
+	}
+	skip := make(map[uuid.UUID]struct{}, len(hidden))
+	for _, id := range hidden {
+		skip[id] = struct{}{}
+	}
+	dropped := make(map[uuid.UUID]struct{})
+	keptSessions := make([]gen.ActionEventRow, 0, len(sessions))
+	for _, s := range sessions {
+		if _, no := skip[s.EventID]; no {
+			dropped[s.SessionID] = struct{}{}
+			continue
+		}
+		keptSessions = append(keptSessions, s)
+	}
+	keptTiers := make([]gen.ActionEventTierRow, 0, len(tiers))
+	for _, t := range tiers {
+		if _, no := dropped[t.Tier.SessionID]; !no {
+			keptTiers = append(keptTiers, t)
+		}
+	}
+	return keptSessions, keptTiers
 }

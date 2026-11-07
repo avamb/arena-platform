@@ -75,10 +75,30 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 		locale = "en"
 	}
 
+	// A normal (non-test) channel never sees an event published only into
+	// test channels (sales_channels.is_test, spec 62 6.3). A test channel and
+	// the unauthenticated legacy fallback keep the historical catalogue.
+	var hiddenIDs []uuid.UUID
+	if authed && !channel.IsTest {
+		var herr error
+		hiddenIDs, herr = h.eventQueries.ListTestOnlyEventIDsByOrg(ctx, channel.OrgID)
+		if herr != nil {
+			h.logger.Error("bil24_compat: GET_ALL_ACTIONS: list test-only events failed",
+				slog.String("org_id", channel.OrgID.String()),
+				slog.String("error", herr.Error()),
+			)
+			writeBil24JSON(w, http.StatusOK, bil24Error(
+				req.Command, ResultCodeInternalError, "failed to retrieve action list",
+			))
+			return
+		}
+	}
+
 	var events []gen.EventRow
 	var err error
 	if authed {
 		events, err = h.eventQueries.ListEventsByOrg(ctx, channel.OrgID, locale)
+		events = withoutHiddenEvents(events, hiddenIDs)
 	} else {
 		events, err = h.eventQueries.ListEvents(ctx, locale, "public")
 	}
@@ -110,7 +130,7 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 	countryList := make([]map[string]any, 0)
 	cityList := make([]map[string]any, 0)
 	if authed {
-		venueRows, verr := h.eventQueries.ListActionVenuesByOrg(ctx, channel.OrgID, locale)
+		venueRows, verr := h.eventQueries.ListActionVenuesByOrg(ctx, channel.OrgID, locale, hiddenIDs)
 		if verr != nil {
 			h.logger.Error("bil24_compat: GET_ALL_ACTIONS: list action venues failed",
 				slog.String("org_id", channel.OrgID.String()),
@@ -159,7 +179,7 @@ func (h *Handler) handleBil24GetAllActions(w http.ResponseWriter, r *http.Reques
 	var byEvent map[uuid.UUID]catalogAction
 	if authed {
 		var aerr error
-		byEvent, aerr = h.loadActionEvents(ctx, channel.OrgID, cartFeePercent(channel))
+		byEvent, aerr = h.loadActionEvents(ctx, channel.OrgID, cartFeePercent(channel), hiddenIDs)
 		if aerr != nil {
 			h.logger.Error("bil24_compat: GET_ALL_ACTIONS: list action events failed",
 				slog.String("org_id", channel.OrgID.String()),

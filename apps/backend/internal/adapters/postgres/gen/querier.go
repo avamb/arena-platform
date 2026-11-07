@@ -121,7 +121,10 @@ type Querier interface {
 	SoftDeleteVenue(ctx context.Context, id, orgID uuid.UUID) (VenueRow, error)
 	// ListActionVenuesByOrg: Bil24 compat GET_ALL_ACTIONS aggregation
 	// (feature #476 W1-A2b slice 14, spec §7.1)
-	ListActionVenuesByOrg(ctx context.Context, orgID uuid.UUID, locale string) ([]ActionVenueRow, error)
+	ListActionVenuesByOrg(ctx context.Context, orgID uuid.UUID, locale string, excludeEventIDs []uuid.UUID) ([]ActionVenueRow, error)
+	// ListTestOnlyEventIDsByOrg: published events published ONLY into test
+	// channels (sales_channels.is_test); a non-test channel's catalogue hides them.
+	ListTestOnlyEventIDsByOrg(ctx context.Context, orgID uuid.UUID) ([]uuid.UUID, error)
 
 	// Bil24 session import — POST /v1/organizations/{org_id}/imports/bil24-session
 	// (feature #517 W1-C3c, spec §13.2). source: imports_bil24.sql
