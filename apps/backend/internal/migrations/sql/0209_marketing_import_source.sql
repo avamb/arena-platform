@@ -11,10 +11,10 @@ SET LOCAL lock_timeout = '5s';
 
 ALTER TABLE marketing_consents DROP CONSTRAINT marketing_consents_source_check;
 ALTER TABLE marketing_consents ADD CONSTRAINT marketing_consents_source_check
-    CHECK (source IN ('widget', 'confirm_link', 'withdraw_link', 'organizer', 'erasure', 'import'));
+    CHECK (source IN ('widget', 'site', 'confirm_link', 'withdraw_link', 'organizer', 'erasure', 'import'));
 
 -- +goose Down
 DELETE FROM marketing_consents WHERE source = 'import';
 ALTER TABLE marketing_consents DROP CONSTRAINT marketing_consents_source_check;
 ALTER TABLE marketing_consents ADD CONSTRAINT marketing_consents_source_check
-    CHECK (source IN ('widget', 'confirm_link', 'withdraw_link', 'organizer', 'erasure'));
+    CHECK (source IN ('widget', 'site', 'confirm_link', 'withdraw_link', 'organizer', 'erasure'));
