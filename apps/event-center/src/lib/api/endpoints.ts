@@ -52,6 +52,7 @@ import type {
   OrderListResponse,
   OrderRefundOptions,
   OrderResendTicketsResponse,
+  RefundProblemQueue,
   OrderSummary,
   OrganizationItem,
   OrgMeResponse,
@@ -155,6 +156,12 @@ export interface OrderQuery {
   q?: string;
   eventId?: string;
   sessionId?: string;
+  /** The order date range, RFC 3339 (EC-V3). */
+  from?: string;
+  to?: string;
+  /** The range of the session start, RFC 3339 (EC-V3). */
+  sessionFrom?: string;
+  sessionTo?: string;
   limit?: number;
   offset?: number;
 }
@@ -168,6 +175,10 @@ export function listOrders(orgId: string, query: OrderQuery): Promise<OrderListR
       q: query.q === "" ? undefined : query.q,
       event_id: query.eventId,
       session_id: query.sessionId,
+      from: query.from,
+      to: query.to,
+      session_from: query.sessionFrom,
+      session_to: query.sessionTo,
       limit: query.limit,
       offset: query.offset,
     },
@@ -415,6 +426,25 @@ export function cancelOrder(orgId: string, orderId: string, headers: Record<stri
 }
 
 // ─── 8-1: refunds of an order ─────────────────────────────────────────────────
+
+/** Failed and stuck refunds with undelivered buyer letters (`refund.read`, EC-V5). */
+export function fetchRefundQueue(orgId: string): Promise<RefundProblemQueue> {
+  return call<RefundProblemQueue>({ route: API.refundQueue, params: { org_id: orgId } });
+}
+
+/**
+ * Retries one failed refund (`refund.approve`, 202). The server starts the
+ * "retry-<id>" operation, so a repeated press answers the first one. `headers`
+ * carries the step-up token (`withStepUp`).
+ */
+export function retryRefund(orgId: string, refundId: string, headers: Record<string, string>): Promise<CreateOrderRefundsResponse> {
+  return call<CreateOrderRefundsResponse>({
+    route: API.refundRetry,
+    params: { org_id: orgId, refund_id: refundId },
+    body: {},
+    headers,
+  });
+}
 
 /** What can be refunded on an order and how (`refund.read`). Changes nothing. */
 export function fetchRefundOptions(orgId: string, orderId: string): Promise<OrderRefundOptions> {

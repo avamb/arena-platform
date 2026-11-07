@@ -70,12 +70,6 @@ async function openCard(page: Page, role: Role, orderId: string) {
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 }
 
-async function typeWord(page: Page, text: string) {
-  const dialog = page.getByTestId("confirm-word");
-  await dialog.getByLabel("Type the word").fill(text);
-  await page.getByTestId("confirm-word-submit").click();
-}
-
 async function confirmPassword(page: Page, role: Role, twice = false) {
   const dialog = page.getByTestId("step-up");
   await expect(dialog).toBeVisible();
@@ -132,7 +126,6 @@ test.describe("refund: unknown outcomes, double presses and exact amounts (live)
     await page.getByTestId("refund-reason-buyer").check();
     await page.getByTestId("refund-continue").click();
     await page.getByTestId("refund-go").click();
-    await typeWord(page, "REFUND");
     await confirmPassword(page, "org_admin");
 
     // Not a rejection: the money may have moved, the screen says the answer is missing.
@@ -169,7 +162,6 @@ test.describe("refund: unknown outcomes, double presses and exact amounts (live)
     await page.getByTestId("refund-reason-event").check();
     await page.getByTestId("refund-continue").click();
     await page.getByTestId("refund-go").click();
-    await typeWord(page, "REFUND");
     await confirmPassword(page, "org_admin", true);
     await expect(page.getByTestId("refund-result")).toBeVisible();
     expect(posts, "one refund request").toBe(1);
@@ -181,13 +173,11 @@ test.describe("refund: unknown outcomes, double presses and exact amounts (live)
     await openCard(page, "organizer", ORDER_MANAGER);
     await page.getByTestId("refund-open").click();
     await page.getByTestId("refund-ticket").check();
-    await page.getByTestId("refund-partial").check();
-    await page.getByTestId("refund-part").fill("19,99");
+    await page.locator('[data-testid^="refund-part-"]').fill("19,99");
     await page.getByTestId("refund-reason-buyer").check();
     await page.getByTestId("refund-continue").click();
     await expect(page.getByTestId("refund-final-amount")).toContainText(/19[.,]99/);
     await page.getByTestId("refund-go").click();
-    await typeWord(page, "REFUND");
     await confirmPassword(page, "organizer");
     await expect(page.getByTestId("refund-result-line")).toHaveAttribute("data-state", "succeeded");
     expect((await stripeCalls(request)).map((c) => c.amount)).toEqual([1999]);

@@ -19,6 +19,7 @@ describe("navSectionOf", () => {
     expect(navSectionOf(`${ORG}/orders`, {})).toBe("orders");
     expect(navSectionOf(`${ORG}/orders`, { tab: "paid" })).toBe("orders");
     expect(navSectionOf(`${ORG}/orders`, { tab: "refunds" })).toBe("refunds");
+    expect(navSectionOf(`${ORG}/refunds`, {})).toBe("refunds");
     expect(navSectionOf(`${ORG}/orders/123`, {})).toBe("orders");
     expect(navSectionOf(`${ORG}/summary`, {})).toBe("summary");
     for (const p of ["/promo", "/invitations", "/promoters", "/links", "/growth", "/notifications", "/team", "/shop", "/billing", "/org-data"]) {
@@ -30,15 +31,24 @@ describe("navSectionOf", () => {
 describe("TabBar", () => {
   it("shows exactly five items to who reads orders", async () => {
     const html = await renderInRouter(
-      <TabBar orgId="org1" access={access(["order.read"])} shopMode="none" orgCount={1} onLogout={() => undefined} />,
+      <TabBar orgId="org1" access={access(["order.read", "refund.read"])} shopMode="none" orgCount={1} onLogout={() => undefined} />,
     );
     for (const id of ["nav-events", "nav-orders", "nav-refunds", "nav-summary", "nav-more"]) {
       expect(html, id).toContain(`data-testid="${id}"`);
     }
     expect(html.match(/class="tab-item/g)?.length).toBe(5);
-    expect(html).toContain("tab=refunds");
+    // EC-V5: "Refunds" opens the queue, not the orders list.
+    expect(html).toContain("/o/org1/refunds");
     // "More" is closed: its sections are not on the page yet.
     expect(html).not.toContain('data-testid="nav-promo"');
+  });
+
+  it("shows Refunds only to who may read refunds", async () => {
+    const html = await renderInRouter(
+      <TabBar orgId="org1" access={access(["order.read"])} shopMode="none" orgCount={1} onLogout={() => undefined} />,
+    );
+    expect(html).toContain('data-testid="nav-orders"');
+    expect(html).not.toContain('data-testid="nav-refunds"');
   });
 
   it("drops Orders and Refunds without order.read", async () => {
