@@ -155,8 +155,11 @@ test.describe("sales state (live, three roles)", () => {
     await openSession(page, "agent");
     if (me.permissions.includes("session.read")) {
       await expect(page.getByTestId("sales-state-value")).toContainText("Open");
+      // The three segments show, but none can be pressed.
+      await expect(page.locator('[data-testid^="sales-state-set-"][aria-disabled="true"]')).toHaveCount(3);
+    } else {
+      await expect(page.locator('[data-testid^="sales-state-set-"]')).toHaveCount(0);
     }
-    await expect(page.locator('[data-testid^="sales-state-set-"][aria-disabled="true"]')).toHaveCount(3);
     expect(puts).toHaveLength(0);
 
     const res = await request.put(stateUrl, { headers: auth("agent"), data: { state: "sold_out" } });

@@ -91,16 +91,19 @@ test.describe("guest list on the three roles (live)", () => {
       const sheet = xlsxPart(await readFile(await book.path()), "xl/worksheets/sheet1.xml");
       expect(sheet).toContain('<row r="5">'); // the header and the four active tickets
       expect(sheet).not.toContain('<row r="6">');
-      // Barcode (E) and ticket (D) cells are strings in the text format, and
-      // the columns themselves are text, so Excel never shows 4.6E+12.
+      // Columns (2026-11-08): last and first name, phone, e-mail, category,
+      // row, seat, status, reason, barcode (J), order number, sector,
+      // ticket (M), VIP, entry time, invitation. Barcode and ticket cells are
+      // strings in the text format, and the columns themselves are text, so
+      // Excel never shows 4.6E+12.
       for (const row of [2, 3, 4, 5]) {
-        expect(sheet).toMatch(new RegExp(`<c r="E${row}" s="2" t="inlineStr"><is><t>[0-9]{13}</t>`));
-        expect(sheet).toMatch(new RegExp(`<c r="D${row}" s="2" t="inlineStr">`));
+        expect(sheet).toMatch(new RegExp(`<c r="J${row}" s="2" t="inlineStr"><is><t>[0-9]{13}</t>`));
+        expect(sheet).toMatch(new RegExp(`<c r="M${row}" s="2" t="inlineStr">`));
       }
-      expect(sheet).toContain('<col min="5" max="5" width="');
-      expect(sheet).toMatch(/<col min="5" max="5" width="\d+" customWidth="1" style="2"\/>/);
+      expect(sheet).toContain('<col min="10" max="10" width="');
+      expect(sheet).toMatch(/<col min="10" max="10" width="\d+" customWidth="1" style="2"\/>/);
       expect(sheet).toContain('state="frozen"');
-      expect(sheet).toContain('<autoFilter ref="A1:M5"/>');
+      expect(sheet).toContain('<autoFilter ref="A1:P5"/>');
 
       // ── the CSV for import (the secondary link) ────────────────────────
       const [download] = await Promise.all([
@@ -111,9 +114,11 @@ test.describe("guest list on the three roles (live)", () => {
       const path = await download.path();
       const text = (await readFile(path, "utf8")).replace(/^﻿/, "");
       const lines = text.trimEnd().split("\r\n");
-      expect(lines[0]).toBe('"Guest";"Category";"Seat";"Ticket";"Barcode";"VIP";"Entered";"Entry time";"Order";"E-mail";"Phone";"Invitation";"Test"');
-      expect(lines).toHaveLength(5); // the header and the four active tickets
-      expect(lines.filter((l) => l.endsWith('"yes";"no"'))).toHaveLength(1); // one invitation
+      expect(lines[0]).toBe(
+        '"Last name";"First name";"Phone";"E-mail";"Category";"Row";"Seat";"Ticket status";"Status reason";"Barcode";"Order number";"Sector";"Ticket";"VIP";"Entry time";"Invitation"',
+      );
+      expect(lines).toHaveLength(5); // the header and the four tickets
+      expect(lines.filter((l) => l.endsWith('"yes"'))).toHaveLength(1); // one invitation
 
       // ── the setting ────────────────────────────────────────────────────
       const box = page.getByTestId("guest-list-subscription");

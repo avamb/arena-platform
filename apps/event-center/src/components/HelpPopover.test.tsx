@@ -37,6 +37,7 @@ function mount() {
 }
 
 const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)!;
+const shown = (id: string) => document.querySelector(`[data-testid="${id}"]`) !== null;
 const press = (el: HTMLElement) => act(() => el.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 
 describe("HelpPopover", () => {
@@ -46,8 +47,10 @@ describe("HelpPopover", () => {
     expect(b.tagName).toBe("BUTTON");
     expect(b.getAttribute("aria-expanded")).toBe("false");
     expect(b.getAttribute("aria-label")).toBe("Show an explanation");
+    expect(b.getAttribute("aria-controls")).toBeNull();
+    expect(shown("h1-text")).toBe(false);
+    press(b);
     expect(b.getAttribute("aria-controls")).toBe(q("h1-text").id);
-    expect(q("h1-text").hidden).toBe(true);
     expect(q("h1-text").getAttribute("role")).toBe("note");
   });
 
@@ -55,17 +58,17 @@ describe("HelpPopover", () => {
     mount();
     press(q("h1-button"));
     expect(q("h1-button").getAttribute("aria-expanded")).toBe("true");
-    expect(q("h1-text").hidden).toBe(false);
+    expect(shown("h1-text")).toBe(true);
     expect(q("h1-text").textContent).toContain("Counted from the orders");
     press(q("h1-button"));
-    expect(q("h1-text").hidden).toBe(true);
+    expect(shown("h1-text")).toBe(false);
   });
 
   it("closes on Escape and gives the focus back to the button", () => {
     mount();
     press(q("h1-button"));
     act(() => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
-    expect(q("h1-text").hidden).toBe(true);
+    expect(shown("h1-text")).toBe(false);
     expect(document.activeElement).toBe(q("h1-button"));
   });
 
@@ -73,17 +76,17 @@ describe("HelpPopover", () => {
     mount();
     press(q("h1-button"));
     act(() => q("h1-text").dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
-    expect(q("h1-text").hidden).toBe(false);
+    expect(shown("h1-text")).toBe(true);
     act(() => q("elsewhere").dispatchEvent(new MouseEvent("mousedown", { bubbles: true })));
-    expect(q("h1-text").hidden).toBe(true);
+    expect(shown("h1-text")).toBe(false);
   });
 
   it("keeps one popover open at a time", () => {
     mount();
     press(q("h1-button"));
     press(q("h2-button"));
-    expect(q("h1-text").hidden).toBe(true);
-    expect(q("h2-text").hidden).toBe(false);
+    expect(shown("h1-text")).toBe(false);
+    expect(shown("h2-text")).toBe(true);
   });
 });
 

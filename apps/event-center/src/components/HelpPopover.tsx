@@ -3,7 +3,7 @@
  * opens on a tap or click, so it works on a phone, where a `title` hint never shows.
  *
  * - A real button: Enter and Space open it, `aria-expanded` and `aria-controls` tell a screen reader what it does,
- *   and the text sits in a `role="note"` region right after it.
+ *   and the text sits in a `role="note"` region right after it, rendered only while it is open.
  * - It closes on a second press, on a press outside, on Escape (the focus returns to the "?") and when another
  *   popover opens: only one is open at a time.
  * - The text comes from the catalog (`help.*`), so en, ru and es read the same way.
@@ -72,16 +72,20 @@ export function HelpPopover({ textKey, values, className, testId = "help" }: Hel
         type="button"
         className="help-btn"
         aria-expanded={open}
-        aria-controls={id}
+        aria-controls={open ? id : undefined}
         aria-label={t("help.open")}
         onClick={toggle}
         data-testid={`${testId}-button`}
       >
         ?
       </button>
-      <span id={id} role="note" className="help-pop" hidden={!open} data-testid={`${testId}-text`}>
-        {t(textKey, values)}
-      </span>
+      {/* Rendered only while open: a hidden note would still be found by text and would leak into the
+          accessible name of a section labelled by its heading. */}
+      {open && (
+        <span id={id} role="note" className="help-pop" data-testid={`${testId}-text`}>
+          {t(textKey, values)}
+        </span>
+      )}
     </span>
   );
 }
