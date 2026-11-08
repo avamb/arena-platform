@@ -6773,7 +6773,7 @@ components:
         sold_upstream:
           type: integer
           format: int64
-          description: The part of sold that was sold in the system the session was imported from. No ticket, order or money stands behind it here.
+          description: The part of sold that was sold in the system the session was imported from. No ticket, order or money stands behind it here, unless the ticket was later filed as a legacy_import order.
         unavailable:
           type: integer
           format: int64
@@ -7626,7 +7626,7 @@ components:
                 description: Order status.
               source:
                 type: string
-                description: Where the order came from (bil24_gateway, public_feed, checkout_api, complimentary).
+                description: Where the order came from (bil24_gateway, public_feed, checkout_api, complimentary, legacy_import = sold in Bil24 before the platform).
               currency:
                 type: string
                 description: ISO 4217 currency.
@@ -7950,7 +7950,7 @@ components:
           description: Order status.
         source:
           type: string
-          description: Where the orders came from (bil24_gateway, public_feed, checkout_api, complimentary).
+          description: Where the orders came from (bil24_gateway, public_feed, checkout_api, complimentary, legacy_import = sold in Bil24 before the platform).
         currency:
           type: string
           description: ISO 4217 currency.

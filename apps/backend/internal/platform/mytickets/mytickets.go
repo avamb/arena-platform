@@ -113,9 +113,10 @@ type JobPayload struct {
 	RequestID string `json:"request_id"`
 }
 
-// ticketOrderSources are the order sources a buyer sees (shop orders are a
+// ticketOrderSources are the order sources a buyer sees, legacy_import (tickets
+// bought in Bil24 before the platform) included (shop orders are a
 // separate table and never appear).
-const ticketOrderSources = `('public_feed','bil24_gateway','checkout_api','complimentary')`
+const ticketOrderSources = `('public_feed','bil24_gateway','checkout_api','complimentary','legacy_import')`
 
 // orderVisible is the SQL condition for an order a buyer may see: it was paid
 // at some time. Unpaid carts and expired holds are not tickets. An order whose

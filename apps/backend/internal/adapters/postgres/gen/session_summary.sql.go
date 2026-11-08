@@ -223,7 +223,8 @@ GROUP  BY ss.session_id, ss.tier_id, ss.kind`
 
 // SessionSummaryPlacesRow counts the places of one (session, category, kind)
 // group by status. SoldUpstream is the part of Sold that was sold in the
-// system the session was imported from — no ticket or order stands behind it.
+// system the session was imported from — no ticket or order stands behind it,
+// unless arena-legacy-tickets-import filed the sale as a legacy_import order.
 type SessionSummaryPlacesRow struct {
 	SessionID    uuid.UUID  `json:"session_id"`
 	TierID       *uuid.UUID `json:"tier_id"`

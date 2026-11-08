@@ -81,6 +81,25 @@ SELECT $1,
        $6::bigint
 FROM generate_series(1, $5::int) gs;
 
+-- name: InsertSoldUpstreamGAUnitsForTier :many
+-- Adds quantity places to one category that were SOLD in the system the
+-- session was imported from (status 'sold', reservation_id NULL), under its
+-- own key prefix starting at start_index+1. Used by
+-- arena-legacy-tickets-import: such a sale never took one of the platform's
+-- available places.
+INSERT INTO session_seats
+    (session_id, seat_key, sector_name, row_name, seat_number,
+     tier_id, status, kind, status_version)
+SELECT $1,
+       $2 || '|' || lpad((gs + $3)::text, 6, '0'),
+       '', '', '',
+       $4::uuid,
+       'sold',
+       'ga_unit',
+       $6::bigint
+FROM generate_series(1, $5::int) gs
+RETURNING id, seat_key;
+
 -- name: CountDeletableGAUnitsForTier :one
 -- How many of a category's places could actually be removed: available,
 -- and referenced by neither reservation_seats nor order_items. Both FKs

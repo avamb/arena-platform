@@ -96,6 +96,8 @@ func sourceLabel(source string) string {
 		return "widget"
 	case "complimentary":
 		return "invitation"
+	case "legacy_import":
+		return "Bil24, before the platform"
 	default:
 		return source
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -25,6 +26,7 @@ type Report struct {
 	NoOrderNumber int // the WooCommerce order has no platform order number
 	Unmatched     int // numbered, but no such order in this organization
 	Matched       int
+	MatchedLegacy int // of Matched: a Bil24-era order found through wp_order_links
 	AlreadyThere  int // a row with this message id exists and is not behind
 	Inserted      int
 	Updated       int // an existing wp_brevo row that the file is further along than
@@ -49,17 +51,19 @@ func Import(ctx context.Context, db DB, orgID uuid.UUID, recs []Record, dry bool
 			rep.NoOrderNumber++
 			continue
 		}
-		var orderID uuid.UUID
-		err := db.QueryRow(ctx, `SELECT id FROM orders WHERE org_id = $1 AND system_id = $2`, orgID, sid).Scan(&orderID)
-		if errors.Is(err, pgx.ErrNoRows) {
+		orderID, viaLink, found, err := findOrder(ctx, db, orgID, rec, sid)
+		if err != nil {
+			return rep, err
+		}
+		if !found {
 			rep.Unmatched++
 			rep.UnmatchedList = append(rep.UnmatchedList, fmt.Sprintf("wc_order=%s system_id=%d", rec.WCOrderID, sid))
 			continue
 		}
-		if err != nil {
-			return rep, fmt.Errorf("find order %d: %w", sid, err)
-		}
 		rep.Matched++
+		if viaLink {
+			rep.MatchedLegacy++
+		}
 
 		existing, found, err := findExisting(ctx, db, orgID, orderID, letter)
 		if err != nil {
@@ -91,6 +95,40 @@ func Import(ctx context.Context, db DB, orgID uuid.UUID, recs []Record, dry bool
 		}
 	}
 	return rep, nil
+}
+
+// IsBil24OrderNumber reports whether n is a Bil24 order number of the Bil24
+// era: 7 digits. A platform order number is 10 digits (>= 1e9).
+func IsBil24OrderNumber(n int64) bool { return n >= 1_000_000 && n <= 9_999_999 }
+
+// findOrder resolves the platform order a record belongs to. A Bil24-era
+// order (7-digit bil24_external_order_id) was filed by
+// arena-legacy-tickets-import and is found through wp_order_links, by the
+// WooCommerce order id first and the Bil24 order number second; every other
+// number is orders.system_id, as before.
+func findOrder(ctx context.Context, db DB, orgID uuid.UUID, rec Record, sid int64) (uuid.UUID, bool, bool, error) {
+	var orderID uuid.UUID
+	if IsBil24OrderNumber(sid) {
+		err := db.QueryRow(ctx, `
+SELECT order_id FROM wp_order_links
+ WHERE org_id = $1 AND (wc_order_id = $2 OR bil24_order_id = $3)
+ ORDER BY (wc_order_id = $2) DESC
+ LIMIT 1`, orgID, strings.TrimSpace(rec.WCOrderID), sid).Scan(&orderID)
+		if err == nil {
+			return orderID, true, true, nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, false, false, fmt.Errorf("find legacy order %d: %w", sid, err)
+		}
+	}
+	err := db.QueryRow(ctx, `SELECT id FROM orders WHERE org_id = $1 AND system_id = $2`, orgID, sid).Scan(&orderID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, false, false, nil
+	}
+	if err != nil {
+		return uuid.Nil, false, false, fmt.Errorf("find order %d: %w", sid, err)
+	}
+	return orderID, false, true, nil
 }
 
 type existingLetter struct {

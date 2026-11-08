@@ -145,7 +145,8 @@ func codeFromRow(r gen.ReferralCodeRow) Code {
 	}
 }
 
-// orderEligible: paid with money and not a selling site's or an invitation.
+// orderEligible: paid with money and not a selling site's, an invitation or a
+// ticket bought in Bil24 before the platform (legacy_import).
 func orderEligible(o gen.ReferralOrderFacts) bool {
 	switch o.Status {
 	case "paid", "partially_refunded":
@@ -153,7 +154,7 @@ func orderEligible(o gen.ReferralOrderFacts) bool {
 		return false
 	}
 	switch o.Source {
-	case "complimentary", "bil24_gateway":
+	case "complimentary", "bil24_gateway", "legacy_import":
 		return false
 	}
 	return o.Total > 0

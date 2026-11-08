@@ -267,6 +267,7 @@ func (r *Reconciler) orderItemsWithoutEvent(ctx context.Context, rep *Report) er
 FROM   orders o
 JOIN   order_items oi ON oi.order_id = o.id AND oi.kind = 'ticket'
 WHERE  o.paid_at IS NOT NULL AND o.status IN ` + paidStatuses + `
+  AND  o.source <> 'legacy_import'
   AND  o.paid_at >= $1 AND o.paid_at < $2
   AND  ($3::uuid[] IS NULL OR o.org_id = ANY ($3))`
 	if err := r.examined(ctx, CheckOrderItemsWithoutEvent, `SELECT count(*)::bigint `+base, rep); err != nil {
@@ -294,7 +295,7 @@ WHERE  t.status = 'active'
   AND  ($3::uuid[] IS NULL OR e.org_id = ANY ($3))
   AND  ((t.order_id IS NULL AND t.complimentary_issuance_id IS NOT NULL)
         OR EXISTS (SELECT 1 FROM orders o
-                   WHERE o.id = t.order_id AND o.paid_at IS NOT NULL
+                   WHERE o.id = t.order_id AND o.paid_at IS NOT NULL AND o.source <> 'legacy_import'
                      AND o.status IN ` + paidStatuses + ` AND o.paid_at >= $1))`
 	if err := r.examined(ctx, CheckTicketsWithoutEvent, `SELECT count(*)::bigint `+base, rep); err != nil {
 		return err

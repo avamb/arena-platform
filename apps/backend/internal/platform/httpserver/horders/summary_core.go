@@ -18,7 +18,8 @@ import (
 
 // placeCounts are the places of a session (or of one category) by status.
 // SoldUpstream is the part of Sold that was sold in the system the session was
-// imported from: no ticket, order or money stands behind it in arena.
+// imported from: no ticket, order or money stands behind it in arena, unless
+// arena-legacy-tickets-import filed the sale as a legacy_import order.
 type placeCounts struct {
 	Total        int64 `json:"total"`
 	Available    int64 `json:"available"`
