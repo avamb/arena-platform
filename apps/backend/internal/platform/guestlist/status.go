@@ -2,6 +2,7 @@ package guestlist
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
@@ -85,10 +86,15 @@ func StatusLabel(locale string, code int) string {
 	if !ok {
 		l = statusLabels["en"]
 	}
-	if code < 0 || code > 3 {
+	if code < 0 || code >= len(l) {
 		code = StatusRefunded
 	}
-	return l[code] + " (" + string(rune('0'+code)) + ")"
+	for i, words := range l {
+		if i == code {
+			return words + " (" + strconv.Itoa(code) + ")"
+		}
+	}
+	return ""
 }
 
 // ReasonLabel is the reason in locale; empty for no reason.

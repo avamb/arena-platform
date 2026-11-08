@@ -100,7 +100,7 @@ func TestMap_FallsBackToTimesThenOrderDate(t *testing.T) {
 }
 
 func TestRank_OrdersTheStatuses(t *testing.T) {
-	if !(Rank(StatusSent) < Rank(StatusDelivered) && Rank(StatusDelivered) < Rank(StatusOpened)) {
+	if Rank(StatusSent) >= Rank(StatusDelivered) || Rank(StatusDelivered) >= Rank(StatusOpened) {
 		t.Fatal("rank order")
 	}
 }
