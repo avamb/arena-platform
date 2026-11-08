@@ -16,7 +16,7 @@
   <p style="margin:0 0 12px 0;">אם לא ביקשתם זאת, אל תעשו דבר: לא תקבלו דיוורים. הקישור תקף 7 ימים.</p>
   <p style="margin:0 0 12px 0;">שיניתם את דעתכם? אפשר להפסיק את הדיוור בכל עת: <a href="{{.Marketing.WithdrawURL}}" style="color:#46555f;">להפסקת הדיוור</a></p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Ticket processing by arenasoldout.com</a><br>{{end}}אם תלחצו על ״ביטול הרשמה״, המיילים שלנו לא יגיעו יותר לעולם לכתובת הזאת, גם לא כרטיסים.</td></tr>
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Ticket processing by arenasoldout.com</a><br>{{end}}אם תלחצו על ״ביטול הרשמה״, המיילים שלנו לא יגיעו יותר לעולם לכתובת הזאת, גם לא כרטיסים.</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -34,7 +34,7 @@
 
 שיניתם את דעתכם? אפשר להפסיק את הדיוור בכל עת: {{.Marketing.WithdrawURL}}
 
-{{if not .WhiteLabel}}Ticket processing by arenasoldout.com — https://arenasoldout.com{{end}}
+{{template "contact_text" .}}{{if not .WhiteLabel}}Ticket processing by arenasoldout.com — https://arenasoldout.com{{end}}
 
 אם תלחצו על ״ביטול הרשמה״, המיילים שלנו לא יגיעו יותר לעולם לכתובת הזאת, גם לא כרטיסים.
 {{end}}

@@ -17,6 +17,7 @@ import { OrgsScreen } from "@/screens/OrgsScreen";
 import { OrgLayout } from "@/screens/OrgLayout";
 import { EventsScreen } from "@/screens/EventsScreen";
 import { EventScreen } from "@/screens/EventScreen";
+import { EventEditScreen } from "@/screens/EventEditScreen";
 import { EventFunnelScreen } from "@/screens/EventFunnelScreen";
 import { SessionScreen } from "@/screens/SessionScreen";
 import { SessionInvitationsScreen } from "@/screens/SessionInvitationsScreen";
@@ -159,6 +160,13 @@ const eventFunnelRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/events/$eventId/funnel",
   component: EventFunnelScreen,
+});
+
+// The "Edit" button of the event card: name, description, poster and the text of the buyer letters.
+const eventEditRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/events/$eventId/edit",
+  component: EventEditScreen,
 });
 
 const sessionRoute = createRoute({
@@ -399,6 +407,7 @@ export const routeTree = rootRoute.addChildren([
     eventsRoute,
     eventRoute,
     eventFunnelRoute,
+    eventEditRoute,
     sessionRoute,
     sessionSeatsRoute,
     sessionInvitationsRoute,

@@ -118,6 +118,12 @@ func NewLatePaymentEmailHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 			locale = lp.OrgLocale
 		}
 		data.WhiteLabel = whiteLabel
+		var lateSession uuid.UUID
+		if lp.SessionID != nil {
+			lateSession = *lp.SessionID
+		}
+		contact := sessionContactEmail(ctx, opts.DB, lp.OrgID, lateSession, logger)
+		data.Contact = templates.BuyerContact{Email: contact, OrderNumber: data.LatePayment.OrderNumber}
 		out, err := r.Render(templates.TemplateKindLatePayment, locale, data)
 		if err != nil {
 			return fmt.Errorf("delivery: render late payment letter: %w", err)
@@ -132,6 +138,7 @@ func NewLatePaymentEmailHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 		msg := email.Message{To: to, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}
 		style.applySender(&msg)
 		applyWhiteLabelSender(&msg, whiteLabel, brand)
+		withReplyTo(&msg, contact)
 
 		claimed, err := q.MarkLatePaymentNotified(ctx, piID)
 		if err != nil {

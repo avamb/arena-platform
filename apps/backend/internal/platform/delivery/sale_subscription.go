@@ -107,9 +107,11 @@ func sendSaleLetter(ctx context.Context, opts SaleLetterOptions, r *templates.Re
 		return err
 	}
 	whiteLabel, brand := whiteLabelForSession(ctx, opts.DB, opts.Logger, s.sessionID)
+	contact := sessionContactEmail(ctx, opts.DB, s.orgID, s.sessionID, opts.Logger)
 	data := templates.Data{
 		EventName:      in.EventName,
 		RecipientEmail: s.email,
+		Contact:        templates.BuyerContact{Email: contact},
 		Branding:       templates.Branding{OrgName: in.OrgName},
 		SaleNotice:     templates.SaleNoticeData{URL: link, When: in.When(), Venue: in.Venue},
 		WhiteLabel:     whiteLabel,
@@ -120,6 +122,7 @@ func sendSaleLetter(ctx context.Context, opts SaleLetterOptions, r *templates.Re
 	}
 	msg := email.Message{To: s.email, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}
 	applyWhiteLabelSender(&msg, whiteLabel, brand)
+	withReplyTo(&msg, contact)
 	return opts.Sender.Send(ctx, msg)
 }
 

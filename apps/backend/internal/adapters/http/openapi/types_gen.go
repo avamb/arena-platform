@@ -8812,6 +8812,30 @@ type EventMapPoint struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// EventMapPointSaved The map point as stored by PUT, with the advisory warnings. The point is stored whatever the warnings say.
+type EventMapPointSaved struct {
+	// CreatedAt When the point was first set.
+	CreatedAt time.Time `json:"created_at"`
+
+	// EventId UUIDv7 of the event.
+	EventId openapi_types.UUID `json:"event_id"`
+
+	// Label Optional text shown with the point, up to 200 characters.
+	Label *string `json:"label"`
+
+	// Latitude Latitude in degrees, -90 to 90, six decimals kept.
+	Latitude float64 `json:"latitude"`
+
+	// Longitude Longitude in degrees, -180 to 180, six decimals kept.
+	Longitude float64 `json:"longitude"`
+
+	// UpdatedAt When the point was last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// Warnings Advisory remarks on the point, see MapPointWarning. Empty when nothing looks wrong.
+	Warnings []MapPointWarning `json:"warnings"`
+}
+
 // EventPageDate One date of the event as the page writes it.
 type EventPageDate struct {
 	// Date The day, `YYYY-MM-DD`.
@@ -9756,6 +9780,18 @@ type GrowthSettingsUpdate struct {
 
 	// MarketingOptinEnabled Offer the marketing consent tick at checkout.
 	MarketingOptinEnabled bool `json:"marketing_optin_enabled"`
+}
+
+// GuestListSettings The organization's switch for the automatic team guest list.
+type GuestListSettings struct {
+	// AutoSend True (the default) when the current guest list of every session is sent to the owners, managers and the organization's sales Telegram groups 24 h and 3 h before the start.
+	AutoSend bool `json:"auto_send"`
+}
+
+// GuestListSettingsRequest Body of PUT .../guest-list-settings.
+type GuestListSettingsRequest struct {
+	// AutoSend True turns the automatic team guest list on, false turns it off.
+	AutoSend bool `json:"auto_send"`
 }
 
 // GuestListSubscription The caller's automatic guest list setting.
@@ -11446,6 +11482,42 @@ type MACSWebhookSubscriber struct {
 
 	// UpdatedAt ISO 8601 last-update timestamp.
 	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+}
+
+// MapPointCheck Advisory verdict on a map point against the cities of the event's venues.
+type MapPointCheck struct {
+	// Checked False when none of the venue cities is in the geo data (or the event has no venue city), so nothing could be said.
+	Checked bool `json:"checked"`
+
+	// Warnings Empty when the point looks right or could not be checked; at most one remark otherwise.
+	Warnings []MapPointWarning `json:"warnings"`
+}
+
+// MapPointWarning Advisory remark that a map point looks wrong for the event's city. It never
+// blocks a save; the point is stored either way. The distance is measured from
+// the city centre. The usual distance is max(15 km, 4 times a radius estimated
+// from the city's population), at most 60 km.
+type MapPointWarning struct {
+	// City The event's venue city the point was compared with (ASCII name).
+	City string `json:"city"`
+
+	// Code `venue.point_far_from_city` when the point is beyond the usual distance, `venue.point_nearer_other_city` when it is within it but outside the city's own radius and another city is closer.
+	Code string `json:"code"`
+
+	// DistanceKm Distance from the point to that city's centre, in kilometres, one decimal.
+	DistanceKm float64 `json:"distance_km"`
+
+	// Message English text for the organizer, naming the cities and the distances.
+	Message string `json:"message"`
+
+	// NearerCity A city of the same country that is nearer to the point than the venue city centre is, or null.
+	NearerCity *string `json:"nearer_city"`
+
+	// NearerDistanceKm Distance from the point to `nearer_city`, in kilometres, or null.
+	NearerDistanceKm *float64 `json:"nearer_distance_km"`
+
+	// ThresholdKm The usual distance for a city of this size, in kilometres, one decimal.
+	ThresholdKm float64 `json:"threshold_km"`
 }
 
 // MarketingSubscriber One address that ticked the marketing consent.
@@ -24800,6 +24872,21 @@ type GetV1OrganizationsOrgIdEventsEventIdFunnelParams struct {
 	SessionId *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdEventsEventIdGuestListXlsxParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdGuestListXlsx.
+type GetV1OrganizationsOrgIdEventsEventIdGuestListXlsxParams struct {
+	// Locale Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// CheckEventMapPointParams defines parameters for CheckEventMapPoint.
+type CheckEventMapPointParams struct {
+	// Latitude Latitude in degrees, -90 to 90.
+	Latitude float64 `form:"latitude" json:"latitude"`
+
+	// Longitude Longitude in degrees, -180 to 180.
+	Longitude float64 `form:"longitude" json:"longitude"`
+}
+
 // GetV1OrganizationsOrgIdEventsEventIdPageStatsParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdPageStats.
 type GetV1OrganizationsOrgIdEventsEventIdPageStatsParams struct {
 	// From First day, `YYYY-MM-DD`. Default 29 days before `to`.
@@ -26198,6 +26285,9 @@ type UpdateExternalAllocationJSONRequestBody UpdateExternalAllocationJSONBody
 
 // PutOrganizationGrowthSettingsJSONRequestBody defines body for PutOrganizationGrowthSettings for application/json ContentType.
 type PutOrganizationGrowthSettingsJSONRequestBody = GrowthSettingsUpdate
+
+// PutV1OrganizationsOrgIdGuestListSettingsJSONRequestBody defines body for PutV1OrganizationsOrgIdGuestListSettings for application/json ContentType.
+type PutV1OrganizationsOrgIdGuestListSettingsJSONRequestBody = GuestListSettingsRequest
 
 // PutV1OrganizationsOrgIdGuestListSubscriptionJSONRequestBody defines body for PutV1OrganizationsOrgIdGuestListSubscription for application/json ContentType.
 type PutV1OrganizationsOrgIdGuestListSubscriptionJSONRequestBody = GuestListSubscriptionRequest

@@ -359,6 +359,9 @@ export async function mockApi(
         body: "%PDF-1.4\n%mock\n",
       });
     }
+    if (rest === "/guest-list-settings" && m === "GET") {
+      return json(route, 200, { auto_send: true });
+    }
     if (rest === "/guest-list-subscription" && m === "GET") {
       return json(route, 200, { enabled: false, channel: "telegram", eligible: true });
     }

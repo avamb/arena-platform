@@ -23,7 +23,7 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		"When": "w", "Venue": "v", "Sold": 1, "Total": 2, "Available": 1, "Held": 0, "Money": "m",
 		"Paid": "1 EUR", "Orders": 1, "Value": "x", "Label": "L", "Currency": "EUR", "N": 1, "Title": "t", "W": 1080, "H": 1350,
 		"Reason": "r", "City": "c", "Capacity": 80, "Date": "d", "List": "l", "Price": "p",
-		"Schedule": "", "Age": "18+", "Promoter": "", "Poster": "", "Published": "", "Link": "",
+		"Schedule": "", "Age": "18+", "Promoter": "", "Poster": "", "Published": "", "Link": "", "Google": "", "Dist": "1", "Other": "o", "OtherKm": "1",
 		"Warnings": "", "URL": "u", "State": "s", "Text": "tx", "Until": "d", "Limit": "5", "Raw": "r", "Tickets": "t", "Letter": "l", "TicketRule": "tr", "Issued": 2, "Cancelled": 1, "Active": 1, "Min": "01.01.2026", "Max": "02.01.2026",
 		"Old": "o", "New": "n", "Contact": "c", "Letters": "", "Time": "19:30", "Now": "now", "Hours": 1, "Start": "19:30", "SalesEnd": "21:00", "Doors": "19:00", "Word": "CANCEL", "Subject": "s", "Zone": "Europe/Madrid",
 		"Message": "m", "Missing": "mi", "Pct": 40, "Links": "l", "Url": "https://x.test/a",

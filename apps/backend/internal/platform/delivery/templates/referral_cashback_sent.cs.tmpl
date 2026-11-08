@@ -15,7 +15,7 @@
   <p style="margin:0 0 12px 0;">Bance obvykle trvá 5–10 pracovních dnů, než částku zobrazí.</p>
   <p style="font-size:12px;color:#666">Doručeno na: {{.RecipientEmail}}</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     <strong>{{.Branding.LegalName}}</strong>
@@ -44,7 +44,7 @@ Přítel nakoupil s vaším kódem {{.Referral.Code}}. Vrátili jsme {{.Referral
 
 Bance obvykle trvá 5–10 pracovních dnů, než částku zobrazí.
 
-Doručeno na: {{.RecipientEmail}}
+{{template "contact_text" .}}Doručeno na: {{.RecipientEmail}}
 
 --
 {{.Branding.LegalName}}

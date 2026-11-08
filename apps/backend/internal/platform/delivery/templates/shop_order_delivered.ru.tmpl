@@ -24,10 +24,9 @@
   {{if .Shop.Pickup}}<p style="margin:16px 0 6px 0;font-weight:bold;color:#22333D;">Самовывоз</p><p style="margin:0 0 12px 0;">Вы выбрали самовывоз.</p>{{else if .Shop.Address}}<p style="margin:16px 0 6px 0;font-weight:bold;color:#22333D;">Адрес доставки</p><p style="margin:0 0 12px 0;">{{range $i, $l := .Shop.Address}}{{if $i}}<br>{{end}}{{$l}}{{end}}</p>{{end}}
   {{with .Shop.Note}}<p style="margin:16px 0 6px 0;font-weight:bold;color:#22333D;">Ваш комментарий</p><p style="margin:0 0 12px 0;white-space:pre-line;">{{.}}</p>{{end}}
   {{with .Shop.StatusURL}}<p style="margin:16px 0 12px 0;"><a href="{{.}}" style="color:{{$.Accent}};font-weight:bold;">Статус заказа</a></p>{{end}}
-  {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">Есть вопросы? Ответьте на это письмо.</p>{{end}}
   <p style="font-size:12px;color:#666">Письмо отправлено на: {{.RecipientEmail}}</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
@@ -74,10 +73,8 @@
 
 {{end}}{{with .Shop.StatusURL}}Статус заказа: {{.}}
 
-{{end}}{{if .Branding.ContactEmail}}Есть вопросы? Ответьте на это письмо.
 {{end}}
-
-Письмо отправлено на: {{.RecipientEmail}}
+{{template "contact_text" .}}Письмо отправлено на: {{.RecipientEmail}}
 
 --
 {{.Branding.SellerLabel}} {{.Branding.LegalName}}

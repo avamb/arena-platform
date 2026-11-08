@@ -141,11 +141,13 @@ func NewCartReminderHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 		if err != nil {
 			return err
 		}
+		contact := sessionContactEmail(ctx, opts.DB, o.OrgID, o.SessionID, logger)
 		data := templates.Data{
 			EventName:      in.EventName,
 			RecipientEmail: o.BuyerEmail,
 			Branding:       style.branding(ctx, opts.Media, logger),
 			WhiteLabel:     whiteLabel,
+			Contact:        templates.BuyerContact{Email: contact, OrderNumber: strconv.FormatInt(o.SystemID, 10)},
 			CartReminder: templates.CartReminderData{
 				URL:         base + ResumePath(o.CheckoutToken),
 				When:        in.When(),
@@ -171,6 +173,7 @@ func NewCartReminderHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 		msg := email.Message{To: o.BuyerEmail, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}
 		style.applySender(&msg)
 		applyWhiteLabelSender(&msg, whiteLabel, brand)
+		withReplyTo(&msg, contact)
 		// The reminder is taken before it is sent, so a retry or a second
 		// claim of this job never sends it twice (the letter says it is the
 		// only one). A refused send gives it back for the retry.
@@ -262,8 +265,10 @@ func NewMarketingConfirmHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 		if err != nil {
 			return err
 		}
+		contact := buyerContactEmail(ctx, opts.DB, uuid.Nil, orgID, logger)
 		out, err := r.Render(templates.TemplateKindMarketingConfirm, locale, templates.Data{
 			RecipientEmail: addr,
+			Contact:        templates.BuyerContact{Email: contact},
 			Branding:       style.branding(ctx, opts.Media, logger),
 			WhiteLabel:     whiteLabel,
 			Marketing: templates.MarketingConfirmData{
@@ -278,6 +283,7 @@ func NewMarketingConfirmHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 		msg := email.Message{To: addr, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}
 		style.applySender(&msg)
 		applyWhiteLabelSender(&msg, whiteLabel, orgName)
+		withReplyTo(&msg, contact)
 		return opts.Sender.Send(ctx, msg)
 	}
 }

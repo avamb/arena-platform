@@ -16,7 +16,7 @@
   {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">Contacter l’organisateur : <a href="mailto:{{.Branding.ContactEmail}}" style="color:#46555f">{{.Branding.ContactEmail}}</a></p>{{else}}{{with .Branding.ContactFormURL}}<p style="margin:0 0 12px 0;">Contacter l’organisateur : <a href="{{.}}" style="color:#46555f">Écrire à l'organisateur</a></p>{{end}}{{end}}
   <p style="font-size:12px;color:#666">Envoyé à : {{.RecipientEmail}}</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     <strong>{{.Branding.LegalName}}</strong>
@@ -48,7 +48,7 @@ Conformément aux conditions du service, veuillez contacter l’organisateur.
 {{if .Branding.ContactEmail}}Contacter l’organisateur : {{.Branding.ContactEmail}}
 {{else}}{{with .Branding.ContactFormURL}}Contacter l’organisateur : {{.}}
 {{end}}{{end}}
-Envoyé à : {{.RecipientEmail}}
+{{template "contact_text" .}}Envoyé à : {{.RecipientEmail}}
 
 --
 {{.Branding.LegalName}}

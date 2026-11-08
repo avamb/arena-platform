@@ -21,10 +21,9 @@
   </table>
   <p style="margin:16px 0 12px 0;">The money returns to the card or payment method you paid with, through the payment system. How long it takes depends on your bank.</p>
   {{with .Shop.StatusURL}}<p style="margin:16px 0 12px 0;"><a href="{{.}}" style="color:{{$.Accent}};font-weight:bold;">Check the status of your order</a></p>{{end}}
-  {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">Questions? Reply to this e-mail.</p>{{end}}
   <p style="font-size:12px;color:#666">Delivered to: {{.RecipientEmail}}</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
@@ -61,10 +60,8 @@ Refunded now: {{.Shop.RefundAmount}}
 {{end}}
 {{with .Shop.StatusURL}}Check the status of your order: {{.}}
 
-{{end}}{{if .Branding.ContactEmail}}Questions? Reply to this e-mail.
 {{end}}
-
-Delivered to: {{.RecipientEmail}}
+{{template "contact_text" .}}Delivered to: {{.RecipientEmail}}
 
 --
 {{.Branding.SellerLabel}} {{.Branding.LegalName}}

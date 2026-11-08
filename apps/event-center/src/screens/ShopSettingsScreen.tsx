@@ -25,6 +25,7 @@ import { SelectField, TextAreaField, TextField } from "@/components/FormField";
 import { NoShopAccess, ShopNav, ShopReadOnlyNote } from "@/components/ShopNav";
 import { ShopStorefront } from "@/components/ShopStorefront";
 import { ReferralSection } from "@/components/ReferralSection";
+import { SaveBar } from "@/components/SaveBar";
 import { UnsavedChangesGuard } from "@/components/UnsavedChangesGuard";
 import { ErrorBox, Loading } from "@/components/ui";
 import { fetchShopSettings, listSalesChannels, listShopProducts, saveShopSettings, setShopStorefront } from "@/lib/api/shopApi";
@@ -297,13 +298,6 @@ export function ShopSettingsForm(p: ShopSettingsFormProps) {
         )}
       </fieldset>
 
-      {p.canManage && (
-        <p>
-          <button type="submit" className="btn btn-primary" disabled={p.busy} data-testid="shop-settings-save">
-            {p.busy ? t("shop.settings.saving") : t("shop.settings.save")}
-          </button>
-        </p>
-      )}
     </form>
   );
 }
@@ -331,6 +325,7 @@ export function SettingsPage({ settings }: { settings: ShopSettingsView }) {
   // keeps its own baseline, so the version it sends back is the one the person actually saw.
   const [baseline, setBaseline] = useState<ShopSettingsView>(settings);
   const allowLeave = useRef(false);
+  const [guardOpen, setGuardOpen] = useState(false);
   const saving = useRef(false);
 
   useEffect(() => setSwitched(null), [settings]);
@@ -420,8 +415,18 @@ export function SettingsPage({ settings }: { settings: ShopSettingsView }) {
   };
 
   return (
-    <>
-      <UnsavedChangesGuard dirty={dirty} allowLeave={allowLeave} onSaveAndLeave={canManage ? submit : undefined} />
+    <div className="has-save-bar">
+      <UnsavedChangesGuard dirty={dirty} allowLeave={allowLeave} onOpenChange={setGuardOpen} onSaveAndLeave={canManage ? submit : undefined} />
+      {canManage && (
+        <SaveBar
+          dirty={dirty}
+          busy={busy}
+          onSave={() => void submit()}
+          hidden={guardOpen}
+          testId="shop-settings-save"
+          status={saved && !dirty ? { key: "shop.settings.saved", tone: "ok" } : undefined}
+        />
+      )}
       {!settings.configured && (
         <p className="notice notice-warn" role="status" data-testid="shop-settings-unconfigured">
           {t("shop.settings.notConfigured")}
@@ -477,7 +482,7 @@ export function SettingsPage({ settings }: { settings: ShopSettingsView }) {
           {t("shop.settings.saved")}
         </p>
       )}
-    </>
+    </div>
   );
 }
 
@@ -488,7 +493,7 @@ export function ShopSettingsScreen() {
   const settings = useQuery({ queryKey: ["shopSettings", orgId], queryFn: () => fetchShopSettings(orgId), enabled: canRead });
   if (!canRead) return <NoShopAccess />;
   return (
-    <section className="shop-page" aria-labelledby="shop-settings-title">
+    <section className="shop-page has-save-bar" aria-labelledby="shop-settings-title">
       <h1 id="shop-settings-title">{t("shop.settings.title")}</h1>
       <ShopNav orgId={orgId} />
       {!access.can("shop.manage") && <ShopReadOnlyNote />}

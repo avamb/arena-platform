@@ -1689,6 +1689,24 @@ components:
           type: boolean
           description: True turns the automatic guest list on, false turns it off.
 
+    GuestListSettings:
+      type: object
+      required: [auto_send]
+      description: The organization's switch for the automatic team guest list.
+      properties:
+        auto_send:
+          type: boolean
+          description: True (the default) when the current guest list of every session is sent to the owners, managers and the organization's sales Telegram groups 24 h and 3 h before the start.
+
+    GuestListSettingsRequest:
+      type: object
+      required: [auto_send]
+      description: Body of PUT .../guest-list-settings.
+      properties:
+        auto_send:
+          type: boolean
+          description: True turns the automatic team guest list on, false turns it off.
+
     BotGuestListDelivery:
       type: object
       required: [id, org_id, session_id, slot, attempt, telegram_user_id, event_name, session_start_at, session_timezone]
@@ -13743,6 +13761,88 @@ components:
           type: string
           format: date-time
           description: When the point was last changed.
+
+    MapPointWarning:
+      type: object
+      required: [code, message, city, distance_km, threshold_km, nearer_city, nearer_distance_km]
+      description: |
+        Advisory remark that a map point looks wrong for the event's city. It never
+        blocks a save; the point is stored either way. The distance is measured from
+        the city centre. The usual distance is max(15 km, 4 times a radius estimated
+        from the city's population), at most 60 km.
+      properties:
+        code:
+          type: string
+          description: "`venue.point_far_from_city` when the point is beyond the usual distance, `venue.point_nearer_other_city` when it is within it but outside the city's own radius and another city is closer."
+        message:
+          type: string
+          description: English text for the organizer, naming the cities and the distances.
+        city:
+          type: string
+          description: The event's venue city the point was compared with (ASCII name).
+        distance_km:
+          type: number
+          format: double
+          description: Distance from the point to that city's centre, in kilometres, one decimal.
+        threshold_km:
+          type: number
+          format: double
+          description: The usual distance for a city of this size, in kilometres, one decimal.
+        nearer_city:
+          type: [string, "null"]
+          description: A city of the same country that is nearer to the point than the venue city centre is, or null.
+        nearer_distance_km:
+          type: [number, "null"]
+          format: double
+          description: Distance from the point to `nearer_city`, in kilometres, or null.
+
+    MapPointCheck:
+      type: object
+      required: [checked, warnings]
+      description: Advisory verdict on a map point against the cities of the event's venues.
+      properties:
+        checked:
+          type: boolean
+          description: False when none of the venue cities is in the geo data (or the event has no venue city), so nothing could be said.
+        warnings:
+          type: array
+          description: Empty when the point looks right or could not be checked; at most one remark otherwise.
+          items:
+            $ref: "#/components/schemas/MapPointWarning"
+
+    EventMapPointSaved:
+      type: object
+      required: [event_id, latitude, longitude, label, created_at, updated_at, warnings]
+      description: The map point as stored by PUT, with the advisory warnings. The point is stored whatever the warnings say.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the event.
+        latitude:
+          type: number
+          format: double
+          description: Latitude in degrees, -90 to 90, six decimals kept.
+        longitude:
+          type: number
+          format: double
+          description: Longitude in degrees, -180 to 180, six decimals kept.
+        label:
+          type: [string, "null"]
+          description: Optional text shown with the point, up to 200 characters.
+        created_at:
+          type: string
+          format: date-time
+          description: When the point was first set.
+        updated_at:
+          type: string
+          format: date-time
+          description: When the point was last changed.
+        warnings:
+          type: array
+          description: Advisory remarks on the point, see MapPointWarning. Empty when nothing looks wrong.
+          items:
+            $ref: "#/components/schemas/MapPointWarning"
 
     SetEventMapPointRequest:
       type: object
@@ -42271,6 +42371,86 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
 
+  /v1/organizations/{org_id}/events/{event_id}/map-point/check:
+    get:
+      operationId: checkEventMapPoint
+      summary: Check a map point against the event's city
+      description: |
+        Advisory only, stores nothing. Compares the point with the cities of the
+        event's venues and answers a remark when it is farther from the venue city
+        than is usual for a city of that size, or nearer to another city of the
+        country. With no venue city in the geo data it answers `checked: false` and
+        no warnings. Latitude must be between -90 and 90 and longitude between -180
+        and 180 (400 `event.invalid_map_point`).
+        Requires `event.read` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: latitude
+          in: query
+          required: true
+          description: Latitude in degrees, -90 to 90.
+          schema: { type: number, format: double }
+        - name: longitude
+          in: query
+          required: true
+          description: Longitude in degrees, -180 to 180.
+          schema: { type: number, format: double }
+      responses:
+        "200":
+          description: The verdict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapPointCheck"
+        "400":
+          description: Missing or invalid coordinates (`event.invalid_map_point`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.materials_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/events/{event_id}/map-point:
     get:
       operationId: getEventMapPoint
@@ -42361,11 +42541,11 @@ paths:
               $ref: "#/components/schemas/SetEventMapPointRequest"
       responses:
         "200":
-          description: The map point as stored.
+          description: The map point as stored, with advisory `warnings` (never an error).
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EventMapPoint"
+                $ref: "#/components/schemas/EventMapPointSaved"
         "400":
           description: Invalid body or coordinates (`event.invalid_body`, `event.invalid_map_point`).
           content:
@@ -64867,15 +65047,27 @@ paths:
         leading zero, not even in rows added later. The entry time is text
         on the venue's clock. `guest-list.csv` serves the same rows as a CSV.
 
-        One row per ACTIVE ticket of the session (cancelled, revoked and
-        transferred tickets are left out), sorted by the guest's name:
-        guest (the name on the ticket, else the buyer's), category, seat,
-        ticket number, barcode, VIP (`yes` / `no`), entered (`yes` / `no`),
-        entry time (venue's zone), order number, e-mail, phone and
-        invitation (`yes` / `no`). Same csvexport rules, locale selection and
-        50 000-row cap as the sales file. The same file is sent automatically
-        to the members who turned the guest list on
-        (`PUT .../guest-list-subscription`).
+        One row per ticket of the session, EVERY status (so the organizer can
+        filter), sorted by the guest's last name. Columns: last name, first
+        name, phone, e-mail, category, row, seat, ticket status, status
+        reason, barcode, order number, then sector, ticket number, VIP
+        (`yes` / `no`), entry time (venue's zone) and invitation (`yes` /
+        `no`). The platform stores ONE free-text name (the ticket's holder
+        name, else the buyer's), so it is split at its LAST space: the last
+        word is the last name, the rest the first name; a single word is a
+        last name. The barcode is always a text cell.
+
+        Ticket status follows the scanner system MACS (`holderStatus`),
+        printed as words plus the code: `Valid (0)` not yet entered, `Checked
+        in (1)`, `Refunded / cancelled (3)`. Checked in is an admitted scan or
+        `used_at`. `Checked out (2)` is not derived, because the platform
+        stores no scan direction. Status 3 carries a reason: refunded, cancelled, session
+        cancelled, or replaced (the ticket went to a wrong e-mail address and
+        was reissued). Labels follow `locale` (`en`, `ru`, `es`). Same
+        csvexport rules and 50 000-row cap as the sales file. The same file
+        is built fresh when it is sent automatically to the members who
+        turned the guest list on (`PUT .../guest-list-subscription`) and to
+        the whole team before every session (`PUT .../guest-list-settings`).
 
         Requires `order.read` AND `session.read`; a session of another
         organization is a 404.
@@ -64914,7 +65106,7 @@ paths:
               schema:
                 type: string
                 format: binary
-                description: One sheet, one row per active ticket of the session.
+                description: One sheet, one row per ticket of the session (every status).
         "400":
           description: org_id or session_id path parameter is not a valid UUID.
           content:
@@ -64940,7 +65132,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "413":
-          description: More than 50 000 active tickets (`export.too_many_rows`).
+          description: More than 50 000 tickets (`export.too_many_rows`).
           content:
             application/json:
               schema:
@@ -64968,15 +65160,9 @@ paths:
         workbook: Excel opens a CSV with the list separator of its regional
         settings, and with English settings every row lands in column A.
 
-        One row per ACTIVE ticket of the session (cancelled, revoked and
-        transferred tickets are left out), sorted by the guest's name:
-        guest (the name on the ticket, else the buyer's), category, seat,
-        ticket number, barcode, VIP (`yes` / `no`), entered (`yes` / `no`),
-        entry time (venue's zone), order number, e-mail, phone and
-        invitation (`yes` / `no`). Same csvexport rules, locale selection and
-        50 000-row cap as the sales file. The same file is sent automatically
-        to the members who turned the guest list on
-        (`PUT .../guest-list-subscription`).
+        One row per ticket of the session, every status, with the same
+        columns, status mapping and name split as `guest-list.xlsx`, whose
+        description is authoritative.
 
         Requires `order.read` AND `session.read`; a session of another
         organization is a 404.
@@ -65053,6 +65239,225 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Export queries unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/events/{event_id}/guest-list.xlsx:
+    get:
+      operationId: getV1OrganizationsOrgIdEventsEventIdGuestListXlsx
+      summary: Guest list of every session of an event as an Excel workbook
+      description: |
+        The session guest list (`GET .../sessions/{session_id}/guest-list.xlsx`)
+        for the whole event: one sheet with the tickets of all its sessions,
+        every status, sessions in time order, guests by last name inside a
+        session. A `Session` column comes first with the session's date and
+        time on its own venue's clock; the other columns, the status
+        mapping, the text barcode cell and the locale rules are the session
+        file's. The file name is `guests_<event>_<YYYY-MM-DD of the request>.xlsx`.
+
+        Requires `order.read` AND `session.read`; an organization API key is
+        refused (403 `guest_list.api_key_forbidden`); an event of another
+        organization is a 404.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: locale
+          in: query
+          required: false
+          description: Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+          schema: { type: string }
+      responses:
+        "200":
+          description: The workbook attachment.
+          headers:
+            X-Row-Count:
+              description: Number of data rows (tickets) in the sheet, the header row not counted.
+              schema: { type: integer }
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+                description: One sheet, one row per ticket of every session of the event.
+        "400":
+          description: org_id or event_id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Actor lacks `order.read` or `session.read`, is not a member of the organization, or is an organization API key (`guest_list.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Event not found, or not part of this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "413":
+          description: More than 50 000 tickets (`export.too_many_rows`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`export.internal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Export queries unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/guest-list-settings:
+    get:
+      operationId: getV1OrganizationsOrgIdGuestListSettings
+      summary: Whether the organization sends the team guest list automatically
+      description: |
+        The organization's switch (on by default). While it is on, the job
+        `guest_list.team_send` sends the CURRENT guest list of every session
+        24 hours and 3 hours before its start: by e-mail to every active
+        owner and manager of the organization, and as a document to the
+        organization's own sales Telegram groups. Requires `org.read`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The organization's setting.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestListSettings"
+        "400":
+          description: org_id path parameter is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a member with `org.read`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Organization not found (`org.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`export.internal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable (`dependency.database_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    put:
+      operationId: putV1OrganizationsOrgIdGuestListSettings
+      summary: Turn the team guest list on or off for the organization
+      description: |
+        Turns the organization's automatic team guest list on or off. A
+        repeat of the current value changes nothing. Requires `org.update`
+        (the owner).
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuestListSettingsRequest"
+      responses:
+        "200":
+          description: The setting after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GuestListSettings"
+        "400":
+          description: Body has no boolean `auto_send` or carries another field (`guest_list.invalid_body`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Not a member with `org.update`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Organization not found (`org.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`export.internal`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable (`dependency.database_unavailable`).
           content:
             application/json:
               schema:

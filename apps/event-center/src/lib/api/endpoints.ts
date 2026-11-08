@@ -87,6 +87,7 @@ import type {
   SessionChangeImpact,
   SessionEnvelope,
   SessionSalesState,
+  GuestListSettings,
   GuestListSubscription,
   SessionSalesStateHistory,
   SessionListResponse,
@@ -285,6 +286,31 @@ export function downloadGuestListXlsx(orgId: string, sessionId: string, locale: 
     query: { locale },
     accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     fallbackName: "guests.xlsx",
+  });
+}
+
+/** The guest list of every session of an event as one Excel workbook (a Session column first). */
+export function downloadEventGuestListXlsx(orgId: string, eventId: string, locale: string): Promise<DownloadedFile> {
+  return download({
+    route: API.eventGuestListXlsx,
+    params: { org_id: orgId, event_id: eventId },
+    query: { locale },
+    accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    fallbackName: "guests.xlsx",
+  });
+}
+
+/** The organization switch for the automatic team guest list (on by default). */
+export function getGuestListSettings(orgId: string): Promise<GuestListSettings> {
+  return call<GuestListSettings>({ route: API.guestListSettings, params: { org_id: orgId } });
+}
+
+/** The owner turns the automatic team guest list on or off. */
+export function setGuestListSettings(orgId: string, autoSend: boolean): Promise<GuestListSettings> {
+  return call<GuestListSettings>({
+    route: API.guestListSettingsSet,
+    params: { org_id: orgId },
+    body: { auto_send: autoSend },
   });
 }
 
@@ -1201,6 +1227,21 @@ export function saveDescription(orgId: string, eventId: string, art: string): Pr
     params: { org_id: orgId, id: eventId },
     body: { description: art, description_format: "art" },
   });
+}
+
+/**
+ * Saves the event card's own fields from the web editor: ONE PATCH carrying only what changed. The name is sent
+ * only when the person edited it (the list shows a translated name for another language, so an unchanged name
+ * must never be written back as the canonical one). The description goes as ART, like saveDescription.
+ */
+export function saveEventDetails(orgId: string, eventId: string, fields: { name?: string; description?: string }): Promise<EventEnvelope> {
+  const body: Record<string, unknown> = {};
+  if (fields.name !== undefined) body.name = fields.name;
+  if (fields.description !== undefined) {
+    body.description = fields.description;
+    body.description_format = "art";
+  }
+  return call<EventEnvelope>({ route: API.eventUpdate, params: { org_id: orgId, id: eventId }, body });
 }
 
 /** A test letter with the text (the draft when `note` is given, else the saved one) to the caller's own address. */

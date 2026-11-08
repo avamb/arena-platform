@@ -98,7 +98,7 @@ test.describe("sales state (live, three roles)", () => {
     await expect(page.getByTestId("sales-state-value")).toContainText("Open");
     await expect(page.getByTestId("sales-state-origin")).toContainText("Set by the platform");
     await expect(page.getByTestId("sales-state-places")).toContainText("Free places: 5");
-    await expect(page.getByTestId("sales-state-set-open")).toHaveCount(0);
+    await expect(page.getByTestId("sales-state-set-open")).toHaveAttribute("aria-checked", "true");
     await noA11yViolations(page);
 
     // "Cancel" in the dialog writes nothing.
@@ -155,8 +155,11 @@ test.describe("sales state (live, three roles)", () => {
     await openSession(page, "agent");
     if (me.permissions.includes("session.read")) {
       await expect(page.getByTestId("sales-state-value")).toContainText("Open");
+      // The three segments show, but none can be pressed.
+      await expect(page.locator('[data-testid^="sales-state-set-"][aria-disabled="true"]')).toHaveCount(3);
+    } else {
+      await expect(page.locator('[data-testid^="sales-state-set-"]')).toHaveCount(0);
     }
-    await expect(page.locator('[data-testid^="sales-state-set-"]')).toHaveCount(0);
     expect(puts).toHaveLength(0);
 
     const res = await request.put(stateUrl, { headers: auth("agent"), data: { state: "sold_out" } });

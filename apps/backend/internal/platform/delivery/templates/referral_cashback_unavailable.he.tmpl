@@ -16,7 +16,7 @@
   {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">יצירת קשר עם המארגן: <a href="mailto:{{.Branding.ContactEmail}}" style="color:#46555f">{{.Branding.ContactEmail}}</a></p>{{else}}{{with .Branding.ContactFormURL}}<p style="margin:0 0 12px 0;">יצירת קשר עם המארגן: <a href="{{.}}" style="color:#46555f">כתיבה למארגן</a></p>{{end}}{{end}}
   <p style="font-size:12px;color:#666">נשלח אל: {{.RecipientEmail}}</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;text-align:right;">
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;text-align:right;">
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     <strong>{{.Branding.LegalName}}</strong>
@@ -48,7 +48,7 @@
 {{if .Branding.ContactEmail}}יצירת קשר עם המארגן: {{.Branding.ContactEmail}}
 {{else}}{{with .Branding.ContactFormURL}}יצירת קשר עם המארגן: {{.}}
 {{end}}{{end}}
-נשלח אל: {{.RecipientEmail}}
+{{template "contact_text" .}}נשלח אל: {{.RecipientEmail}}
 
 --
 {{.Branding.LegalName}}

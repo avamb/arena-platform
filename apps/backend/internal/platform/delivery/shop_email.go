@@ -330,6 +330,11 @@ func shopLetterPayload(ctx context.Context, db gen.DBTX, orgID uuid.UUID) (Paylo
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return Payload{}, fmt.Errorf("delivery: read shop settings: %w", err)
 	}
+	// The shop's own address first; without one the organization's contact
+	// address, which every buyer letter now names (owner request 2026-11-08).
+	if strings.TrimSpace(contact) == "" {
+		contact = ptrStr(g.ContactEmail)
+	}
 	p := Payload{
 		OrgName: g.Name, OrgWebsiteURL: ptrStr(g.Website), OrgLegalName: ptrStr(g.LegalName),
 		OrgLegalAddressLine1: ptrStr(g.Line1), OrgLegalAddressLine2: ptrStr(g.Line2),

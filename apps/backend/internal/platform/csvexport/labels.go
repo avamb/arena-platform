@@ -68,6 +68,13 @@ const (
 	ColRefundAmount
 	ColRefundSettlement
 	ColRefundRef
+	// The guest list (2026-11-08): MACS-style statuses.
+	ColLastName
+	ColFirstName
+	ColRow
+	ColSector
+	ColStatusReason
+	ColOrderNumber
 )
 
 // SupportedLocales are the header languages, in the order they are offered.
@@ -95,6 +102,8 @@ var labels = map[string]map[Column]string{
 		ColRefundedTickets: "Refunded tickets", ColActiveTickets: "Active tickets", ColRefundedAmount: "Refunded",
 		ColNet: "Net", ColTicketsCount: "Tickets", ColPricePaid: "Price paid", ColRefundAmount: "Refund amount",
 		ColRefundSettlement: "Refund settlement", ColRefundRef: "Refund reference",
+		ColLastName: "Last name", ColFirstName: "First name", ColRow: "Row", ColSector: "Sector",
+		ColStatusReason: "Status reason", ColOrderNumber: "Order number",
 	},
 	"ru": {
 		ColOrder: "Заказ", ColOrderStatus: "Статус заказа", ColDate: "Дата",
@@ -114,6 +123,8 @@ var labels = map[string]map[Column]string{
 		ColRefundedTickets: "Возвращено билетов", ColActiveTickets: "Активных билетов", ColRefundedAmount: "Возвращено",
 		ColNet: "Нетто", ColTicketsCount: "Билетов", ColPricePaid: "Оплачено", ColRefundAmount: "Сумма возврата",
 		ColRefundSettlement: "Способ возврата", ColRefundRef: "Ссылка на возврат",
+		ColLastName: "Фамилия", ColFirstName: "Имя", ColRow: "Ряд", ColSector: "Сектор",
+		ColStatusReason: "Причина статуса", ColOrderNumber: "Номер заказа",
 	},
 	"es": {
 		ColOrder: "Pedido", ColOrderStatus: "Estado del pedido", ColDate: "Fecha",
@@ -133,6 +144,8 @@ var labels = map[string]map[Column]string{
 		ColRefundedTickets: "Entradas devueltas", ColActiveTickets: "Entradas activas", ColRefundedAmount: "Devuelto",
 		ColNet: "Neto", ColTicketsCount: "Entradas", ColPricePaid: "Precio pagado", ColRefundAmount: "Importe devuelto",
 		ColRefundSettlement: "Forma de devolución", ColRefundRef: "Referencia de la devolución",
+		ColLastName: "Apellido", ColFirstName: "Nombre", ColRow: "Fila", ColSector: "Sector",
+		ColStatusReason: "Motivo del estado", ColOrderNumber: "Número de pedido",
 	},
 }
 

@@ -24,10 +24,9 @@
   {{if .Shop.Digital}}<p style="margin:16px 0 6px 0;font-weight:bold;color:#22333D;">הקבצים שלך</p><p style="margin:0 0 4px 0;">{{range .Shop.Digital}}{{if $.Shop.StatusURL}}<a href="{{$.Shop.StatusURL}}" style="color:{{$.Accent}};">{{.Title}}</a>{{else}}{{.Title}}{{end}}<br>{{end}}</p><p style="margin:0 0 12px 0;color:#93a0a8;font-size:12px;">ניתן להוריד אותם מעמוד ההזמנה.</p>{{end}}
   {{with .Shop.Note}}<p style="margin:16px 0 6px 0;font-weight:bold;color:#22333D;">ההערה שלך</p><p style="margin:0 0 12px 0;white-space:pre-line;">{{.}}</p>{{end}}
   {{with .Shop.StatusURL}}<p style="margin:16px 0 12px 0;"><a href="{{.}}" style="color:{{$.Accent}};font-weight:bold;">סטטוס ההזמנה</a></p>{{end}}
-  {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">שאלות? השב להודעה זו.</p>{{end}}
   <p style="font-size:12px;color:#666">נשלח אל: {{.RecipientEmail}}</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;text-align:right;">
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;text-align:right;">
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
@@ -76,10 +75,8 @@
 
 {{end}}{{with .Shop.StatusURL}}סטטוס ההזמנה: {{.}}
 
-{{end}}{{if .Branding.ContactEmail}}שאלות? השב להודעה זו.
 {{end}}
-
-נשלח אל: {{.RecipientEmail}}
+{{template "contact_text" .}}נשלח אל: {{.RecipientEmail}}
 
 --
 {{.Branding.SellerLabel}} {{.Branding.LegalName}}

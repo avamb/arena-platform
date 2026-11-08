@@ -67,6 +67,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventnote"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/eventwatch"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/guestlist"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/guestlistteam"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/htickets"
@@ -398,6 +399,10 @@ func run() error {
 		// Non-fatal: the first guest list goes out a minute later.
 		logger.Warn("could not schedule initial guest list job", "error", err.Error())
 	}
+	if err := guestlistteam.ScheduleInitialJob(rootCtx, pool.Pool); err != nil {
+		// Non-fatal: the first team guest list goes out five minutes later.
+		logger.Warn("could not schedule initial team guest list job", "error", err.Error())
+	}
 
 	// 7e. Ops watchdog startup scheduling -------------------------------------
 	// ops.watchdog (internal/platform/opswatchdog) is a strictly read-only,
@@ -715,6 +720,9 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 	// guest_list.schedule writes the due guest lists and mails the ones of
 	// members without the bot (package guestlist).
 	registerGuestListSchedule(reg, pool, deliveryOpts.Sender, logger)
+	// guest_list.team_send: the current list to owners, managers and the
+	// organization's sales groups 24 h and 3 h before every session.
+	registerGuestListTeamSend(reg, pool, deliveryOpts.Sender, cfg, logger)
 
 	reg.Register(salesalert.JobTypeAlertEmail, delivery.NewSalesAlertHandler(delivery.SalesAlertOptions{
 		Sender:    deliveryOpts.Sender,

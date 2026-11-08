@@ -96,17 +96,18 @@ func NewMyTicketsLinkHandler(opts MyTicketsLinkOptions) worker.HandlerFunc {
 			addr, locale, page, orgName, orgLocale string
 			senderEmail, senderStatus, accent      string
 			logoID                                 *uuid.UUID
+			orgID                                  uuid.UUID
 			used                                   bool
 		)
 		err = opts.DB.QueryRow(ctx, `
 			SELECT r.email_normalized, COALESCE(r.locale, ''), COALESCE(r.page_url, ''),
 			       o.name, COALESCE(o.default_locale, ''), r.used_at IS NOT NULL,
 			       COALESCE(o.sender_email, ''), COALESCE(o.sender_verification_status, ''),
-			       COALESCE(o.branding->>'primary', ''), o.logo_media_id
+			       COALESCE(o.branding->>'primary', ''), o.logo_media_id, r.org_id
 			FROM   my_tickets_link_requests r
 			JOIN   organizations o ON o.id = r.org_id
 			WHERE  r.id = $1`, id).Scan(&addr, &locale, &page, &orgName, &orgLocale, &used,
-			&senderEmail, &senderStatus, &accent, &logoID)
+			&senderEmail, &senderStatus, &accent, &logoID, &orgID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
@@ -155,15 +156,19 @@ func NewMyTicketsLinkHandler(opts MyTicketsLinkOptions) worker.HandlerFunc {
 			loc = "en"
 		}
 		branding := myTicketsBranding(ctx, opts.Media, orgName, accent, logoID, logger)
+		contact := buyerContactEmail(ctx, opts.DB, uuid.Nil, orgID, logger)
 		out, err := r.Render(templates.TemplateKindMyTicketsLink, loc, templates.Data{
 			RecipientEmail: addr,
 			Branding:       branding,
 			MyTickets:      templates.MyTicketsLinkData{URL: link},
+			Contact:        templates.BuyerContact{Email: contact},
 		})
 		if err != nil {
 			return err
 		}
-		return opts.Sender.Send(ctx, myTicketsLinkMessage(addr, orgName, senderEmail, senderStatus, out))
+		msg := myTicketsLinkMessage(addr, orgName, senderEmail, senderStatus, out)
+		withReplyTo(&msg, contact)
+		return opts.Sender.Send(ctx, msg)
 	}
 }
 

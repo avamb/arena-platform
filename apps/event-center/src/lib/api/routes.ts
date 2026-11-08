@@ -60,6 +60,14 @@ export const API = {
     method: "GET",
     path: "/v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv",
   },
+  // The guest list of the whole event (all sessions, a Session column first).
+  eventGuestListXlsx: {
+    method: "GET",
+    path: "/v1/organizations/{org_id}/events/{event_id}/guest-list.xlsx",
+  },
+  // The organization switch for the team guest list (24 h and 3 h before every session).
+  guestListSettings: { method: "GET", path: "/v1/organizations/{org_id}/guest-list-settings" },
+  guestListSettingsSet: { method: "PUT", path: "/v1/organizations/{org_id}/guest-list-settings" },
   guestListSubscription: { method: "GET", path: "/v1/organizations/{org_id}/guest-list-subscription" },
   guestListSubscriptionSet: { method: "PUT", path: "/v1/organizations/{org_id}/guest-list-subscription" },
   // The search travels in the body, never in the URL: a buyer's e-mail or
@@ -251,6 +259,7 @@ export const API = {
   partnerPatch: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{event_id}/partner-links/{link_id}" },
   partnerDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{event_id}/partner-links/{link_id}" },
   mapPointGet: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/map-point" },
+  mapPointCheck: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/map-point/check" },
   mapPointPut: { method: "PUT", path: "/v1/organizations/{org_id}/events/{event_id}/map-point" },
   mapPointDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{event_id}/map-point" },
   reportList: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/photo-report" },

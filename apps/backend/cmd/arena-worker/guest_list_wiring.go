@@ -6,7 +6,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/config"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/guestlist"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/guestlistteam"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesnotify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
@@ -23,4 +26,24 @@ func registerGuestListSchedule(reg *worker.Registry, pool *pgxpool.Pool, sender 
 		Interval: guestlist.DefaultInterval,
 	}))
 	logger.Info("guest list schedule registered", "interval", guestlist.DefaultInterval.String())
+}
+
+// registerGuestListTeamSend registers guest_list.team_send
+// (internal/platform/guestlistteam): every 5 minutes it sends the current
+// guest list of a session 24 h and 3 h before the start to the organization's
+// owners and managers by e-mail and to its own sales Telegram groups (through
+// the SALES bot; without SALES_TELEGRAM_BOT_TOKEN only e-mail goes).
+func registerGuestListTeamSend(reg *worker.Registry, pool *pgxpool.Pool, sender email.Sender, cfg *config.Config, logger *slog.Logger) {
+	o := guestlistteam.Options{
+		Pool:     pool,
+		Sender:   sender,
+		Chats:    salesnotify.NewPGStore(pool),
+		Logger:   logger,
+		Interval: guestlistteam.DefaultInterval,
+	}
+	if cfg.SalesTelegramBotToken != "" {
+		o.Docs = salesnotify.NewTelegramSender(cfg.SalesTelegramBotToken, "")
+	}
+	reg.Register(guestlistteam.JobType, guestlistteam.New(o).Handler())
+	logger.Info("guest list team send registered", "interval", guestlistteam.DefaultInterval.String())
 }

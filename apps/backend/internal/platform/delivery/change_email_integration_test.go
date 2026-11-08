@@ -306,11 +306,11 @@ func emailTextBody2(t *testing.T, raw string) string {
 	return fmt.Sprintf("%v\n%s", msg.Header, raw)
 }
 
-// A hosted page without a public e-mail: the change letter names the
-// page's contact form only while the form is shown. Without it the letter
-// has no contact sentence at all - never an empty link, never the
-// organization's own address.
-func TestSessionChange_HostedPageLetterFollowsTheFormSwitch(t *testing.T) {
+// A hosted page without a public e-mail. Since 2026-11-08 (owner decision)
+// the organization's contact e-mail is the buyer contact of every buyer
+// letter: the change letter names it in the "do not reply, write to" block
+// whether or not the page shows its contact form, and links no form.
+func TestSessionChange_HostedPageLetterNamesTheOrganizationAddress(t *testing.T) {
 	ctx := context.Background()
 	f, cleanup := newSCFixture(ctx, t, true)
 	defer cleanup()
@@ -332,28 +332,15 @@ func TestSessionChange_HostedPageLetterFollowsTheFormSwitch(t *testing.T) {
 		return raw
 	}
 
-	raw := letter(false)
-	body := emailTextBody(t, raw)
-	if strings.Contains(raw, f.contact) {
-		t.Error("the letter of a hosted page without a public e-mail carries the organization's own address")
-	}
-	if strings.Contains(raw, "#contact") || strings.Contains(raw, `href=""`) {
-		t.Errorf("without the form the letter must not link one:\n%s", body)
-	}
-	if strings.Contains(body, "write to the organizer") {
-		t.Errorf("without a contact the letter must not ask the buyer to write:\n%s", body)
-	}
-	if hasHeader(raw, "Reply-To") {
-		t.Error("a letter with no organizer contact must have no Reply-To")
-	}
-
-	raw = letter(true)
-	body = emailTextBody(t, raw)
-	if want := expectedFormURL(ctx, t, f.pool, f.TicketID); !strings.Contains(body, "form on the sales page: "+want) {
-		t.Errorf("with the form shown the letter must link %q:\n%s", want, body)
-	}
-	if strings.Contains(raw, f.contact) {
-		t.Error("the form letter carries the organization's own address")
+	for _, formEnabled := range []bool{false, true} {
+		raw := letter(formEnabled)
+		body := emailTextBody(t, raw)
+		if !strings.Contains(body, f.contact) {
+			t.Errorf("form shown %v: the letter must name the organization's address %q:\n%s", formEnabled, f.contact, body)
+		}
+		if strings.Contains(raw, "#contact") || strings.Contains(raw, `href=""`) {
+			t.Errorf("form shown %v: with an address the letter links no form:\n%s", formEnabled, body)
+		}
 	}
 }
 

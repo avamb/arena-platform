@@ -2053,7 +2053,8 @@ fieldset legend {
     box-shadow: 0 -2px 8px var(--shadow);
   }
   /* Room under the last block, so the fixed bar never covers it. */
-  .shop-card {
+  .shop-card,
+  .has-save-bar {
     padding-block-end: 6rem;
   }
 }
@@ -3007,4 +3008,109 @@ fieldset legend {
   font-weight: 700;
   line-height: 18px;
   text-align: center;
+}
+
+/* The round "?" help button of a section title and its popover (HelpPopover). */
+.help {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  margin-inline-start: 0.4rem;
+  font-size: 1rem;
+  font-weight: 400;
+}
+.help-btn {
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  min-inline-size: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--accent);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+/* A 24px circle is a small target: the hit area grows around it without moving the layout. */
+.help-btn::after {
+  content: "";
+  position: absolute;
+  inset: -10px;
+}
+.help-btn[aria-expanded="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+.help-btn:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.help-pop {
+  position: absolute;
+  z-index: 30;
+  inset-inline-start: 0;
+  inset-block-start: calc(100% + 0.4rem);
+  inline-size: max-content;
+  max-inline-size: min(20rem, calc(100vw - 2 * var(--gutter)));
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 4px 14px var(--shadow);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  white-space: normal;
+  text-align: start;
+}
+.help-pop[hidden] {
+  display: none;
+}
+
+/* The three-way sales switch (SessionSalesState): the state in force is filled, the other two stay quiet. */
+.seg {
+  display: flex;
+  max-inline-size: 30rem;
+  margin-block: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.seg-btn {
+  flex: 1 1 0;
+  min-block-size: var(--tap);
+  padding: 0.4rem 0.5rem;
+  border: 0;
+  border-inline-start: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.seg-btn:first-child {
+  border-inline-start: 0;
+}
+.seg-btn[aria-disabled="true"] {
+  cursor: default;
+}
+.seg-btn:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+}
+.seg-open.is-on {
+  background: var(--ok-text);
+  color: var(--ok-bg);
+}
+.seg-soon.is-on {
+  background: var(--wait-text);
+  color: var(--wait-bg);
+}
+.seg-sold_out.is-on {
+  background: var(--bad-text);
+  color: var(--bad-bg);
 }

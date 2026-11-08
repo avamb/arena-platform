@@ -15,7 +15,7 @@
   <p style="margin:0 0 12px 0;"><span style="color:#93a0a8;font-size:12px;word-break:break-all;">Link: {{.MyTickets.URL}}</span></p>
   <p style="margin:0 0 12px 0;">Wenn Sie das nicht angefordert haben, ignorieren Sie diese E-Mail: Ohne diesen Link kann niemand Ihre Tickets sehen.</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Ticket processing by arenasoldout.com</a><br>{{end}}Wenn Sie auf „Abbestellen“ klicken, erhalten Sie keine E-Mails mit Ihren Tickets und keine wichtigen E-Mails zu Ihrer Bestellung mehr. Werbe-Mailings senden wir nicht ohne Ihre Einwilligung.</td></tr>
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">{{if not .WhiteLabel}}<a href="https://arenasoldout.com" style="color:inherit;text-decoration:underline">Ticket processing by arenasoldout.com</a><br>{{end}}Wenn Sie auf „Abbestellen“ klicken, erhalten Sie keine E-Mails mit Ihren Tickets und keine wichtigen E-Mails zu Ihrer Bestellung mehr. Werbe-Mailings senden wir nicht ohne Ihre Einwilligung.</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -31,7 +31,7 @@ Meine Tickets öffnen: {{.MyTickets.URL}}
 
 Wenn Sie das nicht angefordert haben, ignorieren Sie diese E-Mail: Ohne diesen Link kann niemand Ihre Tickets sehen.
 
-{{if not .WhiteLabel}}Ticket processing by arenasoldout.com — https://arenasoldout.com{{end}}
+{{template "contact_text" .}}{{if not .WhiteLabel}}Ticket processing by arenasoldout.com — https://arenasoldout.com{{end}}
 
 Wenn Sie auf „Abbestellen“ klicken, erhalten Sie keine E-Mails mit Ihren Tickets und keine wichtigen E-Mails zu Ihrer Bestellung mehr. Werbe-Mailings senden wir nicht ohne Ihre Einwilligung.
 {{end}}
