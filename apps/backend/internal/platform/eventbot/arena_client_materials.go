@@ -12,6 +12,7 @@ package eventbot
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"github.com/google/uuid"
 )
@@ -141,6 +142,31 @@ func (c *ArenaClient) MapPointGet(ctx context.Context, jwt string, orgID, eventI
 		return nil, err
 	}
 	return &out, nil
+}
+
+// MapPointWarning is one advisory remark of the map point check: the point
+// looks far from the event's city or nearer to another one. It never blocks.
+type MapPointWarning struct {
+	Code             string   `json:"code"`
+	City             string   `json:"city"`
+	DistanceKm       float64  `json:"distance_km"`
+	ThresholdKm      float64  `json:"threshold_km"`
+	NearerCity       *string  `json:"nearer_city"`
+	NearerDistanceKm *float64 `json:"nearer_distance_km"`
+}
+
+// MapPointCheck asks for the advisory verdict on a point (event.read). The
+// caller treats any error as "no warning": the check is a helper.
+func (c *ArenaClient) MapPointCheck(ctx context.Context, jwt string, orgID, eventID uuid.UUID, lat, lon float64) ([]MapPointWarning, error) {
+	var out struct {
+		Warnings []MapPointWarning `json:"warnings"`
+	}
+	sec, _ := materialSectionByCode("m")
+	path := materialsBase(orgID, eventID, sec) + "/check?latitude=" + strconv.FormatFloat(lat, 'f', 6, 64) + "&longitude=" + strconv.FormatFloat(lon, 'f', 6, 64)
+	if err := c.do(ctx, http.MethodGet, path, jwt, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Warnings, nil
 }
 
 // MapPointSet creates the point or replaces it as a whole.

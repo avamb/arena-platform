@@ -32,6 +32,23 @@ export interface MapPoint {
   longitude: number;
   label: string | null;
 }
+/** Advisory remark that a point looks wrong for the event's city (never blocks a save). */
+export interface MapPointWarning {
+  code: string;
+  message: string;
+  city: string;
+  distance_km: number;
+  threshold_km: number;
+  nearer_city: string | null;
+  nearer_distance_km: number | null;
+}
+export interface MapPointCheck {
+  checked: boolean;
+  warnings: MapPointWarning[];
+}
+export interface MapPointSaved extends MapPoint {
+  warnings: MapPointWarning[];
+}
 export interface ItemsResponse<T> {
   items: T[];
   max_items: number;
@@ -143,8 +160,12 @@ export async function getMapPoint(orgId: string, eventId: string, signal?: Abort
     throw err;
   }
 }
-export function putMapPoint(orgId: string, eventId: string, p: { latitude: number; longitude: number; label: string | null }): Promise<MapPoint> {
+export function putMapPoint(orgId: string, eventId: string, p: { latitude: number; longitude: number; label: string | null }): Promise<MapPointSaved> {
   return call({ route: API.mapPointPut, params: scope(orgId, eventId), body: p });
+}
+/** The advisory verdict on a point still being typed (`event.read`); stores nothing. */
+export function checkMapPointCity(orgId: string, eventId: string, latitude: number, longitude: number, signal?: AbortSignal): Promise<MapPointCheck> {
+  return call({ route: API.mapPointCheck, params: scope(orgId, eventId), query: { latitude, longitude }, signal });
 }
 export function deleteMapPoint(orgId: string, eventId: string): Promise<unknown> {
   return call({ route: API.mapPointDelete, params: scope(orgId, eventId) });

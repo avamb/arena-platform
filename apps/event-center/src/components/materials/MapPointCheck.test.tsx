@@ -36,3 +36,44 @@ describe("the map point helper", () => {
     expect(render("1", "2", "es")).toContain("Abrir este punto en Google Maps");
   });
 });
+
+describe("the advisory warning", () => {
+  const far = {
+    code: "venue.point_far_from_city",
+    message: "",
+    city: "Netanya",
+    distance_km: 20.5,
+    threshold_km: 16.8,
+    nearer_city: "Ramat HaSharon",
+    nearer_distance_km: 0.3,
+  };
+  const renderWith = (w: typeof far, locale: Locale = "en") =>
+    renderToStaticMarkup(
+      <I18nProvider locale={locale}>
+        <MapPointCheck lat="32.146" lng="34.839" warnings={[w]} />
+      </I18nProvider>,
+    );
+
+  it("names the city, the distance and the nearer city, and says the save still works", () => {
+    const html = renderWith(far);
+    expect(html).toContain("20.5 km from Netanya");
+    expect(html).toContain("nearer to Ramat HaSharon (0.3 km)");
+    expect(html).toContain("You can still save the point");
+    expect(html).toContain("google.com/maps");
+  });
+
+  it("has a text for a point that is near but in the wrong city", () => {
+    const html = renderWith({ ...far, code: "venue.point_nearer_other_city", distance_km: 13.5 });
+    expect(html).toContain("only 0.3 km from Ramat HaSharon");
+  });
+
+  it("shows no warning for an invalid point and speaks Russian", () => {
+    const html = renderToStaticMarkup(
+      <I18nProvider locale="ru">
+        <MapPointCheck lat="" lng="" warnings={[far]} />
+      </I18nProvider>,
+    );
+    expect(html).not.toContain("Netanya");
+    expect(renderWith(far, "ru")).toContain("от города Netanya");
+  });
+});

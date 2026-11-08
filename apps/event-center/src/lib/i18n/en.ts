@@ -1959,6 +1959,10 @@ export const en = {
   "mat.map.check": "Check on OpenStreetMap",
   "mat.map.google": "Open this point in Google Maps",
   "mat.map.pickHint": "Put the point at the entrance or the parking, where guests should arrive. Open it in Google Maps to check that it is the right place.",
+  "mat.map.warn.far": "That is {distance} km from {city}, farther than the usual {limit} km for a city of this size. Open it in Google Maps and check that it is the right place.",
+  "mat.map.warn.farNearer": "That is {distance} km from {city}, farther than the usual {limit} km, and it is nearer to {other} ({otherKm} km). Open it in Google Maps and check that it is the right place.",
+  "mat.map.warn.nearer": "That is {distance} km from {city} but only {otherKm} km from {other}. Open it in Google Maps and check that it is in the right city.",
+  "mat.map.warn.still": "You can still save the point. This is only a hint.",
   "mat.map.removed": "The point was removed.",
   "mat.preview.title": "Preview",
   // V1: VIP mark of a ticket.

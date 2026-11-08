@@ -525,6 +525,7 @@ func TestEventMaterialsExtras_StayInsideTheOrganization(t *testing.T) {
 			{http.MethodPatch, b + "/partner-links/" + linkID.String(), `{"seller_name":"Hijack"}`},
 			{http.MethodDelete, b + "/partner-links/" + linkID.String(), ""},
 			{http.MethodGet, b + "/map-point", ""},
+			{http.MethodGet, b + "/map-point/check?latitude=10&longitude=10", ""},
 			{http.MethodPut, b + "/map-point", `{"latitude":10,"longitude":10}`},
 			{http.MethodDelete, b + "/map-point", ""},
 			{http.MethodGet, b + "/photo-report", ""},

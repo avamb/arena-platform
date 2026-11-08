@@ -4132,6 +4132,32 @@ export interface paths {
         patch: operations["updateEventPartnerLink"];
         trace?: never;
     };
+    "/v1/organizations/{org_id}/events/{event_id}/map-point/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check a map point against the event's city
+         * @description Advisory only, stores nothing. Compares the point with the cities of the
+         *     event's venues and answers a remark when it is farther from the venue city
+         *     than is usual for a city of that size, or nearer to another city of the
+         *     country. With no venue city in the geo data it answers `checked: false` and
+         *     no warnings. Latitude must be between -90 and 90 and longitude between -180
+         *     and 180 (400 `event.invalid_map_point`).
+         *     Requires `event.read` and membership of the organization.
+         */
+        get: operations["checkEventMapPoint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/organizations/{org_id}/events/{event_id}/map-point": {
         parameters: {
             query?: never;
@@ -25466,6 +25492,76 @@ export interface components {
              * @description When the point was last changed.
              */
             updated_at: string;
+        };
+        /**
+         * @description Advisory remark that a map point looks wrong for the event's city. It never
+         *     blocks a save; the point is stored either way. The distance is measured from
+         *     the city centre. The usual distance is max(15 km, 4 times a radius estimated
+         *     from the city's population), at most 60 km.
+         */
+        MapPointWarning: {
+            /** @description `venue.point_far_from_city` when the point is beyond the usual distance, `venue.point_nearer_other_city` when it is within it but outside the city's own radius and another city is closer. */
+            code: string;
+            /** @description English text for the organizer, naming the cities and the distances. */
+            message: string;
+            /** @description The event's venue city the point was compared with (ASCII name). */
+            city: string;
+            /**
+             * Format: double
+             * @description Distance from the point to that city's centre, in kilometres, one decimal.
+             */
+            distance_km: number;
+            /**
+             * Format: double
+             * @description The usual distance for a city of this size, in kilometres, one decimal.
+             */
+            threshold_km: number;
+            /** @description A city of the same country that is nearer to the point than the venue city centre is, or null. */
+            nearer_city: string | null;
+            /**
+             * Format: double
+             * @description Distance from the point to `nearer_city`, in kilometres, or null.
+             */
+            nearer_distance_km: number | null;
+        };
+        /** @description Advisory verdict on a map point against the cities of the event's venues. */
+        MapPointCheck: {
+            /** @description False when none of the venue cities is in the geo data (or the event has no venue city), so nothing could be said. */
+            checked: boolean;
+            /** @description Empty when the point looks right or could not be checked; at most one remark otherwise. */
+            warnings: components["schemas"]["MapPointWarning"][];
+        };
+        /** @description The map point as stored by PUT, with the advisory warnings. The point is stored whatever the warnings say. */
+        EventMapPointSaved: {
+            /**
+             * Format: uuid
+             * @description UUIDv7 of the event.
+             */
+            event_id: string;
+            /**
+             * Format: double
+             * @description Latitude in degrees, -90 to 90, six decimals kept.
+             */
+            latitude: number;
+            /**
+             * Format: double
+             * @description Longitude in degrees, -180 to 180, six decimals kept.
+             */
+            longitude: number;
+            /** @description Optional text shown with the point, up to 200 characters. */
+            label: string | null;
+            /**
+             * Format: date-time
+             * @description When the point was first set.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the point was last changed.
+             */
+            updated_at: string;
+            /** @description Advisory remarks on the point, see MapPointWarning. Empty when nothing looks wrong. */
+            warnings: components["schemas"]["MapPointWarning"][];
         };
         /** @description Body of PUT .../events/{event_id}/map-point; replaces the point as a whole. */
         SetEventMapPointRequest: {
@@ -52425,6 +52521,90 @@ export interface operations {
             };
         };
     };
+    checkEventMapPoint: {
+        parameters: {
+            query: {
+                /** @description Latitude in degrees, -90 to 90. */
+                latitude: number;
+                /** @description Longitude in degrees, -180 to 180. */
+                longitude: number;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The verdict. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapPointCheck"];
+                };
+            };
+            /** @description Missing or invalid coordinates (`event.invalid_map_point`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid credentials. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Caller lacks `event.read` or is not a member of the organization. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No such event in this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`event.materials_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     getEventMapPoint: {
         parameters: {
             query?: never;
@@ -52513,13 +52693,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The map point as stored. */
+            /** @description The map point as stored, with advisory `warnings` (never an error). */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EventMapPoint"];
+                    "application/json": components["schemas"]["EventMapPointSaved"];
                 };
             };
             /** @description Invalid body or coordinates (`event.invalid_body`, `event.invalid_map_point`). */

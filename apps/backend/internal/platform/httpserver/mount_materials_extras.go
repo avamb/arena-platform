@@ -39,6 +39,7 @@ func (s *Server) mountMaterialsExtrasRoutes(r chi.Router) {
 		s.applyAuth(pr, "event.read", "events")
 		pr.Get(ev+"/partner-links", s.orgGated(h.HandleListPartnerLinks))
 		pr.Get(ev+"/map-point", s.orgGated(h.HandleGetMapPoint))
+		pr.Get(ev+"/map-point/check", s.orgGated(h.HandleCheckMapPoint))
 		pr.Get(ev+"/photo-report", s.orgGated(h.HandleListReportPhotos))
 	})
 	r.Group(func(pr chi.Router) {

@@ -1959,6 +1959,10 @@ export const ru: Record<MessageKey, string> = {
   "mat.map.check": "Проверить в OpenStreetMap",
   "mat.map.google": "Открыть эту точку в Google Картах",
   "mat.map.pickHint": "Поставьте точку у входа или на парковке, куда должны приехать гости. Откройте её в Google Картах и проверьте, что это то самое место.",
+  "mat.map.warn.far": "Это в {distance} км от города {city}, дальше обычных {limit} км для города такого размера. Откройте точку в Google Картах и проверьте, что это то самое место.",
+  "mat.map.warn.farNearer": "Это в {distance} км от города {city}, дальше обычных {limit} км, и ближе к городу {other} ({otherKm} км). Откройте точку в Google Картах и проверьте, что это то самое место.",
+  "mat.map.warn.nearer": "Это в {distance} км от города {city}, но всего в {otherKm} км от города {other}. Откройте точку в Google Картах и проверьте, что она в нужном городе.",
+  "mat.map.warn.still": "Точку всё равно можно сохранить, это только подсказка.",
   "mat.map.removed": "Точка удалена.",
   "mat.preview.title": "Просмотр",
   // V1: VIP-флаг билета.
