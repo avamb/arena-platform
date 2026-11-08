@@ -159,23 +159,25 @@ export function SessionSalesState({ orgId, eventId, sessionId, timezone, canUpda
                   {t("salesState.cancelledNote")}
                 </p>
               )}
-              {choices.length > 0 && (
-                <div className="actions">
-                  {choices.map((c) => (
-                    <button
-                      key={c}
-                      type="button"
-                      className="btn"
-                      onClick={() => {
-                        setDone(null);
-                        setAsking(c);
-                      }}
-                      data-testid={`sales-state-set-${c}`}
-                    >
-                      {t(`salesState.choice.${c}` as MessageKey)}
-                    </button>
-                  ))}
-                </div>
+              <SalesSegments
+                manual={d.manual}
+                effective={d.effective}
+                editable={canUpdate && !cancelled && choices.length > 0}
+                label={t("salesState.title")}
+                name={(c) => t(`salesState.segment.${c}` as MessageKey)}
+                onPick={(c) => {
+                  setDone(null);
+                  if (c === "open" && d.manual === null) {
+                    setDone(t("salesState.openNoop", { state: stateName(now, d.effective) }));
+                    return;
+                  }
+                  setAsking(c);
+                }}
+              />
+              {d.manual === null && (now === "soon" || now === "sold_out") && (
+                <p className="muted" data-testid="sales-state-auto-note">
+                  {t("salesState.autoShown", { state: stateName(now, d.effective) })}
+                </p>
               )}
               {done !== null && (
                 <p role="status" className="notice" data-testid="sales-state-done">
@@ -253,5 +255,63 @@ function History({
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * The three-way switch: Sales open / Coming soon / Sold out, always visible. The state buyers see is
+ * highlighted, whether the organizer set it or the platform derived it. A radio group: aria-checked marks the
+ * one in force, the arrow keys move between the segments, Enter or Space picks one (a pick asks to confirm).
+ */
+function SalesSegments({
+  manual,
+  effective,
+  editable,
+  label,
+  name,
+  onPick,
+}: {
+  manual: string | null | undefined;
+  effective: string;
+  editable: boolean;
+  label: string;
+  name: (c: SalesStateChoice) => string;
+  onPick: (c: SalesStateChoice) => void;
+}) {
+  const shown = effectiveState(effective);
+  const current: SalesStateChoice | null = shown === "open" || shown === "soon" || shown === "sold_out" ? shown : null;
+  const order: SalesStateChoice[] = ["open", "soon", "sold_out"];
+  const move = (e: React.KeyboardEvent<HTMLButtonElement>, at: number) => {
+    const step = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+    if (step === 0) return;
+    e.preventDefault();
+    const next = order[(at + step + order.length) % order.length];
+    (e.currentTarget.parentElement?.querySelector(`[data-choice="${next}"]`) as HTMLElement | null)?.focus();
+  };
+  return (
+    <div className="seg" role="radiogroup" aria-label={label} data-testid="sales-state-switch" data-manual={manual ?? ""}>
+      {order.map((c, at) => {
+        const on = c === current;
+        return (
+          <button
+            key={c}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            aria-disabled={editable ? undefined : true}
+            tabIndex={on || (current === null && at === 0) ? 0 : -1}
+            data-choice={c}
+            className={`seg-btn seg-${c}${on ? " is-on" : ""}`}
+            onClick={() => {
+              if (editable) onPick(c);
+            }}
+            onKeyDown={(e) => move(e, at)}
+            data-testid={`sales-state-set-${c}`}
+          >
+            {name(c)}
+          </button>
+        );
+      })}
+    </div>
   );
 }

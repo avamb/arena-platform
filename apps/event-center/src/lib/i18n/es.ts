@@ -3642,4 +3642,9 @@ export const es: Record<MessageKey, string> = {
   "help.orderLetters": "El estado lo da el servicio de correo. Que se abrió el correo se detecta con una imagen invisible y no siempre es exacto: las aplicaciones de correo pueden bloquearla o abrirla automáticamente.",
   "help.letterText": "Llega al comprador junto con las entradas en PDF, en el idioma en que hizo el pedido. Hay un correo estándar en cada idioma. El texto propio se escribe para un solo evento.",
   "help.refundQueue": "Aquí está lo que necesita a una persona: un correo con entradas no entregado, un pedido pagado cancelado cuyas entradas siguen activas, una devolución hecha fuera del sistema que hay que comprobar a mano, una entrada pendiente de anular y dinero aún no devuelto al comprador.",
+  "salesState.segment.open": "Ventas abiertas",
+  "salesState.segment.soon": "Próximamente",
+  "salesState.segment.sold_out": "Sold out",
+  "salesState.autoShown": "Ahora se muestra «{state}» automáticamente: no quedan plazas libres o la venta de las categorías aún no ha empezado. Elija un segmento para fijarlo a mano.",
+  "salesState.openNoop": "No hay nada que abrir: no hay ningún estado fijado a mano. La plataforma muestra «{state}» por sí sola hasta que haya plazas libres y empiece la venta.",
 };

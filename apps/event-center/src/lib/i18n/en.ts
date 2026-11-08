@@ -3642,6 +3642,11 @@ export const en = {
   "help.orderLetters": "The status comes from the mail service. An opened letter is detected by an invisible image and is not always exact: mail apps may block it or open it automatically.",
   "help.letterText": "It goes to the buyer together with the PDF tickets, in the language the buyer ordered in. A standard letter exists in every language. Your own text is written for one event.",
   "help.refundQueue": "Here is what needs a person: a letter with tickets that was not delivered, a paid order that was canceled while its tickets are still active, a refund made outside the system that has to be checked by hand, a ticket waiting for its cancellation, and money not yet returned to the buyer.",
+  "salesState.segment.open": "Sales open",
+  "salesState.segment.soon": "Coming soon",
+  "salesState.segment.sold_out": "Sold out",
+  "salesState.autoShown": "Shown as «{state}» by the platform: no free place is left, or the sale of the categories has not started. Choose a segment to set it by hand.",
+  "salesState.openNoop": "Nothing to open: no state is set by hand. The platform shows «{state}» by itself until places are free and the sale dates begin.",
 } as const;
 
 export type MessageKey = keyof typeof en;

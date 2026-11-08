@@ -3070,3 +3070,47 @@ fieldset legend {
 .help-pop[hidden] {
   display: none;
 }
+
+/* The three-way sales switch (SessionSalesState): the state in force is filled, the other two stay quiet. */
+.seg {
+  display: flex;
+  max-inline-size: 30rem;
+  margin-block: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.seg-btn {
+  flex: 1 1 0;
+  min-block-size: var(--tap);
+  padding: 0.4rem 0.5rem;
+  border: 0;
+  border-inline-start: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.seg-btn:first-child {
+  border-inline-start: 0;
+}
+.seg-btn[aria-disabled="true"] {
+  cursor: default;
+}
+.seg-btn:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: -3px;
+}
+.seg-open.is-on {
+  background: var(--ok-text);
+  color: var(--ok-bg);
+}
+.seg-soon.is-on {
+  background: var(--wait-text);
+  color: var(--wait-bg);
+}
+.seg-sold_out.is-on {
+  background: var(--bad-text);
+  color: var(--bad-bg);
+}

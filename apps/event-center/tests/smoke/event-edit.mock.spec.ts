@@ -30,7 +30,9 @@ test.describe("event screen: Edit, sales switch, Save changes (mock)", () => {
       await expect(page.getByTestId("event-edit-link")).toBeVisible();
       await expect(page.getByTestId("event-edit-link")).toHaveText("Edit");
       await expect(page.getByTestId("event-sales-switch")).toContainText("Sales on the site");
-      await expect(page.getByTestId("sales-state-set-soon")).toBeVisible();
+      await expect(page.getByRole("radiogroup")).toBeVisible();
+      await expect(page.getByTestId("sales-state-set-open")).toHaveAttribute("aria-checked", "true");
+      await expect(page.getByTestId("sales-state-set-soon")).toHaveAttribute("aria-checked", "false");
       await expect(page.getByTestId("sales-state-set-sold_out")).toBeVisible();
       // The round "?" opens the explanation and Escape closes it.
       await page.getByTestId("help-sales-switch-button").click();
@@ -47,7 +49,24 @@ test.describe("event screen: Edit, sales switch, Save changes (mock)", () => {
     await page.goto(`/o/${ORG_A}/events/${EVENT}`);
     await expect(page.getByTestId("event-sales-switch")).toBeVisible();
     await expect(page.getByTestId("event-edit-link")).toHaveCount(0);
-    await expect(page.getByTestId("sales-state-set-soon")).toHaveCount(0);
+    await expect(page.getByTestId("sales-state-set-soon")).toHaveAttribute("aria-disabled", "true");
+  });
+
+  test("a press on a segment asks to confirm, changes the state and highlights it", async ({ page }) => {
+    await mockApi(page);
+    const state = await mockEventEdit(page, "org_admin", OWNER);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/events/${EVENT}`);
+    // Open while nothing is set by hand: nothing to do, and it says so instead of failing silently.
+    await page.getByTestId("sales-state-set-open").click();
+    await expect(page.getByTestId("sales-state-done")).toContainText("Nothing to open");
+    expect(state.salesStateWrites).toEqual([]);
+    await page.getByTestId("sales-state-set-sold_out").click();
+    await expect(page.getByTestId("sales-state-confirm")).toBeVisible();
+    await page.getByTestId("sales-state-confirm-submit").click();
+    await expect(page.getByTestId("sales-state-set-sold_out")).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByTestId("sales-state-set-open")).toHaveAttribute("aria-checked", "false");
+    expect(state.salesStateWrites).toHaveLength(1);
   });
 
   test("Edit opens the editor, Save changes is disabled until something changed and saves in place", async ({ page }) => {
