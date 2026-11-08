@@ -685,6 +685,26 @@ label {
   gap: 0.5rem;
 }
 
+/* "A new version is available" (NewVersionBanner): the a2hs note's frame. */
+.new-version {
+  max-width: var(--ec-column);
+  margin: var(--gutter) auto 0;
+  margin-inline: max(var(--gutter), calc((100% - var(--ec-column)) / 2));
+  border-radius: var(--radius-tile);
+  display: grid;
+  gap: 0.5rem;
+}
+
+.new-version-text {
+  margin: 0;
+}
+
+.new-version-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .a2hs-text {
   margin: 0;
 }

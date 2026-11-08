@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
 
@@ -10,8 +10,23 @@ process.env.VITE_BUILD_ID ??= Date.now().toString(36);
 // The event center is a thin client of arena-api. It shares only the
 // generated OpenAPI types with admin-web (the @openapi alias), never
 // admin-web's screens: admin-web is the platform superadmin console.
+// /version.json names the build, so an open window can see that a newer one
+// is deployed (src/lib/appVersion.ts, NewVersionBanner). nginx serves it
+// with no-store.
+const versionFile: Plugin = {
+  name: "arena-version-file",
+  apply: "build",
+  generateBundle() {
+    this.emitFile({
+      type: "asset",
+      fileName: "version.json",
+      source: JSON.stringify({ build: process.env.VITE_BUILD_ID }) + "\n",
+    });
+  },
+};
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), versionFile],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
