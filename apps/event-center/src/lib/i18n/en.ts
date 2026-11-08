@@ -1476,7 +1476,6 @@ export const en = {
   "apiError.smartPriceInput.title": "These smart price settings cannot be used.",
   "apiError.smartPriceInput.next": "Check the numbers and try again.",
   // 6-1a: the event wizard, sections "Event" and "Venue".
-  "nav.newEvent": "+ Event",
   "wizard.title": "New event",
   "wizard.intro": "Fill in the event, the venue, the dates and the tickets. The platform checks your answers while you type.",
   "wizard.draftNote": "Your draft is saved in this browser. Nothing is published.",

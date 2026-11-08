@@ -1,7 +1,7 @@
 /**
  * The event screen against a MOCKED arena-api: the "Edit" button (owner and manager), the "Sales on the site"
  * switch, the "?" help and the shared "Save changes" bar of the edit page. Regression for the missing Edit button
- * reported on 2026-11-08. The header "+ Event" rule is covered by AppNav.test.tsx (showNewEventButton).
+ * reported on 2026-11-08. "Create event" lives on the Events heading only, the header has no create button.
  */
 import { expect, test, type Page } from "@playwright/test";
 import { EVENT, ORG_A, mockApi } from "./mockApi";

@@ -97,18 +97,19 @@ export function EventsScreen() {
 
   return (
     <section aria-labelledby="events-title">
-      <h1 id="events-title">
-        {t("events.title")}
-        <HelpPopover textKey="help.eventsStatus" testId="help-events" />
-      </h1>
-      {/* 6-1c: same gate as the menu entry and the wizard screen: the build flag and the import permission. */}
-      {wizardGate(access.can) === "ok" && (
-        <p>
+      {/* The one "create" entry of the event center: the header carries none (owner, 2026-11-08). */}
+      <div className="events-head">
+        <h1 id="events-title">
+          {t("events.title")}
+          <HelpPopover textKey="help.eventsStatus" testId="help-events" />
+        </h1>
+        {/* 6-1c: same gate as the wizard screen: the build flag and the import permission. */}
+        {wizardGate(access.can) === "ok" && (
           <Link to="/o/$orgId/events/new" params={{ orgId }} className="btn btn-primary" data-testid="events-create">
             {t("wizard.events.create")}
           </Link>
-        </p>
-      )}
+        )}
+      </div>
       <div className="tabs" role="group" aria-label={t("events.title")}>
         {(["run", "arc"] as const).map((f) => (
           <button

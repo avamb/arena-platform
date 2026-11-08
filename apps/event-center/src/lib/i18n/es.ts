@@ -1476,7 +1476,6 @@ export const es: Record<MessageKey, string> = {
   "apiError.smartPriceInput.title": "Estos ajustes del precio inteligente no sirven.",
   "apiError.smartPriceInput.next": "Revisa los números y vuelve a intentarlo.",
   // 6-1a: el asistente de evento, secciones «Evento» y «Recinto».
-  "nav.newEvent": "+ Evento",
   "wizard.title": "Nuevo evento",
   "wizard.intro": "Rellena el evento, el recinto, las fechas y las entradas. La plataforma comprueba tus respuestas mientras escribes.",
   "wizard.draftNote": "Tu borrador se guarda en este navegador. No se publica nada.",
