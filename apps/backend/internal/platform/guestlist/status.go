@@ -37,10 +37,12 @@ const (
 //   - status 3, reason session_cancelled: an active ticket of a cancelled
 //     session (cancelling a session leaves orders paid and tickets active);
 //   - otherwise 1 when the ticket was admitted (tickets.used_at, an admitted
-//     scan_events row or a scanned barcode), 2 when the MACS scanner admitted
-//     it an EVEN number of times (>= 2): MACS toggles entry and exit with the
-//     same admitted result and the platform stores no direction, so an even
-//     count is the only way to read "checked out"; else 0.
+//     scan_events row or a scanned barcode), else 0.
+//
+// 2 (checked out) is never derived: scan_events stores no direction, and
+// guessing an exit from the number of scans would mark a guest who was
+// simply scanned twice at the door as gone. StatusCheckedOut stays for the
+// labels until the scanner reports a direction.
 func StatusOf(r gen.GuestListRow) (code int, reason string) {
 	if r.TicketStatus != "active" {
 		switch {
@@ -54,9 +56,6 @@ func StatusOf(r gen.GuestListRow) (code int, reason string) {
 	}
 	if r.SessionStatus == "cancelled" {
 		return StatusRefunded, ReasonSessionCancelled
-	}
-	if r.MacsAdmittedScans >= 2 && r.MacsAdmittedScans%2 == 0 {
-		return StatusCheckedOut, ReasonNone
 	}
 	if r.EnteredAt != nil || r.MacsAdmittedScans > 0 {
 		return StatusCheckedIn, ReasonNone

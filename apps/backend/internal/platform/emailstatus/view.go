@@ -273,6 +273,14 @@ WHERE  EXISTS (
            AND  NOT EXISTS (
                   SELECT 1 FROM email_letters n
                   WHERE  n.order_id = o.id AND n.kind = l.kind AND n.status <> 'sending'
+                    AND  date_trunc('second', n.sent_at) > date_trunc('second', l.sent_at)))
+   OR  EXISTS (
+         SELECT 1
+         FROM   email_letters l
+         WHERE  l.order_id = o.id AND l.kind = 'ticket' AND l.provider = 'wp_brevo' AND l.status = 'failed'
+           AND  NOT EXISTS (
+                  SELECT 1 FROM email_letters n
+                  WHERE  n.order_id = o.id AND n.kind = 'ticket' AND n.status <> 'sending'
                     AND  date_trunc('second', n.sent_at) > date_trunc('second', l.sent_at)))`
 
 // FailedLetterOrders reports which of orderIDs have a letter that failed or

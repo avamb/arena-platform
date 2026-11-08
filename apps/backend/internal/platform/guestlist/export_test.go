@@ -67,7 +67,7 @@ func TestStatusOf_FourMACSStatesAndReasons(t *testing.T) {
 		{"entered by used_at", gen.GuestListRow{TicketStatus: "active", SessionStatus: "scheduled", EnteredAt: &at}, StatusCheckedIn, "", "Checked in (1)", ""},
 		{"one MACS scan", gen.GuestListRow{TicketStatus: "active", SessionStatus: "scheduled", MacsAdmittedScans: 1}, StatusCheckedIn, "", "Checked in (1)", ""},
 		{"three MACS scans", gen.GuestListRow{TicketStatus: "active", SessionStatus: "scheduled", EnteredAt: &at, MacsAdmittedScans: 3}, StatusCheckedIn, "", "Checked in (1)", ""},
-		{"two MACS scans", gen.GuestListRow{TicketStatus: "active", SessionStatus: "scheduled", EnteredAt: &at, MacsAdmittedScans: 2}, StatusCheckedOut, "", "Checked out (2)", ""},
+		{"two MACS scans stay checked in", gen.GuestListRow{TicketStatus: "active", SessionStatus: "scheduled", EnteredAt: &at, MacsAdmittedScans: 2}, StatusCheckedIn, "", "Checked in (1)", ""},
 		{"refunded", gen.GuestListRow{TicketStatus: "cancelled", Refunded: true}, StatusRefunded, ReasonRefunded, gone, "Refunded"},
 		{"cancelled", gen.GuestListRow{TicketStatus: "cancelled"}, StatusRefunded, ReasonCancelled, gone, "Cancelled"},
 		{"revoked invitation", gen.GuestListRow{TicketStatus: "revoked"}, StatusRefunded, ReasonCancelled, gone, "Cancelled"},

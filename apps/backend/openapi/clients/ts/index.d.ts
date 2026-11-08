@@ -10995,10 +10995,9 @@ export interface paths {
          *
          *     Ticket status follows the scanner system MACS (`holderStatus`),
          *     printed as words plus the code: `Valid (0)` not yet entered, `Checked
-         *     in (1)`, `Checked out (2)`, `Refunded / cancelled (3)`. Checked in is
-         *     an admitted scan or `used_at`; checked out is an even number (2 or
-         *     more) of admitted MACS scans, because the platform stores no scan
-         *     direction. Status 3 carries a reason: refunded, cancelled, session
+         *     in (1)`, `Refunded / cancelled (3)`. Checked in is an admitted scan or
+         *     `used_at`. `Checked out (2)` is not derived, because the platform
+         *     stores no scan direction. Status 3 carries a reason: refunded, cancelled, session
          *     cancelled, or replaced (the ticket went to a wrong e-mail address and
          *     was reissued). Labels follow `locale` (`en`, `ru`, `es`). Same
          *     csvexport rules and 50 000-row cap as the sales file. The same file
