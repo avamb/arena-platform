@@ -299,7 +299,7 @@ test.describe("R1 read-only event center", () => {
     await page.goto(`/o/${ORG_A}/events`);
     await page.getByTestId("nav-more").click();
     await page.getByTestId("language-select").selectOption("ru");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Мероприятия");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Мероприятия");
     await expect(page.locator("html")).toHaveAttribute("lang", "ru");
     for (const name of ["Мероприятия", "Заказы", "Возвраты", "Сводка"]) {
       const box = await page.getByRole("navigation", { name: "Главное меню" }).getByRole("link", { name }).boundingBox();

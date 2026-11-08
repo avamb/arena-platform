@@ -8,6 +8,7 @@
  * it again on every call), media.write adds the upload, media.read shows the
  * previews.
  */
+import { HelpPopover } from "@/components/HelpPopover";
 import { useQuery } from "@tanstack/react-query";
 import { PartnerEditor } from "@/components/materials/PartnerEditor";
 import { PhotoListEditor } from "@/components/materials/PhotoListEditor";
@@ -63,7 +64,10 @@ export function MaterialsSection({
 
   return (
     <section aria-labelledby="event-materials" data-testid="materials-section">
-      <h2 id="event-materials">{t("mat.title")}</h2>
+      <h2 id="event-materials">
+        {t("mat.title")}
+        <HelpPopover textKey="help.materials" testId="help-materials" />
+      </h2>
       <p className="field-hint">{t("mat.intro")}</p>
       {published ? (
         <p>

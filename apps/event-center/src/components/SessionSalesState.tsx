@@ -15,9 +15,10 @@
  * Everyone who may read the session sees the state. Only a person with
  * `session.update` gets the buttons, and never on a canceled session.
  */
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ConfirmPressDialog } from "@/components/ConfirmPressDialog";
+import { HelpPopover } from "@/components/HelpPopover";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { Badge, ErrorBox, Loading } from "@/components/ui";
 import { getSessionSalesState, listSessionSalesStateHistory, setSessionSalesState } from "@/lib/api/endpoints";
@@ -44,11 +45,17 @@ export interface SessionSalesStateProps {
   canUpdate: boolean;
   /** A canceled session: the state is shown, never changed. */
   cancelled?: boolean;
+  /**
+   * On the event screen the block sits under the event's own "Sales on the site" title (with the date of each
+   * session above it): the section's title and hint are then left out.
+   */
+  embedded?: boolean;
 }
 
 const SOURCES = ["telegram_bot", "event_center_web", "site_plugin", "admin_web", "api"];
 
-export function SessionSalesState({ orgId, eventId, sessionId, timezone, canUpdate, cancelled = false }: SessionSalesStateProps) {
+export function SessionSalesState({ orgId, eventId, sessionId, timezone, canUpdate, cancelled = false, embedded = false }: SessionSalesStateProps) {
+  const titleId = useId();
   const { t, locale } = useI18n();
   const queryClient = useQueryClient();
   const key = ["salesState", orgId, sessionId] as const;
@@ -85,9 +92,16 @@ export function SessionSalesState({ orgId, eventId, sessionId, timezone, canUpda
   };
 
   return (
-    <section aria-labelledby="sales-state-title" data-testid="sales-state">
-      <h2 id="sales-state-title">{t("salesState.title")}</h2>
-      <p className="muted">{t("salesState.hint")}</p>
+    <section aria-labelledby={embedded ? undefined : titleId} data-testid="sales-state">
+      {!embedded && (
+        <>
+          <h2 id={titleId}>
+            {t("salesState.title")}
+            <HelpPopover textKey="help.salesSwitch" testId="help-sales-state" />
+          </h2>
+          <p className="muted">{t("salesState.hint")}</p>
+        </>
+      )}
       {state.isLoading && <Loading />}
       {state.error !== null && state.data === undefined && <ErrorBox error={state.error} onRetry={() => void state.refetch()} />}
       {state.data !== undefined &&

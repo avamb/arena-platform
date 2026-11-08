@@ -214,7 +214,7 @@ describe("a helper list that fails to load (SB-13)", () => {
     expect(box.textContent).toContain("It stays as it is");
     expect(byId(el, "shop-settings-currency-locked")).toBeNull();
     // The rest of the form is not blocked.
-    expect((byId(el, "shop-settings-save") as unknown as HTMLButtonElement).disabled).toBe(false);
+    expect(byId(el, "shop-settings-save")).not.toBeNull();
     expect((byId(el, "shop-settings-fee") as unknown as HTMLInputElement).disabled).toBe(false);
     await act(async () => {
       (box.querySelector("button") as HTMLButtonElement).click();

@@ -67,7 +67,7 @@ describe("ShopSettingsForm", () => {
     expect(html).toContain("Delivery fee (EUR)");
     expect(html).toMatch(/<option value="c2" selected="">Own site<\/option>/);
     expect(html).toMatch(/<option value="ES" selected="">Spain<\/option>/);
-    expect(html).toContain('data-testid="shop-settings-save"');
+    // The Save button is the shared SaveBar of the page (SettingsPage), not part of the form.
   });
 
   it("shows the domain read only for an organizer, and says who changes it", () => {
