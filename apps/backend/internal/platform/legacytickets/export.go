@@ -227,6 +227,7 @@ const (
 	RefuseMoney             = "money_mismatch"
 	RefuseBarcodeTaken      = "barcode_taken"
 	RefuseOrderNumberTaken  = "order_number_taken"
+	RefuseTicketNumberTaken = "ticket_number_taken"
 	RefuseTicketImported    = "ticket_already_imported"
 	RefuseImportedDiffers   = "already_imported_differs"
 	RefuseNoChannel         = "no_channel"

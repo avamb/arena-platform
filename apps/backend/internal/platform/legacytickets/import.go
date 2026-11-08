@@ -364,6 +364,15 @@ func (r *runner) plan(ctx context.Context, p Prepared) (*plannedOrder, *Problem,
 	if taken {
 		return nil, &Problem{RefuseOrderNumberTaken, fmt.Sprintf("a platform order already has number %d", p.Bil24OrderID)}, nil
 	}
+	// The ticket keeps its Bil24 number (MACS knows it by that number and
+	// reports scans with it), so the number must still be free.
+	var numbersTaken int64
+	if err := r.db.QueryRow(ctx, `SELECT count(*) FROM tickets WHERE system_ticket_id = ANY($1)`, ids).Scan(&numbersTaken); err != nil {
+		return nil, nil, fmt.Errorf("check ticket numbers: %w", err)
+	}
+	if numbersTaken > 0 {
+		return nil, &Problem{RefuseTicketNumberTaken, fmt.Sprintf("%d of the order's Bil24 ticket numbers already belong to platform tickets", numbersTaken)}, nil
+	}
 	var refTaken bool
 	if err := r.db.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM orders WHERE channel_id = $1 AND external_ref = $2)`,
 		sess.ChannelID, p.WCOrderID).Scan(&refTaken); err != nil {
@@ -864,7 +873,8 @@ RETURNING id, system_id`,
 		return 0, false, nil, fmt.Errorf("insert order: %w", err)
 	}
 
-	// 6. Tickets, order lines, the original barcode and its credential.
+	// 6. Tickets (each under its Bil24 number, which MACS reports scans by),
+	// order lines, the original barcode and its credential.
 	holder := holderName(p.BuyerName)
 	ticketNumbers := make([]int64, 0, len(po.tickets))
 	for i, t := range po.tickets {
@@ -873,9 +883,11 @@ RETURNING id, system_id`,
 		var ticketNumber int64
 		if err := tx.QueryRow(ctx, `
 INSERT INTO tickets (checkout_session_id, session_id, tier_id, holder_email, holder_name, status, issued_at,
-                     created_at, updated_at, seat_key, seat_sector, seat_row, seat_number, ordinal, order_id)
-VALUES ($1, $2, $3, $4, $5, 'active', $6, $6, now(), $7, '', '', '', $8, $9)
-RETURNING id, system_ticket_id`, checkoutID, sess.ID, t.TierID, p.Email, holder, p.PaidAt, place.SeatKey, i, orderID).
+                     created_at, updated_at, seat_key, seat_sector, seat_row, seat_number, ordinal, order_id,
+                     system_ticket_id)
+VALUES ($1, $2, $3, $4, $5, 'active', $6, $6, now(), $7, '', '', '', $8, $9, $10)
+RETURNING id, system_ticket_id`, checkoutID, sess.ID, t.TierID, p.Email, holder, p.PaidAt, place.SeatKey, i, orderID,
+			t.Bil24TicketID).
 			Scan(&ticketID, &ticketNumber); err != nil {
 			return 0, false, nil, fmt.Errorf("insert ticket: %w", err)
 		}

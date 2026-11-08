@@ -341,6 +341,13 @@ SELECT count(*) FROM tickets t
  WHERE t.order_id = $1 AND t.status = 'active' AND t.holder_name = 'Dana Example'`, orderID); n != 2 {
 		t.Fatalf("tickets on sold places = %d", n)
 	}
+	// Each ticket keeps its Bil24 number: MACS reports the scans of these
+	// tickets by that number, and a different one is rejected as unknown.
+	if n := count(t, f.pool, `
+SELECT count(*) FROM tickets t JOIN legacy_ticket_imports l ON l.ticket_id = t.id
+ WHERE t.order_id = $1 AND t.system_ticket_id = l.bil24_ticket_id`, orderID); n != 2 {
+		t.Fatalf("tickets under their Bil24 number = %d", n)
+	}
 	if n := count(t, f.pool, `
 SELECT count(*) FROM barcodes b
   JOIN barcode_authorities a ON a.id = b.authority_id AND a.type = 'legacy_bil24'
