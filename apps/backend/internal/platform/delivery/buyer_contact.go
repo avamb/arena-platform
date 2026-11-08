@@ -72,10 +72,38 @@ func applyBuyerContact(ctx context.Context, db sessionchange.DB, ticketID uuid.U
 		}
 		return
 	}
-	if email := buyerContactEmail(ctx, db, eventID, orgID, logger); email != "" {
-		p.OrgContactEmail = email
-		p.ContactFormURL = ""
+	c, ok := buyerContact(ctx, db, eventID, orgID, logger)
+	if !ok {
+		return
 	}
+	// A public e-mail the sales page publishes (ContactRoute already put it on
+	// the payload, with no form link) is the organizer's own choice of buyer
+	// address and stays; only the event's promoter outranks it.
+	if c.Source != "promoter" && strings.TrimSpace(p.OrgContactEmail) != "" && strings.TrimSpace(p.ContactFormURL) == "" {
+		return
+	}
+	p.OrgContactEmail = strings.TrimSpace(c.Email)
+	p.ContactFormURL = ""
+}
+
+// buyerContact is buyerContactEmail with the contact's source ("promoter" or
+// "organization"); ok is false when nobody has an address.
+func buyerContact(ctx context.Context, db sessionchange.DB, eventID, orgID uuid.UUID, logger *slog.Logger) (sessionchange.Contact, bool) {
+	if db == nil || orgID == uuid.Nil {
+		return sessionchange.Contact{}, false
+	}
+	c, err := sessionchange.ResolveContact(ctx, db, eventID, orgID)
+	if err != nil {
+		if logger != nil {
+			logger.Warn("delivery: buyer contact lookup failed; the letter goes without the contact block",
+				slog.String("org_id", orgID.String()), slog.String("error", err.Error()))
+		}
+		return sessionchange.Contact{}, false
+	}
+	if !c.Complete() || strings.TrimSpace(c.Email) == "" {
+		return sessionchange.Contact{}, false
+	}
+	return c, true
 }
 
 // orderSystemID is the buyer-facing number of an order (orders.system_id), ""

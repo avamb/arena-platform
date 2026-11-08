@@ -344,9 +344,15 @@ func (h *changeEmail) buildMessage(
 	// follows the ticket letter's rule (ContactRoute, already on the payload):
 	// the sales page's public e-mail, the hosted page's contact form, or -
 	// without a hosted page - the organization's address.
-	contactEmail, contactForm := strings.TrimSpace(contact.Email), ""
-	if contactEmail == "" {
-		contactEmail, contactForm = first.OrgContactEmail, first.ContactFormURL
+	// The payload already carries the buyer contact of the ticket letters
+	// (applyBuyerContact: the promoter, else a public e-mail of the sales page,
+	// else the organization's contact e-mail), so both letters name the same
+	// address; the session-change contact is the fallback.
+	contactEmail, contactForm := strings.TrimSpace(first.OrgContactEmail), strings.TrimSpace(first.ContactFormURL)
+	if contact.Source == "promoter" && strings.TrimSpace(contact.Email) != "" {
+		contactEmail, contactForm = strings.TrimSpace(contact.Email), ""
+	} else if contactEmail == "" && strings.TrimSpace(contact.Email) != "" {
+		contactEmail, contactForm = strings.TrimSpace(contact.Email), ""
 	}
 
 	// The organizer's message: ART (or an older plain text) through the one
