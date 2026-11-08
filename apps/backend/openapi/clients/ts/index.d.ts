@@ -19605,7 +19605,7 @@ export interface components {
             sold: number;
             /**
              * Format: int64
-             * @description The part of sold that was sold in the system the session was imported from. No ticket, order or money stands behind it here.
+             * @description The part of sold that was sold in the system the session was imported from. No ticket, order or money stands behind it here, unless the ticket was later filed as a legacy_import order.
              */
             sold_upstream: number;
             /**
@@ -20278,7 +20278,7 @@ export interface components {
             orders: {
                 /** @description Order status. */
                 status: string;
-                /** @description Where the order came from (bil24_gateway, public_feed, checkout_api, complimentary). */
+                /** @description Where the order came from (bil24_gateway, public_feed, checkout_api, complimentary, legacy_import = sold in Bil24 before the platform). */
                 source: string;
                 /** @description ISO 4217 currency. */
                 currency: string;
@@ -20582,7 +20582,7 @@ export interface components {
         SummaryOrdersItem: {
             /** @description Order status. */
             status: string;
-            /** @description Where the orders came from (bil24_gateway, public_feed, checkout_api, complimentary). */
+            /** @description Where the orders came from (bil24_gateway, public_feed, checkout_api, complimentary, legacy_import = sold in Bil24 before the platform). */
             source: string;
             /** @description ISO 4217 currency. */
             currency: string;

@@ -81,6 +81,7 @@ LEFT   JOIN sessions s ON s.id = COALESCE(o.session_id, ss.session_id)
 LEFT   JOIN venues v ON v.id = s.venue_id
 WHERE  o.paid_at IS NOT NULL
   AND  o.status IN ('paid', 'partially_refunded', 'refunded')
+  AND  o.source <> 'legacy_import'
   AND  (o.source = 'complimentary') = $4
   AND  o.paid_at >= $1
   AND  (o.paid_at, oi.id) > ($1, $2)
@@ -89,8 +90,9 @@ LIMIT  $3`
 
 // ListCollectOrderItems returns the ticket lines of paid orders, a page after
 // (afterAt, afterID): ticket_sold lines, or - with complimentary - the
-// ticket_complimentary lines of orders whose source is complimentary.
-// occurred_at is orders.paid_at. attributes carries order_source and, for a
+// ticket_complimentary lines of orders whose source is complimentary. An order
+// filed by arena-legacy-tickets-import (source legacy_import, sold in Bil24
+// before the platform) is never billed. occurred_at is orders.paid_at. attributes carries order_source and, for a
 // staff invitation, issued_via (staff or staff_bulk, migration 0174): the
 // rate job reads a staff_bulk invitation as Bulk (spec 46, section 3.6). A
 // purchase has no issued_via key at all.
@@ -116,6 +118,7 @@ LEFT   JOIN sessions s ON s.id = COALESCE(o.session_id, t.session_id)
 LEFT   JOIN venues v ON v.id = s.venue_id
 WHERE  r.state = 'succeeded'
   AND  r.origin <> 'referral_cashback'
+  AND  COALESCE(o.source, '') <> 'legacy_import'
   AND  COALESCE(r.succeeded_at, r.created_at) >= $1
   AND  (COALESCE(r.succeeded_at, r.created_at), r.id) > ($1, $2)
 ORDER BY COALESCE(r.succeeded_at, r.created_at), r.id
@@ -143,6 +146,7 @@ JOIN   events e ON e.id = s.event_id
 LEFT   JOIN venues v ON v.id = s.venue_id
 WHERE  t.status IN ('cancelled', 'revoked')
   AND  t.cancelled_at IS NOT NULL
+  AND  NOT EXISTS (SELECT 1 FROM orders lo WHERE lo.id = t.order_id AND lo.source = 'legacy_import')
   AND  NOT EXISTS (SELECT 1 FROM refunds r
                    WHERE  r.state = 'succeeded' AND r.cancel_ticket
                      AND  t.id IN (r.ticket_id, r.cancelled_ticket_id))

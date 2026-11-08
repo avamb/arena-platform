@@ -18,6 +18,7 @@
 | `ops/vino-cutover/traefik-dynamic-vino-rollback.yml` | Откат маршрута до T2 (§14.5): оставляет сайту только `/order-status/`, `/my-tickets/`, `/_site/` |
 | `ops/vino-cutover/traefik-routing-check.sh` | 66 GET-проб по всем правилам: какой бэкенд ответил, SITE или WP |
 | `ops/vino-cutover/wp-inventory.php` | Инвентаризация обязательств WP (§14.2 п. 3), только чтение |
+| `ops/vino-cutover/wp-legacy-tickets-export.php` | Билеты эпохи Bil24 из меты заказов WP для `cmd/arena-legacy-tickets-import` (§3.5), только чтение |
 | `ops/vino-cutover/wp-disable-sales.md` | Как остановить новые продажи на WP и вернуть (§14.2 п. 2) |
 | `ops/vino-cutover/cutover-settings.php`, `gw-check-from-wp.mjs`, `run-export-from-wp.mjs`, `prod-facts.sql` | Настройки WP при переносе на Arena, проверка шлюза, выгрузка, факты прода (раньше, при переезде магазина) |
 
@@ -207,6 +208,56 @@ node ops/vino-cutover/wp-event-media-import.mjs --file wp-event-media.json --map
 (акция без мероприятия в платформе), `over_limit`, `failed` (код выхода 1 при ошибках). Картинки качаются с сайта WP, поэтому
 импорт выполнить, пока WP ещё отвечает (до T2).
 
+### 3.5 Билеты эпохи Bil24 на ближайшие мероприятия [ОПЕРАТОР]
+
+Билеты, проданные через Bil24 до 25.09.2026, есть только в мете заказов WooCommerce (`bil24_tickets`, номер заказа
+Bil24 из 7 цифр в `bil24_external_order_id`). Чтобы покупатели видели их в «Моих билетах», а они попадали в список гостей
+(Excel и автоматическая рассылка за 24 ч и 3 ч) и в проданные места сеанса, их переносят в платформу. Сейчас это две акции:
+267465 «Премьера вина в Тель-Авиве» (сеанс 21.11) и 267466 Beer Sheva (сеанс 26.11).
+
+Что делает импорт. Каждый заказ WP становится заказом платформы с `source = legacy_import`, статусом `paid`, датой оплаты
+из WP и номером заказа Bil24 как номером заказа платформы. Места не берутся из свободных: в категорию ДОБАВЛЯЮТСЯ проданные
+места (как «продано вне системы»), ёмкость категории и сеанса и счётчики `inventory_ledger` растут на то же число. Штрихкод
+каждого билета сохраняется как был, в центре штрихкодов `legacy_bil24`. Импорт ничего не отправляет: ни вебхуков, ни MACS
+(MACS эти штрихкоды знает с эпохи Bil24), ни писем, ни уведомлений в Telegram, и не создаёт биллинга. Переносятся только
+живые билеты (`lops_bil24_live_ids`), только заказы `completed` и `processing`.
+
+Экспорт из WP (только чтение; в файле полные имена, e-mail и телефоны покупателей, держать только на сервере и ноутбуке
+оператора, после импорта удалить):
+
+```
+W=$(docker ps --format '{{.Names}}' | grep -E '^asoconnector-vinoandcotempvino-.*-wordpress-1$')
+docker cp /root/vino-cutover/wp-legacy-tickets-export.php $W:/tmp/x.php
+docker exec $W php /tmp/x.php --actions=267465,267466 > /root/vino-cutover/legacy-tickets.json
+docker exec $W rm /tmp/x.php
+```
+
+Импорт, из корня репозитория, на машине с доступом к базе платформы. Первый запуск по умолчанию пробный: ничего не пишет и
+по каждому сеансу печатает число заказов, билетов, сумму и места до и после; отдельно все отказы.
+
+```
+DATABASE_URL=$ARENA_DATABASE_URL JWT_SIGNING_SECRET=x go run ./apps/backend/cmd/arena-legacy-tickets-import --org-id $ARENA_ORG_ID --file legacy-tickets.json
+DATABASE_URL=$ARENA_DATABASE_URL JWT_SIGNING_SECRET=x go run ./apps/backend/cmd/arena-legacy-tickets-import --org-id $ARENA_ORG_ID --file legacy-tickets.json --apply
+```
+
+Канал продаж берётся тот, через который шли заказы шлюза этого сеанса (Vino&Co WP); другой задают флагом
+`--channel-id $ARENA_CHANNEL_ID`. Прошедшие сеансы пропускаются (`--only-future`, включён по умолчанию). Отказы, которые
+нужно разобрать до `--apply`: `barcode_taken` (такой штрихкод уже есть в платформе, дубль не создаётся),
+`ambiguous_session` (у мероприятия несколько живых сеансов, а сеанс Bil24 не зарегистрирован), `unknown_action`,
+`order_number_taken`, `ticket_number_taken`, `missing_data`, `money_mismatch`. Повтор безопасен: уже перенесённый заказ печатается как `unchanged`,
+а `already_imported_differs` значит, что в WP с тех пор вернули билет: такой заказ правят в платформе руками.
+
+После переноса запустить импорт писем из §3.4 ещё раз: письма заказов эпохи Bil24 найдут свой заказ через `wp_order_links`
+(в выводе `matched_bil24_era`). Вернуть деньги за такой заказ через платформу нельзя (платёж шёл не через неё, ответ
+`refund.nothing_to_refund`); возврат, сделанный в кабинете платёжной системы, отмечают как «возврат вне платформы».
+
+Билет сохраняет свой номер Bil24 (`tickets.system_ticket_id`): под этим номером его знает MACS и с ним присылает сканы
+на `/v1/macs/scan-events`. Сами билеты в MACS уже есть со времён Bil24, импорт в MACS ничего не отправляет.
+
+Репетиция на копии боевой базы 08.11.2026 (временный контейнер на arena-prod, удалён после): 58 заказов, 112 билетов
+(Тель-Авив 8/16, 4 640 ILS; Беэр-Шева 50/96, 24 000 ILS), отказов 0, свободные места не изменились (317 и 66), повтор —
+58 `unchanged`, все 112 номеров найдены в MACS как `origin_id`, письма WP — `matched_bil24_era=58`.
+
 ## 4. Репетиция переключения и отката на тестовом домене [ОПЕРАТОР]
 
 Без DNS и без сертификата: выдуманное имя `vino-rehearsal.example.test`, запросы идут с `--resolve` прямо в
@@ -372,6 +423,12 @@ Purge Everything. Сделать дважды: на T − 30 (после заг�
 
 1. Выгрузка соответствия «заказ WC ↔ AllPay ↔ заказ платформы ↔ билеты» и загрузка на платформу (П-14).
 2. У старого канала `settings.gateway.enabled = false` (канал остаётся ради истории) — действие платформы.
+   В том же шаге выключить подписчика WP этого канала: `UPDATE webhook_subscribers SET active = false, updated_at = now()
+   WHERE channel_id = '<канал Vino&Co WP>' AND kind = 'bil24_wp';`. Пока он активен, платформа считает канал «сайтом
+   продавца»: повторная отправка билетов по его заказам отвечает `order.seller_site_order` и ничего не ставит в очередь,
+   перенос и отмена сеанса с такими заказами отказывают `session.change_site_unsupported`, а события заказов уходят в
+   остановленный WP и копятся в мёртвых письмах. После выключения письма по этим заказам пишет платформа (проверено
+   08.11 на заказе 1002769720: до T2 повторная отправка из ивент-центра отказала). Подписчика MACS не трогать.
 3. Снять маршруты WP: переписать `/etc/dokploy/traefik/dynamic/vino-site.yml` копией, где вырезаны все роутеры
    `vino-wp-*` и сервис `vino-wp-svc`, остались `vino-site-always`, `vino-site` и `vino-site-svc` (тот же приём
    `.new` и `mv`). Пробы WP-стороны в `traefik-routing-check.sh` после этого ожидаемо FAIL, остальные ok.

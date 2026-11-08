@@ -8,6 +8,9 @@
 //	--dry-run        the default: count and print, write nothing
 //	--apply          write
 //
+// A Bil24-era order (a 7-digit bil24_external_order_id) is matched to the
+// order arena-legacy-tickets-import filed for it, through wp_order_links.
+//
 // Idempotent: a letter whose message id is already filed is skipped, so the
 // tool can run before and after the switch. A second run only moves an
 // imported letter forward (sent -> delivered -> opened), never back.
@@ -90,8 +93,8 @@ func run(args []string, out io.Writer) error {
 	if *apply {
 		mode, verb = "APPLY", "inserted"
 	}
-	fmt.Fprintf(out, "%s: records=%d matched=%d unmatched=%d no_order_number=%d unusable=%d already_present=%d %s=%d updated=%d\n",
-		mode, rep.Records, rep.Matched, rep.Unmatched, rep.NoOrderNumber, rep.Skipped, rep.AlreadyThere, verb, rep.Inserted, rep.Updated)
+	fmt.Fprintf(out, "%s: records=%d matched=%d matched_bil24_era=%d unmatched=%d no_order_number=%d unusable=%d already_present=%d %s=%d updated=%d\n",
+		mode, rep.Records, rep.Matched, rep.MatchedLegacy, rep.Unmatched, rep.NoOrderNumber, rep.Skipped, rep.AlreadyThere, verb, rep.Inserted, rep.Updated)
 	for i, u := range rep.UnmatchedList {
 		if i == 50 {
 			fmt.Fprintf(out, "unmatched ... and %d more\n", len(rep.UnmatchedList)-i)

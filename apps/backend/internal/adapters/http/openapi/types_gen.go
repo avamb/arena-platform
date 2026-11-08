@@ -19617,7 +19617,7 @@ type SessionPlaceCounts struct {
 	// Sold Places sold, including the ones sold upstream.
 	Sold int64 `json:"sold"`
 
-	// SoldUpstream The part of sold that was sold in the system the session was imported from. No ticket, order or money stands behind it here.
+	// SoldUpstream The part of sold that was sold in the system the session was imported from. No ticket, order or money stands behind it here, unless the ticket was later filed as a legacy_import order.
 	SoldUpstream int64 `json:"sold_upstream"`
 
 	// Total Every place counted here, whatever its status.
@@ -19828,7 +19828,7 @@ type SessionSummary struct {
 		// Orders Number of orders in the group.
 		Orders int64 `json:"orders"`
 
-		// Source Where the order came from (bil24_gateway, public_feed, checkout_api, complimentary).
+		// Source Where the order came from (bil24_gateway, public_feed, checkout_api, complimentary, legacy_import = sold in Bil24 before the platform).
 		Source string `json:"source"`
 
 		// Status Order status.
@@ -21943,7 +21943,7 @@ type SummaryOrdersItem struct {
 	// Orders Number of orders in the group.
 	Orders int64 `json:"orders"`
 
-	// Source Where the orders came from (bil24_gateway, public_feed, checkout_api, complimentary).
+	// Source Where the orders came from (bil24_gateway, public_feed, checkout_api, complimentary, legacy_import = sold in Bil24 before the platform).
 	Source string `json:"source"`
 
 	// Status Order status.

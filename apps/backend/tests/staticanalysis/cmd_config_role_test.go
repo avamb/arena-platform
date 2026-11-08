@@ -35,6 +35,8 @@ var cmdConfigRole = map[string]string{
 	"arena-marketing-import":  "config.RoleMigrate",
 	"arena-wp-orders-import":  "config.RoleMigrate",
 	"arena-wp-letters-import": "config.RoleMigrate",
+	// Bil24-era tickets of the WordPress shop (Vino&Co cutover, a one-shot database tool).
+	"arena-legacy-tickets-import": "config.RoleMigrate",
 }
 
 var (

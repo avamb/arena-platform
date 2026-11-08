@@ -52,6 +52,7 @@ func (r *runner) checkSalesFeed(ctx context.Context) error {
 		  JOIN events ev ON ev.id = o.event_id
 		 WHERE o.status = 'paid'
 		   AND o.paid_at IS NOT NULL
+		   AND o.source <> 'legacy_import' -- sold in Bil24 before the platform
 		   AND (o.paid_at > $1 OR (o.paid_at = $1 AND o.id::text > $2))
 		 ORDER BY o.paid_at ASC, o.id ASC
 		 LIMIT $3
