@@ -1,0 +1,72 @@
+{
+    "generated_at": "2026-11-08T09:00:00Z",
+    "source": "wp_brevo",
+    "orders_scanned": 5,
+    "letters": [
+        {
+            "wc_order_id": "9001",
+            "platform_order_system_id": "1000000501",
+            "recipient": "buyer.one@example.test",
+            "sent_at": "2026-10-01T10:00:05Z",
+            "message_id": "<202610011000.111@smtp-relay.example.test>",
+            "status": "unique_opened",
+            "status_detail": "",
+            "status_ts": 1790850900,
+            "times": {"sent": 1790848805, "delivered": 1790848810, "opened": 1790850900},
+            "failed": false,
+            "order_date": "2026-10-01T09:59:00Z"
+        },
+        {
+            "wc_order_id": "9002",
+            "platform_order_system_id": "1000000502",
+            "recipient": "buyer.two@example.test",
+            "sent_at": "2026-10-02T11:00:00Z",
+            "message_id": "<202610021100.222@smtp-relay.example.test>",
+            "status": "proxy_open",
+            "status_detail": "proxy",
+            "status_ts": 1790939000,
+            "times": {"sent": 1790938800, "delivered": 1790938810, "opened": 1790939000},
+            "failed": false,
+            "order_date": "2026-10-02T10:58:00Z"
+        },
+        {
+            "wc_order_id": "9003",
+            "platform_order_system_id": "1000000503",
+            "recipient": "bad.address@example.test",
+            "sent_at": "2026-10-03T12:00:00Z",
+            "message_id": "<202610031200.333@smtp-relay.example.test>",
+            "status": "hard_bounce",
+            "status_detail": "mailbox does not exist",
+            "status_ts": 1791029100,
+            "times": {"sent": 1791028800},
+            "failed": true,
+            "order_date": "2026-10-03T11:59:00Z"
+        },
+        {
+            "wc_order_id": "9004",
+            "platform_order_system_id": 1000000504,
+            "recipient": "buyer.four@example.test",
+            "sent_at": "2026-10-04T13:00:00Z",
+            "message_id": "<202610041300.444@smtp-relay.example.test>",
+            "status": "",
+            "status_detail": "",
+            "status_ts": 0,
+            "times": {},
+            "failed": false,
+            "order_date": "2026-10-04T12:59:00Z"
+        },
+        {
+            "wc_order_id": "9005",
+            "platform_order_system_id": "",
+            "recipient": "old.order@example.test",
+            "sent_at": "2025-01-04T13:00:00Z",
+            "message_id": "<x@y>",
+            "status": "delivered",
+            "status_detail": "",
+            "status_ts": 1735995600,
+            "times": {"delivered": 1735995600},
+            "failed": false,
+            "order_date": "2025-01-04T12:59:00Z"
+        }
+    ]
+}
