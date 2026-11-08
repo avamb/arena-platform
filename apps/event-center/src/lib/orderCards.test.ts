@@ -37,6 +37,12 @@ describe("the letter of a ticket", () => {
     expect(ticketLetterKey("disabled")).toBe("delivery.skipped");
     expect(ticketLetterKey("none")).toBe("delivery.none");
     expect(ticketLetterKey("surprise")).toBe("delivery.none");
+    // The provider's word about a letter (also one the selling site sent).
+    expect(ticketLetterKey("delivered")).toBe("delivery.deliveredShort");
+    expect(ticketLetterKey("opened")).toBe("delivery.openedShort");
+    expect(ticketLetterKey("delayed")).toBe("delivery.delayedShort");
+    expect(ticketLetterKey("sending")).toBe("delivery.pending");
+    expect([ticketLetterTone("delivered"), ticketLetterTone("opened"), ticketLetterTone("delayed")]).toEqual(["ok", "ok", "wait"]);
   });
   it("gives every state a tone", () => {
     expect([ticketLetterTone("sent"), ticketLetterTone("pending"), ticketLetterTone("failed"), ticketLetterTone("none")]).toEqual(["ok", "wait", "bad", "neutral"]);

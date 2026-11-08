@@ -57,13 +57,25 @@ export function datesBackwards(d: OrderDates): boolean {
   return (d.orderFrom !== "" && d.orderTo !== "" && d.orderFrom > d.orderTo) || (d.sessionFrom !== "" && d.sessionTo !== "" && d.sessionFrom > d.sessionTo);
 }
 
-/** The words for the state of one ticket's letter job (delivery_jobs.status, "none" without a job). */
+/**
+ * The words for the state of one ticket's letter: a waiting letter job
+ * (pending, processing), the mail provider's status of the last letter that
+ * carried the ticket (sending, sent, delayed, delivered, opened, failed —
+ * also a letter the selling site sent), the job's own status, or "none".
+ */
 export function ticketLetterKey(status: string): MessageKey {
   switch (status) {
     case "sent":
       return "delivery.sentShort";
+    case "delivered":
+      return "delivery.deliveredShort";
+    case "opened":
+      return "delivery.openedShort";
+    case "delayed":
+      return "delivery.delayedShort";
     case "pending":
     case "processing":
+    case "sending":
       return "delivery.pending";
     case "failed":
       return "delivery.failed";
@@ -78,9 +90,13 @@ export function ticketLetterKey(status: string): MessageKey {
 export function ticketLetterTone(status: string): Tone {
   switch (status) {
     case "sent":
+    case "delivered":
+    case "opened":
       return "ok";
     case "pending":
     case "processing":
+    case "sending":
+    case "delayed":
       return "wait";
     case "failed":
       return "bad";
