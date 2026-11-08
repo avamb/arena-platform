@@ -9758,6 +9758,18 @@ type GrowthSettingsUpdate struct {
 	MarketingOptinEnabled bool `json:"marketing_optin_enabled"`
 }
 
+// GuestListSettings The organization's switch for the automatic team guest list.
+type GuestListSettings struct {
+	// AutoSend True (the default) when the current guest list of every session is sent to the owners, managers and the organization's sales Telegram groups 24 h and 3 h before the start.
+	AutoSend bool `json:"auto_send"`
+}
+
+// GuestListSettingsRequest Body of PUT .../guest-list-settings.
+type GuestListSettingsRequest struct {
+	// AutoSend True turns the automatic team guest list on, false turns it off.
+	AutoSend bool `json:"auto_send"`
+}
+
 // GuestListSubscription The caller's automatic guest list setting.
 type GuestListSubscription struct {
 	// Channel How the list reaches the caller - `telegram` (private chat with the event center bot), `email` (not linked to the bot) or `none` (neither; nothing can be sent).
@@ -24800,6 +24812,12 @@ type GetV1OrganizationsOrgIdEventsEventIdFunnelParams struct {
 	SessionId *openapi_types.UUID `form:"session_id,omitempty" json:"session_id,omitempty"`
 }
 
+// GetV1OrganizationsOrgIdEventsEventIdGuestListXlsxParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdGuestListXlsx.
+type GetV1OrganizationsOrgIdEventsEventIdGuestListXlsxParams struct {
+	// Locale Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
 // GetV1OrganizationsOrgIdEventsEventIdPageStatsParams defines parameters for GetV1OrganizationsOrgIdEventsEventIdPageStats.
 type GetV1OrganizationsOrgIdEventsEventIdPageStatsParams struct {
 	// From First day, `YYYY-MM-DD`. Default 29 days before `to`.
@@ -26198,6 +26216,9 @@ type UpdateExternalAllocationJSONRequestBody UpdateExternalAllocationJSONBody
 
 // PutOrganizationGrowthSettingsJSONRequestBody defines body for PutOrganizationGrowthSettings for application/json ContentType.
 type PutOrganizationGrowthSettingsJSONRequestBody = GrowthSettingsUpdate
+
+// PutV1OrganizationsOrgIdGuestListSettingsJSONRequestBody defines body for PutV1OrganizationsOrgIdGuestListSettings for application/json ContentType.
+type PutV1OrganizationsOrgIdGuestListSettingsJSONRequestBody = GuestListSettingsRequest
 
 // PutV1OrganizationsOrgIdGuestListSubscriptionJSONRequestBody defines body for PutV1OrganizationsOrgIdGuestListSubscription for application/json ContentType.
 type PutV1OrganizationsOrgIdGuestListSubscriptionJSONRequestBody = GuestListSubscriptionRequest

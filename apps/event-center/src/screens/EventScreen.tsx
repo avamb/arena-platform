@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api/http";
-import { downloadCsv, downloadSampleTicket, fetchEventSummary, listSessions } from "@/lib/api/endpoints";
+import { downloadCsv, downloadEventGuestListXlsx, downloadSampleTicket, fetchEventSummary, listSessions } from "@/lib/api/endpoints";
 import type { EventSummary } from "@/lib/api/types";
 import { formatDateTime, formatMoney, formatNumber } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
@@ -144,6 +144,13 @@ export function EventScreen() {
             label="event.csvSales"
             testId="csv-event-sales"
             fetchFile={() => downloadCsv(orgId, "eventSales", eventId, locale)}
+          />
+        )}
+        {canCsv && (
+          <DownloadButton
+            label="guestList.downloadEvent"
+            testId="xlsx-event-guest-list"
+            fetchFile={() => downloadEventGuestListXlsx(orgId, eventId, locale)}
           />
         )}
         {canSessions && sample !== undefined && (

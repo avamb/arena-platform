@@ -10983,15 +10983,28 @@ export interface paths {
          *     leading zero, not even in rows added later. The entry time is text
          *     on the venue's clock. `guest-list.csv` serves the same rows as a CSV.
          *
-         *     One row per ACTIVE ticket of the session (cancelled, revoked and
-         *     transferred tickets are left out), sorted by the guest's name:
-         *     guest (the name on the ticket, else the buyer's), category, seat,
-         *     ticket number, barcode, VIP (`yes` / `no`), entered (`yes` / `no`),
-         *     entry time (venue's zone), order number, e-mail, phone and
-         *     invitation (`yes` / `no`). Same csvexport rules, locale selection and
-         *     50 000-row cap as the sales file. The same file is sent automatically
-         *     to the members who turned the guest list on
-         *     (`PUT .../guest-list-subscription`).
+         *     One row per ticket of the session, EVERY status (so the organizer can
+         *     filter), sorted by the guest's last name. Columns: last name, first
+         *     name, phone, e-mail, category, row, seat, ticket status, status
+         *     reason, barcode, order number, then sector, ticket number, VIP
+         *     (`yes` / `no`), entry time (venue's zone) and invitation (`yes` /
+         *     `no`). The platform stores ONE free-text name (the ticket's holder
+         *     name, else the buyer's), so it is split at its LAST space: the last
+         *     word is the last name, the rest the first name; a single word is a
+         *     last name. The barcode is always a text cell.
+         *
+         *     Ticket status follows the scanner system MACS (`holderStatus`),
+         *     printed as words plus the code: `Valid (0)` not yet entered, `Checked
+         *     in (1)`, `Checked out (2)`, `Refunded / cancelled (3)`. Checked in is
+         *     an admitted scan or `used_at`; checked out is an even number (2 or
+         *     more) of admitted MACS scans, because the platform stores no scan
+         *     direction. Status 3 carries a reason: refunded, cancelled, session
+         *     cancelled, or replaced (the ticket went to a wrong e-mail address and
+         *     was reissued). Labels follow `locale` (`en`, `ru`, `es`). Same
+         *     csvexport rules and 50 000-row cap as the sales file. The same file
+         *     is built fresh when it is sent automatically to the members who
+         *     turned the guest list on (`PUT .../guest-list-subscription`) and to
+         *     the whole team before every session (`PUT .../guest-list-settings`).
          *
          *     Requires `order.read` AND `session.read`; a session of another
          *     organization is a 404.
@@ -11019,21 +11032,75 @@ export interface paths {
          *     workbook: Excel opens a CSV with the list separator of its regional
          *     settings, and with English settings every row lands in column A.
          *
-         *     One row per ACTIVE ticket of the session (cancelled, revoked and
-         *     transferred tickets are left out), sorted by the guest's name:
-         *     guest (the name on the ticket, else the buyer's), category, seat,
-         *     ticket number, barcode, VIP (`yes` / `no`), entered (`yes` / `no`),
-         *     entry time (venue's zone), order number, e-mail, phone and
-         *     invitation (`yes` / `no`). Same csvexport rules, locale selection and
-         *     50 000-row cap as the sales file. The same file is sent automatically
-         *     to the members who turned the guest list on
-         *     (`PUT .../guest-list-subscription`).
+         *     One row per ticket of the session, every status, with the same
+         *     columns, status mapping and name split as `guest-list.xlsx`, whose
+         *     description is authoritative.
          *
          *     Requires `order.read` AND `session.read`; a session of another
          *     organization is a 404.
          */
         get: operations["getV1OrganizationsOrgIdSessionsSessionIdGuestListCsv"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/events/{event_id}/guest-list.xlsx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Guest list of every session of an event as an Excel workbook
+         * @description The session guest list (`GET .../sessions/{session_id}/guest-list.xlsx`)
+         *     for the whole event: one sheet with the tickets of all its sessions,
+         *     every status, sessions in time order, guests by last name inside a
+         *     session. A `Session` column comes first with the session's date and
+         *     time on its own venue's clock; the other columns, the status
+         *     mapping, the text barcode cell and the locale rules are the session
+         *     file's. The file name is `guests_<event>_<YYYY-MM-DD of the request>.xlsx`.
+         *
+         *     Requires `order.read` AND `session.read`; an organization API key is
+         *     refused (403 `guest_list.api_key_forbidden`); an event of another
+         *     organization is a 404.
+         */
+        get: operations["getV1OrganizationsOrgIdEventsEventIdGuestListXlsx"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/guest-list-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the organization sends the team guest list automatically
+         * @description The organization's switch (on by default). While it is on, the job
+         *     `guest_list.team_send` sends the CURRENT guest list of every session
+         *     24 hours and 3 hours before its start: by e-mail to every active
+         *     owner and manager of the organization, and as a document to the
+         *     organization's own sales Telegram groups. Requires `org.read`.
+         */
+        get: operations["getV1OrganizationsOrgIdGuestListSettings"];
+        /**
+         * Turn the team guest list on or off for the organization
+         * @description Turns the organization's automatic team guest list on or off. A
+         *     repeat of the current value changes nothing. Requires `org.update`
+         *     (the owner).
+         */
+        put: operations["putV1OrganizationsOrgIdGuestListSettings"];
         post?: never;
         delete?: never;
         options?: never;
@@ -15312,6 +15379,16 @@ export interface components {
         GuestListSubscriptionRequest: {
             /** @description True turns the automatic guest list on, false turns it off. */
             enabled: boolean;
+        };
+        /** @description The organization's switch for the automatic team guest list. */
+        GuestListSettings: {
+            /** @description True (the default) when the current guest list of every session is sent to the owners, managers and the organization's sales Telegram groups 24 h and 3 h before the start. */
+            auto_send: boolean;
+        };
+        /** @description Body of PUT .../guest-list-settings. */
+        GuestListSettingsRequest: {
+            /** @description True turns the automatic team guest list on, false turns it off. */
+            auto_send: boolean;
         };
         /** @description One automatic guest list the bot has to send. */
         BotGuestListDelivery: {
@@ -75434,7 +75511,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description More than 50 000 active tickets (`export.too_many_rows`). */
+            /** @description More than 50 000 tickets (`export.too_many_rows`). */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -75551,6 +75628,257 @@ export interface operations {
                 };
             };
             /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdEventsEventIdGuestListXlsx: {
+        parameters: {
+            query?: {
+                /** @description Header and sheet-name language (`en`, `ru`, `es`); an unknown tag falls back to `lang`, then Accept-Language, then `en`. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the event */
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The workbook attachment. */
+            200: {
+                headers: {
+                    /** @description Number of data rows (tickets) in the sheet, the header row not counted. */
+                    "X-Row-Count"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": string;
+                };
+            };
+            /** @description org_id or event_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Actor lacks `order.read` or `session.read`, is not a member of the organization, or is an organization API key (`guest_list.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Event not found, or not part of this organization (`event.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description More than 50 000 tickets (`export.too_many_rows`). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Export queries unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdGuestListSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's setting. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestListSettings"];
+                };
+            };
+            /** @description org_id path parameter is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not a member with `org.read`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable (`dependency.database_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    putV1OrganizationsOrgIdGuestListSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GuestListSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description The setting after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GuestListSettings"];
+                };
+            };
+            /** @description Body has no boolean `auto_send` or carries another field (`guest_list.invalid_body`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Not a member with `org.update`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Organization not found (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error (`export.internal`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database unavailable (`dependency.database_unavailable`). */
             503: {
                 headers: {
                     [name: string]: unknown;

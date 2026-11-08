@@ -466,6 +466,7 @@ var orgIsolationAuditedSafe = map[string]string{
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/summary.csv":                "horders",
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/guest-list.csv":             "hexport",
 	"GET /v1/organizations/{org_id}/sessions/{session_id}/guest-list.xlsx":            "hexport",
+	"GET /v1/organizations/{org_id}/events/{event_id}/guest-list.xlsx":                "hexport",
 	"POST /v1/organizations/{org_id}/orders/{id}/cancel":                              "horders",
 	"POST /v1/organizations/{org_id}/orders/{order_id}/resend-tickets":                "horders",
 	"GET /v1/organizations/{org_id}/complimentary/{id}/reissue-options":               "ticketreissue.LoadInvitationOptions (issuance loaded WHERE id AND org_id = path org; covered by TestReissue_InvitationWithoutOrder)",

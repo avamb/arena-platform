@@ -87,6 +87,7 @@ import type {
   SessionChangeImpact,
   SessionEnvelope,
   SessionSalesState,
+  GuestListSettings,
   GuestListSubscription,
   SessionSalesStateHistory,
   SessionListResponse,
@@ -285,6 +286,31 @@ export function downloadGuestListXlsx(orgId: string, sessionId: string, locale: 
     query: { locale },
     accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     fallbackName: "guests.xlsx",
+  });
+}
+
+/** The guest list of every session of an event as one Excel workbook (a Session column first). */
+export function downloadEventGuestListXlsx(orgId: string, eventId: string, locale: string): Promise<DownloadedFile> {
+  return download({
+    route: API.eventGuestListXlsx,
+    params: { org_id: orgId, event_id: eventId },
+    query: { locale },
+    accept: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    fallbackName: "guests.xlsx",
+  });
+}
+
+/** The organization switch for the automatic team guest list (on by default). */
+export function getGuestListSettings(orgId: string): Promise<GuestListSettings> {
+  return call<GuestListSettings>({ route: API.guestListSettings, params: { org_id: orgId } });
+}
+
+/** The owner turns the automatic team guest list on or off. */
+export function setGuestListSettings(orgId: string, autoSend: boolean): Promise<GuestListSettings> {
+  return call<GuestListSettings>({
+    route: API.guestListSettingsSet,
+    params: { org_id: orgId },
+    body: { auto_send: autoSend },
   });
 }
 

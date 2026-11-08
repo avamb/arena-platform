@@ -90,15 +90,16 @@ func TestGuestList_FileSubscriptionScheduleAndBotRoutes(t *testing.T) {
 	if len(lines) != 3 {
 		t.Fatalf("lines = %d, want header + 2:\n%s", len(lines), body)
 	}
-	if lines[0] != `"Guest";"Category";"Seat";"Ticket";"Barcode";"VIP";"Entered";"Entry time";"Order";"E-mail";"Phone";"Invitation";"Test"` {
+	if lines[0] != `"Last name";"First name";"Phone";"E-mail";"Category";"Row";"Seat";"Ticket status";"Status reason";"Barcode";"Order number";"Sector";"Ticket";"VIP";"Entry time";"Invitation"` {
 		t.Errorf("header = %s", lines[0])
 	}
-	if !strings.HasPrefix(lines[1], `"Anna Guest";"Parterre";"";`) || !strings.Contains(lines[1], `;"yes";"no";"";`) {
-		t.Errorf("first row (Anna, VIP, not entered) = %s", lines[1])
+	// Sorted by last name: Buyer (Zed, entered) before Guest (Anna, VIP).
+	if !strings.HasPrefix(lines[1], `"Buyer";"Zed";="+34600111222";`) || !strings.Contains(lines[1], `="4600051000001"`) ||
+		!strings.Contains(lines[1], `;"Checked in (1)";"";`) || !strings.Contains(lines[1], `;"2026-`) {
+		t.Errorf("first row (Zed Buyer, entered, stored barcode, phone) = %s", lines[1])
 	}
-	if !strings.HasPrefix(lines[2], `"Zed Buyer";"Parterre";"";`) || !strings.Contains(lines[2], `="4600051000001"`) ||
-		!strings.Contains(lines[2], `;"no";"yes";"2026-`) || !strings.Contains(lines[2], `="+34600111222"`) {
-		t.Errorf("second row (Zed, entered, stored barcode, phone) = %s", lines[2])
+	if !strings.HasPrefix(lines[2], `"Guest";"Anna";`) || !strings.Contains(lines[2], `;"Valid (0)";"";`) || !strings.Contains(lines[2], `;"yes";"";"no"`) {
+		t.Errorf("second row (Anna Guest, VIP, not entered) = %s", lines[2])
 	}
 
 	// The workbook: the same two rows, identifiers kept as text.
@@ -118,21 +119,21 @@ func TestGuestList_FileSubscriptionScheduleAndBotRoutes(t *testing.T) {
 	}
 	book := xlsxtest.Open(t, body)
 	rows := book.Values()
-	if len(rows) != 3 || rows[0][0] != "Guest" || rows[1][0] != "Anna Guest" || rows[2][0] != "Zed Buyer" {
+	if len(rows) != 3 || rows[0][0] != "Last name" || rows[1][0] != "Buyer" || rows[1][1] != "Zed" || rows[2][0] != "Guest" || rows[2][1] != "Anna" {
 		t.Fatalf("workbook rows = %v", rows)
 	}
-	// D ticket, E barcode, I order, K phone of Zed's row.
-	for ref, want := range map[string]string{"E3": "4600051000001", "K3": "+34600111222"} {
+	// J barcode, C phone of Zed's row (row 2, sorted by last name).
+	for ref, want := range map[string]string{"J2": "4600051000001", "C2": "+34600111222"} {
 		if c, ok := book.CellAt(ref); !ok || c.Value != want || c.Type != "inlineStr" || !book.TextFormat(c.Style) {
 			t.Errorf("%s = %+v (text format %v), want the text %q", ref, c, book.TextFormat(c.Style), want)
 		}
 	}
-	for _, ref := range []string{"D2", "D3", "E2", "I2", "I3"} {
+	for _, ref := range []string{"M2", "M3", "J3", "K2", "K3"} {
 		if c, ok := book.CellAt(ref); !ok || c.Type != "inlineStr" || !book.TextFormat(c.Style) {
 			t.Errorf("%s = %+v, want a text cell", ref, c)
 		}
 	}
-	for _, col := range []int{4, 5, 9, 11} {
+	for _, col := range []int{3, 10, 11, 13} {
 		if !book.TextFormat(book.ColumnStyle(col)) {
 			t.Errorf("column %d is not a text column", col)
 		}
@@ -141,11 +142,12 @@ func TestGuestList_FileSubscriptionScheduleAndBotRoutes(t *testing.T) {
 		t.Errorf("agent workbook: %d, want 403", st)
 	}
 
-	// A cancelled ticket is not a guest.
+	// A cancelled ticket STAYS on the list, as status 3 "Cancelled", so the
+	// organizer can filter it.
 	exec(`UPDATE tickets SET status = 'cancelled' WHERE id = $1`, f.ticket2)
 	_, _, body = f.get(t, path, manager, nil)
-	if l := ec07Lines(t, body); len(l) != 2 || strings.Contains(string(body), "Anna Guest") {
-		t.Errorf("a cancelled ticket stayed on the list:\n%s", body)
+	if l := ec07Lines(t, body); len(l) != 3 || !strings.Contains(l[2], `"Refunded / cancelled (3)";"Cancelled"`) {
+		t.Errorf("a cancelled ticket is missing from the list or has no status:\n%s", body)
 	}
 	exec(`UPDATE tickets SET status = 'active' WHERE id = $1`, f.ticket2)
 
@@ -208,7 +210,7 @@ func TestGuestList_FileSubscriptionScheduleAndBotRoutes(t *testing.T) {
 		!strings.Contains(mail.sent[0].TextBody, "3 hours") {
 		t.Fatalf("letter = %+v", mail.sent)
 	}
-	if rows := xlsxtest.Open(t, mail.sent[0].Attachments[0].Data).Values(); len(rows) != 3 || rows[1][0] != "Anna Guest" {
+	if rows := xlsxtest.Open(t, mail.sent[0].Attachments[0].Data).Values(); len(rows) != 3 || rows[2][0] != "Guest" {
 		t.Fatalf("attached workbook rows = %v", rows)
 	}
 	var slot string
