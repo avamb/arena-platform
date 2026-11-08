@@ -11,7 +11,7 @@
 # <ip> is where --resolve points: the server itself, so the request skips Cloudflare and DNS.
 # Extra arguments after the port (the port is then required) go to curl, e.g. -k for a name without a certificate.
 # Backend detection: MODE=whoami reads the "Name:" line of traefik/whoami. Otherwise a response
-# with an x-powered-by: PHP header is WP and anything else is the static site (nginx).
+# with an x-powered-by: PHP or an Apache server header is WP and anything else is the static site (nginx).
 #
 # The two WordPress-side probes (wc-api=allpay and vino_pay_back) are harmless on WP: the IPN
 # handler logs a hit for order 0 and changes nothing, the back link of an unknown order redirects
@@ -29,7 +29,9 @@ probe() {  # probe <expected SITE|WP> <path-with-query> [extra curl args...]
   out=$(curl -s -o /tmp/vc_body.$$ -D - --max-time 15 --resolve "${HOST}:${PORT}:${IP}" "${EXTRA[@]}" "$@" "https://${HOST}:${PORT}${path}" 2>/dev/null) || out=""
   if [ "$MODE" = whoami ]; then
     got=$(grep -m1 '^Name:' /tmp/vc_body.$$ | sed 's/Name: *//; s/\r//')
-  elif echo "$out" | grep -qi '^x-powered-by: *PHP'; then got=WP
+  # A static file that Apache serves straight from disk has no x-powered-by header, so the
+  # WordPress container's Apache server header counts as WP too; the site answers from nginx.
+  elif echo "$out" | grep -qiE '^(x-powered-by: *PHP|server: *Apache)'; then got=WP
   elif [ -z "$out" ]; then got=NO-ANSWER
   else got=SITE; fi
   n=$((n+1))
