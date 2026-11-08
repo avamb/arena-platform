@@ -43,12 +43,6 @@ export function navSectionOf(pathname: string, search: unknown): NavSection {
   return "more";
 }
 
-/** The header "+ Event" button belongs to the Events list only: on every other screen it is noise. */
-export function showNewEventButton(pathname: string): boolean {
-  const rest = pathname.replace(/^\/o\/[^/]+/, "").replace(/\/+$/, "");
-  return rest === "" || rest === "/events";
-}
-
 function Icon({ name }: { name: NavSection }) {
   const paths: Record<NavSection, ReactNode> = {
     events: (

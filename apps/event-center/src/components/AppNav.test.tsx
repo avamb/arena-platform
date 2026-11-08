@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { renderInRouter } from "@/test-utils/renderInRouter";
 import type { OrgAccess } from "@/lib/auth";
 import { CATALOGS, LOCALES } from "@/lib/i18n";
-import { TabBar, navSectionOf, showNewEventButton } from "@/components/AppNav";
+import { TabBar, navSectionOf } from "@/components/AppNav";
 
 const ORG = "/o/0193f01a-1234-7000-8000-000000000001";
 
@@ -69,13 +69,3 @@ describe("TabBar", () => {
   });
 });
 
-describe("showNewEventButton", () => {
-  it("is on the Events list only", () => {
-    expect(showNewEventButton(`${ORG}/events`)).toBe(true);
-    expect(showNewEventButton(`${ORG}/events/`)).toBe(true);
-    expect(showNewEventButton(ORG)).toBe(true);
-    for (const rest of ["/links", "/orders", "/refunds", "/summary", "/more", "/team", "/events/new", "/events/e1", "/events/e1/edit", "/promo"]) {
-      expect(showNewEventButton(`${ORG}${rest}`), rest).toBe(false);
-    }
-  });
-});

@@ -1,15 +1,14 @@
 import { createContext, useContext, useEffect } from "react";
-import { Link, Outlet, useParams, useRouterState } from "@tanstack/react-router";
+import { Link, Outlet, useParams } from "@tanstack/react-router";
 import { organizationsOf, rememberOrg, useAuth, useMe, useOrgAccess, type OrgAccess } from "@/lib/auth";
 import { ApiError } from "@/lib/api/http";
-import { wizardGate } from "@/lib/features";
 import { useI18n } from "@/lib/i18n";
 import { useEmbedded } from "@/lib/seatManager/embed";
 import { shopModeFor } from "@/lib/shopModule";
 import { ErrorBox, ErrorScope, Loading } from "@/components/ui";
 import { RequireSignIn } from "@/screens/RequireSignIn";
 import { roleKey } from "@/screens/OrgsScreen";
-import { A2hsNote, TabBar, showNewEventButton } from "@/components/AppNav";
+import { A2hsNote, TabBar } from "@/components/AppNav";
 import { applyBranding, resetBranding, type Branding } from "@/lib/theme";
 
 export interface OrgContextValue {
@@ -34,7 +33,6 @@ function OrgShell() {
   const access = useOrgAccess(orgId);
   const me = useMe();
   const embed = useEmbedded();
-  const showNewEvent = showNewEventButton(useRouterState({ select: (st) => st.location.pathname }));
   const orgCount = me.data !== undefined ? organizationsOf(me.data.organization_memberships).length : 0;
   // Spec 61: the shop is a paid module. No module (and no orders left from one) means no menu item at all.
   const shopMode = shopModeFor(me.data?.organization_memberships, orgId);
@@ -104,18 +102,6 @@ function OrgShell() {
               </span>
               <span className="muted">{t(roleKey(access.data.role))}</span>
             </div>
-            {/* 6-1a: only in a build with VITE_FEATURE_WIZARD=1, and only for who can import a bundle. */}
-            {wizardGate(access.can) === "ok" && showNewEvent && (
-              <Link
-                to="/o/$orgId/events/new"
-                params={{ orgId }}
-                className="btn btn-primary topbar-new"
-                activeProps={{ "aria-current": "page" }}
-                data-testid="nav-new-event"
-              >
-                {t("nav.newEvent")}
-              </Link>
-            )}
           </header>
         )}
         {!embed && (

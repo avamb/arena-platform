@@ -472,8 +472,17 @@ label {
   font-weight: 700;
 }
 
-.topbar-new {
-  flex: none;
+/* The Events heading and its "Create event" button on one row. */
+.events-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin: 0.25rem 0 0.75rem;
+}
+.page .events-head h1 {
+  margin: 0;
 }
 
 /*

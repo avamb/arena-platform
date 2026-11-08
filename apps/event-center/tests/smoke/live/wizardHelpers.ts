@@ -20,7 +20,7 @@ export function trackChecks(page: Page): number[] {
 export async function openWizard(page: Page, role: Role) {
   await signInAs(page, person(env, role));
   await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
-  await page.getByTestId("nav-new-event").click();
+  await page.getByTestId("events-create").click();
   await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events/new`));
   await expect(page.getByRole("heading", { level: 1, name: "New event" })).toBeVisible();
 }
