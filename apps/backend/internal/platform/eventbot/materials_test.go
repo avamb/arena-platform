@@ -7,6 +7,8 @@ import (
 
 	"github.com/go-telegram/bot/models"
 	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 )
 
 func TestGoogleMapsLink(t *testing.T) {
@@ -189,5 +191,35 @@ func TestMaterialsDialogOwnsItsPresses(t *testing.T) {
 		if o.owns(d) {
 			t.Errorf("%q must not belong to the materials dialog", d)
 		}
+	}
+}
+
+func TestMapWarningText(t *testing.T) {
+	bundle, err := i18n.NewBundle()
+	if err != nil {
+		t.Fatalf("i18n.NewBundle: %v", err)
+	}
+	texts := NewTexts(bundle)
+	ramat := "Ramat HaSharon"
+	near := 0.3
+	far := []MapPointWarning{{
+		Code: "venue.point_far_from_city", City: "Netanya", DistanceKm: 20.5, ThresholdKm: 16.8,
+		NearerCity: &ramat, NearerDistanceKm: &near,
+	}}
+	got := mapWarningText(texts, "en", far)
+	for _, want := range []string{"20.5 km from Netanya", "16.8 km", "nearer to Ramat HaSharon (0.3 km)", "The point stays saved"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("en warning lacks %q: %s", want, got)
+		}
+	}
+	if ru := mapWarningText(texts, "ru", far); !strings.Contains(ru, "от города Netanya") {
+		t.Errorf("ru warning = %s", ru)
+	}
+	only := []MapPointWarning{{Code: "venue.point_nearer_other_city", City: "Tel Aviv", DistanceKm: 13.5, ThresholdKm: 23.7, NearerCity: &ramat, NearerDistanceKm: &near}}
+	if got := mapWarningText(texts, "es", only); !strings.Contains(got, "solo a 0.3 km de Ramat HaSharon") {
+		t.Errorf("es warning = %s", got)
+	}
+	if got := mapWarningText(texts, "en", nil); got != "" {
+		t.Errorf("no warning must be empty, got %q", got)
 	}
 }

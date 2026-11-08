@@ -13762,6 +13762,88 @@ components:
           format: date-time
           description: When the point was last changed.
 
+    MapPointWarning:
+      type: object
+      required: [code, message, city, distance_km, threshold_km, nearer_city, nearer_distance_km]
+      description: |
+        Advisory remark that a map point looks wrong for the event's city. It never
+        blocks a save; the point is stored either way. The distance is measured from
+        the city centre. The usual distance is max(15 km, 4 times a radius estimated
+        from the city's population), at most 60 km.
+      properties:
+        code:
+          type: string
+          description: "`venue.point_far_from_city` when the point is beyond the usual distance, `venue.point_nearer_other_city` when it is within it but outside the city's own radius and another city is closer."
+        message:
+          type: string
+          description: English text for the organizer, naming the cities and the distances.
+        city:
+          type: string
+          description: The event's venue city the point was compared with (ASCII name).
+        distance_km:
+          type: number
+          format: double
+          description: Distance from the point to that city's centre, in kilometres, one decimal.
+        threshold_km:
+          type: number
+          format: double
+          description: The usual distance for a city of this size, in kilometres, one decimal.
+        nearer_city:
+          type: [string, "null"]
+          description: A city of the same country that is nearer to the point than the venue city centre is, or null.
+        nearer_distance_km:
+          type: [number, "null"]
+          format: double
+          description: Distance from the point to `nearer_city`, in kilometres, or null.
+
+    MapPointCheck:
+      type: object
+      required: [checked, warnings]
+      description: Advisory verdict on a map point against the cities of the event's venues.
+      properties:
+        checked:
+          type: boolean
+          description: False when none of the venue cities is in the geo data (or the event has no venue city), so nothing could be said.
+        warnings:
+          type: array
+          description: Empty when the point looks right or could not be checked; at most one remark otherwise.
+          items:
+            $ref: "#/components/schemas/MapPointWarning"
+
+    EventMapPointSaved:
+      type: object
+      required: [event_id, latitude, longitude, label, created_at, updated_at, warnings]
+      description: The map point as stored by PUT, with the advisory warnings. The point is stored whatever the warnings say.
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: UUIDv7 of the event.
+        latitude:
+          type: number
+          format: double
+          description: Latitude in degrees, -90 to 90, six decimals kept.
+        longitude:
+          type: number
+          format: double
+          description: Longitude in degrees, -180 to 180, six decimals kept.
+        label:
+          type: [string, "null"]
+          description: Optional text shown with the point, up to 200 characters.
+        created_at:
+          type: string
+          format: date-time
+          description: When the point was first set.
+        updated_at:
+          type: string
+          format: date-time
+          description: When the point was last changed.
+        warnings:
+          type: array
+          description: Advisory remarks on the point, see MapPointWarning. Empty when nothing looks wrong.
+          items:
+            $ref: "#/components/schemas/MapPointWarning"
+
     SetEventMapPointRequest:
       type: object
       required: [latitude, longitude]
@@ -42289,6 +42371,86 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
 
+  /v1/organizations/{org_id}/events/{event_id}/map-point/check:
+    get:
+      operationId: checkEventMapPoint
+      summary: Check a map point against the event's city
+      description: |
+        Advisory only, stores nothing. Compares the point with the cities of the
+        event's venues and answers a remark when it is farther from the venue city
+        than is usual for a city of that size, or nearer to another city of the
+        country. With no venue city in the geo data it answers `checked: false` and
+        no warnings. Latitude must be between -90 and 90 and longitude between -180
+        and 180 (400 `event.invalid_map_point`).
+        Requires `event.read` and membership of the organization.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: event_id
+          in: path
+          required: true
+          description: UUIDv7 of the event
+          schema: { type: string, format: uuid }
+        - name: latitude
+          in: query
+          required: true
+          description: Latitude in degrees, -90 to 90.
+          schema: { type: number, format: double }
+        - name: longitude
+          in: query
+          required: true
+          description: Longitude in degrees, -180 to 180.
+          schema: { type: number, format: double }
+      responses:
+        "200":
+          description: The verdict.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapPointCheck"
+        "400":
+          description: Missing or invalid coordinates (`event.invalid_map_point`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid credentials.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: Caller lacks `event.read` or is not a member of the organization.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: No such event in this organization (`event.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error (`event.materials_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Database unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/organizations/{org_id}/events/{event_id}/map-point:
     get:
       operationId: getEventMapPoint
@@ -42379,11 +42541,11 @@ paths:
               $ref: "#/components/schemas/SetEventMapPointRequest"
       responses:
         "200":
-          description: The map point as stored.
+          description: The map point as stored, with advisory `warnings` (never an error).
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EventMapPoint"
+                $ref: "#/components/schemas/EventMapPointSaved"
         "400":
           description: Invalid body or coordinates (`event.invalid_body`, `event.invalid_map_point`).
           content:

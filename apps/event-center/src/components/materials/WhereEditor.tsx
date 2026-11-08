@@ -8,13 +8,13 @@
  * the dates are at several venues the point is shown beside them, not as the
  * point of each.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ConfirmPressDialog } from "@/components/ConfirmPressDialog";
 import { Empty, ErrorBox, Loading } from "@/components/ui";
 import { MapPointCheck } from "@/components/materials/MapPointCheck";
 import { ActionNotice, useAction } from "@/components/materials/shared";
-import { deleteMapPoint, getMapPoint, patchVenueAddress, putMapPoint } from "@/lib/api/materialsApi";
+import { checkMapPointCity, deleteMapPoint, getMapPoint, patchVenueAddress, putMapPoint, type MapPointWarning } from "@/lib/api/materialsApi";
 import { listSessions, listVenues } from "@/lib/api/endpoints";
 import type { VenueItem } from "@/lib/api/types";
 import { useI18n } from "@/lib/i18n";
@@ -27,6 +27,15 @@ const COORD_KEY: Record<CoordProblem, MessageKey> = {
   latRange: "mat.map.problem.latRange",
   lngRange: "mat.map.problem.lngRange",
 };
+
+function useDebounced<T>(value: T, ms: number): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(id);
+  }, [value, ms]);
+  return v;
+}
 
 function VenueForm({
   orgId,
@@ -125,6 +134,21 @@ function MapPointForm({ orgId, eventId, canWrite, several }: { orgId: string; ev
   const [form, setForm] = useState<{ lat: string; lng: string; label: string; from: string } | null>(null);
   const [problem, setProblem] = useState<CoordProblem | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [savedWarnings, setSavedWarnings] = useState<MapPointWarning[]>([]);
+  const typed = checkMapPoint(form?.lat ?? "", form?.lng ?? "");
+  const typedKey = typed.kind === "ok" ? `${typed.latitude},${typed.longitude}` : "";
+  const settled = useDebounced(typedKey, 600);
+  // Advisory only: a failed or slow check changes nothing.
+  const verdict = useQuery({
+    queryKey: ["materials", "map-check", orgId, eventId, settled],
+    queryFn: ({ signal }) => {
+      const [la, lo] = settled.split(",").map(Number);
+      return checkMapPointCity(orgId, eventId, la, lo, signal);
+    },
+    enabled: settled !== "" && settled === typedKey,
+    staleTime: 60_000,
+    retry: false,
+  });
 
   if (point.isLoading) return <Loading />;
   if (point.error !== null) return <ErrorBox error={point.error} onRetry={() => void point.refetch()} />;
@@ -155,7 +179,8 @@ function MapPointForm({ orgId, eventId, canWrite, several }: { orgId: string; ev
         if (checked.kind === "empty") {
           if (saved !== null) await deleteMapPoint(orgId, eventId);
         } else {
-          await putMapPoint(orgId, eventId, { latitude: checked.latitude, longitude: checked.longitude, label: cleanText(current.label) });
+          const saved = await putMapPoint(orgId, eventId, { latitude: checked.latitude, longitude: checked.longitude, label: cleanText(current.label) });
+          setSavedWarnings(saved.warnings ?? []);
         }
       } finally {
         await reload();
@@ -194,7 +219,7 @@ function MapPointForm({ orgId, eventId, canWrite, several }: { orgId: string; ev
         <input id="mat-map-label" className="input" type="text" value={current.label} maxLength={LIMITS.mapLabel} disabled={!canWrite || action.busy} onChange={(e) => set({ label: e.target.value })} data-testid="mat-map-label" />
         <p className="field-hint">{t("mat.map.labelHint", { max: LIMITS.mapLabel })}</p>
       </div>
-      <MapPointCheck lat={current.lat} lng={current.lng} />
+      <MapPointCheck lat={current.lat} lng={current.lng} warnings={settled === typedKey && settled !== "" ? (verdict.data?.warnings ?? []) : form === null ? savedWarnings : []} />
       {problem !== null && (
         <p className="field-error" role="alert" data-testid="mat-map-problem">
           {t(COORD_KEY[problem])}

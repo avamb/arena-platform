@@ -259,6 +259,7 @@ export const API = {
   partnerPatch: { method: "PATCH", path: "/v1/organizations/{org_id}/events/{event_id}/partner-links/{link_id}" },
   partnerDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{event_id}/partner-links/{link_id}" },
   mapPointGet: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/map-point" },
+  mapPointCheck: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/map-point/check" },
   mapPointPut: { method: "PUT", path: "/v1/organizations/{org_id}/events/{event_id}/map-point" },
   mapPointDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{event_id}/map-point" },
   reportList: { method: "GET", path: "/v1/organizations/{org_id}/events/{event_id}/photo-report" },

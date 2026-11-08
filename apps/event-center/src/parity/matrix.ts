@@ -283,6 +283,7 @@ export const PARITY: readonly ParityRow[] = [
       `PATCH ${O}/events/{event_id}/partner-links/{link_id}`,
       `DELETE ${O}/events/{event_id}/partner-links/{link_id}`,
       `GET ${O}/events/{event_id}/map-point`,
+      `GET ${O}/events/{event_id}/map-point/check`,
       `PUT ${O}/events/{event_id}/map-point`,
       `DELETE ${O}/events/{event_id}/map-point`,
       `GET ${O}/events/{event_id}/photo-report`,

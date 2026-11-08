@@ -424,6 +424,7 @@ var orgIsolationAuditedSafe = map[string]string{
 	"PATCH /v1/organizations/{org_id}/events/{event_id}/partner-links/{link_id}":  "hmaterials",
 	"DELETE /v1/organizations/{org_id}/events/{event_id}/partner-links/{link_id}": "hmaterials",
 	"GET /v1/organizations/{org_id}/events/{event_id}/map-point":                  "hmaterials",
+	"GET /v1/organizations/{org_id}/events/{event_id}/map-point/check":            "hmaterials",
 	"PUT /v1/organizations/{org_id}/events/{event_id}/map-point":                  "hmaterials",
 	"DELETE /v1/organizations/{org_id}/events/{event_id}/map-point":               "hmaterials",
 	"GET /v1/organizations/{org_id}/events/{event_id}/photo-report":               "hmaterials",

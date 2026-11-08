@@ -4194,6 +4194,15 @@ other = "📍 <b>Map</b> · {{.Event}}\n\nLatitude {{.Lat}}, longitude {{.Lon}}\
 ["bot.mt.map_hint"]
 other = "Put the point at the entrance or the parking, where guests should arrive. Open it in Google Maps to check that it is the right place."
 
+["bot.mt.map_warn_far"]
+other = "⚠️ This point is {{.Dist}} km from {{.City}}, farther than the usual {{.Limit}} km for a city of this size. Open it in Google Maps and check that it is the right place. The point stays saved."
+
+["bot.mt.map_warn_far_nearer"]
+other = "⚠️ This point is {{.Dist}} km from {{.City}}, farther than the usual {{.Limit}} km, and it is nearer to {{.Other}} ({{.OtherKm}} km). Open it in Google Maps and check that it is the right place. The point stays saved."
+
+["bot.mt.map_warn_nearer"]
+other = "⚠️ This point is {{.Dist}} km from {{.City}} but only {{.OtherKm}} km from {{.Other}}. Open it in Google Maps and check that it is in the right city. The point stays saved."
+
 ["bot.mt.map_set_btn"]
 other = "📍 Set the point"
 

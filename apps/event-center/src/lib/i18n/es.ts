@@ -1965,6 +1965,10 @@ export const es: Record<MessageKey, string> = {
   "mat.map.check": "Comprobar en OpenStreetMap",
   "mat.map.google": "Abrir este punto en Google Maps",
   "mat.map.pickHint": "Pon el punto en la entrada o en el aparcamiento, donde deben llegar los asistentes. Ábrelo en Google Maps para comprobar que es el lugar correcto.",
+  "mat.map.warn.far": "Está a {distance} km de {city}, más lejos de los {limit} km habituales para una ciudad de este tamaño. Ábrelo en Google Maps y comprueba que es el lugar correcto.",
+  "mat.map.warn.farNearer": "Está a {distance} km de {city}, más lejos de los {limit} km habituales, y más cerca de {other} ({otherKm} km). Ábrelo en Google Maps y comprueba que es el lugar correcto.",
+  "mat.map.warn.nearer": "Está a {distance} km de {city}, pero solo a {otherKm} km de {other}. Ábrelo en Google Maps y comprueba que está en la ciudad correcta.",
+  "mat.map.warn.still": "Aun así puedes guardar el punto. Es solo una pista.",
   "mat.map.removed": "El punto se quitó.",
   "mat.preview.title": "Vista previa",
   // V1: VIP mark of a ticket.
