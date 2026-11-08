@@ -40,6 +40,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/ticketreissue"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -407,6 +408,7 @@ func (h *Handler) HandleScannerValidate(w http.ResponseWriter, r *http.Request) 
 		// person decides.
 		resp.Valid = false
 		resp.InvalidReason = "ticket_reissued"
+		h.recordOldCode(ctx, *barcode.TicketID, time.Now(), ticketreissue.AttemptDenied, "")
 	case barcode.Status == "revoked":
 		resp.InvalidReason = "barcode_revoked"
 	case barcode.Status == "scanned":

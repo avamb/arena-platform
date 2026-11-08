@@ -416,7 +416,21 @@ func pairsJSON(pairs []ticketreissue.Pair) []map[string]any {
 			"seat":                p.Seat,
 			"category":            p.Category,
 			"old_code_scanned_at": timeOrNil(p.OldScannedAt),
+			"old_code_attempt":    attemptJSON(p.Attempt),
+			"organizer_told_at":   timeOrNil(p.NotifiedAt),
 		})
+	}
+	return out
+}
+
+// attemptJSON is the first try with a replaced ticket's old code, or null.
+func attemptJSON(a *ticketreissue.OldCodeAttempt) any {
+	if a == nil {
+		return nil
+	}
+	out := map[string]any{"at": a.At.UTC().Format(time.RFC3339), "source": a.Source, "result": a.Result}
+	if a.Gate != "" {
+		out["gate"] = a.Gate
 	}
 	return out
 }

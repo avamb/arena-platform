@@ -17541,6 +17541,27 @@ export interface components {
              * @description When the closed ticket's code was used at the door before the reissue.
              */
             old_code_scanned_at?: string | null;
+            /** @description The first try to enter with the closed ticket's code after the reissue, or null when nobody tried. */
+            old_code_attempt?: components["schemas"]["ReissueOldCodeAttempt"] | null;
+            /**
+             * Format: date-time
+             * @description When the organization was told about the old code (an entry before the reissue or a try after it) through its sales chat or, without a chat, an e-mail to the owners. Null while nothing was told.
+             */
+            organizer_told_at?: string | null;
+        };
+        /** @description A scan of a replaced ticket's code after the reissue. */
+        ReissueOldCodeAttempt: {
+            /**
+             * Format: date-time
+             * @description When the code was scanned.
+             */
+            at: string;
+            /** @description The scanner, arena_scanner or macs. */
+            source: string;
+            /** @description What the scanner answered, admitted or denied. */
+            result: string;
+            /** @description The entrance or scanner name, when the scanner sent one. */
+            gate?: string;
         };
         /** @description The result of a reissue. */
         ReissueTicketsResponse: {

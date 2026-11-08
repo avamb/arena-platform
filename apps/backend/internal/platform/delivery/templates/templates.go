@@ -472,7 +472,8 @@ type MarketingConfirmData struct {
 
 // SalesAlertData is the content of a sales alert.
 type SalesAlertData struct {
-	// Kind is "sold_out" or "site_stale" (salesalert.KindSoldOut / KindSiteStale).
+	// Kind is "sold_out", "site_stale" or "reissue_old_code"
+	// (salesalert.KindSoldOut / KindSiteStale / KindReissueOldCode).
 	Kind string
 	// Manual: the sell-out was set by hand; Actor names who did it.
 	Manual bool
@@ -486,6 +487,19 @@ type SalesAlertData struct {
 	// State is the new state of the change the sites did not take
 	// ("open", "soon" or "sold_out"), named by the template.
 	State string
+	// Kind "reissue_old_code" (spec 63 section 4.8): the old code of a
+	// replaced ticket was used before the replacement, or tried after it
+	// (Attempt). OrderNumber is 0 for an invitation without an order. At is
+	// the moment on the venue's clock; Source is "arena_scanner" or "macs",
+	// Gate the entrance, Admitted whether the scanner let the person in.
+	Attempt     bool
+	OrderNumber int64
+	OldNumber   int64
+	NewNumber   int64
+	At          string
+	Source      string
+	Gate        string
+	Admitted    bool
 }
 
 // RefundData is the refund e-mail's own block.

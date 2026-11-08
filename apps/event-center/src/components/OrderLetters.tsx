@@ -104,7 +104,22 @@ export function OrderLetters({
         </p>
       )}
       <LetterHistory order={order} />
-      {open && <ResendTicketsDialog orgId={orgId} order={order} onClose={() => setOpen(false)} />}
+      {open && (
+        <ResendTicketsDialog
+          orgId={orgId}
+          order={order}
+          onClose={() => setOpen(false)}
+          onUseReissue={
+            reissue
+              ? () => {
+                  // The tickets reached a stranger: new tickets, new barcodes.
+                  setOpen(false);
+                  setReissueOpen(true);
+                }
+              : undefined
+          }
+        />
+      )}
       {reissueOpen && (
         <ReissueTicketsDialog
           orgId={orgId}

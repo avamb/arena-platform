@@ -2179,6 +2179,12 @@ other = "✉️ <b>Send the tickets?</b>\n\nOrder №{{.Num}} · tickets: {{.N}}
 ["bot.resend.confirm_other"]
 other = "✉️ <b>Send the tickets?</b>\n\nOrder №{{.Num}} · tickets: {{.N}}\nTo: {{.Email}}\n\nOne-time address: the order's own address stays as it is, and this one stops working after 24 hours."
 
+["bot.resend.copy_warning"]
+other = "⚠️ This letter carries the same tickets with the same barcodes. The copy at the order's address stays valid: it admits at the door too."
+
+["bot.resend.copy_replace"]
+other = "Is the order's address not the buyer's? Then press «Replace tickets». New tickets with new barcodes go to the right address, and the old tickets stop working."
+
 ["bot.resend.send_btn"]
 other = "✉️ Send"
 

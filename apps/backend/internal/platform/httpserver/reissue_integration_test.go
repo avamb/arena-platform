@@ -9,7 +9,8 @@
 // relay accepted the letter (a refused send is send_failed and a resend
 // requeues it), a repeat with the same key answers the first result, a second
 // operation is 409 while the first has not been sent, every refusal writes
-// nothing, a used code does not stop it, a live selling site refuses it and a
+// nothing, a used code does not stop it and is told to the organizer like a
+// try with the old code afterwards, a live selling site refuses it and a
 // switched-off one does not, the journal keeps both addresses while the audit
 // and the order history do not, and another organization only gets 404.
 //
@@ -22,12 +23,16 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesalert"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/ticketreissue"
 )
 
@@ -353,13 +358,9 @@ func TestReissue_Integration(t *testing.T) {
 		}
 		var customerAfter *uuid.UUID
 		_ = f.pool.QueryRow(ctx, `SELECT customer_id FROM orders WHERE id = $1`, order).Scan(&customerAfter)
-		if customerAfter == nil || (customerBefore != nil && *customerAfter == *customerBefore) {
-			t.Fatalf("the order was not tied to the new address's customer: %v -> %v", customerBefore, customerAfter)
-		}
-		if customerBefore != nil {
-			if n := f.count(`SELECT count(*) FROM customers WHERE id = $1`, *customerBefore); n != 1 {
-				t.Fatal("the old customer must stay")
-			}
+		// The order keeps its customer (decision of 2026-11-08, О-7).
+		if (customerBefore == nil) != (customerAfter == nil) || (customerBefore != nil && *customerAfter != *customerBefore) {
+			t.Fatalf("the reissue changed the order's customer: %v -> %v", customerBefore, customerAfter)
 		}
 		if n := f.count(`SELECT count(*) FROM ticket_reissues WHERE id = $1 AND state = 'applied'
 			AND provider_email_state = 'not_applicable'`, uuid.MustParse(reissueID)); n != 1 {
@@ -456,6 +457,102 @@ func TestReissue_Integration(t *testing.T) {
 		}
 		if n := f.count(`SELECT count(*) FROM ticket_reissues WHERE order_id = $1 AND old_code_scanned_at IS NOT NULL`, scanned); n != 1 {
 			t.Fatal("journal lacks old_code_scanned_at")
+		}
+	})
+
+	// Decision of 2026-11-08 (О-5): an entry with the old code before the
+	// reissue and a try after it are told to the organization once each: its
+	// sales chat, else an e-mail to the owners; the order card shows the try.
+	t.Run("old_code_notices", func(t *testing.T) {
+		t.Cleanup(func() {
+			_, _ = f.pool.Exec(context.Background(), `DELETE FROM worker_jobs WHERE job_type = $1 AND payload->>'org_id' = $2`,
+				salesalert.JobTypeAlertEmail, f.orgA.String())
+		})
+		if _, err := f.pool.Exec(ctx, `INSERT INTO sales_alert_watch_state (id) VALUES (1) ON CONFLICT DO NOTHING`); err != nil {
+			t.Fatal(err)
+		}
+		var orderNumber int64
+		if err := f.pool.QueryRow(ctx, `SELECT system_id FROM orders WHERE id = $1`, order).Scan(&orderNumber); err != nil {
+			t.Fatal(err)
+		}
+		// A MACS scan of the old code after the reissue: kept once, the first
+		// one wins; an unrelated ticket changes nothing.
+		// A second after now: later than the reissue made a moment ago.
+		at := time.Now().UTC().Add(time.Second)
+		if ok, err := ticketreissue.RecordOldCodeAttempt(ctx, f.pool, f.ticket1, at, ticketreissue.AttemptSourceMACS,
+			ticketreissue.AttemptAdmitted, "North gate"); err != nil || !ok {
+			t.Fatalf("record attempt: %v %v", ok, err)
+		}
+		if ok, _ := ticketreissue.RecordOldCodeAttempt(ctx, f.pool, f.ticket1, at.Add(time.Minute), ticketreissue.AttemptSourceArena,
+			ticketreissue.AttemptDenied, ""); ok {
+			t.Fatal("a second try overwrote the first one")
+		}
+		if ok, _ := ticketreissue.RecordOldCodeAttempt(ctx, f.pool, uuid.New(), at, ticketreissue.AttemptSourceMACS,
+			ticketreissue.AttemptDenied, ""); ok {
+			t.Fatal("a ticket that was never replaced recorded an attempt")
+		}
+
+		chat := &reissueChat{delivered: map[string]bool{f.orgA.String(): true}}
+		w := salesalert.NewWatcher(salesalert.Options{Pool: f.pool, Announcer: chat})
+		if _, err := w.RunOnce(ctx, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+		attempt := chat.textWith(f.orgA.String(), "MACS")
+		if attempt == "" || !strings.Contains(attempt, "North gate") || !strings.Contains(attempt, strconv.FormatInt(orderNumber, 10)) {
+			t.Fatalf("no chat message about the try, got %v", chat.texts)
+		}
+		for _, bad := range []string{newEmail, "@"} {
+			if strings.Contains(attempt, bad) {
+				t.Fatalf("the chat message carries %q: %s", bad, attempt)
+			}
+		}
+		// The entry before the reissue of the scanned order is told too.
+		var scannedNumber int64
+		_ = f.pool.QueryRow(ctx, `SELECT system_ticket_id FROM tickets WHERE id = $1`, scannedTicket).Scan(&scannedNumber)
+		if chat.textWith(f.orgA.String(), "№"+strconv.FormatInt(scannedNumber, 10)) == "" {
+			t.Fatalf("no chat message about the entry before the reissue, got %v", chat.texts)
+		}
+		// Each is told once.
+		told := len(chat.texts)
+		if _, err := w.RunOnce(ctx, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+		if len(chat.texts) != told {
+			t.Fatalf("a second pass told again: %d -> %d", told, len(chat.texts))
+		}
+		// The order card's history shows the try.
+		code, b := f.reissueDo(http.MethodGet, reissuePath(f.orgA, order, "reissues"), f.managerTok, "", "")
+		list, _ := b["reissues"].([]any)
+		if code != 200 || len(list) == 0 {
+			t.Fatalf("history: %d %v", code, b)
+		}
+		found := false
+		for _, e := range list {
+			for _, p := range e.(map[string]any)["tickets"].([]any) {
+				m := p.(map[string]any)
+				if m["old_ticket_id"] == f.ticket1.String() {
+					a, _ := m["old_code_attempt"].(map[string]any)
+					found = a != nil && a["source"] == "macs" && a["result"] == "admitted" && a["gate"] == "North gate" &&
+						m["organizer_told_at"] != nil
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("the history does not show the try: %v", list)
+		}
+		// Without a chat that took the message the owners get an e-mail.
+		if ok, err := ticketreissue.RecordOldCodeAttempt(ctx, f.pool, f.ticket2, at, ticketreissue.AttemptSourceArena,
+			ticketreissue.AttemptDenied, ""); err != nil || !ok {
+			t.Fatalf("record second attempt: %v %v", ok, err)
+		}
+		chat.delivered = map[string]bool{}
+		if _, err := w.RunOnce(ctx, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+		if n := f.count(`SELECT count(*) FROM worker_jobs WHERE job_type = $1 AND payload->>'org_id' = $2
+			AND payload->>'kind' = 'reissue_old_code' AND (payload->>'attempt')::boolean
+			AND payload::text NOT LIKE '%@%'`, salesalert.JobTypeAlertEmail, f.orgA.String()); n != 1 {
+			t.Fatalf("%d owner e-mails queued for the try without a chat, want 1", n)
 		}
 	})
 
@@ -606,4 +703,35 @@ func TestReissue_InvitationWithoutOrder(t *testing.T) {
 		`{"email":"`+newEmail+`","reason":"other"}`); code != 409 || ecErrCode(b) != "reissue.invitation_not_issued" {
 		t.Fatalf("revoked invitation: %d %v", code, b)
 	}
+}
+
+// reissueChat records the messages the sales alert watch posts. An
+// organization in delivered takes them; any other has no chat.
+type reissueChat struct {
+	mu        sync.Mutex
+	delivered map[string]bool
+	texts     []reissueChatText
+}
+
+type reissueChatText struct{ org, text string }
+
+func (c *reissueChat) AnnounceToOrg(_ context.Context, orgID, text string) (int, int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.delivered[orgID] {
+		return 0, 0, nil
+	}
+	c.texts = append(c.texts, reissueChatText{orgID, text})
+	return 1, 1, nil
+}
+
+func (c *reissueChat) textWith(org, part string) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, t := range c.texts {
+		if t.org == org && strings.Contains(t.text, part) {
+			return t.text
+		}
+	}
+	return ""
 }

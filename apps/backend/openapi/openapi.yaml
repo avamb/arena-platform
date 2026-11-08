@@ -4266,6 +4266,34 @@ components:
           type: [string, "null"]
           format: date-time
           description: When the closed ticket's code was used at the door before the reissue.
+        old_code_attempt:
+          description: The first try to enter with the closed ticket's code after the reissue, or null when nobody tried.
+          oneOf:
+            - $ref: "#/components/schemas/ReissueOldCodeAttempt"
+            - type: "null"
+        organizer_told_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the organization was told about the old code (an entry before the reissue or a try after it) through its sales chat or, without a chat, an e-mail to the owners. Null while nothing was told.
+
+    ReissueOldCodeAttempt:
+      type: object
+      description: A scan of a replaced ticket's code after the reissue.
+      required: [at, source, result]
+      properties:
+        at:
+          type: string
+          format: date-time
+          description: When the code was scanned.
+        source:
+          type: string
+          description: The scanner, arena_scanner or macs.
+        result:
+          type: string
+          description: What the scanner answered, admitted or denied.
+        gate:
+          type: string
+          description: The entrance or scanner name, when the scanner sent one.
 
     ReissueTicketsResponse:
       type: object

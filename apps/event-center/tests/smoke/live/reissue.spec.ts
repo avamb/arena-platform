@@ -158,9 +158,9 @@ test.describe("replace tickets on the three roles (live)", () => {
       await expect(page.getByTestId("reissue-email-note")).toContainText("does not look like an e-mail address");
       await page.getByTestId("reissue-email").fill(RIGHT_EMAIL);
       await page.getByTestId("reissue-continue").click();
-      // The reason is required.
-      await page.getByTestId("reissue-continue").click();
-      await expect(page.getByTestId("reissue-reason-note")).toContainText("Choose a reason");
+      // O-4: the typo reason is chosen at the start, and the person may change it.
+      await expect(page.getByTestId("reissue-reason-sent_to_wrong_address")).toBeChecked();
+      await page.getByTestId("reissue-reason-other").check();
       await page.getByTestId("reissue-reason-sent_to_wrong_address").check();
       await page.getByTestId("reissue-note").fill(`Checked the name by phone (${label})`);
       await page.getByTestId("reissue-continue").click();
@@ -203,6 +203,8 @@ test.describe("replace tickets on the three roles (live)", () => {
       await expect(entry).toHaveCount(1);
       await expect(entry).toHaveAttribute("data-state", "pending");
       await expect(page.getByTestId("reissue-entry-tickets")).toContainText(`№${order.tickets[0].number} → №`);
+      // O-5: the code used at the door before the replacement is named on the entry.
+      await expect(page.getByTestId("reissue-entry-old-before")).toContainText(`Old code №${order.tickets[1].number} was used at the entrance`);
 
       // A second reissue waits for the first letter: the dialog offers "Send the letter again".
       await page.getByTestId("reissue-open").click();

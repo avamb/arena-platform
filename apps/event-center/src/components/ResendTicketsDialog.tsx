@@ -12,6 +12,11 @@
  * say so. An order sold through a seller's own site is refused by the API
  * (409 order.seller_site_order, the site writes its own letters) and the result
  * says so with the order number, exactly as the bot does.
+ *
+ * Before a send to ANOTHER address the confirm step warns that the same tickets
+ * with the same barcodes go out, so the copy at the order's address keeps
+ * admitting, and offers "Replace tickets" when the card offers a reissue
+ * (owner decision O-8, `resendCopyNotice`).
  */
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -25,6 +30,7 @@ import {
   maskEmail,
   orderAddress,
   resendFailure,
+  resendCopyNotice,
   resendFailureKey,
   validResendEmail,
   type ResendFailure,
@@ -41,9 +47,14 @@ export interface ResendTicketsDialogProps {
   orgId: string;
   order: OrderDetail;
   onClose: () => void;
+  /**
+   * Opens "Replace tickets" for this order. Pass it only when the card offers a
+   * reissue (`reissueOffered`); without it the warning stands alone.
+   */
+  onUseReissue?: () => void;
 }
 
-export function ResendTicketsDialog({ orgId, order, onClose }: ResendTicketsDialogProps) {
+export function ResendTicketsDialog({ orgId, order, onClose, onUseReissue }: ResendTicketsDialogProps) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
   const ids = useId();
@@ -123,6 +134,7 @@ export function ResendTicketsDialog({ orgId, order, onClose }: ResendTicketsDial
 
   const same = oneTime === "";
   const confirmTo = same ? maskEmail(address) : oneTime;
+  const copyNotice = resendCopyNotice(oneTime, address, onUseReissue !== undefined);
 
   return (
     <div className="dialog-backdrop">
@@ -214,6 +226,25 @@ export function ResendTicketsDialog({ orgId, order, onClose }: ResendTicketsDial
             <p data-testid="resend-confirm-text">
               {t(same ? "resend.confirmSame" : "resend.confirmOther", { number, count, email: confirmTo })}
             </p>
+            {copyNotice.kind === "sameCodes" && (
+              <div className="notice notice-warn" data-testid="resend-same-codes">
+                <p>{t("resend.sameCodes")}</p>
+                <p>{t(copyNotice.offerReissue ? "resend.sameCodesReplace" : "resend.sameCodesAsk")}</p>
+                {copyNotice.offerReissue && onUseReissue !== undefined && (
+                  <p>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={busy}
+                      onClick={onUseReissue}
+                      data-testid="resend-use-reissue"
+                    >
+                      {t("resend.replaceBtn")}
+                    </button>
+                  </p>
+                )}
+              </div>
+            )}
             <div className="dialog-actions">
               <button
                 type="button"

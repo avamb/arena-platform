@@ -435,3 +435,44 @@ func TestMACSScanEvents_RevokedBarcodeIsNeverAnEntry(t *testing.T) {
 		t.Fatalf("outbox row with barcode_revoked: %d", n)
 	}
 }
+
+// TestMACSScanEvents_OldCodeOfAReplacedTicketIsRecorded: a MACS scan of a
+// ticket a reissue replaced (spec 63 section 4.8) is kept on the reissue item
+// so the organizer is told: a scan after the reissue is the try, a late scan
+// from before it is an entry before the reissue.
+func TestMACSScanEvents_OldCodeOfAReplacedTicketIsRecorded(t *testing.T) {
+	m := newMACSScanEnv(t)
+	ctx := context.Background()
+	old, repl := m.f.tickets[0], m.f.tickets[1]
+	reissueAt := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Second)
+	var reissueID uuid.UUID
+	if err := m.srv.pgxPool.QueryRow(ctx, `INSERT INTO ticket_reissues (org_id, order_id, new_email, reason, actor_type,
+			idempotency_key, request_fingerprint, created_at)
+		VALUES ($1, $2, 'new@example.test', 'other', 'user', $3, 'fp', $4) RETURNING id`,
+		m.org, m.f.order, "macs-"+uuid.NewString(), reissueAt).Scan(&reissueID); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		c := context.Background()
+		_, _ = m.srv.pgxPool.Exec(c, `DELETE FROM ticket_reissue_items WHERE reissue_id = $1`, reissueID)
+		_, _ = m.srv.pgxPool.Exec(c, `DELETE FROM ticket_reissues WHERE id = $1`, reissueID)
+	})
+	m.exec(t, `INSERT INTO ticket_reissue_items (reissue_id, old_ticket_id, new_ticket_id, new_barcode) VALUES ($1, $2, $3, 'x')`,
+		reissueID, old, repl)
+	m.exec(t, `UPDATE tickets SET status = 'transferred', cancellation_reason = 'reissued' WHERE id = $1`, old)
+	code := m.storedBarcode(t, old)
+	before := reissueAt.Add(-time.Hour).Format(time.RFC3339)
+	after := reissueAt.Add(time.Hour).Format(time.RFC3339)
+	st, out, _, _ := m.signedPost(t, []map[string]any{
+		{"scan_id": "m1-old-" + uuid.NewString()[:8], "barcode": code, "result": "rejected", "scanned_at": after, "scanner_id": "dev-1", "gate": "East"},
+		{"scan_id": "m1-late-" + uuid.NewString()[:8], "barcode": code, "result": "admitted", "scanned_at": before, "scanner_id": "dev-1", "gate": "East"},
+	})
+	if st != http.StatusAccepted {
+		t.Fatalf("batch: %d %v", st, out)
+	}
+	if n := m.count(t, `SELECT count(*) FROM ticket_reissue_items WHERE reissue_id = $1
+		AND old_code_attempt_at = $2 AND old_code_attempt_source = 'macs' AND old_code_attempt_result = 'denied'
+		AND old_code_attempt_gate = 'East' AND old_used_at = $3`, reissueID, reissueAt.Add(time.Hour), reissueAt.Add(-time.Hour)); n != 1 {
+		t.Fatalf("the reissue item does not hold the try and the late entry: %d", n)
+	}
+}

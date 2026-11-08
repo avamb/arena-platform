@@ -110,6 +110,7 @@ test.describe("resend tickets on the three roles (live)", () => {
       await page.getByTestId("resend-same").click();
       // Confirmation: nothing is queued before it.
       await expect(page.getByTestId("resend-confirm-text")).toContainText("(the order's address)");
+      await expect(page.getByTestId("resend-same-codes")).toHaveCount(0);
       expect(calls.includes(`POST ${resendPath}`), "nothing sent before the confirmation").toBe(false);
       await page.getByTestId("resend-send").click();
       await expect(page.getByTestId("resend-done")).toContainText("on their way");
@@ -130,6 +131,9 @@ test.describe("resend tickets on the three roles (live)", () => {
       await page.getByTestId("resend-continue").click();
       await expect(page.getByTestId("resend-confirm-text")).toContainText(OTHER_EMAIL);
       await expect(page.getByTestId("resend-confirm-text")).toContainText("One-time address");
+      // O-8: the same barcodes go out, so the replacement is offered beside the warning.
+      await expect(page.getByTestId("resend-same-codes")).toContainText("same barcodes");
+      await expect(page.getByTestId("resend-use-reissue")).toBeVisible();
       await page.getByTestId("resend-send").click();
       await expect(page.getByTestId("resend-done")).toContainText("We used this address once");
       await page.getByTestId("resend-close").click();

@@ -2007,6 +2007,12 @@ other = "✉️ <b>¿Enviar las entradas?</b>\n\nPedido №{{.Num}} · entradas:
 ["bot.resend.confirm_other"]
 other = "✉️ <b>¿Enviar las entradas?</b>\n\nPedido №{{.Num}} · entradas: {{.N}}\nA: {{.Email}}\n\nDirección de un solo uso: la del pedido se queda como está y esta deja de valer a las 24 horas."
 
+["bot.resend.copy_warning"]
+other = "⚠️ Este correo lleva las mismas entradas con los mismos códigos de barras. La copia en la dirección del pedido sigue siendo válida: también da acceso."
+
+["bot.resend.copy_replace"]
+other = "¿La dirección del pedido no es del comprador? Entonces pulsa «Reemitir entradas». Las entradas nuevas, con códigos nuevos, irán a la dirección correcta y las antiguas dejarán de valer."
+
 ["bot.resend.send_btn"]
 other = "✉️ Enviar"
 

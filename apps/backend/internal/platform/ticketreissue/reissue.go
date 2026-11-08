@@ -28,6 +28,19 @@ type Pair struct {
 	Seat         string
 	Category     string
 	OldScannedAt *time.Time
+	// The first try with the old code after the reissue (spec 63 section
+	// 4.8): nil when nobody tried. NotifiedAt is when the organizer was
+	// told about the entry before the reissue or the try after it.
+	Attempt    *OldCodeAttempt
+	NotifiedAt *time.Time
+}
+
+// OldCodeAttempt is a scan of a replaced ticket's code after the reissue.
+type OldCodeAttempt struct {
+	At     time.Time
+	Source string
+	Result string
+	Gate   string
 }
 
 // Input is one reissue request.
@@ -425,6 +438,9 @@ func loadPairs(ctx context.Context, q Querier, reissueID uuid.UUID) ([]Pair, err
 	rows, err := q.Query(ctx, `
 		SELECT i.old_ticket_id, i.new_ticket_id, ot.system_ticket_id, nt.system_ticket_id,
 		       COALESCE(i.old_barcode, ''), i.new_barcode, i.old_used_at,
+		       i.old_code_attempt_at, COALESCE(i.old_code_attempt_source, ''),
+		       COALESCE(i.old_code_attempt_result, ''), COALESCE(i.old_code_attempt_gate, ''),
+		       GREATEST(i.entry_notified_at, i.attempt_notified_at),
 		       concat_ws(' · ', NULLIF(nt.seat_sector, ''), NULLIF(nt.seat_row, ''), NULLIF(nt.seat_number, '')),
 		       COALESCE(tt.name, '')
 		FROM   ticket_reissue_items i
@@ -439,10 +455,18 @@ func loadPairs(ctx context.Context, q Querier, reissueID uuid.UUID) ([]Pair, err
 	defer rows.Close()
 	var out []Pair
 	for rows.Next() {
-		var p Pair
+		var (
+			p                    Pair
+			attemptAt            *time.Time
+			source, result, gate string
+		)
 		if err := rows.Scan(&p.OldTicketID, &p.NewTicketID, &p.OldNumber, &p.NewNumber,
-			&p.OldBarcode, &p.NewBarcode, &p.OldScannedAt, &p.Seat, &p.Category); err != nil {
+			&p.OldBarcode, &p.NewBarcode, &p.OldScannedAt,
+			&attemptAt, &source, &result, &gate, &p.NotifiedAt, &p.Seat, &p.Category); err != nil {
 			return nil, err
+		}
+		if attemptAt != nil {
+			p.Attempt = &OldCodeAttempt{At: *attemptAt, Source: source, Result: result, Gate: gate}
 		}
 		out = append(out, p)
 	}

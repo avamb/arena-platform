@@ -7,7 +7,8 @@
  *            another address goes on here.
  *   address  the buyer's real address, the order's masked one beside it, and
  *            the buyer's name and phone to compare with the person asking.
- *   reason   one of three reasons (required) and an optional note.
+ *   reason   one of three reasons ("the address had a typo" is chosen at
+ *            the start, O-4) and an optional note.
  *   check    what happens, in words: the old tickets stop admitting, where the
  *            new ones go, a warning per code already used at the door, the
  *            payment system that keeps the old address.
@@ -42,6 +43,7 @@ import { describeApiError } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
 import { useI18n, type Params } from "@/lib/i18n";
 import {
+  DEFAULT_REISSUE_REASON,
   MAX_REISSUE_NOTE,
   REISSUE_REASONS,
   backToAddress,
@@ -109,7 +111,7 @@ export function ReissueTicketsDialog({ orgId, target, onClose, onUseResend }: Re
   const [typed, setTyped] = useState("");
   const [email, setEmail] = useState("");
   const [same, setSame] = useState(false);
-  const [reason, setReason] = useState<ReissueReason | "">("");
+  const [reason, setReason] = useState<ReissueReason | "">(DEFAULT_REISSUE_REASON);
   const [note, setNote] = useState("");
   const [problem, setProblem] = useState<"badEmail" | "reasonRequired" | "noteTooLong" | null>(null);
   const [busy, setBusy] = useState(false);

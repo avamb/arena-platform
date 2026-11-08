@@ -16,6 +16,7 @@ import type {
   OrderDetail,
   ReissueEntry,
   ReissueOptions,
+  ReissuePair,
   ReissuePending,
   ReissueProvider,
   ReissueTicketOption,
@@ -32,6 +33,12 @@ export const MAX_REISSUE_NOTE = 500;
 
 export const REISSUE_REASONS = ["sent_to_wrong_address", "forwarded_to_stranger", "other"] as const;
 export type ReissueReason = (typeof REISSUE_REASONS)[number];
+
+/**
+ * The reason the dialog starts with (owner decision O-4, 2026-11-08): most
+ * replacements fix a mistyped address. The person can still choose another.
+ */
+export const DEFAULT_REISSUE_REASON: ReissueReason = "sent_to_wrong_address";
 
 export function isReissueReason(s: string): s is ReissueReason {
   return (REISSUE_REASONS as readonly string[]).includes(s);
@@ -307,4 +314,77 @@ export function pairsText(pairs: readonly { old_number: number; new_number: numb
 export function maskedOrDash(s: string | null | undefined): string {
   const v = (s ?? "").trim();
   return v === "" ? "—" : maskEmail(v);
+}
+
+/**
+ * One line about a replaced ticket's OLD code on the history entry (owner
+ * decision O-5, 2026-11-08). `before`: somebody entered with the old code
+ * before the replacement, so both tickets admit. `after`: somebody tried the
+ * old code after the replacement, and the scanner said what it said. `told`
+ * is true once arena told the organization (sales chat or e-mail).
+ */
+export type OldCodeMark =
+  | { kind: "before"; oldNumber: number; newNumber: number; at: string; told: boolean }
+  | {
+      kind: "after";
+      oldNumber: number;
+      newNumber: number;
+      at: string;
+      source: string;
+      result: string;
+      gate: string;
+      told: boolean;
+    };
+
+function present(s: string | null | undefined): s is string {
+  return typeof s === "string" && s.trim() !== "";
+}
+
+/** The marks of one entry's tickets, in the order of the tickets: an entry before, then a try after. */
+export function oldCodeMarks(pairs: readonly ReissuePair[]): OldCodeMark[] {
+  const out: OldCodeMark[] = [];
+  for (const p of pairs) {
+    const told = present(p.organizer_told_at);
+    if (present(p.old_code_scanned_at)) {
+      out.push({ kind: "before", oldNumber: p.old_number, newNumber: p.new_number, at: p.old_code_scanned_at, told });
+    }
+    const a = p.old_code_attempt;
+    if (a !== undefined && a !== null && present(a.at)) {
+      out.push({
+        kind: "after",
+        oldNumber: p.old_number,
+        newNumber: p.new_number,
+        at: a.at,
+        source: a.source,
+        result: a.result,
+        gate: (a.gate ?? "").trim(),
+        told,
+      });
+    }
+  }
+  return out;
+}
+
+/** The scanner's name on a try with an old code; an unknown source is "the scanner". */
+export function scannerSourceKey(source: string): MessageKey {
+  switch (source) {
+    case "macs":
+      return "reissue.history.source.macs";
+    case "arena_scanner":
+      return "reissue.history.source.arena_scanner";
+    default:
+      return "reissue.history.source.other";
+  }
+}
+
+/** What the scanner answered to a try with an old code, or null when the answer is unknown. */
+export function attemptResultKey(result: string): MessageKey | null {
+  switch (result) {
+    case "admitted":
+      return "reissue.history.attempt.admitted";
+    case "denied":
+      return "reissue.history.attempt.denied";
+    default:
+      return null;
+  }
 }

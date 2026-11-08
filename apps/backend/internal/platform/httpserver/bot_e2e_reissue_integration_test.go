@@ -168,6 +168,23 @@ func TestBotE2E_Reissue_OwnerReplacesEveryTicket(t *testing.T) {
 		t.Fatalf("the resend route wrote %d reissues", n)
 	}
 
+	// ── a resend to another address warns and leads back here (O-8) ──────────
+	d.press("or:r:o", "Другой адрес")
+	warn := d.say("gift-reissue@example.org", "Копия на адресе заказа")
+	if !strings.Contains(warn, "теми же штрихкодами") {
+		t.Errorf("the resend confirmation lacks the copy warning:\n%s", warn)
+	}
+	if _, _, data := tg.lastOf(ecOwnerTG); !hasPrefixData(data, "or:x:s:"+seed.anna.String()) {
+		t.Fatalf("the resend confirmation lacks «Заменить билеты»: %v", data)
+	}
+	d.press("or:x:s:"+seed.anna.String(), "С какого адреса пишет покупатель")
+	if _, ok := resendDialogStep(t, pool, ecOwnerTG); ok {
+		t.Error("«Заменить билеты» must end the resend dialog")
+	}
+	if step, ok := reissueDialogStep(t, pool, ecOwnerTG); !ok || step != "case" {
+		t.Errorf("the reissue dialog = %q %v, want case", step, ok)
+	}
+
 	// ── "From another address": the whole path ───────────────────────────────
 	d.press("or:x:s:"+seed.anna.String(), "С какого адреса пишет покупатель")
 	ask := d.press("or:x:fn", "Верный адрес")

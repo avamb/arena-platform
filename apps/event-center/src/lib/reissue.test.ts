@@ -4,7 +4,11 @@ import type { ComplimentaryListItem, OrderDetail, ReissueOptions } from "@/lib/a
 import { CATALOGS, LOCALES } from "@/lib/i18n";
 import { apiErrorStem } from "@/lib/errors";
 import {
+  DEFAULT_REISSUE_REASON,
   INVITATION_TEXT_VARIANTS,
+  attemptResultKey,
+  oldCodeMarks,
+  scannerSourceKey,
   MAX_REISSUE_NOTE,
   invitationReissueOffered,
   reissueText,
@@ -221,5 +225,67 @@ describe("an invitation without an order (stage R-5)", () => {
   });
   it("an annulled invitation has its own refusal text", () => {
     expect(apiErrorStem(new ApiError(409, "reissue.invitation_not_issued", "x"))).toBe("reissueInvitationNotIssued");
+  });
+});
+
+describe("the default reason (O-4)", () => {
+  it("starts on the typo reason, which passes the reason check", () => {
+    expect(DEFAULT_REISSUE_REASON).toBe("sent_to_wrong_address");
+    expect(checkReissueReason(DEFAULT_REISSUE_REASON, "")).toEqual({ ok: true });
+  });
+});
+
+describe("the old code on the history (O-5)", () => {
+  const pair = (over: Record<string, unknown> = {}) =>
+    ({ old_ticket_id: "o", old_number: 12, new_ticket_id: "n", new_number: 15, seat: "", category: "Standing", ...over }) as Parameters<
+      typeof oldCodeMarks
+    >[0][number];
+
+  it("says nothing when the old code was neither used nor tried", () => {
+    expect(oldCodeMarks([pair(), pair({ old_code_scanned_at: null, old_code_attempt: null, organizer_told_at: null })])).toEqual([]);
+  });
+  it("an entry before the replacement", () => {
+    expect(oldCodeMarks([pair({ old_code_scanned_at: "2026-11-07T18:00:00Z" })])).toEqual([
+      { kind: "before", oldNumber: 12, newNumber: 15, at: "2026-11-07T18:00:00Z", told: false },
+    ]);
+  });
+  it("a try after the replacement, with the gate and the notice", () => {
+    expect(
+      oldCodeMarks([
+        pair({
+          old_code_attempt: { at: "2026-11-08T19:00:00Z", source: "macs", result: "denied", gate: " G " },
+          organizer_told_at: "2026-11-08T19:01:00Z",
+        }),
+      ]),
+    ).toEqual([
+      { kind: "after", oldNumber: 12, newNumber: 15, at: "2026-11-08T19:00:00Z", source: "macs", result: "denied", gate: "G", told: true },
+    ]);
+  });
+  it("both lines of one ticket, before first", () => {
+    const m = oldCodeMarks([
+      pair({ old_code_scanned_at: "2026-11-07T18:00:00Z", old_code_attempt: { at: "2026-11-08T19:00:00Z", source: "arena_scanner", result: "admitted" } }),
+    ]);
+    expect(m.map((x) => x.kind)).toEqual(["before", "after"]);
+    expect(m[1]).toMatchObject({ gate: "", told: false });
+  });
+  it("scanner names and answers have texts in every language", () => {
+    expect(scannerSourceKey("macs")).toBe("reissue.history.source.macs");
+    expect(scannerSourceKey("arena_scanner")).toBe("reissue.history.source.arena_scanner");
+    expect(scannerSourceKey("other")).toBe("reissue.history.source.other");
+    expect(attemptResultKey("admitted")).toBe("reissue.history.attempt.admitted");
+    expect(attemptResultKey("denied")).toBe("reissue.history.attempt.denied");
+    expect(attemptResultKey("weird")).toBeNull();
+    const keys = [
+      "reissue.history.oldBefore",
+      "reissue.history.oldAfter",
+      "reissue.history.oldAfterGate",
+      "reissue.history.told",
+      "reissue.history.source.macs",
+      "reissue.history.source.arena_scanner",
+      "reissue.history.source.other",
+      "reissue.history.attempt.admitted",
+      "reissue.history.attempt.denied",
+    ];
+    for (const locale of LOCALES) for (const k of keys) expect(Object.prototype.hasOwnProperty.call(CATALOGS[locale], k), `${locale} ${k}`).toBe(true);
   });
 });

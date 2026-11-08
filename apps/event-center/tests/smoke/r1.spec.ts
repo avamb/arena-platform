@@ -196,6 +196,8 @@ test.describe("R1 read-only event center", () => {
     await expect(page.getByTestId("resend-dialog")).toBeVisible();
     await noA11yViolations(page);
     await page.getByTestId("resend-same").click();
+    // The order's own address: no warning about the copy.
+    await expect(page.getByTestId("resend-same-codes")).toHaveCount(0);
     expect(state.requests.some((r) => r.includes("resend-tickets"))).toBe(false);
     await page.getByTestId("resend-send").click();
     await expect(page.getByTestId("resend-done")).toContainText("on their way");
@@ -204,6 +206,10 @@ test.describe("R1 read-only event center", () => {
     await page.getByTestId("resend-other").click();
     await page.getByTestId("resend-email").fill("site@example.test");
     await page.getByTestId("resend-continue").click();
+    // Another address (O-8): the same barcodes go out, and the replacement is offered.
+    await expect(page.getByTestId("resend-same-codes")).toContainText("same barcodes");
+    await expect(page.getByTestId("resend-use-reissue")).toBeVisible();
+    await noA11yViolations(page);
     await page.getByTestId("resend-send").click();
     await expect(page.getByTestId("resend-refused-site")).toContainText("sold through the seller's own site");
     await page.getByTestId("resend-close").click();

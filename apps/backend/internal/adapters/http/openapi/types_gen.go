@@ -16993,6 +16993,21 @@ type ReissueHistory struct {
 	Reissues []ReissueEntry `json:"reissues"`
 }
 
+// ReissueOldCodeAttempt A scan of a replaced ticket's code after the reissue.
+type ReissueOldCodeAttempt struct {
+	// At When the code was scanned.
+	At time.Time `json:"at"`
+
+	// Gate The entrance or scanner name, when the scanner sent one.
+	Gate *string `json:"gate,omitempty"`
+
+	// Result What the scanner answered, admitted or denied.
+	Result string `json:"result"`
+
+	// Source The scanner, arena_scanner or macs.
+	Source string `json:"source"`
+}
+
 // ReissueOptions The check screen of a ticket reissue.
 type ReissueOptions struct {
 	// Blocked The error code a reissue would answer now, null when it may run.
@@ -17043,6 +17058,9 @@ type ReissuePair struct {
 	// NewTicketId UUID of the new ticket.
 	NewTicketId openapi_types.UUID `json:"new_ticket_id"`
 
+	// OldCodeAttempt The first try to enter with the closed ticket's code after the reissue, or null when nobody tried.
+	OldCodeAttempt *ReissueOldCodeAttempt `json:"old_code_attempt"`
+
 	// OldCodeScannedAt When the closed ticket's code was used at the door before the reissue.
 	OldCodeScannedAt *time.Time `json:"old_code_scanned_at"`
 
@@ -17051,6 +17069,9 @@ type ReissuePair struct {
 
 	// OldTicketId UUID of the closed ticket.
 	OldTicketId openapi_types.UUID `json:"old_ticket_id"`
+
+	// OrganizerToldAt When the organization was told about the old code (an entry before the reissue or a try after it) through its sales chat or, without a chat, an e-mail to the owners. Null while nothing was told.
+	OrganizerToldAt *time.Time `json:"organizer_told_at"`
 
 	// Seat Sector, row and seat of both tickets.
 	Seat string `json:"seat"`
