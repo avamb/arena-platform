@@ -1,0 +1,3555 @@
+[
+ {
+  "platform": "Eventbrite",
+  "website": "https://www.eventbrite.com",
+  "hq_country": "US",
+  "segment": "global self-serve marketplace + ticketing; organizers of every size; buyer pays fees by default; strongest consumer discovery audience (claims 89M monthly users)",
+  "markets": [
+   {
+    "market": "US",
+    "currency": "USD",
+    "vat_note": "VAT/tax treatment of the fee not stated in fee table (breakdown on event page 'includes any taxes')",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_notes": "Eventbrite collects the money through Eventbrite Payment Processing and pays the organizer; fees deducted from sales at payout. Default payout is after the event (3 business days after it ends, third-party summary); a 'pre-event payouts' feature is advertised without public terms; instant payouts carry a fee (rate not on pages read). Reserve/holdback terms not published on pages read.",
+    "plans": [
+     {
+      "name": "Standard (paid tickets)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 3.7,
+      "per_ticket_fixed": 1.79,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Service fee per sold ticket; PLUS 2.9% payment processing per order (on total order incl. fees and tax)",
+      "notes": "Donation tickets: 2.9% processing only."
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Eventbrite Payment Processing (own)"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "2.9% of the total order (separate line)",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer (configurable: organizer can tick 'Absorb fees')",
+    "free_tickets": "Free events/tickets: no fee at all.",
+    "seating": "No separate reserved-seating surcharge in the help-centre fee table (null = not stated).",
+    "payouts": "Collected by Eventbrite; after the event by default (3 business days after event end, third_party); pre-event and instant payouts exist but terms not captured.",
+    "refunds_chargebacks": "Ticketing Fee not refunded on refunded orders (exceptions: cancelled event, duplicate charge within 7 days). Chargeback terms not captured.",
+    "fine_print": [
+     "Ticketing Fee = service fee + payment processing fee where applicable; same fee also applies to add-ons and donations; free tickets carry no fee.",
+     "Service fee is computed on ticket price; payment processing fee (where separate) is computed on the whole order incl. service fee and tax.",
+     "Ticketing Fees are retained when an order is refunded; refunded only for a cancelled event or a duplicate charge reported within 7 days (organizer can opt to pay fees so buyer gets a full refund).",
+     "Fees vary per payout country AND currency; bank must be in the payout country; payout country/currency cannot be changed once sales are pending or tickets sold.",
+     "Pricing page content is geo-detected: eventbrite.co.uk scraped from a US-located IP still displayed the US fee (3.7% + $1.79); the help-centre country table is the authoritative source.",
+     "Optional paid extras: Eventbrite Ads (daily budget), email marketing Pro/Premium subscription; custom plans via Sales Partnerships for large/complex events (price not public).",
+     "Eventbrite Premium (optional subscription, 2026): US $69/mo or $708/yr; UK GBP 59/mo or 588/yr; CA CA$89/mo or CA$948/yr; AU A$99/mo or A$1,068/yr; FR/DE/IE/IT/ES EUR 59/mo or 588/yr; NZ NZ$99/mo or NZ$1,068/yr. Includes paid-social promotion, badge, $20/mo ad credit, 2,000 emails/day, priority support, 50% off instant-payout fees. Legacy Pro plan closed to new subscribers.",
+     "At-the-door (Organizer app) fees only for AUD/CAD/GBP/USD events: US $1/paid ticket + 2.9% per order; CA C$1 + 2.9%; UK GBP 0.50 + 1.6% per order; AU A$1.00 + 2% per order; free for offline cash/cheque; processing fee cannot be passed on in the app."
+    ],
+    "add_ons": [
+     {
+      "name": "Email marketing (Pro)",
+      "price": "from $15/month US, from GBP 12/month UK (pricing page)"
+     },
+     {
+      "name": "Eventbrite Premium",
+      "price": "see fine print"
+     },
+     {
+      "name": "Eventbrite Ads",
+      "price": "pay per daily budget"
+     }
+    ],
+    "enterprise": "Contact Sales Partnerships for large or complex events; price not public",
+    "sources": [
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/755615/how-much-does-it-cost-for-organizers-to-use-eventbrite/",
+      "read": "2026-10-09",
+      "what": "help centre: Ticketing Fees per country (primary)"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/193833/eventbrites-new-pricing-plans/",
+      "read": "2026-10-09",
+      "what": "help centre: pricing and plans / Premium"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/548304/is-the-eventbrite-fee-refundable/",
+      "read": "2026-10-09",
+      "what": "help centre: is the fee refundable"
+     },
+     {
+      "url": "https://hi.events/ticketing-platform-payouts",
+      "read": "2026-10-09",
+      "what": "third-party payout comparison (Hi.Events, a competitor)"
+     },
+     {
+      "url": "https://www.eventbrite.com/organizer/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "UK",
+    "currency": "GBP",
+    "vat_note": "VAT/tax treatment of the fee not stated in fee table (breakdown on event page 'includes any taxes')",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_notes": "Eventbrite collects the money through Eventbrite Payment Processing and pays the organizer; fees deducted from sales at payout. Default payout is after the event (3 business days after it ends, third-party summary); a 'pre-event payouts' feature is advertised without public terms; instant payouts carry a fee (rate not on pages read). Reserve/holdback terms not published on pages read.",
+    "plans": [
+     {
+      "name": "Standard (paid tickets)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 6.95,
+      "per_ticket_fixed": 0.59,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Service fee per sold ticket; payment processing 'Not applicable' (included in the service fee)",
+      "notes": "Donation tickets: 2% service fee. At-door: GBP 0.50/ticket + 1.6% per order."
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Eventbrite Payment Processing (own)"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "Included in the service fee (no separate line)",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer (configurable: organizer can tick 'Absorb fees')",
+    "free_tickets": "Free events/tickets: no fee at all.",
+    "seating": "No separate reserved-seating surcharge in the help-centre fee table (null = not stated).",
+    "payouts": "Collected by Eventbrite; after the event by default (3 business days after event end, third_party); pre-event and instant payouts exist but terms not captured.",
+    "refunds_chargebacks": "Ticketing Fee not refunded on refunded orders (exceptions: cancelled event, duplicate charge within 7 days). Chargeback terms not captured.",
+    "fine_print": [
+     "Ticketing Fee = service fee + payment processing fee where applicable; same fee also applies to add-ons and donations; free tickets carry no fee.",
+     "Service fee is computed on ticket price; payment processing fee (where separate) is computed on the whole order incl. service fee and tax.",
+     "Ticketing Fees are retained when an order is refunded; refunded only for a cancelled event or a duplicate charge reported within 7 days (organizer can opt to pay fees so buyer gets a full refund).",
+     "Fees vary per payout country AND currency; bank must be in the payout country; payout country/currency cannot be changed once sales are pending or tickets sold.",
+     "Pricing page content is geo-detected: eventbrite.co.uk scraped from a US-located IP still displayed the US fee (3.7% + $1.79); the help-centre country table is the authoritative source.",
+     "Optional paid extras: Eventbrite Ads (daily budget), email marketing Pro/Premium subscription; custom plans via Sales Partnerships for large/complex events (price not public).",
+     "Eventbrite Premium (optional subscription, 2026): US $69/mo or $708/yr; UK GBP 59/mo or 588/yr; CA CA$89/mo or CA$948/yr; AU A$99/mo or A$1,068/yr; FR/DE/IE/IT/ES EUR 59/mo or 588/yr; NZ NZ$99/mo or NZ$1,068/yr. Includes paid-social promotion, badge, $20/mo ad credit, 2,000 emails/day, priority support, 50% off instant-payout fees. Legacy Pro plan closed to new subscribers.",
+     "At-the-door (Organizer app) fees only for AUD/CAD/GBP/USD events: US $1/paid ticket + 2.9% per order; CA C$1 + 2.9%; UK GBP 0.50 + 1.6% per order; AU A$1.00 + 2% per order; free for offline cash/cheque; processing fee cannot be passed on in the app."
+    ],
+    "add_ons": [
+     {
+      "name": "Email marketing (Pro)",
+      "price": "from $15/month US, from GBP 12/month UK (pricing page)"
+     },
+     {
+      "name": "Eventbrite Premium",
+      "price": "see fine print"
+     },
+     {
+      "name": "Eventbrite Ads",
+      "price": "pay per daily budget"
+     }
+    ],
+    "enterprise": "Contact Sales Partnerships for large or complex events; price not public",
+    "sources": [
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/755615/how-much-does-it-cost-for-organizers-to-use-eventbrite/",
+      "read": "2026-10-09",
+      "what": "help centre: Ticketing Fees per country (primary)"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/193833/eventbrites-new-pricing-plans/",
+      "read": "2026-10-09",
+      "what": "help centre: pricing and plans / Premium"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/548304/is-the-eventbrite-fee-refundable/",
+      "read": "2026-10-09",
+      "what": "help centre: is the fee refundable"
+     },
+     {
+      "url": "https://hi.events/ticketing-platform-payouts",
+      "read": "2026-10-09",
+      "what": "third-party payout comparison (Hi.Events, a competitor)"
+     },
+     {
+      "url": "https://www.eventbrite.com/organizer/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "Ireland",
+    "currency": "EUR",
+    "vat_note": "VAT/tax treatment of the fee not stated in fee table (breakdown on event page 'includes any taxes')",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_notes": "Eventbrite collects the money through Eventbrite Payment Processing and pays the organizer; fees deducted from sales at payout. Default payout is after the event (3 business days after it ends, third-party summary); a 'pre-event payouts' feature is advertised without public terms; instant payouts carry a fee (rate not on pages read). Reserve/holdback terms not published on pages read.",
+    "plans": [
+     {
+      "name": "Standard (paid tickets)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 5.9,
+      "per_ticket_fixed": 0.79,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Service fee per sold ticket; processing included",
+      "notes": "Donation tickets: 2% service fee."
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Eventbrite Payment Processing (own)"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "Included in the service fee",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer (configurable: organizer can tick 'Absorb fees')",
+    "free_tickets": "Free events/tickets: no fee at all.",
+    "seating": "No separate reserved-seating surcharge in the help-centre fee table (null = not stated).",
+    "payouts": "Collected by Eventbrite; after the event by default (3 business days after event end, third_party); pre-event and instant payouts exist but terms not captured.",
+    "refunds_chargebacks": "Ticketing Fee not refunded on refunded orders (exceptions: cancelled event, duplicate charge within 7 days). Chargeback terms not captured.",
+    "fine_print": [
+     "Ticketing Fee = service fee + payment processing fee where applicable; same fee also applies to add-ons and donations; free tickets carry no fee.",
+     "Service fee is computed on ticket price; payment processing fee (where separate) is computed on the whole order incl. service fee and tax.",
+     "Ticketing Fees are retained when an order is refunded; refunded only for a cancelled event or a duplicate charge reported within 7 days (organizer can opt to pay fees so buyer gets a full refund).",
+     "Fees vary per payout country AND currency; bank must be in the payout country; payout country/currency cannot be changed once sales are pending or tickets sold.",
+     "Pricing page content is geo-detected: eventbrite.co.uk scraped from a US-located IP still displayed the US fee (3.7% + $1.79); the help-centre country table is the authoritative source.",
+     "Optional paid extras: Eventbrite Ads (daily budget), email marketing Pro/Premium subscription; custom plans via Sales Partnerships for large/complex events (price not public).",
+     "Eventbrite Premium (optional subscription, 2026): US $69/mo or $708/yr; UK GBP 59/mo or 588/yr; CA CA$89/mo or CA$948/yr; AU A$99/mo or A$1,068/yr; FR/DE/IE/IT/ES EUR 59/mo or 588/yr; NZ NZ$99/mo or NZ$1,068/yr. Includes paid-social promotion, badge, $20/mo ad credit, 2,000 emails/day, priority support, 50% off instant-payout fees. Legacy Pro plan closed to new subscribers.",
+     "At-the-door (Organizer app) fees only for AUD/CAD/GBP/USD events: US $1/paid ticket + 2.9% per order; CA C$1 + 2.9%; UK GBP 0.50 + 1.6% per order; AU A$1.00 + 2% per order; free for offline cash/cheque; processing fee cannot be passed on in the app."
+    ],
+    "add_ons": [
+     {
+      "name": "Email marketing (Pro)",
+      "price": "from $15/month US, from GBP 12/month UK (pricing page)"
+     },
+     {
+      "name": "Eventbrite Premium",
+      "price": "see fine print"
+     },
+     {
+      "name": "Eventbrite Ads",
+      "price": "pay per daily budget"
+     }
+    ],
+    "enterprise": "Contact Sales Partnerships for large or complex events; price not public",
+    "sources": [
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/755615/how-much-does-it-cost-for-organizers-to-use-eventbrite/",
+      "read": "2026-10-09",
+      "what": "help centre: Ticketing Fees per country (primary)"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/193833/eventbrites-new-pricing-plans/",
+      "read": "2026-10-09",
+      "what": "help centre: pricing and plans / Premium"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/548304/is-the-eventbrite-fee-refundable/",
+      "read": "2026-10-09",
+      "what": "help centre: is the fee refundable"
+     },
+     {
+      "url": "https://hi.events/ticketing-platform-payouts",
+      "read": "2026-10-09",
+      "what": "third-party payout comparison (Hi.Events, a competitor)"
+     },
+     {
+      "url": "https://www.eventbrite.com/organizer/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "Canada",
+    "currency": "CAD",
+    "vat_note": "VAT/tax treatment of the fee not stated in fee table (breakdown on event page 'includes any taxes')",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_notes": "Eventbrite collects the money through Eventbrite Payment Processing and pays the organizer; fees deducted from sales at payout. Default payout is after the event (3 business days after it ends, third-party summary); a 'pre-event payouts' feature is advertised without public terms; instant payouts carry a fee (rate not on pages read). Reserve/holdback terms not published on pages read.",
+    "plans": [
+     {
+      "name": "Standard (paid tickets)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 3.5,
+      "per_ticket_fixed": 1.29,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Service fee per sold ticket; plus 2.9% processing per order",
+      "notes": "At-door C$1.00/ticket + 2.9%."
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Eventbrite Payment Processing (own)"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "2.9% of total order",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer (configurable: organizer can tick 'Absorb fees')",
+    "free_tickets": "Free events/tickets: no fee at all.",
+    "seating": "No separate reserved-seating surcharge in the help-centre fee table (null = not stated).",
+    "payouts": "Collected by Eventbrite; after the event by default (3 business days after event end, third_party); pre-event and instant payouts exist but terms not captured.",
+    "refunds_chargebacks": "Ticketing Fee not refunded on refunded orders (exceptions: cancelled event, duplicate charge within 7 days). Chargeback terms not captured.",
+    "fine_print": [
+     "Ticketing Fee = service fee + payment processing fee where applicable; same fee also applies to add-ons and donations; free tickets carry no fee.",
+     "Service fee is computed on ticket price; payment processing fee (where separate) is computed on the whole order incl. service fee and tax.",
+     "Ticketing Fees are retained when an order is refunded; refunded only for a cancelled event or a duplicate charge reported within 7 days (organizer can opt to pay fees so buyer gets a full refund).",
+     "Fees vary per payout country AND currency; bank must be in the payout country; payout country/currency cannot be changed once sales are pending or tickets sold.",
+     "Pricing page content is geo-detected: eventbrite.co.uk scraped from a US-located IP still displayed the US fee (3.7% + $1.79); the help-centre country table is the authoritative source.",
+     "Optional paid extras: Eventbrite Ads (daily budget), email marketing Pro/Premium subscription; custom plans via Sales Partnerships for large/complex events (price not public).",
+     "Eventbrite Premium (optional subscription, 2026): US $69/mo or $708/yr; UK GBP 59/mo or 588/yr; CA CA$89/mo or CA$948/yr; AU A$99/mo or A$1,068/yr; FR/DE/IE/IT/ES EUR 59/mo or 588/yr; NZ NZ$99/mo or NZ$1,068/yr. Includes paid-social promotion, badge, $20/mo ad credit, 2,000 emails/day, priority support, 50% off instant-payout fees. Legacy Pro plan closed to new subscribers.",
+     "At-the-door (Organizer app) fees only for AUD/CAD/GBP/USD events: US $1/paid ticket + 2.9% per order; CA C$1 + 2.9%; UK GBP 0.50 + 1.6% per order; AU A$1.00 + 2% per order; free for offline cash/cheque; processing fee cannot be passed on in the app."
+    ],
+    "add_ons": [
+     {
+      "name": "Email marketing (Pro)",
+      "price": "from $15/month US, from GBP 12/month UK (pricing page)"
+     },
+     {
+      "name": "Eventbrite Premium",
+      "price": "see fine print"
+     },
+     {
+      "name": "Eventbrite Ads",
+      "price": "pay per daily budget"
+     }
+    ],
+    "enterprise": "Contact Sales Partnerships for large or complex events; price not public",
+    "sources": [
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/755615/how-much-does-it-cost-for-organizers-to-use-eventbrite/",
+      "read": "2026-10-09",
+      "what": "help centre: Ticketing Fees per country (primary)"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/193833/eventbrites-new-pricing-plans/",
+      "read": "2026-10-09",
+      "what": "help centre: pricing and plans / Premium"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/548304/is-the-eventbrite-fee-refundable/",
+      "read": "2026-10-09",
+      "what": "help centre: is the fee refundable"
+     },
+     {
+      "url": "https://hi.events/ticketing-platform-payouts",
+      "read": "2026-10-09",
+      "what": "third-party payout comparison (Hi.Events, a competitor)"
+     },
+     {
+      "url": "https://www.eventbrite.com/organizer/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "Australia",
+    "currency": "AUD",
+    "vat_note": "VAT/tax treatment of the fee not stated in fee table (breakdown on event page 'includes any taxes')",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_notes": "Eventbrite collects the money through Eventbrite Payment Processing and pays the organizer; fees deducted from sales at payout. Default payout is after the event (3 business days after it ends, third-party summary); a 'pre-event payouts' feature is advertised without public terms; instant payouts carry a fee (rate not on pages read). Reserve/holdback terms not published on pages read.",
+    "plans": [
+     {
+      "name": "Standard (paid tickets)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 5.35,
+      "per_ticket_fixed": 1.19,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Service fee per sold ticket; processing included",
+      "notes": "Donation tickets: 2% service fee. At-door A$1.00 + 2% per order."
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Eventbrite Payment Processing (own)"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "Included in service fee",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer (configurable: organizer can tick 'Absorb fees')",
+    "free_tickets": "Free events/tickets: no fee at all.",
+    "seating": "No separate reserved-seating surcharge in the help-centre fee table (null = not stated).",
+    "payouts": "Collected by Eventbrite; after the event by default (3 business days after event end, third_party); pre-event and instant payouts exist but terms not captured.",
+    "refunds_chargebacks": "Ticketing Fee not refunded on refunded orders (exceptions: cancelled event, duplicate charge within 7 days). Chargeback terms not captured.",
+    "fine_print": [
+     "Ticketing Fee = service fee + payment processing fee where applicable; same fee also applies to add-ons and donations; free tickets carry no fee.",
+     "Service fee is computed on ticket price; payment processing fee (where separate) is computed on the whole order incl. service fee and tax.",
+     "Ticketing Fees are retained when an order is refunded; refunded only for a cancelled event or a duplicate charge reported within 7 days (organizer can opt to pay fees so buyer gets a full refund).",
+     "Fees vary per payout country AND currency; bank must be in the payout country; payout country/currency cannot be changed once sales are pending or tickets sold.",
+     "Pricing page content is geo-detected: eventbrite.co.uk scraped from a US-located IP still displayed the US fee (3.7% + $1.79); the help-centre country table is the authoritative source.",
+     "Optional paid extras: Eventbrite Ads (daily budget), email marketing Pro/Premium subscription; custom plans via Sales Partnerships for large/complex events (price not public).",
+     "Eventbrite Premium (optional subscription, 2026): US $69/mo or $708/yr; UK GBP 59/mo or 588/yr; CA CA$89/mo or CA$948/yr; AU A$99/mo or A$1,068/yr; FR/DE/IE/IT/ES EUR 59/mo or 588/yr; NZ NZ$99/mo or NZ$1,068/yr. Includes paid-social promotion, badge, $20/mo ad credit, 2,000 emails/day, priority support, 50% off instant-payout fees. Legacy Pro plan closed to new subscribers.",
+     "At-the-door (Organizer app) fees only for AUD/CAD/GBP/USD events: US $1/paid ticket + 2.9% per order; CA C$1 + 2.9%; UK GBP 0.50 + 1.6% per order; AU A$1.00 + 2% per order; free for offline cash/cheque; processing fee cannot be passed on in the app."
+    ],
+    "add_ons": [
+     {
+      "name": "Email marketing (Pro)",
+      "price": "from $15/month US, from GBP 12/month UK (pricing page)"
+     },
+     {
+      "name": "Eventbrite Premium",
+      "price": "see fine print"
+     },
+     {
+      "name": "Eventbrite Ads",
+      "price": "pay per daily budget"
+     }
+    ],
+    "enterprise": "Contact Sales Partnerships for large or complex events; price not public",
+    "sources": [
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/755615/how-much-does-it-cost-for-organizers-to-use-eventbrite/",
+      "read": "2026-10-09",
+      "what": "help centre: Ticketing Fees per country (primary)"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/193833/eventbrites-new-pricing-plans/",
+      "read": "2026-10-09",
+      "what": "help centre: pricing and plans / Premium"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/548304/is-the-eventbrite-fee-refundable/",
+      "read": "2026-10-09",
+      "what": "help centre: is the fee refundable"
+     },
+     {
+      "url": "https://hi.events/ticketing-platform-payouts",
+      "read": "2026-10-09",
+      "what": "third-party payout comparison (Hi.Events, a competitor)"
+     },
+     {
+      "url": "https://www.eventbrite.com/organizer/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "New Zealand",
+    "currency": "NZD",
+    "vat_note": "VAT/tax treatment of the fee not stated in fee table (breakdown on event page 'includes any taxes')",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_notes": "Eventbrite collects the money through Eventbrite Payment Processing and pays the organizer; fees deducted from sales at payout. Default payout is after the event (3 business days after it ends, third-party summary); a 'pre-event payouts' feature is advertised without public terms; instant payouts carry a fee (rate not on pages read). Reserve/holdback terms not published on pages read.",
+    "plans": [
+     {
+      "name": "Standard (paid tickets)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 4.2,
+      "per_ticket_fixed": 0.55,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Service fee per sold ticket; plus 2.4% processing per order",
+      "notes": null
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Eventbrite Payment Processing (own)"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "2.4% of total order",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer (configurable: organizer can tick 'Absorb fees')",
+    "free_tickets": "Free events/tickets: no fee at all.",
+    "seating": "No separate reserved-seating surcharge in the help-centre fee table (null = not stated).",
+    "payouts": "Collected by Eventbrite; after the event by default (3 business days after event end, third_party); pre-event and instant payouts exist but terms not captured.",
+    "refunds_chargebacks": "Ticketing Fee not refunded on refunded orders (exceptions: cancelled event, duplicate charge within 7 days). Chargeback terms not captured.",
+    "fine_print": [
+     "Ticketing Fee = service fee + payment processing fee where applicable; same fee also applies to add-ons and donations; free tickets carry no fee.",
+     "Service fee is computed on ticket price; payment processing fee (where separate) is computed on the whole order incl. service fee and tax.",
+     "Ticketing Fees are retained when an order is refunded; refunded only for a cancelled event or a duplicate charge reported within 7 days (organizer can opt to pay fees so buyer gets a full refund).",
+     "Fees vary per payout country AND currency; bank must be in the payout country; payout country/currency cannot be changed once sales are pending or tickets sold.",
+     "Pricing page content is geo-detected: eventbrite.co.uk scraped from a US-located IP still displayed the US fee (3.7% + $1.79); the help-centre country table is the authoritative source.",
+     "Optional paid extras: Eventbrite Ads (daily budget), email marketing Pro/Premium subscription; custom plans via Sales Partnerships for large/complex events (price not public).",
+     "Eventbrite Premium (optional subscription, 2026): US $69/mo or $708/yr; UK GBP 59/mo or 588/yr; CA CA$89/mo or CA$948/yr; AU A$99/mo or A$1,068/yr; FR/DE/IE/IT/ES EUR 59/mo or 588/yr; NZ NZ$99/mo or NZ$1,068/yr. Includes paid-social promotion, badge, $20/mo ad credit, 2,000 emails/day, priority support, 50% off instant-payout fees. Legacy Pro plan closed to new subscribers.",
+     "At-the-door (Organizer app) fees only for AUD/CAD/GBP/USD events: US $1/paid ticket + 2.9% per order; CA C$1 + 2.9%; UK GBP 0.50 + 1.6% per order; AU A$1.00 + 2% per order; free for offline cash/cheque; processing fee cannot be passed on in the app."
+    ],
+    "add_ons": [
+     {
+      "name": "Email marketing (Pro)",
+      "price": "from $15/month US, from GBP 12/month UK (pricing page)"
+     },
+     {
+      "name": "Eventbrite Premium",
+      "price": "see fine print"
+     },
+     {
+      "name": "Eventbrite Ads",
+      "price": "pay per daily budget"
+     }
+    ],
+    "enterprise": "Contact Sales Partnerships for large or complex events; price not public",
+    "sources": [
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/755615/how-much-does-it-cost-for-organizers-to-use-eventbrite/",
+      "read": "2026-10-09",
+      "what": "help centre: Ticketing Fees per country (primary)"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/193833/eventbrites-new-pricing-plans/",
+      "read": "2026-10-09",
+      "what": "help centre: pricing and plans / Premium"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/548304/is-the-eventbrite-fee-refundable/",
+      "read": "2026-10-09",
+      "what": "help centre: is the fee refundable"
+     },
+     {
+      "url": "https://hi.events/ticketing-platform-payouts",
+      "read": "2026-10-09",
+      "what": "third-party payout comparison (Hi.Events, a competitor)"
+     },
+     {
+      "url": "https://www.eventbrite.com/organizer/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "Spain",
+    "currency": "EUR",
+    "vat_note": "VAT/tax treatment of the fee not stated in fee table (breakdown on event page 'includes any taxes')",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_notes": "Eventbrite collects the money through Eventbrite Payment Processing and pays the organizer; fees deducted from sales at payout. Default payout is after the event (3 business days after it ends, third-party summary); a 'pre-event payouts' feature is advertised without public terms; instant payouts carry a fee (rate not on pages read). Reserve/holdback terms not published on pages read.",
+    "plans": [
+     {
+      "name": "Essentials package",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 6.0,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Service fee per sold ticket",
+      "notes": "Country still on Eventbrite's legacy Essentials / Professional packages (not the new single plan). Feature split between the two packages not captured."
+     },
+     {
+      "name": "Professional package",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 9.0,
+      "per_ticket_fixed": 0.19,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Service fee per sold ticket",
+      "notes": "Spanish pricing page (eventbrite.es/organizer/pricing, read 2026-10-09) quotes exactly these two packages"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Eventbrite Payment Processing (own)"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "Included in the service fee",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer (configurable: organizer can tick 'Absorb fees')",
+    "free_tickets": "Free events/tickets: no fee at all.",
+    "seating": "No separate reserved-seating surcharge in the help-centre fee table (null = not stated).",
+    "payouts": "Collected by Eventbrite; after the event by default (3 business days after event end, third_party); pre-event and instant payouts exist but terms not captured.",
+    "refunds_chargebacks": "Ticketing Fee not refunded on refunded orders (exceptions: cancelled event, duplicate charge within 7 days). Chargeback terms not captured.",
+    "fine_print": [
+     "Ticketing Fee = service fee + payment processing fee where applicable; same fee also applies to add-ons and donations; free tickets carry no fee.",
+     "Service fee is computed on ticket price; payment processing fee (where separate) is computed on the whole order incl. service fee and tax.",
+     "Ticketing Fees are retained when an order is refunded; refunded only for a cancelled event or a duplicate charge reported within 7 days (organizer can opt to pay fees so buyer gets a full refund).",
+     "Fees vary per payout country AND currency; bank must be in the payout country; payout country/currency cannot be changed once sales are pending or tickets sold.",
+     "Pricing page content is geo-detected: eventbrite.co.uk scraped from a US-located IP still displayed the US fee (3.7% + $1.79); the help-centre country table is the authoritative source.",
+     "Optional paid extras: Eventbrite Ads (daily budget), email marketing Pro/Premium subscription; custom plans via Sales Partnerships for large/complex events (price not public).",
+     "Eventbrite Premium (optional subscription, 2026): US $69/mo or $708/yr; UK GBP 59/mo or 588/yr; CA CA$89/mo or CA$948/yr; AU A$99/mo or A$1,068/yr; FR/DE/IE/IT/ES EUR 59/mo or 588/yr; NZ NZ$99/mo or NZ$1,068/yr. Includes paid-social promotion, badge, $20/mo ad credit, 2,000 emails/day, priority support, 50% off instant-payout fees. Legacy Pro plan closed to new subscribers.",
+     "At-the-door (Organizer app) fees only for AUD/CAD/GBP/USD events: US $1/paid ticket + 2.9% per order; CA C$1 + 2.9%; UK GBP 0.50 + 1.6% per order; AU A$1.00 + 2% per order; free for offline cash/cheque; processing fee cannot be passed on in the app.",
+     "Donation tickets: 2% service fee.",
+     "Premium subscription listed for Spain at EUR 59/month."
+    ],
+    "add_ons": [
+     {
+      "name": "Email marketing (Pro)",
+      "price": "from $15/month US, from GBP 12/month UK (pricing page)"
+     },
+     {
+      "name": "Eventbrite Premium",
+      "price": "see fine print"
+     },
+     {
+      "name": "Eventbrite Ads",
+      "price": "pay per daily budget"
+     }
+    ],
+    "enterprise": "Contact Sales Partnerships for large or complex events; price not public",
+    "sources": [
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/755615/how-much-does-it-cost-for-organizers-to-use-eventbrite/",
+      "read": "2026-10-09",
+      "what": "help centre: Ticketing Fees per country (primary)"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/193833/eventbrites-new-pricing-plans/",
+      "read": "2026-10-09",
+      "what": "help centre: pricing and plans / Premium"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/548304/is-the-eventbrite-fee-refundable/",
+      "read": "2026-10-09",
+      "what": "help centre: is the fee refundable"
+     },
+     {
+      "url": "https://hi.events/ticketing-platform-payouts",
+      "read": "2026-10-09",
+      "what": "third-party payout comparison (Hi.Events, a competitor)"
+     },
+     {
+      "url": "https://www.eventbrite.com/organizer/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "Germany",
+    "currency": "EUR",
+    "vat_note": "VAT/tax treatment of the fee not stated in fee table (breakdown on event page 'includes any taxes')",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_notes": "Eventbrite collects the money through Eventbrite Payment Processing and pays the organizer; fees deducted from sales at payout. Default payout is after the event (3 business days after it ends, third-party summary); a 'pre-event payouts' feature is advertised without public terms; instant payouts carry a fee (rate not on pages read). Reserve/holdback terms not published on pages read.",
+    "plans": [
+     {
+      "name": "Essentials package",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 5.5,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Service fee per sold ticket",
+      "notes": "Country still on Eventbrite's legacy Essentials / Professional packages (not the new single plan). Feature split between the two packages not captured."
+     },
+     {
+      "name": "Professional package",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 5.5,
+      "per_ticket_fixed": 0.99,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Service fee per sold ticket",
+      "notes": null
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Eventbrite Payment Processing (own)"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "Included in the service fee",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer (configurable: organizer can tick 'Absorb fees')",
+    "free_tickets": "Free events/tickets: no fee at all.",
+    "seating": "No separate reserved-seating surcharge in the help-centre fee table (null = not stated).",
+    "payouts": "Collected by Eventbrite; after the event by default (3 business days after event end, third_party); pre-event and instant payouts exist but terms not captured.",
+    "refunds_chargebacks": "Ticketing Fee not refunded on refunded orders (exceptions: cancelled event, duplicate charge within 7 days). Chargeback terms not captured.",
+    "fine_print": [
+     "Ticketing Fee = service fee + payment processing fee where applicable; same fee also applies to add-ons and donations; free tickets carry no fee.",
+     "Service fee is computed on ticket price; payment processing fee (where separate) is computed on the whole order incl. service fee and tax.",
+     "Ticketing Fees are retained when an order is refunded; refunded only for a cancelled event or a duplicate charge reported within 7 days (organizer can opt to pay fees so buyer gets a full refund).",
+     "Fees vary per payout country AND currency; bank must be in the payout country; payout country/currency cannot be changed once sales are pending or tickets sold.",
+     "Pricing page content is geo-detected: eventbrite.co.uk scraped from a US-located IP still displayed the US fee (3.7% + $1.79); the help-centre country table is the authoritative source.",
+     "Optional paid extras: Eventbrite Ads (daily budget), email marketing Pro/Premium subscription; custom plans via Sales Partnerships for large/complex events (price not public).",
+     "Eventbrite Premium (optional subscription, 2026): US $69/mo or $708/yr; UK GBP 59/mo or 588/yr; CA CA$89/mo or CA$948/yr; AU A$99/mo or A$1,068/yr; FR/DE/IE/IT/ES EUR 59/mo or 588/yr; NZ NZ$99/mo or NZ$1,068/yr. Includes paid-social promotion, badge, $20/mo ad credit, 2,000 emails/day, priority support, 50% off instant-payout fees. Legacy Pro plan closed to new subscribers.",
+     "At-the-door (Organizer app) fees only for AUD/CAD/GBP/USD events: US $1/paid ticket + 2.9% per order; CA C$1 + 2.9%; UK GBP 0.50 + 1.6% per order; AU A$1.00 + 2% per order; free for offline cash/cheque; processing fee cannot be passed on in the app.",
+     "Donation tickets: 2% service fee."
+    ],
+    "add_ons": [
+     {
+      "name": "Email marketing (Pro)",
+      "price": "from $15/month US, from GBP 12/month UK (pricing page)"
+     },
+     {
+      "name": "Eventbrite Premium",
+      "price": "see fine print"
+     },
+     {
+      "name": "Eventbrite Ads",
+      "price": "pay per daily budget"
+     }
+    ],
+    "enterprise": "Contact Sales Partnerships for large or complex events; price not public",
+    "sources": [
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/755615/how-much-does-it-cost-for-organizers-to-use-eventbrite/",
+      "read": "2026-10-09",
+      "what": "help centre: Ticketing Fees per country (primary)"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/193833/eventbrites-new-pricing-plans/",
+      "read": "2026-10-09",
+      "what": "help centre: pricing and plans / Premium"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/548304/is-the-eventbrite-fee-refundable/",
+      "read": "2026-10-09",
+      "what": "help centre: is the fee refundable"
+     },
+     {
+      "url": "https://hi.events/ticketing-platform-payouts",
+      "read": "2026-10-09",
+      "what": "third-party payout comparison (Hi.Events, a competitor)"
+     },
+     {
+      "url": "https://www.eventbrite.com/organizer/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "Netherlands",
+    "currency": "EUR",
+    "vat_note": "VAT/tax treatment of the fee not stated in fee table (breakdown on event page 'includes any taxes')",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_notes": "Eventbrite collects the money through Eventbrite Payment Processing and pays the organizer; fees deducted from sales at payout. Default payout is after the event (3 business days after it ends, third-party summary); a 'pre-event payouts' feature is advertised without public terms; instant payouts carry a fee (rate not on pages read). Reserve/holdback terms not published on pages read.",
+    "plans": [
+     {
+      "name": "Essentials package",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.0,
+      "per_ticket_fixed": 0.49,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Ticket priced up to EUR 10.00: flat EUR 0.49; above EUR 10.01: 2% + EUR 0.49",
+      "notes": "Country still on Eventbrite's legacy Essentials / Professional packages (not the new single plan). Feature split between the two packages not captured."
+     },
+     {
+      "name": "Professional package",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 4.0,
+      "per_ticket_fixed": 0.99,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Ticket up to EUR 10.00: flat EUR 0.99; above EUR 10.01: 4.0% + EUR 0.99",
+      "notes": null
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Eventbrite Payment Processing (own)"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "Included in the service fee",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer (configurable: organizer can tick 'Absorb fees')",
+    "free_tickets": "Free events/tickets: no fee at all.",
+    "seating": "No separate reserved-seating surcharge in the help-centre fee table (null = not stated).",
+    "payouts": "Collected by Eventbrite; after the event by default (3 business days after event end, third_party); pre-event and instant payouts exist but terms not captured.",
+    "refunds_chargebacks": "Ticketing Fee not refunded on refunded orders (exceptions: cancelled event, duplicate charge within 7 days). Chargeback terms not captured.",
+    "fine_print": [
+     "Ticketing Fee = service fee + payment processing fee where applicable; same fee also applies to add-ons and donations; free tickets carry no fee.",
+     "Service fee is computed on ticket price; payment processing fee (where separate) is computed on the whole order incl. service fee and tax.",
+     "Ticketing Fees are retained when an order is refunded; refunded only for a cancelled event or a duplicate charge reported within 7 days (organizer can opt to pay fees so buyer gets a full refund).",
+     "Fees vary per payout country AND currency; bank must be in the payout country; payout country/currency cannot be changed once sales are pending or tickets sold.",
+     "Pricing page content is geo-detected: eventbrite.co.uk scraped from a US-located IP still displayed the US fee (3.7% + $1.79); the help-centre country table is the authoritative source.",
+     "Optional paid extras: Eventbrite Ads (daily budget), email marketing Pro/Premium subscription; custom plans via Sales Partnerships for large/complex events (price not public).",
+     "Eventbrite Premium (optional subscription, 2026): US $69/mo or $708/yr; UK GBP 59/mo or 588/yr; CA CA$89/mo or CA$948/yr; AU A$99/mo or A$1,068/yr; FR/DE/IE/IT/ES EUR 59/mo or 588/yr; NZ NZ$99/mo or NZ$1,068/yr. Includes paid-social promotion, badge, $20/mo ad credit, 2,000 emails/day, priority support, 50% off instant-payout fees. Legacy Pro plan closed to new subscribers.",
+     "At-the-door (Organizer app) fees only for AUD/CAD/GBP/USD events: US $1/paid ticket + 2.9% per order; CA C$1 + 2.9%; UK GBP 0.50 + 1.6% per order; AU A$1.00 + 2% per order; free for offline cash/cheque; processing fee cannot be passed on in the app.",
+     "Donation tickets: 2% service fee."
+    ],
+    "add_ons": [
+     {
+      "name": "Email marketing (Pro)",
+      "price": "from $15/month US, from GBP 12/month UK (pricing page)"
+     },
+     {
+      "name": "Eventbrite Premium",
+      "price": "see fine print"
+     },
+     {
+      "name": "Eventbrite Ads",
+      "price": "pay per daily budget"
+     }
+    ],
+    "enterprise": "Contact Sales Partnerships for large or complex events; price not public",
+    "sources": [
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/755615/how-much-does-it-cost-for-organizers-to-use-eventbrite/",
+      "read": "2026-10-09",
+      "what": "help centre: Ticketing Fees per country (primary)"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/193833/eventbrites-new-pricing-plans/",
+      "read": "2026-10-09",
+      "what": "help centre: pricing and plans / Premium"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/548304/is-the-eventbrite-fee-refundable/",
+      "read": "2026-10-09",
+      "what": "help centre: is the fee refundable"
+     },
+     {
+      "url": "https://hi.events/ticketing-platform-payouts",
+      "read": "2026-10-09",
+      "what": "third-party payout comparison (Hi.Events, a competitor)"
+     },
+     {
+      "url": "https://www.eventbrite.com/organizer/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "France / Italy / Portugal / Finland / Greece",
+    "currency": "EUR",
+    "vat_note": "VAT/tax treatment of the fee not stated in fee table (breakdown on event page 'includes any taxes')",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_notes": "Eventbrite collects the money through Eventbrite Payment Processing and pays the organizer; fees deducted from sales at payout. Default payout is after the event (3 business days after it ends, third-party summary); a 'pre-event payouts' feature is advertised without public terms; instant payouts carry a fee (rate not on pages read). Reserve/holdback terms not published on pages read.",
+    "plans": [
+     {
+      "name": "Essentials package",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 3.5,
+      "per_ticket_fixed": 0.49,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Service fee per sold ticket",
+      "notes": "Country still on Eventbrite's legacy Essentials / Professional packages (not the new single plan). Feature split between the two packages not captured."
+     },
+     {
+      "name": "Professional package",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 5.5,
+      "per_ticket_fixed": 0.99,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Service fee per sold ticket",
+      "notes": null
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Eventbrite Payment Processing (own)"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "Included in the service fee",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer (configurable: organizer can tick 'Absorb fees')",
+    "free_tickets": "Free events/tickets: no fee at all.",
+    "seating": "No separate reserved-seating surcharge in the help-centre fee table (null = not stated).",
+    "payouts": "Collected by Eventbrite; after the event by default (3 business days after event end, third_party); pre-event and instant payouts exist but terms not captured.",
+    "refunds_chargebacks": "Ticketing Fee not refunded on refunded orders (exceptions: cancelled event, duplicate charge within 7 days). Chargeback terms not captured.",
+    "fine_print": [
+     "Ticketing Fee = service fee + payment processing fee where applicable; same fee also applies to add-ons and donations; free tickets carry no fee.",
+     "Service fee is computed on ticket price; payment processing fee (where separate) is computed on the whole order incl. service fee and tax.",
+     "Ticketing Fees are retained when an order is refunded; refunded only for a cancelled event or a duplicate charge reported within 7 days (organizer can opt to pay fees so buyer gets a full refund).",
+     "Fees vary per payout country AND currency; bank must be in the payout country; payout country/currency cannot be changed once sales are pending or tickets sold.",
+     "Pricing page content is geo-detected: eventbrite.co.uk scraped from a US-located IP still displayed the US fee (3.7% + $1.79); the help-centre country table is the authoritative source.",
+     "Optional paid extras: Eventbrite Ads (daily budget), email marketing Pro/Premium subscription; custom plans via Sales Partnerships for large/complex events (price not public).",
+     "Eventbrite Premium (optional subscription, 2026): US $69/mo or $708/yr; UK GBP 59/mo or 588/yr; CA CA$89/mo or CA$948/yr; AU A$99/mo or A$1,068/yr; FR/DE/IE/IT/ES EUR 59/mo or 588/yr; NZ NZ$99/mo or NZ$1,068/yr. Includes paid-social promotion, badge, $20/mo ad credit, 2,000 emails/day, priority support, 50% off instant-payout fees. Legacy Pro plan closed to new subscribers.",
+     "At-the-door (Organizer app) fees only for AUD/CAD/GBP/USD events: US $1/paid ticket + 2.9% per order; CA C$1 + 2.9%; UK GBP 0.50 + 1.6% per order; AU A$1.00 + 2% per order; free for offline cash/cheque; processing fee cannot be passed on in the app."
+    ],
+    "add_ons": [
+     {
+      "name": "Email marketing (Pro)",
+      "price": "from $15/month US, from GBP 12/month UK (pricing page)"
+     },
+     {
+      "name": "Eventbrite Premium",
+      "price": "see fine print"
+     },
+     {
+      "name": "Eventbrite Ads",
+      "price": "pay per daily budget"
+     }
+    ],
+    "enterprise": "Contact Sales Partnerships for large or complex events; price not public",
+    "sources": [
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/755615/how-much-does-it-cost-for-organizers-to-use-eventbrite/",
+      "read": "2026-10-09",
+      "what": "help centre: Ticketing Fees per country (primary)"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/193833/eventbrites-new-pricing-plans/",
+      "read": "2026-10-09",
+      "what": "help centre: pricing and plans / Premium"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/548304/is-the-eventbrite-fee-refundable/",
+      "read": "2026-10-09",
+      "what": "help centre: is the fee refundable"
+     },
+     {
+      "url": "https://hi.events/ticketing-platform-payouts",
+      "read": "2026-10-09",
+      "what": "third-party payout comparison (Hi.Events, a competitor)"
+     },
+     {
+      "url": "https://www.eventbrite.com/organizer/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "Other legacy-package countries (selection)",
+    "currency": "local currency",
+    "vat_note": "VAT/tax treatment of the fee not stated in fee table (breakdown on event page 'includes any taxes')",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_notes": "Eventbrite collects the money through Eventbrite Payment Processing and pays the organizer; fees deducted from sales at payout. Default payout is after the event (3 business days after it ends, third-party summary); a 'pre-event payouts' feature is advertised without public terms; instant payouts carry a fee (rate not on pages read). Reserve/holdback terms not published on pages read.",
+    "plans": [
+     {
+      "name": "Austria (EUR) Essentials/Professional",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 5.5,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "Essentials 5.5%; Professional 5.5% + EUR 0.99"
+     },
+     {
+      "name": "Belgium (EUR)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 3.0,
+      "per_ticket_fixed": 0.49,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "Essentials 3% + 0.49; Professional 4% + 0.99"
+     },
+     {
+      "name": "Czech Republic (CZK)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 1.0,
+      "per_ticket_fixed": 19,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "Essentials 1% + Kc19; Professional 2.5% + Kc39"
+     },
+     {
+      "name": "Poland (PLN)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 1.0,
+      "per_ticket_fixed": 2.99,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "Essentials 1% + zl2.99; Professional 2.5% + zl5.99"
+     },
+     {
+      "name": "Switzerland (CHF)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 1.0,
+      "per_ticket_fixed": 0.59,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "Essentials 1% + Fr0.59; Professional 2.5% + Fr0.99"
+     },
+     {
+      "name": "Israel (ILS)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.99,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "Essentials 2.99%; Professional 4.99%"
+     },
+     {
+      "name": "Denmark (DKK)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 1.0,
+      "per_ticket_fixed": 4.99,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "Essentials 1% + kr4.99; Professional 2.5% + kr9.99"
+     },
+     {
+      "name": "Hungary (HUF)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 1.0,
+      "per_ticket_fixed": 199,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "Essentials 1% + Ft199; Professional 2.5% + Ft399"
+     },
+     {
+      "name": "Norway/Malaysia/Philippines/Taiwan",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 0.0,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "Essentials: service fee free; Professional 4.99%"
+     },
+     {
+      "name": "Sweden/Japan/Thailand/Hong Kong",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 3.99,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "Essentials 3.99%; Professional 5.99%"
+     },
+     {
+      "name": "Mexico (MXN)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 3.99,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "Essentials 3.99% + 2% processing; Professional 5.99% + 2% processing"
+     },
+     {
+      "name": "Singapore (SGD)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 1.0,
+      "per_ticket_fixed": 0.59,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "Essentials 1% + S$0.59 + 2% processing; Professional 2.5% + S$0.99 + 2% processing"
+     },
+     {
+      "name": "Argentina / Brazil",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 5.99,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "Argentina Essentials 5.99% / Professional 6.99%; Brazil 6.99% / 9.99%"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Eventbrite Payment Processing (own)"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "varies by country",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer (configurable: organizer can tick 'Absorb fees')",
+    "free_tickets": "Free events/tickets: no fee at all.",
+    "seating": "No separate reserved-seating surcharge in the help-centre fee table (null = not stated).",
+    "payouts": "Collected by Eventbrite; after the event by default (3 business days after event end, third_party); pre-event and instant payouts exist but terms not captured.",
+    "refunds_chargebacks": "Ticketing Fee not refunded on refunded orders (exceptions: cancelled event, duplicate charge within 7 days). Chargeback terms not captured.",
+    "fine_print": [
+     "Ticketing Fee = service fee + payment processing fee where applicable; same fee also applies to add-ons and donations; free tickets carry no fee.",
+     "Service fee is computed on ticket price; payment processing fee (where separate) is computed on the whole order incl. service fee and tax.",
+     "Ticketing Fees are retained when an order is refunded; refunded only for a cancelled event or a duplicate charge reported within 7 days (organizer can opt to pay fees so buyer gets a full refund).",
+     "Fees vary per payout country AND currency; bank must be in the payout country; payout country/currency cannot be changed once sales are pending or tickets sold.",
+     "Pricing page content is geo-detected: eventbrite.co.uk scraped from a US-located IP still displayed the US fee (3.7% + $1.79); the help-centre country table is the authoritative source.",
+     "Optional paid extras: Eventbrite Ads (daily budget), email marketing Pro/Premium subscription; custom plans via Sales Partnerships for large/complex events (price not public).",
+     "Eventbrite Premium (optional subscription, 2026): US $69/mo or $708/yr; UK GBP 59/mo or 588/yr; CA CA$89/mo or CA$948/yr; AU A$99/mo or A$1,068/yr; FR/DE/IE/IT/ES EUR 59/mo or 588/yr; NZ NZ$99/mo or NZ$1,068/yr. Includes paid-social promotion, badge, $20/mo ad credit, 2,000 emails/day, priority support, 50% off instant-payout fees. Legacy Pro plan closed to new subscribers.",
+     "At-the-door (Organizer app) fees only for AUD/CAD/GBP/USD events: US $1/paid ticket + 2.9% per order; CA C$1 + 2.9%; UK GBP 0.50 + 1.6% per order; AU A$1.00 + 2% per order; free for offline cash/cheque; processing fee cannot be passed on in the app."
+    ],
+    "add_ons": [
+     {
+      "name": "Email marketing (Pro)",
+      "price": "from $15/month US, from GBP 12/month UK (pricing page)"
+     },
+     {
+      "name": "Eventbrite Premium",
+      "price": "see fine print"
+     },
+     {
+      "name": "Eventbrite Ads",
+      "price": "pay per daily budget"
+     }
+    ],
+    "enterprise": "Contact Sales Partnerships for large or complex events; price not public",
+    "sources": [
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/755615/how-much-does-it-cost-for-organizers-to-use-eventbrite/",
+      "read": "2026-10-09",
+      "what": "help centre: Ticketing Fees per country (primary)"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/193833/eventbrites-new-pricing-plans/",
+      "read": "2026-10-09",
+      "what": "help centre: pricing and plans / Premium"
+     },
+     {
+      "url": "https://www.eventbrite.com/help/en-us/articles/548304/is-the-eventbrite-fee-refundable/",
+      "read": "2026-10-09",
+      "what": "help centre: is the fee refundable"
+     },
+     {
+      "url": "https://hi.events/ticketing-platform-payouts",
+      "read": "2026-10-09",
+      "what": "third-party payout comparison (Hi.Events, a competitor)"
+     },
+     {
+      "url": "https://www.eventbrite.com/organizer/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "One 'standard' plan applies in US/CA/AU/NZ/UK/IE; the older Essentials/Professional tiers still apply in most of EU, Israel etc. (legacy table). The help article says fees 'vary per country and currency' and tells organizers to check Organization settings. Eventbrite pricing pages geo-detect the visitor, so regional domains scraped from one IP can show another country's numbers. Money flow: collecting (Eventbrite Payment Processing) unless a managed/custom contract applies (not public)."
+ },
+ {
+  "platform": "Ticket Tailor",
+  "website": "https://www.tickettailor.com",
+  "hq_country": "GB",
+  "segment": "self-serve, small/mid organizers (shows, workshops, venues, charities); flat fee per ticket, bring-your-own processor",
+  "markets": [
+   {
+    "market": "UK",
+    "currency": "GBP",
+    "vat_note": "TT fees shown excl. VAT; VAT/sales tax added where applicable",
+    "model": "flat_per_ticket",
+    "money_flow": "direct_merchant",
+    "money_flow_notes": "Direct merchant: buyer pays straight into the organizer's own Stripe/PayPal/Square account (revenue appears almost immediately, bank transfer takes about a week); TT never holds the money. TT fee collection: Pre-pay = card charged immediately when credits are bought (optional auto top-up monthly or when <=25 credits left). PAYG on Stripe = fee deducted automatically at the point of sale; PAYG on PayPal/Square/offline = TT charges the organizer's card on file monthly, or every 50 usage units, or 2 days after the last event ends.",
+    "plans": [
+     {
+      "name": "Free (free tickets)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Up to 5,000 free tickets/year, no fee",
+      "notes": "First 5 paid sales also free"
+     },
+     {
+      "name": "Pay as you go (PAYG)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.6,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "All features, flat fee per usage, no subscription",
+      "notes": "Stripe: deducted at sale; PayPal/Square: billed to card"
+     },
+     {
+      "name": "Pre-pay credits",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Same features; lower unit price when credits are bought in advance",
+      "notes": "See prepaid bundles; credits never expire; running out falls back to PAYG automatically; minimum bundle 100 credits"
+     }
+    ],
+    "prepaid": [
+     {
+      "bundle": "500 credits",
+      "unit_price": 0.41,
+      "expiry": "none",
+      "refundable": null,
+      "note": "total GBP 205 + VAT (pricing page snippet)"
+     },
+     {
+      "bundle": "largest bundles",
+      "unit_price": 0.22,
+      "expiry": "none",
+      "refundable": null,
+      "note": "'from GBP 0.22 per ticket (+ VAT)' headline; intermediate sizes not captured (calculator is JavaScript)"
+     }
+    ],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Stripe",
+      "PayPal",
+      "Square"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "Stripe UK 1.5% + GBP 0.20 (example)",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "configurable (organizer adds own booking/transaction fee; default is organizer absorbs)",
+    "free_tickets": "Free tickets are free up to 5,000/year; first 5 paid tickets free.",
+    "seating": "Seat reservation costs 1 extra usage per seated ticket: PAYG +GBP 0.60 (a paid seated ticket = GBP 1.20); pre-pay: +1 credit. A free seated ticket still costs 1 usage. Charity discount applies; marking seats not-for-sale is free.",
+    "payouts": "Immediate into organizer's Stripe/PayPal/Square; no payout by TT.",
+    "refunds_chargebacks": "No refund of TT fee/credit on refund or cancel; processor fees usually not returned either. No TT chargeback fee found on pages read.",
+    "fine_print": [
+     "Charged per 'usage', not on ticket price: paid ticket = 1 usage; seated paid ticket = 2; free ticket = 0; free seated ticket = 1; product sale = 1; ticket issued via API (even free) = 1; imported ticket (even free) = 1; every ticket in a paid bundle = 1; a voucher-covered order is still charged.",
+     "First 5 ticket sales are free; the standard rate starts from the sixth paid ticket (pricing page FAQ).",
+     "Free tickets free within fair usage: the pricing page says 5,000 free tickets/year but its FAQ also mentions 'more than 2,000' in another answer; above fair usage TT gives a per-free-ticket quote via support.",
+     "Fees are not refunded when a ticket is refunded or cancelled (credits/PAYG fee kept); order transfer is free.",
+     "Discounts (apply via billing page, at TT's discretion): 50% for registered charities (forever), 20% for B Corps/PTAs/CICs/non-profits/BBN, half-usage for tickets under 5 incl. booking fees (a seated 5 ticket = 1.5 usage), 50% for Music Venue Trust members, 50% for Round Tables, 6 months free for Art Tickets users. Only one discount at a time; none applies to white-label/custom-domain prices or processor fees.",
+     "Refund protection: buyers can add it for 8% of ticket price; organizer keeps 10% of that fee, rest goes to TT (collected via PAYG).",
+     "SMS/WhatsApp reminders: TT charges 0.10 per event per order (GBP/USD) for buyers who opt in; organizer keeps any excess of the suggested fee.",
+     "TT does not touch the payment: Stripe, PayPal, Square or offline needed; TT fees are on top of processor fees; credits do not cover processing.",
+     "VAT and sales tax charged on TT fees where applicable; TT prices are shown excl. VAT.",
+     "No subscription, no contract; credits never expire; credits can be transferred between the organizer's box offices.",
+     "Pass-on of fees is manual: organizer adds a booking fee (per ticket) and/or transaction fee (per order, % and/or fixed); no automatic 'pass all fees' toggle. TT warns US sellers about the FTC junk-fees rule.",
+     "GBP bundle table: only the 500-credit (GBP 0.41) and 'from GBP 0.22' figures were readable."
+    ],
+    "add_ons": [
+     {
+      "name": "White label (logo removal + custom domain)",
+      "price": "GBP 39/month; custom domain alone GBP 7/month"
+     },
+     {
+      "name": "HubSpot/ActiveCampaign/Constant Contact integrations",
+      "price": "monthly fee shown in account (amount not public)"
+     },
+     {
+      "name": "Free check-in app",
+      "price": "free"
+     }
+    ],
+    "enterprise": "Very large free events / above fair usage: ask support for a quote; 'Book a demo' for larger organizers (no public enterprise price)",
+    "sources": [
+     {
+      "url": "https://www.tickettailor.com/pricing",
+      "read": "2026-10-09",
+      "what": "pricing page + FAQ"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/6731528-how-much-does-ticket-tailor-cost-and-how-will-i-be-charged",
+      "read": "2026-10-09",
+      "what": "help centre: how much does TT cost"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/4096561-what-are-the-fees-for-using-seating-charts",
+      "read": "2026-10-09",
+      "what": "help centre: seating chart fees"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/4725866-how-do-pre-pay-ticket-credits-work",
+      "read": "2026-10-09",
+      "what": "help centre: pre-pay credits"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/8687492-what-discounts-do-we-offer",
+      "read": "2026-10-09",
+      "what": "help centre: discounts"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/5210356-how-to-pass-fees-onto-your-ticket-buyers",
+      "read": "2026-10-09",
+      "what": "help centre: passing fees on"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "US",
+    "currency": "USD",
+    "vat_note": "TT fees shown excl. VAT; VAT/sales tax added where applicable",
+    "model": "flat_per_ticket",
+    "money_flow": "direct_merchant",
+    "money_flow_notes": "Direct merchant: buyer pays straight into the organizer's own Stripe/PayPal/Square account (revenue appears almost immediately, bank transfer takes about a week); TT never holds the money. TT fee collection: Pre-pay = card charged immediately when credits are bought (optional auto top-up monthly or when <=25 credits left). PAYG on Stripe = fee deducted automatically at the point of sale; PAYG on PayPal/Square/offline = TT charges the organizer's card on file monthly, or every 50 usage units, or 2 days after the last event ends.",
+    "plans": [
+     {
+      "name": "Free (free tickets)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Up to 5,000 free tickets/year, no fee",
+      "notes": "First 5 paid sales also free"
+     },
+     {
+      "name": "Pay as you go (PAYG)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.85,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "All features, flat fee per usage, no subscription",
+      "notes": "Stripe: deducted at sale; PayPal/Square: billed to card"
+     },
+     {
+      "name": "Pre-pay credits",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Same features; lower unit price when credits are bought in advance",
+      "notes": "See prepaid bundles; credits never expire; running out falls back to PAYG automatically; minimum bundle 100 credits"
+     }
+    ],
+    "prepaid": [
+     {
+      "bundle": "100 credits",
+      "unit_price": 0.7,
+      "expiry": "none",
+      "refundable": null,
+      "note": "$70"
+     },
+     {
+      "bundle": "500 credits",
+      "unit_price": 0.6,
+      "expiry": "none",
+      "refundable": null,
+      "note": "$300"
+     },
+     {
+      "bundle": "1,000 credits",
+      "unit_price": 0.52,
+      "expiry": "none",
+      "refundable": null,
+      "note": "$520"
+     },
+     {
+      "bundle": "5,000 credits",
+      "unit_price": 0.43,
+      "expiry": "none",
+      "refundable": null,
+      "note": "$2,150"
+     },
+     {
+      "bundle": "10,000 credits",
+      "unit_price": 0.39,
+      "expiry": "none",
+      "refundable": null,
+      "note": "$3,900"
+     },
+     {
+      "bundle": "20,000+ credits",
+      "unit_price": 0.34,
+      "expiry": "none",
+      "refundable": null,
+      "note": "$6,800 for 20,000; TT headline says 'from $0.30'"
+     }
+    ],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Stripe",
+      "PayPal",
+      "Square"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "Stripe US 2.9% + $0.30 (example)",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "configurable (organizer adds own booking/transaction fee; default is organizer absorbs)",
+    "free_tickets": "Free tickets are free up to 5,000/year; first 5 paid tickets free.",
+    "seating": "Seat reservation: PAYG +$0.85 per seated ticket (paid seated ticket = $1.70); pre-pay: +1 credit.",
+    "payouts": "Immediate into organizer's Stripe/PayPal/Square; no payout by TT.",
+    "refunds_chargebacks": "No refund of TT fee/credit on refund or cancel; processor fees usually not returned either. No TT chargeback fee found on pages read.",
+    "fine_print": [
+     "Charged per 'usage', not on ticket price: paid ticket = 1 usage; seated paid ticket = 2; free ticket = 0; free seated ticket = 1; product sale = 1; ticket issued via API (even free) = 1; imported ticket (even free) = 1; every ticket in a paid bundle = 1; a voucher-covered order is still charged.",
+     "First 5 ticket sales are free; the standard rate starts from the sixth paid ticket (pricing page FAQ).",
+     "Free tickets free within fair usage: the pricing page says 5,000 free tickets/year but its FAQ also mentions 'more than 2,000' in another answer; above fair usage TT gives a per-free-ticket quote via support.",
+     "Fees are not refunded when a ticket is refunded or cancelled (credits/PAYG fee kept); order transfer is free.",
+     "Discounts (apply via billing page, at TT's discretion): 50% for registered charities (forever), 20% for B Corps/PTAs/CICs/non-profits/BBN, half-usage for tickets under 5 incl. booking fees (a seated 5 ticket = 1.5 usage), 50% for Music Venue Trust members, 50% for Round Tables, 6 months free for Art Tickets users. Only one discount at a time; none applies to white-label/custom-domain prices or processor fees.",
+     "Refund protection: buyers can add it for 8% of ticket price; organizer keeps 10% of that fee, rest goes to TT (collected via PAYG).",
+     "SMS/WhatsApp reminders: TT charges 0.10 per event per order (GBP/USD) for buyers who opt in; organizer keeps any excess of the suggested fee.",
+     "TT does not touch the payment: Stripe, PayPal, Square or offline needed; TT fees are on top of processor fees; credits do not cover processing.",
+     "VAT and sales tax charged on TT fees where applicable; TT prices are shown excl. VAT.",
+     "No subscription, no contract; credits never expire; credits can be transferred between the organizer's box offices.",
+     "Pass-on of fees is manual: organizer adds a booking fee (per ticket) and/or transaction fee (per order, % and/or fixed); no automatic 'pass all fees' toggle. TT warns US sellers about the FTC junk-fees rule.",
+     "US credit tiers come from a competitor's (TixFox) reading of TT's USD calculator on 2026-10-08, not from a statically rendered TT page; TT's own headline says credits start 'from $0.30'."
+    ],
+    "add_ons": [
+     {
+      "name": "White label (logo removal + custom domain)",
+      "price": "$49/month; custom domain alone $8/month"
+     },
+     {
+      "name": "HubSpot/ActiveCampaign/Constant Contact integrations",
+      "price": "monthly fee shown in account (amount not public)"
+     },
+     {
+      "name": "Free check-in app",
+      "price": "free"
+     }
+    ],
+    "enterprise": "Very large free events / above fair usage: ask support for a quote; 'Book a demo' for larger organizers (no public enterprise price)",
+    "sources": [
+     {
+      "url": "https://www.tickettailor.com/pricing",
+      "read": "2026-10-09",
+      "what": "pricing page + FAQ"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/6731528-how-much-does-ticket-tailor-cost-and-how-will-i-be-charged",
+      "read": "2026-10-09",
+      "what": "help centre: how much does TT cost"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/4096561-what-are-the-fees-for-using-seating-charts",
+      "read": "2026-10-09",
+      "what": "help centre: seating chart fees"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/4725866-how-do-pre-pay-ticket-credits-work",
+      "read": "2026-10-09",
+      "what": "help centre: pre-pay credits"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/8687492-what-discounts-do-we-offer",
+      "read": "2026-10-09",
+      "what": "help centre: discounts"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/5210356-how-to-pass-fees-onto-your-ticket-buyers",
+      "read": "2026-10-09",
+      "what": "help centre: passing fees on"
+     },
+     {
+      "url": "https://tixfox.co/blog/ticket-tailor-fees",
+      "read": "2026-10-08",
+      "what": "third-party (TixFox) read of US credit tiers"
+     }
+    ],
+    "confidence": "third_party"
+   },
+   {
+    "market": "Eurozone",
+    "currency": "EUR",
+    "vat_note": "TT fees shown excl. VAT; VAT/sales tax added where applicable",
+    "model": "flat_per_ticket",
+    "money_flow": "direct_merchant",
+    "money_flow_notes": "Direct merchant: buyer pays straight into the organizer's own Stripe/PayPal/Square account (revenue appears almost immediately, bank transfer takes about a week); TT never holds the money. TT fee collection: Pre-pay = card charged immediately when credits are bought (optional auto top-up monthly or when <=25 credits left). PAYG on Stripe = fee deducted automatically at the point of sale; PAYG on PayPal/Square/offline = TT charges the organizer's card on file monthly, or every 50 usage units, or 2 days after the last event ends.",
+    "plans": [
+     {
+      "name": "Free (free tickets)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Up to 5,000 free tickets/year, no fee",
+      "notes": "First 5 paid sales also free"
+     },
+     {
+      "name": "Pay as you go (PAYG)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.7,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "All features, flat fee per usage, no subscription",
+      "notes": "Stripe: deducted at sale; PayPal/Square: billed to card"
+     },
+     {
+      "name": "Pre-pay credits",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Same features; lower unit price when credits are bought in advance",
+      "notes": "See prepaid bundles; credits never expire; running out falls back to PAYG automatically; minimum bundle 100 credits"
+     }
+    ],
+    "prepaid": [
+     {
+      "bundle": "credit bundles",
+      "unit_price": 0.3,
+      "expiry": "none",
+      "refundable": null,
+      "note": "'from about EUR 0.30' per third-party mijnevent.nl (verified July 2026); individual EUR tiers not captured"
+     }
+    ],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Stripe",
+      "PayPal",
+      "Square"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "Stripe Eurozone 1.5% + EUR 0.25 (example)",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "configurable (organizer adds own booking/transaction fee; default is organizer absorbs)",
+    "free_tickets": "Free tickets are free up to 5,000/year; first 5 paid tickets free.",
+    "seating": "Seat reservation: PAYG +EUR 0.70 per seated ticket; pre-pay: +1 credit.",
+    "payouts": "Immediate into organizer's Stripe/PayPal/Square; no payout by TT.",
+    "refunds_chargebacks": "No refund of TT fee/credit on refund or cancel; processor fees usually not returned either. No TT chargeback fee found on pages read.",
+    "fine_print": [
+     "Charged per 'usage', not on ticket price: paid ticket = 1 usage; seated paid ticket = 2; free ticket = 0; free seated ticket = 1; product sale = 1; ticket issued via API (even free) = 1; imported ticket (even free) = 1; every ticket in a paid bundle = 1; a voucher-covered order is still charged.",
+     "First 5 ticket sales are free; the standard rate starts from the sixth paid ticket (pricing page FAQ).",
+     "Free tickets free within fair usage: the pricing page says 5,000 free tickets/year but its FAQ also mentions 'more than 2,000' in another answer; above fair usage TT gives a per-free-ticket quote via support.",
+     "Fees are not refunded when a ticket is refunded or cancelled (credits/PAYG fee kept); order transfer is free.",
+     "Discounts (apply via billing page, at TT's discretion): 50% for registered charities (forever), 20% for B Corps/PTAs/CICs/non-profits/BBN, half-usage for tickets under 5 incl. booking fees (a seated 5 ticket = 1.5 usage), 50% for Music Venue Trust members, 50% for Round Tables, 6 months free for Art Tickets users. Only one discount at a time; none applies to white-label/custom-domain prices or processor fees.",
+     "Refund protection: buyers can add it for 8% of ticket price; organizer keeps 10% of that fee, rest goes to TT (collected via PAYG).",
+     "SMS/WhatsApp reminders: TT charges 0.10 per event per order (GBP/USD) for buyers who opt in; organizer keeps any excess of the suggested fee.",
+     "TT does not touch the payment: Stripe, PayPal, Square or offline needed; TT fees are on top of processor fees; credits do not cover processing.",
+     "VAT and sales tax charged on TT fees where applicable; TT prices are shown excl. VAT.",
+     "No subscription, no contract; credits never expire; credits can be transferred between the organizer's box offices.",
+     "Pass-on of fees is manual: organizer adds a booking fee (per ticket) and/or transaction fee (per order, % and/or fixed); no automatic 'pass all fees' toggle. TT warns US sellers about the FTC junk-fees rule."
+    ],
+    "add_ons": [
+     {
+      "name": "White label (logo removal + custom domain)",
+      "price": "EUR 45/month; custom domain alone EUR 8/month"
+     },
+     {
+      "name": "HubSpot/ActiveCampaign/Constant Contact integrations",
+      "price": "monthly fee shown in account (amount not public)"
+     },
+     {
+      "name": "Free check-in app",
+      "price": "free"
+     }
+    ],
+    "enterprise": "Very large free events / above fair usage: ask support for a quote; 'Book a demo' for larger organizers (no public enterprise price)",
+    "sources": [
+     {
+      "url": "https://www.tickettailor.com/pricing",
+      "read": "2026-10-09",
+      "what": "pricing page + FAQ"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/6731528-how-much-does-ticket-tailor-cost-and-how-will-i-be-charged",
+      "read": "2026-10-09",
+      "what": "help centre: how much does TT cost"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/4096561-what-are-the-fees-for-using-seating-charts",
+      "read": "2026-10-09",
+      "what": "help centre: seating chart fees"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/4725866-how-do-pre-pay-ticket-credits-work",
+      "read": "2026-10-09",
+      "what": "help centre: pre-pay credits"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/8687492-what-discounts-do-we-offer",
+      "read": "2026-10-09",
+      "what": "help centre: discounts"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/5210356-how-to-pass-fees-onto-your-ticket-buyers",
+      "read": "2026-10-09",
+      "what": "help centre: passing fees on"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "Australia",
+    "currency": "AUD",
+    "vat_note": "TT fees shown excl. VAT; VAT/sales tax added where applicable",
+    "model": "flat_per_ticket",
+    "money_flow": "direct_merchant",
+    "money_flow_notes": "Direct merchant: buyer pays straight into the organizer's own Stripe/PayPal/Square account (revenue appears almost immediately, bank transfer takes about a week); TT never holds the money. TT fee collection: Pre-pay = card charged immediately when credits are bought (optional auto top-up monthly or when <=25 credits left). PAYG on Stripe = fee deducted automatically at the point of sale; PAYG on PayPal/Square/offline = TT charges the organizer's card on file monthly, or every 50 usage units, or 2 days after the last event ends.",
+    "plans": [
+     {
+      "name": "Free (free tickets)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Up to 5,000 free tickets/year, no fee",
+      "notes": "First 5 paid sales also free"
+     },
+     {
+      "name": "Pay as you go (PAYG)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 1.1,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "All features, flat fee per usage, no subscription",
+      "notes": "Stripe: deducted at sale; PayPal/Square: billed to card"
+     },
+     {
+      "name": "Pre-pay credits",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Same features; lower unit price when credits are bought in advance",
+      "notes": "See prepaid bundles; credits never expire; running out falls back to PAYG automatically; minimum bundle 100 credits"
+     }
+    ],
+    "prepaid": [
+     {
+      "bundle": "credit bundles",
+      "unit_price": null,
+      "expiry": "none",
+      "refundable": null,
+      "note": "AUD tiers not captured"
+     }
+    ],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Stripe",
+      "PayPal",
+      "Square"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "Stripe AU 1.75% + A$0.30 (example)",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "configurable (organizer adds own booking/transaction fee; default is organizer absorbs)",
+    "free_tickets": "Free tickets are free up to 5,000/year; first 5 paid tickets free.",
+    "seating": "Seat reservation: PAYG +A$1.10 per seated ticket; pre-pay: +1 credit.",
+    "payouts": "Immediate into organizer's Stripe/PayPal/Square; no payout by TT.",
+    "refunds_chargebacks": "No refund of TT fee/credit on refund or cancel; processor fees usually not returned either. No TT chargeback fee found on pages read.",
+    "fine_print": [
+     "Charged per 'usage', not on ticket price: paid ticket = 1 usage; seated paid ticket = 2; free ticket = 0; free seated ticket = 1; product sale = 1; ticket issued via API (even free) = 1; imported ticket (even free) = 1; every ticket in a paid bundle = 1; a voucher-covered order is still charged.",
+     "First 5 ticket sales are free; the standard rate starts from the sixth paid ticket (pricing page FAQ).",
+     "Free tickets free within fair usage: the pricing page says 5,000 free tickets/year but its FAQ also mentions 'more than 2,000' in another answer; above fair usage TT gives a per-free-ticket quote via support.",
+     "Fees are not refunded when a ticket is refunded or cancelled (credits/PAYG fee kept); order transfer is free.",
+     "Discounts (apply via billing page, at TT's discretion): 50% for registered charities (forever), 20% for B Corps/PTAs/CICs/non-profits/BBN, half-usage for tickets under 5 incl. booking fees (a seated 5 ticket = 1.5 usage), 50% for Music Venue Trust members, 50% for Round Tables, 6 months free for Art Tickets users. Only one discount at a time; none applies to white-label/custom-domain prices or processor fees.",
+     "Refund protection: buyers can add it for 8% of ticket price; organizer keeps 10% of that fee, rest goes to TT (collected via PAYG).",
+     "SMS/WhatsApp reminders: TT charges 0.10 per event per order (GBP/USD) for buyers who opt in; organizer keeps any excess of the suggested fee.",
+     "TT does not touch the payment: Stripe, PayPal, Square or offline needed; TT fees are on top of processor fees; credits do not cover processing.",
+     "VAT and sales tax charged on TT fees where applicable; TT prices are shown excl. VAT.",
+     "No subscription, no contract; credits never expire; credits can be transferred between the organizer's box offices.",
+     "Pass-on of fees is manual: organizer adds a booking fee (per ticket) and/or transaction fee (per order, % and/or fixed); no automatic 'pass all fees' toggle. TT warns US sellers about the FTC junk-fees rule."
+    ],
+    "add_ons": [
+     {
+      "name": "White label (logo removal + custom domain)",
+      "price": "A$69/month; custom domain alone A$12/month"
+     },
+     {
+      "name": "HubSpot/ActiveCampaign/Constant Contact integrations",
+      "price": "monthly fee shown in account (amount not public)"
+     },
+     {
+      "name": "Free check-in app",
+      "price": "free"
+     }
+    ],
+    "enterprise": "Very large free events / above fair usage: ask support for a quote; 'Book a demo' for larger organizers (no public enterprise price)",
+    "sources": [
+     {
+      "url": "https://www.tickettailor.com/pricing",
+      "read": "2026-10-09",
+      "what": "pricing page + FAQ"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/6731528-how-much-does-ticket-tailor-cost-and-how-will-i-be-charged",
+      "read": "2026-10-09",
+      "what": "help centre: how much does TT cost"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/4096561-what-are-the-fees-for-using-seating-charts",
+      "read": "2026-10-09",
+      "what": "help centre: seating chart fees"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/4725866-how-do-pre-pay-ticket-credits-work",
+      "read": "2026-10-09",
+      "what": "help centre: pre-pay credits"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/8687492-what-discounts-do-we-offer",
+      "read": "2026-10-09",
+      "what": "help centre: discounts"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/5210356-how-to-pass-fees-onto-your-ticket-buyers",
+      "read": "2026-10-09",
+      "what": "help centre: passing fees on"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "Canada",
+    "currency": "CAD",
+    "vat_note": "TT fees shown excl. VAT; VAT/sales tax added where applicable",
+    "model": "flat_per_ticket",
+    "money_flow": "direct_merchant",
+    "money_flow_notes": "Direct merchant: buyer pays straight into the organizer's own Stripe/PayPal/Square account (revenue appears almost immediately, bank transfer takes about a week); TT never holds the money. TT fee collection: Pre-pay = card charged immediately when credits are bought (optional auto top-up monthly or when <=25 credits left). PAYG on Stripe = fee deducted automatically at the point of sale; PAYG on PayPal/Square/offline = TT charges the organizer's card on file monthly, or every 50 usage units, or 2 days after the last event ends.",
+    "plans": [
+     {
+      "name": "Free (free tickets)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Up to 5,000 free tickets/year, no fee",
+      "notes": "First 5 paid sales also free"
+     },
+     {
+      "name": "Pay as you go (PAYG)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 1.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "All features, flat fee per usage, no subscription",
+      "notes": "Stripe: deducted at sale; PayPal/Square: billed to card"
+     },
+     {
+      "name": "Pre-pay credits",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Same features; lower unit price when credits are bought in advance",
+      "notes": "See prepaid bundles; credits never expire; running out falls back to PAYG automatically; minimum bundle 100 credits"
+     }
+    ],
+    "prepaid": [
+     {
+      "bundle": "credit bundles",
+      "unit_price": null,
+      "expiry": "none",
+      "refundable": null,
+      "note": "CAD tiers not captured"
+     }
+    ],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Stripe",
+      "PayPal",
+      "Square"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "Stripe CA 2.9% + C$0.30 (example)",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "configurable (organizer adds own booking/transaction fee; default is organizer absorbs)",
+    "free_tickets": "Free tickets are free up to 5,000/year; first 5 paid tickets free.",
+    "seating": "Seat reservation: PAYG +C$1.00 per seated ticket; pre-pay: +1 credit.",
+    "payouts": "Immediate into organizer's Stripe/PayPal/Square; no payout by TT.",
+    "refunds_chargebacks": "No refund of TT fee/credit on refund or cancel; processor fees usually not returned either. No TT chargeback fee found on pages read.",
+    "fine_print": [
+     "Charged per 'usage', not on ticket price: paid ticket = 1 usage; seated paid ticket = 2; free ticket = 0; free seated ticket = 1; product sale = 1; ticket issued via API (even free) = 1; imported ticket (even free) = 1; every ticket in a paid bundle = 1; a voucher-covered order is still charged.",
+     "First 5 ticket sales are free; the standard rate starts from the sixth paid ticket (pricing page FAQ).",
+     "Free tickets free within fair usage: the pricing page says 5,000 free tickets/year but its FAQ also mentions 'more than 2,000' in another answer; above fair usage TT gives a per-free-ticket quote via support.",
+     "Fees are not refunded when a ticket is refunded or cancelled (credits/PAYG fee kept); order transfer is free.",
+     "Discounts (apply via billing page, at TT's discretion): 50% for registered charities (forever), 20% for B Corps/PTAs/CICs/non-profits/BBN, half-usage for tickets under 5 incl. booking fees (a seated 5 ticket = 1.5 usage), 50% for Music Venue Trust members, 50% for Round Tables, 6 months free for Art Tickets users. Only one discount at a time; none applies to white-label/custom-domain prices or processor fees.",
+     "Refund protection: buyers can add it for 8% of ticket price; organizer keeps 10% of that fee, rest goes to TT (collected via PAYG).",
+     "SMS/WhatsApp reminders: TT charges 0.10 per event per order (GBP/USD) for buyers who opt in; organizer keeps any excess of the suggested fee.",
+     "TT does not touch the payment: Stripe, PayPal, Square or offline needed; TT fees are on top of processor fees; credits do not cover processing.",
+     "VAT and sales tax charged on TT fees where applicable; TT prices are shown excl. VAT.",
+     "No subscription, no contract; credits never expire; credits can be transferred between the organizer's box offices.",
+     "Pass-on of fees is manual: organizer adds a booking fee (per ticket) and/or transaction fee (per order, % and/or fixed); no automatic 'pass all fees' toggle. TT warns US sellers about the FTC junk-fees rule."
+    ],
+    "add_ons": [
+     {
+      "name": "White label (logo removal + custom domain)",
+      "price": "C$69/month; custom domain alone C$10/month"
+     },
+     {
+      "name": "HubSpot/ActiveCampaign/Constant Contact integrations",
+      "price": "monthly fee shown in account (amount not public)"
+     },
+     {
+      "name": "Free check-in app",
+      "price": "free"
+     }
+    ],
+    "enterprise": "Very large free events / above fair usage: ask support for a quote; 'Book a demo' for larger organizers (no public enterprise price)",
+    "sources": [
+     {
+      "url": "https://www.tickettailor.com/pricing",
+      "read": "2026-10-09",
+      "what": "pricing page + FAQ"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/6731528-how-much-does-ticket-tailor-cost-and-how-will-i-be-charged",
+      "read": "2026-10-09",
+      "what": "help centre: how much does TT cost"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/4096561-what-are-the-fees-for-using-seating-charts",
+      "read": "2026-10-09",
+      "what": "help centre: seating chart fees"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/4725866-how-do-pre-pay-ticket-credits-work",
+      "read": "2026-10-09",
+      "what": "help centre: pre-pay credits"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/8687492-what-discounts-do-we-offer",
+      "read": "2026-10-09",
+      "what": "help centre: discounts"
+     },
+     {
+      "url": "https://help.tickettailor.com/en/articles/5210356-how-to-pass-fees-onto-your-ticket-buyers",
+      "read": "2026-10-09",
+      "what": "help centre: passing fees on"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "No subscription: only usage fees + optional paid add-ons (white label, custom domain, some integrations). Low-price (<5) and charity discounts are discretionary. Free-ticket fair-usage text is inconsistent on the pricing page (5,000 vs 2,000). Claims 73,000+ event creators. 'Ticket Tailor does not touch or process the payment' is its key pitch against Eventbrite."
+ },
+ {
+  "platform": "Tito (ti.to)",
+  "website": "https://ti.to",
+  "hq_country": "IE",
+  "segment": "conferences, workshops, tech/community events; Tito Pro is separate for invitation-only pro events; simple 3% model",
+  "markets": [
+   {
+    "market": "Global (EUR shown on pricing page)",
+    "currency": "EUR (139 currencies supported)",
+    "vat_note": "Fee computed on ticket price excl. tax; Tito charges VAT on its own fee: EU VAT-registered = reverse charge, EU non-registered pay local VAT (MOSS), non-EU none",
+    "model": "percent",
+    "money_flow": "direct_merchant",
+    "money_flow_notes": "Organizer connects Stripe or PayPal; buyer money goes straight to the organizer's account ('Tito can never hold or delay your money'). Tito's fee is deducted automatically at transaction time through the Stripe/PayPal integration; a card on file is needed only when 'pay by invoice' is used (fees on those then charged monthly).",
+    "plans": [
+     {
+      "name": "Standard",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 3.0,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": 25.0,
+      "includes": "All features, no setup, no subscription",
+      "notes": "Cap EUR 25 per ticket on paid plans (tickets above EUR 833.33 pay flat EUR 25)"
+     },
+     {
+      "name": "Charity / community / non-profit (apply)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.5,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": 25.0,
+      "includes": "Same features",
+      "notes": "no commercial affiliation"
+     },
+     {
+      "name": "Free events",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 0.0,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Free events are free",
+      "notes": null
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Stripe",
+      "PayPal"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "Stripe example on page: European cards 1.4% + EUR 0.25, non-European cards 2.9% + EUR 0.25; UK 1.4% + 20p / 2.9% + 20p; US 2.9% + 30c; Canada 2.9% + C$0.30",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "organizer (Tito deliberately does NOT allow passing booking fees to buyers; price shown is price paid)",
+    "free_tickets": "Free events free.",
+    "seating": "not mentioned on pricing page (null)",
+    "payouts": "Direct from Stripe/PayPal rolling payouts (Stripe 2-7 days).",
+    "refunds_chargebacks": "Tito and gateway fees are charged at the transaction and NOT reversed on refund; no extra fee to process a refund.",
+    "fine_print": [
+     "Tito Pro (pro.tito.io) is a separate next-gen product for professional invitation-only events; its pricing was not on the page read.",
+     "Cannot add booking fees on top - must fold fees into the ticket price.",
+     "No setup fee, no monthly subscription, no extra fee for premium features.",
+     "Usable in any country where Stripe or PayPal is available."
+    ],
+    "add_ons": [],
+    "enterprise": null,
+    "sources": [
+     {
+      "url": "https://ti.to/pricing",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     },
+     {
+      "url": "https://help.tito.io/en/articles/3673403-does-vat-apply-to-tito-fees",
+      "read": "2026-10-09",
+      "what": "help: VAT on fees"
+     },
+     {
+      "url": "https://help.tito.io/en/articles/3766799-does-tito-refund-fees-on-cancelled-tickets",
+      "read": "2026-10-09",
+      "what": "help: refunds"
+     },
+     {
+      "url": "https://help.tito.io/en/articles/2038071-do-i-need-to-add-a-credit-card-to-make-my-event-live",
+      "read": "2026-10-09",
+      "what": "help: how fees are charged"
+     },
+     {
+      "url": "https://help.tito.io/en/articles/2006154-can-i-pass-booking-fees-along-to-attendees",
+      "read": "2026-10-09",
+      "what": "help: pass booking fees"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "Cheapest percent model in the group for high-priced tickets thanks to the EUR 25 cap. Pricing page shows currency by visitor; EUR shown here."
+ },
+ {
+  "platform": "Humanitix",
+  "website": "https://humanitix.com",
+  "hq_country": "AU",
+  "segment": "not-for-profit ticketing (profits to children's charities); events from community to festivals in AU/NZ/UK/US; fee paid by buyer by default",
+  "markets": [
+   {
+    "market": "Australia",
+    "currency": "AUD",
+    "vat_note": "fee quoted excl. GST; 10% GST added (NFP rate GST-exempt)",
+    "model": "percent_plus_fixed",
+    "money_flow": "both",
+    "money_flow_notes": "Default: Humanitix gateway collects (payout ~5 business days after event); optional own Stripe account (same booking fee plus Stripe's charges).",
+    "plans": [
+     {
+      "name": "Standard",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 4.0,
+      "per_ticket_fixed": 0.99,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "All features, unlimited ticket types, reserved seating, scheduled payouts, scanning app",
+      "notes": "plus 10% GST"
+     },
+     {
+      "name": "NFP / charity / school",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.5,
+      "per_ticket_fixed": 0.5,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Same features",
+      "notes": "GST exempt"
+     },
+     {
+      "name": "Free events",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 0.0,
+      "per_ticket_fixed": 0.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": null
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Humanitix gateway (cards, Apple/Google Pay, PayPal in some currencies)",
+      "Stripe (alternative)"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "Fee includes processing on the default gateway; with own Stripe the processor fee is added on top",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer by default (booking fee added on top); organizer can absorb or split",
+    "free_tickets": "No fees for free tickets/events.",
+    "seating": "Reserved seating included in all plans (listed feature); no separate seating surcharge published.",
+    "payouts": "Default gateway: within about 5 business days after the event; earlier by request; Stripe: Stripe schedule.",
+    "refunds_chargebacks": "Refunds can be processed through the platform while the event has not been paid out; fee refund policy not captured; Stripe fees non-refundable.",
+    "fine_print": [
+     "Not-for-profit; all profits go to charity; fees are called 'booking fees'.",
+     "No subscription, sign-up or admin fees; all features on all plans; no fees for free tickets, imported tickets or manual orders.",
+     "Registered NFP/charity/school/university rate is discounted (see plans).",
+     "Booking fees cannot be invoiced separately: they are deducted at purchase before payout.",
+     "Box-office (in-person) rate: 3% + 1 (local currency) per paid ticket; no fee for cash sales.",
+     "Organizer can absorb the fee (buyer pays face value, fee debited before payout) or split it with buyers.",
+     "On the default gateway AMEX and PayPal carry surcharges always paid by the buyer; PayPal not yet available for GBP.",
+     "Afterpay/Zip BNPL available for some currencies; those sales are paid out post-event only and cannot go to a connected Stripe account.",
+     "Custom pricing for big events or big-ticket items: contact sales."
+    ],
+    "add_ons": [],
+    "enterprise": null,
+    "sources": [
+     {
+      "url": "https://help.humanitix.com/en/articles/12292391-what-are-the-humanitix-booking-fees",
+      "read": "2026-10-09",
+      "what": "help centre: booking fees (primary)"
+     },
+     {
+      "url": "https://help.humanitix.com/en/articles/9760527-how-much-does-humanitix-cost",
+      "read": "2026-10-09",
+      "what": "help centre: how much does Humanitix cost"
+     },
+     {
+      "url": "https://help.humanitix.com/en/articles/8889188-payment-processing-options-for-your-humanitix-event",
+      "read": "2026-10-09",
+      "what": "help centre: payment processing options"
+     },
+     {
+      "url": "https://humanitix.com/pricing",
+      "read": "2026-10-09",
+      "what": "US pricing page"
+     },
+     {
+      "url": "https://humanitix.com/au/pricing",
+      "read": "2026-10-09",
+      "what": "AU pricing page"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "New Zealand",
+    "currency": "NZD",
+    "vat_note": "plus 15% GST on standard rate",
+    "model": "percent_plus_fixed",
+    "money_flow": "both",
+    "money_flow_notes": "Default Humanitix gateway; optional own Stripe.",
+    "plans": [
+     {
+      "name": "Standard",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 5.0,
+      "per_ticket_fixed": 0.49,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "All features, unlimited ticket types, reserved seating, scheduled payouts, scanning app",
+      "notes": "plus 15% GST"
+     },
+     {
+      "name": "NFP / charity / school",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 3.0,
+      "per_ticket_fixed": 0.3,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Same features",
+      "notes": "GST exempt"
+     },
+     {
+      "name": "Free events",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 0.0,
+      "per_ticket_fixed": 0.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": null
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Humanitix gateway (cards, Apple/Google Pay, PayPal in some currencies)",
+      "Stripe (alternative)"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "Fee includes processing on the default gateway; with own Stripe the processor fee is added on top",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer by default (booking fee added on top); organizer can absorb or split",
+    "free_tickets": "No fees for free tickets/events.",
+    "seating": "Reserved seating included in all plans (listed feature); no separate seating surcharge published.",
+    "payouts": "Default gateway: within about 5 business days after the event; earlier by request; Stripe: Stripe schedule.",
+    "refunds_chargebacks": "Refunds can be processed through the platform while the event has not been paid out; fee refund policy not captured; Stripe fees non-refundable.",
+    "fine_print": [
+     "Not-for-profit; all profits go to charity; fees are called 'booking fees'.",
+     "No subscription, sign-up or admin fees; all features on all plans; no fees for free tickets, imported tickets or manual orders.",
+     "Registered NFP/charity/school/university rate is discounted (see plans).",
+     "Booking fees cannot be invoiced separately: they are deducted at purchase before payout.",
+     "Box-office (in-person) rate: 3% + 1 (local currency) per paid ticket; no fee for cash sales.",
+     "Organizer can absorb the fee (buyer pays face value, fee debited before payout) or split it with buyers.",
+     "On the default gateway AMEX and PayPal carry surcharges always paid by the buyer; PayPal not yet available for GBP.",
+     "Afterpay/Zip BNPL available for some currencies; those sales are paid out post-event only and cannot go to a connected Stripe account.",
+     "Custom pricing for big events or big-ticket items: contact sales."
+    ],
+    "add_ons": [],
+    "enterprise": null,
+    "sources": [
+     {
+      "url": "https://help.humanitix.com/en/articles/12292391-what-are-the-humanitix-booking-fees",
+      "read": "2026-10-09",
+      "what": "help centre: booking fees (primary)"
+     },
+     {
+      "url": "https://help.humanitix.com/en/articles/9760527-how-much-does-humanitix-cost",
+      "read": "2026-10-09",
+      "what": "help centre: how much does Humanitix cost"
+     },
+     {
+      "url": "https://help.humanitix.com/en/articles/8889188-payment-processing-options-for-your-humanitix-event",
+      "read": "2026-10-09",
+      "what": "help centre: payment processing options"
+     },
+     {
+      "url": "https://humanitix.com/pricing",
+      "read": "2026-10-09",
+      "what": "US pricing page"
+     },
+     {
+      "url": "https://humanitix.com/au/pricing",
+      "read": "2026-10-09",
+      "what": "AU pricing page"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "United States",
+    "currency": "USD",
+    "vat_note": "fee quoted excl. taxes (sales tax applied where applicable)",
+    "model": "percent_plus_fixed",
+    "money_flow": "both",
+    "money_flow_notes": "Default Humanitix gateway for USD events. NOTE: the US pricing page (humanitix.com/pricing, read 2026-10-09) instead shows Standard 2.1% + $0.99 and Charities 1% + $0.99 with 'payment processing 2.9% + $0.30' - this matches the Stripe-connected rate (EUR/CAD tier). Reconciled: default gateway 5% + $1.29 all-in vs Stripe-connected 2.1% + $0.99 + Stripe 2.9% + $0.30.",
+    "plans": [
+     {
+      "name": "Standard",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 5.0,
+      "per_ticket_fixed": 1.29,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "All features, unlimited ticket types, reserved seating, scheduled payouts, scanning app",
+      "notes": "help centre; excl. tax; default-gateway rate with processing included"
+     },
+     {
+      "name": "NFP / charity / school",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 3.9,
+      "per_ticket_fixed": 1.29,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Same features",
+      "notes": "tax exempt"
+     },
+     {
+      "name": "Free events",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 0.0,
+      "per_ticket_fixed": 0.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": null
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Humanitix gateway (cards, Apple/Google Pay, PayPal in some currencies)",
+      "Stripe (alternative)"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "Fee includes processing on the default gateway; with own Stripe the processor fee is added on top",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer by default (booking fee added on top); organizer can absorb or split",
+    "free_tickets": "No fees for free tickets/events.",
+    "seating": "Reserved seating included in all plans (listed feature); no separate seating surcharge published.",
+    "payouts": "Default gateway: within about 5 business days after the event; earlier by request; Stripe: Stripe schedule.",
+    "refunds_chargebacks": "Refunds can be processed through the platform while the event has not been paid out; fee refund policy not captured; Stripe fees non-refundable.",
+    "fine_print": [
+     "Not-for-profit; all profits go to charity; fees are called 'booking fees'.",
+     "No subscription, sign-up or admin fees; all features on all plans; no fees for free tickets, imported tickets or manual orders.",
+     "Registered NFP/charity/school/university rate is discounted (see plans).",
+     "Booking fees cannot be invoiced separately: they are deducted at purchase before payout.",
+     "Box-office (in-person) rate: 3% + 1 (local currency) per paid ticket; no fee for cash sales.",
+     "Organizer can absorb the fee (buyer pays face value, fee debited before payout) or split it with buyers.",
+     "On the default gateway AMEX and PayPal carry surcharges always paid by the buyer; PayPal not yet available for GBP.",
+     "Afterpay/Zip BNPL available for some currencies; those sales are paid out post-event only and cannot go to a connected Stripe account.",
+     "Custom pricing for big events or big-ticket items: contact sales.",
+     "US page 2.1% + $0.99 (+ Stripe 2.9% + $0.30) vs help centre 5% + $1.29 all-in; both recorded."
+    ],
+    "add_ons": [],
+    "enterprise": null,
+    "sources": [
+     {
+      "url": "https://help.humanitix.com/en/articles/12292391-what-are-the-humanitix-booking-fees",
+      "read": "2026-10-09",
+      "what": "help centre: booking fees (primary)"
+     },
+     {
+      "url": "https://help.humanitix.com/en/articles/9760527-how-much-does-humanitix-cost",
+      "read": "2026-10-09",
+      "what": "help centre: how much does Humanitix cost"
+     },
+     {
+      "url": "https://help.humanitix.com/en/articles/8889188-payment-processing-options-for-your-humanitix-event",
+      "read": "2026-10-09",
+      "what": "help centre: payment processing options"
+     },
+     {
+      "url": "https://humanitix.com/pricing",
+      "read": "2026-10-09",
+      "what": "US pricing page"
+     },
+     {
+      "url": "https://humanitix.com/au/pricing",
+      "read": "2026-10-09",
+      "what": "AU pricing page"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "United Kingdom",
+    "currency": "GBP",
+    "vat_note": "fee quoted INCLUDING VAT (third-party: 4.67% + 46p excl. VAT; charity 3.33% + 25p excl. VAT)",
+    "model": "percent_plus_fixed",
+    "money_flow": "both",
+    "money_flow_notes": "Default Humanitix gateway for GBP events (PayPal not yet available for GBP); payout after event (third-party ticketingfees.co.uk: after the event by default, earlier on request).",
+    "plans": [
+     {
+      "name": "Standard",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 5.6,
+      "per_ticket_fixed": 0.55,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "All features, unlimited ticket types, reserved seating, scheduled payouts, scanning app",
+      "notes": "incl. VAT"
+     },
+     {
+      "name": "NFP / charity / school",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 4.0,
+      "per_ticket_fixed": 0.3,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Same features",
+      "notes": "incl. VAT"
+     },
+     {
+      "name": "Free events",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 0.0,
+      "per_ticket_fixed": 0.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": null
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Humanitix gateway (cards, Apple/Google Pay, PayPal in some currencies)",
+      "Stripe (alternative)"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "Fee includes processing on the default gateway; with own Stripe the processor fee is added on top",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer by default (booking fee added on top); organizer can absorb or split",
+    "free_tickets": "No fees for free tickets/events.",
+    "seating": "Reserved seating included in all plans (listed feature); no separate seating surcharge published.",
+    "payouts": "Default gateway: within about 5 business days after the event; earlier by request; Stripe: Stripe schedule.",
+    "refunds_chargebacks": "Refunds can be processed through the platform while the event has not been paid out; fee refund policy not captured; Stripe fees non-refundable.",
+    "fine_print": [
+     "Not-for-profit; all profits go to charity; fees are called 'booking fees'.",
+     "No subscription, sign-up or admin fees; all features on all plans; no fees for free tickets, imported tickets or manual orders.",
+     "Registered NFP/charity/school/university rate is discounted (see plans).",
+     "Booking fees cannot be invoiced separately: they are deducted at purchase before payout.",
+     "Box-office (in-person) rate: 3% + 1 (local currency) per paid ticket; no fee for cash sales.",
+     "Organizer can absorb the fee (buyer pays face value, fee debited before payout) or split it with buyers.",
+     "On the default gateway AMEX and PayPal carry surcharges always paid by the buyer; PayPal not yet available for GBP.",
+     "Afterpay/Zip BNPL available for some currencies; those sales are paid out post-event only and cannot go to a connected Stripe account.",
+     "Custom pricing for big events or big-ticket items: contact sales.",
+     "ticketingfees.co.uk (a competitor's site) quotes 4.67% + 46p excl. VAT, equal to 5.6% + 55p incl. VAT."
+    ],
+    "add_ons": [],
+    "enterprise": null,
+    "sources": [
+     {
+      "url": "https://help.humanitix.com/en/articles/12292391-what-are-the-humanitix-booking-fees",
+      "read": "2026-10-09",
+      "what": "help centre: booking fees (primary)"
+     },
+     {
+      "url": "https://help.humanitix.com/en/articles/9760527-how-much-does-humanitix-cost",
+      "read": "2026-10-09",
+      "what": "help centre: how much does Humanitix cost"
+     },
+     {
+      "url": "https://help.humanitix.com/en/articles/8889188-payment-processing-options-for-your-humanitix-event",
+      "read": "2026-10-09",
+      "what": "help centre: payment processing options"
+     },
+     {
+      "url": "https://humanitix.com/pricing",
+      "read": "2026-10-09",
+      "what": "US pricing page"
+     },
+     {
+      "url": "https://humanitix.com/au/pricing",
+      "read": "2026-10-09",
+      "what": "AU pricing page"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "Eurozone (EUR) / Canada / Mexico / Fiji",
+    "currency": "EUR (and CAD, MXN, FJD)",
+    "vat_note": "EUR: fee + Stripe's card fees; VAT treatment not stated",
+    "model": "percent_plus_fixed",
+    "money_flow": "direct_merchant",
+    "money_flow_notes": "EUR, CAD, MXN and FJD events MUST connect their own Stripe account (Humanitix gateway not available): money goes straight to the organizer's Stripe; Humanitix fee deducted plus Stripe's own fees.",
+    "plans": [
+     {
+      "name": "Standard",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.1,
+      "per_ticket_fixed": 0.99,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "All features, unlimited ticket types, reserved seating, scheduled payouts, scanning app",
+      "notes": "+ credit card fees charged by Stripe; same 2.1% + 0.99 for CAD/FJD/MXN"
+     },
+     {
+      "name": "NFP / charity / school",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 1.0,
+      "per_ticket_fixed": 0.99,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Same features",
+      "notes": "+ Stripe fees"
+     },
+     {
+      "name": "Free events",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 0.0,
+      "per_ticket_fixed": 0.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": null
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Stripe (mandatory)"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "Stripe fees charged by Stripe on top of the booking fee",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer by default (booking fee added on top); organizer can absorb or split",
+    "free_tickets": "No fees for free tickets/events.",
+    "seating": "Reserved seating included in all plans (listed feature); no separate seating surcharge published.",
+    "payouts": "Default gateway: within about 5 business days after the event; earlier by request; Stripe: Stripe schedule.",
+    "refunds_chargebacks": "Refunds can be processed through the platform while the event has not been paid out; fee refund policy not captured; Stripe fees non-refundable.",
+    "fine_print": [
+     "Not-for-profit; all profits go to charity; fees are called 'booking fees'.",
+     "No subscription, sign-up or admin fees; all features on all plans; no fees for free tickets, imported tickets or manual orders.",
+     "Registered NFP/charity/school/university rate is discounted (see plans).",
+     "Booking fees cannot be invoiced separately: they are deducted at purchase before payout.",
+     "Box-office (in-person) rate: 3% + 1 (local currency) per paid ticket; no fee for cash sales.",
+     "Organizer can absorb the fee (buyer pays face value, fee debited before payout) or split it with buyers.",
+     "On the default gateway AMEX and PayPal carry surcharges always paid by the buyer; PayPal not yet available for GBP.",
+     "Afterpay/Zip BNPL available for some currencies; those sales are paid out post-event only and cannot go to a connected Stripe account.",
+     "Custom pricing for big events or big-ticket items: contact sales.",
+     "Box-office rate not available ('NA') for these currencies."
+    ],
+    "add_ons": [],
+    "enterprise": null,
+    "sources": [
+     {
+      "url": "https://help.humanitix.com/en/articles/12292391-what-are-the-humanitix-booking-fees",
+      "read": "2026-10-09",
+      "what": "help centre: booking fees (primary)"
+     },
+     {
+      "url": "https://help.humanitix.com/en/articles/9760527-how-much-does-humanitix-cost",
+      "read": "2026-10-09",
+      "what": "help centre: how much does Humanitix cost"
+     },
+     {
+      "url": "https://help.humanitix.com/en/articles/8889188-payment-processing-options-for-your-humanitix-event",
+      "read": "2026-10-09",
+      "what": "help centre: payment processing options"
+     },
+     {
+      "url": "https://humanitix.com/pricing",
+      "read": "2026-10-09",
+      "what": "US pricing page"
+     },
+     {
+      "url": "https://humanitix.com/au/pricing",
+      "read": "2026-10-09",
+      "what": "AU pricing page"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "Fee table per currency from help.humanitix.com (updated 2026-06-23; Humanitix announced the fees stay unchanged on 1 July 2026). For Europe the headline 2.1% + 0.99 is low but excludes Stripe's fees; for AU/NZ/US/UK the default gateway rate includes processing but pays out AFTER the event."
+ },
+ {
+  "platform": "Luma (lu.ma)",
+  "website": "https://luma.com",
+  "hq_country": "US",
+  "segment": "community/professional events, meetups, workshops, dinners; free-first with calendars/newsletters; strong with tech/creator communities",
+  "markets": [
+   {
+    "market": "Global (USD)",
+    "currency": "USD",
+    "vat_note": "prices in US dollars; Luma Plus can collect sales tax for ticket sales (free plan cannot); Luma fee invoices available for VAT bookkeeping",
+    "model": "percent",
+    "money_flow": "direct_merchant",
+    "money_flow_notes": "Organizer connects own Stripe account; cards settle into the organizer's Stripe as tickets sell. Luma's platform fee is taken as an application fee on each transaction (luma_application_fee in the Sales History CSV) together with Stripe's processing fee.",
+    "plans": [
+     {
+      "name": "Free",
+      "monthly_fee": 0.0,
+      "annual_fee": 0.0,
+      "per_ticket_percent": 5.0,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Unlimited events and guests, 500 invites/newsletters per week, 3 calendar admins, regional payment methods (iDEAL, Konbini, PayNow), coupons, ticket types",
+      "notes": "5% platform fee on paid events; no tax collection"
+     },
+     {
+      "name": "Luma Plus",
+      "monthly_fee": 69.0,
+      "annual_fee": 708.0,
+      "per_ticket_percent": 0.0,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "0% platform fee, 5,000 sends/week, tax collection, API/Zapier, custom URLs, check-in manager, priority support, 5 admins",
+      "notes": "$59/month billed annually (save 14%, = $708/yr); $69/month month-to-month (Luma help comparison pages); per calendar, not per account; fees on earlier sales not refunded after upgrade"
+     },
+     {
+      "name": "Enterprise",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Organization accounts, SSO, advanced integrations, custom features",
+      "notes": "Contact sales; price not public"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Stripe"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "Stripe typically 2.9% + 30c on top of the platform fee",
+     "platform_extra_processing_fee": "none; Stripe is the only processor"
+    },
+    "who_pays_default": "organizer (third-party Hi.Events says the fee cannot be passed on; Luma pages show no pass-through toggle)",
+    "free_tickets": "Free events free; unlimited guests on free plan.",
+    "seating": "No seating charts; tables modelled as limited-quantity high-price ticket tiers (Luma's own comparison page)",
+    "payouts": "Rolling payouts per organizer's Stripe schedule (typically next business day / 2 days in the US); Stripe Instant Payouts possible.",
+    "refunds_chargebacks": "Refunds via Stripe/Luma sales history; Luma platform-fee refund policy not captured; Stripe fees not returned.",
+    "fine_print": [
+     "Extra calendar admin seat: $12/month ($9/month billed annually).",
+     "Weekly send add-ons for Plus: 10,000 $50/mo; 25,000 $200/mo; 50,000 $400/mo; 75,000 $600/mo; 100,000 $800/mo (billed annually, save up to 11%).",
+     "Plus is bought per calendar and cannot be moved to another calendar.",
+     "Calendar must be verified to unlock higher send limits even on Plus.",
+     "On a $20 ticket: Free plan fees $1.88 total; Plus $0.88 (Luma's own comparison page)."
+    ],
+    "add_ons": [
+     {
+      "name": "Extra admin seat",
+      "price": "$12/mo or $9/mo annual"
+     },
+     {
+      "name": "Weekly send tiers",
+      "price": "$50-$800/mo"
+     }
+    ],
+    "enterprise": "Enterprise plan: contact sales (no public price)",
+    "sources": [
+     {
+      "url": "https://luma.com/pricing",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     },
+     {
+      "url": "https://help.luma.com/p/luma-plus",
+      "read": "2026-10-09",
+      "what": "help centre: Luma Plus overview"
+     },
+     {
+      "url": "https://help.luma.com/p/understanding-payouts-and-event-proceeds",
+      "read": "2026-10-09",
+      "what": "help centre: payouts and fees"
+     },
+     {
+      "url": "https://help.luma.com/p/luma-vs-posh",
+      "read": "2026-10-09",
+      "what": "Luma comparison page (vendor), includes Posh fee"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "Single global USD price list. Plus (69/month) breaks even versus the 5% fee at about $1,380 of paid ticket sales per month (about $1,180 on annual billing)."
+ },
+ {
+  "platform": "Zeffy",
+  "website": "https://www.zeffy.com",
+  "hq_country": "CA",
+  "segment": "registered nonprofits and charities only (US, Canada, UK, France etc.); fundraising + ticketing; 'free' via optional donor tip",
+  "markets": [
+   {
+    "market": "US/Canada (nonprofits) and UK (charities)",
+    "currency": "USD / CAD / GBP",
+    "vat_note": "pricing pages state 'Our price is $0' / 'GBP 0'",
+    "model": "free_buyer_pays",
+    "money_flow": "collecting",
+    "money_flow_notes": "Zeffy processes the payments (Stripe-based) and pays the organization; revenue comes only from an optional contribution added at checkout. Payout (third-party summary): weekly by default after a fraud review of 1-3 business days; reserve terms not captured.",
+    "plans": [
+     {
+      "name": "Free (only plan)",
+      "monthly_fee": 0.0,
+      "annual_fee": 0.0,
+      "per_ticket_percent": 0.0,
+      "per_ticket_fixed": 0.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Every feature (ticketing, donation forms, raffles, auctions, membership, peer-to-peer, CRM, email) with no paid tier",
+      "notes": "Zeffy covers card and transaction fees; revenue = optional donor contribution"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Zeffy payments (Stripe-based)"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "Zeffy says it covers card/transaction fees; the buyer/donor may add a voluntary contribution",
+     "platform_extra_processing_fee": "none from organizer"
+    },
+    "who_pays_default": "buyer/donor (optional tip added at the payment-confirmation step; on average 2 of 3 donors tip)",
+    "free_tickets": "Free tickets free (no fee for anyone).",
+    "seating": "not stated on pricing page (numbered tickets for raffles supported); no surcharge since no fees",
+    "payouts": "Weekly by default after fraud review (third-party Hi.Events payout comparison, 2026-09).",
+    "refunds_chargebacks": "Organization receives 100% of the money raised whether or not the donor tips; refund/chargeback fees not captured.",
+    "fine_print": [
+     "Only for registered nonprofits/charities; commercial organizers are not eligible.",
+     "The tip is optional, labelled and adjustable/removable at checkout; critics call tip prompts potentially misleading (UK charity forum snippet).",
+     "Zeffy's own comparison widgets quote Eventbrite US as 3.7% + $1.79 + 2.9% and a UK alternative as 6.95% + GBP 0.59 per ticket."
+    ],
+    "add_ons": [],
+    "enterprise": null,
+    "sources": [
+     {
+      "url": "https://www.zeffy.com/pricing",
+      "read": "2026-10-09",
+      "what": "US/CA pricing page"
+     },
+     {
+      "url": "https://www.zeffy.com/en-gb/pricing",
+      "read": "2026-10-09",
+      "what": "UK pricing page"
+     },
+     {
+      "url": "https://hi.events/ticketing-platform-payouts",
+      "read": "2026-10-09",
+      "what": "third-party payout comparison"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "Not a competitor for commercial organizers but sets the 'free for organizer, buyer tips' reference point in the nonprofit segment. https://www.zeffy.com/ticketing-software returned 404."
+ },
+ {
+  "platform": "TicketSpice (Webconnex)",
+  "website": "https://www.ticketspice.com",
+  "hq_country": "US",
+  "segment": "US events and attractions (festivals, haunts, theaters, waterparks); flat per-ticket fee plus in-house payments; box office and weekly payouts",
+  "markets": [
+   {
+    "market": "US",
+    "currency": "USD",
+    "vat_note": "prices excl. tax",
+    "model": "flat_per_ticket",
+    "money_flow": "both",
+    "money_flow_notes": "Default: in-house Webconnex Payments processor (platform collects, pays out WEEKLY by direct deposit, fees deducted before payout). Alternative: use own gateway (Stripe, Authorize.net, NMI, Paya, Cybersource, Payflow Pro, SecureNet) for an extra 1% + 25c per transaction charged by TicketSpice in USD - then money goes to the organizer's own gateway.",
+    "plans": [
+     {
+      "name": "Standard",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.99,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "No platform/setup/support fees; page builder, reserved seating, box office app, scanning, API, weekly payouts",
+      "notes": "Plus card processing 2.9% + 30c (can be passed on); tickets of $5 or less: $0.49"
+     },
+     {
+      "name": "Box office app sales",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.49,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "On-site sales via the box office app",
+      "notes": "$0.49 per paid ticket on site"
+     },
+     {
+      "name": "Free events",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": null,
+      "notes": "Free if the organizer also runs paid events; otherwise 99c/ticket"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Webconnex Payments (default)",
+      "Stripe",
+      "Authorize.net",
+      "NMI",
+      "Paya",
+      "Cybersource"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "2.9% + 30c standard processing; third-party gateways +1% + 25c per transaction",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "configurable (organizer may absorb or pass on fees, and add own convenience fee and keep 100% of it)",
+    "free_tickets": "Free events free for organizers who also run paid events; else 99c/ticket.",
+    "seating": "Reserved seating (charts, layouts, pods) included in the 99c; no surcharge stated.",
+    "payouts": "Weekly payouts by direct deposit (not after the event).",
+    "refunds_chargebacks": "Not captured on pricing page (fraud monitoring and purchase-protection options mentioned).",
+    "fine_print": [
+     "Optional upgrades: email marketing automation $9/mo + 2c per recipient; text message platform $19/mo + 2c per recipient (carrier activation fee applies); 3rd-party data enrichment $9/mo + 10c per record; cashless on-site payments 25c per transaction; white-label domain $150/year.",
+     "Using a non-default payment gateway costs 1% + 25c per transaction on top of 99c.",
+     "'Your rates may be even lower' - volume pricing negotiable."
+    ],
+    "add_ons": [
+     {
+      "name": "Email marketing automation",
+      "price": "$9/month + 2c/recipient"
+     },
+     {
+      "name": "Text message platform",
+      "price": "$19/month + 2c/recipient"
+     },
+     {
+      "name": "White-label domain",
+      "price": "$150/year"
+     },
+     {
+      "name": "Cashless on-site payments",
+      "price": "25c/transaction"
+     }
+    ],
+    "enterprise": "'Contact sales' for volume; no public price",
+    "sources": [
+     {
+      "url": "https://www.ticketspice.com/pricing",
+      "read": "2026-10-09",
+      "what": "pricing page + FAQ"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "Ticket Tailor's blog claims TicketSpice adds 1% to processing: that is the own-gateway surcharge."
+ },
+ {
+  "platform": "Ticketleap",
+  "website": "https://www.ticketleap.com",
+  "hq_country": "US",
+  "segment": "US/AU event organizers (classes, farms, haunts, churches, festivals); low fee, payouts after event",
+  "markets": [
+   {
+    "market": "US",
+    "currency": "USD",
+    "vat_note": "prices excl. tax; organizer can add sales tax as a checkout line item",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_notes": "TicketLeap collects via Stripe and pays the organizer 4-7 business days after the event ends (protection against fraud/chargebacks). Fee charged to buyer or organizer.",
+    "plans": [
+     {
+      "name": "Standard",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.0,
+      "per_ticket_fixed": 1.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": 20.0,
+      "includes": "Full platform incl. reserved seating, scanning/box office apps, chargeback management",
+      "notes": "PLUS 3% online transaction fee per order; max $20 of ticketing fees per ticket (from a Google snippet of the pricing page; not repeated in the scraped text)"
+     },
+     {
+      "name": "Tickets $5 or below",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.49,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Flat $0.49 + 3% transaction fee",
+      "notes": null
+     },
+     {
+      "name": "On-site (box office app) sales",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 1.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "$1 per ticket on site ($0.49 for tickets of $5 or less)",
+      "notes": null
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Stripe (via TicketLeap)"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "3% online transaction fee per order (may be $0.01 higher due to rounding)",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "configurable (pass to buyers = free for organizer)",
+    "free_tickets": "Free events free.",
+    "seating": "Reserved seating listed among free features; no surcharge stated.",
+    "payouts": "4-7 business days after the event ends (Stripe).",
+    "refunds_chargebacks": "Chargeback management included; fee refund policy not captured.",
+    "fine_print": [
+     "Free events always free; no contracts or subscriptions; every organizer gets the full tool set.",
+     "Payouts only AFTER the event (4-7 business days) via Stripe; justified by chargeback protection; TicketLeap has a risk manager fighting chargebacks.",
+     "Third-party reviews mention an older $1.50 per ticket and a '2% + $1 + 3% card' structure."
+    ],
+    "add_ons": [],
+    "enterprise": null,
+    "sources": [
+     {
+      "url": "https://www.ticketleap.com/info/pricing/",
+      "read": "2026-10-09",
+      "what": "US pricing page"
+     },
+     {
+      "url": "https://www.ticketleap.com/",
+      "read": "2026-10-09",
+      "what": "homepage"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "Australia",
+    "currency": "AUD (page shows '$')",
+    "vat_note": "GST treatment not stated",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_notes": "As US: Stripe, payout 4-7 business days after the event.",
+    "plans": [
+     {
+      "name": "Standard",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 5.0,
+      "per_ticket_fixed": 1.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Full platform",
+      "notes": "Page: '$1 + 5% of the event ticket price'; a 3% fee applies to tickets of $5 and below"
+     },
+     {
+      "name": "Tickets $5 or below",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 3.0,
+      "per_ticket_fixed": 0.49,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "$0.49 + 3%",
+      "notes": null
+     },
+     {
+      "name": "On-site sales",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 3.0,
+      "per_ticket_fixed": 0.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "3% only for on-site sales",
+      "notes": null
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Stripe"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "Card cost treatment not stated separately in AU (3% shown on reduced tiers)",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "configurable",
+    "free_tickets": "Free events free.",
+    "seating": "Reserved seating offered (US solution page lists it).",
+    "payouts": "4-7 business days after event.",
+    "refunds_chargebacks": "Chargeback management included.",
+    "fine_print": [
+     "Free events always free; no contracts or subscriptions; every organizer gets the full tool set.",
+     "Payouts only AFTER the event (4-7 business days) via Stripe; justified by chargeback protection; TicketLeap has a risk manager fighting chargebacks."
+    ],
+    "add_ons": [],
+    "enterprise": null,
+    "sources": [
+     {
+      "url": "https://www.ticketleap.au/info/pricing/",
+      "read": "2026-10-09",
+      "what": "AU pricing page"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "US $20/ticket fee cap seen only in a Google snippet of the pricing page."
+ },
+ {
+  "platform": "Universe (Live Nation)",
+  "website": "https://www.universe.com",
+  "hq_country": "US",
+  "segment": "independent organizers worldwide (NA, UK, EU, AU/NZ); owned by Live Nation; Pro tier can sell on Ticketmaster",
+  "markets": [
+   {
+    "market": "US",
+    "currency": "USD",
+    "vat_note": "'Excludes VAT and processing fees' per pricing page",
+    "model": "percent_plus_fixed",
+    "money_flow": "both",
+    "money_flow_notes": "Default: Universe Payments collects and pays AFTER the event (48 hours after it ends, third-party); processing included but Universe Payments adds 3% in the US (third-party). Alternative: connect own Stripe (Stripe Connect, 'advanced payouts'): money goes to the organizer's Stripe on its schedule, Stripe charges processing separately and the Universe service fee is collected on top.",
+    "plans": [
+     {
+      "name": "Starter",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.0,
+      "per_ticket_fixed": 0.59,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Unlimited ticket types/add-ons, checkout questions, box office app, API, Stripe Connect payouts, email support",
+      "notes": "US pricing page (read 2026-10-09) shows 2% + $0.59; a Google snippet of the same page and Hi.Events say 2% + $0.79 capped at $19.95 per ticket - the page seems to have changed."
+     },
+     {
+      "name": "Standard",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.0,
+      "per_ticket_fixed": 0.59,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Starter + team permissions, cardholder presales, payment plans, tiered ticketing, priority email support",
+      "notes": "Page shows the same 2% + $0.59; third-party says Standard is 2.5% + $1.99 US (5.5% + GBP 0.99 UK); Capterra snippet 'starts at $19.95 one time' unverified."
+     },
+     {
+      "name": "Pro",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Custom a-la-carte plan: Ticketmaster sales, dedicated account manager, dynamic pricing, RFID",
+      "notes": "Custom pricing"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Universe Payments (default)",
+      "Stripe Connect"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "Universe Payments: processing included by default (US adds 3%, UK/AU 2% per third-party); with own Stripe: Stripe's fee, not passed on as a Universe fee",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "configurable (organizer can absorb or pass on service fee + processing; outside the USA the service+processing fee is shown as one all-in price)",
+    "free_tickets": "Free events: no fees at all.",
+    "seating": "No separate seating line; no surcharge stated on page (null).",
+    "payouts": "Universe Payments: after the event (48 h after, third-party); Stripe Connect: your Stripe schedule.",
+    "refunds_chargebacks": "Standard chargeback support included (Universe submits evidence on Universe Payments disputes); extended support only in Pro.",
+    "fine_print": [
+     "Fees vary by currency/location; VAT may apply; all-in pricing is shown as one number in every country except the USA.",
+     "Nonprofit/charity special pricing on request via a referral code that must be entered on every event page.",
+     "No free trial; no setup or termination fees; upgrade/downgrade/cancel any time.",
+     "Payment plans unavailable in Europe; fee cannot be passed to buyers in eight European countries (third-party)."
+    ],
+    "add_ons": [],
+    "enterprise": null,
+    "sources": [
+     {
+      "url": "https://www.universe.com/pricing",
+      "read": "2026-10-09",
+      "what": "pricing page (US view)"
+     },
+     {
+      "url": "https://hi.events/fees/universe",
+      "read": "2026-10-09",
+      "what": "third-party: Hi.Events fee page (a competitor)"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "Europe / UK / Australia",
+    "currency": "EUR / GBP / AUD",
+    "vat_note": "fees shown all-in (VAT where applicable)",
+    "model": "percent_plus_fixed",
+    "money_flow": "both",
+    "money_flow_notes": "As US (Universe Payments after event, or own Stripe).",
+    "plans": [
+     {
+      "name": "Starter (third-party)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.0,
+      "per_ticket_fixed": 0.99,
+      "min_per_ticket": null,
+      "cap_per_ticket": 9.95,
+      "includes": "UK: 2% + GBP 0.99; AU: 2% + A$0.99; service-fee cap GBP 9.95",
+      "notes": "EUR varies by country from 1% + EUR 0.50 (France) to 5% + EUR 0.50 (Ireland) per Hi.Events"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Universe Payments",
+      "Stripe Connect"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "UK/AU: Universe Payments adds 2% (third-party)",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "configurable except in 8 European countries",
+    "free_tickets": "Free events free.",
+    "seating": null,
+    "payouts": "As US.",
+    "refunds_chargebacks": null,
+    "fine_print": [
+     "Not read from Universe's own country pages (country selector not rendered in the scrape)."
+    ],
+    "add_ons": [],
+    "enterprise": null,
+    "sources": [
+     {
+      "url": "https://hi.events/fees/universe",
+      "read": "2026-10-09",
+      "what": "third-party Hi.Events fee page"
+     }
+    ],
+    "confidence": "third_party"
+   }
+  ],
+  "notes": "Official page and third parties disagree on the US per-ticket fixed amount ($0.59 vs $0.79): treat as 2% + $0.59 to $0.79."
+ },
+ {
+  "platform": "Posh (posh.vip)",
+  "website": "https://posh.vip",
+  "hq_country": "US",
+  "segment": "US nightlife, club nights, day parties, promoter-driven events; fee baked into displayed price; promoter 'Kickback' affiliate feature",
+  "markets": [
+   {
+    "market": "US",
+    "currency": "USD",
+    "vat_note": "fee baked into the displayed ticket price",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_notes": "Posh takes payment through Stripe managed by Posh; funds available to the organizer 24-48 business hours after purchase (as tickets sell); standard payouts free, instant payout costs 5% (third-party).",
+    "plans": [
+     {
+      "name": "Standard",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 10.0,
+      "per_ticket_fixed": 0.99,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Fee covers card processing; tables/seating maps, scanner PINs, tap-to-pay, Kickback promoter program",
+      "notes": "Always added to the base price and shown to buyers as one price; $2.99 on a $20 ticket (Luma's comparison page, July 2026)"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Stripe (managed through Posh)"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "processing bundled into 10% + $0.99",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer (always; added to base price)",
+    "free_tickets": "Free tickets free.",
+    "seating": "Tables and bottle service with seating maps supported; surcharge not stated",
+    "payouts": "Available 24-48 business hours after purchase; instant payout 5% (third_party).",
+    "refunds_chargebacks": "not captured",
+    "fine_print": [
+     "Posh's own /pricing page returned only a title in the scrape; numbers come from Luma's July 2026 comparison page and Hi.Events (both competitors): mark third_party.",
+     "Kickback: affiliates earn commission per ticket sold and Posh keeps a cut of each payout (Luma comparison page).",
+     "Mainly US/USD; EUR/GBP/AUD rates are conversions by Hi.Events, not published by Posh."
+    ],
+    "add_ons": [],
+    "enterprise": null,
+    "sources": [
+     {
+      "url": "https://help.luma.com/p/luma-vs-posh",
+      "read": "2026-10-09",
+      "what": "competitor (Luma) comparison page, pricing checked July 2026"
+     },
+     {
+      "url": "https://hi.events/fees/posh",
+      "read": "2026-10-09",
+      "what": "third-party fee page (Hi.Events)"
+     }
+    ],
+    "confidence": "third_party"
+   }
+  ],
+  "notes": "Highest all-in fee in the group for mid-price tickets; no organizer-pays option."
+ },
+ {
+  "platform": "Billetto",
+  "website": "https://billetto.com",
+  "hq_country": "GB",
+  "segment": "event marketplace across 14 European markets (DK, SE, NO, UK, IE, FI, DE, AT, BE, NL, FR, ES, PT, IT); free for organizers, buyer pays booking fee; pay-per-sale advertising",
+  "markets": [
+   {
+    "market": "Europe (EUR)",
+    "currency": "EUR",
+    "vat_note": "prices exclude VAT",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_notes": "Billetto collects the money and pays the organizer 3-5 working days AFTER the event ends with a fee breakdown; Growth plan (1,000+ tickets/yr) can get prepayment: the majority of ticket revenue paid before the event. Reserve terms for prepayment not published.",
+    "plans": [
+     {
+      "name": "Essential (up to 1,000 tickets/year)",
+      "monthly_fee": 0.0,
+      "annual_fee": 0.0,
+      "per_ticket_percent": 3.99,
+      "per_ticket_fixed": 0.9,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Marketplace listing, pay-per-sale advertising, email+SMS campaigns, premium support, widget for own site",
+      "notes": "Ticket buyer pays 3.99% + EUR 0.90 per ticket (excl. VAT); organizer may absorb"
+     },
+     {
+      "name": "Growth (1,000+ tickets/year)",
+      "monthly_fee": 0.0,
+      "annual_fee": 0.0,
+      "per_ticket_percent": 3.99,
+      "per_ticket_fixed": 0.9,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Everything in Essential + prepayment, customer success manager, manual ad campaigns, premium homepage placement",
+      "notes": "'3.99% + EUR 0.90 per ticket, or less': custom rates for high-volume/higher-value tickets"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Visa",
+      "Mastercard",
+      "Apple Pay",
+      "Google Pay",
+      "PayPal",
+      "MobilePay",
+      "Swish",
+      "Vipps",
+      "iDEAL/Wero"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "Processing included in the booking fee (local methods by country)",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer (organizer can switch to absorb: all-in price)",
+    "free_tickets": "Free events: free (no fee stated).",
+    "seating": "not mentioned on pricing page (null)",
+    "payouts": "3-5 working days after the event ends; Growth plan: majority prepaid before event.",
+    "refunds_chargebacks": "Organizer sets refund terms; refunds usually within 5 working days; booking fees can be refunded to attendees on request.",
+    "fine_print": [
+     "No monthly fee, no setup fee.",
+     "Billetto POS 2.0: Adyen terminal EUR 199 each, optional ticket printer EUR 270 each, one-off, no monthly hardware fee.",
+     "Pay-per-sale advertising: you pay only when Billetto sells a ticket via its ads (rate not on page read; average +21% tickets claimed).",
+     "An older third-party UK reading of 5% + 29p per ticket (ticketingfees.co.uk) predates the current 3.99% + 0.90 structure."
+    ],
+    "add_ons": [
+     {
+      "name": "POS terminal",
+      "price": "EUR 199"
+     },
+     {
+      "name": "Ticket printer",
+      "price": "EUR 270"
+     }
+    ],
+    "enterprise": "'Talk to us' custom rates for high-volume or higher-value tickets",
+    "sources": [
+     {
+      "url": "https://go.billetto.com/pricing",
+      "read": "2026-10-09",
+      "what": "pricing page (go.billetto.com)"
+     }
+    ],
+    "confidence": "page"
+   },
+   {
+    "market": "United Kingdom",
+    "currency": "GBP",
+    "vat_note": "prices exclude VAT",
+    "model": "percent_plus_fixed",
+    "money_flow": "collecting",
+    "money_flow_notes": "As Europe.",
+    "plans": [
+     {
+      "name": "Essential/Growth",
+      "monthly_fee": 0.0,
+      "annual_fee": null,
+      "per_ticket_percent": 3.99,
+      "per_ticket_fixed": 0.9,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "as Europe",
+      "notes": "GBP 0.90 only from a Google snippet of a third-party (TixFox) post 'Billetto Fees in 2026: 3.99% + 90p'; billetto.co.uk/pages/pricing returned 404"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Cards",
+      "PayPal",
+      "Apple/Google Pay"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "included",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer",
+    "free_tickets": "free events free",
+    "seating": null,
+    "payouts": "3-5 working days after event",
+    "refunds_chargebacks": "As Europe.",
+    "fine_print": [
+     "Currency-specific page not read"
+    ],
+    "add_ons": [],
+    "enterprise": null,
+    "sources": [
+     {
+      "url": "https://tixfox.co/blog/billetto-fees",
+      "read": "2026-10-09",
+      "what": "third-party snippet (page not opened)"
+     }
+    ],
+    "confidence": "snippet"
+   }
+  ],
+  "notes": "Per-country pages on go.billetto.com were not reachable; DK/SE/NO prices likely quoted in local currency (not captured)."
+ },
+ {
+  "platform": "TicketSource",
+  "website": "https://www.ticketsource.co.uk",
+  "hq_country": "GB",
+  "segment": "UK theatres, venues, community groups, charities; no contracts, no tiers; one booking fee; all features for all",
+  "markets": [
+   {
+    "market": "United Kingdom",
+    "currency": "GBP",
+    "vat_note": "fee quoted + VAT: VAT is added (GBP 0.70 + VAT = GBP 0.84 on a GBP 10 booking in the page calculator)",
+    "model": "percent",
+    "money_flow": "both",
+    "money_flow_notes": "Default: TicketSource payment processing (platform collects card payments, emails a fee breakdown after the event and pays out the MONDAY after the event, arriving by Wednesday). Alternative: connect own Stripe - payments go straight to the organizer's bank via Stripe and the fee drops to 4.5% + VAT because the organizer pays Stripe's fees.",
+    "plans": [
+     {
+      "name": "TicketSource payment processing",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 7.0,
+      "per_ticket_fixed": null,
+      "min_per_ticket": 0.25,
+      "cap_per_ticket": null,
+      "includes": "All features, seating plans, phone/email/live-chat support; includes card processing",
+      "notes": "7% + VAT per PAID BOOKING (order), minimum GBP 0.25 + VAT per paid booking; GBP 10 booking = GBP 0.84 incl. VAT"
+     },
+     {
+      "name": "Own Stripe account",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 4.5,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Same features; Stripe fees charged separately by Stripe",
+      "notes": "4.5% + VAT per paid booking"
+     },
+     {
+      "name": "Registered charity",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Reduced booking fees on both options + Gift Aid and donation add-on",
+      "notes": "Discount amount not on page"
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "TicketSource processing",
+      "Stripe (own account)"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "With TicketSource processing the card cost is included in 7%; with own Stripe Stripe's rate is paid to Stripe",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "configurable (include in the price or pass on to the customer)",
+    "free_tickets": "No fees for in-person bookings or free events.",
+    "seating": "Full access to the seating-plan designer on all accounts; no surcharge stated",
+    "payouts": "Monday after the event (arrives Wed/Thu); with Stripe: as sales happen on Stripe's schedule.",
+    "refunds_chargebacks": "Full refund guarantee: if the event is cancelled/postponed the customer is refunded ticket + booking fee with no extra charge (TicketSource bears the fee).",
+    "fine_print": [
+     "Fee is per BOOKING (order), not per ticket: a booking of many tickets pays one 7% fee.",
+     "Card donations: 5% admin fee deducted; no fee for cash/cheque donations.",
+     "ticketingfees.co.uk (competitor) quotes 7% INCLUDING VAT, contradicting the page calculator that adds VAT on top.",
+     "No contracts, hidden fees or access tiers; telephone/live-chat support on all accounts."
+    ],
+    "add_ons": [],
+    "enterprise": null,
+    "sources": [
+     {
+      "url": "https://www.ticketsource.co.uk/pricing",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     },
+     {
+      "url": "https://www.tickettailor.com/blog/a-guide-to-pricing-for-online-ticketing",
+      "read": "2026-10-09",
+      "what": "competitor (Ticket Tailor) blog: '7% per order'"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "Only the UK variant was readable (country selector exists; other countries not captured). Per-booking pricing makes TicketSource cheap for large group orders."
+ },
+ {
+  "platform": "Eventix (now Weeztix)",
+  "website": "https://weeztix.com",
+  "hq_country": "NL",
+  "segment": "Dutch/EU festivals, clubs, concerts, venues; part of the Weezevent Group; eventix.io redirects to Weeztix",
+  "markets": [
+   {
+    "market": "European Union / UK / selected countries",
+    "currency": "EUR (GBP in UK)",
+    "vat_note": "service and booking costs in the T&C are stated INCLUDING VAT; pricing page has Excl./Incl. VAT columns",
+    "model": "mixed",
+    "money_flow": "collecting",
+    "money_flow_notes": "Weeztix collects through PSPs it chooses per event/region (Adyen, Stripe, Pay.nl, Iyzico) acting as agent; payout frequency chosen by the organizer subject to the PSP's settlement delay (new organizers: at least 5 business days for the first 30 days, later about 2). Default reserve: at least 10% of ticket revenue held until AFTER the event date; additional rolling reserve possible (e.g. above EUR 150,000/month); payout term can be extended up to 180 days on risk; KYC required before payouts.",
+    "plans": [
+     {
+      "name": "Service costs per ticket (T&C)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.67,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "EU: EUR 0.67 incl. VAT; UK: GBP 0.67 incl. VAT",
+      "notes": "Fixed 'Service Costs' on top of the ticket price, charged to buyer or organizer"
+     },
+     {
+      "name": "Booking costs (% of transaction)",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 3.85,
+      "per_ticket_fixed": null,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "% of total transaction incl. VAT: Ireland 3.85, UK 3.85, Denmark 2.20, Sweden 2.20, Norway 2.20, Netherlands 1.80, Belgium 2.80, Spain 3.50, Germany 6.70, other Europe 3.85",
+      "notes": "Per-country percentage; Germany highest, Netherlands lowest"
+     },
+     {
+      "name": "Free events",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": null,
+      "per_ticket_fixed": 0.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "First 5,000 free tickets per account free, then EUR 0.20 excl. VAT per ticket; no phone/email support for free events (fair-use clause)",
+      "notes": null
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": true,
+     "processors": [
+      "Adyen",
+      "Stripe",
+      "Pay.nl",
+      "Iyzico"
+     ],
+     "own_processor_allowed": false,
+     "rate_note": "No transaction costs for iDEAL, Sofort, Bancontact and consumer credit cards; Klarna Pay Later EUR/GBP 1.50 + 3.7%; PayPal 0.35 + 2.1%; pay on invoice 1.50 + 5.5%; corporate and non-EEA cards 0.35 + 3.63%",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer by default (organizer can absorb service+booking costs in the ticket price)",
+    "free_tickets": "First 5,000 free tickets/year free, then EUR 0.20 excl. VAT per ticket.",
+    "seating": "Seated tickets: extra fees apply (EUR 0.14 excl. VAT per ticket per an organiser-terms snippet; pricing page marks seating features 'Extra fees apply')",
+    "payouts": "PSP settlement T+2 after a 30-day probation (T+5), 10% held until after the event, risk-based reserves; 2% conversion fee if payout currency differs.",
+    "refunds_chargebacks": "If the organizer cancels an event, Weeztix refunds none of the service, booking or transaction costs; organizer's balance must cover refunds; invoices to organizer have a 14-day objection window.",
+    "fine_print": [
+     "The pricing page shows tiered per-ticket prices by yearly volume (5,000-10,000, 10,000-15,000, 15,000+ tickets/year) but the numbers are script-rendered and were not captured; some tiers say 'Request quote'.",
+     "Organizer may add its own Kickback surcharge, collected by Weeztix.",
+     "Scanner and powerbank rental EUR 45/day excl. VAT; on-site manager EUR 55/hour excl. VAT.",
+     "Weeztix may adjust rates unilaterally 'if there is reason to do so'.",
+     "eventix.cloud (Barbados) is an unrelated company and was not used."
+    ],
+    "add_ons": [
+     {
+      "name": "Scanner + powerbank rental",
+      "price": "EUR 45/day excl VAT"
+     },
+     {
+      "name": "On-site manager",
+      "price": "EUR 55/hour excl VAT"
+     },
+     {
+      "name": "Seat selection module",
+      "price": "EUR 0.14 excl VAT per ticket (snippet)"
+     }
+    ],
+    "enterprise": "Demo/quote for volume tiers; per-ticket headline prices not public in rendered text",
+    "sources": [
+     {
+      "url": "https://weeztix.com/organiser-terms",
+      "read": "2026-10-09",
+      "what": "organiser terms and conditions (primary for amounts)"
+     },
+     {
+      "url": "https://weeztix.com/pricing",
+      "read": "2026-10-09",
+      "what": "pricing page (numbers not rendered)"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "Strictest financial terms in the group (10% reserve, KYC, 180-day extension rights). Eventix merged into Weeztix (Weezevent Group), so the old Eventix price list no longer applies."
+ },
+ {
+  "platform": "Ticketbud",
+  "website": "https://www.ticketbud.com",
+  "hq_country": "US",
+  "segment": "US small/mid events, hospitality, reunions, non-profits/schools; fee mostly paid by attendees; hardware rental and RFID options",
+  "markets": [
+   {
+    "market": "US",
+    "currency": "USD",
+    "vat_note": "prices excl. tax",
+    "model": "percent_plus_fixed",
+    "money_flow": "direct_merchant",
+    "money_flow_notes": "Organizer connects own Stripe or PayPal account (Ticketbud helps set up); processor fee 2.9% + 30c goes to the processor. Ticketbud's 2% + $0.99 per ticket is paid by attendees as a service fee unless the organizer absorbs it (collection mechanism not stated on the page). Help centre snippet (2023): Stripe payments have a 7-day rolling payout.",
+    "plans": [
+     {
+      "name": "Paid events",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 2.0,
+      "per_ticket_fixed": 0.99,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "All features, unlimited events and tickets, support; no tiers, no subscription, no credit card to start",
+      "notes": "Attendees pay 2% + $0.99 per ticket by default; organizer may absorb"
+     },
+     {
+      "name": "Non-profit & schools",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 1.75,
+      "per_ticket_fixed": 0.99,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Same",
+      "notes": "Attendee-paid by default"
+     },
+     {
+      "name": "Free events",
+      "monthly_fee": null,
+      "annual_fee": null,
+      "per_ticket_percent": 0.0,
+      "per_ticket_fixed": 0.0,
+      "min_per_ticket": null,
+      "cap_per_ticket": null,
+      "includes": "Free events completely free",
+      "notes": null
+     }
+    ],
+    "prepaid": [],
+    "processing": {
+     "included": false,
+     "processors": [
+      "Stripe",
+      "PayPal"
+     ],
+     "own_processor_allowed": true,
+     "rate_note": "Stripe/PayPal 2.9% + 30c per transaction (page wording: 'per ticket')",
+     "platform_extra_processing_fee": null
+    },
+    "who_pays_default": "buyer (attendees pay unless organizer absorbs)",
+    "free_tickets": "Free events free.",
+    "seating": "Reserved seating feature exists (feature page); surcharge not stated",
+    "payouts": "Direct from Stripe/PayPal; 7-day rolling payouts on Stripe (help snippet 2023-09).",
+    "refunds_chargebacks": "Not captured.",
+    "fine_print": [
+     "Discounted rate for tickets under $10 available on request (contact): amount not published.",
+     "Custom & white-label: contact sales.",
+     "Rentable event hardware sold separately via shop.ticketbud.com (prices not captured)."
+    ],
+    "add_ons": [],
+    "enterprise": "Custom & white label: 'let's chat'",
+    "sources": [
+     {
+      "url": "https://www.ticketbud.com/pricing/",
+      "read": "2026-10-09",
+      "what": "pricing page"
+     },
+     {
+      "url": "https://help.ticketbud.com/hc/en-us/articles/216675507-Payment-processor-options",
+      "read": "2026-10-09",
+      "what": "help snippet (not opened)"
+     }
+    ],
+    "confidence": "page"
+   }
+  ],
+  "notes": "Page text and third-party sites agree: 2% + 99c per ticket."
+ }
+]

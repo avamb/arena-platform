@@ -1,0 +1,1252 @@
+[
+  {
+    "platform": "GoOut (PLG group)",
+    "website": "https://goout.net",
+    "hq_country": "CZ",
+    "segment": "Largest Czech/Slovak event discovery + ticketing network, club/concert/theatre/festival organizers of every size; owned by Estonian PLG together with Ticketportal and Ticketstream",
+    "markets": [
+      {
+        "market": "Czechia",
+        "currency": "CZK",
+        "vat_note": "organizer commission rate quoted as a plain percentage of ticket price; VAT treatment on the commission not stated publicly",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Platform collects the money from buyers and settles with the organizer after the event (general PLG practice; Ticketstream terms spell it out: payout within 5 working days of the settlement statement after the event). Fee is netted from the proceeds.",
+        "plans": [
+          {"name": "Standard organizer deal (not public)", "monthly_fee": null, "annual_fee": null,
+           "per_ticket_percent": 8, "per_ticket_fixed": null,
+           "min_per_ticket": 5, "cap_per_ticket": null,
+           "includes": "Listing + online presale + network of sales points; marketing sold separately",
+           "notes": "Price list is 'neverejny' (not public). 8% / min 5 CZK per ticket is what an independent Czech comparison (verified with organizers, page updated 2026-02-22) lists; SMSticket's CEO says '8 percent is now common' (iROZHLAS 2026-05-12) and a founder says platforms charge 'about 7-8 percent' (Euro.cz 2026-03-25). PLG itself says there is no single model and refuses to publish fees."}
+        ],
+        "prepaid": null,
+        "processing": {"included": true, "processors": ["not disclosed (PLG advertises up to 14 online payment methods at no extra charge)"],
+                       "own_processor_allowed": null, "rate_note": "Processing cost is inside the platform fee/service fee; Ticketstream terms say fees the buyer does not accept are shifted to the organizer",
+                       "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer + organizer (both): organizer pays commission, buyer pays a separate service fee",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "After the event (collecting model). No public detail for GoOut itself; an independent comparison table says GoOut does NOT pay advances ('vyplata zaloh: ne').",
+        "refunds_chargebacks": null,
+        "fine_print": [
+          "Buyer service fee: 3.5% of ticket price, minimum 10 CZK / 0.40 EUR and maximum 500 CZK / 20 EUR per ticket, 'unless GoOut sets otherwise' (GoOut terms, updated 2026-01-07)",
+          "Axima comparison: 4 tickets x 50 CZK = 200 CZK -> organizer fee 20 CZK (min 5 CZK/ticket), buyer fee 40 CZK; 4 x 600 CZK -> organizer 192 CZK, buyer 84 CZK; total take 11.5% (60 CZK / 276 CZK)",
+          "Comparison table also says: no ticket security (no digital signature), start of sales takes 1-2 days, event cannot be edited by organizer after publishing, limited organizer data",
+          "Czech market criticism (iROZHLAS 2026-05-12): after PLG merged GoOut + Ticketportal + Ticketstream the buyer fee jumped to a flat 3.5% (from about 15 CZK), organizer commission 'commonly 8%'"
+        ],
+        "add_ons": [{"name": "marketing, newsletters, social, cashless, apps, CRM, onsite POS (PLG organizer site)", "price": "not public"}],
+        "enterprise": "Contact sales; no public price list",
+        "sources": [
+          {"url": "https://www.axima-brno.cz/jak-vybrat-system-pro-prodej-vstupenek.html", "read": "2026-10-09", "what": "third-party comparison table of organizer + buyer fees (updated 2026-02-22; the author AXIMA also makes smsticket)"},
+          {"url": "https://terms.goout.net/article/456-poplatky", "read": "2026-10-09", "what": "GoOut official buyer service fee article"},
+          {"url": "https://www.irozhlas.cz/ekonomika/vstupenky-na-nejruznejsi-akce-zdrazuji-muze-za-spojeni-tri-velkych-hracu-pod-plg_2605121213_ako", "read": "2026-10-09", "what": "news article quoting fees"},
+          {"url": "https://www.euro.cz/clanky/kdo-vydelava-na-vstupenkach-rostouci-poplatky-nekterych-ticketingovych-platforem-muzou-byt-pro-poradatele-problem/", "read": "2026-10-09", "what": "news article quoting fees and PLG response"}
+        ],
+        "confidence": "third_party"
+      }
+    ],
+    "notes": "Part of PLG (Estonian group, 7 Central European countries; also owns Ticketportal, Ticketstream, Piletilevi, Bilesu Serviss, iaBilet (deal announced 2026-05), Biletomat, Going/Empik-linked sales). Organizer price list is deliberately secret."
+  },
+  {
+    "platform": "Ticketportal (PLG group)",
+    "website": "https://www.ticketportal.cz",
+    "hq_country": "CZ",
+    "segment": "Large Czech/Slovak network with ~400 shops and Tipsport/Sazka pickup points; theatres, stadiums, concerts, big promoters",
+    "markets": [
+      {
+        "market": "Czechia",
+        "currency": "CZK",
+        "vat_note": "not stated",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Network sells in the organizer's name but takes the buyer's money and settles after the event (framework terms); fee netted from proceeds.",
+        "plans": [
+          {"name": "Standard organizer deal (not public)", "monthly_fee": null, "annual_fee": null,
+           "per_ticket_percent": 8, "per_ticket_fixed": null, "min_per_ticket": 5, "cap_per_ticket": null,
+           "includes": "online presale, retail network, marketing optional",
+           "notes": "Not public ('neverejny'). Independent comparison and iROZHLAS give 8% for the organizer; PLG states fees depend on size, frequency, cashless use and marketing agency work. Buyer service fee 3.5% min 10 CZK per ticket per the same comparison."}
+        ],
+        "prepaid": null,
+        "processing": {"included": true, "processors": ["14 online methods per PLG"], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer + organizer (commission + separate buyer service fee)",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "Comparison table: no advance payouts; no ticket security; sales start in 1-2 days; no later edits by organizer",
+        "refunds_chargebacks": null,
+        "fine_print": [
+          "Organizer portal (poradatel.ticketportal.cz) lists services (marketplace, full presale, POS, cashless, CRM, SSO, payment ecosystem, scanning system) with no prices; settlement report after the event is free",
+          "Contact-only pricing"
+        ],
+        "add_ons": [{"name": "marketing packages, cashless, apps, CRM", "price": "not public"}],
+        "enterprise": "Contact sales",
+        "sources": [
+          {"url": "https://www.axima-brno.cz/jak-vybrat-system-pro-prodej-vstupenek.html", "read": "2026-10-09", "what": "third-party comparison"},
+          {"url": "https://poradatel.ticketportal.cz/cz", "read": "2026-10-09", "what": "PLG organizer site (no prices)"},
+          {"url": "https://poradatel.ticketportal.cz/cz/vyuctovani-a-report", "read": "2026-10-09", "what": "settlement report free after event"},
+          {"url": "https://www.irozhlas.cz/ekonomika/vstupenky-na-nejruznejsi-akce-zdrazuji-muze-za-spojeni-tri-velkych-hracu-pod-plg_2605121213_ako", "read": "2026-10-09", "what": "news quoting 8%"}
+        ],
+        "confidence": "third_party"
+      },
+      {
+        "market": "Slovakia",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Same PLG framework as CZ (Ticketportal SK).",
+        "plans": [],
+        "prepaid": null,
+        "processing": null,
+        "who_pays_default": "buyer + organizer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["No Slovak-specific public price found. A sponsored SMSticket advertorial (Deník, 2025-09-08) tagged Ticketportal SK compares buyer fee for 2 tickets totalling 800 CZK: GoOut 20 CZK, Ticketportal 18 CZK, Ticketstream 24 CZK vs smsticket 10 CZK (this is before the 3.5% flat fee reported in 2026)"],
+        "add_ons": null,
+        "enterprise": "Contact sales",
+        "sources": [{"url": "https://pr.denik.cz/doporucujeme/vite-kdo-ma-nejnizsi-poplatky-za-vstupenky/", "read": "2026-10-09", "what": "sponsored advertorial by smsticket (biased)"}],
+        "confidence": "third_party"
+      }
+    ],
+    "notes": "Consumer T&Cs at ticketportal.cz/Article/2881 contain no fee numbers (checked)."
+  },
+  {
+    "platform": "Ticketstream (PLG group)",
+    "website": "https://www.ticketstream.cz",
+    "hq_country": "CZ",
+    "segment": "Czech network, festivals and promoters; PUBLISHES organizer terms (rare in the market)",
+    "markets": [
+      {
+        "market": "Czechia",
+        "currency": "CZK",
+        "vat_note": "organizer terms do not state whether remuneration is net or gross of VAT; settlement statement is a tax document",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Organizer authorises the network to collect ticket price + all service fees from buyers; payout after the event within 5 working days of the post-event statement; advance payout only against a guarantor and only above 100,000 CZK net, max 70% of takings.",
+        "plans": [
+          {"name": "Default remuneration (organizer terms eff. 2022-11-01)", "monthly_fee": null, "annual_fee": null,
+           "per_ticket_percent": 10, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "presale via ticketstream.cz and partner network",
+           "notes": "10% of final customer price unless the order says otherwise. Minimum remuneration per event order 3,000 CZK unless agreed otherwise. Independent comparison also lists 10% and 'min 5 CZK/ticket' style examples (4 tickets x 50 CZK = 20 CZK; 4 x 600 CZK = 240 CZK) with buyer fee 3.5% (min 10 CZK)."}
+        ],
+        "prepaid": null,
+        "processing": {"included": false, "processors": null, "own_processor_allowed": null,
+                       "rate_note": "Terms: if the organizer disagrees with fees charged to the buyer (distribution fee, payment gateway fees, service fee) those fees are shifted onto the organizer",
+                       "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable (organizer remuneration is deducted; service fee may be paid by buyer)",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "After the event, within 5 working days of the settlement statement; invoices issued by end of the month; organizer pays any invoice within 5 working days unless netted; platform may hold funds if it fears refund claims; may refuse payout for postponed events without a new date; bank costs on EU transfers on organizer, non-EU payments 1,000 CZK handling per payment",
+        "refunds_chargebacks": "If organizer asks the network to run refunds: organizer must return all already-paid proceeds AND pay a refund fee equal to the agreed commission/service fee, minimum 30 CZK per ticket. Organizer bears chargeback costs and payment-provider claims. Service fee on refunded tickets is passed to the organizer when remuneration was agreed as a service fee.",
+        "fine_print": [
+          "Fee for transferring a running presale from one organizer to another: 5,000 CZK per event (needs notarised agreement)",
+          "Non-resident organizers must register for Czech income tax; platform may withhold taxes",
+          "Contract penalties up to the amount of the platform remuneration for certain breaches (selling cheaper elsewhere etc.); the terms also penalise disadvantaging buyers who purchase through this network (e.g. cheaper tickets elsewhere)",
+          "Terms are dated 2022 and may have been superseded by PLG's current deals; the live price list is not published"
+        ],
+        "add_ons": null,
+        "enterprise": "Order-specific terms",
+        "sources": [
+          {"url": "https://www.ticketstream.cz/stranka/obchodni-podminky-poradatele", "read": "2026-10-09", "what": "organizer terms effective 2022-11-01 (payment terms section IV, refunds V)"},
+          {"url": "https://www.axima-brno.cz/jak-vybrat-system-pro-prodej-vstupenek.html", "read": "2026-10-09", "what": "third-party comparison"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Most explicit published terms of any PLG brand; useful as a template of how a collecting Czech network structures payout, holds and refund fees."
+  },
+  {
+    "platform": "smsticket",
+    "website": "https://www.smsticket.cz",
+    "hq_country": "CZ",
+    "segment": "Independent Czech self-service ticketing for clubs, festivals, culture houses, balls, charities; positions itself as the cheapest and anti-PLG, 5,958 organizers; owned by software house AXIMA",
+    "markets": [
+      {
+        "market": "Czechia",
+        "currency": "CZK",
+        "vat_note": "prices not labelled; 5% 'provize' invoiced to organizer; not stated whether VAT is added",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "smsticket collects buyer payments (payment gateway costs are inside its 5%) and sends the takings to the organizer's account within 24 hours of the organizer requesting payout ('Trzby si vyplatite sami, my je odesilame do 24 hodin'); it also issues tax documents per purchase. So money passes through smsticket but with rolling, near-immediate payout, not post-event.",
+        "plans": [
+          {"name": "Standard", "monthly_fee": 0, "annual_fee": 0,
+           "per_ticket_percent": 5, "per_ticket_fixed": null, "min_per_ticket": 5, "cap_per_ticket": null,
+           "includes": "all platform features, payment gateway costs, all payment methods, physical sales points cost, affiliate partner rewards, online + POS sales, new features free forever",
+           "notes": "5% is 'maximum and final' for organizers; no exclusivity, no sanctions, no minimum tickets/prices. 'Minimalni provize pri prodeji na pokladne cini 5 Kc z jedne vstupenky' (min 5 CZK per ticket at the box office)."},
+          {"name": "Reduced", "monthly_fee": 0, "annual_fee": 0,
+           "per_ticket_percent": 4, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "same as Standard",
+           "notes": "Charity events, children's sport, non-commercial/educational events, individual deals, large events where smsticket is exclusive seller. Large events / culture houses can get 'even better terms' by e-mail."}
+        ],
+        "prepaid": null,
+        "processing": {"included": true, "processors": ["not named (payment gateway, all methods)"], "own_processor_allowed": false,
+                       "rate_note": "All payment-gateway fees are included in the 5%",
+                       "platform_extra_processing_fee": 0},
+        "who_pays_default": "organizer pays 5%; buyer pays a flat service fee per ORDER",
+        "free_tickets": null,
+        "seating": "Seat plans (mistenkove planky) supported at no extra listed price (reference: Kulturni centrum Ceska Trebova)",
+        "payouts": "Within 24 hours of the organizer's payout request; per-event statement, monthly cost report, tax documents; advance payout of sales possible ('vyplata zaloh: ano' in comparison table)",
+        "refunds_chargebacks": null,
+        "fine_print": [
+          "Buyer fee: flat 10 CZK per whole online order (not per ticket); payments by card, bank transfer, Apple Pay",
+          "Extra paid one-off services: targeted ad campaigns, hardware rental (scanners), onsite staffing / check-in help, service intervention on the till; price list is in the help-centre article 'Extra sluzby' (not opened)",
+          "Digital signature on every ticket; scanning with free 'smsticket Brana' app; professional scanners lent for big events",
+          "Website says 'no flat fees'; 'Zdarma a bez registrace' to try event creation"
+        ],
+        "add_ons": [
+          {"name": "targeted ad campaigns", "price": "paid, not listed on the pages read"},
+          {"name": "scanner hardware rental, onsite staff, payment terminals", "price": "paid, not listed on the pages read"}
+        ],
+        "enterprise": "poradatel@smsticket.cz for big events, culture houses, charities",
+        "sources": [
+          {"url": "https://www.smsticket.cz/pro-poradatele", "read": "2026-10-09", "what": "organizer landing page"},
+          {"url": "https://www.smsticket.cz/pro-poradatele/finance", "read": "2026-10-09", "what": "finance page"},
+          {"url": "https://smsticket.zendesk.com/hc/cs/articles/26620027048594-Jak%C3%A9-jsou-poplatky-z-prodeje-vstupenek", "read": "2026-10-09", "what": "help centre fee article (2025-08-18)"},
+          {"url": "https://pr.denik.cz/doporucujeme/vite-kdo-ma-nejnizsi-poplatky-za-vstupenky/", "read": "2026-10-09", "what": "sponsored article: buyer fee 10 CZK per order, charity 4%"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Czech price anchor: 5% + buyer 10 CZK/order, all-in, no exclusivity. The 5% stated as maximum for everybody including the smallest organizer."
+  },
+  {
+    "platform": "BZUCO (bezticketingovky.cz)",
+    "website": "https://bezticketingovky.cz",
+    "hq_country": "CZ",
+    "segment": "Czech 'ticketing without a ticketing company': organizer uses own payment gateway/bank account, pays 2-3% from prepaid credit; closest structural analogue to Arena in the Czech market",
+    "markets": [
+      {
+        "market": "Czechia",
+        "currency": "CZK",
+        "vat_note": "not stated",
+        "model": "prepaid_credits",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "Buyers pay via organizer's own gateway (GoPay, Comgate) or by bank transfer to the organizer's account (Fio banka matching), money goes straight to the organizer. Platform fee is drawn automatically from a prepaid annual credit on each ticket sold.",
+        "plans": [
+          {"name": "Zakladni (Basic)", "monthly_fee": 0, "annual_fee": null,
+           "per_ticket_percent": 2, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "smaller events; one-time setup 5,000 CZK; minimum annual credit 10,000 CZK",
+           "notes": "Commission deducted from credit"},
+          {"name": "Premium", "monthly_fee": 0, "annual_fee": null,
+           "per_ticket_percent": 3, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "more features, larger events; no setup fee; minimum annual credit 50,000 CZK",
+           "notes": "Commission deducted from credit"}
+        ],
+        "prepaid": [
+          {"bundle": "min annual credit 10,000 CZK (Basic)", "unit_price": null, "expiry": "not stated", "refundable": null},
+          {"bundle": "min annual credit 50,000 CZK (Premium)", "unit_price": null, "expiry": "not stated", "refundable": null}
+        ],
+        "processing": {"included": false, "processors": ["GoPay", "Comgate", "bank transfer"], "own_processor_allowed": true,
+                       "rate_note": "Gateway typically charges 'up to 1%' to the organizer",
+                       "platform_extra_processing_fee": 0},
+        "who_pays_default": "configurable: optional per-ticket buyer fee paid to the ORGANIZER (e.g. 20 CZK on 500 CZK) to cover the 2-3% plus gateway",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "Not applicable (money goes directly to the organizer immediately)",
+        "refunds_chargebacks": null,
+        "fine_print": [
+          "Site says 'no monthly fees' and 'no commitments' yet requires a minimum annual credit - internally inconsistent",
+          "Marketing comparison on 500,000 CZK turnover: BZUCO 2% = 10,000 CZK; 3% = 15,000; SMSTicket 5% = 25,000; GoOut 7% = 35,000; Ticketportal 8% = 40,000 (competitor rates are the vendor's claims)",
+          "Currencies: CZK, EUR, PLN"
+        ],
+        "add_ons": null,
+        "enterprise": null,
+        "sources": [{"url": "https://bezticketingovky.cz/", "read": "2026-10-09", "what": "pricing and money-flow page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Small local player; evidence that Czech organizers accept 2-3% direct-merchant credit models, with gateway fee separately."
+  },
+  {
+    "platform": "Colosseum / ColosseumTicket (Perfect System s.r.o.)",
+    "website": "https://colosseum.eu",
+    "hq_country": "CZ",
+    "segment": "Reservation SOFTWARE for theatres, museums, castles, stadiums (600+ organizers in CZ/SK, National Theatre) plus the consumer portal ColosseumTicket.cz/.sk",
+    "markets": [
+      {
+        "market": "Czechia",
+        "currency": "CZK",
+        "vat_note": null,
+        "model": "mixed",
+        "money_flow": "both",
+        "money_flow_note": "Colosseum SOFTWARE is the organizer's own system (organizer owns data and payments, licence/rental/cloud fee, 'no commission'); the ColosseumTicket.cz marketplace collects buyer payments and passes the organizer its share ('odvedeme jim v odpovidajicim pomeru').",
+        "plans": [
+          {"name": "Colosseum software - three business models", "monthly_fee": null, "annual_fee": null,
+           "per_ticket_percent": 0, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "up-front purchase with no per-sale fees, OR fixed monthly rental, OR one-off purchase plus monthly cloud operation fee; self-hosted option; hardware (printers, scanners, kiosks) and implementation extra",
+           "notes": "FAQ: 'What cut does Colosseum take? Nothing - no commission'. Price list page ('Cenik') says 'coming soon', offers a tailored quote. No numbers anywhere."}
+        ],
+        "prepaid": null,
+        "processing": {"included": false, "processors": ["online card, Google Pay, Apple Pay, transfer, Twisto, meal vouchers (software supports them)"], "own_processor_allowed": true, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer pays small per-order handling fees on the marketplace; organizer pays licence",
+        "free_tickets": null,
+        "seating": "Hall/seating editor included in software",
+        "payouts": null,
+        "refunds_chargebacks": "Marketplace: payment-type fees (benefit cards) and postage not refunded on cancelled events",
+        "fine_print": [
+          "ColosseumTicket buyer-side price list (section 10 of T&Cs): e-ticket delivery 20 CZK, registered mail 129 CZK, bulk order (10+) or pay-by-invoice 30 CZK, Gallery Beta card 5% of purchase value, Pluxee/Benefit Plus/Benefity 10% of purchase value, optional ticket insurance 39-1,980 CZK per ticket",
+          "ColosseumTicket organizer commission not published: T&Cs say the portal's service fee 'is usually a percentage of the purchase value'",
+          "Hospodarske noviny 2026-04-13 (paywalled snippet) notes a Colosseum Ticket buyer paying an extra fee on an 899 CZK theatre ticket; fee amount not retrievable"
+        ],
+        "add_ons": [{"name": "hardware, implementation, marketing, festival service", "price": "quote only"}],
+        "enterprise": "Quote on request; price list 'in preparation'",
+        "sources": [
+          {"url": "https://colosseum.eu/", "read": "2026-10-09", "what": "software homepage incl. FAQ 'no commission'"},
+          {"url": "https://colosseum.eu/cenik", "read": "2026-10-09", "what": "price list placeholder"},
+          {"url": "https://colosseumticket.cz/cs/obchodni-podminky", "read": "2026-10-09", "what": "marketplace T&Cs with buyer fee list"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "ColosseumTicket.sk launched 2026-05-04 (Slovakia)."
+  },
+  {
+    "platform": "Ticketlive (Ticketlive PRO s.r.o.)",
+    "website": "https://www.ticketlive.cz",
+    "hq_country": "CZ",
+    "segment": "Czech/Slovak commission-agent network (90 points of sale), clubs, concerts, sports, festivals, cashless wristbands",
+    "markets": [
+      {
+        "market": "Czechia",
+        "currency": "CZK",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "Commission-agency agreement: Ticketlive sells in organizer's name, collects the money and refunds buyers only after receiving funds from the organizer.",
+        "plans": [],
+        "prepaid": null,
+        "processing": {"included": null, "processors": ["GoPay"], "own_processor_allowed": null, "rate_note": "card payments via GoPay may carry a surcharge shown at checkout", "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer pays a 'distribution fee' / processing fee added to ticket price unless stated otherwise (clause 4.5.1 of buyer terms); amount shown at checkout",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": "Exchange fee as % of ticket price per service price list (amount not stated); refunds on organizer's instruction",
+        "fine_print": ["No commission rate published; contact sales@ticketlive.cz"],
+        "add_ons": [{"name": "accreditation, cashless, POS, printing, outdoor advertising, merchandise, PR", "price": "not public"}],
+        "enterprise": "Contact sales",
+        "sources": [
+          {"url": "https://www.ticketlive.cz/cs/page/vseobecne-obchodni-podminky", "read": "2026-10-09", "what": "buyer T&Cs"},
+          {"url": "https://www.ticketlive.cz/cs/page/spoluprace", "read": "2026-10-09", "what": "organizer cooperation page"},
+          {"url": "https://www.ticketlive.cz/cs/page/nase-sluzby", "read": "2026-10-09", "what": "service list"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": null
+  },
+  {
+    "platform": "Kupvstupenku.cz (Savage Company s.r.o.)",
+    "website": "https://www.kupvstupenku.cz",
+    "hq_country": "CZ",
+    "segment": "Regional portal for Nachod area; sells through eVstupenka + GP webpay",
+    "markets": [
+      {
+        "market": "Czechia",
+        "currency": "CZK",
+        "vat_note": null,
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Portal operator takes card payments (GP webpay) and refunds cancelled events on written request to the operator (inferred collecting).",
+        "plans": [],
+        "prepaid": null,
+        "processing": {"included": null, "processors": ["GP webpay"], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": "Cancelled event: ticket price refunded on request",
+        "fine_print": ["No fee numbers on terms page; contact info@kupvstupenku.cz"],
+        "add_ons": null,
+        "enterprise": "Contact",
+        "sources": [{"url": "https://www.kupvstupenku.cz/obchodni-podminky", "read": "2026-10-09", "what": "T&Cs"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Related regional vendor Elset eVstupenka (elset.cz/evstupenka): 'commission starts at 4% of each sold ticket', free scanning app, contract terms agreed with a representative (page, 2026-10-09)."
+  },
+  {
+    "platform": "Czech platforms not retrievable",
+    "website": null,
+    "hq_country": "CZ",
+    "segment": "Vstupenky.cz, Eventim CZ, Mujkoncert, Ticketon (Ticketon is Kazakhstan, not Czech), Ticket Art/PLG",
+    "markets": [
+      {
+        "market": "Czechia",
+        "currency": "CZK",
+        "vat_note": null,
+        "model": null,
+        "money_flow": null,
+        "money_flow_note": null,
+        "plans": [],
+        "prepaid": null,
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [
+          "No public organizer pricing found for Vstupenky.cz, Eventim CZ (eventim.cz imprint only), Mujkoncert",
+          "Ticket Art (a Czech network) went bankrupt in autumn 2021 (Hospodarske noviny archive) - not an active competitor",
+          "Ticketpro: only a 2013 forum post mentions a 1% affiliate commission; not an organizer price"
+        ],
+        "add_ons": null,
+        "enterprise": "Contact sales",
+        "sources": [{"url": "https://archiv.hn.cz/c1-67864220-poplatky-za-listky-do-divadla-nebo-na-koncert-rostou-poradatele-kulturnich-akci-ukazuji-na-noveho-silneho-hrace-na-trhu", "read": "2026-10-09", "what": "HN article (paywalled; Ticket Art bankruptcy context)"}],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "Czech market context from press: PLG (GoOut + Ticketportal + Ticketstream) merger; organizer commissions 'commonly 8%', buyer fee 3.5%; independents SMSticket 5% + 10 CZK/order, BZUCO 2-3% credit model; Euro.cz quotes a platform taking 'over 80 CZK' on an 800 CZK ticket (7-8% + 3.5%)."
+  },
+  {
+    "platform": "Inviton",
+    "website": "https://www.inviton.sk",
+    "hq_country": "SK",
+    "segment": "Self-service ticketing/registration for any event type in SK and CZ; clubs, festivals, conferences",
+    "markets": [
+      {
+        "market": "Slovakia",
+        "currency": "EUR",
+        "vat_note": "not stated",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "Buyers pay through 24-pay gateway; settlement protocol arrives the first Monday after the event, organizer has one week to confirm, then payout the following Monday.",
+        "plans": [
+          {"name": "Standard", "monthly_fee": 0, "annual_fee": 0,
+           "per_ticket_percent": 5, "per_ticket_fixed": null, "min_per_ticket": 0.60, "cap_per_ticket": null,
+           "includes": "all payment gateway costs; event creation free; no hidden fees; lower fee on request for volume",
+           "notes": "'5% of ticket price, minimum 0.60 EUR per sold ticket'; interaction of min and % on cheap tickets not explained. Paid plans exist for support and extended features (not detailed)."}
+        ],
+        "prepaid": null,
+        "processing": {"included": true, "processors": ["24-pay (cards, internet banking, transfer)"], "own_processor_allowed": false, "rate_note": "PayPal optional surcharge 3.6% charged to the BUYER", "platform_extra_processing_fee": 0},
+        "who_pays_default": "organizer",
+        "free_tickets": "Free ticket sales can be switched on but come without technical support",
+        "seating": null,
+        "payouts": "Post-event: protocol first Monday after event, payout next Monday after confirmation",
+        "refunds_chargebacks": "Refunds only with organizer's approval, returned to the paying account; no refund fee stated",
+        "fine_print": ["Volume discounts individual (number of events, capacity, price)"],
+        "add_ons": null,
+        "enterprise": "Lower fee for bigger volume on request",
+        "sources": [
+          {"url": "https://www.inviton.sk/online-predaj-vstupeniek", "read": "2026-10-09", "what": "product page"},
+          {"url": "https://www.inviton.sk/faq-sk", "read": "2026-10-09", "what": "FAQ with payouts and fee"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": null
+  },
+  {
+    "platform": "Predpredaj.sk (Zoznam)",
+    "website": "https://predpredaj.zoznam.sk",
+    "hq_country": "SK",
+    "segment": "Largest independent Slovak network, concerts/theatre/sport, retail shops",
+    "markets": [
+      {
+        "market": "Slovakia",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "Framework contracts ('ramcova zmluva') with organizers; platform collects (inferred from public framework contracts, scans not readable).",
+        "plans": [],
+        "prepaid": null,
+        "processing": null,
+        "who_pays_default": "buyer pays separate fees per contract wording ('osobitne poplatky pre uzivatelov systemu')",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["Cooperation page: 'individual conditions are subject to reciprocal agreements', contact obchod@predpredaj.sk", "Public contracts published on uradne.sk / pmza.sk exist but are scanned images with no text layer (not read)"],
+        "add_ons": null,
+        "enterprise": "Contact sales only",
+        "sources": [{"url": "https://predpredaj.zoznam.sk/sk/stranka/spolupraca/", "read": "2026-10-09", "what": "cooperation page, no prices"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Navstevnik.sk: former state electronic reservation system for Slovak theatres/philharmonics, retired by SND in Aug 2022 (new own ticketing) - no public fees."
+  },
+  {
+    "platform": "Going. (Going Sp. z o.o., Empik Bilety)",
+    "website": "https://www.goingapp.pl",
+    "hq_country": "PL",
+    "segment": "Polish events app + marketplace, also sells via empikbilety.pl and Empik stores; concerts, clubs, theatre, sport",
+    "markets": [
+      {
+        "market": "Poland",
+        "currency": "PLN",
+        "vat_note": "commission calculated on gross ticket price; VAT added to Going's invoice at the date's rate (23%)",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Organizer is the seller; Going sells as the organizer's agent and receives the money. Organizer authorises it to collect. Going invoices its commission (+VAT), normally netted from the transfer.",
+        "plans": [
+          {"name": "Tariff (Annex 1 of organizer terms, in force from 2023-05-19)", "monthly_fee": 0, "annual_fee": 0,
+           "per_ticket_percent": 10, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "distribution through goingapp.pl + Going app, empikbilety.pl, and Empik stores - the SAME 10% gross applies to all three channels",
+           "notes": "10% of the gross ticket price + VAT on the commission. Buyer pays a separate service fee 'depending on price' set freely by Going (amount not published)."}
+        ],
+        "prepaid": null,
+        "processing": {"included": null, "processors": ["not stated in terms"], "own_processor_allowed": false, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer pays service fee; organizer pays 10% commission",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "Settlement report by the 5th of the month after the event; organizer has 3 days to object; payout within 14 days after report acceptance (so ~3-6 weeks after the event)",
+        "refunds_chargebacks": "Commission is also due on refunded tickets (event change/reclamation). Organizer alone responsible for refunds to buyers and complaints.",
+        "fine_print": [
+          "2% of every ticket pool (minimum 6 tickets) is sold to Going at a 99% discount for promotional use",
+          "Going may sell insurance and other products to buyers on the organizer's sales",
+          "Organizer licence for marketing materials remunerated with 1 PLN gross",
+          "Either party can terminate with 30 days' notice; tariff changes effective not earlier than 30 days after notice",
+          "Organiser must be a business or legal entity with full capacity"
+        ],
+        "add_ons": [{"name": "event positioning / promotion services", "price": "agreed individually"}],
+        "enterprise": null,
+        "sources": [
+          {"url": "https://storage.goingapp.pl/storage/app/media/selfboarding/Warunki-i-zasady-korzystania-z-platformy-goingapp-dla-organizatorow.pdf", "read": "2026-10-09", "what": "organizer terms PDF, paragraphs 7, 6.15, Annex 1"},
+          {"url": "https://join.goingapp.pl/", "read": "2026-10-09", "what": "sign-up page (no prices)"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Very explicit terms; useful benchmark for a collecting-model Polish platform."
+  },
+  {
+    "platform": "Evenea",
+    "website": "https://evenea.pl",
+    "hq_country": "PL",
+    "segment": "Polish self-service registration + ticketing for events, courses, conferences, charity runs",
+    "markets": [
+      {
+        "market": "Poland",
+        "currency": "PLN",
+        "vat_note": "Evenea commission and processing commission both exclusive of 23% VAT; VAT added",
+        "model": "percent_plus_fixed",
+        "money_flow": "both",
+        "money_flow_note": "Default: payments go through an online payment provider via Evenea and are settled to the organizer; organizer may connect their own processors (PayU, tPay, PayPal, dotpay, InPay) and then pays only Evenea's commission, settling processing fees directly with the processor. Fee by invoice. Settlement timing article not opened.",
+        "plans": [
+          {"name": "Commission", "monthly_fee": 0, "annual_fee": 0,
+           "per_ticket_percent": 2.9, "per_ticket_fixed": 1.00, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "1 PLN + 2.9% of gross value of each sold PAID ticket (+23% VAT = 3.9 PLN net / 4.80 PLN gross on a 100 PLN ticket)",
+           "notes": "Always on the organizer's side. Free tickets carry no commission."}
+        ],
+        "prepaid": null,
+        "processing": {"included": false, "processors": ["Evenea payment operator", "PayU", "tPay", "PayPal", "dotpay", "InPay"], "own_processor_allowed": true,
+                       "rate_note": "Extra online-payment/transfer commission 2.8% of the order's gross value (+23% VAT) when using Evenea's operator - by default charged to the buyer, organizer can take it on",
+                       "platform_extra_processing_fee": "2.8% net of order gross value"},
+        "who_pays_default": "platform commission: organizer; processing commission: buyer by default (switchable)",
+        "free_tickets": "free, no commission",
+        "seating": null,
+        "payouts": "See help article 'Kiedy otrzymam pieniadze' (not read)",
+        "refunds_chargebacks": null,
+        "fine_print": ["Article last updated 2022-03-08, may be stale"],
+        "add_ons": null,
+        "enterprise": null,
+        "sources": [{"url": "https://evenea.zendesk.com/hc/pl/articles/360011963880-Ile-wynosi-prowizja", "read": "2026-10-09", "what": "help article"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": null
+  },
+  {
+    "platform": "Tixx.pl",
+    "website": "https://tixx.pl",
+    "hq_country": "PL",
+    "segment": "Polish 'ticketing without commission' subscription system; clubs, theatres, event organizers with own bank/Przelewy24",
+    "markets": [
+      {
+        "market": "Poland",
+        "currency": "PLN",
+        "vat_note": "prices net of VAT",
+        "model": "subscription",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "Ticket money goes straight to the organizer's own account (own bank account with manual matching, or a payment operator such as Przelewy24 under the organizer's contract). Platform fee is a flat subscription.",
+        "plans": [
+          {"name": "STARTER (up to 1 M PLN annual turnover)", "monthly_fee": 290, "annual_fee": 3190,
+           "per_ticket_percent": 0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "unlimited events and tickets, 1 admin account, newsletter once a month, e-mail + phone support Mon-Fri 10-16",
+           "notes": "first month free; no setup fee listed"},
+          {"name": "PREMIUM", "monthly_fee": 990, "annual_fee": 9900,
+           "per_ticket_percent": 0, "per_ticket_fixed": 0, "min_per_ticket": null, "cap_per_ticket": null,
+           "includes": "unlimited events/tickets, 5 admin accounts, newsletter twice a month, 24/7 phone support",
+           "notes": "annual price = ~825 PLN/month"}
+        ],
+        "prepaid": null,
+        "processing": {"included": false, "processors": ["Przelewy24", "BLIK", "cards via organizer's operator"], "own_processor_allowed": true, "rate_note": "operator fee can be added to the order total and passed to the buyer", "platform_extra_processing_fee": 0},
+        "who_pays_default": "organizer (flat subscription); buyer service fee optional and kept by the organizer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "Immediate to organizer's account",
+        "refunds_chargebacks": null,
+        "fine_print": ["One-time setup fee may apply for large events needing customization or a dedicated server (amount not given)", "Setup takes about two weeks; payment-provider contract longer", "Savings calculator assumes a competitor at 5% + 5 PLN per ticket"],
+        "add_ons": null,
+        "enterprise": "Custom solutions on request",
+        "sources": [
+          {"url": "https://tixx.pl/cennik", "read": "2026-10-09", "what": "price list"},
+          {"url": "https://tixx.pl/", "read": "2026-10-09", "what": "homepage and FAQ"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Subscription alternative to per-ticket fees; STARTER break-even vs 5% commission is about 70,000 PLN/month of sales."
+  },
+  {
+    "platform": "Biletyna / biletyna.PRO",
+    "website": "https://biletyna.pl",
+    "hq_country": "PL",
+    "segment": "Polish marketplace (biletyna.pl) plus biletyna.PRO ticket system for venues and organizers; 6.1 M tickets sold in 2024 (company claim)",
+    "markets": [
+      {
+        "market": "Poland",
+        "currency": "PLN",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "both",
+        "money_flow_note": "biletyna.PRO 'own sales': money goes directly to the organizer once booked (organizer signs a contract with an online payment operator such as Tpay or PayU separately). Sales through the biletyna.pl portal go to a separate subaccount and are transferred after the event.",
+        "plans": [],
+        "prepaid": null,
+        "processing": {"included": false, "processors": ["Tpay", "PayU"], "own_processor_allowed": true, "rate_note": "operator fees not described", "platform_extra_processing_fee": null},
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "Own sales: direct; portal sales: after the event",
+        "refunds_chargebacks": null,
+        "fine_print": ["No prices: 'we treat every client individually'; onboarding 'a few working hours'; invoicing module free", "The 2025/26 'biletyna.PRO news' PDF claims organizers 'paid 0 PLN commission for launching and running campaigns' (marketing campaign module), not ticket fees"],
+        "add_ons": [{"name": "hardware (ticket machine, printers, terminal)", "price": "not public"}],
+        "enterprise": "Contact wspolpraca@biletyna.pl",
+        "sources": [{"url": "https://biletyna.pro/produkty/sprzedaz-wlasna", "read": "2026-10-09", "what": "product page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": null
+  },
+  {
+    "platform": "KupBilecik",
+    "website": "https://www.kupbilecik.pl",
+    "hq_country": "PL",
+    "segment": "Polish marketplace for stand-up, cabaret, theatre, concerts with its own organizer app and retail points",
+    "markets": [
+      {
+        "market": "Poland",
+        "currency": "PLN",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "Marketplace platform (inferred); organizer is paid out by the platform, terms not public.",
+        "plans": [],
+        "prepaid": null,
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["Pay-per-sale: no start fees or subscription; billed only for tickets sold; no charge for listing; free promotion campaigns; no extra fees at partner retail points. Commission rate not published."],
+        "add_ons": null,
+        "enterprise": "Contact",
+        "sources": [{"url": "https://www.kupbilecik.pl/pl/organizers/login", "read": "2026-10-09", "what": "organizer panel page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "PanBilet (panbilet.pl) bundles KupBilecik promotion for its organizers free (snippet)."
+  },
+  {
+    "platform": "eBilet / Biletomat (PLG) / Ticketmaster PL",
+    "website": "https://www.ebilet.pl",
+    "hq_country": "PL",
+    "segment": "Large Polish networks (eBilet is Eventim Polska's brand; Biletomat part of PLG; Ticketmaster PL)",
+    "markets": [
+      {
+        "market": "Poland",
+        "currency": "PLN",
+        "vat_note": null,
+        "model": null,
+        "money_flow": "collecting",
+        "money_flow_note": "Networks collect on organizer's behalf (assumed from structure); no public organizer pricing",
+        "plans": [],
+        "prepaid": null,
+        "processing": null,
+        "who_pays_default": null,
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": ["Biletomat: organizer page (wspolpraca.biletomat.pl) mentions a 'Cennik' page and a free consultation but states no commission", "eBilet: UOKiK (consumer authority) case on service fees (drip pricing) 2025 - buyer fee practice contested", "Ticketmaster PL self-service for small organizers: not found"],
+        "add_ons": null,
+        "enterprise": "Contact sales",
+        "sources": [{"url": "https://wspolpraca.biletomat.pl/pl", "read": "2026-10-09", "what": "Biletomat PLG organizer page"}, {"url": "https://dimotely.pl/blog/czy-mozna-doliczyc-oplate-serwisowa-wobec-konsumenta-czyli-czego-dotyczyla-sprawa-ebilet/", "read": "2026-10-09", "what": "snippet only: UOKiK/eBilet service fee case", "confidence": "snippet"}],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "Adjacent Polish low-fee vendors seen only as search snippets (not opened, snippet confidence): Superboss 'standard commission 4% net, negotiable by turnover'; Biletigo 'commission 3% gross'; Eventon 'commission cut from 4% + 1 PLN'; EventBookings (global) '15 grosz + 1% per ticket, first 300 tickets free' in PLN."
+  },
+  {
+    "platform": "Cooltix",
+    "website": "https://organizers.cooltix.com",
+    "hq_country": "HU",
+    "segment": "Hungarian-born self-service ticketing for festivals, clubs, theatres in HU, SK, CZ, HR and other EU countries; 'organizer earns on handling fee' pitch",
+    "markets": [
+      {
+        "market": "Hungary",
+        "currency": "HUF",
+        "vat_note": "fees are net, VAT added; prices in HU are in Ft",
+        "model": "percent_plus_fixed",
+        "money_flow": "both",
+        "money_flow_note": "Default Cooltix Payment (Stripe): money collected by Stripe, fees deducted from proceeds and invoiced monthly, automatic payout 3 workdays after the event for Hungary-seated organizers (5 for others); early payout only from Intermediate package with individual assessment. Alternative: organizer connects own provider (Stripe, SimplePay, SZEP cards): income goes directly to the organizer, Cooltix fees invoiced monthly / card on file.",
+        "plans": [
+          {"name": "Online ticket sales", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 2.7, "per_ticket_fixed": 47, "min_per_ticket": null, "cap_per_ticket": null, "includes": "standard events", "notes": "net of VAT; HUF"},
+          {"name": "Seated events", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 3.4, "per_ticket_fixed": 60, "min_per_ticket": null, "cap_per_ticket": null, "includes": "events with seat map", "notes": null},
+          {"name": "Offline / onsite sales", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 1, "per_ticket_fixed": 10, "min_per_ticket": null, "cap_per_ticket": null, "includes": "box office via app", "notes": null}
+        ],
+        "prepaid": null,
+        "processing": {"included": false, "processors": ["Cooltix Payment (Stripe)", "Stripe", "SimplePay", "SZEP card (OTP, MBH, MKB)"], "own_processor_allowed": true,
+                       "rate_note": "Cooltix Payment Provider 1.5% + 0.25 EUR per transaction (EU pricing page; HU equivalent not given); own provider: no Cooltix surcharge",
+                       "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer: Cooltix is built so the BUYER pays a 'handling fee' set by the organizer (up to 10% of ticket price) which covers card processing and Cooltix fee; any amount above Cooltix's own fee is the organizer's extra income. Organizer can absorb instead.",
+        "free_tickets": "no fee on free tickets",
+        "seating": "seated events 3.4% + 60 Ft (vs 2.7% + 47 Ft)",
+        "payouts": "see money_flow_note",
+        "refunds_chargebacks": "Handling fee never refunded and Cooltix fees still charged on refunded tickets; organizer-initiated refunds follow the same rule; successful chargebacks are deducted from the organizer's income; refunds limited to organizer income less amounts already paid out; no reserve mentioned (but services can be limited if fees unpaid >8 days)",
+        "fine_print": [
+          "Fees by country: all EU except HU and other supported countries 2.5% + EUR 0.25 / seated 3% + EUR 0.50 / offline 1% + EUR 0.10; HU 2.7% + 47 Ft / 3.4% + 60 Ft / 1% + 10 Ft (support article dated 2025-12-02)",
+          "Prices net in EUR, VAT extra; revenue kept per currency, conversion costs on organizer",
+          "Per-ticket fee is NOT zero for the organizer in Cooltix's own terms - 'no fee deducted from ticket price' means the buyer-paid handling fee funds it"
+        ],
+        "add_ons": null,
+        "enterprise": "Intermediate package needed for early payout (individual assessment)",
+        "sources": [
+          {"url": "https://support.cooltix.com/en/articles/11469656-service-fee-by-country", "read": "2026-10-09", "what": "fee table by country"},
+          {"url": "https://organizers.cooltix.com/en/pricing", "read": "2026-10-09", "what": "pricing page (EUR): 2.5%+0.25, seated 3%+0.50, on-site 1%+0.10, payment provider 1.5%+0.25"},
+          {"url": "https://organizers.cooltix.com/sk/", "read": "2026-10-09", "what": "Slovak organizer page: processing fee cap 10%, own provider invoiced monthly"},
+          {"url": "https://support.cooltix.com/en/articles/6912347-terms-and-conditions-for-organizers", "read": "2026-10-09", "what": "organizer T&Cs: payouts, refunds, chargebacks"},
+          {"url": "https://blog.cooltix.com/hu/legjobb-jegyertekesito-oldalak-magyarorszagon", "read": "2026-10-09", "what": "Cooltix blog quoting HU fee and competitors (biased)"}
+        ],
+        "confidence": "page"
+      },
+      {
+        "market": "EU (other than HU: SK, CZ, HR, RO, etc.)",
+        "currency": "EUR",
+        "vat_note": "net of VAT",
+        "model": "percent_plus_fixed",
+        "money_flow": "both",
+        "money_flow_note": "Same as Hungary (Stripe-based Cooltix Payment default; payout 5 workdays after event).",
+        "plans": [
+          {"name": "Online", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 2.5, "per_ticket_fixed": 0.25, "min_per_ticket": null, "cap_per_ticket": null, "includes": null, "notes": null},
+          {"name": "Seated", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 3, "per_ticket_fixed": 0.50, "min_per_ticket": null, "cap_per_ticket": null, "includes": null, "notes": null},
+          {"name": "Offline", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 1, "per_ticket_fixed": 0.10, "min_per_ticket": null, "cap_per_ticket": null, "includes": null, "notes": null}
+        ],
+        "prepaid": null,
+        "processing": {"included": false, "processors": ["Stripe-powered Cooltix Payment", "own Stripe/SimplePay"], "own_processor_allowed": true, "rate_note": "Cooltix Payment 1.5% + EUR 0.25 per transaction", "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer handling fee up to 10% of ticket price, organizer keeps surplus",
+        "free_tickets": "free",
+        "seating": "3% + EUR 0.50",
+        "payouts": "5 workdays after event (Cooltix Payment) or immediate (own provider)",
+        "refunds_chargebacks": "as above",
+        "fine_print": ["G2 lists Cooltix tiers 'from $0 to $0.75' (snippet, third-party)"],
+        "add_ons": null,
+        "enterprise": null,
+        "sources": [{"url": "https://organizers.cooltix.com/en/pricing", "read": "2026-10-09", "what": "pricing page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Brief said 'Cooltix 0% for organizer, buyer pays': in practice the buyer-paid handling fee (organizer-set, up to 10%) funds a 2.5%/2.7% + fixed Cooltix fee that the organizer is formally charged; exact buyer fee is organizer-configured, not a fixed Cooltix number. Cooltix also offers 'Intermediate' package (early payout) - package prices not found."
+  },
+  {
+    "platform": "Tixa.hu",
+    "website": "https://www.tixa.hu",
+    "hq_country": "HU",
+    "segment": "Hungarian online ticketing for clubs, festivals, concerts; custom quotes, add-on services",
+    "markets": [
+      {
+        "market": "Hungary",
+        "currency": "HUF",
+        "vat_note": "not stated",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "TIXA acts as the organizer's intermediary/commission agent ('bizomanyosi konstrukcio') via SimplePay; organizer commission and payout not published; FAQ: payout either after the event closes or continuously, by arrangement.",
+        "plans": [],
+        "prepaid": null,
+        "processing": {"included": null, "processors": ["SimplePay (OTP Mobil)", "OTP SZEP card"], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "buyer pays 'kezelesi koltseg' (service fee) when TIXA sells as intermediary",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "Post-event or continuous per agreement",
+        "refunds_chargebacks": "On event cancellation only ticket price refunded; service and delivery fees not refunded; chargebacks not addressed",
+        "fine_print": ["Buyer fee not stated on TIXA's pages; Cooltix blog (competitor) says TIXA prices are not public; each partner gets a custom quote by event type/size/services; add-on price list linked but not retrieved"],
+        "add_ons": [{"name": "add-on services (printing, wristbands, entry system, marketing)", "price": "separate price page, not retrieved"}],
+        "enterprise": "Quote form",
+        "sources": [
+          {"url": "https://site.tixa.hu/business", "read": "2026-10-09", "what": "business page"},
+          {"url": "https://www.tixa.hu/aszf", "read": "2026-10-09", "what": "T&Cs"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": null
+  },
+  {
+    "platform": "Jegy.hu (Interticket)",
+    "website": "https://www.jegy.hu",
+    "hq_country": "HU",
+    "segment": "Biggest Hungarian network (Interticket Kft, theatres, concerts, festivals); organizer price via contract",
+    "markets": [
+      {
+        "market": "Hungary",
+        "currency": "HUF",
+        "vat_note": "buyer service fee includes VAT",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "Network collects; organizer terms not public (only a 'contract signing fee' mentioned by Cooltix's blog, amount unknown).",
+        "plans": [],
+        "prepaid": null,
+        "processing": null,
+        "who_pays_default": "buyer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": "Service fee refunded if an event is cancelled, unless excluded cause (war, natural disaster, organizer pandemic decision)",
+        "fine_print": ["Buyer fee 'generally 3% + 400 Ft per ticket', can differ by venue/event/ticket type, no min/max stated; not part of ticket price"],
+        "add_ons": null,
+        "enterprise": "Contract",
+        "sources": [{"url": "https://www.jegy.hu/articles/19/vasarlasi-tajekoztato", "read": "2026-10-09", "what": "buyer information section 8"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Public municipal theatre contracts with Interticket exist (e.g. vacidunakanyarszinhaz.hu PDF) but returned 403."
+  },
+  {
+    "platform": "Funcode / Funcode Wizard / Jegyvasarlas.hu",
+    "website": "https://funcode.hu",
+    "hq_country": "HU",
+    "segment": "Hungarian ticketing: funcode.hu marketplace, Funcode Wizard self-service builder; Jegyvasarlas.hu regional venue network",
+    "markets": [
+      {
+        "market": "Hungary",
+        "currency": "HUF",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "both",
+        "money_flow_note": "Funcode Wizard: 'ticket income flows directly to the organizer', no entry or monthly costs, quote on request. Jegyvasarlas.hu: provider collects card payments into its own account and settles after the event / monthly (invoice by the 10th, transfer within 10 days).",
+        "plans": [],
+        "prepaid": null,
+        "processing": {"included": null, "processors": ["SimplePay", "SZEP"], "own_processor_allowed": null, "rate_note": "Jegyvasarlas.hu may pass on SZEP card transaction bank costs on top of commission and convenience fee", "platform_extra_processing_fee": null},
+        "who_pays_default": "configurable by contract",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "Jegyvasarlas.hu: after event or monthly for venue sales",
+        "refunds_chargebacks": "Jegyvasarlas.hu: commission and convenience fee may still be charged on cancelled events; penalty 8% of ticket price if the event fails for organizer reasons; 30,000 HUF + VAT per started hour admin fee for client errors / force majeure handling",
+        "fine_print": [
+          "Jegyvasarlas.hu buyer convenience fee: base 150 HUF + 3% of full ticket price (not on every event; organizer agreement may change it)",
+          "Funcode commission rate: not published (quote required)"
+        ],
+        "add_ons": null,
+        "enterprise": "Quote",
+        "sources": [
+          {"url": "https://www.funcodewizard.hu/", "read": "2026-10-09", "what": "Wizard page"},
+          {"url": "https://jegyvasarlas.hu/aszf", "read": "2026-10-09", "what": "T&Cs section 11"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": null
+  },
+  {
+    "platform": "iaBilet (PLG deal announced May 2026)",
+    "website": "https://www.iabilet.ro",
+    "hq_country": "RO",
+    "segment": "Biggest Romanian marketplace (4,000+ organizers, 4 M tickets in 2024); own-site ticketing 'iaBilet makes your own ticket site'",
+    "markets": [
+      {
+        "market": "Romania",
+        "currency": "RON",
+        "vat_note": null,
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "iaBilet says it only brokers sales and that refunds are for organizers to decide (ANPC fine 55,000 lei in 2024 for unrefunded cancelled shows); commission and settlement terms not public.",
+        "plans": [],
+        "prepaid": null,
+        "processing": null,
+        "who_pays_default": "buyer sees a non-refundable ticketing commission on top of price, shown six times in checkout (per company)",
+        "free_tickets": "zero-value tickets possible with data capture",
+        "seating": "seat blocking on maps, invitations",
+        "payouts": null,
+        "refunds_chargebacks": "Ticketing fee not returned on cancellation (company position)",
+        "fine_print": ["'Low commission only when you sell'; no system or admin fees", "Printed tickets / invitation printing from 0.60 lei per piece", "Dedicated account manager and DITL tax documents free"],
+        "add_ons": [{"name": "printed tickets / courier", "price": "from 0.60 lei per ticket"}],
+        "enterprise": "Contact form",
+        "sources": [{"url": "https://m.iabilet.ro/servicii/", "read": "2026-10-09", "what": "services page"}, {"url": "https://economedia.ro/protectia-consumatorilor-a-amendat-cu-55-000-lei-platforma-iabilet-ro-pentru-ca-nu-a-rambursat-contravaloarea-unor-bilete-pentru-spectacole-anulate.html", "read": "2026-10-09", "what": "snippet: ANPC fine and fee non-refund position", "confidence": "snippet"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": null
+  },
+  {
+    "platform": "Entertix / Bilete.ro / Eventim RO / AmBilet / Eventbook / LiveTickets (Romania, prices mostly hidden)",
+    "website": "https://www.entertix.ro",
+    "hq_country": "RO",
+    "segment": "Romanian networks and self-service platforms",
+    "markets": [
+      {
+        "market": "Romania",
+        "currency": "RON",
+        "vat_note": null,
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "Mostly collecting; Eventbook pays out weekly, monthly, at a sales threshold or on request, cash within max 3 days after event end; Entertix mentions 'fast settlement mechanisms' with no timing",
+        "plans": [],
+        "prepaid": null,
+        "processing": null,
+        "who_pays_default": "LiveTickets: organizer chooses per ticket category to include the service fee in the price or pass it to the buyer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": null,
+        "fine_print": [
+          "Entertix organizer page: no prices; sales contact only",
+          "Entertix offers buyers 'Caretix' cancellation cover for 5% of ticket value (buyer add-on)",
+          "Bilete.ro, Eventim RO, Eventbook, LiveTickets, AmBilet: commission not published (AmBilet links an unretrieved 'Comisioane' page; LiveTickets: free sign-up, free scanner app, contract needed)",
+          "Romanian market (Termene.ro): iaBilet, Entertix, Bilete.ro >70% of a 61 M lei 2024 online ticketing market"
+        ],
+        "add_ons": null,
+        "enterprise": "Contact sales",
+        "sources": [
+          {"url": "https://www.entertix.ro/servicii-organizatori.html", "read": "2026-10-09", "what": "Entertix organizer services"},
+          {"url": "https://eventbook.ro/services", "read": "2026-10-09", "what": "Eventbook services"},
+          {"url": "https://www.livetickets.ro/vinde-bilete", "read": "2026-10-09", "what": "LiveTickets sell page"},
+          {"url": "https://ambilet.ro/ghid-organizator", "read": "2026-10-09", "what": "AmBilet guide"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": null
+  },
+  {
+    "platform": "eTichet.ro and Biletin.ro (new Romanian low-fee platforms)",
+    "website": "https://www.etichet.ro",
+    "hq_country": "RO",
+    "segment": "Small self-service ticketing startups with public price lists",
+    "markets": [
+      {
+        "market": "Romania (eTichet)",
+        "currency": "RON",
+        "vat_note": "not stated",
+        "model": "percent",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "'We process through your merchant account' - organizer's own merchant account; platform commission deducted per sale.",
+        "plans": [
+          {"name": "Promotional rate", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 3.5, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "unlimited events, 24/7 support, all features, price locked for the first year", "notes": "'30% off' the standard 5%"},
+          {"name": "Standard rate", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 5, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": null, "notes": "after the promotion"}
+        ],
+        "prepaid": null,
+        "processing": {"included": false, "processors": ["organizer's merchant account"], "own_processor_allowed": true, "rate_note": "no separate processing fee listed", "platform_extra_processing_fee": 0},
+        "who_pays_default": "organizer (calculator default), 100 lei x 100 tickets -> organizer gets 9,650 lei",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "not stated (direct to merchant account)",
+        "refunds_chargebacks": null,
+        "fine_print": ["Promotion 'limited period'; end date not stated"],
+        "add_ons": null,
+        "enterprise": null,
+        "sources": [{"url": "https://www.etichet.ro/sell-tickets", "read": "2026-10-09", "what": "organizer pricing page"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Romania (Biletin.ro)",
+        "currency": "RON",
+        "vat_note": "VAT added on the commission",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "Not stated (payments secured by 3D Secure via Monez payment system, role unclear)",
+        "plans": [
+          {"name": "Selectable commission", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 4, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "4%, 5% or 6% options", "notes": "Organizer chooses per ticket type who pays; if organizer pays the buyer commission is 0"},
+          {"name": "Fixed per order", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": null, "per_ticket_fixed": 1.00, "min_per_ticket": null, "cap_per_ticket": null, "includes": "1.00 RON per order + VAT (per order, not per ticket)", "notes": "footnote"}
+        ],
+        "prepaid": null,
+        "processing": null,
+        "who_pays_default": "configurable per ticket type",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "not described",
+        "refunds_chargebacks": "organizer can refund from admin panel, no fee stated",
+        "fine_print": ["Example on page: 50 RON ticket, buyer commission 3.02 RON, final 53.02 RON; unexplained arithmetic; extras like hostess services paid, no price"],
+        "add_ons": [{"name": "hostess service", "price": "not listed"}],
+        "enterprise": null,
+        "sources": [{"url": "https://biletin.ro/pentru-organizatori", "read": "2026-10-09", "what": "organizer page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "dabilet.ro (resale) 'minimum 10% + VAT' commission on resold tickets, search snippet only."
+  },
+  {
+    "platform": "Bilet.bg (Bilet BG OOD)",
+    "website": "https://bilet.bg",
+    "hq_country": "BG",
+    "segment": "Bulgarian self-service ticketing marketplace with exclusive-vs-nonexclusive pricing; payouts up to 80% any time",
+    "markets": [
+      {
+        "market": "Bulgaria",
+        "currency": "BGN",
+        "vat_note": "commission quoted 'incl. VAT' (6% / 7% with DDS)",
+        "model": "percent",
+        "money_flow": "both",
+        "money_flow_note": "Platform acts as intermediary; organizer can request up to 80% of accumulated sales at any time by e-mail (instant 'Bling' transfer); there are also direct transfers to the organizer's bank or PayPal where Bilet.bg invoices commission after the event.",
+        "plans": [
+          {"name": "Exclusive with Bilet.bg", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 6, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "incl. VAT", "notes": "50% discount for charity events (applies to?)"},
+          {"name": "Non-exclusive (also selling on competing platforms)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 7, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "incl. VAT", "notes": "large events: custom offer on request"}
+        ],
+        "prepaid": null,
+        "processing": {"included": null, "processors": ["vPOS (Borika, DSK)", "Stripe", "PayPal", "bank transfer", "cash/POS on courier", "kiosks"], "own_processor_allowed": null, "rate_note": "payment processing fees are non-refundable to buyers; amounts not published", "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer pays commission; buyers pay administrative / processing fees (non-refundable)",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "up to 80% any time on request; remainder presumably after event (not stated)",
+        "refunds_chargebacks": "Buyer refund only if event cancelled/postponed; admin and payment fees, delivery costs not refunded",
+        "fine_print": ["Buyer name change on ticket: 2 BGN"],
+        "add_ons": null,
+        "enterprise": "Custom offers for large events",
+        "sources": [
+          {"url": "https://bilet.bg/bg/sell-with-us", "read": "2026-10-09", "what": "organizer page"},
+          {"url": "https://bilet.bg/bg/terms-of-service", "read": "2026-10-09", "what": "buyer terms"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Eventim BG and Ticketstation (festival ticketing) have no public organizer pricing; Bulgaria joined the euro (BGN prices on page may now be shown in EUR)."
+  },
+  {
+    "platform": "Entrio (HR/BA/RS group, now incl. Ulaznice.hr and Gigs Tix)",
+    "website": "https://www.entrio.hr",
+    "hq_country": "HR",
+    "segment": "Largest ticketing group in SE Europe after merging with Ulaznice.hr (2024) and acquiring Gigs Tix (Serbia, announced 2026-05-08); concerts, festivals, conferences",
+    "markets": [
+      {
+        "market": "Croatia",
+        "currency": "EUR",
+        "vat_note": "commission quoted + PDV (VAT)",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Entrio sells in the organizer's name; collects; fee deducted ('naknada se obracunava na sve kanale'). Payout terms behind 403 pages.",
+        "plans": [
+          {"name": "Standard organizer terms", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 8.5, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "all channels (web, own site, social, sales points, door)", "notes": "8.5% + PDV of the gross ticket price for physical events 'unless otherwise agreed'; the fee is calculated on final gross turnover (2023 blog); 'can be lower' for larger deals; online/virtual events have a different rate (not read)"}
+        ],
+        "prepaid": null,
+        "processing": null,
+        "who_pays_default": "buyer pays a non-refundable ticket issuing fee; organizer pays the commission",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": "Buyer issuing fee non-refundable and may depend on the commercial agreement with the organizer",
+        "fine_print": ["Natural persons may not sell through Entrio (company required)", "Croatian ticket VAT 5% or 25% depending on event type"],
+        "add_ons": null,
+        "enterprise": "Negotiable",
+        "sources": [
+          {"url": "https://www.entrio.hr/organize", "read": "2026-10-09", "what": "organizer page (search snippet; page returned 403/timeout)"},
+          {"url": "https://www.entrio.hr/blog/organizatori-dogadaja-odgovori-na-vasa-pitanja-su-ovdje/", "read": "2026-10-09", "what": "blog snippet: standard commission 8.5% + PDV"}
+        ],
+        "confidence": "snippet"
+      }
+    ],
+    "notes": "Entrio BA (entrio.ba) uses same organizer terms (not retrievable). Gigs Tix buyer 'online order processing fee' amount shown only at checkout; paid by customer, no fee at physical points of sale."
+  },
+  {
+    "platform": "Adriaticket",
+    "website": "https://shop.adriaticket.com",
+    "hq_country": "HR",
+    "segment": "Croatian network of 20+ sales points on the coast; self-service packages for organizers; also adriaticket.ba",
+    "markets": [
+      {
+        "market": "Croatia",
+        "currency": "EUR",
+        "vat_note": "not stated; fiscalized tickets",
+        "model": "percent",
+        "money_flow": "collecting",
+        "money_flow_note": "Sells 'in the name and for the account of the organizer'; payments via WSPay contract held by Adriaticket; payout timing not stated.",
+        "plans": [
+          {"name": "Basic", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 0, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "free event page only; NO ticket sales", "notes": "free events get RSVP only; a paid event cannot mix free tickets"},
+          {"name": "Standard", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 3.9, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "online sales via AT webshop; 1 hall layout; 1 banner 2 weeks before presale; 1 Facebook + 1 Instagram post; phone scanning", "notes": "extra layouts at additional fee (amount in a CSV price list not read)"},
+          {"name": "Business", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 4.9, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "Standard + sales at all AT shops, unlimited layouts, webshop slider for whole sale, 2 banners, 2 FB + 2 IG posts, phone scanning + scanner device", "notes": null}
+        ],
+        "prepaid": null,
+        "processing": {"included": true, "processors": ["WSPay"], "own_processor_allowed": false, "rate_note": "foreign-currency online card payment possible, point-of-sale cash EUR only", "platform_extra_processing_fee": null},
+        "who_pays_default": "organizer pays plan percentage; buyer pays a non-refundable ticket generation/delivery fee (amount in price list CSV)",
+        "free_tickets": "Free events only on Basic (RSVP, no tickets)",
+        "seating": "hall layouts: 1 included in Standard, unlimited in Business, extra layouts chargeable",
+        "payouts": "not stated",
+        "refunds_chargebacks": "Organizer solely responsible for refunds on cancellation; Adriaticket is only an intermediary; buyer fee non-refundable",
+        "fine_print": ["Downgrade only when no active events; upgrade does not move running events", "Price list published as a CSV (webshop_Makarska-17-Split_0163_...csv), reference valid 2026-09-10"],
+        "add_ons": [{"name": "extra hall layouts", "price": "not read"}],
+        "enterprise": null,
+        "sources": [{"url": "https://shop.adriaticket.com/OrganizeEvent", "read": "2026-10-09", "what": "package page"}, {"url": "https://shop.adriaticket.com/terms-conditions", "read": "2026-10-09", "what": "T&Cs"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Tiered packages that bundle marketing and channel access with the percentage - closest public analogue to a 'plan = channel set' model in the Balkans."
+  },
+  {
+    "platform": "Serbia / Slovenia / Bosnia / Montenegro / North Macedonia platforms (hidden or not retrievable)",
+    "website": null,
+    "hq_country": "RS",
+    "segment": "Tickets.rs (Ticket Vision), eFinity, Gigstix (Serbia, Montenegro), Eventim.si, Mojekarte.si, Karte.ba, Tickets.ba",
+    "markets": [
+      {
+        "market": "Western Balkans / Slovenia",
+        "currency": "RSD / EUR / BAM / MKD",
+        "vat_note": null,
+        "model": null,
+        "money_flow": "collecting",
+        "money_flow_note": "Gigstix terms: Gigs Tix collects the ticket price on behalf of the organizer (acts in the organizer's name and for its account), card processing by Chip Card; eFinity states it sells 'exclusively in the name and on behalf of the organizer' (help page snippet).",
+        "plans": [],
+        "prepaid": null,
+        "processing": null,
+        "who_pays_default": "buyer pays an 'online order processing fee' (amount depends on event and order value, shown at checkout, lower for payment-slip/e-banking, none at physical points of sale, not refunded when event is cancelled)",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": null,
+        "refunds_chargebacks": "Gigstix: fee refunded only if the service was not performed properly",
+        "fine_print": [
+          "Tickets.rs, eFinity (JavaScript-only site, no text retrievable), Eventim.si (B2B page timed out), Mojekarte.si ('500+ organizers', organizer page lists services only), Karte.ba, Tickets.ba, North Macedonia: no organizer pricing found",
+          "eFinity advertises 'THE TICKET IS FREE' for free-event organizers (snippet) and up to 5% cashback tokens for buyers on some events"
+        ],
+        "add_ons": null,
+        "enterprise": "Contact sales for all",
+        "sources": [
+          {"url": "https://new.gigstix.com/uslovi-prodaje-i-koriscenja-en/", "read": "2026-10-09", "what": "Gigstix terms of sale"},
+          {"url": "https://www.mojekarte.si/si/za-organizatorje.html", "read": "2026-10-09", "what": "Mojekarte organizer page"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Regional consolidation: Entrio + Ulaznice.hr + Gigs Tix (2026); Piletilevi/PLG moving into Romania (iaBilet) and Baltics."
+  },
+  {
+    "platform": "Piletilevi / Biletu Serviss (PLG Baltics)",
+    "website": "https://korraldaja.piletilevi.ee/en",
+    "hq_country": "EE",
+    "segment": "Dominant Baltic network (Estonia, Latvia, Lithuania via Tiketa/Bilesu Serviss), sold through project managers; widget as paid licence",
+    "markets": [
+      {
+        "market": "Estonia (also Latvia)",
+        "currency": "EUR",
+        "vat_note": "service fees exclusive of VAT, added at the statutory rate",
+        "model": "negotiated",
+        "money_flow": "collecting",
+        "money_flow_note": "Payment intermediary: collects buyers' payments on the organizer's behalf; fees deducted from sales revenue; payout on the Friday of the week after the event (next working day if holiday). Piletilevi may suspend payments under the sanctions clause.",
+        "plans": [],
+        "prepaid": null,
+        "processing": null,
+        "who_pays_default": "organizer pays service fees (deducted); Piletilevi may add its own service fee on top of ticket price, paid by the buyer",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "Friday of the week after the event; if a buyback may be needed Piletilevi can reserve funds; credit card refunds provided for within 120 days after the event, remaining revenue released after 120 days with no claims",
+        "refunds_chargebacks": "On cancel/postpone organizer handles refunds; if Piletilevi runs the buyback the organizer pays a fee equal to the brokerage fee (unless agreed otherwise) plus costs; organizer reimburses fines caused by it",
+        "fine_print": [
+          "Price list and 'special terms' given only to the organizer before each event; list changeable unilaterally, but changes apply only to new events",
+          "The ticket widget is a paid licence (amount not given)",
+          "Liability capped at fees paid in the previous 12 months; 3 months' termination notice",
+          "FAQ answer to 'how much does it cost': not disclosed"
+        ],
+        "add_ons": [{"name": "banners, newsletter, digital screens, Google Ads, social, ticket lottery", "price": "not public"}],
+        "enterprise": "Project manager sends contract + framework agreement",
+        "sources": [
+          {"url": "https://korraldaja.piletilevi.ee/en/general-conditions", "read": "2026-10-09", "what": "general conditions for promoters (2025-05-20)"},
+          {"url": "https://korraldaja.piletilevi.ee/en/start-your-event", "read": "2026-10-09", "what": "start page, price not disclosed"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Bilesu Serviss PLG (Latvia) organizer site organizatori.bilesuserviss.lv exists, same group; no prices found. Tiketa (LT): not retrievable."
+  },
+  {
+    "platform": "Shownet.lt and Paysera Tickets (Lithuanian direct-to-account self-service)",
+    "website": "https://shownet.lt",
+    "hq_country": "LT",
+    "segment": "Self-service ticketing where organizers are paid directly; Paysera Tickets is the payment-processor-built variant (LT/LV/EE and global)",
+    "markets": [
+      {
+        "market": "Lithuania (Shownet)",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "percent_plus_fixed",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "'Income from buyers goes directly to your account and is available without delays.'",
+        "plans": [
+          {"name": "System commission", "monthly_fee": null, "annual_fee": null, "per_ticket_percent": 2.5, "per_ticket_fixed": null, "min_per_ticket": 0.06, "cap_per_ticket": null, "includes": "'from 6 cents to 2.5% for 1 ticket (bankings or cards)'; unlimited scanning devices", "notes": "currency not named on page; EUR assumed; interaction min/%: ticket fee between 0.06 EUR and 2.5% of ticket"}
+        ],
+        "prepaid": null,
+        "processing": {"included": null, "processors": ["bank links", "cards"], "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": null},
+        "who_pays_default": "not stated",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "immediate to organizer's account",
+        "refunds_chargebacks": null,
+        "fine_print": [],
+        "add_ons": null,
+        "enterprise": null,
+        "sources": [{"url": "https://shownet.lt/to-organizers?lang=en", "read": "2026-10-09", "what": "organizer page"}],
+        "confidence": "page"
+      },
+      {
+        "market": "Lithuania / Latvia / Estonia and global (Paysera Tickets)",
+        "currency": "EUR",
+        "vat_note": null,
+        "model": "percent_plus_fixed",
+        "money_flow": "direct_merchant",
+        "money_flow_note": "Ticket revenue lands in the organizer's Paysera account in real time and is available immediately, before the event. Platform fee collected by Paysera from the same flow.",
+        "plans": [
+          {"name": "Platform fee", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 2, "per_ticket_fixed": null, "min_per_ticket": 0.15, "cap_per_ticket": 1.00, "includes": "ticket sales, scanning app, no hidden ticket/admin fees", "notes": "2% additional platform fee per payment, min 0.15 EUR, max 1 EUR"},
+          {"name": "Paysera Checkout collection fee (volume tiers, 30-day rolling)", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 0.9, "per_ticket_fixed": null, "min_per_ticket": 0.10, "cap_per_ticket": 0.40, "includes": "0-250 transactions or up to 12,500 EUR/30 days at 0.90% (0.10-0.40 EUR); 251-500 or 12,501-25,000 EUR at 0.75% (0.10-0.35); 501-750 or 25,001-37,500 EUR at 0.50% (0.10-0.30); above that individual offer", "notes": "Checkout Modern 0% for LT/LV/EE for some payment initiation methods; unclear if it applies to Tickets; card fee 'unchanged' but not shown"}
+        ],
+        "prepaid": null,
+        "processing": {"included": false, "processors": ["Paysera"], "own_processor_allowed": false, "rate_note": "card rate not shown", "platform_extra_processing_fee": null},
+        "who_pays_default": "not stated",
+        "free_tickets": "free events cost the organizer nothing",
+        "seating": null,
+        "payouts": "real time",
+        "refunds_chargebacks": null,
+        "fine_print": ["Page says neither buyers nor organizers pay unexpected ticket or administration fees"],
+        "add_ons": null,
+        "enterprise": ">750 transactions or >37,500 EUR / 30 days: individual offer",
+        "sources": [
+          {"url": "https://tickets.paysera.com/lt-LT/information/about-system", "read": "2026-10-09", "what": "Paysera Tickets about page"},
+          {"url": "https://www.paysera.com/v2/lt/kainos/imoku-surinkimas-internetu", "read": "2026-10-09", "what": "Paysera collection price list incl. platform fee"}
+        ],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Bilietai.lt (largest LT network) and Ticketmarket.lt: organizer fees only in contract annexes (PDF not readable) / behind organizer login."
+  },
+  {
+    "platform": "Eventim (group) - Eventim.Light self-service as the only public Eventim organizer price",
+    "website": "https://www.eventim-light.de",
+    "hq_country": "DE",
+    "segment": "CTS Eventim self-service tier; Eventim CZ/SK/PL (eBilet)/RO/BG/SI sell through B2B contracts without public prices",
+    "markets": [
+      {
+        "market": "Germany (reference for the Eventim group)",
+        "currency": "EUR",
+        "vat_note": "taxes included in the ticket fee, rate not stated",
+        "model": "percent_plus_fixed",
+        "money_flow": "collecting",
+        "money_flow_note": "Payment within five working days after the event is set to 'Finished' to the bank account in the organizer's profile.",
+        "plans": [
+          {"name": "Ticket fee, base price up to 6.99 EUR", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 3.5, "per_ticket_fixed": 0.49, "min_per_ticket": null, "cap_per_ticket": null, "includes": "own ticket shop, own box office, eventim.de and booking offices at the same fee", "notes": "no setup, no binding contract, payment fees and taxes included"},
+          {"name": "Ticket fee, base price 7.00 EUR and above", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 3.5, "per_ticket_fixed": 0.99, "min_per_ticket": null, "cap_per_ticket": null, "includes": "same", "notes": null},
+          {"name": "Optional EVENTIM network", "monthly_fee": 0, "annual_fee": 0, "per_ticket_percent": 10, "per_ticket_fixed": null, "min_per_ticket": null, "cap_per_ticket": null, "includes": "additional advance booking fee 10% of base price, access to eventim.de and ~10,000 booking offices", "notes": "paid on top of the ticket fee"}
+        ],
+        "prepaid": null,
+        "processing": {"included": true, "processors": null, "own_processor_allowed": null, "rate_note": null, "platform_extra_processing_fee": 0},
+        "who_pays_default": "configurable: absorb or pass on to buyers",
+        "free_tickets": null,
+        "seating": null,
+        "payouts": "within 5 working days after event finished",
+        "refunds_chargebacks": "Ticket fees and commissions may still apply when an event is cancelled",
+        "fine_print": ["Network orders may add buyer booking fees and shipping"],
+        "add_ons": null,
+        "enterprise": null,
+        "sources": [{"url": "https://www.eventim-light.de/en/pricing/", "read": "2026-10-09", "what": "pricing page"}],
+        "confidence": "page"
+      }
+    ],
+    "notes": "Included because Eventim CZ/PL/RO/BG/SI have no public organizer tier; note Germany is outside this group's countries - coordinator may already have it elsewhere."
+  }
+]
