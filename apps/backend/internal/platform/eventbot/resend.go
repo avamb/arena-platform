@@ -13,6 +13,12 @@ package eventbot
 // for 24 hours, on the delivery task), so the screens say so, and say that
 // the person who types it answers for sending the buyer's tickets there.
 //
+// A typed address that differs from the order's own (owner decision O-8,
+// 2026-11-08, resendCopyNotice): the confirmation warns that the same tickets
+// with the same barcodes go out, so the copy at the order's address keeps
+// working, and — where the order card offers it — carries the card's own
+// "Replace tickets" press (or:x:s:<order>), which opens the reissue dialog.
+//
 // An order sold through a seller's own site is refused by the API (409
 // order.seller_site_order — the site writes its own letters) and the result
 // says so with the order number.
@@ -29,6 +35,8 @@ package eventbot
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"log/slog"
 	"net/http"
 	"net/mail"
@@ -64,7 +72,14 @@ type resendDialog struct {
 	Tickets int       `json:"tickets"` // active tickets that would be sent
 	Masked  string    `json:"masked"`  // the order's own address, masked; "" when it has none
 	Email   string    `json:"email"`   // the one-time address typed; "" = the order's own
-	MsgID   int       `json:"msg_id,omitempty"`
+	// OwnSum is the SHA-256 of the order's own address (lower case), so the
+	// confirmation can tell a typed address from the order's without keeping
+	// the buyer's address in the dialog row; "" when the order has none.
+	OwnSum string `json:"own_sum,omitempty"`
+	// CanReplace: the order card offers "Replace tickets" (reissueOffered,
+	// decided when the dialog opened from a fresh read of the order).
+	CanReplace bool `json:"can_replace,omitempty"`
+	MsgID      int  `json:"msg_id,omitempty"`
 }
 
 // ─── who sees the button ──────────────────────────────────────────────────────
@@ -161,6 +176,31 @@ func orderAddress(d openapi.OrderDetail) string {
 		}
 	}
 	return ""
+}
+
+// emailSum is the fingerprint of an address for the "is it the order's own?"
+// test: SHA-256 of the trimmed, lower-cased address. "" for no address.
+func emailSum(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
+}
+
+// resendCopyNotice decides what the confirmation of a resend adds (owner
+// decision O-8, 2026-11-08). A resend to ANOTHER address than the order's own
+// sends the same tickets with the same barcodes, so the copy at the old
+// address keeps working: warn is true then, and replace is true when the
+// order card would also offer "Replace tickets". A resend to the order's own
+// address (case does not matter), and an order without an address, add
+// nothing.
+func resendCopyNotice(typed, ownSum string, canReplace bool) (warn, replace bool) {
+	if strings.TrimSpace(typed) == "" || ownSum == "" || emailSum(typed) == ownSum {
+		return false, false
+	}
+	return true, canReplace
 }
 
 // ─── state in bot_dialogs ─────────────────────────────────────────────────────
@@ -271,8 +311,9 @@ func (b *Bot) startResend(ctx context.Context, chatID int64, editMsgID *int, fro
 		OrgID: id.Current.OrgID, OrderID: orderID, Num: detail.SystemId, Tickets: activeTickets(detail),
 	}
 	if addr := orderAddress(detail); addr != "" {
-		st.Masked = maskEmail(addr)
+		st.Masked, st.OwnSum = maskEmail(addr), emailSum(addr)
 	}
+	st.CanReplace = reissueOffered(id, detail, chatID == from.ID)
 	b.showResendChoice(ctx, chatID, editMsgID, id, st, "")
 }
 
@@ -313,10 +354,22 @@ func (b *Bot) showResendConfirm(ctx context.Context, chatID int64, editMsgID *in
 	}
 	b.saveResend(ctx, tg, st, resStepConfirm)
 	text := b.texts.T(loc, key, map[string]any{"Num": st.Num, "N": st.Tickets, "Email": Esc(to)})
-	b.reply(ctx, chatID, editMsgID, text, &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
-		{{Text: b.texts.T(loc, "bot.resend.send_btn", nil), CallbackData: "or:r:go"}},
-		{{Text: "« " + b.texts.T(loc, "bot.btn_back", nil), CallbackData: "or:r:b"}, {Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}},
-	}})
+	rows := [][]models.InlineKeyboardButton{{{Text: b.texts.T(loc, "bot.resend.send_btn", nil), CallbackData: "or:r:go"}}}
+	if warn, replace := resendCopyNotice(st.Email, st.OwnSum, st.CanReplace); warn {
+		text += "\n\n" + b.texts.T(loc, "bot.resend.copy_warning", nil)
+		if replace {
+			text += "\n\n" + b.texts.T(loc, "bot.resend.copy_replace", nil)
+			// The order card's own press: the reissue dialog opens for this
+			// order and ends this one (dialog_owners.go).
+			rows = append(rows, []models.InlineKeyboardButton{{
+				Text: b.texts.T(loc, "bot.reissue.btn", nil), CallbackData: "or:x:s:" + st.OrderID.String(),
+			}})
+		}
+	}
+	rows = append(rows, []models.InlineKeyboardButton{
+		{Text: "« " + b.texts.T(loc, "bot.btn_back", nil), CallbackData: "or:r:b"}, {Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"},
+	})
+	b.reply(ctx, chatID, editMsgID, text, &models.InlineKeyboardMarkup{InlineKeyboard: rows})
 }
 
 func (b *Bot) resendBackKeyboard(loc string) *models.InlineKeyboardMarkup {

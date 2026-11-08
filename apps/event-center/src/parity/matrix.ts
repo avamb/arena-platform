@@ -530,6 +530,24 @@ export const PARITY: readonly ParityRow[] = [
   },
   {
     area: "Заказы",
+    fn: "Замена билетов (адрес с опечаткой)",
+    bot: "reissue.go, `or:x:` (слово)",
+    web: "R3",
+    // Спека 63, этап R-3
+    ready: { twin: "live/reissue.spec.ts" },
+    routes: [
+      `GET ${O}/orders/{order_id}/reissue-options`,
+      `POST ${O}/orders/{order_id}/reissue-tickets`,
+      `POST ${O}/orders/{order_id}/reissues/{reissue_id}/resend`,
+      `GET ${O}/orders/{order_id}/reissues`,
+      `GET ${O}/complimentary/{id}/reissue-options`,
+      `POST ${O}/complimentary/{id}/reissue-tickets`,
+      `POST ${O}/complimentary/{id}/reissues/{reissue_id}/resend`,
+    ],
+    note: "Первый вопрос — с какого адреса пишет покупатель: «с адреса заказа» ведёт в повторную отправку (штрихкоды те же), «с другого адреса» — к замене. Все действующие билеты заказа получают новые номера и штрихкоды, старые перестают пускать на вход, адрес заказа меняется после отправки письма. Причина обязательна, перед заменой набирают слово «ЗАМЕНИТЬ БИЛЕТЫ». Один `Idempotency-Key` на операцию: потерянный ответ проверяют тем же запросом. Заказ сайта-продавца только объясняется. История замен — на карточке заказа. Приглашение, выданное до спеки 46 (без заказа), заменяется кнопкой «Заменить приглашение» в «Ранних приглашениях» (этап R-5): без вопроса о случае и без подсказки о платёжной системе. Кнопка видна по праву `ticket.update` в `GET …/me`.",
+  },
+  {
+    area: "Заказы",
     fn: "VIP-билет",
     bot: "order_vip.go, `or:vip:`, `iv:vip:`",
     web: "R3",

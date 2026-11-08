@@ -195,6 +195,16 @@ type ShopOrderData struct {
 // Data is the value passed to every template. Fields are intentionally
 // strings (not domain structs) so the template author can ignore nil checks
 // and {{with}} blocks handle the "empty means omit" presentation rule.
+// ReissueData is the explanation of a letter with replacement tickets.
+type ReissueData struct {
+	// Typo: the first letter went to a mistyped address (reason
+	// sent_to_wrong_address); otherwise the tickets were replaced at the
+	// buyer's request.
+	Typo bool
+	// OrderNumber is the buyer-facing order number, "" when unknown.
+	OrderNumber string
+}
+
 type Data struct {
 	// TicketID is the printable ticket UUID.
 	TicketID string
@@ -301,6 +311,10 @@ type Data struct {
 	// letters. Build it with eventnote.Build; the zero value prints nothing.
 	// The other kinds ignore it.
 	EventNote eventnote.Block
+
+	// Reissue explains a letter with replacement tickets (spec 63 section
+	// 4.6). Only the "ticket" kind prints it; nil is an ordinary letter.
+	Reissue *ReissueData
 
 	// WithdrawalNotice prints the sentence that tickets for an event on a
 	// specific date carry no right of withdrawal (EU/EEA sellers, ticket
@@ -458,7 +472,8 @@ type MarketingConfirmData struct {
 
 // SalesAlertData is the content of a sales alert.
 type SalesAlertData struct {
-	// Kind is "sold_out" or "site_stale" (salesalert.KindSoldOut / KindSiteStale).
+	// Kind is "sold_out", "site_stale" or "reissue_old_code"
+	// (salesalert.KindSoldOut / KindSiteStale / KindReissueOldCode).
 	Kind string
 	// Manual: the sell-out was set by hand; Actor names who did it.
 	Manual bool
@@ -472,6 +487,19 @@ type SalesAlertData struct {
 	// State is the new state of the change the sites did not take
 	// ("open", "soon" or "sold_out"), named by the template.
 	State string
+	// Kind "reissue_old_code" (spec 63 section 4.8): the old code of a
+	// replaced ticket was used before the replacement, or tried after it
+	// (Attempt). OrderNumber is 0 for an invitation without an order. At is
+	// the moment on the venue's clock; Source is "arena_scanner" or "macs",
+	// Gate the entrance, Admitted whether the scanner let the person in.
+	Attempt     bool
+	OrderNumber int64
+	OldNumber   int64
+	NewNumber   int64
+	At          string
+	Source      string
+	Gate        string
+	Admitted    bool
 }
 
 // RefundData is the refund e-mail's own block.

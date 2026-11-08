@@ -4,7 +4,9 @@
  * "Resend tickets" action for a person who holds ticket.update in this
  * organization (A1: by permission, never by role name), and the history of
  * every letter behind a disclosure. When the ticket letter failed the same
- * action is offered as "Send the ticket e-mail again".
+ * action is offered as "Send the ticket e-mail again". "Replace tickets" (spec
+ * 63) stands beside it: its first question sends a buyer who writes from the
+ * order's own address back to the resend.
  *
  * The status sentence is always in the page: visible when something needs
  * words (queued, partial, delayed, stuck, bounced, failed, none), read only by
@@ -13,12 +15,15 @@
 import { useState } from "react";
 import { LetterHistory } from "@/components/LetterHistory";
 import { LetterSteps } from "@/components/LetterSteps";
+import { ReissueTicketsDialog } from "@/components/ReissueTicketsDialog";
 import { ResendTicketsDialog } from "@/components/ResendTicketsDialog";
 import type { OrderDetail } from "@/lib/api/types";
 import { zoneLabel } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { letterLine } from "@/lib/letterText";
 import { letterFailed, letterTone, refundLetterStatus, ticketLetterStatus, ticketLetterSteps, type LetterStatus } from "@/lib/letters";
+import { orderNumber } from "@/lib/orders";
+import { reissueOffered } from "@/lib/reissue";
 import { resendOffered } from "@/lib/resend";
 
 function toneClass(s: LetterStatus): string {
@@ -40,11 +45,13 @@ export function OrderLetters({
 }) {
   const { t, locale } = useI18n();
   const [open, setOpen] = useState(false);
+  const [reissueOpen, setReissueOpen] = useState(false);
   const tz = order.venue_timezone;
   const tickets = order.tickets.length === 0 ? null : ticketLetterStatus(order);
   const refund = refundLetterStatus(order);
   const offered = resendOffered(order, can);
-  if (tickets === null && refund === null && !offered) return null;
+  const reissue = reissueOffered(order, can);
+  if (tickets === null && refund === null && !offered && !reissue) return null;
   const failed = tickets !== null && letterFailed(tickets);
   const steps = tickets !== null ? ticketLetterSteps(order, tickets) : null;
   const ticketText = tickets !== null ? letterLine(t, "tickets", tickets, tz, locale) : "";
@@ -77,20 +84,54 @@ export function OrderLetters({
           {letterLine(t, "refund", refund, tz, locale)}
         </p>
       )}
-      {offered && (
+      {(offered || reissue) && (
         <p className="ord-card-action">
-          <button
-            type="button"
-            className={failed ? "btn btn-primary" : "btn"}
-            onClick={() => setOpen(true)}
-            data-testid={failed ? "resend-retry-open" : "resend-open"}
-          >
-            {t(failed ? "resend.retryBtn" : "resend.btn")}
-          </button>
+          {offered && (
+            <button
+              type="button"
+              className={failed ? "btn btn-primary" : "btn"}
+              onClick={() => setOpen(true)}
+              data-testid={failed ? "resend-retry-open" : "resend-open"}
+            >
+              {t(failed ? "resend.retryBtn" : "resend.btn")}
+            </button>
+          )}{" "}
+          {reissue && (
+            <button type="button" className="btn" onClick={() => setReissueOpen(true)} data-testid="reissue-open">
+              {t("reissue.btn")}
+            </button>
+          )}
         </p>
       )}
       <LetterHistory order={order} />
-      {open && <ResendTicketsDialog orgId={orgId} order={order} onClose={() => setOpen(false)} />}
+      {open && (
+        <ResendTicketsDialog
+          orgId={orgId}
+          order={order}
+          onClose={() => setOpen(false)}
+          onUseReissue={
+            reissue
+              ? () => {
+                  // The tickets reached a stranger: new tickets, new barcodes.
+                  setOpen(false);
+                  setReissueOpen(true);
+                }
+              : undefined
+          }
+        />
+      )}
+      {reissueOpen && (
+        <ReissueTicketsDialog
+          orgId={orgId}
+          target={{ kind: "order", id: order.id, number: orderNumber(order.system_id), timezone: order.venue_timezone }}
+          onClose={() => setReissueOpen(false)}
+          onUseResend={() => {
+            // The buyer writes from the order's own address: the same tickets, sent elsewhere.
+            setReissueOpen(false);
+            setOpen(true);
+          }}
+        />
+      )}
     </section>
   );
 }

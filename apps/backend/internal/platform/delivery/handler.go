@@ -609,6 +609,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 
 		lines := ticketLinesFor(kind, members, p.Locale, payment == nil)
 		attachDownloadLinks(ctx, opts, logger, kind, members, lines)
+		reissue := reissueDataFor(ctx, opts, logger, kind, ticketID)
 
 		var htmlBody, textBody, subject string
 		if renderer != nil {
@@ -632,6 +633,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				WithdrawalNotice: withdrawalNotice,
 				WhiteLabel:       whiteLabel,
 				EventNote:        ticketEventNote(kind, p.EventEmailNote, p.EventEmailNoteFormat),
+				Reissue:          reissue,
 			})
 			if rErr != nil {
 				return fail(fmt.Errorf("delivery: render templates for ticket %s: %w",
@@ -717,6 +719,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			if opts.DeliveryJobQueries != nil {
 				releaseLetterMembers(context.WithoutCancel(ctx), opts.DeliveryJobQueries, members, errText, logger)
 			}
+			afterReissueLetter(context.WithoutCancel(ctx), opts, logger, members, recipientEmail, false)
 			logger.Warn("delivery: SMTP send failed; worker will retry",
 				slog.String("ticket_id", ticketID.String()),
 				slog.String("to", recipientEmail),
@@ -747,6 +750,11 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				}
 			}
 		}
+
+		// ── 12b. A letter with replacement tickets moves the order ───────────
+		// The relay accepted it, so the order's address and customer move to
+		// the new address now (spec 63, decision R-2).
+		afterReissueLetter(context.WithoutCancel(ctx), opts, logger, members, recipientEmail, true)
 
 		// ── 13. Audit log ─────────────────────────────────────────────────────
 		// SMTP credentials, barcodes, QR payloads, and signed URLs are not

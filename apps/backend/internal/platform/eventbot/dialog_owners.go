@@ -62,9 +62,12 @@ var dialogOwners = map[string]dialogOwner{
 	shopRefundDialogKind: {owns: shopRefundOwns, leave: (*Bot).leaveIdleShopRefund},
 	// A refund already with the server, or one that may have started, is
 	// kept or parked with its key by leaveIdleRefund, never dropped.
-	refundDialogKind:        {owns: dataHasPrefix("or:f:"), leave: (*Bot).leaveIdleRefund},
-	scanExcDialogKind:       {owns: dataHasPrefix("or:f:x"), leave: (*Bot).leaveScanExc},
-	resendDialogKind:        {owns: dataHasPrefix("or:r:"), leave: (*Bot).leaveResend},
+	refundDialogKind:  {owns: dataHasPrefix("or:f:"), leave: (*Bot).leaveIdleRefund},
+	scanExcDialogKind: {owns: dataHasPrefix("or:f:x"), leave: (*Bot).leaveScanExc},
+	resendDialogKind:  {owns: dataHasPrefix("or:r:"), leave: (*Bot).leaveResend},
+	// "Replace tickets" (spec 63): a bare "or:x" is the orders list's "clear
+	// the search" and ends it like any other press.
+	reissueDialogKind:       {owns: dataHasPrefix("or:x:"), leave: (*Bot).leaveReissue},
 	evsDialogKind:           {owns: prefixIs("ec"), leave: (*Bot).leaveEvStatus},
 	inviteDialogKind:        {owns: prefixIs("iv"), leave: (*Bot).leaveInvite},
 	promoDialogKind:         {owns: prefixIs("pm"), leave: (*Bot).leavePromo},
@@ -94,6 +97,7 @@ var dialogTexts = map[string]dialogTextHandler{
 	refundDialogKind:        (*Bot).refundText,
 	scanExcDialogKind:       (*Bot).scanExcText,
 	resendDialogKind:        (*Bot).resendText,
+	reissueDialogKind:       (*Bot).reissueText,
 	evsDialogKind:           (*Bot).evStatusText,
 	inviteDialogKind:        (*Bot).inviteText,
 	promoDialogKind:         (*Bot).promoText,
@@ -151,7 +155,7 @@ func (b *Bot) narrowOrderCancel(ctx context.Context, tg int64, data string) {
 // dialogOwnerOrder is the fixed order dialogs are ended in (a map has none).
 var dialogOwnerOrder = []string{
 	eventsDialogKind, ordersDialogKind, shopDialogKind, shopRefundDialogKind, refundDialogKind, scanExcDialogKind,
-	resendDialogKind, evsDialogKind, inviteDialogKind, promoDialogKind,
+	resendDialogKind, reissueDialogKind, evsDialogKind, inviteDialogKind, promoDialogKind,
 	promoterDialogKind, referralDialogKind, categoryDialogKind, seatLayoutDialogKind, orgDataDialogKind, sesDialogKind,
 	materialsDialogKind, teamDialogKind, salesLinkDialogKind, salesLinkListDialogKind, tfDialogKind,
 	disputeDialogKind,

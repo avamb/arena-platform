@@ -102,6 +102,17 @@ describe("typed forms", () => {
     expect(isConfirmWord("delete_event", "ru", "ELIMINAR")).toBe(false);
   });
 
+  it("the reissue word is its own and the English one counts everywhere (spec 63, R-5)", () => {
+    expect(isConfirmWord("reissue", "ru", "заменить билеты")).toBe(true);
+    expect(isConfirmWord("reissue", "es", "reemitir entradas")).toBe(true);
+    expect(isConfirmWord("reissue", "ru", "Reissue tickets")).toBe(true);
+    for (const locale of LOCALES) {
+      expect(isConfirmWord("reissue", locale, confirmWord("cancel_order", locale))).toBe(false);
+      expect(isConfirmWord("reissue", locale, confirmWord("cancel_session", locale))).toBe(false);
+      expect(isConfirmWord("cancel_order", locale, confirmWord("reissue", locale))).toBe(false);
+    }
+  });
+
   it("attemptConfirm tells an empty text, a wrong text and a go apart", () => {
     expect(attemptConfirm("refund", "en", "   ")).toBe("empty");
     expect(attemptConfirm("refund", "en", "yes")).toBe("mismatch");

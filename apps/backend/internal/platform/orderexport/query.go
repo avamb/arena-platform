@@ -154,7 +154,15 @@ ORDER BY t.checkout_session_id, t.ordinal
 // carry the same Ticket shape as the export — one projection, one
 // contract). A cancelled/revoked ticket is included so ticket.refunded can
 // carry a refund status.
-var ticketQuery = strings.Replace(sessionQuery, "WHERE t.session_id = $1", "WHERE t.id = $1", 1)
+//
+// A ticket replaced by a reissue (spec 63, status 'transferred') is included
+// here, and only here: its ticket.refunded must reach MACS and the sites so
+// the old number stops admitting, while an order or session export lists
+// only the replacement.
+var ticketQuery = strings.Replace(
+	strings.Replace(sessionQuery, "WHERE t.session_id = $1", "WHERE t.id = $1", 1),
+	"AND t.status IN ('active', 'cancelled', 'revoked')",
+	"AND t.status IN ('active', 'cancelled', 'revoked', 'transferred')", 1)
 
 // orderQuery is sessionQuery scoped to ONE order aggregate (orders.id,
 // migration 0092). Tickets are linked to their order by tickets.order_id.

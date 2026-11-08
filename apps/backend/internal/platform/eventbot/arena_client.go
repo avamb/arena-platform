@@ -72,6 +72,9 @@ type APIError struct {
 	// RefundableMinor is error.details.refundable_minor of a refused shop
 	// refund: what is really left to return, minor units.
 	RefundableMinor *int64
+	// TicketNumber is error.details.ticket_number of 409
+	// reissue.ticket_not_reissuable: the ticket that blocks the reissue.
+	TicketNumber int64
 	// RetryAfter is the Retry-After header of a 429, in seconds (0 when absent).
 	RetryAfter int
 }
@@ -177,12 +180,14 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 				Details struct {
 					Blockers        []string `json:"blockers"`
 					RefundableMinor *int64   `json:"refundable_minor"`
+					TicketNumber    int64    `json:"ticket_number"`
 				} `json:"details"`
 			} `json:"error"`
 		}
 		if json.Unmarshal(raw, &extra) == nil {
 			ae.Blockers = extra.Error.Details.Blockers
 			ae.RefundableMinor = extra.Error.Details.RefundableMinor
+			ae.TicketNumber = extra.Error.Details.TicketNumber
 		}
 		if n, err := strconv.Atoi(strings.TrimSpace(res.Header.Get("Retry-After"))); err == nil && n > 0 {
 			ae.RetryAfter = n

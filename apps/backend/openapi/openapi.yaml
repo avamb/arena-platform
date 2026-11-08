@@ -4073,6 +4073,344 @@ components:
           format: date-time
           description: When the one-time address stops being valid (24 hours after the request). Null for the order's own address.
 
+    ReissueProvider:
+      type: object
+      description: The payment provider of the order.
+      required: [name, title, email_updatable]
+      properties:
+        name:
+          type: string
+          description: The provider's registry name.
+        title:
+          type: string
+          description: The provider's human name.
+        email_updatable:
+          type: boolean
+          description: True when arena moves the provider's receipt address after the reissue. Otherwise the provider keeps the earlier address and the organizer may resend its document by hand.
+
+    ReissueTicketOption:
+      type: object
+      description: One ticket of the order on the check screen.
+      required: [ticket_id, number, seat, category, status, reissuable]
+      properties:
+        ticket_id:
+          type: string
+          format: uuid
+          description: UUID of the ticket.
+        number:
+          type: integer
+          format: int64
+          description: The buyer-facing ticket number.
+        seat:
+          type: string
+          description: Sector, row and seat, empty for general admission.
+        category:
+          type: string
+          description: The ticket category name.
+        status:
+          type: string
+          description: The ticket status.
+        reissuable:
+          type: boolean
+          description: True when the ticket will be replaced.
+        reason:
+          type: string
+          description: Why the ticket is not replaced. `not_active` is skipped; `review_hold` and `refund_in_progress` block the whole reissue.
+        scanned_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the ticket's code was first used at the door. The reissue still runs.
+
+    ReissuePending:
+      type: object
+      description: A reissue of the order that has not been applied yet.
+      required: [id, state, new_email, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the reissue.
+        state:
+          type: string
+          description: "`pending` or `send_failed`."
+        new_email:
+          type: string
+          description: The address the new tickets go to.
+        created_at:
+          type: string
+          format: date-time
+          description: When the reissue was made.
+
+    ReissueOptions:
+      type: object
+      description: The check screen of a ticket reissue.
+      required: [route, order_id, order_number, order_status, order_email, buyer_name, buyer_phone, tickets]
+      properties:
+        route:
+          type: string
+          description: "`arena`, or `seller_site` while a live selling site writes the order's letters."
+        order_id:
+          type: string
+          format: uuid
+          description: UUID of the order.
+        order_number:
+          type: integer
+          format: int64
+          description: The buyer-facing order number.
+        order_status:
+          type: string
+          description: The order status.
+        order_email:
+          type: string
+          description: The order's current buyer e-mail.
+        buyer_name:
+          type: string
+          description: The buyer's name, to compare with the person asking.
+        buyer_phone:
+          type: string
+          description: The buyer's phone, to compare with the person asking.
+        venue_timezone:
+          type: string
+          description: The IANA time zone of the event's venue, to print scanned_at in; empty when unknown.
+        tickets:
+          type: array
+          description: Every ticket of the order.
+          items:
+            $ref: "#/components/schemas/ReissueTicketOption"
+        blocked:
+          type: [string, "null"]
+          description: The error code a reissue would answer now, null when it may run.
+        pending_reissue:
+          description: A reissue that has not been applied, when there is one.
+          allOf:
+            - $ref: "#/components/schemas/ReissuePending"
+        provider:
+          description: The payment provider, absent for an order without a payment.
+          allOf:
+            - $ref: "#/components/schemas/ReissueProvider"
+
+    InvitationReissueOptions:
+      type: object
+      description: The check screen of a reissue for an invitation without an order.
+      required: [invitation_id, invitation_status, guest_email, tickets]
+      properties:
+        invitation_id:
+          type: string
+          format: uuid
+          description: UUID of the invitation (complimentary issuance).
+        invitation_status:
+          type: string
+          description: The invitation status; only `issued` can be replaced.
+        guest_email:
+          type: string
+          description: The guest's current address.
+        venue_timezone:
+          type: string
+          description: The IANA time zone of the event's venue, to print scanned_at in; empty when unknown.
+        tickets:
+          type: array
+          description: Every ticket of the invitation.
+          items:
+            $ref: "#/components/schemas/ReissueTicketOption"
+        blocked:
+          type: [string, "null"]
+          description: The error code a reissue would answer now, null when it may run.
+        pending_reissue:
+          description: A reissue that has not been applied, when there is one.
+          allOf:
+            - $ref: "#/components/schemas/ReissuePending"
+
+    ReissueTicketsRequest:
+      type: object
+      description: A ticket reissue.
+      required: [email, reason]
+      properties:
+        email:
+          type: string
+          description: The buyer's real address. It may equal the current one, then only the barcodes change.
+        reason:
+          type: string
+          description: "`sent_to_wrong_address`, `forwarded_to_stranger` or `other`."
+        note:
+          type: string
+          description: The operator's note, at most 500 characters. Kept in the journal, never sent to the buyer.
+
+    ReissuePair:
+      type: object
+      description: One replaced ticket.
+      required: [old_ticket_id, old_number, new_ticket_id, new_number, seat, category]
+      properties:
+        old_ticket_id:
+          type: string
+          format: uuid
+          description: UUID of the closed ticket.
+        old_number:
+          type: integer
+          format: int64
+          description: The closed ticket's number.
+        new_ticket_id:
+          type: string
+          format: uuid
+          description: UUID of the new ticket.
+        new_number:
+          type: integer
+          format: int64
+          description: The new ticket's number.
+        seat:
+          type: string
+          description: Sector, row and seat of both tickets.
+        category:
+          type: string
+          description: The category of both tickets.
+        old_code_scanned_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the closed ticket's code was used at the door before the reissue.
+        old_code_attempt:
+          description: The first try to enter with the closed ticket's code after the reissue, or null when nobody tried.
+          oneOf:
+            - $ref: "#/components/schemas/ReissueOldCodeAttempt"
+            - type: "null"
+        organizer_told_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the organization was told about the old code (an entry before the reissue or a try after it) through its sales chat or, without a chat, an e-mail to the owners. Null while nothing was told.
+
+    ReissueOldCodeAttempt:
+      type: object
+      description: A scan of a replaced ticket's code after the reissue.
+      required: [at, source, result]
+      properties:
+        at:
+          type: string
+          format: date-time
+          description: When the code was scanned.
+        source:
+          type: string
+          description: The scanner, arena_scanner or macs.
+        result:
+          type: string
+          description: What the scanner answered, admitted or denied.
+        gate:
+          type: string
+          description: The entrance or scanner name, when the scanner sent one.
+
+    ReissueTicketsResponse:
+      type: object
+      description: The result of a reissue.
+      required: [reissue_id, state, replayed, recipient_masked, tickets, letter]
+      properties:
+        reissue_id:
+          type: string
+          format: uuid
+          description: UUID of the reissue.
+        state:
+          type: string
+          description: "`pending` until the relay accepts the letter, then `applied`."
+        replayed:
+          type: boolean
+          description: True when this answers an earlier request with the same Idempotency-Key.
+        recipient_masked:
+          type: string
+          description: The new address with most characters hidden.
+        tickets:
+          type: array
+          description: The replaced tickets.
+          items:
+            $ref: "#/components/schemas/ReissuePair"
+        letter:
+          type: string
+          description: "`queued`."
+
+    ReissueResendResponse:
+      type: object
+      description: The letter of a reissue was queued again.
+      required: [reissue_id, state, letter]
+      properties:
+        reissue_id:
+          type: string
+          format: uuid
+          description: UUID of the reissue.
+        state:
+          type: string
+          description: "`pending`."
+        letter:
+          type: string
+          description: "`queued`."
+
+    ReissueEntry:
+      type: object
+      description: One reissue of the order.
+      required: [id, state, old_email, new_email, reason, note, actor_type, created_at, tickets]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the reissue.
+        state:
+          type: string
+          description: "`pending`, `applied` or `send_failed`."
+        old_email:
+          type: string
+          description: The order's address before the reissue.
+        new_email:
+          type: string
+          description: The address the new tickets went to.
+        reason:
+          type: string
+          description: The reason the operator stated.
+        note:
+          type: string
+          description: The operator's note.
+        old_code_scanned_at:
+          type: [string, "null"]
+          format: date-time
+          description: The first entry with a replaced code before the reissue.
+        applied_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the letter left and the order moved to the new address.
+        letter_failed_at:
+          type: [string, "null"]
+          format: date-time
+          description: When the relay last refused the letter.
+        provider_email_state:
+          type: [string, "null"]
+          description: "What happened to the address at the payment provider: `queued`, `updated`, `failed`, `manual` (the provider cannot be told, the organizer may resend its document) or `not_applicable`."
+        actor_type:
+          type: string
+          description: "`user` or `superadmin`."
+        actor_id:
+          type: [string, "null"]
+          description: UUID of the person who made the reissue.
+        via:
+          type: [string, "null"]
+          description: The client the reissue came from.
+        created_at:
+          type: string
+          format: date-time
+          description: When the reissue was made.
+        tickets:
+          type: array
+          description: The replaced tickets.
+          items:
+            $ref: "#/components/schemas/ReissuePair"
+
+    ReissueHistory:
+      type: object
+      description: The reissues of an order.
+      required: [reissues]
+      properties:
+        reissues:
+          type: array
+          description: Newest first.
+          items:
+            $ref: "#/components/schemas/ReissueEntry"
+        provider:
+          description: The order's payment provider, absent without a payment.
+          allOf:
+            - $ref: "#/components/schemas/ReissueProvider"
+
     ExternalRefundItem:
       type: object
       description: One ticket of an external refund.
@@ -51457,7 +51795,7 @@ paths:
       operationId: getScannerSnapshot
       summary: Download an offline-validation barcode snapshot
       description: |
-        Returns a paginated snapshot of all non-revoked barcodes for the
+        Returns a paginated snapshot of the barcodes of the
         tickets in a session (feature #144,
         `apps/backend/internal/platform/httpserver/hscanner/
         scanner_snapshot.go` HandleScannerSnapshot). Offline scanners
@@ -51465,6 +51803,11 @@ paths:
         network connectivity, then poll with the `since` cursor for
         delta updates (store `last_updated_at` from each response and
         pass it as `since` on the next request).
+
+        The full snapshot (no `since`) leaves revoked codes out. A delta
+        lists a code revoked since the cursor with `status: revoked`, so
+        the device drops it from its cache (a cancelled, refunded or
+        replaced ticket).
 
         Rate limited per client IP (600 req/min) and per session
         (300 req/min); excess requests return 429 `scanner.rate_limited`.
@@ -55178,6 +55521,15 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+        "410":
+          description: |
+            `checkout.ticket_not_valid` - the ticket no longer admits
+            (cancelled, refunded or replaced), or its stored PDF was revoked.
+            The PDF is not handed out.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
         "429":
           description: "`my_tickets.rate_limited` - too many requests."
           content:
@@ -56458,6 +56810,15 @@ paths:
             Checkout session not found (`checkout.not_found`), ticket does
             not belong to this checkout (`checkout.ticket_not_found`), or
             PDF has not yet been generated (`checkout.pdf_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "410":
+          description: |
+            `checkout.ticket_not_valid` - the ticket no longer admits
+            (cancelled, refunded or replaced), or its stored PDF was revoked.
+            The PDF is not handed out.
           content:
             application/json:
               schema:
@@ -66366,6 +66727,631 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "503":
           description: Delivery store unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/orders/{order_id}/reissue-options:
+    get:
+      operationId: getV1OrganizationsOrgIdOrdersOrderIdReissueOptions
+      summary: Check whether an order's tickets can be replaced
+      description: |
+        The check screen of a ticket reissue (spec 63): the order's address,
+        buyer name and phone for comparison, every ticket with whether it can be
+        replaced and when its code was already used at the door, the reason a
+        reissue would be refused now (`blocked`), an earlier reissue that has
+        not been sent, and the payment provider with whether arena can move the
+        provider's receipt address. Nothing is written. Requires `ticket.update`;
+        an organization API key is refused.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: order_id
+          in: path
+          required: true
+          description: UUIDv7 of the order
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The check screen.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReissueOptions"
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Order not found, or not linked to this organization (`orders.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Ticket store unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/orders/{order_id}/reissue-tickets:
+    post:
+      operationId: postV1OrganizationsOrgIdOrdersOrderIdReissueTickets
+      summary: Replace every ticket of an order sent to a wrong address
+      description: |
+        Replaces every active ticket of a paid order (spec 63, variant B). In one
+        transaction each old ticket becomes `transferred` with the reason
+        `reissued` and stops admitting (its barcodes and credentials are
+        revoked), and a new ticket takes the same seat in the same order with a
+        new number and a new EAN-13 barcode. Money and places do not change. The
+        purchase token changes, so the links of the first letter stop working.
+        One letter with the new tickets is queued to `email`; the order's buyer
+        e-mail and customer move to that address only after the mail relay
+        accepted the letter. MACS hears the old numbers as refunded and the new
+        tickets as paid. Nothing is sent to the earlier address. A code already
+        used at the door does not stop the reissue. An `Idempotency-Key` header
+        is required: a repeat answers the first result (`replayed` true) and
+        writes nothing. Requires `ticket.update`; an organization API key is
+        refused; a platform superadmin sends `X-Admin-Reason`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: order_id
+          in: path
+          required: true
+          description: UUIDv7 of the order
+          schema: { type: string, format: uuid }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: The operation's key, at most 200 characters. A repeat with the same key answers the first result.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReissueTicketsRequest"
+      responses:
+        "200":
+          description: The tickets were replaced and the letter is queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReissueTicketsResponse"
+        "400":
+          description: A path parameter is not a UUID, the body is not valid (`reissue.invalid_body`), or the Idempotency-Key header is missing (`reissue.idempotency_key_required`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The order is not paid (`order.not_paid`), belongs to a live selling site (`order.seller_site_order`), has no active ticket (`reissue.nothing_to_reissue`), a ticket is on review hold or has a refund in progress (`reissue.ticket_not_reissuable`, ticket number and reason in `details`), the date is cancelled or over (`reissue.session_closed`), an earlier reissue has not been sent (`reissue.in_progress`), or the key was used for another request (`reissue.idempotency_key_reused`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The address is not valid (`reissue.invalid_email`), the reason is unknown (`reissue.invalid_reason`), or the note is longer than 500 characters (`reissue.note_too_long`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Order not found, or not linked to this organization (`orders.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Ticket store unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/orders/{order_id}/reissues/{reissue_id}/resend:
+    post:
+      operationId: postV1OrganizationsOrgIdOrdersOrderIdReissuesReissueIdResend
+      summary: Send the letter of a ticket reissue again
+      description: |
+        Queues the letter of a reissue that has not been applied (its letter was
+        refused or is still waiting) again: the same new tickets, the same
+        address, no new barcode. An applied reissue answers 409
+        `reissue.already_applied`. Requires `ticket.update`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: order_id
+          in: path
+          required: true
+          description: UUIDv7 of the order
+          schema: { type: string, format: uuid }
+        - name: reissue_id
+          in: path
+          required: true
+          description: UUIDv7 of the reissue
+          schema: { type: string, format: uuid }
+      responses:
+        "202":
+          description: The letter was queued again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReissueResendResponse"
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The reissue was already applied (`reissue.already_applied`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Order not found, or not linked to this organization (`orders.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Ticket store unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/orders/{order_id}/reissues:
+    get:
+      operationId: getV1OrganizationsOrgIdOrdersOrderIdReissues
+      summary: List the ticket reissues of an order
+      description: |
+        Every reissue of the order, newest first, with both addresses (the
+        journal is the evidence of where an old barcode went), the reason, the
+        operator's note, the replaced numbers, the letter state and what happened
+        to the address at the payment provider. Requires `order.read`; an
+        organization API key is refused.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: order_id
+          in: path
+          required: true
+          description: UUIDv7 of the order
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The order's reissues.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReissueHistory"
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Order not found, or not linked to this organization (`orders.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Ticket store unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/complimentary/{id}/reissue-options:
+    get:
+      operationId: getV1OrganizationsOrgIdComplimentaryIdReissueOptions
+      summary: Check whether an invitation's tickets can be replaced
+      description: |
+        The check screen of a ticket reissue for an invitation issued before
+        invitations became orders (spec 63, stage R-5): the guest's address,
+        every ticket with whether it can be replaced and when its code was
+        used at the door, and the reason a reissue would be refused now.
+        Nothing is written. Requires `ticket.update`; an organization API key
+        is refused.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the invitation (complimentary issuance)
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The check screen.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationReissueOptions"
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Invitation not found, or not linked to this organization (`complimentary.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Ticket store unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/complimentary/{id}/reissue-tickets:
+    post:
+      operationId: postV1OrganizationsOrgIdComplimentaryIdReissueTickets
+      summary: Replace every ticket of an invitation sent to a wrong address
+      description: |
+        The invitation twin of `POST .../orders/{order_id}/reissue-tickets`
+        (spec 63, stage R-5): every active ticket of an issued invitation is
+        closed as `transferred` and replaced by a new ticket of the same
+        invitation, seat and category with a new number and barcode. One
+        invitation letter is queued to `email`; the invitation's recipient
+        moves to it only after the mail relay accepted the letter. Nothing is
+        sent to the earlier address. `Idempotency-Key` is required, a repeat
+        answers the first result. Requires `ticket.update`; an organization API
+        key is refused.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the invitation (complimentary issuance)
+          schema: { type: string, format: uuid }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: The operation's key, at most 200 characters. A repeat with the same key answers the first result.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReissueTicketsRequest"
+      responses:
+        "200":
+          description: The tickets were replaced and the letter is queued.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReissueTicketsResponse"
+        "400":
+          description: A path parameter is not a UUID, the body is not valid (`reissue.invalid_body`), or the Idempotency-Key header is missing (`reissue.idempotency_key_required`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The invitation is revoked or not issued (`reissue.invitation_not_issued`), has no active ticket (`reissue.nothing_to_reissue`), a ticket is on review hold (`reissue.ticket_not_reissuable`), the date is cancelled or over (`reissue.session_closed`), an earlier reissue has not been sent (`reissue.in_progress`), or the key was used for another request (`reissue.idempotency_key_reused`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: The address is not valid (`reissue.invalid_email`), the reason is unknown (`reissue.invalid_reason`), or the note is longer than 500 characters (`reissue.note_too_long`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Invitation not found, or not linked to this organization (`complimentary.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Ticket store unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/complimentary/{id}/reissues/{reissue_id}/resend:
+    post:
+      operationId: postV1OrganizationsOrgIdComplimentaryIdReissuesReissueIdResend
+      summary: Send the letter of an invitation reissue again
+      description: |
+        Queues the letter of an invitation reissue that has not been applied
+        again: the same new tickets, the same address, no new barcode. An
+        applied reissue answers 409 `reissue.already_applied`. Requires
+        `ticket.update`.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the invitation (complimentary issuance)
+          schema: { type: string, format: uuid }
+        - name: reissue_id
+          in: path
+          required: true
+          description: UUIDv7 of the reissue
+          schema: { type: string, format: uuid }
+      responses:
+        "202":
+          description: The letter was queued again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReissueResendResponse"
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: The reissue was already applied (`reissue.already_applied`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Invitation not found, or not linked to this organization (`complimentary.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Ticket store unavailable (database not wired).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/complimentary/{id}/reissues:
+    get:
+      operationId: getV1OrganizationsOrgIdComplimentaryIdReissues
+      summary: List the ticket reissues of an invitation
+      description: |
+        Every reissue of the invitation, newest first, with both addresses,
+        the reason, the note and the replaced numbers. `provider` is always
+        null: an invitation has no payment. Requires `order.read`; an
+        organization API key is refused.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUIDv7 of the organization
+          schema: { type: string, format: uuid }
+        - name: id
+          in: path
+          required: true
+          description: UUIDv7 of the invitation (complimentary issuance)
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The invitation's reissues.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReissueHistory"
+        "400":
+          description: A path parameter is not a UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Authorization header missing or JWT verification failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: Invitation not found, or not linked to this organization (`complimentary.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Internal server error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Ticket store unavailable (database not wired).
           content:
             application/json:
               schema:

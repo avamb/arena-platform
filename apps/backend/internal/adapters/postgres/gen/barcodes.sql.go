@@ -347,15 +347,17 @@ SELECT b.id, b.authority_id, b.external_ref, b.ticket_id, b.status, b.scanned_at
 FROM   barcodes b
 JOIN   tickets  t ON t.id = b.ticket_id
 WHERE  t.session_id  = $1
-  AND  b.status     != 'revoked'
+  AND  (b.status != 'revoked' OR $2 > '1970-01-01T00:00:00Z'::timestamptz)
   AND  b.updated_at  > $2
 ORDER BY b.updated_at ASC, b.id ASC
 LIMIT  $3
 OFFSET $4`
 
-// ListSnapshotBarcodesBySession returns non-revoked barcodes for all tickets
-// in the given session, filtered by the since cursor (only barcodes with
-// updated_at > since). Pass time.Time{} to retrieve the full snapshot.
+// ListSnapshotBarcodesBySession returns the barcodes of all tickets in the
+// given session, filtered by the since cursor (only barcodes with
+// updated_at > since). Pass time.Time{} to retrieve the full snapshot, which
+// leaves revoked codes out; a delta (since after 1970-01-01) includes them
+// with status 'revoked', so a device drops a code it cached (spec 63, R-1).
 // Used by GET /v1/scanner/snapshot for offline scanner cache hydration.
 func (q *Queries) ListSnapshotBarcodesBySession(ctx context.Context, sessionID uuid.UUID, since time.Time, limit, offset int32) ([]BarcodeRow, error) {
 	rows, err := q.db.Query(ctx, listSnapshotBarcodesBySession, sessionID, since, limit, offset)
@@ -384,11 +386,11 @@ SELECT COUNT(*)
 FROM   barcodes b
 JOIN   tickets  t ON t.id = b.ticket_id
 WHERE  t.session_id  = $1
-  AND  b.status     != 'revoked'
+  AND  (b.status != 'revoked' OR $2 > '1970-01-01T00:00:00Z'::timestamptz)
   AND  b.updated_at  > $2`
 
-// CountSnapshotBarcodesBySession returns the total count of non-revoked barcodes
-// for the given session and since cursor. Used to populate pagination metadata
+// CountSnapshotBarcodesBySession returns the total count of the barcodes
+// ListSnapshotBarcodesBySession pages through, under the same rule. Used to populate pagination metadata
 // in the GET /v1/scanner/snapshot response.
 func (q *Queries) CountSnapshotBarcodesBySession(ctx context.Context, sessionID uuid.UUID, since time.Time) (int64, error) {
 	var count int64

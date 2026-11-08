@@ -40,6 +40,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/ticketreissue"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -92,9 +93,11 @@ func (h *Handler) barcodeQueriesAvailable(w http.ResponseWriter, r *http.Request
 // GET /v1/scanner/snapshot
 // ─────────────────────────────────────────────────────────────────────────────
 
-// HandleScannerSnapshot returns a paginated list of non-revoked barcodes for all
+// HandleScannerSnapshot returns a paginated list of the barcodes of all
 // tickets in the given session. Supports delta updates via the since query
-// parameter (RFC3339 timestamp).
+// parameter (RFC3339 timestamp). The full snapshot leaves revoked codes out;
+// a delta lists them with status "revoked", so a device that cached a code
+// before it was taken back (a cancelled, refunded or replaced ticket) drops it.
 //
 // Query parameters:
 //
@@ -157,7 +160,7 @@ func (h *Handler) HandleScannerSnapshot(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// ── Parse since cursor (optional) ─────────────────────────────────────────
-	// Zero time means "no cursor" — returns all non-revoked barcodes for session.
+	// Zero time means "no cursor" — the full snapshot, without revoked codes.
 	var since time.Time // zero value = 1970-01-01 00:00:00 UTC
 	if sinceStr := r.URL.Query().Get("since"); sinceStr != "" {
 		since, err = time.Parse(time.RFC3339, sinceStr)
@@ -392,10 +395,23 @@ func (h *Handler) HandleScannerValidate(w http.ResponseWriter, r *http.Request) 
 			resp.InvalidReason = "ticket_" + t.Status
 		}
 	}
-	switch barcode.Status {
-	case "revoked":
+	reissued := false
+	if barcode.TicketID != nil {
+		if t, tErr := h.barcodeQueries.GetTicketByID(ctx, *barcode.TicketID); tErr == nil &&
+			t.Status == "transferred" && t.CancellationReason != nil && *t.CancellationReason == "reissued" {
+			reissued = true
+		}
+	}
+	switch {
+	case reissued:
+		// Spec 63, decision R-11: the door shows "ticket replaced", the
+		// person decides.
+		resp.Valid = false
+		resp.InvalidReason = "ticket_reissued"
+		h.recordOldCode(ctx, *barcode.TicketID, time.Now(), ticketreissue.AttemptDenied, "")
+	case barcode.Status == "revoked":
 		resp.InvalidReason = "barcode_revoked"
-	case "scanned":
+	case barcode.Status == "scanned":
 		resp.InvalidReason = "already_scanned"
 	}
 

@@ -347,11 +347,10 @@ func TestOrderResendTickets_Integration(t *testing.T) {
 			_, _ = f.pool.Exec(c, `DELETE FROM sales_channels WHERE id = $1`, siteChannel)
 		})
 		viaWebhook, tkWebhook := f.resendSeedOrder(siteChannel, "public_feed", "site-buyer@example.test")
-		viaGateway, tkGateway := f.resendSeedOrder(f.channelA, "bil24_gateway", "gateway-buyer@example.test")
 		for name, c := range map[string]struct {
 			order  uuid.UUID
 			ticket uuid.UUID
-		}{"active webhook subscriber": {viaWebhook, tkWebhook}, "bil24_gateway source": {viaGateway, tkGateway}} {
+		}{"active webhook subscriber": {viaWebhook, tkWebhook}} {
 			code, body := f.resendPost(f.orgA, c.order, f.managerTok, `{"email":"other@example.org"}`)
 			if code != http.StatusConflict || ecErrCode(body) != "order.seller_site_order" {
 				t.Fatalf("%s: %d %v, want 409 order.seller_site_order", name, code, body)
@@ -365,6 +364,19 @@ func TestOrderResendTickets_Integration(t *testing.T) {
 			if n := f.count(`SELECT count(*) FROM order_events WHERE order_id = $1 AND type = 'tickets_resent'`, c.order); n != 0 {
 				t.Fatalf("%s: %d history rows, want 0", name, n)
 			}
+		}
+		// A former site order whose channel has no live site is arena's to
+		// write to (spec 63, decision R-8): the source alone refuses nothing.
+		viaGateway, _ := f.resendSeedOrder(f.channelA, "bil24_gateway", "gateway-buyer@example.test")
+		if code, body := f.resendPost(f.orgA, viaGateway, f.managerTok, ""); code != http.StatusAccepted {
+			t.Fatalf("gateway order without a live site: %d %v, want 202", code, body)
+		}
+		// The site switched off: its order is resent too.
+		if _, err := f.pool.Exec(ctx, `UPDATE webhook_subscribers SET active = false WHERE channel_id = $1`, siteChannel); err != nil {
+			t.Fatal(err)
+		}
+		if code, body := f.resendPost(f.orgA, viaWebhook, f.managerTok, ""); code != http.StatusAccepted {
+			t.Fatalf("switched-off site: %d %v, want 202", code, body)
 		}
 		// An ordinary order of the same organization still works (control).
 		plain, _ := f.resendSeedOrder(f.channelA, "public_feed", "plain-buyer@example.test")

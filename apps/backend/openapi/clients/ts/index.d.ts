@@ -6578,7 +6578,7 @@ export interface paths {
         };
         /**
          * Download an offline-validation barcode snapshot
-         * @description Returns a paginated snapshot of all non-revoked barcodes for the
+         * @description Returns a paginated snapshot of the barcodes of the
          *     tickets in a session (feature #144,
          *     `apps/backend/internal/platform/httpserver/hscanner/
          *     scanner_snapshot.go` HandleScannerSnapshot). Offline scanners
@@ -6586,6 +6586,11 @@ export interface paths {
          *     network connectivity, then poll with the `since` cursor for
          *     delta updates (store `last_updated_at` from each response and
          *     pass it as `since` on the next request).
+         *
+         *     The full snapshot (no `since`) leaves revoked codes out. A delta
+         *     lists a code revoked since the cursor with `status: revoked`, so
+         *     the device drops it from its cache (a cancelled, refunded or
+         *     replaced ticket).
          *
          *     Rate limited per client IP (600 req/min) and per session
          *     (300 req/min); excess requests return 429 `scanner.rate_limited`.
@@ -11517,6 +11522,211 @@ export interface paths {
          *     `ticket.update` permission.
          */
         post: operations["postV1OrganizationsOrgIdOrdersOrderIdResendTickets"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/orders/{order_id}/reissue-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check whether an order's tickets can be replaced
+         * @description The check screen of a ticket reissue (spec 63): the order's address,
+         *     buyer name and phone for comparison, every ticket with whether it can be
+         *     replaced and when its code was already used at the door, the reason a
+         *     reissue would be refused now (`blocked`), an earlier reissue that has
+         *     not been sent, and the payment provider with whether arena can move the
+         *     provider's receipt address. Nothing is written. Requires `ticket.update`;
+         *     an organization API key is refused.
+         */
+        get: operations["getV1OrganizationsOrgIdOrdersOrderIdReissueOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/orders/{order_id}/reissue-tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace every ticket of an order sent to a wrong address
+         * @description Replaces every active ticket of a paid order (spec 63, variant B). In one
+         *     transaction each old ticket becomes `transferred` with the reason
+         *     `reissued` and stops admitting (its barcodes and credentials are
+         *     revoked), and a new ticket takes the same seat in the same order with a
+         *     new number and a new EAN-13 barcode. Money and places do not change. The
+         *     purchase token changes, so the links of the first letter stop working.
+         *     One letter with the new tickets is queued to `email`; the order's buyer
+         *     e-mail and customer move to that address only after the mail relay
+         *     accepted the letter. MACS hears the old numbers as refunded and the new
+         *     tickets as paid. Nothing is sent to the earlier address. A code already
+         *     used at the door does not stop the reissue. An `Idempotency-Key` header
+         *     is required: a repeat answers the first result (`replayed` true) and
+         *     writes nothing. Requires `ticket.update`; an organization API key is
+         *     refused; a platform superadmin sends `X-Admin-Reason`.
+         */
+        post: operations["postV1OrganizationsOrgIdOrdersOrderIdReissueTickets"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/orders/{order_id}/reissues/{reissue_id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send the letter of a ticket reissue again
+         * @description Queues the letter of a reissue that has not been applied (its letter was
+         *     refused or is still waiting) again: the same new tickets, the same
+         *     address, no new barcode. An applied reissue answers 409
+         *     `reissue.already_applied`. Requires `ticket.update`.
+         */
+        post: operations["postV1OrganizationsOrgIdOrdersOrderIdReissuesReissueIdResend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/orders/{order_id}/reissues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the ticket reissues of an order
+         * @description Every reissue of the order, newest first, with both addresses (the
+         *     journal is the evidence of where an old barcode went), the reason, the
+         *     operator's note, the replaced numbers, the letter state and what happened
+         *     to the address at the payment provider. Requires `order.read`; an
+         *     organization API key is refused.
+         */
+        get: operations["getV1OrganizationsOrgIdOrdersOrderIdReissues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/complimentary/{id}/reissue-options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Check whether an invitation's tickets can be replaced
+         * @description The check screen of a ticket reissue for an invitation issued before
+         *     invitations became orders (spec 63, stage R-5): the guest's address,
+         *     every ticket with whether it can be replaced and when its code was
+         *     used at the door, and the reason a reissue would be refused now.
+         *     Nothing is written. Requires `ticket.update`; an organization API key
+         *     is refused.
+         */
+        get: operations["getV1OrganizationsOrgIdComplimentaryIdReissueOptions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/complimentary/{id}/reissue-tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace every ticket of an invitation sent to a wrong address
+         * @description The invitation twin of `POST .../orders/{order_id}/reissue-tickets`
+         *     (spec 63, stage R-5): every active ticket of an issued invitation is
+         *     closed as `transferred` and replaced by a new ticket of the same
+         *     invitation, seat and category with a new number and barcode. One
+         *     invitation letter is queued to `email`; the invitation's recipient
+         *     moves to it only after the mail relay accepted the letter. Nothing is
+         *     sent to the earlier address. `Idempotency-Key` is required, a repeat
+         *     answers the first result. Requires `ticket.update`; an organization API
+         *     key is refused.
+         */
+        post: operations["postV1OrganizationsOrgIdComplimentaryIdReissueTickets"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/complimentary/{id}/reissues/{reissue_id}/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send the letter of an invitation reissue again
+         * @description Queues the letter of an invitation reissue that has not been applied
+         *     again: the same new tickets, the same address, no new barcode. An
+         *     applied reissue answers 409 `reissue.already_applied`. Requires
+         *     `ticket.update`.
+         */
+        post: operations["postV1OrganizationsOrgIdComplimentaryIdReissuesReissueIdResend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/complimentary/{id}/reissues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the ticket reissues of an invitation
+         * @description Every reissue of the invitation, newest first, with both addresses,
+         *     the reason, the note and the replaced numbers. `provider` is always
+         *     null: an invitation has no payment. Requires `order.read`; an
+         *     organization API key is refused.
+         */
+        get: operations["getV1OrganizationsOrgIdComplimentaryIdReissues"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -17183,6 +17393,260 @@ export interface components {
              * @description When the one-time address stops being valid (24 hours after the request). Null for the order's own address.
              */
             expires_at: string | null;
+        };
+        /** @description The payment provider of the order. */
+        ReissueProvider: {
+            /** @description The provider's registry name. */
+            name: string;
+            /** @description The provider's human name. */
+            title: string;
+            /** @description True when arena moves the provider's receipt address after the reissue. Otherwise the provider keeps the earlier address and the organizer may resend its document by hand. */
+            email_updatable: boolean;
+        };
+        /** @description One ticket of the order on the check screen. */
+        ReissueTicketOption: {
+            /**
+             * Format: uuid
+             * @description UUID of the ticket.
+             */
+            ticket_id: string;
+            /**
+             * Format: int64
+             * @description The buyer-facing ticket number.
+             */
+            number: number;
+            /** @description Sector, row and seat, empty for general admission. */
+            seat: string;
+            /** @description The ticket category name. */
+            category: string;
+            /** @description The ticket status. */
+            status: string;
+            /** @description True when the ticket will be replaced. */
+            reissuable: boolean;
+            /** @description Why the ticket is not replaced. `not_active` is skipped; `review_hold` and `refund_in_progress` block the whole reissue. */
+            reason?: string;
+            /**
+             * Format: date-time
+             * @description When the ticket's code was first used at the door. The reissue still runs.
+             */
+            scanned_at?: string | null;
+        };
+        /** @description A reissue of the order that has not been applied yet. */
+        ReissuePending: {
+            /**
+             * Format: uuid
+             * @description UUID of the reissue.
+             */
+            id: string;
+            /** @description `pending` or `send_failed`. */
+            state: string;
+            /** @description The address the new tickets go to. */
+            new_email: string;
+            /**
+             * Format: date-time
+             * @description When the reissue was made.
+             */
+            created_at: string;
+        };
+        /** @description The check screen of a ticket reissue. */
+        ReissueOptions: {
+            /** @description `arena`, or `seller_site` while a live selling site writes the order's letters. */
+            route: string;
+            /**
+             * Format: uuid
+             * @description UUID of the order.
+             */
+            order_id: string;
+            /**
+             * Format: int64
+             * @description The buyer-facing order number.
+             */
+            order_number: number;
+            /** @description The order status. */
+            order_status: string;
+            /** @description The order's current buyer e-mail. */
+            order_email: string;
+            /** @description The buyer's name, to compare with the person asking. */
+            buyer_name: string;
+            /** @description The buyer's phone, to compare with the person asking. */
+            buyer_phone: string;
+            /** @description The IANA time zone of the event's venue, to print scanned_at in; empty when unknown. */
+            venue_timezone?: string;
+            /** @description Every ticket of the order. */
+            tickets: components["schemas"]["ReissueTicketOption"][];
+            /** @description The error code a reissue would answer now, null when it may run. */
+            blocked?: string | null;
+            /** @description A reissue that has not been applied, when there is one. */
+            pending_reissue?: components["schemas"]["ReissuePending"];
+            /** @description The payment provider, absent for an order without a payment. */
+            provider?: components["schemas"]["ReissueProvider"];
+        };
+        /** @description The check screen of a reissue for an invitation without an order. */
+        InvitationReissueOptions: {
+            /**
+             * Format: uuid
+             * @description UUID of the invitation (complimentary issuance).
+             */
+            invitation_id: string;
+            /** @description The invitation status; only `issued` can be replaced. */
+            invitation_status: string;
+            /** @description The guest's current address. */
+            guest_email: string;
+            /** @description The IANA time zone of the event's venue, to print scanned_at in; empty when unknown. */
+            venue_timezone?: string;
+            /** @description Every ticket of the invitation. */
+            tickets: components["schemas"]["ReissueTicketOption"][];
+            /** @description The error code a reissue would answer now, null when it may run. */
+            blocked?: string | null;
+            /** @description A reissue that has not been applied, when there is one. */
+            pending_reissue?: components["schemas"]["ReissuePending"];
+        };
+        /** @description A ticket reissue. */
+        ReissueTicketsRequest: {
+            /** @description The buyer's real address. It may equal the current one, then only the barcodes change. */
+            email: string;
+            /** @description `sent_to_wrong_address`, `forwarded_to_stranger` or `other`. */
+            reason: string;
+            /** @description The operator's note, at most 500 characters. Kept in the journal, never sent to the buyer. */
+            note?: string;
+        };
+        /** @description One replaced ticket. */
+        ReissuePair: {
+            /**
+             * Format: uuid
+             * @description UUID of the closed ticket.
+             */
+            old_ticket_id: string;
+            /**
+             * Format: int64
+             * @description The closed ticket's number.
+             */
+            old_number: number;
+            /**
+             * Format: uuid
+             * @description UUID of the new ticket.
+             */
+            new_ticket_id: string;
+            /**
+             * Format: int64
+             * @description The new ticket's number.
+             */
+            new_number: number;
+            /** @description Sector, row and seat of both tickets. */
+            seat: string;
+            /** @description The category of both tickets. */
+            category: string;
+            /**
+             * Format: date-time
+             * @description When the closed ticket's code was used at the door before the reissue.
+             */
+            old_code_scanned_at?: string | null;
+            /** @description The first try to enter with the closed ticket's code after the reissue, or null when nobody tried. */
+            old_code_attempt?: components["schemas"]["ReissueOldCodeAttempt"] | null;
+            /**
+             * Format: date-time
+             * @description When the organization was told about the old code (an entry before the reissue or a try after it) through its sales chat or, without a chat, an e-mail to the owners. Null while nothing was told.
+             */
+            organizer_told_at?: string | null;
+        };
+        /** @description A scan of a replaced ticket's code after the reissue. */
+        ReissueOldCodeAttempt: {
+            /**
+             * Format: date-time
+             * @description When the code was scanned.
+             */
+            at: string;
+            /** @description The scanner, arena_scanner or macs. */
+            source: string;
+            /** @description What the scanner answered, admitted or denied. */
+            result: string;
+            /** @description The entrance or scanner name, when the scanner sent one. */
+            gate?: string;
+        };
+        /** @description The result of a reissue. */
+        ReissueTicketsResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the reissue.
+             */
+            reissue_id: string;
+            /** @description `pending` until the relay accepts the letter, then `applied`. */
+            state: string;
+            /** @description True when this answers an earlier request with the same Idempotency-Key. */
+            replayed: boolean;
+            /** @description The new address with most characters hidden. */
+            recipient_masked: string;
+            /** @description The replaced tickets. */
+            tickets: components["schemas"]["ReissuePair"][];
+            /** @description `queued`. */
+            letter: string;
+        };
+        /** @description The letter of a reissue was queued again. */
+        ReissueResendResponse: {
+            /**
+             * Format: uuid
+             * @description UUID of the reissue.
+             */
+            reissue_id: string;
+            /** @description `pending`. */
+            state: string;
+            /** @description `queued`. */
+            letter: string;
+        };
+        /** @description One reissue of the order. */
+        ReissueEntry: {
+            /**
+             * Format: uuid
+             * @description UUID of the reissue.
+             */
+            id: string;
+            /** @description `pending`, `applied` or `send_failed`. */
+            state: string;
+            /** @description The order's address before the reissue. */
+            old_email: string;
+            /** @description The address the new tickets went to. */
+            new_email: string;
+            /** @description The reason the operator stated. */
+            reason: string;
+            /** @description The operator's note. */
+            note: string;
+            /**
+             * Format: date-time
+             * @description The first entry with a replaced code before the reissue.
+             */
+            old_code_scanned_at?: string | null;
+            /**
+             * Format: date-time
+             * @description When the letter left and the order moved to the new address.
+             */
+            applied_at?: string | null;
+            /**
+             * Format: date-time
+             * @description When the relay last refused the letter.
+             */
+            letter_failed_at?: string | null;
+            /** @description What happened to the address at the payment provider: `queued`, `updated`, `failed`, `manual` (the provider cannot be told, the organizer may resend its document) or `not_applicable`. */
+            provider_email_state?: string | null;
+            /** @description `user` or `superadmin`. */
+            actor_type: string;
+            /** @description UUID of the person who made the reissue. */
+            actor_id?: string | null;
+            /** @description The client the reissue came from. */
+            via?: string | null;
+            /**
+             * Format: date-time
+             * @description When the reissue was made.
+             */
+            created_at: string;
+            /** @description The replaced tickets. */
+            tickets: components["schemas"]["ReissuePair"][];
+        };
+        /** @description The reissues of an order. */
+        ReissueHistory: {
+            /** @description Newest first. */
+            reissues: components["schemas"]["ReissueEntry"][];
+            /** @description The order's payment provider, absent without a payment. */
+            provider?: components["schemas"]["ReissueProvider"];
         };
         /** @description One ticket of an external refund. */
         ExternalRefundItem: {
@@ -64646,6 +65110,19 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
+            /**
+             * @description `checkout.ticket_not_valid` - the ticket no longer admits
+             *     (cancelled, refunded or replaced), or its stored PDF was revoked.
+             *     The PDF is not handed out.
+             */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description `my_tickets.rate_limited` - too many requests. */
             429: {
                 headers: {
@@ -65907,6 +66384,19 @@ export interface operations {
              *     PDF has not yet been generated (`checkout.pdf_not_found`).
              */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description `checkout.ticket_not_valid` - the ticket no longer admits
+             *     (cancelled, refunded or replaced), or its stored PDF was revoked.
+             *     The PDF is not handed out.
+             */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -76913,6 +77403,710 @@ export interface operations {
                 };
             };
             /** @description Delivery store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdOrdersOrderIdReissueOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The check screen. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReissueOptions"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization (`orders.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdOrdersOrderIdReissueTickets: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The operation's key, at most 200 characters. A repeat with the same key answers the first result. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReissueTicketsRequest"];
+            };
+        };
+        responses: {
+            /** @description The tickets were replaced and the letter is queued. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReissueTicketsResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID, the body is not valid (`reissue.invalid_body`), or the Idempotency-Key header is missing (`reissue.idempotency_key_required`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization (`orders.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The order is not paid (`order.not_paid`), belongs to a live selling site (`order.seller_site_order`), has no active ticket (`reissue.nothing_to_reissue`), a ticket is on review hold or has a refund in progress (`reissue.ticket_not_reissuable`, ticket number and reason in `details`), the date is cancelled or over (`reissue.session_closed`), an earlier reissue has not been sent (`reissue.in_progress`), or the key was used for another request (`reissue.idempotency_key_reused`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The address is not valid (`reissue.invalid_email`), the reason is unknown (`reissue.invalid_reason`), or the note is longer than 500 characters (`reissue.note_too_long`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdOrdersOrderIdReissuesReissueIdResend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                order_id: string;
+                /** @description UUIDv7 of the reissue */
+                reissue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The letter was queued again. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReissueResendResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization (`orders.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The reissue was already applied (`reissue.already_applied`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdOrdersOrderIdReissues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the order */
+                order_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The order's reissues. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReissueHistory"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Order not found, or not linked to this organization (`orders.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdComplimentaryIdReissueOptions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the invitation (complimentary issuance) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The check screen. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationReissueOptions"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invitation not found, or not linked to this organization (`complimentary.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdComplimentaryIdReissueTickets: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The operation's key, at most 200 characters. A repeat with the same key answers the first result. */
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the invitation (complimentary issuance) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReissueTicketsRequest"];
+            };
+        };
+        responses: {
+            /** @description The tickets were replaced and the letter is queued. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReissueTicketsResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID, the body is not valid (`reissue.invalid_body`), or the Idempotency-Key header is missing (`reissue.idempotency_key_required`). */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invitation not found, or not linked to this organization (`complimentary.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The invitation is revoked or not issued (`reissue.invitation_not_issued`), has no active ticket (`reissue.nothing_to_reissue`), a ticket is on review hold (`reissue.ticket_not_reissuable`), the date is cancelled or over (`reissue.session_closed`), an earlier reissue has not been sent (`reissue.in_progress`), or the key was used for another request (`reissue.idempotency_key_reused`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The address is not valid (`reissue.invalid_email`), the reason is unknown (`reissue.invalid_reason`), or the note is longer than 500 characters (`reissue.note_too_long`). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1OrganizationsOrgIdComplimentaryIdReissuesReissueIdResend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the invitation (complimentary issuance) */
+                id: string;
+                /** @description UUIDv7 of the reissue */
+                reissue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The letter was queued again. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReissueResendResponse"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invitation not found, or not linked to this organization (`complimentary.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The reissue was already applied (`reissue.already_applied`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket store unavailable (database not wired). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdComplimentaryIdReissues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization */
+                org_id: string;
+                /** @description UUIDv7 of the invitation (complimentary issuance) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invitation's reissues. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReissueHistory"];
+                };
+            };
+            /** @description A path parameter is not a UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The actor does not hold the permission, or an organization API key was used (`reissue.api_key_forbidden`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Invitation not found, or not linked to this organization (`complimentary.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Ticket store unavailable (database not wired). */
             503: {
                 headers: {
                     [name: string]: unknown;

@@ -116,3 +116,20 @@ export function resendFailureKey(f: ResendFailure): MessageKey {
 export function resendRetryable(f: ResendFailure | null): boolean {
   return f === null || f === "badEmail" || f === "noRecipient";
 }
+
+/**
+ * What the confirm step says before a resend (owner decision O-8, 2026-11-08).
+ * To the order's own address nothing is said. To another address the person is
+ * warned that the SAME tickets with the SAME barcodes go out, so the copy at the
+ * order's address keeps admitting; "Replace tickets" is offered beside the
+ * warning only when the order card offers a reissue (`reissueOffered`).
+ */
+export type ResendCopyNotice = { kind: "none" } | { kind: "sameCodes"; offerReissue: boolean };
+
+export function resendCopyNotice(oneTime: string, orderEmail: string, reissueAvailable: boolean): ResendCopyNotice {
+  const typed = oneTime.trim().toLowerCase();
+  const own = orderEmail.trim().toLowerCase();
+  // No address on the order: no letter went anywhere, there is no copy to warn about.
+  if (typed === "" || own === "" || typed === own) return { kind: "none" };
+  return { kind: "sameCodes", offerReissue: reissueAvailable };
+}

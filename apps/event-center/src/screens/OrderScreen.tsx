@@ -7,6 +7,7 @@ import { UNPAID_REASONS, orderNumber } from "@/lib/orders";
 import { BuyerContact } from "@/components/BuyerContact";
 import { OrderLetters } from "@/components/OrderLetters";
 import { OrderReferral } from "@/components/OrderReferral";
+import { OrderReissues } from "@/components/OrderReissues";
 import { OrderTickets } from "@/components/OrderTickets";
 import { CancelOrder } from "@/components/CancelOrder";
 import { RefundOrder } from "@/components/RefundOrder";
@@ -104,6 +105,7 @@ export function OrderScreen() {
       </section>
 
       <OrderLetters orgId={orgId} order={o} can={access.can} />
+      <OrderReissues orgId={orgId} order={o} />
 
       <section className="ord-card" aria-labelledby="order-payment">
         <h2 id="order-payment">{t("order.payment")}</h2>

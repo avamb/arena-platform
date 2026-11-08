@@ -1,4 +1,4 @@
-{{define "subject"}}{{if gt (len .Tickets) 1}}הכרטיסים שלך — {{.EventName}}{{else}}הכרטיס שלך — {{.EventName}}{{end}}{{end}}
+{{define "subject"}}{{with .Reissue}}הכרטיסים החדשים שלך — {{$.EventName}}{{else}}{{if gt (len .Tickets) 1}}הכרטיסים שלך — {{.EventName}}{{else}}הכרטיס שלך — {{.EventName}}{{end}}{{end}}{{end}}
 
 {{define "html"}}<!DOCTYPE html>
 <html lang="he" dir="rtl">
@@ -9,7 +9,7 @@
   {{with .Branding.LogoURL}}<tr><td align="center" style="background:#ffffff;padding:18px 32px 12px 32px;"><img src="{{.}}" width="160" alt="{{$.Branding.LogoAlt}}" style="display:block;width:160px;height:auto;border:0;"></td></tr>{{else}}<tr><td align="center" style="background:#ffffff;padding:20px 32px 10px 32px;font-size:18px;font-weight:bold;color:#22333D;">{{.Branding.OrgName}}</td></tr>{{end}}
   <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
   <tr><td style="padding:28px 32px 8px 32px;color:#22333D;font-size:16px;text-align:right;">שלום{{with .HolderName}} {{.}}{{end}},</td></tr>
-  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;text-align:right;">{{if gt (len .Tickets) 1}}תודה על הרכישה. הכרטיסים שלך ל„{{.EventName}}” מצורפים למייל זה (קובצי PDF).{{else}}תודה על הרכישה. הכרטיס שלך ל„{{.EventName}}” מצורף למייל זה (PDF).{{end}}</td></tr>
+  <tr><td style="padding:8px 32px;color:#46555f;font-size:14px;line-height:1.6;text-align:right;">{{with .Reissue}}{{if .Typo}}בעת הרכישה הייתה שגיאת הקלדה בכתובת הדוא״ל, ולכן המייל הראשון עם הכרטיסים נשלח לכתובת אחרת. פנית למארגן ואימתת את פרטיך. הנפקנו עבורך כרטיסים חדשים, הם מצורפים.<br><br>הכרטיסים מהמייל הראשון אינם תקפים עוד. הכניסה תתאפשר רק עם הכרטיסים החדשים.{{else}}לבקשתך הנפקנו כרטיסים חדשים במקום הקודמים. הם מצורפים.<br><br>הכרטיסים הקודמים אינם תקפים עוד. הכניסה תתאפשר רק עם הכרטיסים החדשים.{{end}}<br><br>המקומות והתשלום לא השתנו.{{with .OrderNumber}} מספר הזמנה: {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}תודה על הרכישה. הכרטיסים שלך ל„{{.EventName}}” מצורפים למייל זה (קובצי PDF).{{else}}תודה על הרכישה. הכרטיס שלך ל„{{.EventName}}” מצורף למייל זה (PDF).{{end}}{{end}}</td></tr>
   <tr><td style="padding:8px 32px;">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-right:4px solid {{.Accent}};background:#f8f9fa;"><tr><td style="padding:12px 16px;color:#22333D;font-size:14px;line-height:1.6;text-align:right;">
       <strong>{{.EventName}}</strong>{{with .SessionStart}}<br><span dir="ltr">{{.}}</span>{{end}}{{with .DoorsOpen}}<br>פתיחת דלתות <span dir="ltr">{{.}}</span>{{end}}{{with .VenueName}}<br>{{.}}{{end}}{{with .Directions.GoogleURL}}<br>הוראות הגעה: <a href="{{.}}" style="color:{{$.Accent}};">Google Maps</a> · <a href="{{$.Directions.WazeURL}}" style="color:{{$.Accent}};">Waze</a>{{end}}
@@ -64,7 +64,13 @@
 
 שלום{{with .HolderName}} {{.}}{{end}},
 
-{{if gt (len .Tickets) 1}}תודה על הרכישה. הכרטיסים שלך ל„{{.EventName}}” מצורפים למייל זה (קובצי PDF).{{else}}תודה על הרכישה. הכרטיס שלך ל„{{.EventName}}” מצורף למייל זה (PDF).{{end}}
+{{with .Reissue}}{{if .Typo}}בעת הרכישה הייתה שגיאת הקלדה בכתובת הדוא״ל, ולכן המייל הראשון עם הכרטיסים נשלח לכתובת אחרת. פנית למארגן ואימתת את פרטיך. הנפקנו עבורך כרטיסים חדשים, הם מצורפים.
+
+הכרטיסים מהמייל הראשון אינם תקפים עוד. הכניסה תתאפשר רק עם הכרטיסים החדשים.{{else}}לבקשתך הנפקנו כרטיסים חדשים במקום הקודמים. הם מצורפים.
+
+הכרטיסים הקודמים אינם תקפים עוד. הכניסה תתאפשר רק עם הכרטיסים החדשים.{{end}}
+
+המקומות והתשלום לא השתנו.{{with .OrderNumber}} מספר הזמנה: {{.}}.{{end}}{{else}}{{if gt (len .Tickets) 1}}תודה על הרכישה. הכרטיסים שלך ל„{{.EventName}}” מצורפים למייל זה (קובצי PDF).{{else}}תודה על הרכישה. הכרטיס שלך ל„{{.EventName}}” מצורף למייל זה (PDF).{{end}}{{end}}
 
 {{.EventName}}
 {{with .SessionStart}}{{.}}

@@ -190,3 +190,32 @@ func TestResendCallbacks_FitTelegram(t *testing.T) {
 		}
 	}
 }
+
+// A resend to another address than the order's own warns that the copy at the
+// order's address keeps working, and offers "Replace tickets" where the card
+// would; the order's own address (any case) and an order without an address
+// add nothing (owner decision O-8).
+func TestResendCopyNotice(t *testing.T) {
+	t.Parallel()
+	own := emailSum("Anna@Example.test")
+	for name, c := range map[string]struct {
+		typed, own  string
+		canReplace  bool
+		warn, offer bool
+	}{
+		"another address, card offers replace": {"boris@example.test", own, true, true, true},
+		"another address, no replace":          {"boris@example.test", own, false, true, false},
+		"own address, other case":              {"anna@EXAMPLE.test", own, true, false, false},
+		"own address with spaces":              {"  anna@example.test ", own, true, false, false},
+		"the order's address (nothing typed)":  {"", own, true, false, false},
+		"order without an address":             {"boris@example.test", "", true, false, false},
+	} {
+		warn, offer := resendCopyNotice(c.typed, c.own, c.canReplace)
+		if warn != c.warn || offer != c.offer {
+			t.Errorf("%s: got warn=%v offer=%v, want warn=%v offer=%v", name, warn, offer, c.warn, c.offer)
+		}
+	}
+	if emailSum("") != "" || emailSum(" A@b.co ") != emailSum("a@b.co") {
+		t.Error("emailSum must be empty for no address and ignore case and spaces")
+	}
+}

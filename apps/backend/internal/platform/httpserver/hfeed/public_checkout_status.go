@@ -440,10 +440,16 @@ func (h *Handler) HandleGetPublicCheckoutStatus(w http.ResponseWriter, r *http.R
 					Row:      t.SeatRow,
 					Number:   t.SeatNumber,
 				}
+				// A ticket that no longer admits (cancelled, refunded, replaced)
+				// keeps its line but loses its code and its PDF link (spec 63, R-1).
+				if t.Status != "active" {
+					ticketResps = append(ticketResps, tr)
+					continue
+				}
 				// Load static_qr credential for human_code.
 				if h.credentialQueries != nil {
 					cred, credErr := h.credentialQueries.GetCredentialByTicketID(ctx, t.ID, "static_qr")
-					if credErr == nil && cred.HumanCode != nil {
+					if credErr == nil && cred.HumanCode != nil && cred.RevokedAt == nil {
 						formatted := humancode.Format(*cred.HumanCode)
 						tr.HumanCode = &formatted
 					}
@@ -578,10 +584,10 @@ func (h *Handler) HandleGetPublicTicketPDF(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	found := false
+	found, active := false, false
 	for _, t := range tickets {
 		if t.ID == ticketID {
-			found = true
+			found, active = true, t.Status == "active"
 			break
 		}
 	}
@@ -589,6 +595,11 @@ func (h *Handler) HandleGetPublicTicketPDF(w http.ResponseWriter, r *http.Reques
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 			"checkout.ticket_not_found", "This checkout has no such ticket.", r,
 		))
+		return
+	}
+
+	if !active {
+		writeTicketNotValid(w, r)
 		return
 	}
 
@@ -608,6 +619,11 @@ func (h *Handler) HandleGetPublicTicketPDF(w http.ResponseWriter, r *http.Reques
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"checkout.credential_failed", "We could not load the ticket code. Try again in a minute.", r,
 		))
+		return
+	}
+
+	if cred.RevokedAt != nil {
+		writeTicketNotValid(w, r)
 		return
 	}
 
@@ -682,4 +698,14 @@ func (h *Handler) absoluteAPIURL(path string) string {
 		return path
 	}
 	return base + path
+}
+
+// writeTicketNotValid answers a PDF request for a ticket that no longer admits:
+// cancelled, refunded or replaced, or whose stored PDF was revoked (spec 63,
+// R-1). The PDF is never handed out, because its barcode no longer opens the
+// door and a replaced ticket's PDF may sit in a stranger's mailbox.
+func writeTicketNotValid(w http.ResponseWriter, r *http.Request) {
+	httputil.WriteJSON(w, http.StatusGone, httputil.ErrorEnvelope(
+		"checkout.ticket_not_valid", "This ticket is no longer valid. Use the tickets from your latest letter.", r,
+	))
 }

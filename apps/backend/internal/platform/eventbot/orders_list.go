@@ -262,6 +262,7 @@ func (b *Bot) emptyOrdersText(loc string, st ordersDialog) string {
 //	or:x              clear the search           or:b          back to the list
 //	or:o:<i>          open row i of the page     or:v:<order>  the card of an order
 //	or:c:<order>      cancel an unpaid order (asks for the word)
+//	or:x:<step>       replace the tickets (reissue.go)
 func (b *Bot) ordersCallback(ctx context.Context, chatID int64, msgID int, from *models.User, data string) {
 	id, jwt, ok := b.ecIdentity(ctx, chatID, &msgID, from)
 	if !ok {
@@ -287,6 +288,13 @@ func (b *Bot) ordersCallback(ctx context.Context, chatID int64, msgID int, from 
 		// "Resend tickets" (EC-13): its own dialog, so the list behind the card stays.
 		b.resendCallback(ctx, chatID, msgID, from, arg)
 		return
+	case "x":
+		if arg != "" {
+			// "Replace tickets" (spec 63 R-4): its own dialog. A bare "or:x"
+			// is the list's "clear the search", below.
+			b.reissueCallback(ctx, chatID, msgID, from, arg)
+			return
+		}
 	case "new":
 		b.renderOrders(ctx, chatID, &msgID, id, jwt, newOrdersDialog(orgID), "")
 		return

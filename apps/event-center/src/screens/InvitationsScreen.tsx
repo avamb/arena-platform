@@ -45,7 +45,7 @@ export function InvitationsScreen() {
       <p className="muted">{t("invitations.intro")}</p>
       {canIssue && canPick && <InviteForm orgId={orgId} />}
       <OrgInvitationList orgId={orgId} canIssue={canIssue} canRevoke={canRevoke} canFilter={canFilter} />
-      <EarlierInvitations orgId={orgId} canIssue={canIssue} />
+      <EarlierInvitations orgId={orgId} canIssue={canIssue} canReissue={access.can("ticket.update")} />
     </article>
   );
 }

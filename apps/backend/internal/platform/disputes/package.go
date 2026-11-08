@@ -169,6 +169,7 @@ func renderFile(kind string, d Dispute, f Facts, l labels, maxPages int) (Render
 		r = newReport(l.get("title_service"), l, maxPages, subtitle)
 		writeEvent(r, f)
 		writeTickets(r, f)
+		writeReissues(r, f)
 		writeScans(r, f)
 	case FileCommunication:
 		r = newReport(l.get("title_comm"), l, maxPages, subtitle)
@@ -186,6 +187,7 @@ func renderFile(kind string, d Dispute, f Facts, l labels, maxPages int) (Render
 		writeOrder(r, f)
 		writeEvent(r, f)
 		writeTickets(r, f)
+		writeReissues(r, f)
 		writeScans(r, f)
 		writeAccess(r, f)
 		writeLetters(r, f)
@@ -363,6 +365,30 @@ func writeTickets(r *report, f Facts) {
 	}
 	r.table([]string{r.lbl.get("col_ticket"), r.lbl.get("col_category"), r.lbl.get("col_seat"), r.lbl.get("col_status"),
 		r.lbl.get("col_barcode"), r.lbl.get("col_used")}, []float64{0.11, 0.25, 0.16, 0.12, 0.18, 0.18}, rows)
+}
+
+// writeReissues lists the replacements of the order's tickets (spec 63): the
+// first letter went to a wrong address, the buyer confirmed their details and
+// got new tickets at the address the provider may not know.
+func writeReissues(r *report, f Facts) {
+	if len(f.Reissues) == 0 || !r.heading(r.lbl.get("sec_reissues")) {
+		return
+	}
+	tz := sessionTZ(f)
+	rows := make([][]string, 0, len(f.Reissues))
+	for _, x := range f.Reissues {
+		applied := ""
+		if x.AppliedAt != nil {
+			applied = fmtTime(*x.AppliedAt, tz)
+		}
+		rows = append(rows, []string{fmtTime(x.At, tz), x.OldEmail, x.NewEmail,
+			strings.Join(x.OldNumbers, ", ") + " → " + strings.Join(x.NewNumbers, ", "),
+			r.lbl.get("reissue_" + x.Reason), applied})
+	}
+	r.table([]string{r.lbl.get("col_time"), r.lbl.get("reissue_old_email"), r.lbl.get("reissue_new_email"),
+		r.lbl.get("col_tickets"), r.lbl.get("reissue_reason"), r.lbl.get("reissue_applied")},
+		[]float64{0.16, 0.2, 0.2, 0.16, 0.14, 0.14}, rows)
+	r.gap(r.lbl.get("gap_reissue"))
 }
 
 func writeScans(r *report, f Facts) {

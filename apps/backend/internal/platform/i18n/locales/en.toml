@@ -2137,6 +2137,9 @@ other = "Cancel unpaid order"
 ["bot.ord.cancel_word"]
 other = "CANCEL ORDER"
 
+["bot.reissue.word"]
+other = "REISSUE TICKETS"
+
 ["bot.ord.cancel_ask"]
 other = "⚠️ <b>Last step: nothing is canceled yet.</b>\n\nOrder №{{.Num}} · {{.Amount}}\nThe order closes and the hold on its seats ends. The seats go back on sale. This cannot be undone.\n\nTo cancel, <b>type {{.Word}}</b> and send it as a message. To keep the order, press «Back»."
 
@@ -2175,6 +2178,12 @@ other = "✉️ <b>Send the tickets?</b>\n\nOrder №{{.Num}} · tickets: {{.N}}
 
 ["bot.resend.confirm_other"]
 other = "✉️ <b>Send the tickets?</b>\n\nOrder №{{.Num}} · tickets: {{.N}}\nTo: {{.Email}}\n\nOne-time address: the order's own address stays as it is, and this one stops working after 24 hours."
+
+["bot.resend.copy_warning"]
+other = "⚠️ This letter carries the same tickets with the same barcodes. The copy at the order's address stays valid: it admits at the door too."
+
+["bot.resend.copy_replace"]
+other = "Is the order's address not the buyer's? Then press «Replace tickets». New tickets with new barcodes go to the right address, and the old tickets stop working."
 
 ["bot.resend.send_btn"]
 other = "✉️ Send"
@@ -6660,4 +6669,211 @@ other = "shop sales (no buyer data)"
 
 ["salesnotify.bot.kind.shop_delivery"]
 other = "shop orders to deliver"
+
+["bot.reissue.btn"]
+other = "🔁 Replace tickets"
+
+["bot.reissue.private_only"]
+other = "Buyers' addresses are shown and typed in the private chat with the bot only. Open the order there."
+
+["bot.reissue.site"]
+other = "Order №{{.Num}} comes from the seller's own site. The site sends the ticket letters, so you cannot replace the tickets here. Ask the site to send the tickets to the right address."
+
+["bot.reissue.err_not_paid"]
+other = "Order №{{.Num}} is not paid, so there is nothing to replace. Arena replaces tickets of a paid order only."
+
+["bot.reissue.err_nothing"]
+other = "Order №{{.Num}} has no valid tickets, so there is nothing to replace. Refunded and canceled tickets are not replaced."
+
+["bot.reissue.err_closed"]
+other = "The session of order №{{.Num}} is over or no longer takes place, so Arena cannot replace its tickets. Nothing changed."
+
+["bot.reissue.err_in_progress"]
+other = "An earlier replacement of order №{{.Num}} has not gone out yet. Open the order again: the bot shows its state and offers to send the letter again."
+
+["bot.reissue.err_ticket_review"]
+other = "Ticket {{.Ticket}} of order №{{.Num}} is under review now, so Arena did not replace the tickets. Nothing changed. Write to Arena support and we will help."
+
+["bot.reissue.err_ticket_refund"]
+other = "A refund of ticket {{.Ticket}} of order №{{.Num}} is in progress, so the tickets were not replaced. Nothing changed. Wait for the refund to finish and start again."
+
+["bot.reissue.err_key_reused"]
+other = "The details changed after the check. Check them once more: Arena has not replaced anything yet."
+
+["bot.reissue.err_applied"]
+other = "The letter with the new tickets of order №{{.Num}} has already gone out, and the order has the new address. If the letter did not arrive, press «Resend tickets» on the order card."
+
+["bot.reissue.bad_email"]
+other = "That does not look like an e-mail address. Type it again, for example name@example.com, or press «Back»."
+
+["bot.reissue.err_reason"]
+other = "The reason did not fit, so Arena replaced nothing. Open the order and start again."
+
+["bot.reissue.note_bad"]
+other = "A note may have at most 500 characters. Shorten it and send it again, or press «No note»."
+
+["bot.reissue.err_refused"]
+other = "Arena did not accept the replacement, so nothing changed. Open the order and start again. If it happens again, write to support."
+
+["bot.reissue.maybe_done"]
+other = "No answer came to the last attempt. Arena may have replaced the tickets already, so you cannot change the details now."
+
+["bot.reissue.cancelled"]
+other = "Replacement canceled. The tickets of order №{{.Num}} did not change."
+
+["bot.reissue.pending_head"]
+other = "🔁 <b>Ticket replacement</b> · order №{{.Num}}\n\nThe replacement of {{.When}} is not finished yet. The new tickets wait to go to {{.Email}}."
+
+["bot.reissue.pending_queued"]
+other = "The letter is in the queue. The order's address changes when the letter goes out."
+
+["bot.reissue.pending_failed"]
+other = "The mail server did not accept the letter. Press «Send the letter again»: the tickets and the address stay the same."
+
+["bot.reissue.pending_resend_btn"]
+other = "✉️ Send the letter again"
+
+["bot.reissue.no_address"]
+other = "the order has no address"
+
+["bot.reissue.case"]
+other = "🔁 <b>Replace tickets</b> · order №{{.Num}}\n\nOrder address: {{.Email}}\nTickets to replace: {{.N}}\n\nWhich address does the buyer write from?\n• From the order's address. They ask to forward the tickets to another mailbox. The tickets stay the same, and we send them again.\n• From another address. The order has a wrong address. Arena replaces all tickets with new ones and sends them to the right address."
+
+["bot.reissue.case_order_btn"]
+other = "From the order's address"
+
+["bot.reissue.case_other_btn"]
+other = "From another address"
+
+["bot.reissue.email_ask"]
+other = "🔁 <b>The right address</b> · order №{{.Num}}\n\nCompare the details with the buyer:\nName: {{.Name}}\nPhone: {{.Contact}}\nOrder address: {{.Email}}\n\nType the buyer's right e-mail address as a message:"
+
+["bot.reissue.reason_ask"]
+other = "🔁 <b>Reason</b>\n\nNew address: {{.Email}}\n\nWhy do you replace the tickets? The reason stays in the order's history."
+
+["bot.reissue.reason_sent_to_wrong_address"]
+other = "Wrong address at purchase"
+
+["bot.reissue.reason_forwarded_to_stranger"]
+other = "Tickets forwarded to a stranger"
+
+["bot.reissue.reason_other"]
+other = "Another reason"
+
+["bot.reissue.note_ask"]
+other = "Add a note for the order's history, for example «The buyer called, name and phone checked». The buyer does not see it.\n\nType the note as a message or press «No note»."
+
+["bot.reissue.no_note_btn"]
+other = "No note"
+
+["bot.reissue.cancel_btn"]
+other = "✖ Cancel"
+
+["bot.reissue.check"]
+other = "⚠️ <b>Check the replacement</b> · order №{{.Num}}\n\nAll tickets of the order ({{.N}}) stop admitting at the door. The buyer gets new tickets at {{.Email}}. Seats and payment do not change. The order's address changes when the letter goes out. You cannot undo the replacement.\n\nReason: {{.Reason}}"
+
+["bot.reissue.check_note"]
+other = "Note: {{.Text}}"
+
+["bot.reissue.check_scanned"]
+other = "⚠️ Ticket {{.Ticket}} was already used at the door on {{.When}}. The new ticket admits too."
+
+["bot.reissue.check_provider"]
+other = "ℹ️ The payment system {{.Provider}} keeps the buyer's earlier address. If the buyer needs its payment document, forward it by hand."
+
+["bot.reissue.confirm_btn"]
+other = "All correct, next"
+
+["bot.reissue.word_ask"]
+other = "⚠️ <b>Last step: Arena has not replaced anything yet.</b>\n\nOrder №{{.Num}} · tickets: {{.N}}\n\nTo replace the tickets, <b>type {{.Word}}</b> and send it as a message. To leave everything as it is, press «Cancel»."
+
+["bot.reissue.word_wrong"]
+other = "The text did not match, so Arena replaced nothing. To replace the tickets, type exactly: {{.Word}}"
+
+["bot.reissue.err_unknown"]
+other = "Arena did not answer in time. It may have replaced the tickets already. Type the word again: the bot repeats the same request, and Arena does not replace the tickets twice."
+
+["bot.reissue.err_forbidden"]
+other = "You have no right to replace tickets in this organization. The owner or a manager can do it."
+
+["bot.reissue.err_unavailable"]
+other = "Arena is not available now, so it replaced nothing. Wait a minute and type the word again."
+
+["bot.reissue.replayed"]
+other = "This replacement was made earlier. Here is its result."
+
+["bot.reissue.done_head"]
+other = "✔ <b>Arena replaced the tickets of order №{{.Num}}</b> ({{.N}}). New numbers:"
+
+["bot.reissue.done_line"]
+other = "№{{.Old}} → №{{.New}}{{.Seat}}"
+
+["bot.reissue.done_letter"]
+other = "The letter with the new tickets is in the queue to {{.Email}}. The order's address changes when the letter goes out. The earlier tickets no longer admit at the door."
+
+["bot.reissue.resent"]
+other = "✔ The letter with the new tickets of order №{{.Num}} is in the queue again."
+
+["bot.reissue.inv_btn"]
+other = "🔁 Replace invitation"
+
+["bot.reissue.inv_email_ask"]
+other = "🔁 <b>The guest's right address</b>\n\nInvitation address: {{.Email}}\nTickets to replace: {{.N}}\n\nCompare the details with the guest and type the guest's right e-mail address as a message:"
+
+["bot.reissue.inv_reason_ask"]
+other = "🔁 <b>Reason</b>\n\nNew address: {{.Email}}\n\nWhy do you replace the invitation? The reason stays in the invitation's history."
+
+["bot.reissue.inv_note_ask"]
+other = "Add a note for the invitation's history, for example «The guest called, name checked». The guest does not see it.\n\nType the note as a message or press «No note»."
+
+["bot.reissue.inv_check"]
+other = "⚠️ <b>Check the replacement of the invitation</b>\n\nAll tickets of the invitation ({{.N}}) stop admitting at the door. The guest gets new tickets at {{.Email}}. Seats do not change. The invitation's address changes when the letter goes out. You cannot undo the replacement.\n\nReason: {{.Reason}}"
+
+["bot.reissue.inv_word_ask"]
+other = "⚠️ <b>Last step: Arena has not replaced anything yet.</b>\n\nInvitation · tickets: {{.N}}\n\nTo replace the tickets, <b>type {{.Word}}</b> and send it as a message. To leave everything as it is, press «Cancel»."
+
+["bot.reissue.inv_done_head"]
+other = "✔ <b>Arena replaced the invitation</b> ({{.N}}). New numbers:"
+
+["bot.reissue.inv_done_letter"]
+other = "The letter with the new tickets is in the queue to {{.Email}}. The invitation's address changes when the letter goes out. The earlier tickets no longer admit at the door."
+
+["bot.reissue.inv_cancelled"]
+other = "Replacement canceled. The invitation did not change."
+
+["bot.reissue.inv_pending_head"]
+other = "🔁 <b>Invitation replacement</b>\n\nThe replacement of {{.When}} is not finished yet. The new tickets wait to go to {{.Email}}."
+
+["bot.reissue.inv_pending_queued"]
+other = "The letter is in the queue. The invitation's address changes when the letter goes out."
+
+["bot.reissue.inv_err_nothing"]
+other = "The invitation has no valid tickets, so there is nothing to replace."
+
+["bot.reissue.inv_err_closed"]
+other = "The session of the invitation is over or no longer takes place, so Arena cannot replace its tickets. Nothing changed."
+
+["bot.reissue.inv_err_in_progress"]
+other = "An earlier replacement of this invitation has not gone out yet. Open the invitation again: the bot shows its state and offers to send the letter again."
+
+["bot.reissue.inv_err_ticket_review"]
+other = "Ticket {{.Ticket}} of the invitation is under review now, so Arena did not replace the tickets. Nothing changed. Write to Arena support and we will help."
+
+["bot.reissue.inv_err_ticket_refund"]
+other = "A refund of ticket {{.Ticket}} of the invitation is in progress, so Arena did not replace the tickets. Nothing changed. Wait for the refund to finish and start again."
+
+["bot.reissue.inv_err_applied"]
+other = "The letter with the new tickets of the invitation has already gone out, and the invitation has the new address. You do not need to send it again."
+
+["bot.reissue.inv_err_refused"]
+other = "Arena did not accept the replacement, so nothing changed. Open the invitation and start again. If it happens again, write to support."
+
+["bot.reissue.inv_err_reason"]
+other = "The reason did not fit, so Arena replaced nothing. Open the invitation and start again."
+
+["bot.reissue.inv_err_not_issued"]
+other = "This invitation was withdrawn or never went out, so you cannot replace it. Nothing changed. To bring the guest in, issue a new invitation."
+
+["bot.reissue.inv_resent"]
+other = "✔ The letter with the new tickets of the invitation is in the queue again."
 
