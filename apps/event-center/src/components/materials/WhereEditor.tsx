@@ -12,6 +12,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ConfirmPressDialog } from "@/components/ConfirmPressDialog";
 import { Empty, ErrorBox, Loading } from "@/components/ui";
+import { MapPointCheck } from "@/components/materials/MapPointCheck";
 import { ActionNotice, useAction } from "@/components/materials/shared";
 import { deleteMapPoint, getMapPoint, patchVenueAddress, putMapPoint } from "@/lib/api/materialsApi";
 import { listSessions, listVenues } from "@/lib/api/endpoints";
@@ -193,6 +194,7 @@ function MapPointForm({ orgId, eventId, canWrite, several }: { orgId: string; ev
         <input id="mat-map-label" className="input" type="text" value={current.label} maxLength={LIMITS.mapLabel} disabled={!canWrite || action.busy} onChange={(e) => set({ label: e.target.value })} data-testid="mat-map-label" />
         <p className="field-hint">{t("mat.map.labelHint", { max: LIMITS.mapLabel })}</p>
       </div>
+      <MapPointCheck lat={current.lat} lng={current.lng} />
       {problem !== null && (
         <p className="field-error" role="alert" data-testid="mat-map-problem">
           {t(COORD_KEY[problem])}

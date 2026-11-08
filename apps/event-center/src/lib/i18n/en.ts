@@ -1957,6 +1957,8 @@ export const en = {
   "mat.map.problem.lngRange": "Longitude must be between -180 and 180.",
   "mat.map.several": "This event has dates at several venues. The one map point is shown separately and is not tied to any venue.",
   "mat.map.check": "Check on OpenStreetMap",
+  "mat.map.google": "Open this point in Google Maps",
+  "mat.map.pickHint": "Put the point at the entrance or the parking, where guests should arrive. Open it in Google Maps to check that it is the right place.",
   "mat.map.removed": "The point was removed.",
   "mat.preview.title": "Preview",
   // V1: VIP mark of a ticket.

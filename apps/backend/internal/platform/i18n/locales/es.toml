@@ -4017,7 +4017,10 @@ other = "¿Eliminar esta foto del reportaje fotográfico?"
 other = "📍 <b>Mapa</b> · {{.Event}}\n\nTodavía no hay punto, así que la página no muestra mapa."
 
 ["bot.mt.map_card"]
-other = "📍 <b>Mapa</b> · {{.Event}}\n\nLatitud {{.Lat}}, longitud {{.Lon}}\n{{.Link}}"
+other = "📍 <b>Mapa</b> · {{.Event}}\n\nLatitud {{.Lat}}, longitud {{.Lon}}\n{{.Link}}\nGoogle Maps: {{.Google}}"
+
+["bot.mt.map_hint"]
+other = "Pon el punto en la entrada o en el aparcamiento, donde deben llegar los asistentes. Ábrelo en Google Maps para comprobar que es el lugar correcto."
 
 ["bot.mt.map_set_btn"]
 other = "📍 Poner el punto"
