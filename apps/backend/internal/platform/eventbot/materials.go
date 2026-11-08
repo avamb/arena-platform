@@ -599,6 +599,12 @@ func osmLink(lat, lon float64) string {
 	return fmt.Sprintf("https://www.openstreetmap.org/?mlat=%.6f&mlon=%.6f#map=17/%.6f/%.6f", lat, lon, lat, lon)
 }
 
+// googleMapsLink is the Google Maps address of a point: buyers drive to it, so
+// the organizer opens the same link to see where they will end up.
+func googleMapsLink(lat, lon float64) string {
+	return fmt.Sprintf("https://www.google.com/maps/search/?api=1&query=%.6f,%.6f", lat, lon)
+}
+
 // materialsMapScreen is the map part: the point (or "none") with its buttons.
 func (b *Bot) materialsMapScreen(ctx context.Context, chatID int64, editMsgID *int, id *Identity, jwt string, st materialsDialog, sec materialSection, note string) {
 	loc := id.Locale()
@@ -623,8 +629,9 @@ func (b *Bot) materialsMapScreen(ctx context.Context, chatID int64, editMsgID *i
 	} else {
 		text = note + b.texts.T(loc, "bot.mt.map_card", map[string]any{
 			"Event": Esc(st.EventName), "Lat": fmt.Sprintf("%.6f", p.Latitude), "Lon": fmt.Sprintf("%.6f", p.Longitude),
-			"Link": Esc(osmLink(p.Latitude, p.Longitude)),
+			"Link": Esc(osmLink(p.Latitude, p.Longitude)), "Google": Esc(googleMapsLink(p.Latitude, p.Longitude)),
 		})
+		text += "\n\n" + b.texts.T(loc, "bot.mt.map_hint", nil)
 		if canEditMaterials(id) {
 			rows = append(rows,
 				[]models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.mt.map_change_btn", nil), CallbackData: "mt:a"}},

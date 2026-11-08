@@ -4189,7 +4189,10 @@ other = "Delete this photo from the photo report?"
 other = "📍 <b>Map</b> · {{.Event}}\n\nThere is no point yet, so the page shows no map."
 
 ["bot.mt.map_card"]
-other = "📍 <b>Map</b> · {{.Event}}\n\nLatitude {{.Lat}}, longitude {{.Lon}}\n{{.Link}}"
+other = "📍 <b>Map</b> · {{.Event}}\n\nLatitude {{.Lat}}, longitude {{.Lon}}\n{{.Link}}\nGoogle Maps: {{.Google}}"
+
+["bot.mt.map_hint"]
+other = "Put the point at the entrance or the parking, where guests should arrive. Open it in Google Maps to check that it is the right place."
 
 ["bot.mt.map_set_btn"]
 other = "📍 Set the point"

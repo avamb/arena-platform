@@ -1963,6 +1963,8 @@ export const es: Record<MessageKey, string> = {
   "mat.map.problem.lngRange": "La longitud debe estar entre -180 y 180.",
   "mat.map.several": "Este evento tiene fechas en varias salas. El único punto se muestra por separado y no está ligado a ninguna sala.",
   "mat.map.check": "Comprobar en OpenStreetMap",
+  "mat.map.google": "Abrir este punto en Google Maps",
+  "mat.map.pickHint": "Pon el punto en la entrada o en el aparcamiento, donde deben llegar los asistentes. Ábrelo en Google Maps para comprobar que es el lugar correcto.",
   "mat.map.removed": "El punto se quitó.",
   "mat.preview.title": "Vista previa",
   // V1: VIP mark of a ticket.

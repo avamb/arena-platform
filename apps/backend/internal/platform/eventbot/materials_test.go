@@ -9,6 +9,13 @@ import (
 	"github.com/google/uuid"
 )
 
+func TestGoogleMapsLink(t *testing.T) {
+	got := googleMapsLink(32.0853, 34.7818)
+	if got != "https://www.google.com/maps/search/?api=1&query=32.085300,34.781800" {
+		t.Errorf("googleMapsLink = %s", got)
+	}
+}
+
 func TestParseCoordinates(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
