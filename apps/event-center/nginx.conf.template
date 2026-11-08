@@ -57,6 +57,13 @@ server {
         add_header Cache-Control "no-cache" always;
     }
 
+    # The deployed build id (vite.config.ts): an open window compares it with
+    # its own and offers a reload, so it never comes from a cache.
+    location = /version.json {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "no-store" always;
+    }
+
     # The installable-app manifest and its icons carry no hash in their
     # names: a day of cache, so a new icon reaches every device.
     location = /manifest.webmanifest {
