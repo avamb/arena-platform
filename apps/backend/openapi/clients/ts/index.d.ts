@@ -19023,9 +19023,9 @@ export interface components {
              * @description What the buyer paid for this unit, in minor currency units.
              */
             price: number;
-            /** @description State of the ticket's letter job - pending, processing, sent, failed, skipped, disabled, or none when it has no job. */
+            /** @description State of the ticket's letter. pending or processing while a letter job waits to go out; otherwise the mail provider's status of the last letter that carried the ticket (sending, sent, delayed, delivered, opened, failed), which also covers a letter the selling site sent; otherwise the job's status (sent, failed, skipped, disabled); none when there is neither. */
             delivery_status: string;
-            /** @description Address the ticket's letter goes to, null when the job has none. */
+            /** @description Address the ticket's letter went or goes to, null when unknown. */
             recipient_email: string | null;
         };
         /**

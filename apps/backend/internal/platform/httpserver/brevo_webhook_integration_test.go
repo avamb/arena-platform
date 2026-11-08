@@ -281,6 +281,25 @@ func TestBrevoWebhook_StatusesAndOrderRead(t *testing.T) {
 	if flags[f.paidOrder.String()] != true || flags[f.expiredOrder.String()] != false {
 		t.Fatalf("list letter_failed flags = %v", flags)
 	}
+	// Each ticket of the expanded list card carries the provider's word about
+	// the last letter that carried it, not only its delivery job: a letter the
+	// selling site sent has no job at all (2026-11-08).
+	for _, r := range list["orders"].([]any) {
+		m := r.(map[string]any)
+		if m["id"] != f.paidOrder.String() {
+			continue
+		}
+		tickets, _ := m["tickets"].([]any)
+		if len(tickets) == 0 {
+			t.Fatalf("paid order has no tickets on the list card: %v", m)
+		}
+		for _, tk := range tickets {
+			tm := tk.(map[string]any)
+			if tm["delivery_status"] != "failed" || tm["recipient_email"] != buyer {
+				t.Fatalf("ticket on the list card = %v, want the bounced letter (failed, %s)", tm, buyer)
+			}
+		}
+	}
 }
 
 func TestBrevoWebhook_RefusesMalformedAndOversizedBodies(t *testing.T) {

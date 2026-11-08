@@ -268,16 +268,29 @@ type OrderTicketCardRow struct {
 	Price          int64
 	DeliveryStatus *string
 	RecipientEmail *string
+	// The latest buyer letter of the order that carried this ticket
+	// (email_letters, kind 'ticket': the letter the ticket's delivery job
+	// went out in, or one whose ticket_numbers hold the ticket's number):
+	// its provider status and address. A letter the selling site sent
+	// (provider wp_brevo) has no delivery job, only the number.
+	LetterStatus    *string
+	LetterRecipient *string
 }
 
 const listOrdersTicketCards = `-- name: ListOrdersTicketCards :many
 SELECT oi.order_id, t.id, t.system_ticket_id, t.status, tt.name,
        t.seat_sector, t.seat_row, t.seat_number, oi.total,
-       dj.status, dj.recipient_email
+       dj.status, dj.recipient_email, el.status, el.recipient
 FROM   order_items oi
 JOIN   tickets t ON t.id = oi.ticket_id
 LEFT JOIN ticket_tiers tt ON tt.id = oi.tier_id
 LEFT JOIN delivery_jobs dj ON dj.ticket_id = t.id
+LEFT JOIN LATERAL (
+    SELECT l.status, l.recipient FROM email_letters l
+    WHERE  l.order_id = oi.order_id AND l.kind = 'ticket'
+      AND  (l.id = dj.email_letter_id OR t.system_ticket_id::text = ANY(l.ticket_numbers))
+    ORDER  BY l.sent_at DESC
+    LIMIT  1) el ON true
 WHERE  oi.order_id = ANY($1)
 ORDER  BY oi.order_id, oi.ordinal ASC`
 
@@ -293,7 +306,8 @@ func (q *Queries) ListOrdersTicketCards(ctx context.Context, orderIDs []uuid.UUI
 	for rows.Next() {
 		var r OrderTicketCardRow
 		if err := rows.Scan(&r.OrderID, &r.TicketID, &r.SystemTicketID, &r.Status, &r.TierName,
-			&r.SeatSector, &r.SeatRow, &r.SeatNumber, &r.Price, &r.DeliveryStatus, &r.RecipientEmail); err != nil {
+			&r.SeatSector, &r.SeatRow, &r.SeatNumber, &r.Price, &r.DeliveryStatus, &r.RecipientEmail,
+			&r.LetterStatus, &r.LetterRecipient); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

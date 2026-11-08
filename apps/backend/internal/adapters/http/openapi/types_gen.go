@@ -13325,7 +13325,7 @@ type OrderListItem struct {
 // number, status, category, seat, the price paid for it and the state of
 // its letter.
 type OrderListTicket struct {
-	// DeliveryStatus State of the ticket's letter job - pending, processing, sent, failed, skipped, disabled, or none when it has no job.
+	// DeliveryStatus State of the ticket's letter. pending or processing while a letter job waits to go out; otherwise the mail provider's status of the last letter that carried the ticket (sending, sent, delayed, delivered, opened, failed), which also covers a letter the selling site sent; otherwise the job's status (sent, failed, skipped, disabled); none when there is neither.
 	DeliveryStatus string `json:"delivery_status"`
 
 	// Id UUID of the ticket.
@@ -13334,7 +13334,7 @@ type OrderListTicket struct {
 	// Price What the buyer paid for this unit, in minor currency units.
 	Price int64 `json:"price"`
 
-	// RecipientEmail Address the ticket's letter goes to, null when the job has none.
+	// RecipientEmail Address the ticket's letter went or goes to, null when unknown.
 	RecipientEmail *string `json:"recipient_email"`
 
 	// SeatLabel Sector / row / seat, null for general admission.

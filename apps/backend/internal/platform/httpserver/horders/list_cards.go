@@ -31,10 +31,7 @@ func (h *Handler) listTicketCards(ctx context.Context, ids []uuid.UUID) map[uuid
 		return out
 	}
 	for _, r := range rows {
-		letter := deliveryNone
-		if r.DeliveryStatus != nil && *r.DeliveryStatus != "" {
-			letter = *r.DeliveryStatus
-		}
+		letter, to := cardLetter(r.DeliveryStatus, r.RecipientEmail, r.LetterStatus, r.LetterRecipient)
 		out[r.OrderID] = append(out[r.OrderID], map[string]any{
 			"id":               r.TicketID.String(),
 			"system_ticket_id": r.SystemTicketID,
@@ -43,10 +40,34 @@ func (h *Handler) listTicketCards(ctx context.Context, ids []uuid.UUID) map[uuid
 			"seat_label":       seatLabel(r.SeatSector, r.SeatRow, r.SeatNumber),
 			"price":            r.Price,
 			"delivery_status":  letter,
-			"recipient_email":  r.RecipientEmail,
+			"recipient_email":  to,
 		})
 	}
 	return out
+}
+
+// cardLetter is the state of a ticket's letter on the list card and the
+// address it went to. A delivery job still waiting to go out wins (a resend
+// in progress); otherwise the provider's own word about the last letter that
+// carried the ticket (sent, delayed, delivered, opened, failed); otherwise
+// the job's status; otherwise "none". Until 2026-11-08 only the job was read,
+// so every ticket whose letter the selling site sent (a WordPress order, no
+// job) showed "no letter" while the order's letter block said "opened".
+func cardLetter(jobStatus, jobTo, letterStatus, letterTo *string) (string, *string) {
+	job := ""
+	if jobStatus != nil {
+		job = *jobStatus
+	}
+	if job == "pending" || job == "processing" {
+		return job, jobTo
+	}
+	if letterStatus != nil && *letterStatus != "" {
+		return *letterStatus, letterTo
+	}
+	if job != "" {
+		return job, jobTo
+	}
+	return deliveryNone, jobTo
 }
 
 var _ = ean13.PlatformPrefix // keep the import list stable if barcodes are added to the card
