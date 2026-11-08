@@ -633,11 +633,11 @@ func TestRefundBuyerEmail_TextAndReplyToNameTheSameContact(t *testing.T) {
 	}
 }
 
-// A hosted page without a public e-mail: the refund letter links the page's
-// contact form only while the form is shown (HandlerOptions.ContactFormEnabled).
-// Without it the letter names no contact at all - never the organization's own
-// address, never a Reply-To.
-func TestRefundBuyerEmail_HostedPageLetterFollowsTheFormSwitch(t *testing.T) {
+// A hosted page without a public e-mail. Since 2026-11-08 (owner decision)
+// the organization's contact e-mail is the buyer contact of every buyer
+// letter: the refund letter names it and replies go to it, whether or not the
+// page shows its contact form, and it links no form.
+func TestRefundBuyerEmail_HostedPageLetterNamesTheOrganizationAddress(t *testing.T) {
 	stub := newStubStripe(t)
 	srv, _ := productionIntegrationServerCfg(t, func(c *config.Config) { c.StripeAPIBaseURL = stub.baseURL() })
 	ts := httptest.NewServer(srv.Router())
@@ -702,13 +702,11 @@ func TestRefundBuyerEmail_HostedPageLetterFollowsTheFormSwitch(t *testing.T) {
 		return msgs[0]
 	}
 
-	m := letter(f.tickets[0], false)
-	if m.ReplyTo != "" || strings.Contains(m.TextBody+m.HTMLBody, orgEmail) ||
-		strings.Contains(m.TextBody+m.HTMLBody, "#contact") || strings.Contains(m.HTMLBody, `href=""`) {
-		t.Fatalf("without the form: Reply-To %q, text:\n%s", m.ReplyTo, m.TextBody)
-	}
-	m = letter(f.tickets[1], true)
-	if m.ReplyTo != "" || strings.Contains(m.TextBody+m.HTMLBody, orgEmail) || !strings.Contains(m.TextBody, "#contact") {
-		t.Fatalf("with the form: Reply-To %q, text:\n%s", m.ReplyTo, m.TextBody)
+	for i, formEnabled := range []bool{false, true} {
+		m := letter(f.tickets[i], formEnabled)
+		if m.ReplyTo != orgEmail || !strings.Contains(m.TextBody, orgEmail) ||
+			strings.Contains(m.TextBody+m.HTMLBody, "#contact") || strings.Contains(m.HTMLBody, `href=""`) {
+			t.Fatalf("form shown %v: Reply-To %q, text:\n%s", formEnabled, m.ReplyTo, m.TextBody)
+		}
 	}
 }
