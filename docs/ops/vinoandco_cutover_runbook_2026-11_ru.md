@@ -145,6 +145,68 @@ docker exec <prod builder контейнер> wget -qO- http://127.0.0.1:8081/he
 Ждём `HTTP/1.1 200 OK` и `"ok": true`, `published_events` как в платформе, `last_error: null`. Заголовок
 `x-robots-tag` у prod (`SITE_INDEXING=true`) отсутствует, в `robots.txt` нет `Disallow: /`.
 
+### 3.4 Данные, которые есть только в WordPress: статусы писем и фотоотчёты [ОПЕРАТОР]
+
+Две вещи живут только в WP и до переключения должны оказаться в платформе. Оба экспорта только читают, ничего не пишут.
+Файлы с адресами покупателей лежат **только на сервере и ноутбуке оператора**, в репозиторий не попадают; после импорта удалить.
+
+**А. Статусы писем с билетами.** WP слал письма сам, через свой Brevo (плагин `bil24-ticket-mailer`). На заказе WooCommerce
+лежат `_btm_sent_at`, `_btm_brevo_message_id`, `lops_email_status` (последний статус), `lops_email_status_times`
+(отправлено, доставлено, прочитано) и `lops_email_delivery_failed`. Номер заказа платформы это `bil24_external_order_id`,
+то есть `orders.system_id`. Импорт кладёт письма в `email_letters` с `provider = wp_brevo`; в карточке заказа они видны как
+обычные письма с билетами.
+
+```
+W=$(docker ps --format '{{.Names}}' | grep -E '^asoconnector-vinoandcotempvino-.*-wordpress-1$')
+docker cp /root/vino-cutover/wp-letters-export.php $W:/tmp/x.php
+docker exec $W php /tmp/x.php > /root/vino-cutover/wp-letters.json
+docker exec $W rm /tmp/x.php
+```
+
+Файл перенести на машину, где есть доступ к базе платформы, и из корня репозитория:
+
+```
+DATABASE_URL=$ARENA_DATABASE_URL JWT_SIGNING_SECRET=x go run ./apps/backend/cmd/arena-wp-letters-import --org $ARENA_ORG_ID --file wp-letters.json
+DATABASE_URL=$ARENA_DATABASE_URL JWT_SIGNING_SECRET=x go run ./apps/backend/cmd/arena-wp-letters-import --org $ARENA_ORG_ID --file wp-letters.json --apply
+```
+
+Первый запуск по умолчанию пробный: печатает `matched`, `unmatched`, `already_present`, `would insert`. Смотреть на `unmatched`
+(заказ с номером, которого нет у организации) и `no_order_number` (старые заказы без номера платформы: письма им не нужны).
+Запуск безопасно повторять: письмо с уже записанным message id пропускается, а у записанного ранее статус только продвигается
+вперёд (отправлено, доставлено, прочитано). Поэтому команду запускают дважды: до переключения и в переходный период, когда
+Brevo ещё досылает события «доставлено» и «прочитано» в WP.
+
+**Б. Галерея, видео и фотоотчёт мероприятий.** В Vino&Co мероприятие это товар WooCommerce (`_bil24_action_id` равен
+`events.external_bil24_id`); `lampyris-ops` хранит по языкам ru/en/he галерею, видео и отчёт (текст, фото, видео).
+Платформа хранит один набор материалов на мероприятие, без языков: переносится набор ru (его же показывают en и he, пока для них
+не включён «свой набор»); свой набор en/he и текст отчёта скрипт только перечисляет (поля для текста в платформе нет, его можно
+сохранить флагом `--texts-out`). Лимиты платформы: 6 фото галереи, 30 фото отчёта, 4 видео, 3 партнёрские ссылки.
+
+```
+docker cp /root/vino-cutover/wp-event-media-export.php $W:/tmp/x.php
+docker exec $W php /tmp/x.php > /root/vino-cutover/wp-event-media.json
+docker exec $W rm /tmp/x.php
+```
+
+Соответствие номера акции мероприятию платформы (в публичном API `external_bil24_id` не отдаётся), из базы платформы:
+
+```
+psql "$ARENA_DATABASE_URL" -c "\copy (SELECT external_bil24_id, id FROM events WHERE org_id = '$ARENA_ORG_ID' AND external_bil24_id IS NOT NULL AND deleted_at IS NULL) TO 'events.csv' CSV"
+```
+
+Импорт идёт через REST API платформы, с ноутбука; нужен токен владельца или менеджера организации. Без `--apply` это пробный
+запуск: он скачивает картинки с сайта WP и читает платформу, но ничего не пишет.
+
+```
+export ARENA_API_URL=<адрес arena-api> ARENA_TOKEN=<токен> ARENA_ORG_ID=<uuid организации>
+node ops/vino-cutover/wp-event-media-import.mjs --file wp-event-media.json --map events.csv --texts-out report-texts.json
+node ops/vino-cutover/wp-event-media-import.mjs --file wp-event-media.json --map events.csv --apply
+```
+
+Повтор безопасен: фото сравнивается по SHA-256 с уже лежащими в секции, видео и ссылки по адресу. В отчёте смотреть `UNMAPPED`
+(акция без мероприятия в платформе), `over_limit`, `failed` (код выхода 1 при ошибках). Картинки качаются с сайта WP, поэтому
+импорт выполнить, пока WP ещё отвечает (до T2).
+
 ## 4. Репетиция переключения и отката на тестовом домене [ОПЕРАТОР]
 
 Без DNS и без сертификата: выдуманное имя `vino-rehearsal.example.test`, запросы идут с `--resolve` прямо в

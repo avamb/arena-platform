@@ -30,10 +30,11 @@ var cmdConfigRole = map[string]string{
 	// The web event center's live twin tests fixture (a one-shot database tool).
 	"arena-e2e-seed": "config.RoleMigrate",
 	// Shopify export loader of the merchant shop (spec 47, a one-shot database tool).
-	"arena-shop-import":      "config.RoleMigrate",
-	"arena-slug-backfill":    "config.RoleMigrate",
-	"arena-marketing-import": "config.RoleMigrate",
-	"arena-wp-orders-import": "config.RoleMigrate",
+	"arena-shop-import":       "config.RoleMigrate",
+	"arena-slug-backfill":     "config.RoleMigrate",
+	"arena-marketing-import":  "config.RoleMigrate",
+	"arena-wp-orders-import":  "config.RoleMigrate",
+	"arena-wp-letters-import": "config.RoleMigrate",
 }
 
 var (
