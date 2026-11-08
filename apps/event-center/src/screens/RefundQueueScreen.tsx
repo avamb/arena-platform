@@ -5,6 +5,7 @@
  * screen's `count`. Orders that WERE refunded are one link away (the orders
  * list, Refunds tab).
  */
+import { HelpPopover } from "@/components/HelpPopover";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { LetterRow, RefundRow } from "@/components/RefundQueueRows";
@@ -41,7 +42,10 @@ export function RefundQueueScreen() {
   const q = queue.data;
   return (
     <section className="dense" aria-labelledby="queue-title">
-      <h1 id="queue-title">{t("queue.title")}</h1>
+      <h1 id="queue-title">
+        {t("queue.title")}
+        <HelpPopover textKey="help.refundQueue" testId="help-refund-queue" />
+      </h1>
       <p className="muted">{t("queue.intro")}</p>
       {access.can("order.read") && (
         <p>

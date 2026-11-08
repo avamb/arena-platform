@@ -53,7 +53,10 @@ describe("SessionSalesState", () => {
     expect(html).toContain("Free places: 4. In unpaid holds: 1.");
     expect(html).toContain('data-testid="sales-state-set-soon"');
     expect(html).toContain('data-testid="sales-state-set-sold_out"');
-    expect(html).not.toContain('data-testid="sales-state-set-open"');
+    expect(html).toContain('data-testid="sales-state-set-open"');
+    expect(html).toContain('role="radiogroup"');
+    expect(html).toMatch(/aria-checked="true"[^>]*data-choice="open"/);
+    expect(html).not.toContain('data-testid="sales-state-auto-note"');
     expect(html).not.toContain('data-testid="sales-state-site"');
     expect(html).not.toContain('data-testid="sales-state-no-chat"');
   });
@@ -82,16 +85,24 @@ describe("SessionSalesState", () => {
     expect(html).toContain('data-testid="sales-state-set-open"');
   });
 
+  it("highlights a state the platform derived and says so", () => {
+    const html = render({ ...open, manual: null, effective: "sold_out", free_places: 0 });
+    expect(html).toMatch(/aria-checked="true"[^>]*data-choice="sold_out"/);
+    expect(html).toContain('data-testid="sales-state-auto-note"');
+    expect(html).toContain("Shown as");
+  });
+
   it("gives a person who may not change sessions no button", () => {
     const html = render(open, { canUpdate: false });
     expect(html).toContain('data-testid="sales-state-value"');
-    expect(html).not.toContain("sales-state-set-");
+    expect(html).toContain('aria-disabled="true"');
   });
 
   it("shows a canceled session read-only", () => {
     const html = render({ ...open, effective: "cancelled" }, { cancelled: true });
     expect(html).toContain('data-testid="sales-state-cancelled"');
-    expect(html).not.toContain("sales-state-set-");
+    expect(html).toContain('aria-disabled="true"');
+    expect(html).not.toContain('aria-checked="true"');
   });
 
   it("renders in Russian and Spanish without a raw key", () => {

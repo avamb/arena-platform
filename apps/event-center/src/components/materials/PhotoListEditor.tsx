@@ -3,6 +3,7 @@
  * through the media API, caption, order, remove. The two lists differ only by
  * the owner type of the media, the limit and a note on when buyers see them.
  */
+import { HelpPopover } from "@/components/HelpPopover";
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ConfirmPressDialog } from "@/components/ConfirmPressDialog";
@@ -161,7 +162,9 @@ export function PhotoListEditor({
   return (
     <section className="mat-block" aria-labelledby={headingId} data-testid={`mat-${kind}`}>
       <h3 id={headingId}>
-        {title} <span className="field-hint">({t("mat.count", { count: items.length, max })})</span>
+        {title}
+        {kind === "report" && <HelpPopover textKey="help.report" testId="help-report" />}{" "}
+        <span className="field-hint">({t("mat.count", { count: items.length, max })})</span>
       </h3>
       <p className="field-hint">{hint}</p>
       {note !== undefined && (

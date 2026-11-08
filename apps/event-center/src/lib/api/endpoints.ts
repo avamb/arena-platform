@@ -1229,6 +1229,21 @@ export function saveDescription(orgId: string, eventId: string, art: string): Pr
   });
 }
 
+/**
+ * Saves the event card's own fields from the web editor: ONE PATCH carrying only what changed. The name is sent
+ * only when the person edited it (the list shows a translated name for another language, so an unchanged name
+ * must never be written back as the canonical one). The description goes as ART, like saveDescription.
+ */
+export function saveEventDetails(orgId: string, eventId: string, fields: { name?: string; description?: string }): Promise<EventEnvelope> {
+  const body: Record<string, unknown> = {};
+  if (fields.name !== undefined) body.name = fields.name;
+  if (fields.description !== undefined) {
+    body.description = fields.description;
+    body.description_format = "art";
+  }
+  return call<EventEnvelope>({ route: API.eventUpdate, params: { org_id: orgId, id: eventId }, body });
+}
+
 /** A test letter with the text (the draft when `note` is given, else the saved one) to the caller's own address. */
 export function sendEmailNoteTest(
   orgId: string,

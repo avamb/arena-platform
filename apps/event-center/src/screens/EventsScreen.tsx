@@ -1,3 +1,4 @@
+import { HelpPopover } from "@/components/HelpPopover";
 import { useMemo } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueries, useQuery } from "@tanstack/react-query";
@@ -96,7 +97,10 @@ export function EventsScreen() {
 
   return (
     <section aria-labelledby="events-title">
-      <h1 id="events-title">{t("events.title")}</h1>
+      <h1 id="events-title">
+        {t("events.title")}
+        <HelpPopover textKey="help.eventsStatus" testId="help-events" />
+      </h1>
       {/* 6-1c: same gate as the menu entry and the wizard screen: the build flag and the import permission. */}
       {wizardGate(access.can) === "ok" && (
         <p>

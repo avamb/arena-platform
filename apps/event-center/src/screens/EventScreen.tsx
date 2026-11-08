@@ -1,3 +1,5 @@
+import { EventSalesSwitch } from "@/components/EventSalesSwitch";
+import { HelpPopover } from "@/components/HelpPopover";
 import { useEffect } from "react";
 import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -138,7 +140,23 @@ export function EventScreen() {
         )}
       </p>
 
+      {/* Sales state of the sessions: Open / Coming soon / Sold out, at the top like in the old event center. */}
+      {canSessions && (
+        <EventSalesSwitch
+          orgId={orgId}
+          eventId={eventId}
+          canUpdate={access.can("session.update")}
+          sessions={refs.map((r) => ({ id: r.id, startAt: r.startAt, tz: r.tz, cancelled: r.cancelled }))}
+        />
+      )}
+
       <div className="actions">
+        {/* The web editor: name, description, poster and the text of the buyer letters. */}
+        {access.can("event.update") && (
+          <Link to="/o/$orgId/events/$eventId/edit" params={{ orgId, eventId }} className="btn btn-primary" data-testid="event-edit-link">
+            {t("event.edit")}
+          </Link>
+        )}
         {canCsv && (
           <DownloadButton
             label="event.csvSales"
@@ -227,7 +245,10 @@ export function EventScreen() {
 
       {canSales && (
         <section aria-labelledby="event-totals">
-          <h2 id="event-totals">{t("event.totals")}</h2>
+          <h2 id="event-totals">
+            {t("event.totals")}
+            <HelpPopover textKey="help.eventSales" testId="help-event-sales" />
+          </h2>
           {summary.isLoading && <Loading />}
           {summary.error !== null && <ErrorBox error={summary.error} onRetry={() => void summary.refetch()} />}
           {summary.data !== undefined && (

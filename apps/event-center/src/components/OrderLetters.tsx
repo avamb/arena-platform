@@ -12,6 +12,7 @@
  * words (queued, partial, delayed, stuck, bounced, failed, none), read only by
  * screen readers when the scale says it all.
  */
+import { HelpPopover } from "@/components/HelpPopover";
 import { useState } from "react";
 import { LetterHistory } from "@/components/LetterHistory";
 import { LetterSteps } from "@/components/LetterSteps";
@@ -60,7 +61,10 @@ export function OrderLetters({
   return (
     <section className="ord-card" aria-labelledby="order-letters" data-testid="order-letters">
       <div className="ord-card-head">
-        <h2 id="order-letters">{t("letter.title")}</h2>
+        <h2 id="order-letters">
+          {t("letter.title")}
+          <HelpPopover textKey="help.orderLetters" testId="help-order-letters" />
+        </h2>
       </div>
       {tickets !== null && steps !== null && <LetterSteps steps={steps} status={tickets} tz={tz} />}
       {tickets !== null && ticketText !== "" && (

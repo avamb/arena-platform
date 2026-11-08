@@ -4,6 +4,7 @@
  * by the server; the public page opens it in a new tab with rel noopener and
  * says plainly that it leaves Arena.
  */
+import { HelpPopover } from "@/components/HelpPopover";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ConfirmPressDialog } from "@/components/ConfirmPressDialog";
@@ -61,7 +62,9 @@ export function PartnerEditor({ orgId, eventId, canWrite }: { orgId: string; eve
   return (
     <section className="mat-block" aria-labelledby="mat-partners-title" data-testid="mat-partners">
       <h3 id="mat-partners-title">
-        {t("mat.partner.title")} <span className="field-hint">({t("mat.count", { count: items.length, max })})</span>
+        {t("mat.partner.title")}
+        <HelpPopover textKey="help.partners" testId="help-partners" />{" "}
+        <span className="field-hint">({t("mat.count", { count: items.length, max })})</span>
       </h3>
       <p className="field-hint">{t("mat.partner.hint", { max })}</p>
       {list.isLoading && <Loading />}
