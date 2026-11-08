@@ -24,10 +24,9 @@
   {{if .Shop.Pickup}}<p style="margin:16px 0 6px 0;font-weight:bold;color:#22333D;">Retrait</p><p style="margin:0 0 12px 0;">Vous avez choisi le retrait.</p>{{else if .Shop.Address}}<p style="margin:16px 0 6px 0;font-weight:bold;color:#22333D;">Adresse de livraison</p><p style="margin:0 0 12px 0;">{{range $i, $l := .Shop.Address}}{{if $i}}<br>{{end}}{{$l}}{{end}}</p>{{end}}
   {{with .Shop.Note}}<p style="margin:16px 0 6px 0;font-weight:bold;color:#22333D;">Votre remarque</p><p style="margin:0 0 12px 0;white-space:pre-line;">{{.}}</p>{{end}}
   {{with .Shop.StatusURL}}<p style="margin:16px 0 12px 0;"><a href="{{.}}" style="color:{{$.Accent}};font-weight:bold;">Suivre l’état de la commande</a></p>{{end}}
-  {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">Des questions ? Répondez à cet e-mail.</p>{{end}}
   <p style="font-size:12px;color:#666">Envoyé à : {{.RecipientEmail}}</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
@@ -74,10 +73,8 @@ Bonjour{{with .HolderName}} {{.}}{{end}},
 
 {{end}}{{with .Shop.StatusURL}}Suivre l’état de la commande: {{.}}
 
-{{end}}{{if .Branding.ContactEmail}}Des questions ? Répondez à cet e-mail.
 {{end}}
-
-Envoyé à : {{.RecipientEmail}}
+{{template "contact_text" .}}Envoyé à : {{.RecipientEmail}}
 
 --
 {{.Branding.SellerLabel}} {{.Branding.LegalName}}

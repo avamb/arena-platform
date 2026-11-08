@@ -383,6 +383,12 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		// The organizer contact follows the owner rule at render time
 		// (ContactRoute): before the letter's other tickets copy the payload.
 		applyContactRoute(ctx, queriesOrNil(opts.TicketQueries), formLink{opts.TicketsBaseURL, opts.ContactFormEnabled}, ticketID, &p, logger)
+		// The organizer's own address (promoter, else organization) wins over
+		// the route: every buyer letter tells the buyer not to reply and
+		// where to write, and that address is the Reply-To.
+		if opts.TicketQueries != nil {
+			applyBuyerContact(ctx, opts.TicketQueries.DB(), ticketID, &p, logger)
+		}
 
 		// ── 2. Guard: honest sender required (PR-03) ──────────────────────────
 		// If Sender is nil or is a dev-only sender (e.g. LogSender), we cannot
@@ -627,6 +633,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				SeatRow:        p.SeatRow,
 				SeatNumber:     p.SeatNumber,
 				Branding:       branding,
+				Contact:        templates.BuyerContact{Email: p.OrgContactEmail, OrderNumber: p.OrderNumber},
 				Tickets:        lines,
 				Payment:        payment,
 

@@ -278,6 +278,7 @@ func (h *changeEmail) ticketPayload(ctx context.Context, ticketID uuid.UUID, loc
 		}
 	}
 	applyContactRoute(ctx, q, formLink{h.opts.TicketsBaseURL, h.opts.ContactFormEnabled}, ticketID, &p, h.logger)
+	applyBuyerContact(ctx, q.DB(), ticketID, &p, h.logger)
 	resolvePresentation(ctx, q, ticketID, &p, h.logger)
 	return p
 }
@@ -344,7 +345,7 @@ func (h *changeEmail) buildMessage(
 	// the sales page's public e-mail, the hosted page's contact form, or -
 	// without a hosted page - the organization's address.
 	contactEmail, contactForm := strings.TrimSpace(contact.Email), ""
-	if contact.Source != "promoter" {
+	if contactEmail == "" {
 		contactEmail, contactForm = first.OrgContactEmail, first.ContactFormURL
 	}
 
@@ -364,6 +365,7 @@ func (h *changeEmail) buildMessage(
 		VenueName:      joinNonEmpty(", ", first.VenueName, first.VenueCity),
 		Directions:     directions.Build(first.VenueLat, first.VenueLng, first.VenueAddress, first.VenueCity),
 		Branding:       branding,
+		Contact:        templates.BuyerContact{Email: contactEmail, OrderNumber: orderSystemID(ctx, h.opts.DB, recipient.OrderID)},
 		EventNote:      changeEventNote(moves, first.EventEmailNote, first.EventEmailNoteFormat),
 		WhiteLabel:     whiteLabelForTicket(ctx, whiteLabelResolver(h.opts.DB), h.logger, tickets[0].TicketID.String()),
 		Change: templates.ChangeData{

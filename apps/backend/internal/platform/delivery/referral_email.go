@@ -248,6 +248,7 @@ func (h *referralCashbackEmail) buildMessage(ctx context.Context, rw gen.Referra
 		HolderName:     to.Name,
 		EventName:      first.EventName,
 		Branding:       branding,
+		Contact:        templates.BuyerContact{Email: first.OrgContactEmail, OrderNumber: strconv.FormatInt(to.SystemID, 10)},
 		WhiteLabel:     whiteLabel,
 		Referral: &templates.ReferralData{
 			Code:   code,

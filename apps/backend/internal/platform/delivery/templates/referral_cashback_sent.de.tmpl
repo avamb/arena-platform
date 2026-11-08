@@ -15,7 +15,7 @@
   <p style="margin:0 0 12px 0;">Ihre Bank braucht in der Regel 5–10 Werktage, bis der Betrag angezeigt wird.</p>
   <p style="font-size:12px;color:#666">Zugestellt an: {{.RecipientEmail}}</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     <strong>{{.Branding.LegalName}}</strong>
@@ -44,7 +44,7 @@ Ein Freund hat mit Ihrem Code {{.Referral.Code}} gekauft. Wir haben {{.Referral.
 
 Ihre Bank braucht in der Regel 5–10 Werktage, bis der Betrag angezeigt wird.
 
-Zugestellt an: {{.RecipientEmail}}
+{{template "contact_text" .}}Zugestellt an: {{.RecipientEmail}}
 
 --
 {{.Branding.LegalName}}

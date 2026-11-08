@@ -1,0 +1,7 @@
+{{/* Shared "do not reply" block of every buyer letter (owner request 2026-11-08). Data.Contact.Email empty prints nothing. */}}
+{{define "contact_html"}}{{with .Contact.Email}}<tr><td style="padding:8px 32px 16px 32px;color:#46555f;font-size:14px;line-height:1.6;border-top:1px solid #eceff1;"><p style="margin:0 0 12px 0;">Merci de ne pas répondre à cet e-mail. Pour toute question, écrivez à <a href="mailto:{{.}}" style="color:#46555f;">{{.}}</a>.</p><p style="margin:0;"><a href="{{$.Contact.Mailto}}" style="display:inline-block;background:{{$.Accent}};color:#ffffff;text-decoration:none;font-weight:bold;padding:10px 20px;border-radius:6px;">Contacter l’organisateur</a></p></td></tr>{{end}}{{end}}
+{{define "contact_text"}}{{with .Contact.Email}}Merci de ne pas répondre à cet e-mail. Pour toute question, écrivez à {{.}}.
+
+Contacter l’organisateur: {{$.Contact.Mailto}}
+
+{{end}}{{end}}

@@ -138,9 +138,11 @@ func TestReferralCashbackUnavailable_PointsAtTheOrganizerContact(t *testing.T) {
 			t.Errorf("%s: a contact is printed although the letter has none", loc)
 		}
 	}
-	// The sent letter has no contact paragraph of its own (the footer has it).
+	// The sent letter has no contact paragraph of its own: the address stands
+	// in the shared "do not reply" block (sentence and button link) and in
+	// the footer.
 	sent, _ := r.Render(TemplateKindReferralCashbackSent, "en", referralBuyerData())
-	if strings.Count(sent.TextBody, "info@org.example") != 1 {
+	if strings.Count(sent.TextBody, "info@org.example") != 3 {
 		t.Errorf("the sent letter repeats the contact:\n%s", sent.TextBody)
 	}
 }

@@ -19,10 +19,9 @@
   </table>
   <p style="margin:16px 0 12px 0;">L'argent revient sur le moyen de paiement que vous avez utilisé. Votre banque met généralement 5 à 10 jours ouvrés à l'afficher.</p>
   {{if .Refund.TicketsCancelled}}<p style="margin:0 0 12px 0;">Les billets remboursés ne sont plus valables pour l'entrée.</p>{{else if .Refund.SomeTicketsCancelled}}<p style="margin:0 0 12px 0;">Seuls les billets marqués « n'est plus valable » ne permettent plus l'entrée ; les autres billets de la liste ci-dessus restent valables.</p>{{end}}
-  {{if .Branding.ContactEmail}}<p style="margin:0 0 12px 0;">Des questions ? Répondez à cet e-mail.</p>{{end}}
   <p style="font-size:12px;color:#666">Envoyé à : {{.RecipientEmail}}</p>
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
+  {{template "contact_html" .}}<tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:12px;line-height:1.6;border-top:1px solid #eceff1;">
 {{with .Branding.WebsiteURL}}<a href="{{.}}" style="color:#93a0a8;">{{.}}</a><br><br>{{end}}
   <p style="font-size:11px;color:#666;line-height:1.5">
     {{.Branding.SellerLabel}} <strong>{{.Branding.LegalName}}</strong>
@@ -57,9 +56,7 @@ L'argent revient sur le moyen de paiement que vous avez utilisé. Votre banque m
 {{if .Refund.TicketsCancelled}}Les billets remboursés ne sont plus valables pour l'entrée.
 {{else if .Refund.SomeTicketsCancelled}}Seuls les billets marqués « n'est plus valable » ne permettent plus l'entrée ; les autres billets de la liste ci-dessus restent valables.
 {{end}}
-{{if .Branding.ContactEmail}}Des questions ? Répondez à cet e-mail.
-{{end}}
-Envoyé à : {{.RecipientEmail}}
+{{template "contact_text" .}}Envoyé à : {{.RecipientEmail}}
 
 --
 {{.Branding.SellerLabel}} {{.Branding.LegalName}}

@@ -33,6 +33,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	htmltemplate "html/template"
+	"net/url"
 	"sort"
 	"strings"
 	texttemplate "text/template"
@@ -44,6 +45,13 @@ import (
 
 //go:embed *.tmpl
 var templateFS embed.FS
+
+// partialFS holds the blocks shared by several letter kinds, one file per
+// locale (partials/contact.<locale>.tmpl). They are parsed into every letter
+// of that locale, so a kind includes one with {{template "contact_html" .}}.
+//
+//go:embed partials/*.tmpl
+var partialFS embed.FS
 
 // DefaultLocale is used when the requested locale is empty or not in
 // SupportedLocales.
@@ -296,6 +304,12 @@ type Data struct {
 	// marketing_confirm); zero for every other kind.
 	Marketing MarketingConfirmData
 
+	// Contact is the address a buyer writes to, since the letters tell them not
+	// to reply (owner request 2026-11-08). Render fills it from
+	// Branding.ContactEmail when the sender left Contact.Email empty. Empty
+	// prints no block.
+	Contact BuyerContact
+
 	// Refund is what the refund e-mail says; nil for every other kind. The
 	// refunded tickets themselves are listed in Tickets, each with the
 	// amount returned for it in Price.
@@ -336,6 +350,72 @@ type Data struct {
 	// referral_cashback_sent, referral_cashback_unavailable and
 	// referral_reversal_organizer); Render fills an empty one when it is nil.
 	Referral *ReferralData
+}
+
+// BuyerContact is the "do not reply, write here" block of a buyer letter.
+type BuyerContact struct {
+	// Email is the organizer's address: the event promoter's, else the
+	// organization's contact_email. Empty prints no block (and the sender
+	// sets no Reply-To).
+	Email string
+	// OrderNumber is orders.system_id when the letter belongs to an order; it
+	// becomes the subject of the mailto link. Render fills it from the
+	// letter's own order data when the sender left it empty.
+	OrderNumber string
+	// Mailto is the mailto: link of the button. Render fills it.
+	Mailto string
+}
+
+// orderWords is the word that opens the mailto subject ("Order 9096").
+var orderWords = map[string]string{
+	"en": "Order", "ru": "Заказ", "cs": "Objednávka", "de": "Bestellung",
+	"es": "Pedido", "fr": "Commande", "he": "הזמנה",
+}
+
+// MailtoLink builds the button's link: mailto:<address>, plus ?subject= with
+// the order number when there is one.
+func MailtoLink(locale, address, orderNumber string) string {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return ""
+	}
+	link := "mailto:" + address
+	if n := strings.TrimSpace(orderNumber); n != "" {
+		word, ok := orderWords[normalize(locale)]
+		if !ok {
+			word = orderWords[DefaultLocale]
+		}
+		link += "?subject=" + strings.ReplaceAll(url.QueryEscape(word+" "+n), "+", "%20")
+	}
+	return link
+}
+
+// fillContact completes Data.Contact: the address falls back to the footer's
+// contact e-mail, the order number to the one the letter's own data carries.
+func fillContact(d *Data, locale string) {
+	d.Contact.Email = strings.TrimSpace(d.Contact.Email)
+	if d.Contact.Email == "" {
+		d.Contact.Email = strings.TrimSpace(d.Branding.ContactEmail)
+	}
+	if d.Contact.Email == "" {
+		d.Contact.Mailto = ""
+		return
+	}
+	if d.Contact.OrderNumber == "" {
+		switch {
+		case d.Payment != nil && d.Payment.OrderNumber != "":
+			d.Contact.OrderNumber = d.Payment.OrderNumber
+		case d.Reissue != nil && d.Reissue.OrderNumber != "":
+			d.Contact.OrderNumber = d.Reissue.OrderNumber
+		case d.CartReminder.OrderNumber != "":
+			d.Contact.OrderNumber = d.CartReminder.OrderNumber
+		case d.LatePayment.OrderNumber != "":
+			d.Contact.OrderNumber = d.LatePayment.OrderNumber
+		case d.Shop != nil && d.Shop.OrderNumber != "":
+			d.Contact.OrderNumber = d.Shop.OrderNumber
+		}
+	}
+	d.Contact.Mailto = MailtoLink(locale, d.Contact.Email, d.Contact.OrderNumber)
 }
 
 // Kinds of the "Refer a friend" letters (spec 52). The first two go to the
@@ -791,6 +871,16 @@ func New() (*Renderer, error) {
 			}
 		}
 
+		// The shared blocks of the letter's locale (partials/contact.<locale>).
+		if part, ok := partialBody(key); ok {
+			if _, err := htmlT.Parse(part); err != nil {
+				return nil, fmt.Errorf("templates: parse html partial for %s: %w", e.Name(), err)
+			}
+			if _, err := textT.Parse(part); err != nil {
+				return nil, fmt.Errorf("templates: parse text partial for %s: %w", e.Name(), err)
+			}
+		}
+
 		htmlByKey[key] = htmlT
 		textByKey[key] = textT
 		known[key] = struct{}{}
@@ -801,6 +891,19 @@ func New() (*Renderer, error) {
 	}
 
 	return &Renderer{html: htmlByKey, text: textByKey, known: known}, nil
+}
+
+// partialBody returns the contact partial of a "<kind>.<locale>" key.
+func partialBody(key string) (string, bool) {
+	dot := strings.LastIndexByte(key, '.')
+	if dot < 0 {
+		return "", false
+	}
+	b, err := partialFS.ReadFile("partials/contact." + key[dot+1:] + ".tmpl")
+	if err != nil {
+		return "", false
+	}
+	return string(b), true
 }
 
 // Version names the exact template file a (kind, locale) letter is rendered
@@ -816,6 +919,9 @@ func (r *Renderer) Version(kind, locale string) string {
 	body, err := templateFS.ReadFile(key + ".tmpl")
 	if err != nil {
 		return ""
+	}
+	if part, ok := partialBody(key); ok {
+		body = append(append([]byte{}, body...), part...)
 	}
 	sum := sha256.Sum256(body)
 	return key + "@" + hex.EncodeToString(sum[:])[:12]
@@ -875,6 +981,7 @@ func (r *Renderer) Render(kind, locale string, data Data) (Rendered, error) {
 		data.Branding.SellerIDs = sellerinfo.IDsLine(resolved, data.Branding.RegistrationNumber, data.Branding.TaxID, data.Branding.TaxIDScheme)
 	}
 	fillSellerFooter(&data.Branding, resolved)
+	fillContact(&data, resolved)
 
 	if _, ok := r.known[key]; !ok {
 		return Rendered{}, fmt.Errorf(
