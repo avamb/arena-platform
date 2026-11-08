@@ -12,6 +12,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { GuestListTeamSwitch } from "@/components/GuestListTeamSwitch";
 import { OrgDataForm } from "@/components/OrgDataForm";
 import { SellerChannelCard } from "@/components/SellerChannelCard";
 import { SellerErrorNotice } from "@/components/SellerErrorNotice";
@@ -76,6 +77,7 @@ function OrgDataBody({ orgId, canReadPayments }: { orgId: string; canReadPayment
           <SalesPages orgId={orgId} profile={profile.data} />
           <ContactFormSwitch orgId={orgId} profile={profile.data} />
           <ProviderReceiptSwitch orgId={orgId} profile={profile.data} />
+          <GuestListTeamSwitch orgId={orgId} />
         </>
       )}
     </section>

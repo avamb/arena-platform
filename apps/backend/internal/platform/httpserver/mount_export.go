@@ -28,6 +28,7 @@ func (s *Server) mountExportRoutes(r chi.Router) {
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/summary.csv", s.handleExportSessionSummary)
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/guest-list.xlsx", s.handleExportSessionGuestListXLSX)
 		pr.Get("/organizations/{org_id}/sessions/{session_id}/guest-list.csv", s.handleExportSessionGuestList)
+		pr.Get("/organizations/{org_id}/events/{event_id}/guest-list.xlsx", s.handleExportEventGuestListXLSX)
 		// The accountant's workbook for a date range (EC-V2): per session, per
 		// price, per ticket. Buyers' contacts: an API key is refused.
 		pr.Get("/organizations/{org_id}/exports/accounting.xlsx", s.handleExportAccounting)
@@ -38,6 +39,16 @@ func (s *Server) mountExportRoutes(r chi.Router) {
 		s.applyAuth(pr, "order.read", "orders")
 		pr.Get("/organizations/{org_id}/guest-list-subscription", s.handleGetGuestListSubscription)
 		pr.Put("/organizations/{org_id}/guest-list-subscription", s.handlePutGuestListSubscription)
+	})
+	// The organization's switch for the team guest list: any member reads it,
+	// the owner (org.update) changes it.
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "org.read", "organizations")
+		pr.Get("/organizations/{org_id}/guest-list-settings", s.handleGetGuestListSettings)
+	})
+	r.Group(func(pr chi.Router) {
+		s.applyAuth(pr, "org.update", "organizations")
+		pr.Put("/organizations/{org_id}/guest-list-settings", s.handlePutGuestListSettings)
 	})
 	r.Group(func(pr chi.Router) {
 		s.applyAuth(pr, "promo.read", "promo_codes")
@@ -77,6 +88,13 @@ func (s *Server) handleExportSessionSummary(w http.ResponseWriter, r *http.Reque
 	s.exportHandler().HandleSessionSummary(w, r)
 }
 
+func (s *Server) handleExportEventGuestListXLSX(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.exportHandler().HandleEventGuestListXLSX(w, r)
+}
+
 func (s *Server) handleExportSessionGuestListXLSX(w http.ResponseWriter, r *http.Request) {
 	if !s.enforceOrgMembership(w, r, "org_id") {
 		return
@@ -89,6 +107,20 @@ func (s *Server) handleExportSessionGuestList(w http.ResponseWriter, r *http.Req
 		return
 	}
 	s.exportHandler().HandleSessionGuestList(w, r)
+}
+
+func (s *Server) handleGetGuestListSettings(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.exportHandler().HandleGetGuestListSettings(w, r)
+}
+
+func (s *Server) handlePutGuestListSettings(w http.ResponseWriter, r *http.Request) {
+	if !s.enforceOrgMembership(w, r, "org_id") {
+		return
+	}
+	s.exportHandler().HandlePutGuestListSettings(w, r)
 }
 
 func (s *Server) handleGetGuestListSubscription(w http.ResponseWriter, r *http.Request) {

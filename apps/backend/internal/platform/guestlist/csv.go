@@ -1,9 +1,10 @@
 // Package guestlist is the organizer's guest list of a session (owner
 // decision 2026-11-02, spec 51 section 4.4, migration 0187).
 //
-// The list holds the session's ACTIVE tickets, one row per ticket, sorted by
-// the guest's name: guest, category, seat, ticket number, barcode, VIP,
-// entered and entry time, order, e-mail, phone, invitation. The rows are built
+// The list holds ALL tickets of the session (active and not, each with a
+// MACS-style status and a reason, see status.go), one row per ticket, sorted
+// by the guest's last name: names, phone, e-mail, category, row, seat, status,
+// reason, barcode, order, and a few extras. The rows are built
 // here once (Cells) and written as an Excel workbook (.xlsx, what people get)
 // or a CSV (for imports). It is served two ways: on demand by
 // GET /v1/organizations/{org_id}/sessions/{session_id}/guest-list.xlsx (the
@@ -21,6 +22,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,20 +43,32 @@ const MaxRows = 50_000
 // ErrTooManyRows is returned when the session has more than MaxRows tickets.
 var ErrTooManyRows = errors.New("guestlist: too many rows")
 
-// Columns are the columns of the guest list, in the owner's order (owner
-// decision 2026-11-02: "entry plus contacts").
+// Columns are the columns of the guest list (owner request 2026-11-08, for
+// the day-before mail to the guests): the guest, how to reach them, where
+// they sit, the MACS-style status and why, the barcode and the order. The
+// last five are kept from the earlier list.
 var Columns = []csvexport.Column{
-	csvexport.ColGuest, csvexport.ColCategory, csvexport.ColSeat,
-	csvexport.ColTicket, csvexport.ColBarcode, csvexport.ColVIP,
-	csvexport.ColEntered, csvexport.ColEnteredAt,
-	csvexport.ColOrder, csvexport.ColEmail, csvexport.ColPhone,
-	csvexport.ColInvitation, csvexport.ColTest,
+	csvexport.ColLastName, csvexport.ColFirstName, csvexport.ColPhone, csvexport.ColEmail,
+	csvexport.ColCategory, csvexport.ColRow, csvexport.ColSeat,
+	csvexport.ColTicketStatus, csvexport.ColStatusReason,
+	csvexport.ColBarcode, csvexport.ColOrderNumber,
+	csvexport.ColSector, csvexport.ColTicket, csvexport.ColVIP,
+	csvexport.ColEnteredAt, csvexport.ColInvitation,
 }
+
+// EventColumns are Columns with the session's date and time in front.
+var EventColumns = append([]csvexport.Column{csvexport.ColSession}, Columns...)
 
 // Querier is the part of gen.Queries the list reads.
 type Querier interface {
 	CountGuestListRows(ctx context.Context, sessionID, orgID uuid.UUID) (int64, error)
 	ListGuestListRows(ctx context.Context, sessionID, orgID uuid.UUID, limit int32) ([]gen.GuestListRow, error)
+}
+
+// EventQuerier is the part of gen.Queries the event-wide list reads.
+type EventQuerier interface {
+	CountEventGuestListRows(ctx context.Context, eventID, orgID uuid.UUID) (int64, error)
+	ListEventGuestListRows(ctx context.Context, eventID, orgID uuid.UUID, limit int32) ([]gen.GuestListRow, error)
 }
 
 // Format is the file format of a list.
@@ -81,6 +95,8 @@ type File struct {
 	Body        []byte
 	Rows        int
 	ContentType string
+	// Counts is the number of tickets per MACS status (index 0..3).
+	Counts [4]int
 }
 
 // textColumns are the columns an XLSX keeps as text: identifiers whose
@@ -88,13 +104,14 @@ type File struct {
 // into 4.6E+12, a phone's leading zero dropped).
 var textColumns = map[csvexport.Column]bool{
 	csvexport.ColTicket: true, csvexport.ColBarcode: true,
-	csvexport.ColOrder: true, csvexport.ColPhone: true,
+	csvexport.ColOrderNumber: true, csvexport.ColPhone: true,
 }
 
-// Build reads the active tickets of a session of the organization and writes
-// the file in format with headers in locale. loc is the venue's zone for the
-// entry time. A session with more than maxRows tickets is ErrTooManyRows;
-// maxRows <= 0 means MaxRows. Both formats are written from the same Cells.
+// Build reads ALL tickets of a session of the organization (active and not,
+// so the organizer can filter by status) and writes the file in format with
+// headers in locale. loc is the venue's zone for the entry time. A session
+// with more than maxRows tickets is ErrTooManyRows; maxRows <= 0 means
+// MaxRows. Both formats are written from the same Cells.
 func Build(ctx context.Context, q Querier, orgID, sessionID uuid.UUID, locale string, loc *time.Location, maxRows int64, format Format) (File, error) {
 	if maxRows <= 0 {
 		maxRows = MaxRows
@@ -110,27 +127,69 @@ func Build(ctx context.Context, q Querier, orgID, sessionID uuid.UUID, locale st
 	if err != nil {
 		return File{}, err
 	}
-	header := csvexport.Header(locale, Columns...)
+	return render(rows, Columns, locale, loc, format, false)
+}
+
+// BuildEvent is Build for every session of an event: one sheet, a Session
+// column first (date and time on each session's own venue clock, loc is the
+// fallback for a venue without a zone), sessions in time order.
+func BuildEvent(ctx context.Context, q EventQuerier, orgID, eventID uuid.UUID, locale string, loc *time.Location, maxRows int64, format Format) (File, error) {
+	if maxRows <= 0 {
+		maxRows = MaxRows
+	}
+	n, err := q.CountEventGuestListRows(ctx, eventID, orgID)
+	if err != nil {
+		return File{}, err
+	}
+	if n > maxRows {
+		return File{}, ErrTooManyRows
+	}
+	rows, err := q.ListEventGuestListRows(ctx, eventID, orgID, int32(min(maxRows, MaxRows))) //nolint:gosec // bounded by MaxRows
+	if err != nil {
+		return File{}, err
+	}
+	return render(rows, EventColumns, locale, loc, format, true)
+}
+
+func render(rows []gen.GuestListRow, cols []csvexport.Column, locale string, loc *time.Location, format Format, withSession bool) (File, error) {
+	locale = NormalizeLocale(locale)
+	sortRows(rows)
+	header := csvexport.Header(locale, cols...)
+	cells := make([][]csvexport.Cell, len(rows))
+	var counts [4]int
+	for i, r := range rows {
+		rl := loc
+		if r.VenueTimezone != nil && withSession {
+			rl = Location(*r.VenueTimezone)
+		}
+		cells[i] = Cells(r, locale, rl)
+		if withSession {
+			cells[i] = append([]csvexport.Cell{csvexport.Text(When(r.SessionStartAt, rl))}, cells[i]...)
+		}
+		code, _ := StatusOf(r)
+		counts[code]++
+	}
 	var body []byte
+	var err error
 	if format == CSV {
-		body, err = buildCSV(header, rows, loc)
+		body, err = buildCSV(header, cells)
 	} else {
-		body, err = buildXLSX(locale, header, rows, loc)
+		body, err = buildXLSX(locale, header, cols, cells)
 	}
 	if err != nil {
 		return File{}, err
 	}
-	return File{Body: body, Rows: len(rows), ContentType: format.ContentType()}, nil
+	return File{Body: body, Rows: len(rows), ContentType: format.ContentType(), Counts: counts}, nil
 }
 
-func buildCSV(header []string, rows []gen.GuestListRow, loc *time.Location) ([]byte, error) {
+func buildCSV(header []string, rows [][]csvexport.Cell) ([]byte, error) {
 	var buf bytes.Buffer
 	w := csvexport.NewWriter(&buf)
 	if err := w.WriteHeader(header); err != nil {
 		return nil, err
 	}
 	for _, r := range rows {
-		if err := w.WriteRow(Cells(r, loc)...); err != nil {
+		if err := w.WriteRow(r...); err != nil {
 			return nil, err
 		}
 	}
@@ -140,44 +199,46 @@ func buildCSV(header []string, rows []gen.GuestListRow, loc *time.Location) ([]b
 	return buf.Bytes(), nil
 }
 
-func buildXLSX(locale string, header []string, rows []gen.GuestListRow, loc *time.Location) ([]byte, error) {
-	cols := make([]xlsxexport.Column, len(Columns))
-	for i, c := range Columns {
+func buildXLSX(locale string, header []string, columns []csvexport.Column, rows [][]csvexport.Cell) ([]byte, error) {
+	cols := make([]xlsxexport.Column, len(columns))
+	for i, c := range columns {
 		cols[i] = xlsxexport.Column{Header: header[i], Text: textColumns[c]}
 	}
-	cells := make([][]csvexport.Cell, len(rows))
-	for i, r := range rows {
-		cells[i] = Cells(r, loc)
-	}
-	return xlsxexport.Build(xlsxexport.Sheet{Name: SheetName(locale), Columns: cols, Rows: cells})
+	return xlsxexport.Build(xlsxexport.Sheet{Name: SheetName(locale), Columns: cols, Rows: rows})
 }
 
-// Cells renders one ticket. The barcode is the stored EAN-13 credential; a
-// ticket that predates it gets the retired PlatformCode derived from its
-// number, exactly as the sales export does.
-func Cells(r gen.GuestListRow, loc *time.Location) []csvexport.Cell {
+// Cells renders one ticket in the order of Columns. The barcode is the stored
+// EAN-13 credential; a ticket that predates it gets the retired PlatformCode
+// derived from its number, exactly as the sales export does. It is always a
+// Text cell: a number would lose digits in Excel.
+func Cells(r gen.GuestListRow, locale string, loc *time.Location) []csvexport.Cell {
 	barcode := ean13.PlatformCode(r.SystemTicketID)
 	if r.Barcode != nil && *r.Barcode != "" {
 		barcode = *r.Barcode
 	}
 	var order csvexport.Cell
 	if r.OrderNumber != nil {
-		order = csvexport.Number(*r.OrderNumber)
+		order = csvexport.Text(strconv.FormatInt(*r.OrderNumber, 10))
 	}
+	code, reason := StatusOf(r)
+	last, first := SplitName(r.GuestName)
 	return []csvexport.Cell{
-		csvexport.Text(r.GuestName),
-		csvexport.TextPtr(r.TierName),
-		csvexport.Text(SeatLabel(r.SeatSector, r.SeatRow, r.SeatNumber)),
-		csvexport.Number(r.SystemTicketID),
-		csvexport.Text(barcode),
-		csvexport.YesNo(r.VIP),
-		csvexport.YesNo(r.EnteredAt != nil),
-		csvexport.DateTimePtr(r.EnteredAt, loc),
-		order,
-		csvexport.TextPtr(r.Email),
+		csvexport.Text(last),
+		csvexport.Text(first),
 		csvexport.TextPtr(r.Phone),
+		csvexport.TextPtr(r.Email),
+		csvexport.TextPtr(r.TierName),
+		csvexport.TextPtr(r.SeatRow),
+		csvexport.TextPtr(r.SeatNumber),
+		csvexport.Text(StatusLabel(locale, code)),
+		csvexport.Text(ReasonLabel(locale, reason)),
+		csvexport.Text(barcode),
+		order,
+		csvexport.TextPtr(r.SeatSector),
+		csvexport.Text(strconv.FormatInt(r.SystemTicketID, 10)),
+		csvexport.YesNo(r.VIP),
+		csvexport.DateTimePtr(r.EnteredAt, loc),
 		csvexport.YesNo(r.Invitation),
-		csvexport.YesNo(r.IsTest),
 	}
 }
 
