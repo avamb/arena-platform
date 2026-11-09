@@ -6,6 +6,9 @@
 
 ## По темам
 
+### Профили клиента (ICP)
+- [icp_profiles_2026-11-09_ru.md](icp_profiles_2026-11-09_ru.md) — повторный конкурентный анализ по девяти профилям клиента: диаспора, гастроли, мастер-классы, ассоциации, театры, площадки, дегустации с магазином, фестивали, дешёвые массовые события. Цена «всего» для типичного билета каждого профиля и что докрутить в продукте (09.11.2026).
+
 ### Цены и тарифы платформ
 - [pricing_2026-10/report_ru.md](pricing_2026-10/report_ru.md) — прайсы около 190 билетных платформ, модели direct и сборщики (10.10.2026). Таблица `pricing_2026-10/ticketing_pricing_2026-10-09.xlsx`, исходные данные `pricing_2026-10/raw/`, задание `pricing_2026-10/BRIEF.md`.
 - [pricing_2026-10/value_tariff_scenarios_ru.md](pricing_2026-10/value_tariff_scenarios_ru.md) — сценарии тарифов Arena против рынка.
@@ -21,10 +24,14 @@
 - [other_platforms_features_2026-09-27.md](other_platforms_features_2026-09-27.md) — функции других билетных платформ, что взять в Arena (Н1–Н17).
 - [merch_and_shop_to_event_2026-10-22_ru.md](merch_and_shop_to_event_2026-10-22_ru.md) — мерч на мероприятиях и магазин, который зовёт на событие.
 
+### Перепродавцы и дистрибуция
+- [reseller_integration_scenarios_2026-11-09_ru.md](reseller_integration_scenarios_2026-11-09_ru.md) — перепродавцы билетов (FridayTicket, Kontramarka и др.) как партнёры: 17 сценариев интеграции, что уже есть в Arena, риски, первые шаги (09.11.2026).
+
 ### Продажи в соцсетях и мессенджерах
 - [social_messenger_selling_2026-10-24_ru.md](social_messenger_selling_2026-10-24_ru.md) — продажи внутри Facebook, Instagram, Messenger, Telegram, WhatsApp: что есть у конкурентов и что разрешают платформы (24.10.2026). Связанный бэклог: `09_autoforge/social_selling_backlog.md`.
 
 ### Отдельные конкуренты
+- [fridayticket_2026-11-09_ru.md](fridayticket_2026-11-09_ru.md) — FridayTicket (fridayticket.com): витрина-перепродавец русскоязычных гастролей, организатор скрыт, ретаргетинг в Facebook; как найти организаторов туров (09.11.2026).
 - [xtix_2026-11-03_ru.md](xtix_2026-11-03_ru.md) — XTIX (xtix.ai, Кипр, Израиль), конкурент в русскоязычной нише (03.11.2026).
 - [tickettailor_analysis_2026-09-04.md](tickettailor_analysis_2026-09-04.md), [tickettailor_win_features_2026-09-27.md](tickettailor_win_features_2026-09-27.md) — Ticket Tailor: разбор и функции, которые стоит повторить.
 - [arena_architecture_fit_2026-09-04.md](arena_architecture_fit_2026-09-04.md) — как найденное ложится на архитектуру Arena.
