@@ -11,6 +11,7 @@
  *  - nothing is connected by the preview; the accept links the account and the page says "Done" on its own;
  *  - a used link no longer works (404), and a new link replaces the old one.
  */
+import { randomInt } from "node:crypto";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { liveEnv, person, signInAs, type Role } from "./liveEnv";
 
@@ -21,7 +22,7 @@ const svc = { Authorization: `Bearer ${env.bot_service_token}` };
 
 /** A Telegram account nobody linked yet: one per run, so the scratch base can be reused. */
 function freshTelegramId(): number {
-  return 9_200_000_000 + Math.floor(Math.random() * 99_999_999);
+  return 9_200_000_000 + randomInt(99_999_999);
 }
 
 async function openOrgData(page: Page, role: Role) {
