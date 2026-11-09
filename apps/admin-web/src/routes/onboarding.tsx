@@ -126,7 +126,7 @@ function OnboardingPage(): JSX.Element {
         <div>
           <h1 style={headingStyle}>Onboarding</h1>
           <p style={subheadingStyle}>
-            Applications from organizers who want to sell on arena. Nothing is created for an applicant until an
+            Applications from organizers who want to sell on Arena. The platform makes nothing for an applicant until an
             operator approves the application.
           </p>
         </div>
@@ -139,7 +139,7 @@ function OnboardingPage(): JSX.Element {
               onClick={() => void query.refetch()}
               data-testid="onboarding-refresh"
             >
-              Refresh
+              Reload
             </button>
           ) : null}
         </div>
@@ -166,7 +166,7 @@ function OnboardingPage(): JSX.Element {
           {query.isLoading ? <p style={mutedStyle}>Loading…</p> : null}
           {query.error ? (
             <div style={errorStyle} data-testid="onboarding-error">
-              Could not load applications: {query.error.message}
+              We did not load the applications: {query.error.message}
             </div>
           ) : null}
 
@@ -373,11 +373,11 @@ export function OnboardingQueueTable({
       renderCell: (a) =>
         a.would_approve ? (
           <Pill tone="good" testId={`onboarding-would-approve-${a.id}`}>
-            System would approve
+            The system will approve
           </Pill>
         ) : (
           <Pill tone="muted" testId={`onboarding-would-approve-${a.id}`}>
-            Needs a look
+            Operator must examine
           </Pill>
         ),
     },
@@ -491,7 +491,7 @@ function OnboardingSettingsPanel(): JSX.Element {
   if (query.isLoading || form === null) {
     return query.error ? (
       <div style={errorStyle} data-testid="onboarding-settings-error">
-        Could not load the settings: {query.error.message}
+        We did not load the settings: {query.error.message}
       </div>
     ) : (
       <p style={mutedStyle}>Loading…</p>
@@ -601,11 +601,11 @@ export function OnboardingSettingsView({
             </div>
           ) : null}
         </div>
-        {text("draft_ttl_days", "Draft lifetime, days", "How long an unfinished draft lives after the applicant's last activity (7–1095).", "numeric")}
-        {text("purge_after_days", "Erase personal data after, days", "Expired and rejected applications lose their personal fields after this long (30–3650).", "numeric")}
-        {text("countries", "Accepted countries", "ISO codes (two letters) separated by commas or spaces, for example CZ, DE, ES. Empty means every country.")}
-        {text("max_new_per_day", "New applications per day, at most", "A daily ceiling on new drafts (1–100000).", "numeric")}
-        {text("terms_version", "Terms of service version", "Written into every application at the moment of consent.")}
+        {text("draft_ttl_days", "Draft lifetime, days", "Number of days that the platform keeps an unfinished draft after the last action of the applicant (7–1095).", "numeric")}
+        {text("purge_after_days", "Erase personal data after, days", "After this number of days, the platform deletes the personal fields of expired and rejected applications (30–3650).", "numeric")}
+        {text("countries", "Accepted countries", "ISO codes of two letters. Use a comma or a space between codes, for example CZ, DE, ES. If the field is empty, all countries are accepted.")}
+        {text("max_new_per_day", "Maximum new applications for each day", "Maximum number of new drafts for each day (1–100000).", "numeric")}
+        {text("terms_version", "Terms of service version", "The platform saves this version in each application when the applicant agrees.")}
         {text("privacy_version", "Privacy policy version")}
       </div>
 
@@ -616,7 +616,7 @@ export function OnboardingSettingsView({
       ) : null}
       {saved ? (
         <div style={{ ...noticeStyle, marginTop: 14, marginBottom: 0 }} data-testid="onboarding-settings-saved">
-          Settings saved.
+          We saved the settings.
         </div>
       ) : null}
 
@@ -629,10 +629,10 @@ export function OnboardingSettingsView({
         >
           {saving ? "Saving…" : "Save settings"}
         </button>
-        {updatedAt ? <span style={mutedStyle}>Last changed {formatDateTime(updatedAt)}</span> : null}
+        {updatedAt ? <span style={mutedStyle}>Last change {formatDateTime(updatedAt)}</span> : null}
       </div>
       <p style={{ ...hintStyle, marginTop: 10, marginBottom: 0 }}>
-        Saving asks for an audit reason; every change is recorded in the audit log.
+        When you save, the platform asks for an audit reason. The platform saves each change in the audit log.
       </p>
     </form>
   );

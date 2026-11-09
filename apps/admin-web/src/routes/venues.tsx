@@ -247,20 +247,20 @@ export const UUID_RE =
 export function validateVenueName(name: string): string | null {
   const trimmed = name.trim();
   if (trimmed === "") {
-    return "Name is required";
+    return "Type a name";
   }
   if (trimmed.length > 200) {
-    return "Name must be at most 200 characters";
+    return "Use 200 characters or less in the name";
   }
   return null;
 }
 
 export function validateVenueOrgID(orgID: string): string | null {
   if (orgID.trim() === "") {
-    return "Organization ID is required";
+    return "Type the organization ID";
   }
   if (!UUID_RE.test(orgID.trim())) {
-    return "Organization ID must be a UUID";
+    return "The organization ID must be a UUID";
   }
   return null;
 }
@@ -271,7 +271,7 @@ export function validateVenueCityID(cityID: string): string | null {
     return null;
   }
   if (!UUID_RE.test(cityID.trim())) {
-    return "City ID must be a UUID";
+    return "The city ID must be a UUID";
   }
   return null;
 }
@@ -282,13 +282,13 @@ export function validateVenueCapacity(raw: string): string | null {
   }
   const parsed = Number(raw);
   if (!Number.isInteger(parsed)) {
-    return "Capacity must be a whole number";
+    return "Capacity must be an integer";
   }
   if (parsed < 0) {
-    return "Capacity cannot be negative";
+    return "Capacity must be 0 or more";
   }
   if (parsed > 2_000_000_000) {
-    return "Capacity is unreasonably large";
+    return "Capacity is too large. Type a smaller number";
   }
   return null;
 }
@@ -312,7 +312,7 @@ export function validateVenueCountry(raw: string): string | null {
     return null;
   }
   if (!ISO_COUNTRY_RE.test(normalizeCountry(raw))) {
-    return "Country must be a 2-letter ISO-3166-1 code (e.g., RU, US, GB)";
+    return "Country must be a 2-letter ISO-3166-1 code (for example RU, US, GB)";
   }
   return null;
 }
@@ -322,7 +322,7 @@ export function validateVenuePostalCode(raw: string): string | null {
     return null;
   }
   if (raw.trim().length > 32) {
-    return "Postal code must be at most 32 characters";
+    return "Use 32 characters or less in the postal code";
   }
   return null;
 }
@@ -332,7 +332,7 @@ export function validateVenueAddressLine(raw: string, n: 1 | 2): string | null {
     return null;
   }
   if (raw.trim().length > 200) {
-    return `Address line ${n} must be at most 200 characters`;
+    return `Use 200 characters or less in address line ${n}`;
   }
   return null;
 }
@@ -375,7 +375,7 @@ export function validateVenueGeoPair(
   const latSet = latRaw.trim() !== "";
   const lngSet = lngRaw.trim() !== "";
   if (latSet !== lngSet) {
-    return "Latitude and longitude must be provided together";
+    return "Type latitude and longitude together";
   }
   return null;
 }
@@ -388,7 +388,7 @@ export function validateVenueTimezone(raw: string): string | null {
   // The server runs time.LoadLocation as the authoritative check and
   // emits venue.invalid_timezone (422) on rejection.
   if (!/^[A-Za-z_+\-]+(?:\/[A-Za-z0-9_+\-]+){0,2}$/.test(raw.trim())) {
-    return "Timezone must be an IANA name (e.g., Europe/Moscow, UTC)";
+    return "Timezone must be an IANA name (for example Europe/Moscow, UTC)";
   }
   return null;
 }
@@ -414,8 +414,8 @@ export function validateVenueTimezoneRequired(
     return null;
   }
   return isEdit
-    ? "Timezone cannot be cleared once set — choose a replacement instead"
-    : "Timezone is required";
+    ? "You cannot clear the timezone. Select a different timezone"
+    : "Select a timezone";
 }
 
 export function validateVenueContactEmail(raw: string): string | null {
@@ -423,10 +423,10 @@ export function validateVenueContactEmail(raw: string): string | null {
     return null;
   }
   if (raw.trim().length > 320) {
-    return "Email must be at most 320 characters";
+    return "Use 320 characters or less in the e-mail address";
   }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw.trim())) {
-    return "Enter a valid email address";
+    return "Type a correct e-mail address";
   }
   return null;
 }
@@ -436,10 +436,10 @@ export function validateVenueContactPhone(raw: string): string | null {
     return null;
   }
   if (raw.trim().length > 40) {
-    return "Phone must be at most 40 characters";
+    return "Use 40 characters or less in the phone number";
   }
   if (!/^[+0-9 ()\-]+$/.test(raw.trim())) {
-    return "Phone may contain digits, spaces, +, -, and parentheses only";
+    return "Use only digits, spaces, +, -, and parentheses in the phone number";
   }
   return null;
 }
@@ -452,10 +452,10 @@ export function validateVenueWebsiteUrl(raw: string): string | null {
   try {
     parsed = new URL(raw.trim());
   } catch {
-    return "Website must be a valid URL (https://example.com)";
+    return "The site must be a correct URL (https://example.com)";
   }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return "Website must use http or https";
+    return "The site URL must start with http or https";
   }
   return null;
 }
@@ -639,13 +639,11 @@ function VenuesModule() {
             Venues
           </h1>
           <p style={subheadingStyle}>
-            Physical event locations. Reads are shared across organizations;
-            writes are owner-gated -- a venue can only be created, edited, or
-            archived by the organization that owns it. A venue the platform
-            operator has verified is open to every organization: they can
-            hold their dates there, but only the owner edits it. The visual
-            seating editor remains explicitly deferred and is not part of this
-            CRUD scope.
+            The locations of events. All organizations can read the
+            venues. Only the owner can make, edit, or archive a venue. If the
+            platform operator verifies a venue, each organization can hold
+            dates there. Only the owner can edit it. The visual seating editor
+            is not part of this page.
           </p>
         </div>
         <div style={refreshWrapStyle}>
@@ -658,7 +656,7 @@ function VenuesModule() {
               data-testid="venues-review-filter"
             >
               <option value="all">All ({counts.all})</option>
-              <option value="unverified">Waiting for review ({counts.unverified})</option>
+              <option value="unverified">Not verified ({counts.unverified})</option>
               <option value="verified">Verified ({counts.verified})</option>
             </select>
           </label>
@@ -669,7 +667,7 @@ function VenuesModule() {
             disabled={query.isFetching}
             data-testid="venues-refresh"
           >
-            {query.isFetching ? "Refreshing…" : "Refresh"}
+            {query.isFetching ? "Reloading…" : "Reload"}
           </button>
           {canCreate ? (
             <button
@@ -681,8 +679,8 @@ function VenuesModule() {
               New venue
             </button>
           ) : (
-            <span style={mutedHintStyle} title="Requires venue.create">
-              Create requires venue.create
+            <span style={mutedHintStyle} title="Necessary permission: venue.create">
+              To add a venue, you need venue.create
             </span>
           )}
         </div>
@@ -777,8 +775,8 @@ function VenuesBody({
   if (rows.length === 0) {
     return (
       <div style={statusBoxStyle} role="status" data-testid="venues-empty">
-        No venues match. Create the first venue to begin attaching events and
-        seating plans, or change the verification filter.
+        No venues for this filter. Add the first venue, then you can add
+        events and seating plans. Or change the verification filter.
       </div>
     );
   }
@@ -914,8 +912,8 @@ function VenuesErrorState({
       <div style={errorBoxStyle} role="alert" data-testid="venues-forbidden">
         <strong>Forbidden.</strong>
         <p style={errorParaStyle}>
-          Your account is missing <code style={monoStyle}>venue.read</code>.
-          Ask a platform administrator to grant the permission.
+          Your account does not have <code style={monoStyle}>venue.read</code>.
+          Write to a platform administrator to get this permission.
         </p>
       </div>
     );
@@ -924,13 +922,13 @@ function VenuesErrorState({
     return (
       <div style={errorBoxStyle} role="status" data-testid="venues-session-expired">
         <strong>Session expired.</strong>
-        <p style={errorParaStyle}>Sign in again to reload venues.</p>
+        <p style={errorParaStyle}>Sign in again, then reload the venues.</p>
       </div>
     );
   }
   return (
     <div style={errorBoxStyle} role="alert" data-testid="venues-error">
-      <strong>Failed to load venues.</strong>
+      <strong>We did not load the venues.</strong>
       <div style={errorCodeStyle}>{error?.code ?? "unknown.error"}</div>
       {error?.message ? <div style={errorParaStyle}>{error.message}</div> : null}
       <button type="button" style={errorRetryStyle} onClick={onRetry}>
@@ -1083,29 +1081,29 @@ function VenueReviewDialog({
             </div>
           ) : (
             <p style={archiveParaStyle} data-testid="venues-review-no-point">
-              The venue has no coordinates yet. Ask the owner to add them
-              before you verify it.
+              The venue has no coordinates. Write to the owner to add them.
+              Then verify the venue.
             </p>
           )}
           <p style={archiveParaStyle}>
             {verified ? (
               <>
-                This venue is <strong>verified</strong>: every organization can
-                hold its dates here. Taking the verification back stops{" "}
-                <strong>new</strong> dates only; dates already created stay,
-                and the owner still cannot delete the venue while another
-                organization has dates there.
+                This venue is <strong>verified</strong>. Each organization can
+                add its sessions here. If you take back the verification,
+                organizations cannot add <strong>new</strong> sessions. The
+                sessions that exist stay. The owner cannot delete the venue
+                while another organization has sessions there.
               </>
             ) : (
               <>
-                Verify the venue only after you have checked the address and
-                the coordinates, and the owner has confirmed that the venue
-                matches the hall plan it ordered. Once verified, every
-                organization sees the venue and can hold its dates here. Only
-                the owner edits it.
+                Verify the venue only after you check the address and the
+                coordinates. Also make sure that the owner agrees that the
+                venue matches the seating plan. When the venue is verified,
+                each organization sees the venue and can add its sessions
+                here. Only the owner edits it.
               </>
             )}{" "}
-            You will be asked for the reason, it is written to the audit log.
+            You must write a reason. The audit log keeps the reason.
           </p>
           {error !== null ? (
             <div style={formErrorStyle} role="alert" data-testid="venues-review-error">
@@ -1150,10 +1148,10 @@ export function reviewErrorMessage(err: ApiError): string {
     case "permissions.denied":
       return "Only the platform owner can verify venues.";
     case "venue.not_found":
-      return "The venue no longer exists. Refresh the list.";
+      return "The venue does not exist. Reload the list.";
     case "superadmin.missing_reason":
     case "superadmin.reason_required":
-      return "An audit reason is required. Enter a reason and try again.";
+      return "Write an audit reason and try again.";
     default:
       return `${err.message} (${err.code})`;
   }
@@ -1315,7 +1313,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
   async function searchAddress() {
     const query = addressSearch.trim();
     if (query.length < 3) {
-      setGeocodeError("Enter at least three characters to search for an address.");
+      setGeocodeError("Type 3 characters or more to search for an address.");
       return;
     }
     setIsGeocoding(true);
@@ -1331,7 +1329,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
       const results: unknown = await response.json();
       setGeocodeResults(Array.isArray(results) ? (results as NominatimResult[]) : []);
     } catch {
-      setGeocodeError("Address suggestions are unavailable. You can enter all fields manually.");
+      setGeocodeError("We cannot show address suggestions. Type the fields by hand.");
     } finally {
       setIsGeocoding(false);
     }
@@ -1368,7 +1366,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
     );
     const slug = slugifyCity(normalizedName);
     if (parent === undefined || normalizedName === "" || slug === "") {
-      setCityCreateError("Choose a registry country and provide a city name before creating it.");
+      setCityCreateError("Select a country from the registry and type a city name. Then add the city.");
       return;
     }
     setIsCreatingCity(true);
@@ -1383,7 +1381,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
       setNewCityName("");
       await queryClient.invalidateQueries({ queryKey: ["geo", "cities"] });
     } catch (error) {
-      setCityCreateError(error instanceof ApiError ? error.message : "Unable to create the city.");
+      setCityCreateError(error instanceof ApiError ? error.message : "We did not add the city. Try again.");
     } finally {
       setIsCreatingCity(false);
     }
@@ -1394,7 +1392,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
     const iso2 = newCountryIso2.trim().toUpperCase();
     const iso3 = newCountryIso3.trim().toUpperCase();
     if (nameEn === "" || iso2.length !== 2 || iso3.length !== 3) {
-      setCountryCreateError("Provide a 2-letter ISO-2, 3-letter ISO-3, and country name.");
+      setCountryCreateError("Type a 2-letter ISO-2 code, a 3-letter ISO-3 code, and the country name.");
       return;
     }
     setIsCreatingCountry(true);
@@ -1414,7 +1412,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
       setCountryCreateOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["geo", "countries"] });
     } catch (error) {
-      setCountryCreateError(error instanceof ApiError ? error.message : "Unable to create the country.");
+      setCountryCreateError(error instanceof ApiError ? error.message : "We did not add the country. Try again.");
     } finally {
       setIsCreatingCountry(false);
     }
@@ -1563,7 +1561,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
 
   const tzOptions = useMemo(() => listIanaTimezones(), []);
   const title = isEdit ? `Edit ${mode.venue.name}` : "New venue";
-  const submitLabel = isEdit ? "Save changes" : "Create venue";
+  const submitLabel = isEdit ? "Save changes" : "Add venue";
   // Legacy `address` value is preserved on the wire automatically — show
   // a read-only callout in edit mode so operators understand provenance.
   void initialAddressLegacy;
@@ -1598,7 +1596,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
               htmlFor="venue-org-id"
               error={serverErrors.org_id ?? null}
               localError={orgID.length > 0 ? orgIDLocalErr : null}
-              hint="Choose the organization that owns this venue."
+              hint="Select the organization that owns this venue."
             >
               <select
                 id="venue-org-id"
@@ -1632,7 +1630,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
             htmlFor="venue-name"
             error={serverErrors.name ?? null}
             localError={name.length > 0 ? nameErr : null}
-            hint="Operator-visible venue name. Required."
+            hint="The venue name that operators see. Necessary."
           >
             <input
               id="venue-name"
@@ -1657,7 +1655,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
             htmlFor="venue-status"
             error={serverErrors.status ?? null}
             localError={null}
-            hint="active = visible to operators and events; draft = hidden from event creation; archived = legacy/closed."
+            hint="active = operators and events can use the venue. draft = events cannot use the venue. archived = old or closed venue."
           >
             <select
               id="venue-status"
@@ -1688,7 +1686,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
               htmlFor="venue-address-search"
               error={null}
               localError={null}
-              hint="Searches OpenStreetMap Nominatim. Selecting a suggestion fills the address, city, country, and coordinates; manual entry always remains available."
+              hint="Searches OpenStreetMap Nominatim. When you select a suggestion, the form fills the address, city, country, and coordinates. You can always type the fields by hand."
             >
               <div style={searchRowStyle}>
                 <input
@@ -1703,7 +1701,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
                     }
                   }}
                   style={inputStyle}
-                  placeholder="e.g. 28 Kubelíkova, Prague"
+                  placeholder="Example: 28 Kubelíkova, Prague"
                   data-testid="venues-form-address-search"
                 />
                 <button
@@ -1742,8 +1740,8 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
                 orgQuery.data?.organization.country !== undefined &&
                 orgQuery.data.organization.country !== null &&
                 !isEdit
-                  ? `Prefilled from the owning organization (${orgQuery.data.organization.country.toUpperCase()}). Override if the venue lives elsewhere.`
-                  : "Choose a country from the registry, or create one if it's not listed yet."
+                  ? `The form took this from the owner organization (${orgQuery.data.organization.country.toUpperCase()}). Change it if the venue is in a different country.`
+                  : "Select a country from the registry. If the country is not in the list, add it."
               }
             >
               {/* AB-35: select from geo registry + inline create affordance */}
@@ -1777,13 +1775,13 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
                   style={inlineCreateButtonStyle}
                   onClick={() => setCountryCreateOpen((o) => !o)}
                   data-testid="venues-form-country-create-toggle"
-                  title="Create a new country in the geo registry"
+                  title="Add a new country to the geo registry"
                 >
                   {countryCreateOpen ? "- Cancel" : "+ Country"}
                 </button>
               </div>
               {countriesQuery.isError ? (
-                <div style={fieldErrorStyle}>Country registry unavailable; try refreshing the page.</div>
+                <div style={fieldErrorStyle}>The country registry does not answer. Reload the page.</div>
               ) : null}
               {countryCreateOpen && (
                 <div style={inlineCreateFormStyle} data-testid="venues-form-create-country">
@@ -1800,7 +1798,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
                     />
                     <input
                       type="text"
-                      placeholder="ISO-2 (e.g., IL)"
+                      placeholder="ISO-2 (for example IL)"
                       value={newCountryIso2}
                       onChange={(e) => setNewCountryIso2(e.target.value.toUpperCase())}
                       style={{ ...inputMonoStyle, width: 72 }}
@@ -1810,7 +1808,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
                     />
                     <input
                       type="text"
-                      placeholder="ISO-3 (e.g., ISR)"
+                      placeholder="ISO-3 (for example ISR)"
                       value={newCountryIso3}
                       onChange={(e) => setNewCountryIso3(e.target.value.toUpperCase())}
                       style={{ ...inputMonoStyle, width: 84 }}
@@ -1839,7 +1837,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
               htmlFor="venue-city-id"
               error={serverErrors.city_id ?? null}
               localError={null}
-              hint="Optional city from the geo registry. Use '+ City' to create a missing city without leaving this form."
+              hint="Optional city from the geo registry. If the city is not in the list, press '+ City' to add it. You stay on this form."
             >
               {/* AB-35: city select filtered by country, with persistent + Add city button */}
               <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
@@ -1875,12 +1873,12 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
                     }
                   }}
                   data-testid="venues-form-city-create-toggle"
-                  title="Create a new city in the geo registry"
+                  title="Add a new city to the geo registry"
                 >
                   {addCityOpen ? "- Cancel" : "+ City"}
                 </button>
               </div>
-              {citiesQuery.isError ? <div style={fieldErrorStyle}>City registry unavailable; retry the page or enter address details manually.</div> : null}
+              {citiesQuery.isError ? <div style={fieldErrorStyle}>The city registry does not answer. Reload the page or type the address by hand.</div> : null}
               {(newCityName !== "" || addCityOpen) ? (
                 <div style={inlineCityStyle} data-testid="venues-form-create-city">
                   {newCityName !== "" && !addCityOpen ? (
@@ -1897,7 +1895,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
                       data-testid="venues-form-city-name"
                     />
                     <button type="button" style={primaryButtonStyle} onClick={() => void createCity()} disabled={isCreatingCity || newCityName.trim() === ""}>
-                      {isCreatingCity ? "Creating…" : "Create city"}
+                      {isCreatingCity ? "Adding…" : "Add city"}
                     </button>
                   </div>
                   {cityCreateError !== null ? <span style={fieldErrorStyle}>{cityCreateError}</span> : null}
@@ -1909,7 +1907,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
               htmlFor="venue-postal"
               error={serverErrors.postal_code ?? null}
               localError={postalCode.length > 0 ? postalErr : null}
-              hint="Optional. Free-form per-country format."
+              hint="Optional. The format is different for each country."
             >
               <input
                 id="venue-postal"
@@ -1959,7 +1957,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
               htmlFor="venue-address-line2"
               error={serverErrors.address_line2 ?? null}
               localError={addressLine2.length > 0 ? addr2Err : null}
-              hint="Apartment, floor, district, etc. Optional."
+              hint="Apartment, floor, district. Optional."
             >
               <input
                 id="venue-address-line2"
@@ -2042,7 +2040,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
             {geoLat.trim() !== "" && geoLng.trim() !== "" && latErr === null && lngErr === null ? (
               <div style={mapPreviewStyle} data-testid="venues-form-map-preview">
                 <strong>Map pin preview</strong>
-                <span>Drag is not required: adjust latitude and longitude above to move the pin.</span>
+                <span>To move the pin, change the latitude and longitude above.</span>
                 <iframe
                   title="Venue location preview"
                   style={mapFrameStyle}
@@ -2057,7 +2055,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
             htmlFor="venue-timezone"
             error={serverErrors.timezone ?? null}
             localError={timezone.length > 0 ? tzErr : tzRequiredErr}
-            hint="Required — a venue without a timezone silently drops its sessions from the Bil24 gateway feed. Type to autocomplete; server validates via time.LoadLocation."
+            hint="Necessary. If a venue has no timezone, the Bil24 gateway feed does not show its sessions, and the feed gives no error. Type to see suggestions. The server checks the value with time.LoadLocation."
           >
             <input
               id="venue-timezone"
@@ -2091,7 +2089,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
               htmlFor="venue-phone"
               error={serverErrors.contact_phone ?? null}
               localError={phone.length > 0 ? phoneErr : null}
-              hint="Operator-facing. Optional."
+              hint="For operators. Optional."
             >
               <input
                 id="venue-phone"
@@ -2112,11 +2110,11 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
               />
             </FieldRow>
             <FieldRow
-              label="Contact email"
+              label="Contact e-mail"
               htmlFor="venue-email"
               error={serverErrors.contact_email ?? null}
               localError={email.length > 0 ? emailErr : null}
-              hint="Operator-facing. Optional."
+              hint="For operators. Optional."
             >
               <input
                 id="venue-email"
@@ -2140,11 +2138,11 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
               />
             </FieldRow>
             <FieldRow
-              label="Website"
+              label="Site"
               htmlFor="venue-website"
               error={serverErrors.website_url ?? null}
               localError={website.length > 0 ? websiteErr : null}
-              hint="Full URL including https://"
+              hint="Full URL with https://"
             >
               <input
                 id="venue-website"
@@ -2174,7 +2172,7 @@ function VenueFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
             htmlFor="venue-capacity"
             error={serverErrors.capacity_default ?? null}
             localError={capacity.length > 0 ? capacityErr : null}
-            hint="Optional whole number. Leave blank if unknown."
+            hint="Optional integer. Keep the field empty if you do not know it."
           >
             <input
               id="venue-capacity"
@@ -2312,11 +2310,11 @@ function DeleteConfirmDialog({
         <div style={archiveBodyStyle}>
           <p style={archiveParaStyle}>
             Archiving a venue removes it from the active list. This is a{" "}
-            <strong>soft-delete</strong>: the row is preserved with{" "}
-            <code style={monoStyle}>deleted_at</code> set and a{" "}
-            <code style={monoStyle}>v1.venue.delete</code> audit event is
-            written atomically. Existing events that reference this venue
-            keep their reference.
+            <strong>soft-delete</strong>: the row stays and gets a{" "}
+            <code style={monoStyle}>deleted_at</code> value. The platform also
+            writes a <code style={monoStyle}>v1.venue.delete</code> audit
+            event in the same step. Events that use this venue keep the
+            venue.
           </p>
           {error !== null ? (
             <div style={formErrorStyle} role="alert" data-testid="venues-delete-error">
@@ -2427,12 +2425,12 @@ export function mapServerError(err: ApiError): ServerFieldErrors {
       return out;
     case "permissions.denied":
       out.form =
-        "Your account is missing the required permission. Ask a platform administrator.";
+        "Your account does not have the necessary permission. Write to a platform administrator.";
       return out;
     case "superadmin.missing_reason":
     case "superadmin.reason_required":
       out.form =
-        "An audit reason is required for cross-tenant changes. Provide a reason in the prompt and retry.";
+        "A change for a different tenant needs an audit reason. Write a reason in the prompt and try again.";
       return out;
     default:
       if (field !== undefined && FIELD_KEYS.has(field)) {

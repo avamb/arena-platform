@@ -123,7 +123,7 @@ describe("SessionOverviewBody", () => {
   it("tells a seat sold here from one sold upstream", () => {
     const cells = tierRow(markup(), SEATED).match(/<td[^>]*>([^<]*)/g)?.map((c) => c.replace(/<td[^>]*>/, ""));
     // Category, Type, Price, Places, Free, Held, Sold here, Sold upstream, Withheld, Paid lines, Revenue
-    expect(cells).toEqual(["Balcony", "Seated", "500.00 CZK", "90", "51", "0", "1", "21", "17", "1", "500.00 CZK"]);
+    expect(cells).toEqual(["Balcony", "With seats", "500.00 CZK", "90", "51", "0", "1", "21", "17", "1", "500.00 CZK"]);
   });
 
   it("marks a closed category", () => {
@@ -135,7 +135,7 @@ describe("SessionOverviewBody", () => {
     const html = markup();
     expect(html).toContain('data-testid="session-overview-seats-row"');
     expect(html).toContain('data-testid="session-overview-ga-row"');
-    expect(html).toContain("Seats · 30% of sellable sold");
+    expect(html).toContain("Seats · 30% of the seats for sale are sold");
   });
 
   it("falls back to the e-mail when the order carries no buyer name", () => {
@@ -156,7 +156,7 @@ describe("SessionOverviewBody", () => {
       { ...summary, places: { seats: zero, ga: zero }, tiers: [], money: [], orders: [], refunds: [], promos: [] },
       [],
     );
-    expect(html).toContain("This session has no places yet.");
+    expect(html).toContain("This session has no seats.");
     expect(html).toContain("No categories.");
     expect(html).toContain("No refunds.");
     expect(html).toContain("No promo codes used.");

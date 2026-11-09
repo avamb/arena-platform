@@ -200,7 +200,7 @@ export const SEAT_STATUS_LABELS: Record<SeatStatus, string> = {
   available: "Available",
   held: "Held",
   sold: "Sold",
-  unavailable: "Unavailable",
+  unavailable: "Blocked",
 };
 
 // ---------------------------------------------------------------------------
@@ -308,7 +308,7 @@ export interface CategoryCounter {
 /**
  * Read-only counters keyed by category index. Uses `categories[]` from
  * the geometry as the source of truth for name + colour. Seats whose
- * category_index is unknown are grouped under a synthetic "Uncategorised"
+ * category_index is unknown are grouped under a synthetic "No category"
  * bucket with index=0 so the operator can spot importer drift.
  */
 export function computeCategoryCounters(
@@ -327,7 +327,7 @@ export function computeCategoryCounters(
   }
   const uncategorised: CategoryCounter = {
     index: 0,
-    name: "Uncategorised",
+    name: "No category",
     color: UNKNOWN_STATUS_COLOUR,
     total: 0,
     by_status: { available: 0, held: 0, sold: 0, unavailable: 0 },
@@ -446,7 +446,7 @@ export function renderSeatMapSVG(
       width,
     )} ${round(
       height,
-    )}" role="img" aria-label="Interactive session seat map" data-testid="session-seats-svg">` +
+    )}" role="img" aria-label="Seat map of the session" data-testid="session-seats-svg">` +
     `<g data-role="seats">${parts.join("")}</g>` +
     `</svg>`
   );
@@ -649,8 +649,8 @@ export function SessionSeatsScreen({
       setOutcomeSummary(null);
       setBanner({
         tone: "ok",
-        message: `Reassigned ${res.summary.updated} seat(s) to tier "${tierName}"${
-          res.summary.unknown > 0 ? ` (${res.summary.unknown} unknown seat_key skipped)` : ""
+        message: `We moved ${res.summary.updated} seat(s) to category "${tierName}"${
+          res.summary.unknown > 0 ? ` (we skipped ${res.summary.unknown} seat_key that we do not know)` : ""
         }. seat_status_version=${res.seat_status_version}.`,
       });
       setSelected(new Set<string>());
@@ -689,7 +689,7 @@ export function SessionSeatsScreen({
       setOutcomeSummary(summary);
       setBanner({
         tone: "ok",
-        message: `Applied: ${res.summary.changed} changed, ${res.summary.noop} noop, ${res.summary.skipped} skipped.`,
+        message: `Done: ${res.summary.changed} changed, ${res.summary.noop} with no change, ${res.summary.skipped} skipped.`,
       });
       setSelected(new Set<string>());
       qc.invalidateQueries({ queryKey: ["session-seats-status", sessionId] });
@@ -837,7 +837,7 @@ export function SessionSeatsScreen({
         </div>
       ) : schemaQuery.isError ? (
         <div style={errorBoxStyle} role="alert" data-testid="session-seats-schema-error">
-          <strong>Failed to load seat map.</strong>
+          <strong>We did not load the seat map.</strong>
           <div style={errorCodeStyle}>{schemaQuery.error?.code ?? "unknown.error"}</div>
           {schemaQuery.error?.message ? (
             <div>{schemaQuery.error.message}</div>
@@ -1050,7 +1050,7 @@ function SelectionPanel({
           onClick={onBlock}
           data-testid="session-seats-block"
         >
-          {pending ? "Applying…" : "Make unavailable"}
+          {pending ? "Applying…" : "Block"}
         </button>
         <button
           type="button"
@@ -1059,7 +1059,7 @@ function SelectionPanel({
           onClick={onUnblock}
           data-testid="session-seats-unblock"
         >
-          {pending ? "Applying…" : "Make available"}
+          {pending ? "Applying…" : "Unblock"}
         </button>
         <button
           type="button"
@@ -1079,11 +1079,11 @@ function OutcomeSummaryPanel({ summary }: { summary: OutcomeSummary }) {
   return (
     <div style={sectionStyle} data-testid="session-seats-outcomes">
       <div style={sectionTitleStyle}>
-        Last batch — {summary.changed.length} changed,{" "}
-        {summary.noop.length} noop, {summary.skipped.length} skipped
+        Last batch: {summary.changed.length} changed,{" "}
+        {summary.noop.length} with no change, {summary.skipped.length} skipped
       </div>
       {summary.skipped.length === 0 ? (
-        <p style={hintStyle}>All seats accepted the transition.</p>
+        <p style={hintStyle}>All seats got the new status.</p>
       ) : (
         <ul style={skippedListStyle} data-testid="session-seats-skipped">
           {Object.entries(summary.skippedByReason).map(([reason, group]) => (
@@ -1131,7 +1131,7 @@ function CategoryPicker({
       </div>
       <div style={selectorRowStyle}>
         <label style={miniLabelStyle}>
-          Target tier
+          Target category
           <select
             value={tierID}
             onChange={(e) => setTierID(e.target.value)}
@@ -1164,13 +1164,13 @@ function CategoryPicker({
       </div>
       {tiers.length === 0 ? (
         <p style={hintStyle}>
-          No active tiers on this session — create tiers first in the
-          session tier editor.
+          This session has no active categories. First make categories in the
+          category editor of the session.
         </p>
       ) : (
         <p style={hintStyle}>
-          Reassignment is rejected for seats currently held or sold; the
-          error banner will list the conflicting keys.
+          We do not move a seat that is held or sold. The error banner shows
+          the keys of these seats.
         </p>
       )}
     </div>
@@ -1207,7 +1207,7 @@ function SeatTable({
   if (error !== null) {
     return (
       <div style={errorBoxStyle} role="alert" data-testid="session-seats-table-error">
-        <strong>Failed to load seat inventory.</strong>
+        <strong>We did not load the seat inventory.</strong>
         <div style={errorCodeStyle}>{error.code ?? "unknown.error"}</div>
         {error.message ? <div>{error.message}</div> : null}
       </div>
@@ -1216,7 +1216,7 @@ function SeatTable({
   if (rows.length === 0) {
     return (
       <div style={statusBoxStyle} role="status">
-        No seated inventory materialized for this session.
+        This session has no seats in the inventory.
       </div>
     );
   }
@@ -1235,7 +1235,7 @@ function SeatTable({
               <th style={countersThStyle}>Sector</th>
               <th style={countersThStyle}>Row</th>
               <th style={countersThStyle}>Seat</th>
-              <th style={countersThStyle}>Category (tier)</th>
+              <th style={countersThStyle}>Category</th>
               <th style={countersThStyle}>Price</th>
               <th style={countersThStyle}>Status</th>
             </tr>
@@ -1309,10 +1309,10 @@ function SectorCounters({
         <thead>
           <tr>
             <th style={countersThStyle}>Sector</th>
-            <th style={countersThStyle}>Avail</th>
+            <th style={countersThStyle}>Free</th>
             <th style={countersThStyle}>Held</th>
             <th style={countersThStyle}>Sold</th>
-            <th style={countersThStyle}>Unavailable</th>
+            <th style={countersThStyle}>Blocked</th>
             <th style={countersThStyle}>Total</th>
           </tr>
         </thead>
@@ -1346,10 +1346,10 @@ function CategoryCounters({
         <thead>
           <tr>
             <th style={countersThStyle}>Category</th>
-            <th style={countersThStyle}>Avail</th>
+            <th style={countersThStyle}>Free</th>
             <th style={countersThStyle}>Held</th>
             <th style={countersThStyle}>Sold</th>
-            <th style={countersThStyle}>Unavailable</th>
+            <th style={countersThStyle}>Blocked</th>
             <th style={countersThStyle}>Total</th>
           </tr>
         </thead>

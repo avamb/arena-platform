@@ -436,7 +436,7 @@ describe("StripeWebhookConfigUrlsView", () => {
   it("shows a hint instead of a URL for a config that is not saved yet", () => {
     const html = render([makeConfig({ id: "" })]);
     expect(html).toContain("stripe-webhook-config-url-unsaved");
-    expect(html).toContain("has not been saved yet");
+    expect(html).toContain("is not saved");
     // No partial / broken URL is rendered at all.
     expect(html).not.toContain("/v1/payment-intents/webhook");
   });
@@ -444,7 +444,7 @@ describe("StripeWebhookConfigUrlsView", () => {
   it("shows the save-first hint when the organization has no Stripe config", () => {
     const html = render([]);
     expect(html).toContain("stripe-webhook-config-url-none");
-    expect(html).toContain("once it is saved");
+    expect(html).toContain("after you save it");
     expect(html).not.toContain("/v1/payment-intents/webhook/");
   });
 
@@ -625,7 +625,7 @@ describe("StripeApiKeyPermissionsView", () => {
     const html = render();
     expect(html).toContain("can stay");
     expect(html).toContain("None");
-    expect(html).toContain("mode has to match");
+    expect(html).toContain("mode must match");
     // The key's scope and the signing secret are unrelated; conflating them
     // is how an operator ends up granting Webhook Endpoints access.
     expect(html).toContain("webhook_secret");

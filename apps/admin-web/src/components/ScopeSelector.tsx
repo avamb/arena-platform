@@ -97,7 +97,7 @@ function DesktopScopeSelector({
         value={activeRaw ?? ""}
         onChange={onChange}
         style={selectStyle}
-        aria-label="Active authorization scope"
+        aria-label="Active scope"
       >
         {availableScopes.map((s) => (
           <option key={s.raw} value={s.raw} title={s.raw}>

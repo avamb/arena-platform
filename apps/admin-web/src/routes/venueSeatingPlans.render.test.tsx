@@ -73,8 +73,8 @@ describe("CreatePlanFormView validation display (AB-25a)", () => {
 
   it("renders one message per unmet requirement", () => {
     const html = createFormMarkup({ issues: createPlanFormIssues("", "") });
-    expect(html).toContain("Plan name is required.");
-    expect(html).toContain("Owner organization is required.");
+    expect(html).toContain("Type the plan name.");
+    expect(html).toContain("Select the owner organization.");
     expect(html).toContain('data-testid="venues-plan-create-validation"');
     expect(html).toContain('role="alert"');
   });
@@ -93,15 +93,15 @@ describe("CreatePlanFormView validation display (AB-25a)", () => {
       name: "Main Hall",
       issues: createPlanFormIssues("Main Hall", ""),
     });
-    expect(html).not.toContain("Plan name is required.");
-    expect(html).toContain("Owner organization is required.");
+    expect(html).not.toContain("Type the plan name.");
+    expect(html).toContain("Select the owner organization.");
     expect(html).not.toContain('data-testid="venues-plan-create-name-error"');
   });
 
   it("renders no validation feedback before the first submit attempt", () => {
     const html = createFormMarkup({ issues: [] });
     expect(html).not.toContain('data-testid="venues-plan-create-validation"');
-    expect(html).not.toContain("is required.");
+    expect(html).not.toContain("Type the plan name.");
     expect(html).not.toContain('aria-invalid="true"');
   });
 

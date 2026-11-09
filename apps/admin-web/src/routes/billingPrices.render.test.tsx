@@ -72,7 +72,7 @@ describe("VersionsTable", () => {
 
   it("says so when there is nothing", () => {
     expect(renderToStaticMarkup(createElement(VersionsTable, { series: [], onOpen: noop, onRevoke: noop, onNewVersion: noop }))).toContain(
-      "No price list yet",
+      "No price list",
     );
   });
 });
@@ -114,7 +114,7 @@ describe("VersionDetailBody", () => {
     expect(html).toContain("1.5%");
     expect(html).toContain("3.00 EUR (300)");
     expect(html).toContain("10.00 EUR");
-    expect(html).toContain("Fixed per ticket");
+    expect(html).toContain("Fixed amount for each ticket");
   });
 
   it("shows the version parameters", () => {
@@ -138,7 +138,7 @@ describe("VersionFormBody", () => {
         onAddPack: noop,
       }),
     );
-    expect(html).toContain("nothing is filled in for you");
+    expect(html).toContain("the form has no default numbers");
     expect(html).toContain('data-testid="billing-add-rule-fixed_per_ticket"');
     expect(html).not.toMatch(/value="\d/);
   });
@@ -265,7 +265,7 @@ describe("RateFormBody and TermsFormBody", () => {
   it("shows the venue, existing-client and tools marks and the next terms", () => {
     const html = renderToStaticMarkup(createElement(AccountsTable, { accounts: [account, { ...account, id: "acc-2", account_kind: "tools", flags: { venue: false, tools: true, existing_client: false } }], onChangeTerms: noop }));
     expect(html).toContain("Permanent venue");
-    expect(html).toContain("Existing client");
+    expect(html).toContain("Individual rate");
     expect(html).toContain("Tools");
     expect(html).toContain("2026-12-01 00:00Z: standard");
   });
@@ -281,7 +281,7 @@ describe("RateFormBody and TermsFormBody", () => {
       }),
     );
     expect(html).toContain("tools account");
-    expect(html).toContain("prepaid only");
+    expect(html).toContain("A tools account can only prepay.");
     expect(html).toContain('value="standard-2026" selected');
   });
 
@@ -294,20 +294,20 @@ describe("RateFormBody and TermsFormBody", () => {
     const buyer = renderToStaticMarkup(createElement(TermsFormBody, { ...base, form: { ...termsFormFrom(account.terms[0]), feeMode: "buyer_pays" } }));
     expect(buyer).toContain('value="buyer_pays" selected');
     expect(buyer).toContain("The organizer receives the net ticket price");
-    expect(buyer).toContain("service charge is the platform commission");
+    expect(buyer).toContain("This fee is the income of the platform");
   });
 
   it("shows the invitations control with the current value and the explanation", () => {
     const base = { account, onChange: noop, priceLists: ["standard-2026"], errors: [] };
     const free = renderToStaticMarkup(createElement(TermsFormBody, { ...base, form: termsFormFrom(account.terms[0]) }));
-    expect(free).toContain("Invitations issued by staff");
+    expect(free).toContain("Invitations that staff issue");
     expect(free).toContain('value="free" selected');
-    expect(free).toContain("A CSV upload is always charged at the standard rate");
-    expect(free).toContain("A cancelled invitation keeps its charge");
-    expect(free).toContain("applies from the date these terms start");
+    expect(free).toContain("We charge a CSV upload at the standard rate each time");
+    expect(free).toContain("A canceled invitation keeps its charge");
+    expect(free).toContain("applies from the date when these terms start");
     const std = renderToStaticMarkup(createElement(TermsFormBody, { ...base, form: { ...termsFormFrom(account.terms[0]), complimentaryBilling: "standard" } }));
     expect(std).toContain('value="standard" selected');
-    expect(std).toContain("Standard per-ticket rate");
+    expect(std).toContain("Standard rate for each ticket");
   });
 
   it("marks standard-rate invitations in the accounts table", () => {

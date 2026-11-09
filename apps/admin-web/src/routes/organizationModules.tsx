@@ -132,7 +132,7 @@ export function ShopModuleView({
         <dt style={mutedStyle}>Storefront</dt>
         <dd style={{ margin: 0 }} data-testid="org-module-storefront">
           {shop.enabled ? "Open" : "Closed"}
-          <span style={{ ...mutedStyle, display: "inline", marginLeft: 8 }}>The organization opens and closes it itself.</span>
+          <span style={{ ...mutedStyle, display: "inline", marginLeft: 8 }}>The organization opens and closes the storefront.</span>
         </dd>
         <dt style={mutedStyle}>Domain</dt>
         <dd style={{ margin: 0 }} data-testid="org-module-domain">
@@ -143,7 +143,7 @@ export function ShopModuleView({
             disabled={!domainOpen}
             onClick={() => onAction("domain")}
             data-testid="org-module-domain-edit"
-            title={domainOpen ? undefined : "The shop settings are closed while the module is not connected."}
+            title={domainOpen ? undefined : "The shop settings are closed. Connect the module first."}
           >
             Domain
           </button>
@@ -269,8 +269,8 @@ export function PricingFieldsBody({ value, onChange }: { value: PricingFields; o
         {value.pricing === "price_list"
           ? "The price list sets the price (0 today)."
           : value.pricing === "free"
-            ? "The module costs nothing for this organization."
-            : "Leave the currency empty for the billing currency of the organization. A different currency is refused."}
+            ? "The module is free for this organization."
+            : "Keep the currency empty to use the billing currency of the organization. We refuse a different currency."}
       </p>
     </>
   );
@@ -279,7 +279,7 @@ export function PricingFieldsBody({ value, onChange }: { value: PricingFields; o
 export function ReasonField({ value, onChange }: { value: string; onChange: (v: string) => void }): JSX.Element {
   return (
     <label style={labelStyle}>
-      Reason (kept in the audit log)
+      Reason (saved in the audit log)
       <input style={inputStyle} value={value} onChange={(e) => onChange(e.target.value)} data-testid="org-module-reason" />
     </label>
   );
@@ -289,7 +289,7 @@ export function ConnectFormBody({ form, onChange }: { form: ConnectForm; onChang
   return (
     <>
       <label style={labelStyle}>
-        First day (UTC, today or later)
+        First day (UTC, today or after)
         <input type="date" style={inputStyle} value={form.startsOn} onChange={(e) => onChange({ ...form, startsOn: e.target.value })} data-testid="org-module-starts" />
       </label>
       <PricingFieldsBody value={form} onChange={(v) => onChange({ ...form, ...v })} />
@@ -302,7 +302,7 @@ export function RepriceFormBody({ form, onChange }: { form: RepriceForm; onChang
   return (
     <>
       <label style={labelStyle}>
-        New price from (UTC, today or later)
+        New price from (UTC, today or after)
         <input type="date" style={inputStyle} value={form.from} onChange={(e) => onChange({ ...form, from: e.target.value })} data-testid="org-module-from" />
       </label>
       <PricingFieldsBody value={form} onChange={(v) => onChange({ ...form, ...v })} />
@@ -315,11 +315,11 @@ export function EndFormBody({ form, onChange }: { form: EndForm; onChange: (f: E
   return (
     <>
       <p style={{ margin: 0, fontSize: 13 }}>
-        From the day after the last day the storefront is closed and the shop falls to orders only, which stays for good while the organization has a
-        paid or an open order. Products and pages are kept. Days already charged stay charged.
+        After the last day, the storefront is closed. The shop has orders only. It keeps orders only while the organization has a
+        paid or an open order. We keep the products and pages. We do not change the days that we charged.
       </p>
       <label style={labelStyle}>
-        Last day (UTC, yesterday or later)
+        Last day (UTC, yesterday or after)
         <input type="date" style={inputStyle} value={form.endsOn} onChange={(e) => onChange({ ...form, endsOn: e.target.value })} data-testid="org-module-ends" />
       </label>
       <ReasonField value={form.reason} onChange={(reason) => onChange({ ...form, reason })} />
@@ -344,17 +344,17 @@ export function DomainFormBody({
   if (!configured) {
     return (
       <p style={{ margin: 0, fontSize: 13 }} data-testid="org-module-domain-unconfigured">
-        The organization has not saved its shop settings yet. The domain is stored with them, so ask the organization to save the settings first.
+        The organization did not save its shop settings. We save the domain with them. Tell the organization to save the settings first.
       </p>
     );
   }
   return (
     <>
       <label style={labelStyle}>
-        Storefront domain (empty removes it)
+        Storefront domain (empty = remove it)
         <input style={inputStyle} value={domain} placeholder="shop.example.com" onChange={(e) => onDomain(e.target.value)} data-testid="org-module-domain-input" />
       </label>
-      <p style={{ ...mutedStyle, fontSize: 12 }}>Only the domain changes. The other shop settings are sent back as they were read.</p>
+      <p style={{ ...mutedStyle, fontSize: 12 }}>Only the domain changes. We send the other shop settings back as they are.</p>
       <ReasonField value={reason} onChange={onReason} />
     </>
   );
@@ -425,10 +425,10 @@ export function OrganizationModulesTab({ orgId }: { orgId: string }): JSX.Elemen
   });
   const saveDomain = useMutation({
     mutationFn: (v: { domain: string; reason: string }) => {
-      if (settings.data === undefined) throw new Error("The shop settings are not loaded.");
+      if (settings.data === undefined) throw new Error("We did not load the shop settings.");
       return putShopSettings(orgId, domainUpdateBody(settings.data, v.domain), v.reason);
     },
-    onSuccess: (s) => done(s.shop_domain != null && s.shop_domain !== "" ? `The domain is ${s.shop_domain}.` : "The domain is removed."),
+    onSuccess: (s) => done(s.shop_domain != null && s.shop_domain !== "" ? `The domain is ${s.shop_domain}.` : "We removed the domain."),
     onError: (e) => setServerError(moduleErrorMessage(e)),
   });
   const busy = connect.isPending || reprice.isPending || end.isPending || saveDomain.isPending;
@@ -468,7 +468,7 @@ export function OrganizationModulesTab({ orgId }: { orgId: string }): JSX.Elemen
       const problems: string[] = [];
       const dp = checkDomain(domain);
       if (dp !== null) problems.push(dp);
-      if (modal.reason.trim() === "") problems.push("Reason: write why. It is kept in the audit log.");
+      if (modal.reason.trim() === "") problems.push("Reason: write the cause. We keep it in the audit log.");
       if (problems.length > 0) return setErrors(problems);
       setErrors([]);
       saveDomain.mutate({ domain, reason: modal.reason.trim() });
@@ -511,7 +511,7 @@ export function OrganizationModulesTab({ orgId }: { orgId: string }): JSX.Elemen
       {modal.kind === "reprice" ? (
         <Dialog title="Change the monthly price" testId="org-module-reprice-dialog" onClose={close} onSubmit={submit} footer={footer("org-module-reprice-save")}>
           <p style={{ margin: 0, fontSize: 13 }}>
-            The current period ends the day before and a new one starts with the new price. Current period: from {modal.period.starts_on},{" "}
+            The current period ends the day before. A new period starts with the new price. Current period: from {modal.period.starts_on},{" "}
             {priceLabel(modal.period.monthly_price_minor, modal.period.currency).toLowerCase()}.
           </p>
           <RepriceFormBody form={modal.form} onChange={(form) => setModal({ ...modal, form })} />

@@ -125,8 +125,9 @@
 | session | сеанс | сессия, дата, показ | одна дата и время события. **Решено 12.10**: по-русски всегда «сеанс». В английском остаётся session |
 | ticket | билет | пропуск, входной | один документ с кодом |
 | order | заказ | покупка, корзина (после оплаты) | оплаченная или ожидающая оплаты покупка |
-| buyer | покупатель | клиент, юзер; EN: customer, client | кто платит. **09.11**: в админке `customer` заменяем на `buyer` |
+| buyer | покупатель | клиент, юзер; EN: customer, client | кто покупает билеты. **09.11**: в админке `customer` заменяем на `buyer`. «Клиент» и `client` для покупателя не используем никогда |
 | organizer | организатор | промоутер (другое понятие) | клиент платформы |
+| client | клиент | | **Решено 09.11**: организатор как клиент платформы (биллинг, тарифы, CRM). Только в этом значении. Покупатель билетов — всегда `buyer` |
 | promoter | промоутер | организатор | см. миграцию 0113: может отличаться |
 | category | категория | тариф, тип билета; EN: tier | группа билетов с ценой. **09.11**: `tier` в админке заменяем на `category` |
 | venue | площадка | зал, место проведения; EN: hall | **Решено 13.10**. «Схема зала» разрешена: это название схемы мест, а не площадки. **09.11**: в английском схема мест — `seating plan`, слово `hall` не используем |
@@ -153,7 +154,7 @@ STE разрешает слово вне своего словаря, если �
 | Группа | Существительные |
 |---|---|
 | Продажа билетов | event, session, ticket, order, category, venue, seat, seating plan, row, zone, hold, invitation, guest list, sample ticket, poster, sales end, doors |
-| Деньги | price, payment, payment provider, refund, discount, promo code, cashback, credit, service fee, platform fee, invoice, receipt, currency, tax, VAT, dispute, chargeback, amount, sum |
+| Деньги | price, payment, payment provider, refund, discount, promo code, cashback, credit, service fee, platform fee, individual rate, invoice, receipt, currency, tax, VAT, dispute, chargeback, amount, sum |
 | Роли | buyer, organizer, promoter, owner, manager, operator, guest, seller, partner, applicant, administrator, superadmin, team, organization, platform, support |
 | Названия | Arena, Telegram, Stripe, Flitt, WordPress, Bil24, MACS, Google, Meta |
 | Интерфейс и связь | bot, e-mail, site, link, password, account, button, message, chat, menu, screen, field, file, image, browser, QR code, barcode, scanner, storefront, channel, sales link, queue, draft, preview, archive, version, layout, map, tab, report, setting, notification, template, widget |
@@ -167,6 +168,7 @@ STE разрешает слово вне своего словаря, если �
 | Интерфейс | click, tap, press, type, enter, select, copy, paste, save, delete, edit, open, close, filter, sort, scroll, print, upload, download, import, export, share, reload, scan |
 | Вход | sign in, sign out (технические глаголы, поэтому это не нарушение правила о фразовых глаголах) |
 | Продажа билетов | sell, buy, pay, refund, publish, unpublish, invite, issue, reissue, resend, charge, archive |
+| Биллинг | link (связать банковский платёж со счётом: «Link to invoice», статусы «Linked» и «Not linked». Решено 09.11, подходит и для будущей автоматической связи по API банка), activate, deactivate |
 
 ### 4.1 Разрешённые исключения (узкий список)
 
@@ -281,5 +283,6 @@ STE разрешает слово вне своего словаря, если �
 - Для входа без мест количество пишем в билетах: «50 tickets».
 - Сбор с покупателя и комиссия платформы — два разных термина: `service fee` и `platform fee`.
 - Тёплый тон важнее строгого STE: `please` и «I» в боте остаются (раздел 2.1).
+- `client` — организатор как клиент платформы, `buyer` — покупатель билетов. Метка «Existing client» в тарифах заменена на «Individual rate»: она означает индивидуальный тариф организации.
 - Порядок работы: сначала английский, потом остальные языки от нового английского исходника.
 - Тест `text_style_test.go` пока знает только старые синонимы. Новые английские синонимы добавляем в `styleForbidden` вместе с переписыванием каждого каталога, иначе тест сразу станет красным.

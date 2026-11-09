@@ -37,6 +37,6 @@ describe("login page for organizers", () => {
       text: "auth.invalid_credentials: bad password",
     });
     expect(__test.classifyLoginError(new Error("boom"))).toEqual({ kind: "text", text: "boom" });
-    expect(__test.classifyLoginError("x")).toEqual({ kind: "text", text: "Sign-in failed" });
+    expect(__test.classifyLoginError("x")).toEqual({ kind: "text", text: "We did not sign you in. Try again." });
   });
 });

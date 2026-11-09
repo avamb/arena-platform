@@ -26,20 +26,28 @@ ORDER  BY created_at ASC, id ASC;
 
 -- name: ListOrganizationsPage :many
 -- Returns a stable page of active organizations. Pass an empty search string to
--- return all organizations; otherwise name and slug are matched case-insensitively.
+-- return all organizations; otherwise the search text is matched case-insensitively
+-- against the name, legal name, slug, number, id, country, locale, tax and
+-- registration numbers, contact e-mail and phone, site, city and sender e-mail.
 SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at
 FROM   organizations
 WHERE  deleted_at IS NULL
-  AND  ($1 = '' OR name ILIKE '%' || $1 || '%' OR slug ILIKE '%' || $1 || '%')
+  AND  ($1 = '' OR concat_ws(' ', name, legal_name, slug, display_number::text, id::text, country,
+                              default_locale, tax_id, registration_number, contact_email,
+                              contact_phone, website_url, legal_address_city, sender_email)
+                    ILIKE '%' || $1 || '%')
 ORDER  BY created_at ASC, id ASC
 LIMIT  $2 OFFSET $3;
 
 -- name: CountOrganizationsPage :one
--- Returns the number of active organizations matching the name/slug search.
+-- Returns the number of active organizations matching the same search.
 SELECT COUNT(*)
 FROM   organizations
 WHERE  deleted_at IS NULL
-  AND  ($1 = '' OR name ILIKE '%' || $1 || '%' OR slug ILIKE '%' || $1 || '%');
+  AND  ($1 = '' OR concat_ws(' ', name, legal_name, slug, display_number::text, id::text, country,
+                              default_locale, tax_id, registration_number, contact_email,
+                              contact_phone, website_url, legal_address_city, sender_email)
+                    ILIKE '%' || $1 || '%');
 
 -- name: UpdateOrganization :one
 UPDATE organizations

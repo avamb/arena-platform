@@ -36,7 +36,7 @@ type Modal = { kind: "none" } | { kind: "new"; form: WhiteLabelForm } | { kind: 
 
 function messageOf(err: unknown): string {
   if (err instanceof ApiError) return err.message;
-  return err instanceof Error ? err.message : "The request failed. Please try again.";
+  return err instanceof Error ? err.message : "The request did not complete. Please try again.";
 }
 
 export function WhiteLabelPanel({ orgs }: { orgs: readonly OrgChoice[] }): JSX.Element {
@@ -82,7 +82,7 @@ export function WhiteLabelPanel({ orgs }: { orgs: readonly OrgChoice[] }): JSX.E
   };
   const submitEnd = (period: WhiteLabelPeriod, endsOn: string): void => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(endsOn)) {
-      setErrors(["Last day: pick a date."]);
+      setErrors(["Last day: select a date."]);
       return;
     }
     setErrors([]);
@@ -95,9 +95,9 @@ export function WhiteLabelPanel({ orgs }: { orgs: readonly OrgChoice[] }): JSX.E
   return (
     <div data-testid="billing-white-label">
       <p style={{ margin: "0 0 12px", color: "#475569", fontSize: 14 }}>
-        White label hides the line "Tickets: Arena Sold Out" in the widget, the platform line in the letters and the shop
-        footer of one brand. The brand is the organization or one of its promoters. Each completed month is charged by the
-        number of days. Days are UTC calendar days.
+        White label hides the line "Tickets: Arena Sold Out" in the widget. It hides the platform line in the e-mails and
+        the footer of the shop for one brand. The brand is the organization or one of its promoters. We charge each full
+        month for the number of days. The days are UTC calendar days.
       </p>
       <div style={{ marginBottom: 12 }}>
         <button
@@ -122,13 +122,13 @@ export function WhiteLabelPanel({ orgs }: { orgs: readonly OrgChoice[] }): JSX.E
           {messageOf(list.error)}
         </div>
       ) : null}
-      {items.length === 0 && !list.isPending ? <p>No brand has white label yet.</p> : null}
+      {items.length === 0 && !list.isPending ? <p>No brand has white label.</p> : null}
       {items.length > 0 ? (
         <div style={{ overflowX: "auto" }}>
           <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 14 }} data-testid="white-label-table">
             <thead>
               <tr>
-                {["Organization", "Brand", "First day", "Last day", "Monthly price", "State", "Reason", ""].map((h) => (
+                {["Organization", "Brand", "First day", "Last day", "Monthly price", "State", "Cause", ""].map((h) => (
                   <th key={h} style={{ textAlign: "left", padding: "6px 8px", borderBottom: "1px solid #e2e8f0" }}>
                     {h}
                   </th>
@@ -139,7 +139,7 @@ export function WhiteLabelPanel({ orgs }: { orgs: readonly OrgChoice[] }): JSX.E
               {items.map((p) => (
                 <tr key={p.id} data-testid={`white-label-row-${p.id}`}>
                   <td style={{ padding: "6px 8px" }}>{p.org_name ?? p.org_id}</td>
-                  <td style={{ padding: "6px 8px" }}>{p.promoter_id ? p.promoter_name ?? p.promoter_id : "The organization itself"}</td>
+                  <td style={{ padding: "6px 8px" }}>{p.promoter_id ? p.promoter_name ?? p.promoter_id : "The organization"}</td>
                   <td style={{ padding: "6px 8px" }}>{p.starts_on}</td>
                   <td style={{ padding: "6px 8px" }}>{p.ends_on ?? "No end"}</td>
                   <td style={{ padding: "6px 8px" }}>{monthlyPriceLabel(p.monthly_price_minor, p.currency)}</td>
@@ -207,8 +207,8 @@ export function WhiteLabelPanel({ orgs }: { orgs: readonly OrgChoice[] }): JSX.E
           }
         >
           <p style={{ marginTop: 0 }}>
-            The badge comes back the day after the last day. Yesterday ends white label now. Days already charged stay
-            charged.
+            The badge comes back on the day after the last day. If you select yesterday, white label ends immediately. The
+            days that we charged stay charged.
           </p>
           <label style={labelStyle}>
             Last day (UTC)
@@ -241,7 +241,7 @@ function WhiteLabelFormBody({
       <label style={labelStyle}>
         Organization
         <select style={inputStyle} value={form.orgId} onChange={(e) => onChange({ ...form, orgId: e.target.value })} data-testid="white-label-org">
-          <option value="">Choose an organization</option>
+          <option value="">Select an organization</option>
           {orgs.map((o) => (
             <option key={o.id} value={o.id}>
               {o.name}
@@ -250,7 +250,7 @@ function WhiteLabelFormBody({
         </select>
       </label>
       <label style={labelStyle}>
-        Promoter id (leave empty for the organization itself)
+        Promoter ID (keep it empty for the organization)
         <input style={inputStyle} value={form.promoterId} onChange={(e) => onChange({ ...form, promoterId: e.target.value })} data-testid="white-label-promoter" />
       </label>
       <label style={labelStyle}>
@@ -258,11 +258,11 @@ function WhiteLabelFormBody({
         <input type="date" style={inputStyle} value={form.startsOn} onChange={(e) => onChange({ ...form, startsOn: e.target.value })} data-testid="white-label-starts" />
       </label>
       <label style={labelStyle}>
-        Last day (UTC, leave empty for no end)
+        Last day (UTC, keep it empty for no end)
         <input type="date" style={inputStyle} value={form.endsOn} onChange={(e) => onChange({ ...form, endsOn: e.target.value })} data-testid="white-label-ends" />
       </label>
       <label style={labelStyle}>
-        Monthly price (leave empty for the price list, 0 is free)
+        Monthly price (keep it empty for the price list, 0 is free)
         <input
           inputMode="decimal"
           style={inputStyle}
@@ -272,7 +272,7 @@ function WhiteLabelFormBody({
         />
       </label>
       <label style={labelStyle}>
-        Currency of the price (for example EUR; it must be the organization&apos;s billing currency)
+        Currency of the price (for example EUR). It must be the billing currency of the organization.
         <input
           style={inputStyle}
           maxLength={3}

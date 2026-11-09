@@ -2982,7 +2982,7 @@ export interface paths {
         };
         /**
          * Cross-tenant list of all organizations (superadmin)
-         * @description Cross-tenant list of organizations (superadmin), with name/slug search and offset pagination. Requires the `superadmin.read` permission.
+         * @description Cross-tenant list of organizations (superadmin), with a search over all main attributes and offset pagination. Requires the `superadmin.read` permission.
          */
         get: operations["superadminListOrganizations"];
         put?: never;
@@ -47792,7 +47792,7 @@ export interface operations {
     superadminListOrganizations: {
         parameters: {
             query?: {
-                /** @description Case-insensitive substring search across organization name and slug. */
+                /** @description Case-insensitive substring search across the name, legal name, slug, number, id, country, locale, tax and registration numbers, contact e-mail and phone, site, city and sender e-mail of the organization. */
                 q?: string;
                 /** @description Maximum number of rows to return. */
                 limit?: number;

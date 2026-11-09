@@ -80,10 +80,11 @@ export function AuthGate({ children }: AuthGateProps) {
   if (auth.status === "me_failed") {
     return (
       <div role="alert" style={recoveryStyle}>
-        <h1 style={{ margin: 0, fontSize: 20 }}>Unable to load your profile</h1>
+        <h1 style={{ margin: 0, fontSize: 20 }}>We did not load your profile</h1>
         <p style={{ margin: "8px 0", fontSize: 13 }}>
-          The admin shell could not load <code>/v1/me</code>. Admin pages are
-          blocked until your profile loads cleanly.
+          The admin console did not load <code>/v1/me</code>. The admin
+          pages stay closed until your profile loads. Press Retry. If the
+          problem stays, sign out and sign in again.
         </p>
         {auth.meError ? (
           <pre style={errorBoxStyle}>

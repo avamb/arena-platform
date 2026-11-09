@@ -150,7 +150,7 @@ async function rawFetch<T>(opts: RawFetchOptions): Promise<T> {
         message:
           cause instanceof Error
             ? cause.message
-            : "An audit reason is required for cross-tenant requests.",
+            : "An audit reason is necessary for a request to another organization.",
       });
     }
     headers["X-Admin-Reason"] = reason;
@@ -200,7 +200,7 @@ async function rawFetch<T>(opts: RawFetchOptions): Promise<T> {
     } catch {
       throw new ApiError(response.status, {
         code: "http.invalid_json",
-        message: "Server returned a non-JSON response",
+        message: "The server sent a response that is not JSON",
       });
     }
   }
@@ -393,7 +393,7 @@ export async function authedFetch<T>(req: AuthedRequest): Promise<T> {
           message:
             cause instanceof Error
               ? cause.message
-              : "An audit reason is required for cross-tenant requests.",
+              : "An audit reason is necessary for a request to another organization.",
         });
       }
       return rawFetch<T>({
@@ -510,7 +510,7 @@ export async function uploadMedia(
     if (externalAlreadyAborted()) {
       throw new ApiError(0, {
         code: "network.aborted",
-        message: "Upload cancelled",
+        message: "Upload canceled",
       });
     }
     const headers: Record<string, string> = {
@@ -573,7 +573,7 @@ export async function uploadMedia(
       } catch {
         throw new ApiError(response.status, {
           code: "http.invalid_json",
-          message: "Server returned a non-JSON response",
+          message: "The server sent a response that is not JSON",
         });
       }
     }
@@ -687,7 +687,7 @@ export function uploadViaXHR(
           reject(
             new ApiError(status, {
               code: "http.invalid_json",
-              message: "Server returned a non-JSON response",
+              message: "The server sent a response that is not JSON",
             }),
           );
           return;
@@ -724,7 +724,7 @@ export function uploadViaXHR(
       reject(
         new ApiError(0, {
           code: "network.aborted",
-          message: "Upload cancelled",
+          message: "Upload canceled",
         }),
       );
     };

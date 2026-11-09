@@ -85,7 +85,7 @@ export function InvoicesTable({ invoices, orgNames, onOpen, onIssue, onMarkPaid,
   if (invoices.length === 0) {
     return (
       <p style={mutedStyle} data-testid="billing-invoices-empty">
-        No invoice in this state.
+        No invoice has this status.
       </p>
     );
   }
@@ -96,12 +96,12 @@ export function InvoicesTable({ invoices, orgNames, onOpen, onIssue, onMarkPaid,
           <tr>
             <th style={thStyle}>Invoice</th>
             <th style={thStyle}>Organization</th>
-            <th style={thStyle}>Kind</th>
+            <th style={thStyle}>Type</th>
             <th style={thStyle}>Month</th>
             <th style={thStyle}>State</th>
             <th style={thStyle}>Method</th>
             <th style={{ ...thStyle, textAlign: "right" }}>Total</th>
-            <th style={thStyle}>Due</th>
+            <th style={thStyle}>Due date</th>
             <th style={thStyle} />
           </tr>
         </thead>
@@ -275,7 +275,7 @@ export function InvoiceDetailBody({ invoice, orgName }: { invoice: Invoice; orgN
       </table>
       {canMarkPaid(invoice) && invoice.card_fee_minor > 0 ? (
         <p style={hintStyle}>
-          A bank transfer for this card invoice may be the total ({formatMinor(invoice.total_minor, cur)}) or the total
+          For this card invoice, a bank transfer can be the total ({formatMinor(invoice.total_minor, cur)}) or the total
           without the card fee ({formatMinor(invoice.total_minor - invoice.card_fee_minor, cur)}).
         </p>
       ) : null}
@@ -300,8 +300,8 @@ export function UsageFormBody({ form, onChange, accounts, errors, serverError }:
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="billing-usage-form">
       <p style={hintStyle}>
-        Makes a DRAFT usage invoice of a finished month from every charge that no credit lot or earlier invoice covers.
-        If there is nothing to bill, no invoice is made. Issue the draft afterwards to give it a number and a due date.
+        This step makes a DRAFT usage invoice for a month that ended. It includes each charge that no credit lot and no previous invoice covers.
+        If there is no charge to bill, we make no invoice. Then issue the draft to give it a number and a due date.
       </p>
       <div style={gridStyle}>
         <div>
@@ -309,7 +309,7 @@ export function UsageFormBody({ form, onChange, accounts, errors, serverError }:
             Billing account
           </label>
           <select id="billing-usage-account" style={inputStyle} value={form.accountId} onChange={(e) => set({ accountId: e.target.value })} data-testid="billing-usage-account">
-            <option value="">Pick an account…</option>
+            <option value="">Select an account…</option>
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.org_name} ({a.currency})
@@ -342,9 +342,9 @@ export function IssueFormBody({ invoice, orgName, method, onChange, errors = [],
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="billing-issue-form">
       <p style={hintStyle}>
-        Issuing gives the draft for {orgName} ({formatMinor(invoice.subtotal_minor, invoice.currency)} before any card fee)
-        a number, a payment reference and a due date. After that its lines do not change; a mistake is corrected by
-        voiding it before it is paid.
+        When you issue the draft for {orgName} ({formatMinor(invoice.subtotal_minor, invoice.currency)} before the card fee), it gets
+        a number, a payment reference and a due date. After that, its lines do not change. To correct a mistake, void
+        the invoice before the organizer pays it.
       </p>
       <div>
         <label style={labelStyle} htmlFor="billing-issue-method">
@@ -360,8 +360,8 @@ export function IssueFormBody({ invoice, orgName, method, onChange, errors = [],
       </div>
       <p style={hintStyle} data-testid="billing-issue-method-hint">
         {method === "stripe_card"
-          ? "A card payment adds the average card fee as its own line (set under Payment fees; without a version for this currency the invoice cannot be issued for a card). A Stripe payment page is made after issuing."
-          : "A bank transfer adds no fee. The organizer writes the payment reference in the transfer, and the bank feed matches it."}
+          ? "A card payment adds the average card fee as a separate line. You set the fee on the Payment fees screen. If this currency has no fee version, you cannot issue the invoice for a card. After you issue the invoice, we make a Stripe payment page."
+          : "A bank transfer adds no fee. The organizer writes the payment reference in the transfer. Then the bank feed matches it."}
       </p>
       <FormMessages errors={errors} serverError={serverError} />
     </div>
@@ -382,34 +382,34 @@ export function MarkPaidFormBody({ invoice, form, onChange, errors, serverError 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="billing-markpaid-form">
       <p style={hintStyle}>
-        Use this for money that arrived outside the feeds, for example a transfer the bank feed missed. The amount must be{" "}
+        Use this for money that did not come through the feeds. Example: a transfer that the bank feed did not find. The amount must be{" "}
         {accepted.map((a, i) => (
           <span key={a}>
             {i > 0 ? " or " : ""}
             <strong>{money(a, invoice.currency)}</strong>
-            {i === 1 ? " (a transfer is net of the card fee)" : ""}
+            {i === 1 ? " (a transfer is the total without the card fee)" : ""}
           </span>
         ))}
-        . If the invoice is for credits, they are written in the same step.
+        . If the invoice is for credits, we also add the credits in this step.
       </p>
       <div style={gridStyle}>
         <div>
           <label style={labelStyle} htmlFor="billing-markpaid-amount">
-            Amount received (minor units)
+            Amount of money received (minor units)
           </label>
           <input id="billing-markpaid-amount" style={inputStyle} inputMode="numeric" value={form.amountMinor} onChange={(e) => set({ amountMinor: e.target.value })} data-testid="billing-markpaid-amount" />
           <span style={mutedStyle}>{minorPreview(form.amountMinor, invoice.currency)}</span>
         </div>
         <div>
           <label style={labelStyle} htmlFor="billing-markpaid-at">
-            Arrived (UTC)
+            Date received (UTC)
           </label>
           <input id="billing-markpaid-at" type="datetime-local" style={inputStyle} value={form.paidAtLocal} onChange={(e) => set({ paidAtLocal: e.target.value })} data-testid="billing-markpaid-at" />
         </div>
       </div>
       <div>
         <label style={labelStyle} htmlFor="billing-markpaid-ref">
-          Reference: the bank statement line or other proof
+          Reference: the bank statement line or a different document that shows the payment
         </label>
         <input id="billing-markpaid-ref" style={inputStyle} maxLength={200} value={form.reference} onChange={(e) => set({ reference: e.target.value })} data-testid="billing-markpaid-ref" />
       </div>
@@ -430,13 +430,13 @@ export function VoidFormBody({ invoice, reason, onChange, errors, serverError }:
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="billing-void-form">
       <p style={hintStyle}>
-        Voiding {invoiceLabel(invoice)} ({formatMinor(invoice.total_minor, invoice.currency)}) sends its charges back to the
-        next invoice. A paid invoice is never voided: correct it with a credit note. If a Stripe payment is already in, the
-        server refuses and the payment is booked instead.
+        When you void {invoiceLabel(invoice)} ({formatMinor(invoice.total_minor, invoice.currency)}), its charges go back to the
+        next invoice. You cannot void a paid invoice. To correct a paid invoice, use a credit note. If a Stripe payment is in, the
+        server refuses to void the invoice and books the payment.
       </p>
       <div>
         <label style={labelStyle} htmlFor="billing-void-reason">
-          Why it is voided (kept in the audit log)
+          Cause for the void (we keep it in the audit log)
         </label>
         <input id="billing-void-reason" style={inputStyle} maxLength={500} value={reason} onChange={(e) => onChange(e.target.value)} data-testid="billing-void-reason" />
       </div>

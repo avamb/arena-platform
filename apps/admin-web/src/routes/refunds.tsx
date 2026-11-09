@@ -186,11 +186,11 @@ function RefundsConsole() {
             Refunds
           </h1>
           <p style={S.subheadingStyle}>
-            Cross-tenant refund register. Filters map directly to the
-            backend's <code>org_id</code>, <code>state</code>,{" "}
-            <code>limit</code>, <code>offset</code> query parameters.
-            Read-only; refund approval / cancellation live in the
-            org-scoped console and are not mirrored here.
+            Refunds of all organizations. The filters are the same as the
+            backend query parameters <code>org_id</code>, <code>state</code>,{" "}
+            <code>limit</code> and <code>offset</code>.
+            You cannot change refunds here. To approve or cancel a refund,
+            use the console of the organization.
           </p>
         </div>
         <div style={S.refreshWrapStyle}>
@@ -201,7 +201,7 @@ function RefundsConsole() {
             disabled={query.isFetching}
             data-testid="refunds-refresh"
           >
-            {query.isFetching ? "Refreshing…" : "Refresh"}
+            {query.isFetching ? "Reloading…" : "Reload"}
           </button>
         </div>
       </header>
@@ -239,7 +239,7 @@ function RefundsConsole() {
                 style={S.selectStyle}
                 data-testid="refunds-state"
               >
-                <option value="">Any state</option>
+                <option value="">All statuses</option>
                 {REFUND_STATES.map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -248,7 +248,7 @@ function RefundsConsole() {
               </select>
             </label>
             <label style={S.fieldGroupStyle}>
-              <span style={S.fieldLabelStyle}>Page size</span>
+              <span style={S.fieldLabelStyle}>Rows on a page</span>
               <select
                 value={String(limit)}
                 onChange={(e) => setLimit(clampLimit(Number(e.target.value)))}
@@ -270,7 +270,7 @@ function RefundsConsole() {
                 onClick={() => setOffset(clampOffset(offset - limit))}
                 data-testid="refunds-prev"
               >
-                Prev
+                Previous
               </button>
               <span data-testid="refunds-page-caption">
                 Page {currentPage(offset, limit)} · rows {rows.length}
@@ -348,7 +348,7 @@ function Body({ query, rows, activeId, onOpen }: BodyProps) {
   if (rows.length === 0) {
     return (
       <div style={S.statusBoxStyle} role="status" data-testid="refunds-empty">
-        No refunds match the current filters.
+        No refund fits the filters.
       </div>
     );
   }
@@ -363,7 +363,7 @@ function Body({ query, rows, activeId, onOpen }: BodyProps) {
             type="button"
             style={S.rowNameButtonStyle}
             onClick={() => onOpen(r.id)}
-            aria-label={`Open details for refund ${r.id}`}
+            aria-label={`Open refund ${r.id}`}
             title={r.id}
           >
             {shortUuid(r.id)}
@@ -373,19 +373,19 @@ function Body({ query, rows, activeId, onOpen }: BodyProps) {
     },
     {
       id: "org",
-      header: "Org",
+      header: "Organization",
       renderCell: (r) => <span title={r.org_id}>{shortUuid(r.org_id)}</span>,
     },
     {
       id: "state",
-      header: "State",
+      header: "Status",
       renderCell: (r) => (
         <span style={badgeForRefundState(r.state)}>{r.state}</span>
       ),
     },
     {
       id: "settlement",
-      header: "Settled by",
+      header: "Refunded through",
       renderCell: (r) => refundSettlementLabel(r.settlement),
     },
     {
@@ -414,7 +414,7 @@ function Body({ query, rows, activeId, onOpen }: BodyProps) {
           onClick={() => onOpen(r.id)}
           data-testid={`refunds-open-${r.id}`}
         >
-          Details
+          Open
         </button>
       ),
     },
@@ -495,7 +495,7 @@ function RefundDrawer({
           ref={closeRef}
           onClick={onClose}
           style={S.drawerCloseStyle}
-          aria-label="Close refund details"
+          aria-label="Close the refund card"
           data-testid="refunds-drawer-close"
           title="Close (Esc)"
         >
@@ -509,12 +509,12 @@ function RefundDrawer({
         </h3>
         <dl style={S.metaListStyle}>
           <MetaRow
-            k="State"
+            k="Status"
             v={<span style={badgeForRefundState(refund.state)}>{refund.state}</span>}
           />
           <MetaRow k="Amount" v={formatMoneyMinor(refund.amount, refund.currency)} />
           <MetaRow k="Organization" v={<code style={S.monoStyle}>{refund.org_id}</code>} />
-          <MetaRow k="Settled by" v={refundSettlementLabel(refund.settlement)} />
+          <MetaRow k="Refunded through" v={refundSettlementLabel(refund.settlement)} />
           <MetaRow
             k="Payment intent"
             v={
@@ -556,7 +556,7 @@ function RefundDrawer({
             }
           />
           <MetaRow
-            k="Reason"
+            k="Cause"
             v={
               refund.reason === null ? (
                 <span style={S.mutedStyle}>—</span>
@@ -590,23 +590,23 @@ function RefundDrawer({
         <div style={S.relatedGridStyle}>
           <BackendGapTile
             id="payment-detail"
-            label="Payment intent detail"
-            reason="No /v1/admin/payments endpoint exposed; payment_intent_id is shown for reference only."
+            label="Payment intent data"
+            reason="There is no /v1/admin/payments endpoint. We show payment_intent_id for reference only."
           />
           <BackendGapTile
             id="parent-order"
             label="Parent order"
-            reason="List endpoint does not return checkout_session_id for refunds; cross-link to /orders is not safe."
+            reason="The list endpoint does not give checkout_session_id for refunds. A link to /orders is not safe."
           />
           <BackendGapTile
             id="refund-events"
-            label="Refund lifecycle events"
-            reason="No /v1/admin/refunds/{id}/events endpoint yet; lifecycle is inferred from requested/approved/succeeded timestamps."
+            label="Refund events"
+            reason="There is no /v1/admin/refunds/{id}/events endpoint. The events come from the requested, approved and succeeded times."
           />
           <BackendGapTile
             id="approve-action"
             label="Approve / cancel"
-            reason="Write actions are intentionally not exposed under /v1/admin/refunds in this milestone. Use the org-scoped refunds API."
+            reason="In this milestone, /v1/admin/refunds has no change actions. This is on purpose. Use the refunds API of the organization."
           />
         </div>
       </section>
@@ -641,7 +641,7 @@ function BackendGapTile({
       title={reason}
     >
       <span style={S.relatedTileLabelStyle}>{label}</span>
-      <span style={S.relatedTileGapBadgeStyle}>backend gap</span>
+      <span style={S.relatedTileGapBadgeStyle}>missing in the backend</span>
       <span style={S.relatedTileHintStyle}>{reason}</span>
     </div>
   );

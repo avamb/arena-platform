@@ -65,7 +65,7 @@ export function PaymentFeesTable({ fees, now = new Date() }: { fees: readonly Pa
   if (fees.length === 0) {
     return (
       <p style={mutedStyle} data-testid="billing-fees-empty">
-        No card fee yet. Without a version for a currency, an invoice in that currency cannot be issued for a card payment.
+        There is no card fee. Without a fee version for a currency, the platform cannot issue an invoice in that currency for a card payment.
       </p>
     );
   }
@@ -81,7 +81,7 @@ export function PaymentFeesTable({ fees, now = new Date() }: { fees: readonly Pa
             <th style={thStyle}>Fixed part</th>
             <th style={thStyle}>Starts (UTC)</th>
             <th style={thStyle}>Status</th>
-            <th style={thStyle}>Reason</th>
+            <th style={thStyle}>Note</th>
           </tr>
         </thead>
         <tbody>
@@ -128,9 +128,7 @@ export function FeeFormBody({ form, onChange, errors, serverError }: FeeFormBody
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="billing-fee-form">
       <p style={hintStyle}>
-        The average fee a card payer adds to an invoice: percentage of the invoice plus a fixed part. A new version starts in
-        the future and after the latest version of its currency, so no issued invoice changes. Nothing is filled in for you:
-        type every value.
+        This is the average fee that a card payer adds to an invoice. It is a percentage of the invoice plus a fixed part. A new version starts in the future, after the last version of its currency. No issued invoice changes. The form has no default values. Type each value.
       </p>
       <div style={gridStyle}>
         <div>
@@ -201,7 +199,7 @@ export function BankTable({ transactions, invoices, onMatch, onIgnore }: BankTab
             <th style={thStyle}>Payer</th>
             <th style={thStyle}>Reference</th>
             <th style={thStyle}>Status</th>
-            <th style={thStyle}>Why / invoice</th>
+            <th style={thStyle}>Note / invoice</th>
             <th style={thStyle} />
           </tr>
         </thead>
@@ -229,7 +227,7 @@ export function BankTable({ transactions, invoices, onMatch, onIgnore }: BankTab
                   {t.status === "unmatched" ? (
                     <span style={{ display: "inline-flex", gap: 6 }}>
                       <button type="button" style={buttonStyle} onClick={() => onMatch(t)} data-testid="billing-bank-match">
-                        Match to invoice
+                        Link to invoice
                       </button>
                       <button type="button" style={buttonStyle} onClick={() => onIgnore(t)} data-testid="billing-bank-ignore">
                         Ignore
@@ -238,7 +236,7 @@ export function BankTable({ transactions, invoices, onMatch, onIgnore }: BankTab
                   ) : null}
                   {t.status === "ignored" ? (
                     <button type="button" style={buttonStyle} onClick={() => onMatch(t)} data-testid="billing-bank-match">
-                      Match to invoice
+                      Link to invoice
                     </button>
                   ) : null}
                 </td>
@@ -269,16 +267,15 @@ export function MatchFormBody({ transaction, issued, orgNames, invoiceId, onChan
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="billing-match-form">
       <p style={hintStyle}>
         Payment of {formatMinor(transaction.amount_minor, transaction.currency)} from {transaction.counterparty_name ?? "an unknown payer"}
-        {transaction.reference ? `, reference "${transaction.reference}"` : ""}. {unmatchedReasonText(transaction.status, transaction.unmatched_reason)} Pick the
-        invoice it paid. The amount must be the invoice total, or for a card invoice the total without the card fee; the
-        server checks this again.
+        {transaction.reference ? `, reference "${transaction.reference}"` : ""}. {unmatchedReasonText(transaction.status, transaction.unmatched_reason)} Select the
+        invoice that this payment paid. The amount must be the invoice total. For a card invoice, the amount must be the total without the card fee. The server checks this again.
       </p>
       <div>
         <label style={labelStyle} htmlFor="billing-match-invoice">
           Issued invoice
         </label>
         <select id="billing-match-invoice" style={inputStyle} value={invoiceId} onChange={(e) => onChange(e.target.value)} data-testid="billing-match-invoice">
-          <option value="">Pick an invoice…</option>
+          <option value="">Select an invoice</option>
           {candidates.map((i) => (
             <option key={i.id} value={i.id}>
               {invoiceLabel(i)} · {orgLabel(orgNames, i.org_id)} · {formatMinor(i.total_minor, i.currency)}
@@ -314,12 +311,11 @@ export function IgnoreFormBody({ transaction, reason, onChange, errors, serverEr
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="billing-ignore-form">
       <p style={hintStyle}>
-        Ignore the payment of {formatMinor(transaction.amount_minor, transaction.currency)} when it is not for an invoice,
-        for example a refund from a supplier or a test transfer. An ignored payment can still be matched later.
+        Ignore the payment of {formatMinor(transaction.amount_minor, transaction.currency)} if it is not for an invoice. For example, it is a refund from a supplier or a test transfer. After this step, you can still match an ignored payment.
       </p>
       <div>
         <label style={labelStyle} htmlFor="billing-ignore-reason">
-          Why it is ignored
+          Note
         </label>
         <input id="billing-ignore-reason" style={inputStyle} maxLength={500} value={reason} onChange={(e) => onChange(e.target.value)} data-testid="billing-ignore-reason" />
       </div>
@@ -339,10 +335,7 @@ export function ImportFormBody({ text, onChange, errors, serverError }: ImportFo
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="billing-import-form">
       <p style={hintStyle}>
-        For a bank without a feed. Paste JSON (a list of payments, or an object with <code>transactions</code>) or CSV lines
-        separated by semicolons: <code>id;booked_at;amount_minor;currency;reference;counterparty</code>. Amounts are whole
-        minor units (1000 means 10.00). A date alone is read as UTC midnight. Each payment is stored once by its id and
-        matched to an invoice by its reference; a repeated id changes nothing. 1 to 500 payments.
+        Use this for a bank without a feed. Paste JSON (a list of payments, or an object with <code>transactions</code>). Or paste CSV lines with a semicolon between the values: <code>id;booked_at;amount_minor;currency;reference;counterparty</code>. Amounts are in minor units, as whole numbers (1000 means 10.00). If a date has no time, the platform uses midnight UTC. The platform keeps each payment one time, by its ID. It matches the payment to an invoice by its reference. If an ID repeats, nothing changes. You can paste 1 to 500 payments.
       </p>
       <div>
         <label style={labelStyle} htmlFor="billing-import-text">

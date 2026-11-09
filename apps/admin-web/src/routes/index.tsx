@@ -120,14 +120,14 @@ function DashboardRoute() {
             SuperAdmin Dashboard
           </h1>
           <p style={subheadingStyle}>
-            Cross-tenant operational overview. All counts shown below are
+            Overview of all organizations. Each count below is
             <strong> page-local </strong>
-            (capped at {DASHBOARD_PAGE_SIZE} rows per endpoint); the backend
-            does not currently expose a global total endpoint.
+            (maximum {DASHBOARD_PAGE_SIZE} rows for each endpoint). The platform
+            has no endpoint that gives a total for all pages.
           </p>
         </div>
         {me !== null ? (
-          <div style={signedInStyle} aria-label="Signed-in operator">
+          <div style={signedInStyle} aria-label="Operator who is signed in">
             <div style={signedInLabelStyle}>Signed in</div>
             <div style={signedInRolesStyle}>
               {me.roles.length === 0 ? "(no roles)" : me.roles.join(", ")}
@@ -156,9 +156,9 @@ function DashboardRoute() {
         </h2>
         {shortcuts.length === 0 ? (
           <p style={emptyShortcutsStyle} role="status">
-            No modules available for your current permissions and scope. Ask
-            a platform administrator to grant access, or switch to a scope
-            that exposes operational surfaces.
+            No modules are available for your permissions and scope. Ask a
+            platform administrator to give you access. You can also select a
+            different scope.
           </p>
         ) : (
           <div style={shortcutGridStyle} role="list">
@@ -306,7 +306,7 @@ function MetricBody<E>({
     return (
       <div style={metricLoadingStyle} role="status" aria-live="polite">
         Loading {title.toLowerCase()}…
-        {fetchStatus === "paused" ? " (paused — offline)" : null}
+        {fetchStatus === "paused" ? " (paused, offline)" : null}
       </div>
     );
   }
@@ -328,14 +328,14 @@ function MetricBody<E>({
           <dt style={metricMetaKeyStyle}>Shown</dt>
           <dd style={metricMetaValStyle}>
             {empty
-              ? "No rows returned"
+              ? "No rows"
               : `${count.toLocaleString()} (page-local, ≤${DASHBOARD_PAGE_SIZE})`}
           </dd>
         </div>
         <div style={metricMetaRowStyle}>
-          <dt style={metricMetaKeyStyle}>Backend total</dt>
+          <dt style={metricMetaKeyStyle}>Total from the API</dt>
           <dd style={metricMetaValMutedStyle}>
-            not available (no global count endpoint)
+            not available (no endpoint for a total)
           </dd>
         </div>
       </dl>
@@ -355,7 +355,7 @@ function MetricErrorBody({
     if (error.code === "superadmin.reason_required") {
       return (
         <div style={metricErrorStyle} role="status">
-          Audit reason required. Submit one in the prompt to load{" "}
+          Audit reason required. Type a reason in the prompt to load{" "}
           {title.toLowerCase()}.
         </div>
       );
@@ -363,22 +363,22 @@ function MetricErrorBody({
     if (error.status === 401) {
       return (
         <div style={metricErrorStyle} role="status">
-          Session expired. Sign in again to load {title.toLowerCase()}.
+          Your session ended. Sign in to load {title.toLowerCase()}.
         </div>
       );
     }
     if (error.status === 403 || error.code === "permissions.denied") {
       return (
         <div style={metricErrorStyle} role="status">
-          Forbidden. Your account is missing the permission required to
-          read {title.toLowerCase()}.
+          Your account does not have the permission to read{" "}
+          {title.toLowerCase()}. Ask a platform administrator to give it to you.
         </div>
       );
     }
   }
   return (
     <div style={metricErrorStyle} role="alert">
-      <div>Failed to load {title.toLowerCase()}.</div>
+      <div>We did not load {title.toLowerCase()}.</div>
       <code style={metricErrorCodeStyle}>
         {error?.code ?? "unknown.error"}
       </code>
@@ -407,15 +407,15 @@ function MissingPermissionNotice({
       data-testid="dashboard-missing-permission"
     >
       <div style={missingPermissionTitleStyle}>
-        Operational counts hidden — missing <code>{required}</code>.
+        Operational counts are hidden. Your account does not have <code>{required}</code>.
       </div>
       <p style={missingPermissionBodyStyle}>
-        Cross-tenant counts (organizations, orders, tickets, refunds) are only
-        available to operators holding <code>{required}</code>. Your account
-        currently holds {held.length} permission
-        {held.length === 1 ? "" : "s"}; ask a platform administrator to grant
-        the missing permission, or use the shortcuts below to reach the
-        modules you do have access to.
+        Counts of organizations, orders, tickets and refunds are available only
+        to operators with <code>{required}</code>. Your account has{" "}
+        {held.length} permission
+        {held.length === 1 ? "" : "s"}. Ask a platform administrator to give
+        you the missing permission. You can also use the shortcuts below to
+        open the modules that you can use.
       </p>
     </div>
   );
@@ -451,12 +451,12 @@ function AuditObservabilityTile(): ReactNode {
       role="listitem"
       aria-disabled="true"
       data-testid="shortcut-audit-observability"
-      title="Audit / Observability surface is not yet implemented."
+      title="The Audit / Observability screen is not ready."
     >
       <span style={shortcutLabelStyle}>Audit / Observability</span>
       <span style={shortcutHintStyle}>
-        Pending follow-up SAUI-* task; backend audit_events table is already
-        populated by superadmin reads.
+        This screen is a task for a SAUI-* step after this one. The audit_events table
+        has data from superadmin reads.
       </span>
     </div>
   );

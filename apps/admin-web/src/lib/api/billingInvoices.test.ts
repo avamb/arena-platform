@@ -169,7 +169,7 @@ describe("payment fee request", () => {
     expect(buildFeeRequest({ ...filled, effectiveFromLocal: "2026-10-01T00:00" }, [], NOW).ok).toBe(false);
     const fees = [fee({ effective_from: "2026-12-01T00:00:00Z" }), fee({ id: "f2", currency: "USD", effective_from: "2027-06-01T00:00:00Z" })];
     const early = buildFeeRequest(filled, fees, NOW);
-    expect(!early.ok && early.errors.join(" ")).toContain("after the latest version of EUR");
+    expect(!early.ok && early.errors.join(" ")).toContain("after the last version of EUR");
     expect(buildFeeRequest({ ...filled, effectiveFromLocal: "2026-12-02T00:00" }, fees, NOW).ok).toBe(true);
     expect(latestFeeStart(fees, "EUR")).toBe("2026-12-01T00:00:00Z");
     expect(latestFeeStart(fees, "GBP")).toBeNull();
@@ -196,7 +196,7 @@ describe("bank payments", () => {
       expect(text.endsWith("."), code).toBe(true);
     }
     expect(unmatchedReasonText("unmatched", "something_new")).toBe("something_new");
-    expect(unmatchedReasonText("unmatched", null)).toBe("No reason recorded.");
+    expect(unmatchedReasonText("unmatched", null)).toBe("No cause is recorded.");
     expect(unmatchedReasonText("ignored", "test transfer")).toBe("Ignored: test transfer");
     expect(unmatchedReasonText("matched", null)).toBe("");
   });
@@ -258,10 +258,10 @@ describe("parseStatement", () => {
     const r = parseStatement("ok;2026-10-01;100;EUR\n;2026-10-01;100;EUR\nb;yesterday;100;EUR\nc;2026-10-01;100;EURO\nonly;three;fields");
     expect(r.ok).toBe(false);
     const text = !r.ok ? r.errors.join("\n") : "";
-    expect(text).toContain("Line 2: id is required");
+    expect(text).toContain("Line 2: the id is necessary");
     expect(text).toContain("Line 3: booked_at");
-    expect(text).toContain("Line 4: currency");
-    expect(text).toContain("Line 5: write id;booked_at");
+    expect(text).toContain("Line 4: the currency");
+    expect(text).toContain("Line 5: use id;booked_at");
     expect(text).not.toContain("Line 1");
   });
 
