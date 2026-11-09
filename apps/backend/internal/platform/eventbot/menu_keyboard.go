@@ -145,7 +145,7 @@ func (b *Bot) menuCommand(ctx context.Context, cmd, arg string, from *models.Use
 	case "/menu":
 		return true
 	case "/start":
-		if strings.HasPrefix(arg, "inv_") {
+		if strings.HasPrefix(arg, "inv_") || strings.HasPrefix(arg, connectStartPrefix) {
 			return false
 		}
 		if arg == "apply" && b.onbOn() {

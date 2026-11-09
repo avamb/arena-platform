@@ -5434,6 +5434,57 @@ type BotTeamResponse struct {
 	Members []BotTeamMember `json:"members"`
 }
 
+// BotTelegramConnectAcceptResponse The Telegram account is linked.
+type BotTelegramConnectAcceptResponse struct {
+	// AlreadyLinked True when the account was already linked to this person (only the organization changed).
+	AlreadyLinked bool `json:"already_linked"`
+
+	// Locale The language stored with the link.
+	Locale string `json:"locale"`
+
+	// OrgId The organization that is now current in the bot.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Its name.
+	OrgName string `json:"org_name"`
+
+	// Role The person's role there in the bot's words: `owner` or `manager` (empty when unknown).
+	Role string `json:"role"`
+
+	// UserId The person the account is linked to.
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// BotTelegramConnectPreview The facts of the bot's "Connect this Telegram to <organization>?" screen.
+type BotTelegramConnectPreview struct {
+	// EmailMasked The e-mail of the account the link belongs to, masked (`a•••@example.com`).
+	EmailMasked string `json:"email_masked"`
+
+	// OrgId The organization the bot opens after the link.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Its name.
+	OrgName string `json:"org_name"`
+
+	// State What the Telegram account is to that person: `new` (not linked), `same_user` (already linked to them; the link only switches the organization) or `other_user` (linked to someone else; accept answers 409).
+	State string `json:"state"`
+}
+
+// BotTelegramConnectRequest A "Connect Telegram" code the bot received in `/start con_<code>`, and the Telegram account that opened it.
+type BotTelegramConnectRequest struct {
+	// Code The code, with or without the `con_` prefix.
+	Code string `json:"code"`
+
+	// Locale The language of the Telegram client, stored with the link (accept only; en, ru or es, else en).
+	Locale *string `json:"locale,omitempty"`
+
+	// TelegramUserId The Telegram account that opened the link.
+	TelegramUserId int64 `json:"telegram_user_id"`
+
+	// TelegramUsername Its Telegram username, stored with the link (accept only).
+	TelegramUsername *string `json:"telegram_username,omitempty"`
+}
+
 // BotWebLoginCodeRequest Body of POST /v1/bot/web-login-codes.
 type BotWebLoginCodeRequest struct {
 	// EventId The event whose text (or whose session) the mini app opens. Required, and only used, for `purpose: miniapp`.
@@ -22040,6 +22091,39 @@ type SummaryTierItem struct {
 	PriceAmount int64 `json:"price_amount"`
 }
 
+// TelegramConnectAccount One Telegram account linked to the caller.
+type TelegramConnectAccount struct {
+	// TelegramUsername The account's Telegram username without `@`, null when it has none.
+	TelegramUsername *string `json:"telegram_username"`
+}
+
+// TelegramConnectCode A one-time "Connect Telegram" link (F-007).
+type TelegramConnectCode struct {
+	// ExpiresAt When the link stops working (15 minutes after it was issued).
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// StartParam The `/start` payload of the link (`con_<code>`).
+	StartParam string `json:"start_param"`
+
+	// Url `https://t.me/<bot>?start=con_<code>`: a button and a QR code on the web page.
+	Url string `json:"url"`
+}
+
+// TelegramConnectStatus Whether the signed-in person's account is linked to the event-center Telegram bot (F-007).
+type TelegramConnectStatus struct {
+	// Accounts The linked Telegram accounts, newest first, at most 5.
+	Accounts []TelegramConnectAccount `json:"accounts"`
+
+	// Available True when this server knows the bot and can build a "Connect Telegram" link.
+	Available bool `json:"available"`
+
+	// BotUsername The bot's Telegram username without `@`, null when not configured.
+	BotUsername *string `json:"bot_username"`
+
+	// Linked True when at least one Telegram account is linked to the caller's account.
+	Linked bool `json:"linked"`
+}
+
 // TextFormatKind Which text is formatted. It picks the tags the model may add and the
 // longest text: `description` (an event description, 4000 characters, with
 // headings, quotes and links to `https` and `mailto`), `email_note` (the
@@ -26042,6 +26126,12 @@ type PostBotShopDeliveryCardJSONRequestBody = BotShopDeliveryCardRequest
 
 // PostBotShopDeliveryStepJSONRequestBody defines body for PostBotShopDeliveryStep for application/json ContentType.
 type PostBotShopDeliveryStepJSONRequestBody = BotShopDeliveryStepRequest
+
+// AcceptBotTelegramConnectJSONRequestBody defines body for AcceptBotTelegramConnect for application/json ContentType.
+type AcceptBotTelegramConnectJSONRequestBody = BotTelegramConnectRequest
+
+// PreviewBotTelegramConnectJSONRequestBody defines body for PreviewBotTelegramConnect for application/json ContentType.
+type PreviewBotTelegramConnectJSONRequestBody = BotTelegramConnectRequest
 
 // CreateBotWebLoginCodeJSONRequestBody defines body for CreateBotWebLoginCode for application/json ContentType.
 type CreateBotWebLoginCodeJSONRequestBody = BotWebLoginCodeRequest

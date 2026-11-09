@@ -253,6 +253,7 @@ func (b *Bot) onbWelcomeWith(ctx context.Context, chatID int64, from *models.Use
 	loc := b.onbLocale(from, d, nil)
 	b.send(ctx, chatID, b.texts.T(loc, "bot.onb.welcome", nil), inline(
 		[]models.InlineKeyboardButton{btn(b.texts.T(loc, "bot.onb.apply_btn", nil), "onb:start")},
+		b.connectHaveRow(loc),
 		[]models.InlineKeyboardButton{btn("English", "onb:lang:en"), btn("Русский", "onb:lang:ru"), btn("Español", "onb:lang:es")},
 	))
 }

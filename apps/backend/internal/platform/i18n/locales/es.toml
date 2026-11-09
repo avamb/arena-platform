@@ -105,7 +105,7 @@ other = "Idioma"
 other = "Qué puede hacer este bot"
 
 ["bot.not_invited"]
-other = "¡Hola! Este bot crea eventos y muestra las ventas a los organizadores de Arena Sold Out.\n\nPara usarlo necesitas una invitación: el propietario de tu organización la envía desde este bot y te llega por e-mail como un enlace. Abre ese enlace y ya estarás dentro."
+other = "¡Hola! Este bot crea eventos y muestra las ventas a los organizadores de Arena Sold Out.\n\nPara usarlo necesitas una invitación: el propietario de tu organización la envía desde este bot y te llega por e-mail como un enlace. Abre ese enlace y ya estarás dentro.\n\n¿Ya trabajas en el centro de eventos de Arena? Pulsa «Ya tengo una organización» abajo."
 
 ["bot.ask_email"]
 other = "¡Te damos la bienvenida! Una comprobación antes de empezar: escribe la dirección de e-mail a la que se envió la invitación."
@@ -1283,7 +1283,7 @@ other = "La zona horaria de {{.City}} es {{.Zone}}. Pulsa el botón para confirm
 # ── solicitud de organizador (bot.onb.*) ──
 
 ["bot.onb.welcome"]
-other = "¡Hola! Este bot crea eventos y muestra las ventas a los organizadores de Arena Sold Out.\n\nSi te han invitado, abre el enlace del e-mail de invitación. Si quieres vender entradas con Arena, envía tu solicitud aquí: son unos minutos y la revisaremos."
+other = "¡Hola! Este bot crea eventos y muestra las ventas a los organizadores de Arena Sold Out.\n\n¿Ya trabajas con Arena? Pulsa «Ya tengo una organización» para conectar este Telegram. Si te invitó un compañero, abre el enlace del e-mail de invitación.\n\n¿Eres nuevo en Arena? Envía tu solicitud aquí: son unos minutos y la revisaremos."
 
 ["bot.onb.apply_btn"]
 other = "Solicitar ser organizador"
@@ -6716,3 +6716,45 @@ other = "Esta invitación está revocada o aún no se ha emitido, así que no se
 ["bot.reissue.inv_resent"]
 other = "✔ El correo con las entradas nuevas de la invitación está otra vez en la cola."
 
+
+["bot.con.confirm"]
+other = "¿Conectar este Telegram a «{{.Org}}»?\n\nCuenta de Arena: {{.Email}}\n\nDespués el bot abrirá el menú de «{{.Org}}»: eventos, pedidos y ventas."
+
+["bot.con.confirm_same"]
+other = "Este Telegram ya está conectado a tu cuenta de Arena ({{.Email}}).\n\nPulsa el botón para abrir «{{.Org}}»."
+
+["bot.con.yes_btn"]
+other = "✅ Conectar"
+
+["bot.con.open_btn"]
+other = "Abrir «{{.Org}}»"
+
+["bot.con.no_btn"]
+other = "Cancelar"
+
+["bot.con.done"]
+other = "¡Listo! Este Telegram está conectado a «{{.Org}}». Aquí tienes su menú."
+
+["bot.con.invalid"]
+other = "Este enlace ya no funciona. Un enlace sirve una vez y durante 15 minutos.\n\nConsigue uno nuevo en el centro de eventos: pulsa «Conectar Telegram» en la página «Eventos» o en «Datos de la organización»."
+
+["bot.con.other_user"]
+other = "Este Telegram ya está conectado a otra cuenta de Arena, así que no hemos cambiado nada.\n\nAbre el enlace en el Telegram que quieres conectar. Si necesitas pasar este Telegram a otra cuenta, escribe al soporte de Arena."
+
+["bot.con.failed"]
+other = "Ahora no hemos podido conectar Telegram. Abre el mismo enlace otra vez dentro de un minuto."
+
+["bot.con.cancelled"]
+other = "No se ha conectado nada. Puedes abrir el enlace otra vez mientras funcione."
+
+["bot.con.private_only"]
+other = "Abre este enlace en un chat privado con el bot."
+
+["bot.con.have_btn"]
+other = "🔗 Ya tengo una organización"
+
+["bot.con.how"]
+other = "Cómo conectar este Telegram a tu organización:\n\n1. Abre el centro de eventos de Arena en el navegador e inicia sesión.\n2. Pulsa «Conectar Telegram» en la página «Eventos» o en «Datos de la organización».\n3. En este teléfono, pulsa el botón de esa página. En un ordenador, escanea su código QR con este teléfono.\n\nSi te invitó un compañero, abre el enlace del e-mail de invitación."
+
+["bot.con.open_web_btn"]
+other = "🌐 Abrir el centro de eventos"
