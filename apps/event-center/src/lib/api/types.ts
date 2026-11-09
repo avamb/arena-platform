@@ -138,6 +138,13 @@ export type VenueItem = S["VenueItem"];
 export type SeatingPlan = S["SeatingPlan"];
 export type SeatingPlanVersion = S["SeatingPlanVersion"];
 export type GeoCountryItem = S["GeoCountryItem"];
+// F-004: the wizard's new venue and its city.
+export type CreateVenueRequest = S["CreateVenueRequest"];
+export type CreateOrgCityRequest = S["CreateOrgCityRequest"];
+export type OrgCityResponse = S["OrgCityResponse"];
+// F-007: "Connect Telegram".
+export type TelegramConnectStatus = S["TelegramConnectStatus"];
+export type TelegramConnectCode = S["TelegramConnectCode"];
 export type GeoCountriesResponse = S["GeoCountriesResponse"];
 export type GeoCityItem = S["GeoCityItem"];
 export type GeoCitySuggestion = S["GeoCitySuggestion"];

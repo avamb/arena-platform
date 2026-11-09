@@ -235,6 +235,13 @@ export const API = {
   // geo reads are public and feed the venue form.
   eventBundleCheck: { method: "POST", path: "/v1/organizations/{org_id}/imports/event-bundle" },
   venues: { method: "GET", path: "/v1/organizations/{org_id}/venues" },
+  // F-004: the wizard creates the new venue it describes (venue.create) and
+  // its city (city.create, idempotent by name) before the first date.
+  venueCreate: { method: "POST", path: "/v1/organizations/{org_id}/venues" },
+  orgCityCreate: { method: "POST", path: "/v1/organizations/{org_id}/cities" },
+  // F-007 "Connect Telegram": the person's own link to the bot.
+  telegramConnectStatus: { method: "GET", path: "/v1/organizations/{org_id}/telegram-connect" },
+  telegramConnectCode: { method: "POST", path: "/v1/organizations/{org_id}/telegram-connect-codes" },
   // The wizard's "Hall plan": the plans of the chosen venue and their versions
   // (seating_plan.read). Plans are not organization-scoped routes: the server
   // answers the organization's own and the shared ones.

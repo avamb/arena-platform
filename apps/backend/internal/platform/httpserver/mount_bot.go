@@ -37,6 +37,16 @@ func (s *Server) mountBotRoutes(r chi.Router) {
 		s.applyAuth(pr, "membership.revoke", "memberships")
 		pr.Delete("/organizations/{org_id}/bot-invitations/{id}", s.handleRevokeBotInvitation)
 	})
+	// F-007 "Connect Telegram": the signed-in person's own link. The group
+	// records NO required permission (like GET .../me): every member may link
+	// their own Telegram, and the handler admits only a user with a
+	// membership row in the path organization.
+	r.Group(func(pr chi.Router) {
+		pr.Use(s.authMiddleware())
+		pr.Use(s.orgScopedFor("", true))
+		pr.Get("/organizations/{org_id}/telegram-connect", s.handleTelegramConnectStatus)
+		pr.Post("/organizations/{org_id}/telegram-connect-codes", s.handleCreateTelegramConnectCode)
+	})
 	serviceToken := ""
 	if s.cfg != nil {
 		serviceToken = s.cfg.BotServiceToken
@@ -48,6 +58,10 @@ func (s *Server) mountBotRoutes(r chi.Router) {
 		// linked person, and the sign-ins the bot reports back.
 		pr.Post("/bot/web-login-codes", s.handleCreateWebLoginCode)
 		pr.Post("/bot/web-login-notices/claim", s.handleClaimWebLoginNotices)
+		// F-007: the confirmation screen of a "Connect Telegram" link and the
+		// press that links the account.
+		pr.Post("/bot/telegram-connect/preview", s.handlePreviewTelegramConnect)
+		pr.Post("/bot/telegram-connect/accept", s.handleAcceptTelegramConnect)
 		// INV-09: the invitations issued from Telegram whose PDF the bot sends
 		// into the issuer's chat, each handed out once.
 		pr.Post("/bot/invitations/pdf-notices/claim", s.handleClaimInvitationPDFNotices)

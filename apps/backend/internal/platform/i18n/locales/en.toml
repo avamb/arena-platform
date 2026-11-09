@@ -274,7 +274,7 @@ other = "Language"
 other = "What this bot can do"
 
 ["bot.not_invited"]
-other = "Hi! This bot creates events and shows sales for organizers of Arena Sold Out.\n\nTo use it you need an invitation: the owner of your organization sends it from this bot, and it arrives by e-mail as a link. Open that link and you will be in."
+other = "Hi! This bot creates events and shows sales for organizers of Arena Sold Out.\n\nTo use it you need an invitation: the owner of your organization sends it from this bot, and it arrives by e-mail as a link. Open that link and you will be in.\n\nAlready work in the Arena event center? Press «I already have an organization» below."
 
 ["bot.ask_email"]
 other = "Welcome! One check before we start: please type the e-mail address the invitation was sent to."
@@ -1455,7 +1455,7 @@ other = "The time zone for {{.City}} is {{.Zone}}. Press the button to confirm."
 # ── organizer application (bot.onb.*) ──
 
 ["bot.onb.welcome"]
-other = "Hi! This bot creates events and shows sales for organizers of Arena Sold Out.\n\nIf you were invited, open the link from your invitation e-mail. If you want to sell tickets with Arena, apply here: it takes a few minutes, and we will review your application."
+other = "Hi! This bot creates events and shows sales for organizers of Arena Sold Out.\n\nAlready work with Arena? Press «I already have an organization» to connect this Telegram. If a colleague invited you, open the link from the invitation e-mail.\n\nNew to Arena? Apply here: it takes a few minutes, and we will review your application."
 
 ["bot.onb.apply_btn"]
 other = "Apply to become an organizer"
@@ -6889,3 +6889,45 @@ other = "This invitation was withdrawn or never went out, so you cannot replace 
 ["bot.reissue.inv_resent"]
 other = "✔ The letter with the new tickets of the invitation is in the queue again."
 
+
+["bot.con.confirm"]
+other = "Connect this Telegram to «{{.Org}}»?\n\nArena account: {{.Email}}\n\nAfter that this bot opens the menu of «{{.Org}}»: events, orders and sales."
+
+["bot.con.confirm_same"]
+other = "This Telegram is already connected to your Arena account ({{.Email}}).\n\nPress the button to open «{{.Org}}»."
+
+["bot.con.yes_btn"]
+other = "✅ Connect"
+
+["bot.con.open_btn"]
+other = "Open «{{.Org}}»"
+
+["bot.con.no_btn"]
+other = "Cancel"
+
+["bot.con.done"]
+other = "Done! This Telegram now works with «{{.Org}}». Here is its menu."
+
+["bot.con.invalid"]
+other = "This link no longer works. A link works once and for 15 minutes.\n\nGet a new one in the event center: press «Connect Telegram» on the «Events» page or in «Organization data»."
+
+["bot.con.other_user"]
+other = "This Telegram is already connected to another Arena account, so we did not change anything.\n\nOpen the link in the Telegram you want to connect. If you need to move this Telegram to another account, write to Arena support."
+
+["bot.con.failed"]
+other = "We could not connect Telegram right now. Please open the same link again in a minute."
+
+["bot.con.cancelled"]
+other = "We did not connect anything. You can open the link again while it works."
+
+["bot.con.private_only"]
+other = "Open this link in a private chat with the bot."
+
+["bot.con.have_btn"]
+other = "🔗 I already have an organization"
+
+["bot.con.how"]
+other = "To connect this Telegram to your organization:\n\n1. Open the Arena event center in a browser and sign in.\n2. Press «Connect Telegram» on the «Events» page or in «Organization data».\n3. On this phone, press the button on that page. On a computer, scan its QR code with this phone.\n\nIf a colleague invited you, open the link from the invitation e-mail instead."
+
+["bot.con.open_web_btn"]
+other = "🌐 Open the event center"

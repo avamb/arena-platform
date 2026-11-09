@@ -43,6 +43,11 @@ import type {
   OrgSummary,
   GeoCitiesResponse,
   GeoCountriesResponse,
+  CreateVenueRequest,
+  CreateOrgCityRequest,
+  OrgCityResponse,
+  TelegramConnectStatus,
+  TelegramConnectCode,
   GeoCountryCurrencyResponse,
   GeoCountryTimezonesResponse,
   ImportBil24SessionResponse,
@@ -1051,6 +1056,26 @@ export function putTierSchedule(ref: TierRef, windows: TierPriceWindowInput[]): 
 /** The organization's active venues (`venue.read`). */
 export function listVenues(orgId: string): Promise<{ venues: VenueItem[] }> {
   return call<{ venues: VenueItem[] }>({ route: API.venues, params: { org_id: orgId } });
+}
+
+/** F-004: creates a venue of the organization (`venue.create`). */
+export function createVenue(orgId: string, body: CreateVenueRequest): Promise<{ venue: VenueItem }> {
+  return call<{ venue: VenueItem }>({ route: API.venueCreate, params: { org_id: orgId }, body });
+}
+
+/** F-004: finds or creates a city of a country by name (`city.create`, idempotent by name). */
+export function createOrgCity(orgId: string, body: CreateOrgCityRequest): Promise<OrgCityResponse> {
+  return call<OrgCityResponse>({ route: API.orgCityCreate, params: { org_id: orgId }, body });
+}
+
+/** F-007: is the signed-in person's Telegram connected to the bot? */
+export function getTelegramConnect(orgId: string): Promise<TelegramConnectStatus> {
+  return call<TelegramConnectStatus>({ route: API.telegramConnectStatus, params: { org_id: orgId } });
+}
+
+/** F-007: a one-time t.me link (and its QR code) that connects the person's Telegram here. */
+export function createTelegramConnectCode(orgId: string): Promise<TelegramConnectCode> {
+  return call<TelegramConnectCode>({ route: API.telegramConnectCode, params: { org_id: orgId } });
 }
 
 /** The seating plans of a venue (`seating_plan.read`). */

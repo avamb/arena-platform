@@ -509,6 +509,11 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		switch cmd {
 		case "/start":
 			arg = strings.TrimSpace(arg)
+			if strings.HasPrefix(arg, connectStartPrefix) {
+				// "Connect Telegram" from the web event center (F-007).
+				b.startConnect(ctx, chatID, from, strings.TrimPrefix(arg, connectStartPrefix))
+				return
+			}
 			if strings.HasPrefix(arg, "inv_") {
 				b.startInvitation(ctx, chatID, from, strings.TrimPrefix(arg, "inv_"))
 				return
@@ -682,6 +687,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		}
 	case "onb":
 		b.onbCallback(ctx, chatID, msgID, from, cq.Data)
+	case "con":
+		b.connectCallback(ctx, chatID, from, cq.Data)
 	case "ses":
 		b.sessionsCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ses:"))
 	case "tf":
@@ -986,7 +993,7 @@ func (b *Bot) replyIdentityError(ctx context.Context, chatID int64, from *models
 			b.onbWelcome(ctx, chatID, from)
 			return
 		}
-		b.send(ctx, chatID, b.texts.T(locale, "bot.not_invited", nil), nil)
+		b.send(ctx, chatID, b.texts.T(locale, "bot.not_invited", nil), inline(b.connectHaveRow(locale)))
 		return
 	}
 	b.logger.Error("eventbot: resolve identity failed", slog.Int64("telegram_user_id", from.ID), slog.String("error", err.Error()))

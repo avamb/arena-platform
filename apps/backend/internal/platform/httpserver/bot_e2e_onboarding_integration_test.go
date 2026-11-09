@@ -82,11 +82,11 @@ func TestBotE2E_OnboardingApplication(t *testing.T) {
 	}
 
 	// 1. A stranger sees the way to apply, not "you need an invitation".
-	say(e2eMessageAs(tgUser, "/start"), "подайте заявку")
+	say(e2eMessageAs(tgUser, "/start"), "Подайте заявку")
 	// The language button redraws the welcome in the language just chosen
 	// (it used to repeat the old one), and the choice survives the press.
-	say(e2eCallbackAs(tgUser, "onb:lang:es"), "envía tu solicitud")
-	say(e2eCallbackAs(tgUser, "onb:lang:ru"), "подайте заявку")
+	say(e2eCallbackAs(tgUser, "onb:lang:es"), "Envía tu solicitud")
+	say(e2eCallbackAs(tgUser, "onb:lang:ru"), "Подайте заявку")
 	say(e2eCallbackAs(tgUser, "onb:start"), "Как вас зовут")
 	// The shared link t.me/<bot>?start=apply goes straight to the first question.
 	say(e2eMessageAs(tgUser, "/start apply"), "Как вас зовут")

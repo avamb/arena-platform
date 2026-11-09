@@ -23,6 +23,7 @@ export type FormField =
   | "venueCity"
   | "venueTimezone"
   | "venueCapacity"
+  | "venueAddress"
   | "currency";
 
 export const FORM_FIELDS: readonly FormField[] = [
@@ -36,6 +37,7 @@ export const FORM_FIELDS: readonly FormField[] = [
   "venueCity",
   "venueTimezone",
   "venueCapacity",
+  "venueAddress",
   "currency",
 ];
 
@@ -70,6 +72,7 @@ const POINTER_TO_FIELD: Record<string, FormField> = {
   "/venue/countryName": "venueCountry",
   "/venue/cityName": "venueCity",
   "/venue/timezone": "venueTimezone",
+  "/venue/address": "venueAddress",
   "/actionEvent/currency": "currency",
 };
 

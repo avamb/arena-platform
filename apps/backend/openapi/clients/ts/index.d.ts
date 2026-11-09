@@ -1913,6 +1913,116 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/telegram-connect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether the signed-in person has a Telegram account connected to the bot
+         * @description "Connect Telegram" of the web event center (acceptance run 2026-11-09,
+         *     F-007). Answers whether the caller's own account is linked to the
+         *     event-center Telegram bot and whether this server can build a link
+         *     at all (`available`, false while `EVENTS_TELEGRAM_BOT_USERNAME` is
+         *     unset). Only a signed-in person with a membership in the path
+         *     organization: an organization API key is 403
+         *     `telegram_connect.user_only`, anyone else 403 `org.access_denied`.
+         */
+        get: operations["getTelegramConnectStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/telegram-connect-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A one-time link that connects the caller's Telegram to the bot in this organization
+         * @description "Connect Telegram" (F-007). Returns `https://t.me/<bot>?start=con_<code>`
+         *     for the signed-in person: it works once and for 15 minutes, and a new
+         *     link takes back the person's earlier unused ones. The bot first asks
+         *     "Connect this Telegram to <organization>?" and links the account only
+         *     after that press (`POST /v1/bot/telegram-connect/accept`), then opens
+         *     this organization's menu. No body. Only a signed-in person with a
+         *     membership in the path organization: an organization API key is 403
+         *     `telegram_connect.user_only`, anyone else 403 `org.access_denied`.
+         *     While `EVENTS_TELEGRAM_BOT_USERNAME` is unset the route answers 503
+         *     `telegram_connect.not_configured`. The issue is audited
+         *     (`v1.telegram_connect.code_issue`).
+         */
+        post: operations["createTelegramConnectCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/telegram-connect/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What a "Connect Telegram" link would connect, without using it
+         * @description Called by the bot PROCESS with `Authorization: Bearer
+         *     <BOT_SERVICE_TOKEN>` when a person opens `t.me/<bot>?start=con_<code>`
+         *     (F-007). Answers the organization and the masked e-mail of the account
+         *     the link belongs to, and what the Telegram account is to that person
+         *     (`state`). Uses nothing. An unknown, used, replaced or expired code,
+         *     and a code whose person left the organization or was deactivated,
+         *     answer the same 404 `bot.connect_code_invalid`.
+         */
+        post: operations["previewBotTelegramConnect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/telegram-connect/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Connect a Telegram account through a "Connect Telegram" link
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN` after the person
+         *     pressed "Connect" on the confirmation screen (F-007). Uses the code
+         *     once, links the Telegram account to the code's person (the same
+         *     `bot_telegram_links` row an accepted bot invitation writes) and makes
+         *     the link's organization the current one. A Telegram account already
+         *     linked to the same person is simply switched to that organization
+         *     (`already_linked: true`). A Telegram account linked to ANOTHER person
+         *     is 409 `bot.telegram_already_linked` and the code stays usable.
+         *     Audited as `v1.telegram_connect.accept`.
+         */
+        post: operations["acceptBotTelegramConnect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/bot/web-login-notices/claim": {
         parameters: {
             query?: never;
@@ -15331,6 +15441,90 @@ export interface components {
              * @description When the link stops working (5 minutes after it was issued).
              */
             expires_at: string;
+        };
+        /** @description Whether the signed-in person's account is linked to the event-center Telegram bot (F-007). */
+        TelegramConnectStatus: {
+            /** @description True when this server knows the bot and can build a "Connect Telegram" link. */
+            available: boolean;
+            /** @description The bot's Telegram username without `@`, null when not configured. */
+            bot_username: string | null;
+            /** @description True when at least one Telegram account is linked to the caller's account. */
+            linked: boolean;
+            /** @description The linked Telegram accounts, newest first, at most 5. */
+            accounts: components["schemas"]["TelegramConnectAccount"][];
+        };
+        /** @description One Telegram account linked to the caller. */
+        TelegramConnectAccount: {
+            /** @description The account's Telegram username without `@`, null when it has none. */
+            telegram_username: string | null;
+            /**
+             * Format: date-time
+             * @description When the account was last linked (a connect link or an invitation renews it). The page compares it with the time its link was made.
+             */
+            linked_at: string;
+        };
+        /** @description A one-time "Connect Telegram" link (F-007). */
+        TelegramConnectCode: {
+            /** @description `https://t.me/<bot>?start=con_<code>`: a button and a QR code on the web page. */
+            url: string;
+            /** @description The `/start` payload of the link (`con_<code>`). */
+            start_param: string;
+            /**
+             * Format: date-time
+             * @description When the link stops working (15 minutes after it was issued).
+             */
+            expires_at: string;
+            /** @description The link as a 320x320 PNG QR code, base64 (standard alphabet, padded), for a person who reads the page on a computer. Null when the picture could not be drawn. */
+            qr_png: string | null;
+        };
+        /** @description A "Connect Telegram" code the bot received in `/start con_<code>`, and the Telegram account that opened it. */
+        BotTelegramConnectRequest: {
+            /** @description The code, with or without the `con_` prefix. */
+            code: string;
+            /**
+             * Format: int64
+             * @description The Telegram account that opened the link.
+             */
+            telegram_user_id: number;
+            /** @description Its Telegram username, stored with the link (accept only). */
+            telegram_username?: string;
+            /** @description The language of the Telegram client, stored with the link (accept only; en, ru or es, else en). */
+            locale?: string;
+        };
+        /** @description The facts of the bot's "Connect this Telegram to <organization>?" screen. */
+        BotTelegramConnectPreview: {
+            /**
+             * Format: uuid
+             * @description The organization the bot opens after the link.
+             */
+            org_id: string;
+            /** @description Its name. */
+            org_name: string;
+            /** @description The e-mail of the account the link belongs to, masked (`a•••@example.com`). */
+            email_masked: string;
+            /** @description What the Telegram account is to that person: `new` (not linked), `same_user` (already linked to them; the link only switches the organization) or `other_user` (linked to someone else; accept answers 409). */
+            state: string;
+        };
+        /** @description The Telegram account is linked. */
+        BotTelegramConnectAcceptResponse: {
+            /**
+             * Format: uuid
+             * @description The organization that is now current in the bot.
+             */
+            org_id: string;
+            /** @description Its name. */
+            org_name: string;
+            /**
+             * Format: uuid
+             * @description The person the account is linked to.
+             */
+            user_id: string;
+            /** @description The person's role there in the bot's words: `owner` or `manager` (empty when unknown). */
+            role: string;
+            /** @description The language stored with the link. */
+            locale: string;
+            /** @description True when the account was already linked to this person (only the organization changed). */
+            already_linked: boolean;
         };
         /** @description A sign-in to the web through a bot link that the bot must report. */
         BotWebLoginNotice: {
@@ -43697,6 +43891,253 @@ export interface operations {
                 };
             };
             /** @description Service token or `EVENT_CENTER_PUBLIC_URL` not configured, or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getTelegramConnectStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization the caller works in. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's Telegram connection. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramConnectStatus"];
+                };
+            };
+            /** @description org_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An API key (`telegram_connect.user_only`) or no membership in the organization (`org.access_denied`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createTelegramConnectCode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization the bot opens after the link. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The link. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelegramConnectCode"];
+                };
+            };
+            /** @description org_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description An API key (`telegram_connect.user_only`) or no membership in the organization (`org.access_denied`). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The bot is not configured on this server (`telegram_connect.not_configured`), or database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    previewBotTelegramConnect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotTelegramConnectRequest"];
+            };
+        };
+        responses: {
+            /** @description The confirmation screen's facts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotTelegramConnectPreview"];
+                };
+            };
+            /** @description Invalid body, code or telegram_user_id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or wrong service token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The link cannot be used (`bot.connect_code_invalid`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    acceptBotTelegramConnect: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BotTelegramConnectRequest"];
+            };
+        };
+        responses: {
+            /** @description The account is linked. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotTelegramConnectAcceptResponse"];
+                };
+            };
+            /** @description Invalid body, code or telegram_user_id. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or wrong service token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The link cannot be used (`bot.connect_code_invalid`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description This Telegram account is linked to another person (`bot.telegram_already_linked`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available. */
             503: {
                 headers: {
                     [name: string]: unknown;
