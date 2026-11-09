@@ -174,6 +174,65 @@ test.describe("create a draft GA event", () => {
     await expect(page.getByText(name).first()).toBeVisible();
   });
 
+  test("F-004: a new venue and two dates: the venue is made once, both dates land in one draft event", async ({ page, request }) => {
+    const name = `Twin Two Dates ${nonce}`;
+    const hall = `Twin Hall ${nonce}`;
+    const writes = countCreates(page);
+    const venueWrites: string[] = [];
+    page.on("request", (r) => {
+      if (r.method() === "POST" && /\/organizations\/[^/]+\/venues$/.test(r.url())) venueWrites.push(r.url());
+    });
+    await openFromList(page);
+    await skipPoster(page);
+    await page.getByTestId("wizard-name").fill(name);
+    await page.getByTestId("wizard-venue-mode-new").check();
+    await expect(page.getByTestId("wizard-venue-new-note")).toBeVisible();
+    await page.getByTestId("wizard-venue-name").fill(hall);
+    await page.getByTestId("wizard-venue-country").selectOption("ES");
+    await expect(page.getByTestId("wizard-currency")).toHaveValue("EUR", { timeout: 15_000 });
+    await page.getByTestId("wizard-venue-city").fill("Barcelona");
+    await page.getByTestId("wizard-venue-timezone").selectOption("Europe/Madrid");
+    await page.getByTestId("wizard-venue-address").fill("Carrer Nou de la Rambla 113");
+    await page.getByTestId("wizard-venue-capacity").fill("80");
+    await pickDay(page, "wizard-date-0-day", "week");
+    await page.getByTestId("wizard-date-0-time").fill("19:00");
+    await page.getByTestId("wizard-cat-0-0-price").fill("15");
+    await page.getByTestId("wizard-date-add").click();
+    await pickDay(page, "wizard-date-1-day", "month");
+    await page.getByTestId("wizard-date-1-time").fill("20:30");
+    await expect(page.getByTestId("wizard-status")).toContainText("Everything you filled in is correct", { timeout: 25_000 });
+    await expect(page.getByTestId("wizard-create")).toBeEnabled();
+
+    await page.getByTestId("wizard-create").click();
+    await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events/[0-9a-f-]{36}$`), { timeout: 30_000 });
+    expect(venueWrites).toHaveLength(1);
+    expect(writes).toHaveLength(2);
+
+    // The venue exists once, with the fields the bot sends.
+    const venues = ((await (await request.get(`${base}/venues`, { headers: auth("org_admin") })).json()) as {
+      venues: { id: string; name: string; timezone: string | null; capacity_default: number | null; country: string | null; address_line1?: string | null }[];
+    }).venues.filter((v) => v.name === hall);
+    expect(venues).toHaveLength(1);
+    expect(venues[0]).toMatchObject({ timezone: "Europe/Madrid", capacity_default: 80, country: "ES", address_line1: "Carrer Nou de la Rambla 113" });
+
+    // One draft event with two draft dates at that venue, on the venue's wall clock.
+    const rows = await eventsNamed(request, name);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("draft");
+    const sessions = await request.get(`${base}/events/${rows[0].id}/sessions`, { headers: auth("org_admin") });
+    const list = ((await sessions.json()) as { sessions: { status: string; start_at: string; venue_id: string }[] }).sessions;
+    expect(list).toHaveLength(2);
+    expect(list.every((x) => x.status === "draft" && x.venue_id === venues[0].id)).toBe(true);
+    const wall = (iso: string) =>
+      new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Madrid", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+    expect(list.map((x) => wall(x.start_at)).sort()).toEqual(["19:00", "20:30"]);
+
+    // The venue is a venue of the organization from now on: the next event can pick it.
+    await page.goto(`/o/${env.org_id}/events/new`);
+    await page.getByTestId("wizard-venue-mode-existing").check();
+    await expect(page.getByTestId("wizard-venue-pick").locator("option", { hasText: hall })).toHaveCount(1);
+  });
+
   test("a refusal and a lost answer keep the draft; the retry cannot make a second event", async ({ page, request }) => {
     const name = `Twin Retry Show ${nonce}`;
     await openFromList(page);

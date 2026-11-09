@@ -40,6 +40,7 @@ import {
   loadDraft,
   newDraft,
   recordPosterProgress,
+  recordVenueCreated,
   reduceDraft,
   saveDraft,
   type DraftAction,
@@ -47,7 +48,8 @@ import {
 } from "@/lib/wizard/draft";
 import { makeId } from "@/lib/wizard/ids";
 import { checkErrorKey, checkWarningKey } from "@/lib/wizard/messages";
-import { createSaver, saveBlockers, type SaveOutcome } from "@/lib/wizard/save";
+import { createSaver, saveBlockers, type SaveOutcome, type SaveProgress } from "@/lib/wizard/save";
+import { wizardVenueApi } from "@/lib/wizard/venueApi";
 import {
   createScheduler,
   failingFields,
@@ -158,7 +160,12 @@ function Wizard() {
   const { orgId, access } = useOrg();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const saver = useMemo(() => createSaver((bundle) => createEventFromBundle(orgId, bundle)), [orgId]);
+  const localeRef = useRef(locale);
+  localeRef.current = locale;
+  const saver = useMemo(
+    () => createSaver({ post: (bundle) => createEventFromBundle(orgId, bundle), venues: wizardVenueApi(() => localeRef.current) }),
+    [orgId],
+  );
   const [saveView, setSaveView] = useState<SaveView>({ phase: "idle" });
   const defaultName = t("wizard.cat.defaultName");
   const [draft, setDraft] = useState<WizardDraft>(() => loadDraft(orgId) ?? newDraft(makeId(), new Date(), defaultName));
@@ -289,7 +296,7 @@ function Wizard() {
     dispatch,
     locked: saveView.phase === "saving" || saveView.phase === "saved" || saveView.phase === "attachRetrying" || draft.poster.eventId !== "",
   });
-  const blockers = saveBlockers(draft);
+  const blockers = saveBlockers(draft, access.can("venue.create"));
   const posterBusy = saveView.phase === "saving" && picker.state.phase === "ready" && draft.poster.mediaId === "";
   const checkSettled = !blank && fresh && state.status === "idle" && state.error === null;
   const saving = saveView.phase === "saving" || saveView.phase === "saved" || saveView.phase === "attachRetrying";
@@ -309,8 +316,7 @@ function Wizard() {
     if (canCreate) flow.mark("checked");
   }, [flow, canCreate]);
   let createHint: string | null = null;
-  if (blockers[0] === "oneDate") createHint = t("wizard.create.hint.oneDate");
-  else if (blockers[0] === "existingVenue") createHint = t("wizard.create.hint.existingVenue");
+  if (blockers[0] === "venueCreate") createHint = t("wizard.create.hint.venueCreate");
   else if (!checkSettled) createHint = t("wizard.create.hint.checking");
   else if (!nothingWrong) createHint = t("wizard.create.hint.invalid");
   else if (posterUnsettled) createHint = t("wizard.create.hint.poster");
@@ -340,7 +346,14 @@ function Wizard() {
       mediaId: sent.poster.mediaId,
       eventId: sent.poster.eventId,
       save: async () => {
-        const out = await saver.save(sent, orgId);
+        const out = await saver.save(sent, orgId, {
+          // The venue exists from now on: the draft names it, so a retry never creates a second one.
+          onVenue: (venue) => {
+            recordVenueCreated(orgId, sent.id, venue);
+            void queryClient.invalidateQueries({ queryKey: ["venues", orgId] });
+            if (aliveRef.current) dispatch({ type: "venueCreated", venue });
+          },
+        });
         if (out.kind === "saved") savedSession = out.sessionId;
         return out;
       },
@@ -384,9 +397,12 @@ function Wizard() {
     const outcome = result.outcome;
     // The draft stays whole. A refusal is explained field by field with the platform own check.
     let fields: CheckError[] = [];
-    if (outcome.kind === "rejected") {
+    const at = outcome.progress;
+    if (outcome.kind === "rejected" && (at === undefined || at.step === "date")) {
       try {
-        const again = (await checkEventBundle(orgId, buildBundle(sent, { orgId }, 0))) as CheckAnswer;
+        const index = at === undefined ? 0 : Math.max(at.dateIndex, 0);
+        const eventId = at === undefined || at.eventId === "" ? undefined : at.eventId;
+        const again = (await checkEventBundle(orgId, buildBundle(sent, { orgId, eventId }, index))) as CheckAnswer;
         fields = again.errors;
       } catch {
         fields = [];
@@ -501,7 +517,7 @@ function Wizard() {
         </div>
       )}
 
-      {saveView.phase === "failed" && <SaveFailure view={saveView} orgId={orgId} t={t} />}
+      {saveView.phase === "failed" && <SaveFailure view={saveView} orgId={orgId} totalDates={draft.dates.length} t={t} />}
       {saveView.phase === "posterUploadFailed" && (
         <div className="notice notice-bad" role="alert" data-testid="wizard-poster-upload-failed" data-kind={saveView.failure.kind}>
           <p>{t(saveView.failure.kind === "rejected" ? "wizard.create.uploadRejected" : "wizard.create.uploadFailed")}</p>
@@ -581,20 +597,35 @@ function textOfError(e: CheckError, t: (key: MessageKey) => string): string {
   return key === null ? e.message : t(key);
 }
 
+/** F-004: what is already saved when a save with several dates stops half way. */
+function partialLine(
+  progress: SaveProgress | undefined,
+  totalDates: number,
+  t: (key: MessageKey, params?: Record<string, string | number>) => string,
+): string | null {
+  if (progress === undefined || progress.step !== "date" || progress.savedDates === 0) return null;
+  return t("wizard.create.partial", { saved: progress.savedDates, total: totalDates, n: progress.dateIndex + 1 });
+}
+
 function SaveFailure({
   view,
   orgId,
+  totalDates,
   t,
 }: {
   view: Extract<SaveView, { phase: "failed" }>;
   orgId: string;
+  totalDates: number;
   t: (key: MessageKey, params?: Record<string, string | number>) => string;
 }) {
   const o = view.outcome;
+  const partial = partialLine(o.progress, totalDates, t);
+  const venueStep = o.progress?.step === "venue";
   if (o.kind === "unknown") {
     return (
       <div className="notice notice-bad" role="alert" data-testid="wizard-save-unknown">
-        <p>{t("wizard.create.unknown.title")}</p>
+        <p>{t(venueStep ? "wizard.create.unknown.venue" : "wizard.create.unknown.title")}</p>
+        {partial !== null && <p data-testid="wizard-save-partial">{partial}</p>}
         <p>{t("wizard.create.unknown.body")}</p>
         <Link to="/o/$orgId/events" params={{ orgId }} data-testid="wizard-save-open-list">
           {t("wizard.create.openList")}
@@ -605,14 +636,19 @@ function SaveFailure({
   if (o.kind === "denied") {
     return (
       <div className="notice notice-bad" role="alert" data-testid="wizard-save-denied">
-        <p>{t("wizard.create.denied")}</p>
+        <p>{t(venueStep ? "wizard.create.deniedVenue" : partial !== null ? "wizard.create.deniedPartial" : "wizard.create.denied")}</p>
+        {partial !== null && <p data-testid="wizard-save-partial">{partial}</p>}
       </div>
     );
   }
-  const key = checkErrorKey(o.code);
+  const key = o.code === "wizard.venue_country_unknown" ? "wizard.create.venueCountryUnknown" : checkErrorKey(o.code);
   return (
     <div className="notice notice-bad" role="alert" data-testid="wizard-save-rejected">
-      <p>{t("wizard.create.rejected.title")}</p>
+      {partial !== null ? (
+        <p data-testid="wizard-save-partial">{partial}</p>
+      ) : (
+        <p>{t(venueStep ? "wizard.create.rejected.venue" : "wizard.create.rejected.title")}</p>
+      )}
       <p>{key === null ? o.message : t(key)}</p>
       {view.fields.length > 0 && (
         <ul>

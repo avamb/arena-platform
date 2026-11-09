@@ -22093,6 +22093,9 @@ type SummaryTierItem struct {
 
 // TelegramConnectAccount One Telegram account linked to the caller.
 type TelegramConnectAccount struct {
+	// LinkedAt When the account was last linked (a connect link or an invitation renews it). The page compares it with the time its link was made.
+	LinkedAt time.Time `json:"linked_at"`
+
 	// TelegramUsername The account's Telegram username without `@`, null when it has none.
 	TelegramUsername *string `json:"telegram_username"`
 }
@@ -22101,6 +22104,9 @@ type TelegramConnectAccount struct {
 type TelegramConnectCode struct {
 	// ExpiresAt When the link stops working (15 minutes after it was issued).
 	ExpiresAt time.Time `json:"expires_at"`
+
+	// QrPng The link as a 320x320 PNG QR code, base64 (standard alphabet, padded), for a person who reads the page on a computer. Null when the picture could not be drawn.
+	QrPng *string `json:"qr_png"`
 
 	// StartParam The `/start` payload of the link (`con_<code>`).
 	StartParam string `json:"start_param"`

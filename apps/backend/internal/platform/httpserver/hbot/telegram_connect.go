@@ -24,6 +24,7 @@ package hbot
 // ANOTHER person is refused (409), as the invitation does.
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -40,11 +41,15 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgperm"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/salelinks/qr"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
 )
 
 // TelegramConnectCodeTTL is how long a "Connect Telegram" link works.
 const TelegramConnectCodeTTL = 15 * time.Minute
+
+// telegramConnectQRSize is the side of the QR picture in pixels.
+const telegramConnectQRSize = 320
 
 // TelegramConnectStartPrefix starts the /start payload of a connect link.
 const TelegramConnectStartPrefix = "con_"
@@ -94,7 +99,7 @@ func (h *Handler) connectCaller(w http.ResponseWriter, r *http.Request) (userID,
 
 // HandleTelegramConnectStatus serves GET /v1/organizations/{org_id}/telegram-connect.
 //
-//	200 {available, bot_username, linked, accounts:[{telegram_username}]}
+//	200 {available, bot_username, linked, accounts:[{telegram_username, linked_at}]}
 func (h *Handler) HandleTelegramConnectStatus(w http.ResponseWriter, r *http.Request) {
 	if h.queries == nil {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope(
@@ -118,7 +123,11 @@ func (h *Handler) HandleTelegramConnectStatus(w http.ResponseWriter, r *http.Req
 		if l.TelegramUsername != nil && *l.TelegramUsername != "" {
 			name = *l.TelegramUsername
 		}
-		accounts = append(accounts, map[string]any{"telegram_username": name})
+		accounts = append(accounts, map[string]any{
+			"telegram_username": name,
+			// The page compares it with the time its link was made: a newer one is "connected now".
+			"linked_at": l.UpdatedAt.UTC().Format(time.RFC3339),
+		})
 	}
 	username := strings.TrimPrefix(strings.TrimSpace(h.botUsername), "@")
 	var bot any
@@ -136,7 +145,7 @@ func (h *Handler) HandleTelegramConnectStatus(w http.ResponseWriter, r *http.Req
 // HandleCreateTelegramConnectCode serves
 // POST /v1/organizations/{org_id}/telegram-connect-codes (no body).
 //
-//	201 {url, start_param, expires_at}
+//	201 {url, start_param, expires_at, qr_png}
 //	403 telegram_connect.user_only           an API key or a service caller
 //	403 org.access_denied                    no membership in the organization
 //	503 telegram_connect.not_configured      EVENTS_TELEGRAM_BOT_USERNAME is empty
@@ -185,11 +194,21 @@ func (h *Handler) HandleCreateTelegramConnectCode(w http.ResponseWriter, r *http
 		return
 	}
 	h.writeAudit(r, "user", userID.String(), "v1.telegram_connect.code_issue", "organization", orgID.String(), nil)
-	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
-		"url":         TelegramConnectLink(h.botUsername, code),
+	link := TelegramConnectLink(h.botUsername, code)
+	out := map[string]any{
+		"url":         link,
 		"start_param": TelegramConnectStartPrefix + code,
 		"expires_at":  expiresAt.UTC().Format(time.RFC3339),
-	})
+		"qr_png":      nil,
+	}
+	// The QR code for a person who reads the page on a computer; the web has
+	// no QR library of its own. A failure only drops the picture.
+	if png, err := qr.PNG(link, telegramConnectQRSize, 4); err == nil {
+		out["qr_png"] = base64.StdEncoding.EncodeToString(png)
+	} else {
+		h.logger.Warn("hbot: telegram connect: render QR failed", slog.String("error", err.Error()))
+	}
+	httputil.WriteJSON(w, http.StatusCreated, out)
 }
 
 type telegramConnectBotRequest struct {
@@ -393,14 +412,7 @@ func (h *Handler) HandleAcceptTelegramConnect(w http.ResponseWriter, r *http.Req
 		unavailable("commit", err)
 		return
 	}
-	role := ""
-	for _, m := range rows {
-		if m.OrgID == c.OrgID && m.Status == "active" {
-			if b := BotRoleFor(m.Role); b == RoleOwner || role == "" {
-				role = b
-			}
-		}
-	}
+	role := botRoleIn(rows, c.OrgID)
 	h.writeAudit(r, "user", c.UserID.String(), "v1.telegram_connect.accept", "organization", c.OrgID.String(),
 		map[string]any{"via": "telegram_bot", "telegram_user_id": req.TelegramUserID, "already_linked": state == "same_user"})
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
@@ -411,6 +423,21 @@ func (h *Handler) HandleAcceptTelegramConnect(w http.ResponseWriter, r *http.Req
 		"locale":         locale,
 		"already_linked": state == "same_user",
 	})
+}
+
+// botRoleIn is the bot role ("owner" wins) the person holds in the
+// organization. It reads roles only: membership was decided before, with
+// orgperm.HasMembershipRow.
+func botRoleIn(rows []gen.MembershipRow, orgID uuid.UUID) string {
+	role := ""
+	for _, m := range rows {
+		if m.OrgID == orgID && m.Status == "active" {
+			if b := BotRoleFor(m.Role); b == RoleOwner || role == "" {
+				role = b
+			}
+		}
+	}
+	return role
 }
 
 // liveMemberships drops the memberships of archived organizations: an

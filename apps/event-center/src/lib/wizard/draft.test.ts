@@ -182,3 +182,35 @@ describe("storage", () => {
     expect(() => saveDraft("o", filled, broken)).not.toThrow();
   });
 });
+
+describe("venueCreated (F-004)", () => {
+  it("turns the described venue into the chosen one, and records it in the stored draft", async () => {
+    const { recordVenueCreated } = await import("@/lib/wizard/draft");
+    const m = new Map<string, string>();
+    const s = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
+    let d = newDraft("d-1", NOW, "Admission");
+    d = reduceDraft(d, { type: "venueMode", mode: "new" }, NOW);
+    d = reduceDraft(d, { type: "venueNew", field: "newName", value: "Sala" }, NOW);
+    d = reduceDraft(d, { type: "venueNew", field: "address", value: "Calle 1" }, NOW);
+    expect(d.venue.address).toBe("Calle 1");
+    saveDraft("org-1", d, s);
+    const venue = { id: "v-9", name: "Sala", timezone: "Europe/Madrid", capacity: 120, country: "ES" };
+    recordVenueCreated("org-1", "another-draft", venue, s);
+    expect(loadDraft("org-1", s)?.venue.mode).toBe("new");
+    recordVenueCreated("org-1", "d-1", venue, s);
+    const stored = loadDraft("org-1", s);
+    expect(stored?.venue).toMatchObject({ mode: "existing", existingId: "v-9", existingTimezone: "Europe/Madrid", existingCapacity: 120 });
+  });
+
+  it("reads a draft stored before the address field", () => {
+    const m = new Map<string, string>();
+    const s = { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
+    const d = reduceDraft(newDraft("d-2", NOW, "Admission"), { type: "event", field: "name", value: "Old" }, NOW);
+    saveDraft("org-1", d, s);
+    const key = [...m.keys()][0];
+    const raw = JSON.parse(m.get(key) as string);
+    delete raw.venue.address;
+    m.set(key, JSON.stringify(raw));
+    expect(loadDraft("org-1", s)?.venue.address).toBe("");
+  });
+});

@@ -12,6 +12,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { ConnectTelegram } from "@/components/ConnectTelegram";
 import { GuestListTeamSwitch } from "@/components/GuestListTeamSwitch";
 import { OrgDataForm } from "@/components/OrgDataForm";
 import { SellerChannelCard } from "@/components/SellerChannelCard";
@@ -33,6 +34,8 @@ export function OrgDataScreen() {
         <p className="notice" role="status">
           <strong>{t("orgData.ownerOnly.title")}</strong> {t("orgData.ownerOnly.text")}
         </p>
+        {/* F-007: connecting one's own Telegram is everybody's, not only the owner's. */}
+        <ConnectTelegram orgId={orgId} variant="section" />
         <p>
           <Link to="/o/$orgId/events" params={{ orgId }}>
             {t("common.backToList")}
@@ -80,6 +83,7 @@ function OrgDataBody({ orgId, canReadPayments }: { orgId: string; canReadPayment
           <GuestListTeamSwitch orgId={orgId} />
         </>
       )}
+      <ConnectTelegram orgId={orgId} variant="section" />
     </section>
   );
 }

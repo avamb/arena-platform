@@ -1614,15 +1614,19 @@ components:
             $ref: "#/components/schemas/TelegramConnectAccount"
     TelegramConnectAccount:
       type: object
-      required: [telegram_username]
+      required: [telegram_username, linked_at]
       description: One Telegram account linked to the caller.
       properties:
         telegram_username:
           type: [string, "null"]
           description: The account's Telegram username without `@`, null when it has none.
+        linked_at:
+          type: string
+          format: date-time
+          description: When the account was last linked (a connect link or an invitation renews it). The page compares it with the time its link was made.
     TelegramConnectCode:
       type: object
-      required: [url, start_param, expires_at]
+      required: [url, start_param, expires_at, qr_png]
       description: A one-time "Connect Telegram" link (F-007).
       properties:
         url:
@@ -1635,6 +1639,9 @@ components:
           type: string
           format: date-time
           description: When the link stops working (15 minutes after it was issued).
+        qr_png:
+          type: [string, "null"]
+          description: The link as a 320x320 PNG QR code, base64 (standard alphabet, padded), for a person who reads the page on a computer. Null when the picture could not be drawn.
     BotTelegramConnectRequest:
       type: object
       required: [code, telegram_user_id]

@@ -15457,6 +15457,11 @@ export interface components {
         TelegramConnectAccount: {
             /** @description The account's Telegram username without `@`, null when it has none. */
             telegram_username: string | null;
+            /**
+             * Format: date-time
+             * @description When the account was last linked (a connect link or an invitation renews it). The page compares it with the time its link was made.
+             */
+            linked_at: string;
         };
         /** @description A one-time "Connect Telegram" link (F-007). */
         TelegramConnectCode: {
@@ -15469,6 +15474,8 @@ export interface components {
              * @description When the link stops working (15 minutes after it was issued).
              */
             expires_at: string;
+            /** @description The link as a 320x320 PNG QR code, base64 (standard alphabet, padded), for a person who reads the page on a computer. Null when the picture could not be drawn. */
+            qr_png: string | null;
         };
         /** @description A "Connect Telegram" code the bot received in `/start con_<code>`, and the Telegram account that opened it. */
         BotTelegramConnectRequest: {

@@ -65,6 +65,9 @@ func (c connectCall) issue(orgID, user uuid.UUID) string {
 	if code != http.StatusCreated {
 		c.t.Fatalf("issue connect code: %d %v", code, out)
 	}
+	if png, _ := out["qr_png"].(string); len(png) < 100 {
+		c.t.Fatalf("connect code without a QR picture: %v", out)
+	}
 	url, _ := out["url"].(string)
 	start, _ := out["start_param"].(string)
 	if !strings.HasPrefix(url, "https://t.me/ArenaEventsCentrBot?start=con_") || !strings.HasSuffix(url, start) || len(start) > 64 {

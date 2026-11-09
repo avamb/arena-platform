@@ -11,6 +11,7 @@ import { useI18n } from "@/lib/i18n";
 import type { Tone } from "@/lib/orders";
 import { Badge, Empty, ErrorBox, Loading } from "@/components/ui";
 import { SalesFigures } from "@/components/SalesFigures";
+import { ConnectTelegram } from "@/components/ConnectTelegram";
 import { useOrg } from "@/screens/OrgLayout";
 
 export const EVENTS_PAGE_SIZE = 10;
@@ -141,9 +142,13 @@ export function EventsScreen() {
         <Empty>
           {query.length > 0
             ? t("events.empty.search", { query })
-            : t(filter === "run" ? "events.empty.run" : "events.empty.arc")}
+            : filter === "run"
+              ? t(wizardGate(access.can) === "ok" ? "events.empty.runWizard" : "events.empty.run")
+              : t("events.empty.arc")}
         </Empty>
       )}
+      {/* F-007: an organization with no event yet is where a new person starts: offer the bot here. */}
+      {events.data !== undefined && all.length === 0 && <ConnectTelegram orgId={orgId} variant="card" />}
       <ul className="cards" data-testid="event-list">
         {visible.map((e, i) => (
           <EventRow key={e.id} orgId={orgId} event={e} summary={summaries[i]?.data} />
