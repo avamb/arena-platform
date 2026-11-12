@@ -58,3 +58,21 @@ curl.exe -F file=@demo.xlsx -F profile=synthetic-v1 http://127.0.0.1:8090/genera
 Экспортёр отдельно: `python -m arena_export --source model.json --out plan.svg`.
 
 Контракт M3 проверяется в CI арены: Go-тест `apps/backend/internal/domain/seating/venue_gen_authoring_test.go` прогоняет `arena_export/testdata/synthetic_authoring.svg` через `seating.ImportSVG`. После намеренного изменения экспортёра файлы пересоздаются командой `VENUE_GEN_REGEN_FIXTURE=1 python -m pytest arena_export` (PowerShell: `$env:VENUE_GEN_REGEN_FIXTURE="1"`).
+
+## M2 packages (ported 2026-11-12)
+
+Source branch: `feature/m2-vector-pdf-adapter`, tip `ee2b73b`, plus the uncommitted row-edge-alignment check in `venue_generator/table_pipeline.py`.
+
+- `pdf_seating_adapter`: reads a vector PDF plan and extracts seats, sections and printed labels.
+- `raster_seating_adapter`: reads a JPG or PNG plan with a profile and finds seat marks.
+- `venue_generator`: the single CLI over the xlsx, PDF and raster adapters. It also holds the table pipeline, organizer inventory, comments and clarification steps.
+- `bil24_svg_exporter`: turns a checked seating model into an SVG for import.
+
+Left behind on purpose:
+
+- `results/` folders: they hold per-client analyses.
+- `m2_fixtures/`: copies of client source files.
+- Client profiles: they are bound to the SHA-256 of a client file.
+- All pdf, xlsx, image and zip files.
+
+The repository is public, so none of these may be committed. A test that needs a private file must carry `@pytest.mark.private_data`. `conftest.py` skips it when the private data is absent. Run all tests with `python -m pytest` from this folder.
