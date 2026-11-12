@@ -132,7 +132,9 @@ var roleSecrets = []roleSecret{
 	// arena-worker sends with it, arena-bot receives the delivery group's
 	// buttons and /connect with it (spec 61 section 7b.3).
 	{"SALES_TELEGRAM_BOT_TOKEN", []Role{RoleWorker, RoleBot}, func(c *Config) string { return c.SalesTelegramBotToken }},
-	{"EVENTS_TELEGRAM_BOT_TOKEN", []Role{RoleBot}, func(c *Config) string { return c.EventsTelegramBotToken }},
+	// arena-bot long-polls it, arena-worker only sends personal messages with it
+	// (new organizer applications to platform admins).
+	{"EVENTS_TELEGRAM_BOT_TOKEN", []Role{RoleWorker, RoleBot}, func(c *Config) string { return c.EventsTelegramBotToken }},
 	// POSTER_LLM_API_KEY also serves the text-formatting route (spec 44 RT-04,
 	// TEXT_FORMAT_LLM_MODEL and TEXT_FORMATS_PER_*_PER_DAY are plain settings of
 	// the api, not secrets): the model key stays on arena-api only.

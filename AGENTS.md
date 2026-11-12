@@ -582,6 +582,7 @@ Application tables, form schema, approval, the Telegram channel of the applicati
 
 * Organizer applications (onboarding, spec 08_archit…
 * The Telegram channel of the organizer application…
+* A new application reaches every platform superadmin personally (e-mail + event-center bot), not the ops chat (F-006)
 
 ### [Sales links, QR and attribution](docs/agents/sales-links-attribution.md)
 

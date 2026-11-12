@@ -174,7 +174,20 @@ func TestLifecycle_DraftToApproval(t *testing.T) {
 	if err := svc.HandleNotify(ctx, notifyPayload); err != nil {
 		t.Fatalf("send operator message: %v", err)
 	}
-	if len(notifier.messages) != 1 || !strings.Contains(notifier.messages[0], email) || !strings.Contains(notifier.messages[0], "+34600111222") {
+	// With a platform superadmin the application goes to them (e-mail job), not
+	// to the ops chat; the ops chat is the fallback when there is none.
+	var admins int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM worker_jobs WHERE job_type = 'onboarding.email' AND payload->>'kind' = 'admin_new_application' AND payload->>'application_id' = $1`, app.ID.String()).Scan(&admins); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM worker_jobs WHERE job_type IN ('onboarding.email', 'onboarding.admin_telegram') AND payload->>'application_id' = $1`, app.ID.String())
+	})
+	if admins > 0 {
+		if len(notifier.messages) != 0 {
+			t.Fatalf("ops chat got %v although %d admin e-mails were queued", notifier.messages, admins)
+		}
+	} else if len(notifier.messages) != 1 || !strings.Contains(notifier.messages[0], email) || !strings.Contains(notifier.messages[0], "+34600111222") {
 		t.Fatalf("operator message = %v (want e-mail and phone)", notifier.messages)
 	}
 

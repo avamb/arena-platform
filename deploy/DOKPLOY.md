@@ -139,7 +139,7 @@ api service's internal address) as the linked user, so it needs the API's
 
 | Variable | Service | Value |
 |---|---|---|
-| `EVENTS_TELEGRAM_BOT_TOKEN` | bot | the bot's token (secret) |
+| `EVENTS_TELEGRAM_BOT_TOKEN` | bot, worker | the bot's token (secret). The worker only sends with it: personal messages about new applications to platform admins; unset there, admins get e-mail only |
 | `EVENTS_TELEGRAM_BOT_USERNAME` | api, worker, bot | `ArenaEventsCentrBot` — the deep links in invitation e-mails |
 | `ANALYTICS_TG_HASH_SECRET` | worker, bot | the SAME random secret (secret) on both: the key of the hash that stands for a Telegram id in product analytics. Unset: the bot writes no `tg` analytics events and the rollup skips the Telegram join, each logs one warning at start |
 | `BOT_SERVICE_TOKEN` | api, bot | shared random secret of `POST /v1/bot/invitations/accept`; the route answers 503 while unset |
@@ -372,7 +372,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `BILLING_STRIPE_SECRET_KEY`, `BILLING_STRIPE_WEBHOOK_SECRET` (the PLATFORM's Stripe account for organizer invoices and credit packs; empty = card payment off) | ● | — | — | — |
 | `BILLING_BANK_WEBHOOK_SECRET` (HMAC key of bank payment notifications; empty = the bank webhook answers 503) | ● | — | — | — |
 | `BILLING_ORGANIZER_ENABLED` (`true` opens credit packs and platform invoices to organizers; default off = those routes answer 404 `billing.organizer_disabled`, the operator console is unaffected) | ● | — | — | — |
-| `EVENTS_TELEGRAM_BOT_TOKEN` | — | — | ✅ | — |
+| `EVENTS_TELEGRAM_BOT_TOKEN` (the worker only sends personal messages with it: a new organizer application goes to every platform admin) | — | ● | ✅ | — |
 | `BOT_ARENA_API_URL`, `BOT_METRICS_ADDR`, `BOT_SELF_ONBOARDING_ENABLED`, `BOT_ONBOARDING_SITE_BUTTON` | — | — | ● | — |
 | `BOT_MINIAPP_INVITES_ENABLED` (`true` makes «Приглашения» of a seated date a web_app button into the Mini App page `/tg/invitations` of the event center, spec 46 INV-05; default off, then the bot sends a text with a link to the web screen. Needs `EVENT_CENTER_PUBLIC_URL` with https on the API and the bot, and the `/tg/invitations` page deployed) | — | — | ● | — |
 | `BOT_MINIAPP_EDITOR_ENABLED` (`true` shows the «Править в редакторе» web_app button in the bot, spec 44 RT-12a; default off. Needs `EVENT_CENTER_PUBLIC_URL` with https on the API and the `/tg/` nginx location of the event center. Until RT-12b the page is a placeholder, so leave it off in production. To roll back, turn it off and redeploy the bot FIRST, then roll back the API image, the migration last: docs/ops/event_center_rollout_ru.md section 4) | — | — | ● | — |
