@@ -238,6 +238,7 @@ The Python generator service: hall model, HTTP contract, token, fixtures of the 
 * The Go contract test reads committed fixtures
 * A seat without a full identity never becomes a seat in the authoring SVG
 * No client file and no profile bound to a client file's SHA-256 goes into the service
+* On the staging stand the generator is a standalone container (lead-parser, 1024 MB, /healthz)
 
 ### [Testing and integration-test fixtures](docs/agents/testing-integration.md)
 
