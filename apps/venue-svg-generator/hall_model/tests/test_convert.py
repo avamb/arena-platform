@@ -331,10 +331,10 @@ def test_raster_leaks_no_host_path(tmp_path):
 
 # ---------------------------------------------------------------- table pipeline
 
-def table_seat(label_section, row, number, x, y):
+def table_seat(label_section, row, number, x, y, status="VALID"):
     box = [x - 8, y - 8, x + 8, y + 8]
     return {"seat_key": "cell-%s-%s-%s" % (label_section, row, number), "section_id": label_section,
-            "row_label": row, "seat_number": number, "status": "QUARANTINE",
+            "row_label": row, "seat_number": number, "status": status,
             "source_coordinate": {"x": x, "y": y}, "source_bbox": box,
             "provenance": {"identity_origin": "source_glyph", "confidence": 1.0, "source_name": "hall.pdf",
                            "page": 1, "number_word": {"text": number}, "row_word": {"text": row}}}
@@ -388,6 +388,22 @@ def test_table_pipeline_without_seats_is_quarantined():
     m = from_table_pipeline_v1(v1, source=TABLE_SRC)
     assert validate_schema(m) == [] and m["validation"]["status"] == "QUARANTINE"
     assert m["coordinate_space"]["source_units"] == "px"
+
+
+def test_table_pipeline_unreviewed_seat_is_not_pass():
+    v1 = table_v1()
+    v1["seats"][0]["status"] = "QUARANTINE"
+    m = from_table_pipeline_v1(v1, source=TABLE_SRC)
+    assert validate_schema(m) == []
+    assert m["validation"]["status"] == "QUARANTINE"
+    issue = next(i for i in m["issues"] if "source_review_missing" in i["codes"])
+    assert issue["type"] == "unknown" and issue["blocking"] and issue["target"]["row_id"] is None
+
+
+def test_table_pipeline_all_valid_passes():
+    m = from_table_pipeline_v1(table_v1(), source=TABLE_SRC)
+    assert m["validation"]["status"] == "PASS"
+    assert not any("source_review_missing" in i["codes"] for i in m["issues"])
 
 
 def test_table_pipeline_leaks_no_file_name():

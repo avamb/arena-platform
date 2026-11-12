@@ -508,10 +508,19 @@ def from_table_pipeline_v1(model_v1: dict, *, source: Optional[dict], source_uni
         extras.append({"codes": [q.get("reason", "unknown")], "section": sec, "row": row, "box": box})
     if not model_v1.get("seats") and not extras:
         extras.append({"codes": ["no_seats_found"], "section": None, "row": None, "box": None})
-    return _assemble(
+    model = _assemble(
         sections, source=source, source_units=units, extras=extras,
         source_only=model_v1.get("source_only", True), reference_svg_used=model_v1.get("reference_svg_used", False),
     )
+    # The pipeline marks a seat VALID only after the semantic review. No review, no PASS.
+    if any(s.get("status") != "VALID" for s in model_v1.get("seats", [])):
+        model["issues"].append(make_issue(
+            "unknown", id="reported:unknown:source_review_missing", origin=ORIGIN_REPORTED,
+            codes=["source_review_missing"],
+            message="The seats of this source have not been through the review.",
+        ))
+        model = revalidate(model)
+    return model
 
 
 # ---------------------------------------------------------------- detection

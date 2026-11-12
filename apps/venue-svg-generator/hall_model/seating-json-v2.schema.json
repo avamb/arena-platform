@@ -87,6 +87,15 @@
         "id": {"$ref": "#/$defs/id"},
         "label": {"type": ["string", "null"], "maxLength": 200},
         "label_status": {"enum": ["read", "observed", "confirmed", "unknown"]},
+        "placement": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["band", "order"],
+          "properties": {
+            "band": {"type": "integer", "minimum": 0},
+            "order": {"type": "integer", "minimum": 0}
+          }
+        },
         "rows": {"type": "array", "maxItems": 400, "items": {"$ref": "#/$defs/row"}}
       }
     },
