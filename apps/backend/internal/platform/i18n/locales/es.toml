@@ -114,7 +114,7 @@ other = "¡Te damos la bienvenida! Una comprobación antes de empezar: escribe l
 other = "Eso no parece una dirección de e-mail. Escríbela como en la invitación, por ejemplo nombre@empresa.com"
 
 ["bot.invite_accepted"]
-other = "<b>¡Listo!</b> Ya estás conectado a <b>{{.Org}}</b> como {{.Role}}.\n\n<b>Cómo funciona</b>\n1. Pulsa «+ Evento» y escribe el nombre del evento. Si tienes el cartel, envíalo: leeré los datos.\n2. Responde a unas preguntas: fecha, recinto, entradas. Antes de publicar te muestro todo.\n3. Recibes el enlace para los compradores y una entrada de muestra. Puedes compartir el enlace enseguida.\n\nLas ventas están en «Mis eventos»{{if .Owner}}; a tus compañeros los invitas desde el mismo menú{{end}}. Todo está en el menú de abajo, y en «Ayuda» tienes esta guía siempre a mano."
+other = "<b>¡Listo!</b> Ya estás conectado a <b>{{.Org}}</b> como {{.Role}}.\n\n<b>Cómo funciona</b>\n1. Pulsa «➕ Nuevo evento» y escribe el nombre del evento. Si tienes el cartel, envíalo: leeré los datos.\n2. Responde a unas preguntas: fecha, recinto, entradas. Antes de publicar te muestro todo.\n3. Recibes el enlace para los compradores y una entrada de muestra. Puedes compartir el enlace enseguida.\n\nLas ventas están en «📅 Mis eventos»{{if .Owner}}; a tus compañeros los invitas en «⚙️ Ajustes»{{end}}. Todo está en el menú de abajo, y en «❓ Ayuda» tienes esta guía siempre a mano."
 
 ["bot.invite_accepted_notice"]
 other = "✅ {{.Email}} ha aceptado la invitación y se ha unido al bot: organización <b>{{.Org}}</b>, rol: {{.Role}}."
@@ -144,16 +144,16 @@ other = "gestor"
 other = "<b>{{.Org}}</b>\n¿Qué quieres hacer?"
 
 ["bot.btn_events"]
-other = "Mis eventos"
+other = "📅 Mis eventos"
 
 ["bot.btn_org"]
-other = "Organización"
+other = "🔁 Cambiar de organización"
 
 ["bot.btn_lang"]
-other = "Idioma"
+other = "🗣 Idioma"
 
 ["bot.btn_help"]
-other = "Ayuda"
+other = "❓ Ayuda"
 
 ["bot.btn_scanner"]
 other = "📲 Escáner de entradas"
@@ -180,7 +180,7 @@ other = "Anterior"
 other = "Siguiente"
 
 ["bot.help"]
-other = "<b>Qué puede hacer este bot</b>\n\n- <b>+ Evento</b>: crea un evento paso a paso y lo publica. Escribe el nombre o envía el cartel: leeré los datos y tú confirmas cada valor. Al final te envío el enlace para los compradores y una entrada de muestra.\n- <b>Mis eventos</b>: todos los eventos de tu organización, los próximos primero, con las plazas vendidas y libres y el dinero por fecha. En la ficha de un evento puedes editarlo, repetirlo como nuevo, ver una entrada de muestra y mover o cancelar una sesión: los compradores reciben un correo.\n- <b>Notificaciones</b>: de dónde llegan los avisos de ventas y devoluciones y cómo conectar tu chat.\n- <b>Equipo</b>: el propietario cambia el equipo, el gestor lo ve.\n- <b>Organización</b>: si trabajas para varias organizaciones, cambia entre ellas aquí.\n- <b>Escáner de entradas</b>: la aplicación para comprobar las entradas en la puerta, con enlaces a Google Play y App Store.\n- <b>Idioma</b>: inglés, ruso o español."
+other = "<b>Qué puede hacer este bot</b>\n\n- <b>➕ Nuevo evento</b>: crea un evento paso a paso y lo publica. Escribe el nombre o envía el cartel: leeré los datos y tú confirmas cada valor. Al final te envío el enlace para los compradores y una entrada de muestra.\n- <b>📅 Mis eventos</b>: todos los eventos de tu organización, los próximos primero, con las plazas vendidas y libres y el dinero por fecha. En la ficha de un evento puedes editarlo, repetirlo como nuevo, ver una entrada de muestra y mover o cancelar una sesión: los compradores reciben un correo.\n- <b>🧾 Pedidos y devoluciones</b>: los pedidos de tus compradores, las devoluciones de dinero y las disputas de pago.\n- <b>📣 Promoción</b>: códigos promocionales, entradas gratuitas, enlaces de venta con códigos QR y mensajes a los compradores.\n- <b>🚪 Entrada al evento</b>: la aplicación para comprobar las entradas en la puerta, con enlaces a Google Play y App Store. Ahí también está la lista de invitados de una sesión.\n- <b>🛍 Tienda</b>: los pedidos y las existencias de tu tienda, si tu organización tiene una.\n- <b>⚙️ Ajustes</b>: los datos de tu organización, los pagos de los compradores, el equipo, las marcas, los recintos y las notificaciones. Ahí también están el idioma (inglés, ruso o español) y el cambio entre organizaciones. El propietario cambia el equipo y el gestor lo ve.\n- <b>🌐 Abrir en el navegador</b>: abre el centro de eventos web con un solo enlace.\n\nEl bloque <b>Primeros pasos</b> al principio del menú muestra lo que debes hacer para empezar a vender."
 
 ["bot.events_empty"]
 other = "Aún no hay eventos. El primero aparecerá aquí en cuanto lo crees."
@@ -303,7 +303,7 @@ other = "Es posible que esta devolución ya haya empezado: el bot no recibió re
 other = "☰ Abrir el menú"
 
 ["bot.wz.new_event_btn"]
-other = "+ Evento"
+other = "➕ Nuevo evento"
 
 ["bot.wz.cancel_btn"]
 other = "Cancelar"
@@ -1418,7 +1418,7 @@ other = "Continúa en la web (el enlace abre tu solicitud):\n{{.Url}}"
 other = "✅ ¡Gracias! La solicitud está enviada. La revisaremos y te escribiremos aquí y por e-mail."
 
 ["bot.onb.approved"]
-other = "🎉 ¡Tu solicitud está aprobada! La organización <b>{{.Org}}</b> está lista. Todo lo que necesitas para tus eventos se hace aquí, en el bot: pulsa el botón para abrir el menú. El e-mail con el enlace de contraseña es solo para el panel web, que necesitarás más adelante, así que por ahora puedes ignorarlo.\n\n📲 Las entradas se comprueban en la puerta con la aplicación escáner: usa el botón «Escáner de entradas» de abajo o del menú. Al crear un evento, indica la hora de apertura de la entrada: los asistentes llegarán antes y no habrá cola al escanear."
+other = "🎉 ¡Tu solicitud está aprobada! La organización <b>{{.Org}}</b> está lista. Todo lo que necesitas para tus eventos se hace aquí, en el bot: pulsa el botón para abrir el menú. El e-mail con el enlace de contraseña es solo para el panel web, que necesitarás más adelante, así que por ahora puedes ignorarlo.\n\n📲 Las entradas se comprueban en la puerta con la aplicación escáner: usa el botón «📲 Escáner de entradas» de abajo. También está en el menú, en «🚪 Entrada al evento». Al crear un evento, indica la hora de apertura de la entrada: los asistentes llegarán antes y no habrá cola al escanear."
 
 ["bot.onb.rejected"]
 other = "Lamentablemente no podemos abrir una organización con esta solicitud. Si crees que es un error, escríbenos por e-mail."
@@ -1627,7 +1627,7 @@ other = "Búsqueda: «{{.Query}}» — encontrados {{.N}}."
 other = "No se encontró nada para «{{.Query}}». Prueba otras palabras o borra la búsqueda."
 
 ["bot.ec.empty_run"]
-other = "No hay eventos en marcha. Pulsa «+ Evento» en el menú para crear uno o mira el archivo."
+other = "No hay eventos en marcha. Pulsa «➕ Nuevo evento» en el menú para crear uno o mira el archivo."
 
 ["bot.ec.empty_arc"]
 other = "El archivo está vacío."
@@ -1735,7 +1735,7 @@ other = "No encontrado. Puede que se haya eliminado o que pertenezca a otra orga
 other = "Tu rol en esta organización no incluye las cifras de ventas."
 
 ["bot.ec.notif_btn"]
-other = "🔔 Notificaciones"
+other = "🔔 Mis notificaciones"
 
 ["bot.ec.notif_open_btn"]
 other = "Abrir {{.Bot}}"
@@ -1747,7 +1747,7 @@ other = "<b>Notificaciones</b>\n\nEste bot no envía avisos de ventas. Llegan de
 other = "<b>Notificaciones</b>\n\nEste bot no envía avisos de ventas. Llegan desde {{.Bot}}: un mensaje por cada pedido pagado y cada devolución, en segundos.\n\nSolo el propietario de la organización elige qué chats los reciben. Pídele que te añada al grupo o que conecte uno nuevo. Los mensajes incluyen los contactos del comprador."
 
 ["bot.ord.btn"]
-other = "Pedidos"
+other = "🧾 Pedidos"
 
 ["bot.ord.list_title"]
 other = "<b>Pedidos: {{.Org}}</b>{{.Scope}}\n{{.Tab}} · {{.Total}} · página {{.Page}} de {{.Pages}}.{{.Search}}\n{{.Legend}}\nPulsa un pedido para abrirlo. Para buscar, escribe un código de barras, un número de pedido, un e-mail, un teléfono o un nombre."
@@ -2163,7 +2163,7 @@ other = "le cambiaste el rol después de invitarle."
 other = "es el único propietario."
 
 ["bot.inv.btn"]
-other = "🎟 Invitaciones"
+other = "🎟 Entradas gratuitas"
 
 ["bot.inv.hub"]
 other = "🎟 <b>Invitaciones</b> · {{.Org}}\n\nEntradas gratuitas para invitados: entradas reales con código de barras, que llegan a cada invitado por e-mail. Ocupan plazas de la categoría como las vendidas y puedes anular una más tarde.\n\nComo máximo {{.Max}} entradas por operación; para más, haz varias operaciones."
@@ -2316,7 +2316,7 @@ other = "La invitación de {{.Guest}} ya estaba anulada."
 other = "La invitación de {{.Guest}} ya se escaneó en la puerta, así que no se anuló. Queda marcada para revisión manual."
 
 ["bot.inv.private_only"]
-other = "Las direcciones de los invitados solo se muestran y se escriben en un chat privado con el bot. Abre Invitaciones allí."
+other = "Las direcciones de los invitados solo se muestran y se escriben en un chat privado con el bot. Abre «🎟 Entradas gratuitas» allí. Está en el menú, en «📣 Promoción»."
 
 ["bot.inv.seated_text"]
 other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nEsta fecha tiene plano de asientos, así que los asientos se eligen en el plano: los libres y los que te reservaste. Pulsa el botón y el plano se abre aquí, en Telegram."
@@ -2730,10 +2730,10 @@ other = "Este evento no tiene sesiones próximas para elegir."
 other = "Falta algo en el código. Vuelve y revisa los pasos."
 
 ["bot.prom.btn"]
-other = "🎭 Promotores"
+other = "🎭 Marcas (nombres en los eventos)"
 
 ["bot.prom.list_title"]
-other = "🎭 <b>Promotores</b> · {{.Org}} · {{.Total}} en total · pág. {{.Page}}/{{.Pages}}"
+other = "🎭 <b>Marcas</b> · {{.Org}} · {{.Total}} en total · pág. {{.Page}}/{{.Pages}}\nUna marca es el nombre con el que vendes un evento. Antes se llamaba promotor."
 
 ["bot.prom.list_hint"]
 other = "Toca un promotor para ver y cambiar sus datos."
@@ -5667,7 +5667,7 @@ other = "Esta sesión aún no tiene entradas activas. La lista de invitados est�
 other = "<b>{{.Name}}</b>, {{.When}}\nLista de invitados. Entradas en la lista: {{.Rows}}. El archivo tiene los contactos de los compradores: no lo reenvíes a personas ajenas."
 
 ["bot.gl.auto_hint"]
-other = "El bot puede enviarte esta lista por sí mismo: 24 horas antes del inicio, 3 horas antes y al abrir las puertas. Actívalo en «☰ Menú» y luego «🔔 Notificaciones»."
+other = "El bot puede enviarte esta lista por sí mismo: 24 horas antes del inicio, 3 horas antes y al abrir las puertas. Actívalo en «☰ Menú», «⚙️ Ajustes», «🔔 Mis notificaciones»."
 
 ["bot.gl.notif_text"]
 other = "<b>Lista de invitados</b>\nEste bot envía a este chat un archivo de Excel con la lista de invitados de cada sesión: 24 horas antes del inicio, 3 horas antes y al abrir las puertas. El archivo llega solo a ti, nunca a un grupo: tiene los contactos de los compradores."
@@ -5691,7 +5691,7 @@ other = "<b>{{.Name}}</b>, {{.When}}\nLista de invitados, 3 horas antes del inic
 other = "<b>{{.Name}}</b>, {{.When}}\nLista de invitados para la apertura de puertas. Entradas en la lista: {{.Rows}}."
 
 ["bot.gl.auto_stop"]
-other = "El archivo tiene los contactos de los compradores: no lo reenvíes a personas ajenas. Para dejar de recibirlo, abre «☰ Menú» y luego «🔔 Notificaciones»."
+other = "El archivo tiene los contactos de los compradores: no lo reenvíes a personas ajenas. Para dejar de recibirlo, abre «☰ Menú», «⚙️ Ajustes», «🔔 Mis notificaciones»."
 
 ["guestlist.sheet_name"]
 other = "Invitados"
@@ -5724,7 +5724,7 @@ other = "Recibes este correo porque activaste «Enviarme la lista de invitados»
 other = "Para dejar de recibir estos correos, desmarca «Enviarme la lista de invitados» en la sección «Notificaciones» del centro de eventos."
 
 ["bot.dp.btn"]
-other = "⚠️ Disputas"
+other = "⚠️ Disputas de pago"
 
 ["bot.dp.title"]
 other = "<b>Disputas · {{.Filter}}</b> ({{.Count}})"
@@ -6947,3 +6947,89 @@ other = "Cómo conectar este Telegram a tu organización:\n\n1. Abre el centro d
 
 ["bot.con.open_web_btn"]
 other = "🌐 Abrir el centro de eventos"
+
+# --- the sectioned main menu (eventbot/menu_sections.go) --------------------
+
+["bot.mn.orders_btn"]
+other = "🧾 Pedidos y devoluciones"
+
+["bot.mn.promo_btn"]
+other = "📣 Promoción"
+
+["bot.mn.door_btn"]
+other = "🚪 Entrada al evento"
+
+["bot.mn.settings_btn"]
+other = "⚙️ Ajustes"
+
+["bot.mn.disputes_count_btn"]
+other = "⚠️ Disputas de pago: {{.Count}}"
+
+["bot.mn.mail_btn"]
+other = "✉️ Mensajes a los compradores"
+
+["bot.mn.guests_btn"]
+other = "📋 Lista de invitados"
+
+["bot.mn.pay_btn"]
+other = "💳 Pagos de los compradores"
+
+["bot.mn.venues_btn"]
+other = "📍 Recintos"
+
+["bot.mn.orders_title"]
+other = "<b>Pedidos y devoluciones</b>\nMira los pedidos de tus compradores, devuelve dinero y responde a las disputas de pago."
+
+["bot.mn.promo_title"]
+other = "<b>Promoción</b>\nEstas herramientas te ayudan a vender más entradas."
+
+["bot.mn.door_title"]
+other = "<b>Entrada al evento</b>\nComprueba las entradas en la puerta y mira la lista de invitados."
+
+["bot.mn.settings_title"]
+other = "<b>Ajustes</b>\nTu organización, los pagos, el equipo y tus propios ajustes."
+
+["bot.mn.mail_text"]
+other = "<b>Mensajes a los compradores</b>\nArena puede enviar un recordatorio a un comprador que no pagó un pedido. Arena también puede enviar tus novedades a los compradores que aceptaron recibirlas. Lo configuras en el navegador."
+
+["bot.mn.venues_text"]
+other = "<b>Recintos</b>\nAñades un recinto cuando añades un evento: el bot te lo pregunta. Para ver todos los recintos y sus planos de asientos, abre el navegador."
+
+["bot.mn.guests_text"]
+other = "<b>Lista de invitados</b>\nLa lista de invitados pertenece a una sesión. Para abrirla:\n1. Pulsa «📅 Mis eventos» y elige un evento.\n2. Pulsa «📅 Sesiones: mover y cancelar» y elige una sesión.\n3. Pulsa «👥 Lista de invitados»."
+
+["bot.mn.pay_ok"]
+other = "<b>Pagos de los compradores</b>\n✅ Los pagos están conectados. Los compradores pueden pagar las entradas."
+
+["bot.mn.pay_off"]
+other = "<b>Pagos de los compradores</b>\nLos pagos no están conectados. Ya puedes añadir eventos. La venta de entradas empieza cuando Arena conecta tu proveedor de pagos. Para conectarlo, escribe al soporte de Arena."
+
+["bot.mn.pay_unknown"]
+other = "<b>Pagos de los compradores</b>\nNo puedo leer el estado de los pagos ahora. Inténtalo más tarde."
+
+["bot.mn.steps_title"]
+other = "<b>Primeros pasos</b>: {{.Done}} de {{.Total}} hechos"
+
+["bot.mn.step_org_data"]
+other = "Datos de la organización"
+
+["bot.mn.step_payments"]
+other = "Pagos de los compradores"
+
+["bot.mn.step_event"]
+other = "Primer evento"
+
+["bot.mn.step_sales_link"]
+other = "Enlace de venta"
+
+["bot.mn.step_org_data_btn"]
+other = "👉 Añadir los datos de la organización"
+
+["bot.mn.step_payments_btn"]
+other = "👉 Conectar los pagos"
+
+["bot.mn.step_event_btn"]
+other = "👉 Añadir el primer evento"
+
+["bot.mn.step_sales_link_btn"]
+other = "👉 Obtener un enlace de venta"

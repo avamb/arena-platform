@@ -283,7 +283,7 @@ other = "Welcome! Before we start, please type the e-mail address where we sent 
 other = "This is not a correct e-mail address. Please type it as in the invitation, for example name@company.com"
 
 ["bot.invite_accepted"]
-other = "<b>Done!</b> You are connected to <b>{{.Org}}</b> as {{.Role}}.\n\n<b>How it works</b>\n1. Press “+ Event” and type the event name. If you have a poster, send it. I read the data from it.\n2. I ask some questions: date, venue, tickets. Before I publish, I show you all the data.\n3. You get the link for buyers and a sample ticket. You can share the link at once.\n\nSee sales in “My events”.{{if .Owner}} You can invite team members from the same menu.{{end}}\n\nAll is in the menu below. “Help” shows this text again."
+other = "<b>Done!</b> You are connected to <b>{{.Org}}</b> as {{.Role}}.\n\n<b>How it works</b>\n1. Press “➕ New event” and type the event name. If you have a poster, send it. I read the data from it.\n2. I ask some questions: date, venue, tickets. Before I publish, I show you all the data.\n3. You get the link for buyers and a sample ticket. You can share the link at once.\n\nSee sales in “📅 My events”.{{if .Owner}} You can invite team members in “⚙️ Settings”.{{end}}\n\nAll is in the menu below. “❓ Help” shows this text again."
 
 ["bot.invite_accepted_notice"]
 other = "✅ {{.Email}} accepted the invitation and connected to the bot: organization <b>{{.Org}}</b>, role: {{.Role}}."
@@ -313,16 +313,16 @@ other = "manager"
 other = "<b>{{.Org}}</b>\nHow can I help?"
 
 ["bot.btn_events"]
-other = "My events"
+other = "📅 My events"
 
 ["bot.btn_org"]
-other = "Organization"
+other = "🔁 Change organization"
 
 ["bot.btn_lang"]
-other = "Language"
+other = "🗣 Language"
 
 ["bot.btn_help"]
-other = "Help"
+other = "❓ Help"
 
 ["bot.btn_scanner"]
 other = "📲 Ticket scanner"
@@ -349,7 +349,7 @@ other = "Previous"
 other = "Next"
 
 ["bot.help"]
-other = "<b>Functions of this bot</b>\n\n- <b>+ Event</b>: makes an event step by step and publishes it. Type the name or send a poster. I read the data from the poster and you accept each value. At the end I send the link for buyers and a sample ticket.\n- <b>My events</b>: each event of your organization, the nearest first, with sold and free seats and the money for each date. On the event card you can edit the event, copy it as a new event and see a sample ticket. You can also move or cancel a session. Buyers get an e-mail.\n- <b>Notifications</b>: which bot sends the sales and refund notifications and how to connect your chat.\n- <b>Team</b>: the owner changes the team, the manager sees it.\n- <b>Organization</b>: if you work for more than one organization, switch between them here.\n- <b>Ticket scanner</b>: the app to scan tickets at the door, with links to Google Play and the App Store.\n- <b>Language</b>: English, Russian or Spanish."
+other = "<b>Functions of this bot</b>\n\n- <b>➕ New event</b>: makes an event step by step and publishes it. Type the name or send a poster. I read the data from the poster and you accept each value. At the end I send the link for buyers and a sample ticket.\n- <b>📅 My events</b>: each event of your organization, the nearest first, with sold and free seats and the money for each date. On the event card you can edit the event, copy it as a new event and see a sample ticket. You can also move or cancel a session. Buyers get an e-mail.\n- <b>🧾 Orders and refunds</b>: the orders of your buyers, refunds of money and payment disputes.\n- <b>📣 Promotion</b>: promo codes, free tickets, sales links with QR codes and messages to buyers.\n- <b>🚪 Entrance to the event</b>: the app to scan tickets at the door, with links to Google Play and the App Store. Also the guest list of a session.\n- <b>🛍 Shop</b>: the orders and the stock of your shop, if your organization has one.\n- <b>⚙️ Settings</b>: your organization data, payments from buyers, team, brands, venues and notifications. Also the language (English, Russian or Spanish) and the switch between organizations. The owner changes the team. The manager sees it.\n- <b>🌐 Open in browser</b>: opens the web event center with one link.\n\nThe block <b>First steps</b> at the top of the menu shows what you must do to start sales."
 
 ["bot.events_empty"]
 other = "You have no events. Your first event shows here after you make it."
@@ -474,7 +474,7 @@ other = "☰ Open the menu"
 # --- the "+ Event" wizard (eventbot/wizard.go) ------------------------------
 
 ["bot.wz.new_event_btn"]
-other = "+ Event"
+other = "➕ New event"
 
 ["bot.wz.cancel_btn"]
 other = "Cancel"
@@ -1590,7 +1590,7 @@ other = "Continue on the site (the link opens your application):\n{{.Url}}"
 other = "✅ Thank you! We sent the application. We will examine it and write to you here and by e-mail."
 
 ["bot.onb.approved"]
-other = "🎉 Your application is approved! The organization <b>{{.Org}}</b> is ready. You do all work for your events here in the bot. Press the button to open the menu. The e-mail with a password link is for the web console only. You will need it after some time, and you can ignore it at this time.\n\n📲 The scanner app checks tickets at the door. Use the “Ticket scanner” button below or in the menu. When you make an event, give the time when the doors open. Then guests come earlier and there is no queue at the scanner."
+other = "🎉 Your application is approved! The organization <b>{{.Org}}</b> is ready. You do all work for your events here in the bot. Press the button to open the menu. The e-mail with a password link is for the web console only. You will need it after some time, and you can ignore it at this time.\n\n📲 The scanner app checks tickets at the door. Use the “📲 Ticket scanner” button below. You also find it in the menu: “🚪 Entrance to the event”. When you make an event, give the time when the doors open. Then guests come earlier and there is no queue at the scanner."
 
 ["bot.onb.rejected"]
 other = "Unfortunately we cannot open an organization for this application. If you think this is an error, write to us by e-mail."
@@ -1799,7 +1799,7 @@ other = "Search: “{{.Query}}”. Found: {{.N}}."
 other = "No results for “{{.Query}}”. Try different words or clear the search."
 
 ["bot.ec.empty_run"]
-other = "No events are on sale. Press “+ Event” in the menu to make one, or open the archive."
+other = "No events are on sale. Press “➕ New event” in the menu to make one, or open the archive."
 
 ["bot.ec.empty_arc"]
 other = "The archive is empty."
@@ -1907,7 +1907,7 @@ other = "Not found. It is possible that it is deleted, or that it is in a differ
 other = "Your role in this organization does not include sales figures."
 
 ["bot.ec.notif_btn"]
-other = "🔔 Notifications"
+other = "🔔 My notifications"
 
 ["bot.ec.notif_open_btn"]
 other = "Open {{.Bot}}"
@@ -1919,7 +1919,7 @@ other = "<b>Notifications</b>\n\nThis bot does not send sales notifications. {{.
 other = "<b>Notifications</b>\n\nThis bot does not send sales notifications. {{.Bot}} sends them: a message for each paid order and each refund, in seconds.\n\nOnly the owner of the organization selects which chats get them. Please tell the owner to add you to the group chat or to connect a new one. The messages have the buyer's contacts."
 
 ["bot.ord.btn"]
-other = "Orders"
+other = "🧾 Orders"
 
 ["bot.ord.list_title"]
 other = "<b>Orders: {{.Org}}</b>{{.Scope}}\n{{.Tab}} · {{.Total}} · page {{.Page}} of {{.Pages}}.{{.Search}}\n{{.Legend}}\nTap an order to open it. To search, type a barcode, an order number, an e-mail, a phone or a name."
@@ -2335,7 +2335,7 @@ other = "you changed their role after inviting them."
 other = "they are the only owner."
 
 ["bot.inv.btn"]
-other = "🎟 Invitations"
+other = "🎟 Free tickets"
 
 ["bot.inv.hub"]
 other = "🎟 <b>Invitations</b> · {{.Org}}\n\nFree tickets for guests: valid tickets with a barcode, sent to each guest by e-mail. They take seats from the category as sold tickets do. After you send them, you can annul each one.\n\nOne operation has at most {{.Max}} tickets. For more tickets, do more operations."
@@ -2488,7 +2488,7 @@ other = "The invitation for {{.Guest}} is annulled."
 other = "The invitation for {{.Guest}} is used: the scanner at the door accepted it. I did not annul it. We put it in the list for manual review."
 
 ["bot.inv.private_only"]
-other = "The bot shows and takes guests' addresses only in a private chat. Open Invitations there."
+other = "The bot shows and takes guests' addresses only in a private chat. Open «🎟 Free tickets» there. You find it in the menu: «📣 Promotion»."
 
 ["bot.inv.seated_text"]
 other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nThis date has a seating plan. Select the seats on the map: free seats and the seats that you reserve. Press the button to open the map here in Telegram."
@@ -2902,10 +2902,10 @@ other = "This event has no future sessions to select from."
 other = "Something is missing in the code. Go back and examine the steps."
 
 ["bot.prom.btn"]
-other = "🎭 Promoters"
+other = "🎭 Brands (names on events)"
 
 ["bot.prom.list_title"]
-other = "🎭 <b>Promoters</b> · {{.Org}} · {{.Total}} in all · page {{.Page}}/{{.Pages}}"
+other = "🎭 <b>Brands</b> · {{.Org}} · {{.Total}} in all · page {{.Page}}/{{.Pages}}\nA brand is the name under which you sell an event. It was called a promoter."
 
 ["bot.prom.list_hint"]
 other = "Tap a promoter to see and edit its data."
@@ -5839,7 +5839,7 @@ other = "This session has no active tickets. The guest list is empty."
 other = "<b>{{.Name}}</b>, {{.When}}\nGuest list. Tickets in the list: {{.Rows}}. The file has buyers' contacts. Do not forward it to other people."
 
 ["bot.gl.auto_hint"]
-other = "The bot can send you this list automatically: 24 hours before the start, 3 hours before and when doors open. Turn it on in «☰ Menu», then «🔔 Notifications»."
+other = "The bot can send you this list automatically: 24 hours before the start, 3 hours before and when doors open. Turn it on in «☰ Menu», «⚙️ Settings», «🔔 My notifications»."
 
 ["bot.gl.notif_text"]
 other = "<b>Guest list</b>\nThis bot sends an Excel file with the guest list of each session to this chat: 24 hours before the start, 3 hours before and when doors open. The file comes only to you, not to a group. It has buyers' contacts."
@@ -5863,7 +5863,7 @@ other = "<b>{{.Name}}</b>, {{.When}}\nGuest list, 3 hours before the start. Tick
 other = "<b>{{.Name}}</b>, {{.When}}\nGuest list for doors open. Tickets in the list: {{.Rows}}."
 
 ["bot.gl.auto_stop"]
-other = "The file has buyers' contacts. Do not forward it to other people. To stop these files, open «☰ Menu», then «🔔 Notifications»."
+other = "The file has buyers' contacts. Do not forward it to other people. To stop these files, open «☰ Menu», «⚙️ Settings», «🔔 My notifications»."
 
 ["guestlist.sheet_name"]
 other = "Guests"
@@ -5896,7 +5896,7 @@ other = "You get this letter because you turned on «Send me the guest list» in
 other = "To stop these letters, untick «Send me the guest list» in the «Notifications» section of the event center."
 
 ["bot.dp.btn"]
-other = "⚠️ Disputes"
+other = "⚠️ Payment disputes"
 
 ["bot.dp.title"]
 other = "<b>Disputes · {{.Filter}}</b> ({{.Count}})"
@@ -7120,3 +7120,89 @@ other = "To connect this Telegram to your organization:\n\n1. Open the Arena eve
 
 ["bot.con.open_web_btn"]
 other = "🌐 Open the event center"
+
+# --- the sectioned main menu (eventbot/menu_sections.go) --------------------
+
+["bot.mn.orders_btn"]
+other = "🧾 Orders and refunds"
+
+["bot.mn.promo_btn"]
+other = "📣 Promotion"
+
+["bot.mn.door_btn"]
+other = "🚪 Entrance to the event"
+
+["bot.mn.settings_btn"]
+other = "⚙️ Settings"
+
+["bot.mn.disputes_count_btn"]
+other = "⚠️ Payment disputes: {{.Count}}"
+
+["bot.mn.mail_btn"]
+other = "✉️ Messages to buyers"
+
+["bot.mn.guests_btn"]
+other = "📋 Guest list"
+
+["bot.mn.pay_btn"]
+other = "💳 Payments from buyers"
+
+["bot.mn.venues_btn"]
+other = "📍 Venues"
+
+["bot.mn.orders_title"]
+other = "<b>Orders and refunds</b>\nSee the orders of your buyers, refund money and answer payment disputes."
+
+["bot.mn.promo_title"]
+other = "<b>Promotion</b>\nThese tools help you sell more tickets."
+
+["bot.mn.door_title"]
+other = "<b>Entrance to the event</b>\nScan tickets at the entrance and see the guest list."
+
+["bot.mn.settings_title"]
+other = "<b>Settings</b>\nYour organization, payments, team and your own settings."
+
+["bot.mn.mail_text"]
+other = "<b>Messages to buyers</b>\nArena can send a reminder to a buyer who did not pay for an order. Arena can also send your news to buyers who agreed to get it. You set this up in the browser."
+
+["bot.mn.venues_text"]
+other = "<b>Venues</b>\nYou add a venue when you add an event: the bot asks for it. To see all venues and their seating plans, open the browser."
+
+["bot.mn.guests_text"]
+other = "<b>Guest list</b>\nThe guest list belongs to one session. To open it:\n1. Press «📅 My events» and select an event.\n2. Press «📅 Sessions: move and cancel» and select a session.\n3. Press «👥 Guest list»."
+
+["bot.mn.pay_ok"]
+other = "<b>Payments from buyers</b>\n✅ Payments are connected. Buyers can pay for tickets."
+
+["bot.mn.pay_off"]
+other = "<b>Payments from buyers</b>\nPayments are not connected. You can add events now. Ticket sales start after Arena connects your payment provider. To connect it, write to Arena support."
+
+["bot.mn.pay_unknown"]
+other = "<b>Payments from buyers</b>\nI cannot read the payment status at this time. Try again later."
+
+["bot.mn.steps_title"]
+other = "<b>First steps</b>: {{.Done}} of {{.Total}} done"
+
+["bot.mn.step_org_data"]
+other = "Organization data"
+
+["bot.mn.step_payments"]
+other = "Payments from buyers"
+
+["bot.mn.step_event"]
+other = "First event"
+
+["bot.mn.step_sales_link"]
+other = "Sales link"
+
+["bot.mn.step_org_data_btn"]
+other = "👉 Add the organization data"
+
+["bot.mn.step_payments_btn"]
+other = "👉 Connect payments"
+
+["bot.mn.step_event_btn"]
+other = "👉 Add the first event"
+
+["bot.mn.step_sales_link_btn"]
+other = "👉 Get a sales link"

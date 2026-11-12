@@ -118,8 +118,12 @@ func TestBotE2E_TeamScreen_OwnerManagesManagerReadsAgentRefused(t *testing.T) {
 	mk = tg.mark()
 	tg.push(e2eCallbackAs(managerTG, "home"))
 	tg.waitSince(t, mk, "")
+	// The Team row sits in Settings now, one press from the main menu.
+	mk = tg.mark()
+	tg.push(e2eCallbackAs(managerTG, "mn:set"))
+	tg.waitSince(t, mk, "Настройки")
 	if !tg.waitButton(managerTG, "team", 5*time.Second) {
-		t.Error("the manager's main menu must carry the Team row")
+		t.Error("the manager's Settings must carry the Team row")
 	}
 	mk = tg.mark()
 	tg.push(e2eCallbackAs(managerTG, "team"))

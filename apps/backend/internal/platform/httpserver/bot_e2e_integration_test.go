@@ -765,7 +765,7 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 		t.Errorf("accepted message should name the role: %s", accepted)
 	}
 	// The first message also says what to do next, naming the button below.
-	if !strings.Contains(accepted, "Как это работает") || !strings.Contains(accepted, "+ Мероприятие") {
+	if !strings.Contains(accepted, "Как это работает") || !strings.Contains(accepted, "➕ Новое мероприятие") {
 		t.Errorf("accepted message should give the steps: %s", accepted)
 	}
 	tg.waitFor(t, "Что будем делать?")

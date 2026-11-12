@@ -139,7 +139,7 @@ func TestBotE2E_PromoterEdit(t *testing.T) {
 	}
 
 	// ── the list, from the menu: alphabetical, three rows ─────────────────────
-	text := owner.press("pr:l", "Промоутеры")
+	text := owner.press("pr:l", "Бренды")
 	for _, n := range []string{"всего 3", "стр. 1/1"} {
 		if !strings.Contains(text, n) {
 			t.Errorf("list lacks %q:\n%s", n, text)
@@ -290,7 +290,7 @@ func TestBotE2E_PromoterEdit(t *testing.T) {
 	}
 
 	// ── the manager works on the same organization's promoters ────────────────
-	manager.press("pr:l", "Промоутеры")
+	manager.press("pr:l", "Бренды")
 	manager.press(ask("p", idB), "Телефон")
 	manager.say("+34 600 111 222", "Сохранено")
 	if r := readPromoter(t, pool, idB); r.str(r.Phone) != "+34 600 111 222" {
@@ -298,7 +298,7 @@ func TestBotE2E_PromoterEdit(t *testing.T) {
 	}
 
 	// ── another organization: its own (empty) list, and a foreign id is "gone" ─
-	text = outsider.press("pr:l", "Промоутеры")
+	text = outsider.press("pr:l", "Бренды")
 	if !strings.Contains(text, "всего 1") || strings.Contains(text, nameB) {
 		t.Errorf("the outsider must see only his own list:\n%s", text)
 	}
