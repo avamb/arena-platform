@@ -105,6 +105,10 @@ import type {
   VenueItem,
   SeatingPlan,
   SeatingPlanVersion,
+  VenuePlanIntakeEnvelope,
+  VenuePlanIntakeList,
+  PlanTemplatesResponse,
+  ForkSeatingPlanRequest,
   TextFormatRequest,
   TextFormatResponse,
   AdminSeatsResponse,
@@ -1086,6 +1090,94 @@ export function listVenueSeatingPlans(venueId: string): Promise<{ seating_plans:
 /** The versions of a seating plan, each with its geometry (`seating_plan.read`). */
 export function listSeatingPlanVersions(planId: string): Promise<{ seating_plan_versions: SeatingPlanVersion[] }> {
   return call<{ seating_plan_versions: SeatingPlanVersion[] }>({ route: API.seatingPlanVersions, params: { id: planId } });
+}
+
+// ─── Spec 64: the seating plan intake ────────────────────────────────────────
+
+/** A plan of up to 80 MB over a slow line: five minutes. */
+const PLAN_UPLOAD_TIMEOUT_MS = 300_000;
+
+/**
+ * Sends the files of a seating plan (`seating_plan.create`). The key makes a repeat of
+ * the same attempt, after an answer was lost, the same intake and no second one.
+ */
+export function createVenuePlanIntake(orgId: string, venueId: string, files: readonly File[], idempotencyKey: string): Promise<VenuePlanIntakeEnvelope> {
+  const form = new FormData();
+  for (const f of files) form.append("files", f, f.name);
+  form.append("channel", "event_center_web");
+  return call<VenuePlanIntakeEnvelope>({
+    route: API.planIntakeCreate,
+    params: { org_id: orgId, venue_id: venueId },
+    form,
+    headers: { "Idempotency-Key": idempotencyKey },
+    timeoutMs: PLAN_UPLOAD_TIMEOUT_MS,
+  });
+}
+
+/** The intakes of the organization, newest first (`seating_plan.read`). */
+export function listVenuePlanIntakes(orgId: string, filter: { venueId?: string; state?: string; limit?: number } = {}): Promise<VenuePlanIntakeList> {
+  return call<VenuePlanIntakeList>({
+    route: API.planIntakeList,
+    params: { org_id: orgId },
+    query: { venue_id: filter.venueId, state: filter.state, limit: filter.limit },
+  });
+}
+
+export function getVenuePlanIntake(orgId: string, intakeId: string): Promise<VenuePlanIntakeEnvelope> {
+  return call<VenuePlanIntakeEnvelope>({ route: API.planIntakeGet, params: { org_id: orgId, intake_id: intakeId } });
+}
+
+/** The SVG of a draft as a blob: it is shown from a blob URL in an <img>, never as markup. */
+export function downloadPlanDraftSvg(orgId: string, intakeId: string, n: number): Promise<DownloadedFile> {
+  return download({
+    route: API.planIntakeDraftSvg,
+    params: { org_id: orgId, intake_id: intakeId, n: String(n) },
+    accept: "image/svg+xml",
+    fallbackName: `draft-${n}.svg`,
+  });
+}
+
+/** A file of an intake (or its PNG copy) as a blob. */
+export function downloadPlanSource(orgId: string, intakeId: string, sourceId: string, fileName: string, pngCopy = false): Promise<DownloadedFile> {
+  return download({
+    route: API.planIntakeSource,
+    params: { org_id: orgId, intake_id: intakeId, source_id: sourceId },
+    query: { format: pngCopy ? "png" : undefined },
+    accept: "*/*",
+    fallbackName: fileName,
+  });
+}
+
+/** "Fix it": the written correction of the current draft. The intake goes to an administrator. */
+export function correctPlanIntakeText(orgId: string, intakeId: string, draft: number, text: string): Promise<VenuePlanIntakeEnvelope> {
+  return call<VenuePlanIntakeEnvelope>({ route: API.planIntakeCorrection, params: { org_id: orgId, intake_id: intakeId }, body: { draft, text } });
+}
+
+export function escalatePlanIntake(orgId: string, intakeId: string, text: string): Promise<VenuePlanIntakeEnvelope> {
+  return call<VenuePlanIntakeEnvelope>({
+    route: API.planIntakeEscalate,
+    params: { org_id: orgId, intake_id: intakeId },
+    body: text.trim() === "" ? {} : { text: text.trim() },
+  });
+}
+
+export function cancelPlanIntake(orgId: string, intakeId: string): Promise<VenuePlanIntakeEnvelope> {
+  return call<VenuePlanIntakeEnvelope>({ route: API.planIntakeCancel, params: { org_id: orgId, intake_id: intakeId } });
+}
+
+/** "Correct": makes the seating plan of the current draft (the server does it in one transaction). */
+export function approvePlanIntake(orgId: string, intakeId: string, draft: number): Promise<VenuePlanIntakeEnvelope> {
+  return call<VenuePlanIntakeEnvelope>({ route: API.planIntakeApprove, params: { org_id: orgId, intake_id: intakeId }, body: { draft } });
+}
+
+/** The verified seating plans of a venue the organization may copy (`seating_plan.read`). */
+export function listPlanTemplates(orgId: string, venueId: string): Promise<PlanTemplatesResponse> {
+  return call<PlanTemplatesResponse>({ route: API.planTemplates, params: { org_id: orgId, venue_id: venueId } });
+}
+
+/** Copies a verified template into the organization, for the venue (`seating_plan.fork`). */
+export function forkSeatingPlan(planId: string, body: ForkSeatingPlanRequest): Promise<{ seating_plan: SeatingPlan }> {
+  return call<{ seating_plan: SeatingPlan }>({ route: API.seatingPlanFork, params: { id: planId }, body });
 }
 
 export function listCountries(lang?: string): Promise<GeoCountriesResponse> {

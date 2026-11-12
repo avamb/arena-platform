@@ -233,6 +233,13 @@ function MoreSheet({ orgId, access, shopMode, orgCount, onLogout, onClose }: Nav
                 </Link>
               </li>
             )}
+            {access.can("venue.read") && (
+              <li>
+                <Link to="/o/$orgId/venues" params={{ orgId }} {...item} data-testid="nav-venues">
+                  {t("nav.venues")}
+                </Link>
+              </li>
+            )}
             {access.can("sales_link.read") && (
               <li>
                 <Link to="/o/$orgId/links" params={{ orgId }} search={{}} {...item} data-testid="nav-links">

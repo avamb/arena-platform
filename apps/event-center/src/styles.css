@@ -3222,3 +3222,187 @@ fieldset legend {
   background: var(--bad-text);
   color: var(--bad-bg);
 }
+
+/* Venue chooser (spec 64 section 2.1.1) */
+.venue-chooser {
+  display: grid;
+  gap: 0.5rem;
+}
+.chooser-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.chooser-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.chooser-sub {
+  margin: 0.5rem 0 0;
+}
+.chooser-chips,
+.chooser-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.chooser-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.chooser-chip {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.chooser-list {
+  display: grid;
+  gap: 0.4rem;
+}
+.chooser-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  background: var(--surface, transparent);
+  border: 1px solid var(--border, currentColor);
+  border-radius: 8px;
+}
+.chooser-row[aria-current="true"] {
+  border-width: 2px;
+}
+.chooser-row:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.chooser-row-name {
+  font-weight: 600;
+}
+.chooser-marks {
+  display: inline-flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+/* Spec 64: the seating plan intake (upload, waiting, review). */
+.plan-upload-list {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.plan-upload-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: center;
+}
+.plan-upload-file {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.plan-zoom {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: min(70vh, 560px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--ec-on-primary);
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+.plan-zoom.plan-zoom-dragging {
+  cursor: grabbing;
+}
+.plan-zoom:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.plan-zoom-content {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+.plan-zoom-content > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+.plan-zoom-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.5rem 0;
+}
+.plan-compare {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 900px) {
+  .plan-compare {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}
+.plan-sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+.plan-source-img {
+  display: block;
+  max-width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--ec-on-primary);
+}
+.plan-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin: 0.5rem 0;
+}
+.plan-stats dt {
+  color: var(--muted);
+}
+.plan-stats dd {
+  margin: 0;
+  font-weight: 600;
+}
+.plan-previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+}
+.plan-preview {
+  display: block;
+  width: 140px;
+  height: 90px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--ec-on-primary);
+}
+.plan-preview-dot {
+  fill: var(--ec-ink);
+}

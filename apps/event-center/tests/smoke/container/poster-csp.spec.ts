@@ -8,6 +8,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { liveEnv, person, signInAs } from "../live/liveEnv";
+import { pickWizardVenue } from "../live/wizardHelpers";
 import { scriptFacts } from "../live/posterHelpers";
 
 test.describe.configure({ mode: "serial" });
@@ -76,8 +77,7 @@ test("a chosen file is previewed and a created event shows its poster, with no p
   await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`), { timeout: 20_000 });
   await page.getByTestId("events-create").click();
   await page.getByTestId("wizard-name").fill(name);
-  await page.getByTestId("wizard-venue-mode-existing").check();
-  await page.getByTestId("wizard-venue-pick").selectOption({ label: "E2E Hall" });
+  await pickWizardVenue(page, "E2E Hall");
   await page.getByTestId("wizard-currency").fill("EUR");
   const day = page.getByTestId("wizard-date-0-day");
   await day.getByTestId("wizard-date-0-day-toggle").click();

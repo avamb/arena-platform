@@ -18,6 +18,8 @@ import type { GeoCitiesResponse } from "@/lib/api/types";
 import { useI18n } from "@/lib/i18n";
 import type { VenueMode } from "@/lib/wizard/draft";
 import { SelectField, TextField } from "@/components/FormField";
+import { VenueChooser } from "@/components/VenueChooser";
+import type { CreatePrefill } from "@/lib/venues/chooser";
 import type { SectionProps } from "@/components/WizardEventSection";
 import { useOrg } from "@/screens/OrgLayout";
 
@@ -46,9 +48,13 @@ export function WizardVenueSection({ draft, dispatch, touch, errorOf }: SectionP
   const chosen = list.find((x) => x.id === v.existingId);
 
   const countries = useQuery({ queryKey: ["geo", "countries", locale], queryFn: () => listCountries(locale), ...FOREVER });
+  // What the chooser told us and the list of the organization may not know (a shared venue, a country outside the reference).
+  const [pickedCountry, setPickedCountry] = useState("");
+  const [countryNames, setCountryNames] = useState<Record<string, string>>({});
 
   // The country that decides the currency: the new venue's, or the chosen venue's own.
-  const currencyCountry = v.mode === "new" ? v.countryIso2 : v.mode === "existing" ? (chosen?.country ?? "") : "";
+  const currencyCountry =
+    v.mode === "new" ? v.countryIso2 : v.mode === "existing" ? (chosen?.country ?? (v.existingCountry !== "" ? v.existingCountry : pickedCountry)) : "";
   const currency = useQuery({
     queryKey: ["geo", "currency", currencyCountry],
     queryFn: () => countryCurrency(currencyCountry),
@@ -111,6 +117,16 @@ export function WizardVenueSection({ draft, dispatch, touch, errorOf }: SectionP
     dispatch({ type: "venueMode", mode });
   };
 
+  // "My venue is not in the list": the form of a new venue with the country and the city already chosen.
+  const startNew = (p: CreatePrefill) => {
+    touch("venueExisting");
+    setCountryNames((m) => ({ ...m, [p.iso2]: p.countryName }));
+    dispatch({ type: "venueMode", mode: "new" });
+    dispatch({ type: "country", iso2: p.iso2 });
+    if (p.cityName !== "") dispatch({ type: "venueNew", field: "cityName", value: p.cityName });
+    setShowCities(false);
+  };
+
   return (
     <fieldset className="org-form" data-testid="wizard-venue">
       <legend>{t("wizard.section.venue")}</legend>
@@ -145,43 +161,50 @@ export function WizardVenueSection({ draft, dispatch, touch, errorOf }: SectionP
 
       {v.mode === "existing" && canRead && (
         <>
-          {!venues.isLoading && list.length === 0 && (
-            <p className="field-hint" data-testid="wizard-venue-none">
-              {t(canCreate ? "wizard.venue.none" : "wizard.venue.noneNoCreate")}
-            </p>
-          )}
-          <SelectField
-            label={t("wizard.venue.pick")}
-            error={errorOf("venueExisting")}
-            value={chosen === undefined ? "" : v.existingId}
-            onChange={(id) => {
-              touch("venueExisting");
-              const found = list.find((x) => x.id === id);
-              dispatch({
-                type: "venueExisting",
-                venue:
-                  found === undefined
-                    ? null
-                    : { id: found.id, name: found.name, timezone: found.timezone ?? null, capacity: found.capacity_default ?? null, country: found.country ?? null },
-              });
-            }}
-            onBlur={() => touch("venueExisting")}
-            testId="wizard-venue-pick"
-          >
-            <option value="">{t("wizard.venue.pickPlaceholder")}</option>
-            {list.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.name}
-              </option>
-            ))}
-          </SelectField>
-          {chosen !== undefined && (
-            <p className="field-hint" data-testid="wizard-venue-facts">
-              {t("wizard.venue.facts", {
-                tz: v.existingTimezone === "" ? "?" : v.existingTimezone,
-                seats: v.existingCapacity === null ? t("wizard.venue.seatsUnknown") : v.existingCapacity,
-              })}
-            </p>
+          {v.existingId === "" ? (
+            <>
+              <VenueChooser
+                orgId={orgId}
+                value={v.existingId}
+                onPick={(d) => {
+                  touch("venueExisting");
+                  setPickedCountry(d.country);
+                  dispatch({
+                    type: "venueExisting",
+                    venue: { id: d.id, name: d.name, timezone: d.timezone === "" ? null : d.timezone, capacity: d.capacity_default, country: d.country === "" ? null : d.country },
+                  });
+                }}
+                onCreateNew={canCreate ? startNew : undefined}
+              />
+              {errorOf("venueExisting") !== undefined && (
+                <p className="field-error" data-testid="wizard-venue-pick-error">
+                  {errorOf("venueExisting")}
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <p data-testid="wizard-venue-chosen">
+                <strong>{v.existingName}</strong>{" "}
+                <button
+                  type="button"
+                  className="btn btn-link"
+                  onClick={() => {
+                    touch("venueExisting");
+                    dispatch({ type: "venueExisting", venue: null });
+                  }}
+                  data-testid="wizard-venue-change"
+                >
+                  {t("venues.change")}
+                </button>
+              </p>
+              <p className="field-hint" data-testid="wizard-venue-facts">
+                {t("wizard.venue.facts", {
+                  tz: v.existingTimezone === "" ? "?" : v.existingTimezone,
+                  seats: v.existingCapacity === null ? t("wizard.venue.seatsUnknown") : v.existingCapacity,
+                })}
+              </p>
+            </>
           )}
         </>
       )}
@@ -199,25 +222,45 @@ export function WizardVenueSection({ draft, dispatch, touch, errorOf }: SectionP
             onBlur={() => touch("venueName")}
             testId="wizard-venue-name"
           />
-          <SelectField
-            label={t("wizard.f.country")}
-            error={errorOf("venueCountry")}
-            value={v.countryIso2}
-            onChange={(iso2) => {
-              touch("venueCountry");
-              dispatch({ type: "country", iso2 });
-              setShowCities(false);
-            }}
-            onBlur={() => touch("venueCountry")}
-            testId="wizard-venue-country"
-          >
-            <option value="">{t("wizard.f.countryPlaceholder")}</option>
-            {(countries.data?.countries ?? []).map((c) => (
-              <option key={c.iso2} value={c.iso2}>
-                {c.name}
-              </option>
-            ))}
-          </SelectField>
+          {v.countryIso2 === "" ? (
+            <div role="group" aria-label={t("wizard.venue.countryChoose")} data-testid="wizard-venue-country-chooser">
+              <p>{t("wizard.venue.countryChoose")}</p>
+              <VenueChooser
+                orgId={orgId}
+                countryOnly
+                testId="venue-chooser"
+                onPickCountry={(c) => {
+                  touch("venueCountry");
+                  setCountryNames((m) => ({ ...m, [c.iso2]: c.name }));
+                  dispatch({ type: "country", iso2: c.iso2 });
+                  setShowCities(false);
+                }}
+              />
+              {errorOf("venueCountry") !== undefined && (
+                <p className="field-error" data-testid="wizard-venue-country-error">
+                  {errorOf("venueCountry")}
+                </p>
+              )}
+            </div>
+          ) : (
+            <p data-testid="wizard-venue-country">
+              {t("wizard.venue.countryPicked", {
+                country: countryNames[v.countryIso2] ?? (countries.data?.countries ?? []).find((c) => c.iso2.toUpperCase() === v.countryIso2.toUpperCase())?.name ?? v.countryIso2,
+              })}{" "}
+              <button
+                type="button"
+                className="btn btn-link"
+                onClick={() => {
+                  touch("venueCountry");
+                  dispatch({ type: "country", iso2: "" });
+                  setShowCities(false);
+                }}
+                data-testid="wizard-venue-country-change"
+              >
+                {t("wizard.venue.countryChange")}
+              </button>
+            </p>
+          )}
 
           <TextField
             label={t("wizard.f.city")}

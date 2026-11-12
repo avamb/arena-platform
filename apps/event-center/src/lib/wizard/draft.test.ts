@@ -55,6 +55,17 @@ describe("reduceDraft", () => {
     expect(venueCapacity(d.venue)).toBe(300);
   });
 
+  it("keeps the country of the chosen existing venue, and clears it with the venue", () => {
+    const d = reduceDraft(
+      base,
+      { type: "venueExisting", venue: { id: "v1", name: "Hall", timezone: "Europe/Madrid", capacity: 300, country: "ES" } },
+      NOW,
+    );
+    expect(d.venue.existingCountry).toBe("ES");
+    const cleared = reduceDraft(d, { type: "venueExisting", venue: null }, NOW);
+    expect(cleared.venue.existingCountry).toBe("");
+  });
+
   it("keeps what was typed for a new venue when the person switches mode and back", () => {
     let d = reduceDraft(base, { type: "venueMode", mode: "new" }, NOW);
     d = reduceDraft(d, { type: "venueNew", field: "newName", value: "Palau" }, NOW);
@@ -200,6 +211,22 @@ describe("venueCreated (F-004)", () => {
     recordVenueCreated("org-1", "d-1", venue, s);
     const stored = loadDraft("org-1", s);
     expect(stored?.venue).toMatchObject({ mode: "existing", existingId: "v-9", existingTimezone: "Europe/Madrid", existingCapacity: 120 });
+  });
+
+  it("round-trips the country of the chosen existing venue, and reads a draft without it as empty", () => {
+    const store = memoryStorage();
+    const chosen = reduceDraft(
+      newDraft("d-3", NOW, "Admission"),
+      { type: "venueExisting", venue: { id: "v-shared", name: "Shared", timezone: "Europe/Madrid", capacity: 50, country: "ES" } },
+      NOW,
+    );
+    saveDraft("org-1", chosen, store);
+    expect(loadDraft("org-1", store)?.venue.existingCountry).toBe("ES");
+    const key = [...store.data.keys()][0];
+    const raw = JSON.parse(store.data.get(key) as string);
+    delete raw.venue.existingCountry;
+    store.setItem(key, JSON.stringify(raw));
+    expect(loadDraft("org-1", store)?.venue.existingCountry).toBe("");
   });
 
   it("reads a draft stored before the address field", () => {

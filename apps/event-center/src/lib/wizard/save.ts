@@ -67,6 +67,11 @@ export interface VenueApi {
   countryId(iso2: string): Promise<string | null>;
   /** Finds or creates the city by name (the route is idempotent by name); answers its id. */
   createCity(orgId: string, countryId: string, name: string): Promise<string>;
+  /**
+   * The same for a country the platform has no row for yet (a country outside the reference):
+   * the server makes the country row with the city, `country_iso2` names it. Absent = not supported.
+   */
+  createCityInCountry?(orgId: string, iso2: string, name: string): Promise<string>;
   createVenue(orgId: string, body: CreateVenueRequest): Promise<VenueChoice>;
 }
 
@@ -113,6 +118,20 @@ export function newVenueBody(draft: WizardDraft, cityId: string): CreateVenueReq
 }
 
 /**
+ * The ONE place that makes the city of a new venue. A country of the reference
+ * has a platform id: the city is made under it, as before. A country outside
+ * the reference has none: the city is made with `country_iso2` and the server
+ * adds the country. Answers null when the country is outside the reference and
+ * the API cannot make it.
+ */
+export async function ensureCity(api: VenueApi, orgId: string, iso2: string, name: string): Promise<string | null> {
+  const countryId = await api.countryId(iso2);
+  if (countryId !== null) return api.createCity(orgId, countryId, name);
+  if (api.createCityInCountry === undefined) return null;
+  return api.createCityInCountry(orgId, iso2.trim().toUpperCase(), name);
+}
+
+/**
  * Makes sure the draft names an existing venue: reuses one of the same name,
  * else creates the city and the venue. Answers the draft that names it.
  */
@@ -132,11 +151,10 @@ async function ensureVenue(
   try {
     const own = (await api.listVenues(orgId)).find((x) => sameName(x.name, v.newName));
     if (own !== undefined) return adopt(own);
-    const countryId = await api.countryId(v.countryIso2);
-    if (countryId === null) {
+    const cityId = await ensureCity(api, orgId, v.countryIso2, v.cityName.trim());
+    if (cityId === null) {
       return fail({ kind: "rejected", status: 422, code: "wizard.venue_country_unknown", message: "" });
     }
-    const cityId = await api.createCity(orgId, countryId, v.cityName.trim());
     try {
       return adopt(await api.createVenue(orgId, newVenueBody(draft, cityId)));
     } catch (err) {

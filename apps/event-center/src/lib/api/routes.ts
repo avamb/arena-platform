@@ -247,6 +247,19 @@ export const API = {
   // answers the organization's own and the shared ones.
   venueSeatingPlans: { method: "GET", path: "/v1/venues/{venue_id}/seating-plans" },
   seatingPlanVersions: { method: "GET", path: "/v1/seating-plans/{id}/versions" },
+  // Spec 64: the seating plan intake of the organization (seating_plan.read / seating_plan.create),
+  // the verified templates of a venue and the copy of one.
+  planIntakeCreate: { method: "POST", path: "/v1/organizations/{org_id}/venues/{venue_id}/plan-intakes" },
+  planIntakeList: { method: "GET", path: "/v1/organizations/{org_id}/plan-intakes" },
+  planIntakeGet: { method: "GET", path: "/v1/organizations/{org_id}/plan-intakes/{intake_id}" },
+  planIntakeSource: { method: "GET", path: "/v1/organizations/{org_id}/plan-intakes/{intake_id}/sources/{source_id}" },
+  planIntakeDraftSvg: { method: "GET", path: "/v1/organizations/{org_id}/plan-intakes/{intake_id}/drafts/{n}/svg" },
+  planIntakeCorrection: { method: "POST", path: "/v1/organizations/{org_id}/plan-intakes/{intake_id}/corrections-text" },
+  planIntakeEscalate: { method: "POST", path: "/v1/organizations/{org_id}/plan-intakes/{intake_id}/escalate" },
+  planIntakeCancel: { method: "POST", path: "/v1/organizations/{org_id}/plan-intakes/{intake_id}/cancel" },
+  planIntakeApprove: { method: "POST", path: "/v1/organizations/{org_id}/plan-intakes/{intake_id}/approve" },
+  planTemplates: { method: "GET", path: "/v1/organizations/{org_id}/venues/{venue_id}/plan-templates" },
+  seatingPlanFork: { method: "POST", path: "/v1/seating-plans/{id}/fork" },
   // Sales page materials of an event: gallery, videos, other sellers, the map
   // point and the photo report (reads event.read, writes event.update), and the
   // venue's own postal address (venue.update).
