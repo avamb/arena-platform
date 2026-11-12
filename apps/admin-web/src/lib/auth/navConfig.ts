@@ -49,6 +49,7 @@ export type NavRoutePath =
   | "/organizations"
   | "/events"
   | "/venues"
+  | "/venue-plans"
   | "/orders"
   | "/tickets"
   | "/refunds"
@@ -189,6 +190,15 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
       "Venue directory (name, city, address, capacity_default). Necessary permission: venue.read, venue.create, venue.update, venue.delete or superadmin.read. The visual seating editor is for a later release.",
+  },
+  {
+    id: "venue_plans",
+    label: "Seating plans",
+    to: "/venue-plans",
+    permission: { anyOf: ["venue_plan_intake.curate", "seating_plan.verify"] },
+    scopeKinds: ["global", "platform"],
+    purpose:
+      "Seating plans that organizers send for their venues. Work through the queue, upload a draft, return it to the organizer or approve it. Verify a plan on the tab Waiting for verification. Necessary permission: venue_plan_intake.curate for the queue or seating_plan.verify for the verification.",
   },
   {
     id: "orders",
