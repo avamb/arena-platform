@@ -115,7 +115,8 @@ func ImportSVG(raw []byte) (Geometry, []ValidationError, ValidationErrors) {
 	// not be treated as sectors.
 	rowNodes := collectRowGroups(root, priceCatGroup, legendGroup)
 
-	sections, seatErrs := parseSections(rowNodes, catByColor, transforms)
+	sections, keyWarns, seatErrs := parseSections(rowNodes, catByColor, transforms)
+	warnings = append(warnings, keyWarns...)
 	errs = append(errs, seatErrs...)
 
 	decor := renderDecorSVG(root, priceCatGroup, legendGroup, append(append([]*xmlNode(nil), rowNodes...), gaNodes...))
@@ -493,18 +494,43 @@ func collectRowGroups(root, price, legend *xmlNode) []*xmlNode {
 // parseSections turns a slice of row-group nodes into a canonical
 // []Section: rows are grouped by section-key (derived from the
 // inkscape:label), seats are extracted from the circles inside each
-// group. §6 rules 2/3/4/7/8 are enforced here.
-func parseSections(rows []*xmlNode, catByColor map[string]int, transforms map[*xmlNode]affine) ([]Section, ValidationErrors) {
+// group. §6 rules 2/3/4/7/8 are enforced here. Section and row keys come
+// from resolveKeys (key_resolve.go), which needs every seat of the plan
+// first, so the row groups are walked twice: once to collect the seats
+// that reach the duplicate check, once to build the sections.
+func parseSections(rows []*xmlNode, catByColor map[string]int, transforms map[*xmlNode]affine) ([]Section, []ValidationError, ValidationErrors) {
+	// Pass 1: candidate seats, no errors reported.
+	var candidates []keySeat
+	for _, rowNode := range rows {
+		label, secName, rowName := svgRowNames(rowNode)
+		if label == "" || rowName == "" {
+			continue
+		}
+		for _, ch := range rowNode.Children {
+			if ch.element == nil {
+				continue
+			}
+			number, _, verr, skip := svgSeatCheck(ch.element, catByColor, rowName)
+			if skip || verr != nil {
+				continue
+			}
+			candidates = append(candidates, keySeat{sector: secName, row: rowName, number: number})
+		}
+	}
+	keys := resolveKeys(candidates)
+
 	var errs ValidationErrors
 	// Section aggregation state: sectionKey → *Section (order-preserving
 	// via parallel slice).
 	secByKey := map[string]*Section{}
 	var secOrder []string
-	// Deduplication: sectionKey + rowKey + seatNumber must be unique.
-	seen := map[string]bool{}
+	// Deduplication: sector name + row name + seatNumber must be unique.
+	// After key resolution this is the same as the final seat key being
+	// unique (key_resolve.go).
+	seen := map[[3]string]bool{}
 
 	for _, rowNode := range rows {
-		label := stripHash(inkscapeLabel(rowNode))
+		label, secName, rowName := svgRowNames(rowNode)
 		if label == "" {
 			errs = append(errs, ValidationError{
 				Code:    ErrRowMissingSectorLabel,
@@ -513,13 +539,8 @@ func parseSections(rows []*xmlNode, catByColor map[string]int, transforms map[*x
 			})
 			continue
 		}
-		secName := strings.TrimSpace(sectorPrefixRE.ReplaceAllString(label, ""))
-		if secName == "" {
-			secName = label
-		}
-		secKey := normalizeKey(secName)
+		secKey := keys.sectorKey(secName)
 
-		rowName := strings.TrimSpace(elementText(findDirectChild(rowNode, "title")))
 		if rowName == "" {
 			errs = append(errs, ValidationError{
 				Code:    ErrRowMissingTitle,
@@ -528,7 +549,7 @@ func parseSections(rows []*xmlNode, catByColor map[string]int, transforms map[*x
 			})
 			continue
 		}
-		rowKey := normalizeKey(rowName)
+		rowKey := keys.rowKey(secKey, rowName)
 
 		var seats []Seat
 		for _, ch := range rowNode.Children {
@@ -536,50 +557,24 @@ func parseSections(rows []*xmlNode, catByColor map[string]int, transforms map[*x
 				continue
 			}
 			el := ch.element
-			if el.Name.Local == "title" {
+			seatNumber, catIdx, verr, skip := svgSeatCheck(el, catByColor, rowName)
+			if skip {
 				continue
 			}
-			if el.Name.Local != "circle" {
-				errs = append(errs, ValidationError{
-					Code:    ErrSeatNotCircle,
-					Element: attr(el, "id"),
-					Detail: fmt.Sprintf(
-						"only <circle> may represent seats; got <%s> in row %q",
-						el.Name.Local, rowName),
-				})
+			if verr != nil {
+				errs = append(errs, *verr)
 				continue
 			}
-			seatNumber := strings.TrimSpace(elementText(findDirectChild(el, "title")))
-			if seatNumber == "" {
-				errs = append(errs, ValidationError{
-					Code:    ErrSeatMissingNumber,
-					Element: attr(el, "id"),
-					Detail:  fmt.Sprintf("seat <circle> in row %q has no <title>", rowName),
-				})
-				continue
-			}
-			color := extractFillColor(el)
-			catIdx, ok := catByColor[color]
-			if !ok {
-				errs = append(errs, ValidationError{
-					Code:    ErrSeatColorUnmatched,
-					Element: attr(el, "id"),
-					Detail: fmt.Sprintf(
-						"seat %q in row %q fill %q matches no PriceCategory swatch",
-						seatNumber, rowName, color),
-				})
-				continue
-			}
-			dedupeKey := secKey + "|" + rowKey + "|" + seatNumber
-			if seen[dedupeKey] {
+			nameTriple := [3]string{secName, rowName, seatNumber}
+			if seen[nameTriple] {
 				errs = append(errs, ValidationError{
 					Code:    ErrDuplicateSeat,
-					Element: dedupeKey,
+					Element: normalizeKey(secName) + "|" + normalizeKey(rowName) + "|" + seatNumber,
 					Detail:  "duplicate (sector,row,number) triple",
 				})
 				continue
 			}
-			seen[dedupeKey] = true
+			seen[nameTriple] = true
 
 			cx, cy, r := placeCircle(transforms, el)
 			seats = append(seats, Seat{
@@ -626,7 +621,63 @@ func parseSections(rows []*xmlNode, catByColor map[string]int, transforms map[*x
 		}
 		out = append(out, sec)
 	}
-	return out, errs
+	errs = append(errs, keys.errs...)
+	return out, keys.warnings, errs
+}
+
+// svgRowNames reads the label, the sector display name and the row display
+// name of one row group. label is "" when the group has no inkscape:label,
+// rowName is "" when it has no <title>.
+func svgRowNames(rowNode *xmlNode) (label, secName, rowName string) {
+	label = stripHash(inkscapeLabel(rowNode))
+	if label == "" {
+		return "", "", ""
+	}
+	secName = strings.TrimSpace(sectorPrefixRE.ReplaceAllString(label, ""))
+	if secName == "" {
+		secName = label
+	}
+	rowName = strings.TrimSpace(elementText(findDirectChild(rowNode, "title")))
+	return label, secName, rowName
+}
+
+// svgSeatCheck applies the per-seat §6 rules to one child of a row group.
+// skip is true for the row's own <title>; verr is the violation of a child
+// that is not a valid seat. Otherwise it returns the seat number and the
+// category index.
+func svgSeatCheck(el *xmlNode, catByColor map[string]int, rowName string) (number string, catIdx int, verr *ValidationError, skip bool) {
+	if el.Name.Local == "title" {
+		return "", 0, nil, true
+	}
+	if el.Name.Local != "circle" {
+		return "", 0, &ValidationError{
+			Code:    ErrSeatNotCircle,
+			Element: attr(el, "id"),
+			Detail: fmt.Sprintf(
+				"only <circle> may represent seats; got <%s> in row %q",
+				el.Name.Local, rowName),
+		}, false
+	}
+	number = strings.TrimSpace(elementText(findDirectChild(el, "title")))
+	if number == "" {
+		return "", 0, &ValidationError{
+			Code:    ErrSeatMissingNumber,
+			Element: attr(el, "id"),
+			Detail:  fmt.Sprintf("seat <circle> in row %q has no <title>", rowName),
+		}, false
+	}
+	color := extractFillColor(el)
+	idx, ok := catByColor[color]
+	if !ok {
+		return "", 0, &ValidationError{
+			Code:    ErrSeatColorUnmatched,
+			Element: attr(el, "id"),
+			Detail: fmt.Sprintf(
+				"seat %q in row %q fill %q matches no PriceCategory swatch",
+				number, rowName, color),
+		}, false
+	}
+	return number, idx, nil, false
 }
 
 // renderDecorSVG re-serialises the SVG tree with the PriceCategory,
@@ -857,10 +908,14 @@ func normalizeColor(s string) string {
 	return "#" + hex
 }
 
-// normalizeKey turns a display label into a stable slug used as
-// Section.Key / Row.Key. Lowercased, non-alphanumerics collapsed to a
-// single "-". Diacritics are preserved (the source SVGs already use
-// ASCII in labels, so this is a safe minimal implementation).
+// normalizeKey turns a display label into its LEGACY slug: lowercased,
+// only a-z and 0-9 kept, every other run (non-Latin letters, diacritics,
+// punctuation, spaces) collapsed into one "-", trailing "-" trimmed. So
+// "Партер" and "Балкон" both give "", "7" and "*7" both give "7". Its
+// output is part of stored seat keys and must never change. The importers
+// do not use it as the key directly: resolveKeys (key_resolve.go) keeps it
+// as the key unless two different names would collide on a seat, and then
+// adds a hash suffix.
 func normalizeKey(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	var b strings.Builder

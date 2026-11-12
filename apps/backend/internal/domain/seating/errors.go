@@ -50,12 +50,23 @@ const (
 	ErrSBTDuplicateSeatID     = "sbt_duplicate_seat_id"
 	ErrSBTSeatCategoryMissing = "sbt_seat_category_missing"
 	ErrSBTSeatsMissing        = "sbt_seats_missing"
+
+	// ErrNameKeyCollision: two different sector names (or two different
+	// row names of one section) still resolve to the same key after the
+	// key resolution of key_resolve.go added its hash suffix. Both
+	// importers.
+	ErrNameKeyCollision = "name_key_collision"
 )
 
 // WarningCode is emitted for §6 rules that are advisory rather than
-// hard-fail. Currently: missing Legend group (rule 6).
+// hard-fail: a missing Legend group (rule 6), and names that share one key
+// and are merged (key_resolve.go).
 const (
 	WarnLegendMissing = "legend_missing"
+	// WarnNamesShareKey: two or more different sector names (or row names
+	// of one section) have the same normalised key and no seat collision,
+	// so they are merged into one section (row) exactly as before.
+	WarnNamesShareKey = "names_share_key"
 )
 
 // ValidationError is a single §6 rule violation. Element identifies the
