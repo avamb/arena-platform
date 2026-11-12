@@ -250,3 +250,47 @@ func TestWorldCountry_RefusedVenueLeavesNoCountry(t *testing.T) {
 	}
 	e.noJob(t, "country_created", "country_iso2", "LA")
 }
+
+// An organization API key with venue.create never adds a city with a venue, even
+// in a country of the reference: a new city name is refused with 403 and leaves
+// no city, an existing city name of that country is fine.
+func TestWorldCountry_APIKeyNewCityInReferenceCountryIsForbidden(t *testing.T) {
+	e := newVPNEnv(t)
+	org := "/v1/organizations/" + e.orgA.String()
+	ctx := context.Background()
+	creator := e.user(t, "wc-keycity")
+	_, key, err := apikeys.Issue(ctx, apikeys.NewStoreFromQueries(e.q), apikeys.IssueInput{
+		OrgID: e.orgA, Name: "wc-city-" + uuid.NewString()[:6], Scopes: []string{"venue.create", "venue.read"}, CreatedBy: creator,
+	})
+	if err != nil {
+		t.Fatalf("apikeys.Issue: %v", err)
+	}
+	if e.countryRows(t, "EE") != 1 {
+		t.Skip("EE is not in the reference of this database")
+	}
+
+	newCity := "WC Newtown " + uuid.NewString()[:8]
+	before := e.count(t, `SELECT count(*) FROM cities`)
+	body := fmt.Sprintf(`{"name":"WC Key Hall %s","timezone":"Europe/Tallinn","country_iso2":"EE","city_name":%q}`, uuid.NewString()[:8], newCity)
+	if r := e.jsonDo(t, http.MethodPost, org+"/venues", key, "", body); r.status != http.StatusForbidden || r.code() != "venue.city_create_forbidden" {
+		t.Fatalf("new city by key: %d %s", r.status, r.body)
+	}
+	if after := e.count(t, `SELECT count(*) FROM cities`); after != before || e.count(t, `SELECT count(*) FROM i18n_text WHERE namespace = 'geo.cities' AND value = $1`, newCity) != 0 {
+		t.Fatalf("the refused venue left a city: before %d, after %d", before, after)
+	}
+
+	// An existing city of the country is used as it is.
+	var existing string
+	if err := e.srv.pgxPool.QueryRow(ctx, `SELECT i.value FROM cities c JOIN countries k ON k.id = c.country_id
+		JOIN i18n_text i ON i.namespace = 'geo.cities' AND i.key = c.slug AND i.locale = 'en'
+		WHERE k.iso2 = 'EE' ORDER BY c.slug LIMIT 1`).Scan(&existing); err != nil {
+		t.Skipf("no English city name of EE in this database: %v", err)
+	}
+	ok := fmt.Sprintf(`{"name":"WC Key Hall %s","timezone":"Europe/Tallinn","country_iso2":"EE","city_name":%q}`, uuid.NewString()[:8], existing)
+	if r := e.jsonDo(t, http.MethodPost, org+"/venues", key, "", ok); r.status != http.StatusCreated {
+		t.Fatalf("existing city by key: %d %s", r.status, r.body)
+	}
+	if after := e.count(t, `SELECT count(*) FROM cities`); after != before {
+		t.Fatalf("an existing city name created a city: before %d, after %d", before, after)
+	}
+}

@@ -114,13 +114,16 @@ func (h *Handler) createVenueWithCityByName(w http.ResponseWriter, r *http.Reque
 	defer func() { _ = tx.Rollback(ctx) }()
 	qtx := h.venueQueries.WithTx(tx)
 
-	// An API key may use a country the reference has, never create one.
+	// An API key may use a country and a city the reference has, never create
+	// one. A request without an actor is treated like a key (fail closed).
+	actor, hasActor := auth.ActorFromContext(ctx)
+	isKey := !hasActor || actor.IsService()
 	if _, err := qtx.GetCountryByISO2(ctx, req.CountryIso2); errors.Is(err, pgx.ErrNoRows) {
 		if _, inWorld := worldgeo.Lookup(req.CountryIso2); !inWorld {
 			writeUnknownCountry(w, r, req.CountryIso2)
 			return
 		}
-		if actor, ok := auth.ActorFromContext(ctx); ok && actor.IsService() {
+		if isKey {
 			httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelopeWithDetails(
 				"venue.country_create_forbidden", "An organization API key cannot add a new country. Sign in as a person to add the venue.", r,
 				map[string]any{"field": "country_iso2", "country_iso2": req.CountryIso2}))
@@ -145,6 +148,14 @@ func (h *Handler) createVenueWithCityByName(w http.ResponseWriter, r *http.Reque
 		req.CityName, normalizeCityLocale(locale))
 	if err != nil {
 		h.venueGeoFailed(w, r, "city", err)
+		return
+	}
+	if cityCreated && isKey {
+		// The rollback takes the new city away again: a key creates a city
+		// only through POST .../cities, which asks for city.create.
+		httputil.WriteJSON(w, http.StatusForbidden, httputil.ErrorEnvelopeWithDetails(
+			"venue.city_create_forbidden", "An organization API key cannot add a new city with a venue. Create the city first, then send city_id.", r,
+			map[string]any{"field": "city_name"}))
 		return
 	}
 	city, err := qtx.GetCityWithName(ctx, cityID, locale)

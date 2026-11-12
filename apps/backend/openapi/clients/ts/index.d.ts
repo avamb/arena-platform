@@ -22559,7 +22559,8 @@ export interface components {
              *     currency, region, English and Russian names) in the venue's
              *     transaction, and the platform administrators are told. An
              *     organization API key may use a reference country but never
-             *     creates one (403 `venue.country_create_forbidden`). A code the
+             *     creates one (403 `venue.country_create_forbidden`), and never
+             *     creates a city by name (403 `venue.city_create_forbidden`). A code the
              *     world table does not know is 400 `venue.unknown_country`. When
              *     `country` is not sent, the venue's `country` takes this code.
              * @example MY
@@ -50497,7 +50498,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold the required permission (venue.create), or an organization API key would create a country (`venue.country_create_forbidden`) */
+            /** @description Actor does not hold the required permission (venue.create), or an organization API key would create a country (`venue.country_create_forbidden`) or a city (`venue.city_create_forbidden`) */
             403: {
                 headers: {
                     [name: string]: unknown;

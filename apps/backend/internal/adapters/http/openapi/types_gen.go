@@ -7560,7 +7560,8 @@ type CreateVenueRequest struct {
 	// currency, region, English and Russian names) in the venue's
 	// transaction, and the platform administrators are told. An
 	// organization API key may use a reference country but never
-	// creates one (403 `venue.country_create_forbidden`). A code the
+	// creates one (403 `venue.country_create_forbidden`), and never
+	// creates a city by name (403 `venue.city_create_forbidden`). A code the
 	// world table does not know is 400 `venue.unknown_country`. When
 	// `country` is not sent, the venue's `country` takes this code.
 	CountryIso2 *string `json:"country_iso2,omitempty"`
