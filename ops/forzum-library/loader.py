@@ -303,7 +303,9 @@ class Loader:
 def parse_args(argv):
     p = argparse.ArgumentParser(description="Load converted Forzum plans into an arena server.")
     p.add_argument("--api", required=True, help="arena base URL, for example https://api.staging.example")
-    p.add_argument("--org", required=True, help="organization id (UUID)")
+    p.add_argument("--org", required=True, help="organization UUID or slug (a slug is resolved after sign-in)")
+    p.add_argument("--apply", action="store_true", help="write to the server; without it the run is a dry run")
+    p.add_argument("--exclude-venue", action="append", default=[], help="Forzum venueId to leave out (repeatable)")
     p.add_argument("--lib", default=os.environ.get("FORZUM_LIBRARY_DIR", DEFAULT_LIB))
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--only-plan", help="seatingPlanId to load")
@@ -327,9 +329,8 @@ def api_is_safe(api: str) -> bool:
 
 def check_gates(args):
     """Return (exit_code, None) on refusal, else (None, org uuid string)."""
-    if not args.dry_run and not args.go_ahead:
-        print(f"Refused: a real run needs {GO_AHEAD_FLAG} (or use --dry-run).", file=sys.stderr)
-        return 2, None
+    # A dry run is the default. Only --apply (or the older go-ahead flag) writes.
+    args.dry_run = bool(args.dry_run) or not (args.apply or args.go_ahead)
     if not api_is_safe(args.api):
         print("Refused: --api must be https (plain http only for localhost or 127.0.0.1).", file=sys.stderr)
         return 2, None
@@ -339,8 +340,46 @@ def check_gates(args):
     try:
         return None, str(uuid.UUID(args.org))
     except ValueError:
-        print("Refused: --org must be an organization UUID.", file=sys.stderr)
-        return 2, None
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,62}", args.org or ""):
+            print("Refused: --org must be an organization UUID or slug.", file=sys.stderr)
+            return 2, None
+        return None, "slug:" + args.org
+
+
+def resolve_org(client, org):
+    """A UUID is returned as it is. A slug is looked up on the server after sign-in, never guessed."""
+    if not org.startswith("slug:"):
+        return org
+    slug = org[5:]
+    found = set()
+    for path in ("/v1/me", "/v1/admin/organizations?q=" + urllib.parse.quote(slug) + "&limit=100"):
+        try:
+            data = client.request("GET", path)
+        except ApiError:
+            continue
+        stack = [data]
+        while stack:
+            n = stack.pop()
+            if isinstance(n, list):
+                stack.extend(n)
+            elif isinstance(n, dict):
+                if slug in (n.get("slug"), n.get("org_slug"), n.get("organization_slug")):
+                    oid = n.get("org_id") or n.get("organization_id") or n.get("id")
+                    try:
+                        found.add(str(uuid.UUID(str(oid))))
+                    except ValueError:
+                        pass
+                stack.extend(n.values())
+        if found:
+            break
+    if len(found) != 1:
+        raise ApiError(f"organization slug {slug!r}: {len(found)} match(es) on the server")
+    return found.pop()
+
+
+def write_run_report(lib, name, data):
+    """One report per run under <lib>/load-reports/. Holds no password and no token."""
+    write_json(Path(lib) / "load-reports" / name, data)
 
 
 def run_plans(args, input_fn, getpass_fn, out) -> int:
@@ -363,7 +402,6 @@ def run_plans(args, input_fn, getpass_fn, out) -> int:
     email = input_fn("arena e-mail: ").strip()
     password = getpass_fn("arena password: ")
     client = Client(args.api)
-    ld = Loader(client, org, lib, args.dry_run, tz, out, args.pause_ms)
     try:
         client.login(email, password)
     except ApiError as e:
@@ -373,6 +411,8 @@ def run_plans(args, input_fn, getpass_fn, out) -> int:
         password = None
 
     try:
+        org = resolve_org(client, org)
+        ld = Loader(client, org, lib, args.dry_run, tz, out, args.pause_ms)
         ld.load_reference()
     except ApiError as e:
         print(f"Cannot read the server: {e}", file=sys.stderr)
@@ -390,6 +430,8 @@ def run_plans(args, input_fn, getpass_fn, out) -> int:
         pid = str(plan["seatingPlanId"])
         if args.only_plan and pid != str(args.only_plan):
             continue
+        if str(plan.get("venueId")) in {str(x) for x in args.exclude_venue}:
+            continue
         if log["plans"].get(plan_key(folder), {}).get("status") == "loaded":
             continue
         todo.append((folder, plan))
@@ -398,8 +440,12 @@ def run_plans(args, input_fn, getpass_fn, out) -> int:
 
     counts = {}
     ambiguous = {}
+    records = []
     for folder, plan in todo:
         rec = ld.process(folder, plan)
+        records.append({**rec, "folder": plan_key(folder), "venueId": plan.get("venueId"),
+                        "venueName": plan.get("venueName"), "cityName": plan.get("cityName"),
+                        "seatingPlanName": plan.get("seatingPlanName")})
         pid = rec["seatingPlanId"]
         key = plan_key(folder)
         counts[rec["status"]] = counts.get(rec["status"], 0) + 1
@@ -417,6 +463,9 @@ def run_plans(args, input_fn, getpass_fn, out) -> int:
                 old.pop(pid)
         old.update(ambiguous)
         write_json(lib / "load" / "ambiguous.json", old)
+    write_run_report(lib, "plans-dry-run.json" if args.dry_run else "plans-apply.json",
+                     {"api": args.api, "organization": org, "dryRun": args.dry_run, "counts": counts,
+                      "excludedVenues": args.exclude_venue, "plans": records})
     ld.say("done: " + ", ".join(f"{k}={v}" for k, v in sorted(counts.items())) if counts else "done: nothing to do")
     return 0
 
@@ -685,7 +734,9 @@ class VenueLoader(Loader):
 def parse_venues_args(argv):
     p = argparse.ArgumentParser(prog="loader.py venues", description="Load every Forzum inventory venue into one arena organization.")
     p.add_argument("--api", required=True, help="arena base URL, for example https://api.staging.example")
-    p.add_argument("--org", required=True, help="organization id (UUID)")
+    p.add_argument("--org", required=True, help="organization UUID or slug (a slug is resolved after sign-in)")
+    p.add_argument("--apply", action="store_true", help="write to the server; without it the run is a dry run")
+    p.add_argument("--exclude-venue", action="append", default=[], help="Forzum venueId to leave out (repeatable)")
     p.add_argument("--lib", default=os.environ.get("FORZUM_LIBRARY_DIR", DEFAULT_LIB))
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--mark-verified", action=argparse.BooleanOptionalAction, default=True,
@@ -733,8 +784,9 @@ def run_venues(args, input_fn, getpass_fn, out) -> int:
     client = login_client(args, input_fn, getpass_fn)
     if client is None:
         return 1
-    ld = VenueLoader(client, org, lib, args.dry_run, zones, out, args.pause_ms, args.mark_verified)
     try:
+        org = resolve_org(client, org)
+        ld = VenueLoader(client, org, lib, args.dry_run, zones, out, args.pause_ms, args.mark_verified)
         ld.load_reference()
     except ApiError as e:
         print(f"Cannot read the server: {e}", file=sys.stderr)
@@ -743,8 +795,12 @@ def run_venues(args, input_fn, getpass_fn, out) -> int:
     counts = {}
     buckets = {"would_create": [], "would_match": [], "ambiguous": [], "timezone_unresolved": [], "skipped": [], "failed": []}
     ambiguous = {}
+    excluded = {str(x) for x in args.exclude_venue}
+    records = []
     for e in entries:
         vid = e["venueId"]
+        if str(vid) in excluded:
+            continue
         done = log["venues"].get(vid)
         if done and done.get("status") in ("created", "matched"):
             if args.mark_verified and not args.dry_run and not done.get("verified"):
@@ -754,6 +810,7 @@ def run_venues(args, input_fn, getpass_fn, out) -> int:
                 counts["verified-later"] = counts.get("verified-later", 0) + 1
             continue
         rec = ld.process_venue(e, dup_ids)
+        records.append(rec)
         counts[rec["status"]] = counts.get(rec["status"], 0) + 1
         ld.say(f"venue {vid}: {rec['status']} {rec['reason']}".rstrip())
         if args.dry_run:
@@ -791,6 +848,14 @@ def run_venues(args, input_fn, getpass_fn, out) -> int:
     if args.dry_run:
         for c in ld.cities_new:
             ld.say(f"city to create: {c['city']} ({c['iso2']})")
+    summary = {"api": args.api, "organization": org, "dryRun": args.dry_run, "markVerified": args.mark_verified,
+               "counts": counts, "excludedVenues": sorted(excluded), "citiesToCreate" if args.dry_run else "citiesCreated": ld.cities_new,
+               "venueTypeNote": note}
+    if args.dry_run:
+        summary.update({k: v for k, v in buckets.items()})
+    else:
+        summary["venues"] = records
+    write_run_report(lib, "venues-dry-run.json" if args.dry_run else "venues-apply.json", summary)
     ld.say(note)
     ld.say("done: " + ", ".join(f"{k}={v}" for k, v in sorted(counts.items())) if counts else "done: nothing to do")
     return 0

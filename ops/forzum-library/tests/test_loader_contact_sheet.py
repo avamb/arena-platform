@@ -79,6 +79,8 @@ class FakeArena:
                         return self._send(200, {"access_token": TOKEN, "refresh_token": REFRESH, "token_type": "Bearer",
                                                 "expires_at": "2030-01-01T00:00:00Z", "user_id": str(uuid.uuid4())})
                     return self._send(401, {"error": {"code": "auth.invalid_credentials", "message": "bad"}})
+                if bare == "/v1/me":
+                    return self._send(200, {"organization_memberships": [{"org_id": ORG, "org_slug": "abhteam"}]})
                 if bare == "/v1/geo/countries":
                     return self._send(200, {"countries": [
                         {"id": "x1", "iso2": "CZ", "iso3": "CZE", "slug": "czechia", "name": "Czechia"},
@@ -174,6 +176,31 @@ class LoaderTests(unittest.TestCase):
     def go(self, *extra, **kw):
         return run(self.base + ["--i-have-the-owners-go-ahead"] + list(extra), self.lib, **kw)
 
+    def test_default_is_dry_run_and_apply_writes(self):
+        make_plan(self.lib, 1001)
+        code, _ = run(self.base, self.lib)  # no flag at all
+        self.assertEqual(code, 0)
+        self.assertEqual(self.fake.writes(), [])
+        report = json.loads((self.lib / "load-reports" / "plans-dry-run.json").read_text(encoding="utf-8"))
+        self.assertTrue(report["dryRun"])
+        self.assertEqual(len(report["plans"]), 1)
+        code, _ = run(["--api", self.api, "--org", "abhteam", "--production", "--apply"], self.lib)  # slug
+        self.assertEqual(code, 0)
+        self.assertTrue(self.fake.writes())
+        report = json.loads((self.lib / "load-reports" / "plans-apply.json").read_text(encoding="utf-8"))
+        self.assertEqual(report["organization"], ORG)
+        for f in (self.lib / "load-reports").iterdir():
+            text = f.read_text(encoding="utf-8")
+            self.assertNotIn(PASSWORD, text)
+            self.assertNotIn(TOKEN, text)
+
+    def test_excluded_venue_is_left_out(self):
+        make_plan(self.lib, 1001)
+        venue = json.loads(next((self.lib / "plans").rglob("plan.json")).read_text(encoding="utf-8"))["venueId"]
+        code, _ = run(self.base + ["--apply", "--exclude-venue", str(venue)], self.lib)
+        self.assertEqual(code, 0)
+        self.assertEqual(self.fake.writes(), [])
+
     def test_dry_run_sends_no_write(self):
         make_plan(self.lib, 1001)
         code, _ = run(self.base + ["--dry-run"], self.lib)
@@ -253,9 +280,9 @@ class LoaderTests(unittest.TestCase):
 
     def test_refusals(self):
         make_plan(self.lib, 1001)
-        code, _ = run(["--api", self.api, "--org", ORG, "--production"], self.lib)
-        self.assertEqual(code, 2)
-        code, _ = run(["--api", self.api, "--org", ORG, "--i-have-the-owners-go-ahead"], self.lib)
+        code, _ = run(["--api", self.api, "--org", ORG, "--apply"], self.lib)
+        self.assertEqual(code, 2)  # not a staging host, no --production
+        code, _ = run(["--api", self.api, "--org", "Not A Slug!", "--production"], self.lib)
         self.assertEqual(code, 2)
         self.assertEqual(self.fake.requests, [])
         self.assertTrue(loader.host_is_staging("https://api.staging.example.com"))

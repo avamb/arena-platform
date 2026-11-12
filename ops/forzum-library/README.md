@@ -167,10 +167,15 @@ when its own count and the importer's count differ in the other direction.
 
 Gates of every mode that talks to a server: `--api <base URL>` must be
 https (plain http only for `localhost` or `127.0.0.1`); the host must have
-`staging` in its name unless `--production`; a real run needs
-`--i-have-the-owners-go-ahead`, `--dry-run` does not. `--org` is the
-organization UUID. The e-mail and password are asked at run time. A dry run
-logs in and reads, and sends no POST or PATCH other than the login.
+`staging` in its name unless `--production`. A run is a DRY RUN unless
+`--apply` is given. `--org` is the organization UUID or its slug (the slug
+is looked up on the server after sign-in). `--exclude-venue <venueId>`
+(repeatable) leaves a Forzum venue and its plans out. The e-mail and the
+password are asked in the terminal at run time; the password is hidden, is
+never written anywhere and cannot be passed on the command line. A dry run
+logs in and reads, and sends no POST or PATCH other than the login. Each run
+writes one report to `<lib>/load-reports/`: `venues-dry-run.json`,
+`venues-apply.json`, `plans-dry-run.json` or `plans-apply.json`.
 
 Plans: `loader.py plans --api <base URL> --org <uuid> [--dry-run]` (the bare
 form without `plans` works the same) takes every plan with `convert.json`
