@@ -620,10 +620,10 @@ export const en = {
   // 4-6
   "nav.promoters": "Brands (names on events)",
   "promoters.title": "Brands",
-  "promoters.intro": "A brand is a partner who holds an event, and you sell the tickets. Tickets show the name of the brand as the organizer.",
+  "promoters.intro": "A brand is the name under which you sell tickets. The brand is yours. Tickets show this name as the organizer.",
   "promoters.tab.active": "Active ({count})",
   "promoters.tab.archived": "Archived ({count})",
-  "promoters.empty.active": "No promoters. When a partner puts on an event that you sell, add them here.",
+  "promoters.empty.active": "There are no brands. Add the name under which you sell tickets.",
   "promoters.empty.archived": "The archive has no promoters.",
   "promoters.noAccess": "You cannot see the promoters of this organization. Tell the owner to give you the manager role.",
   "promoters.readOnly": "You can see the promoters, but only the owner and the manager can change them.",

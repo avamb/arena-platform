@@ -620,10 +620,10 @@ export const es: Record<MessageKey, string> = {
   // 4-6
   "nav.promoters": "Marcas (nombre en los eventos)",
   "promoters.title": "Marcas",
-  "promoters.intro": "Una marca es un socio que organiza un evento cuyas entradas vendes tú. En las entradas su nombre aparece como organizador.",
+  "promoters.intro": "Una marca es el nombre con el que vendes las entradas. La marca es tuya. En las entradas este nombre aparece como organizador.",
   "promoters.tab.active": "Activos ({count})",
   "promoters.tab.archived": "Archivados ({count})",
-  "promoters.empty.active": "Todavía no hay promotores. Cuando un socio organice un evento cuyas entradas vendes tú, añádelo aquí.",
+  "promoters.empty.active": "Todavía no hay marcas. Añade el nombre con el que vendes las entradas.",
   "promoters.empty.archived": "No hay ningún promotor archivado.",
   "promoters.noAccess": "No puedes ver los promotores de esta organización. Pide al propietario que te dé el rol de gestor.",
   "promoters.readOnly": "Puedes ver los promotores, pero solo el propietario y el gestor pueden cambiarlos.",

@@ -2911,7 +2911,7 @@ other = "🎭 <b>Brands</b> · {{.Org}} · {{.Total}} in all · page {{.Page}}/{
 other = "Tap a brand to see and edit its data."
 
 ["bot.prom.empty"]
-other = "There are no brands. A brand is a partner. You sell the events of this partner. Press “➕ Brand” below to add one, or add one when you make an event."
+other = "There are no brands. A brand is the name under which you sell tickets. Press “➕ Brand” below to add one, or add one when you make an event."
 
 ["bot.prom.add_btn"]
 other = "➕ Brand"

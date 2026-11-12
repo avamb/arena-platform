@@ -2739,7 +2739,7 @@ other = "🎭 <b>Marcas</b> · {{.Org}} · {{.Total}} en total · pág. {{.Page}
 other = "Toca una marca para ver y cambiar sus datos."
 
 ["bot.prom.empty"]
-other = "Aún no hay marcas. Una marca es un socio cuyos eventos vendes. Pulsa «➕ Marca» abajo para añadir una, o añádela al crear un evento."
+other = "Aún no hay marcas. Una marca es el nombre con el que vendes las entradas. Pulsa «➕ Marca» abajo para añadir una, o añádela al crear un evento."
 
 ["bot.prom.add_btn"]
 other = "➕ Marca"
