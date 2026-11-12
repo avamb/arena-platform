@@ -167,11 +167,20 @@ function byVenuesThenName(a: ChooserCountry, b: ChooserCountry): number {
 export const hasRegions = (world: readonly WorldCountry[]): boolean => world.length > 0;
 
 /**
- * The quick row: the countries that have venues. Without regions (the
- * fallback) the other reference countries follow, because there is no other
- * way to reach them.
+ * The quick row. When the server gave `quick_pick`, that ordered list IS the
+ * row (codes the world list does not know are dropped). Otherwise: the
+ * countries that have venues; without regions (the fallback) the other
+ * reference countries follow, because there is no other way to reach them.
  */
-export function quickCountries(all: readonly ChooserCountry[], regions: boolean): ChooserCountry[] {
+export function quickCountries(all: readonly ChooserCountry[], regions: boolean, quickPick?: readonly string[]): ChooserCountry[] {
+  if (quickPick !== undefined) {
+    const out: ChooserCountry[] = [];
+    for (const code of quickPick) {
+      const c = countryOf(all, code);
+      if (c !== undefined && !out.includes(c)) out.push(c);
+    }
+    return out;
+  }
   const withVenues = all.filter((c) => c.venues > 0).sort(byVenuesThenName);
   if (regions) return withVenues;
   return [...withVenues, ...all.filter((c) => c.venues === 0 && c.inReference).sort(byVenuesThenName)];

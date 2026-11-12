@@ -234,10 +234,25 @@ describe("a new venue (F-004)", () => {
     expect(onVenue).toHaveBeenCalledWith(CREATED);
   });
 
-  it("stops before any date when the country is unknown or a venue call fails", async () => {
+  it("sends a country outside the reference with the venue (country_iso2 + city_name), with no city call and no city_id", async () => {
+    const venues = fakeVenues({ countryId: vi.fn(async () => null) });
+    const out = await createSaver({ post: async () => ok, venues }).save(newVenueDraft(), "org-1");
+    expect(out.kind).toBe("saved");
+    expect(venues.createCity).not.toHaveBeenCalled();
+    expect(venues.createVenue).toHaveBeenCalledWith("org-1", {
+      name: "Sala Apolo",
+      country_iso2: "ES",
+      city_name: "Barcelona",
+      country: "ES",
+      timezone: "Europe/Madrid",
+      status: "active",
+      address_line1: "Carrer Nou de la Rambla 113",
+      capacity_default: 300,
+    });
+  });
+
+  it("stops before any date when a venue call fails", async () => {
     const post = vi.fn(async () => ok);
-    const unknownCountry = await createSaver({ post, venues: fakeVenues({ countryId: vi.fn(async () => null) }) }).save(newVenueDraft(), "org-1");
-    expect(unknownCountry).toMatchObject({ kind: "rejected", code: "wizard.venue_country_unknown", progress: { step: "venue", savedDates: 0 } });
     const down = await createSaver({
       post,
       venues: fakeVenues({

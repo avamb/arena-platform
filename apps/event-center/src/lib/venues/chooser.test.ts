@@ -109,6 +109,11 @@ describe("the countries", () => {
     expect(countriesOfRegion(all, "europe", "").map((c) => c.iso2)).toEqual(["ES", "CZ", "FR"]);
   });
 
+  it("takes the quick row from the server's quick_pick, in its order, dropping unknown codes", () => {
+    expect(quickCountries(all, true, ["MY", "ES", "ZZ", "MY"]).map((c) => c.iso2)).toEqual(["MY", "ES"]);
+    expect(quickCountries(all, true, [])).toEqual([]);
+  });
+
   it("offers every reference country at the quick row when there are no regions", () => {
     const merged = mergeCountries([], [
       { iso2: "ES", name: "Spain", name_en: "Spain", venues: 2 },

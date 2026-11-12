@@ -57,7 +57,7 @@ func (s *sharedRefs) VenueDirectory(ctx context.Context, jwt string, org uuid.UU
 func (s *sharedRefs) countShared(dir *VenueDir, country string) {
 	for _, v := range s.shared {
 		own := false
-		for _, o := range s.fakeRefs.venues {
+		for _, o := range s.venues {
 			own = own || o.ID == v.ID
 		}
 		if own {
@@ -86,7 +86,7 @@ func (s *sharedRefs) countShared(dir *VenueDir, country string) {
 		}
 		if !found {
 			name := v.CityID
-			for _, c := range s.fakeRefs.cities[s.fakeRefs.countryID(country)] {
+			for _, c := range s.cities[s.countryID(country)] {
 				if c.ID == v.CityID {
 					name = c.Name
 				}

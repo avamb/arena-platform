@@ -171,7 +171,7 @@ export function VenueChooser({ orgId, value, onPick, onCreateNew, source = defau
   if (base.isLoading || world.isLoading) return <Loading />;
   if (base.isError) return <ErrorNotice error={base.error} testId={id("failed")} />;
 
-  const quick = quickCountries(all, regions);
+  const quick = quickCountries(all, regions, base.data?.quick_pick);
   const hits = state.step === "quick" || state.step === "region" || state.step === "country" ? searchCountries(all, typed) : [];
   const foundVenues = searching ? filterVenues(found.data?.venues ?? [], "") : [];
   const cityList = filterCities(cities.data?.cities ?? [], state.query);

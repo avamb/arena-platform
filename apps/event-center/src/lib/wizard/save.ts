@@ -67,11 +67,6 @@ export interface VenueApi {
   countryId(iso2: string): Promise<string | null>;
   /** Finds or creates the city by name (the route is idempotent by name); answers its id. */
   createCity(orgId: string, countryId: string, name: string): Promise<string>;
-  /**
-   * The same for a country the platform has no row for yet (a country outside the reference):
-   * the server makes the country row with the city, `country_iso2` names it. Absent = not supported.
-   */
-  createCityInCountry?(orgId: string, iso2: string, name: string): Promise<string>;
   createVenue(orgId: string, body: CreateVenueRequest): Promise<VenueChoice>;
 }
 
@@ -101,11 +96,12 @@ function withProgress(f: SaveFailure, progress: SaveProgress): SaveFailure {
 }
 
 /** The body of the new venue, as the bot sends it (`ArenaClient.CreateVenue`). */
-export function newVenueBody(draft: WizardDraft, cityId: string): CreateVenueRequest {
+export function newVenueBody(draft: WizardDraft, city: string | CityByName): CreateVenueRequest {
   const v = draft.venue;
   const body: CreateVenueRequest = {
     name: v.newName.trim(),
-    city_id: cityId,
+    // The city is EITHER an id (`city_id`) OR a name in a country (`country_iso2` + `city_name`), never both.
+    ...(typeof city === "string" ? { city_id: city } : { country_iso2: city.countryIso2, city_name: city.cityName }),
     country: v.countryIso2.toUpperCase(),
     timezone: v.timezone.trim(),
     status: "active",
@@ -117,18 +113,23 @@ export function newVenueBody(draft: WizardDraft, cityId: string): CreateVenueReq
   return body;
 }
 
+/** A city named inside a country: the venue create makes (or finds) it in its own transaction. */
+export interface CityByName {
+  countryIso2: string;
+  cityName: string;
+}
+
 /**
- * The ONE place that makes the city of a new venue. A country of the reference
- * has a platform id: the city is made under it, as before. A country outside
- * the reference has none: the city is made with `country_iso2` and the server
- * adds the country. Answers null when the country is outside the reference and
- * the API cannot make it.
+ * The ONE place that decides the city of a new venue. A country of the
+ * reference has a platform id: the city is found or made under it (an id is
+ * answered). A country outside the reference is made ONLY by the venue create
+ * (`POST .../cities` answers 409 `city.country_not_in_reference` for it), so
+ * the city call is skipped and the name travels with the venue.
  */
-export async function ensureCity(api: VenueApi, orgId: string, iso2: string, name: string): Promise<string | null> {
+export async function ensureCity(api: VenueApi, orgId: string, iso2: string, name: string): Promise<string | CityByName> {
   const countryId = await api.countryId(iso2);
   if (countryId !== null) return api.createCity(orgId, countryId, name);
-  if (api.createCityInCountry === undefined) return null;
-  return api.createCityInCountry(orgId, iso2.trim().toUpperCase(), name);
+  return { countryIso2: iso2.trim().toUpperCase(), cityName: name };
 }
 
 /**
@@ -151,12 +152,9 @@ async function ensureVenue(
   try {
     const own = (await api.listVenues(orgId)).find((x) => sameName(x.name, v.newName));
     if (own !== undefined) return adopt(own);
-    const cityId = await ensureCity(api, orgId, v.countryIso2, v.cityName.trim());
-    if (cityId === null) {
-      return fail({ kind: "rejected", status: 422, code: "wizard.venue_country_unknown", message: "" });
-    }
+    const city = await ensureCity(api, orgId, v.countryIso2, v.cityName.trim());
     try {
-      return adopt(await api.createVenue(orgId, newVenueBody(draft, cityId)));
+      return adopt(await api.createVenue(orgId, newVenueBody(draft, city)));
     } catch (err) {
       // Another tab (or an earlier lost answer) made it meanwhile: use that one.
       if (err instanceof ApiError && err.status === 409) {

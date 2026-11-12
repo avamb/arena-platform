@@ -754,7 +754,7 @@ Spec 64: intake states, private plan sources, approve, superadmin verification a
 * The bot sends the files of a plan as ONE intake and never builds a plan itself (pi: callbacks, paused draft, notice loop)
 * The world country table is worldgeo, and only a venue or an approved application creates a reference country (never an API key)
 * The venue directory is GET .../venue-directory, own plus verified venues, the access of shared-venues
-* The web calls two routes that are not in openapi.yaml yet, only through directoryApi.ts
+* The web reads world-countries and venue-directory only through directoryApi.ts; a new country comes only with the venue create
 * The venue chooser is ONE component for the screen Venues and the wizard
 * The web intake refuses a file before any request and keeps one Idempotency-Key per attempt
 * The admin queue /venue-plans finds plans with no verification state by subtraction

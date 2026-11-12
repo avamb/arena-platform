@@ -1063,8 +1063,9 @@ export function listVenues(orgId: string): Promise<{ venues: VenueItem[] }> {
 }
 
 /** F-004: creates a venue of the organization (`venue.create`). */
-export function createVenue(orgId: string, body: CreateVenueRequest): Promise<{ venue: VenueItem }> {
-  return call<{ venue: VenueItem }>({ route: API.venueCreate, params: { org_id: orgId }, body });
+export function createVenue(orgId: string, body: CreateVenueRequest, locale?: string): Promise<{ venue: VenueItem }> {
+  // `locale` names a city made by `city_name` (the query alias of `lang`).
+  return call<{ venue: VenueItem }>({ route: API.venueCreate, params: { org_id: orgId }, body, query: locale ? { locale } : undefined });
 }
 
 /** F-004: finds or creates a city of a country by name (`city.create`, idempotent by name). */

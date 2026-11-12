@@ -204,7 +204,7 @@ func parseColor(s string) color.RGBA {
 	if err != nil {
 		return fallback
 	}
-	return color.RGBA{R: uint8(v >> 16), G: uint8(v >> 8), B: uint8(v), A: 255}
+	return color.RGBA{R: uint8(v >> 16), G: uint8(v >> 8), B: uint8(v), A: 255} //nolint:gosec // G115: six hex digits, each byte is taken on purpose
 }
 
 // disc fills a circle of radius r around (cx, cy).

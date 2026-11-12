@@ -6,6 +6,7 @@ import {
   autoSource,
   fallbackSource,
   isRouteMissing,
+  serverSource,
   type Directory,
   type FallbackDeps,
   type VenueDirectorySource,
@@ -123,7 +124,40 @@ describe("fallbackSource", () => {
   });
 });
 
-const EMPTY: Directory = { countries: [], cities: [], venues: [] };
+describe("serverSource", () => {
+  it("reads the real routes and maps country_iso2, geo_lat/geo_lng, quick_pick and total", async () => {
+    const calls: { path: string; query?: Record<string, unknown> }[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      calls.push({ path: url });
+      const body = url.includes("world-countries")
+        ? { regions: [], countries: [{ iso2: "MY", iso3: "MYS", name: "Malaysia", name_en: "Malaysia", currency: "MYR", region: "asia", in_reference: false, country_id: null, has_organizers: false }] }
+        : {
+            quick_pick: ["es", "IL"],
+            countries: [{ iso2: "ES", country_id: "c1", name: "Spain", region: "europe", venues: 2, own_venues: 1 }],
+            cities: [{ id: "mad", name: "Madrid", country_iso2: "ES", venues: 2, own_venues: 1 }],
+            venues: [
+              { id: "v1", name: "Teatro Real", city_id: "mad", city_name: "Madrid", country_iso2: "ES", address: "old", address_line1: null, geo_lat: 40.4, geo_lng: -3.7, timezone: "Europe/Madrid", capacity_default: 1700, own: false, review_status: "verified", has_plan: true, has_own_plan: false },
+            ],
+            total: 1,
+          };
+      return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    const world = await serverSource.worldCountries("ru");
+    expect(world).toHaveLength(1);
+    expect(world[0]).toMatchObject({ iso2: "MY", in_reference: false, region: "asia" });
+    const dir = await serverSource.directory("org-1", { country: "ES" }, "ru");
+    expect(dir.quick_pick).toEqual(["ES", "IL"]);
+    expect(dir.total).toBe(1);
+    expect(dir.cities).toEqual([{ id: "mad", name: "Madrid", country: "ES", venues: 2 }]);
+    expect(dir.venues[0]).toMatchObject({ country: "ES", latitude: 40.4, longitude: -3.7, address_line1: "old", has_plan: true, has_own_plan: false });
+    expect(calls[0].path).toContain("/v1/geo/world-countries");
+    expect(calls[1].path).toContain("/v1/organizations/org-1/venue-directory");
+    vi.restoreAllMocks();
+  });
+});
+
+const EMPTY: Directory ={ countries: [], cities: [], venues: [] };
 
 function fakeServer(fail: unknown): VenueDirectorySource & { world: ReturnType<typeof vi.fn>; dir: ReturnType<typeof vi.fn> } {
   const world = vi.fn(async () => {

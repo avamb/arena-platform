@@ -4,21 +4,23 @@
  * the server routes costs one adapter here.
  *
  * Two sources behind one interface:
- *  - `serverSource`: the two routes that are not in openapi.yaml yet
- *    (src/lib/api/pendingRoutes.ts): `GET /v1/geo/world-countries` and
- *    `GET /v1/organizations/{org_id}/venue-directory`. The response types
- *    below are written by hand from the assumed contract.
+ *  - `serverSource`: `GET /v1/geo/world-countries` and
+ *    `GET /v1/organizations/{org_id}/venue-directory` (both in openapi.yaml,
+ *    typed by the generated client). The server names the country
+ *    `country_iso2` and the coordinates `geo_lat`/`geo_lng`; this adapter maps
+ *    them to the view model below, so no screen knows the wire names.
  *  - `fallbackSource`: the same view model built in the browser from the
- *    calls that exist today (venues, countries, cities). No regions
+ *    older calls (venues, countries, cities). No regions
  *    (`worldCountries` is empty, so every reference country is offered at the
- *    quick pick) and `has_plan` is `null` (unknown).
+ *    quick pick), no `quick_pick`, and `has_plan` is `null` (unknown). It only
+ *    serves a server that does not have the routes yet (an old stand image).
  * `autoSource` tries the server and switches to the fallback for the rest of
  * the tab when the route is missing (404).
  */
 import { ApiError, call } from "@/lib/api/http";
-import { API_PENDING } from "@/lib/api/pendingRoutes";
+import { API } from "@/lib/api/routes";
 import { listCountries, listVenues, searchCities } from "@/lib/api/endpoints";
-import type { GeoCitiesResponse, VenueItem } from "@/lib/api/types";
+import type { GeoCitiesResponse, GeoWorldCountriesResponse, VenueDirectoryResponse, VenueItem } from "@/lib/api/types";
 
 /** The seven regions of the world, in the order the chooser shows them (spec 64 section 2.1.1). */
 export const REGIONS = ["europe", "middle_east", "asia", "africa", "north_america", "latin_america", "oceania"] as const;
@@ -35,6 +37,8 @@ export interface WorldCountry {
   currency?: string;
   region: string;
   in_reference: boolean;
+  /** At least one organization is registered in the country (server only). */
+  has_organizers?: boolean;
 }
 
 export interface DirectoryCountry {
@@ -43,6 +47,8 @@ export interface DirectoryCountry {
   /** The English name when the source knows it (the fallback does, the server leaves it to the world list). */
   name_en?: string;
   venues: number;
+  /** Venues of the organization itself (server only). */
+  own_venues?: number;
 }
 
 export interface DirectoryCity {
@@ -68,8 +74,10 @@ export interface DirectoryVenue {
   capacity_default: number | null;
   /** "verified" for a shared venue the platform checked. */
   review_status: string;
-  /** An active plan this organization may use. `null` = the source does not know (the fallback). */
+  /** An active plan this organization may use (its own, or a verified template it may copy). `null` = the source does not know (the fallback). */
   has_plan: boolean | null;
+  /** The organization has its OWN active seating plan at the venue (server only). */
+  has_own_plan?: boolean;
 }
 
 export interface Directory {
@@ -77,8 +85,12 @@ export interface Directory {
   countries: DirectoryCountry[];
   /** Filled when `country` is sent. */
   cities: DirectoryCity[];
-  /** Filled when `cityId` or `q` is sent. At most about 100 rows, no paging. */
+  /** Filled when any of `country`, `cityId`, `q` is sent. At most about 100 rows, no paging. */
   venues: DirectoryVenue[];
+  /** ISO codes of the quick row, in the server's order. Absent = the source has none (the fallback). */
+  quick_pick?: string[];
+  /** Count of the filtered venues before the limit (server only). */
+  total?: number;
 }
 
 export interface DirectoryQuery {
@@ -110,16 +122,48 @@ export function isRouteMissing(err: unknown): boolean {
 export const serverSource: VenueDirectorySource = {
   kind: "server",
   async worldCountries(locale) {
-    const res = await call<{ countries?: WorldCountry[] }>({ route: API_PENDING.geoWorldCountries, query: { locale } });
-    return res.countries ?? [];
+    const res = await call<GeoWorldCountriesResponse>({ route: API.geoWorldCountries, query: { locale } });
+    return (res.countries ?? []).map((c) => ({
+      iso2: c.iso2,
+      iso3: c.iso3,
+      name: c.name,
+      name_en: c.name_en,
+      currency: c.currency,
+      region: c.region,
+      in_reference: c.in_reference,
+      has_organizers: c.has_organizers,
+    }));
   },
   async directory(orgId, query, locale) {
-    const res = await call<Partial<Directory>>({
-      route: API_PENDING.venueDirectory,
+    const res = await call<VenueDirectoryResponse>({
+      route: API.venueDirectory,
       params: { org_id: orgId },
       query: { country: query.country, city_id: query.cityId, q: query.q, locale },
     });
-    return { countries: res.countries ?? [], cities: res.cities ?? [], venues: res.venues ?? [] };
+    return {
+      countries: (res.countries ?? []).map((c) => ({ iso2: c.iso2, name: c.name, venues: c.venues, own_venues: c.own_venues })),
+      cities: (res.cities ?? []).map((c) => ({ id: c.id, name: c.name, country: c.country_iso2, venues: c.venues })),
+      venues: (res.venues ?? []).map(
+        (v): DirectoryVenue => ({
+          id: v.id,
+          name: v.name,
+          own: v.own,
+          country: (v.country_iso2 ?? "").toUpperCase(),
+          city_id: v.city_id,
+          city_name: v.city_name ?? "",
+          address_line1: (v.address_line1 ?? v.address ?? "").trim(),
+          timezone: v.timezone ?? "",
+          latitude: v.geo_lat,
+          longitude: v.geo_lng,
+          capacity_default: v.capacity_default,
+          review_status: v.review_status,
+          has_plan: v.has_plan,
+          has_own_plan: v.has_own_plan,
+        }),
+      ),
+      quick_pick: (res.quick_pick ?? []).map((c) => c.toUpperCase()),
+      total: res.total,
+    };
   },
 };
 

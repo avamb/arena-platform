@@ -159,6 +159,9 @@ export type OrgCityResponse = S["OrgCityResponse"];
 export type TelegramConnectStatus = S["TelegramConnectStatus"];
 export type TelegramConnectCode = S["TelegramConnectCode"];
 export type GeoCountriesResponse = S["GeoCountriesResponse"];
+// Spec 64 section 2.1.1: the world list and the venue directory of the chooser.
+export type GeoWorldCountriesResponse = S["GeoWorldCountriesResponse"];
+export type VenueDirectoryResponse = S["VenueDirectoryResponse"];
 export type GeoCityItem = S["GeoCityItem"];
 export type GeoCitySuggestion = S["GeoCitySuggestion"];
 export type GeoCitiesResponse = S["GeoCitiesResponse"];

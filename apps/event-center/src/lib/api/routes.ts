@@ -289,6 +289,10 @@ export const API = {
   reportDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{event_id}/photo-report/{photo_id}" },
   geoCountries: { method: "GET", path: "/v1/geo/countries" },
   geoCities: { method: "GET", path: "/v1/geo/cities" },
+  // Spec 64 section 2.1.1: every country of the world with its region, public.
+  geoWorldCountries: { method: "GET", path: "/v1/geo/world-countries" },
+  // Countries, cities and venues of the organization's scope with counters (`venue.read`).
+  venueDirectory: { method: "GET", path: "/v1/organizations/{org_id}/venue-directory" },
   geoTimezones: { method: "GET", path: "/v1/geo/countries/{iso2}/timezones" },
   geoCurrency: { method: "GET", path: "/v1/geo/countries/{iso2}/currency" },
   // 5-2: move or cancel a session. The dry run first, then ONE PATCH of the
