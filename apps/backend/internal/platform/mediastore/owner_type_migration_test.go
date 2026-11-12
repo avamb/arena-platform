@@ -132,3 +132,17 @@ func TestOwnerPaymentReceipt_IsMigratedButNotUploadable(t *testing.T) {
 		t.Errorf("migration %s does not widen %s to accept %q", filename, ownerTypeConstraintName, OwnerPaymentReceipt)
 	}
 }
+
+func TestOwnerVenuePlanSource_IsMigratedButNotUploadable(t *testing.T) {
+	if _, ok := AllowedOwnerTypes[OwnerVenuePlanSource]; ok {
+		t.Fatal("venue_plan_source must not be accepted by POST /v1/media")
+	}
+	filename, upSQL := latestOwnerTypeCheckSQL(t)
+	if !strings.Contains(upSQL, "'"+OwnerVenuePlanSource+"'") {
+		t.Errorf("migration %s does not widen %s to accept %q", filename, ownerTypeConstraintName, OwnerVenuePlanSource)
+	}
+	// Widening must keep every older value, payment receipts included.
+	if !strings.Contains(upSQL, "'"+OwnerPaymentReceipt+"'") {
+		t.Errorf("migration %s drops %q from %s", filename, OwnerPaymentReceipt, ownerTypeConstraintName)
+	}
+}

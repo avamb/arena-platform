@@ -719,3 +719,19 @@ Manual sales state of a session, sold-out and site alerts, notify-me-when-sales-
 
 * A session has ONE sales state for every channel (m…
 * "Notify me when sales open" (package salesubscribe…
+
+### [Hall plan intake and plan verification](docs/agents/venue-plan-intake.md)
+
+Spec 64: intake states, private plan sources, approve, superadmin verification and templates, administrator notifications, bot notices, later-wave seams.
+
+* An intake has seven states and each is moved by one actor
+* Intake sources are private media of owner type venue_plan_source, with their own body limit
+* A draft SVG is validated before anyone sees it
+* Approve is ONE transaction and the billing fact sits behind a SAVEPOINT
+* operator_verified is set ONLY by the verify route
+* Fork rules: a private plan of another organization is not copied
+* A new version on ANY write path resets a verified template, only a superadmin's with X-Admin-Reason does not
+* Four events tell every platform administrator through the job venue_plan.notify
+* The notify handler sends nothing twice and tells no person
+* The bot claims organizer notices with POST /v1/bot/venue-plan-notices/claim
+* Seams for the later waves are nil in wave 1

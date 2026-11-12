@@ -33,6 +33,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/seatmint"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
+	venueplannotify "github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/notify"
 )
 
 // arenaMatch is the outcome of spec §3.2 steps 1-2: which existing session (if
@@ -436,6 +437,12 @@ func (h *Handler) resolveArenaVenue(ctx context.Context, q *gen.Queries, tx pgx.
 		created, err := q.InsertArenaVenue(ctx, plan.OrgID, cityID, trimSpace(v.VenueName), optString(v.Address), d.storeTZ, v.GeoLat, v.GeoLon, country)
 		if err != nil {
 			return uuid.Nil, nil, fmt.Errorf("insert venue: %w", err)
+		}
+		// A dry run rolls its transaction back, so the job never survives it.
+		if !plan.Mode.DryRun {
+			if err := venueplannotify.EnqueueVenueCreated(ctx, tx, created.ID); err != nil {
+				return uuid.Nil, nil, err
+			}
 		}
 		return created.ID, d.loc, nil
 	default:

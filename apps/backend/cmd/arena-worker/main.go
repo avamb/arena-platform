@@ -45,6 +45,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/storage"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/adminnotify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/backfill"
@@ -93,6 +94,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesubscribe"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/tierchain"
+	venueplannotify "github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/notify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
@@ -892,14 +894,23 @@ func registerOnboardingHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *c
 	reg.Register(onboarding.JobTypeNotify, svc.HandleNotify)
 	// A new application reaches every platform admin personally through the
 	// event-center bot (arena-bot polls its token, the worker only sends).
-	var adminSender onboarding.AdminTelegramSender
+	var adminSender adminnotify.TelegramSender
 	if cfg.EventsTelegramBotToken != "" {
 		adminSender = salesnotify.NewTelegramSender(cfg.EventsTelegramBotToken, "")
 	} else {
 		logger.Warn("EVENTS_TELEGRAM_BOT_TOKEN is not set on arena-worker: platform admins get new applications by e-mail only")
 	}
-	reg.Register(onboarding.JobTypeAdminTelegram, onboarding.NewAdminTelegramHandler(adminSender, logger))
+	tgHandler := adminnotify.NewTelegramHandler(adminSender, logger)
+	reg.Register(adminnotify.JobTypeTelegram, tgHandler)
+	// Legacy type: rows queued before the move to adminnotify have the same payload.
+	reg.Register(onboarding.JobTypeAdminTelegram, tgHandler)
+	reg.Register(adminnotify.JobTypeEmail, adminnotify.NewEmailHandler(buildEmailSender(cfg, logger), logger))
 	reg.Register(onboarding.JobTypeSweep, onboarding.NewSweepHandler(svc, pool, logger))
+	// Hall plan intake events (spec 64 section 3.2) reach the same administrators
+	// through the same admin_notify jobs.
+	reg.Register(venueplannotify.JobType, venueplannotify.NewHandler(venueplannotify.Options{
+		Pool: pool, AppURL: cfg.AppPublicURL, Telegram: cfg.EventsTelegramBotToken != "", Logger: logger,
+	}))
 }
 
 func registerOpsWatchdogHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier opsalert.Notifier, logger *slog.Logger) {

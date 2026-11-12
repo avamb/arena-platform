@@ -64,8 +64,8 @@ SELECT $1, id, NULL FROM roles WHERE name = $2 AND org_id IS NULL`, id, role); e
 	cleanupApplication(t, pool, appEmail)
 	t.Cleanup(func() {
 		c := context.Background()
-		_, _ = pool.Exec(c, `DELETE FROM worker_jobs WHERE job_type IN ('onboarding.email', 'onboarding.admin_telegram') AND payload::text LIKE '%'||$1||'%'`, nonce)
-		_, _ = pool.Exec(c, `DELETE FROM worker_jobs WHERE job_type = 'onboarding.admin_telegram' AND (payload->>'chat_id')::bigint = ANY($1)`, chats)
+		_, _ = pool.Exec(c, `DELETE FROM worker_jobs WHERE job_type IN ('onboarding.email', 'admin_notify.telegram') AND payload::text LIKE '%'||$1||'%'`, nonce)
+		_, _ = pool.Exec(c, `DELETE FROM worker_jobs WHERE job_type = 'admin_notify.telegram' AND (payload->>'chat_id')::bigint = ANY($1)`, chats)
 		_, _ = pool.Exec(c, `DELETE FROM bot_telegram_links WHERE user_id = ANY($1)`, users)
 		_, _ = pool.Exec(c, `DELETE FROM user_roles WHERE user_id = ANY($1)`, users)
 		_, _ = pool.Exec(c, `DELETE FROM users WHERE id = ANY($1)`, users)
@@ -105,10 +105,10 @@ AND payload->>'application_id' = $1 AND payload->>'email' = $2`, app.ID.String()
 	if n := count(`SELECT count(*) FROM worker_jobs WHERE job_type = 'onboarding.email' AND payload->>'application_id' = $1 AND payload->>'email' = $2`, app.ID.String(), orgAdminEmail); n != 0 {
 		t.Errorf("org admin got %d e-mail jobs", n)
 	}
-	if n := count(`SELECT count(*) FROM worker_jobs WHERE job_type = 'onboarding.admin_telegram' AND (payload->>'chat_id')::bigint = $1`, tgID); n != 1 {
+	if n := count(`SELECT count(*) FROM worker_jobs WHERE job_type = 'admin_notify.telegram' AND (payload->>'chat_id')::bigint = $1`, tgID); n != 1 {
 		t.Errorf("telegram jobs for the linked superadmin = %d, want 1", n)
 	}
-	if n := count(`SELECT count(*) FROM worker_jobs WHERE job_type = 'onboarding.admin_telegram' AND (payload->>'chat_id')::bigint = ANY($1)`, []int64{tgID + 1, tgID + 2}); n != 0 {
+	if n := count(`SELECT count(*) FROM worker_jobs WHERE job_type = 'admin_notify.telegram' AND (payload->>'chat_id')::bigint = ANY($1)`, []int64{tgID + 1, tgID + 2}); n != 0 {
 		t.Errorf("revoked link or org admin got %d telegram jobs", n)
 	}
 	if n := count(`SELECT count(*) FROM onboarding_application_events WHERE application_id = $1 AND kind = 'admins_notified'`, app.ID); n != 1 {

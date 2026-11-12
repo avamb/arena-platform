@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
@@ -144,6 +145,11 @@ func (h *Handler) HandleCreateSeatingPlan(w http.ResponseWriter, r *http.Request
 	}
 	if vPresent && vv != nil {
 		visibility = *vv
+	}
+	// operator_verified is set only by POST /v1/admin/seating-plans/{id}/verify.
+	if DecideVisibilityChange("", visibility) == VisibilityChangeVerifyRequired {
+		writeVerifyRequired(w, r)
+		return
 	}
 	status := "draft"
 	sv, sPresent, sok := stringField(fields, "status")
@@ -377,7 +383,36 @@ func (h *Handler) HandleUpdateSeatingPlan(w http.ResponseWriter, r *http.Request
 		finalName = *name
 	}
 	finalVisibility := existing.Visibility
+	leavesTemplate := false
 	if visibilityPresent && visibility != nil {
+		// operator_verified is set only by the verify route; a verified
+		// template goes back to private only, and then waits for a new
+		// verification. The row is locked so the decision and the write see
+		// the same visibility as a concurrent verify or needs-fix.
+		locked, lerr := qtx.LockSeatingPlanForVerification(ctx, id)
+		if lerr != nil {
+			if errors.Is(lerr, pgx.ErrNoRows) {
+				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+					"seating_plan.not_found", "seating plan not found", r,
+				))
+				return
+			}
+			h.logger.Error("seating_plan: pre-update lock failed", slog.String("error", lerr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"seating_plan.update_failed", "failed to update seating plan", r,
+			))
+			return
+		}
+		switch DecideVisibilityChange(locked.Visibility, *visibility) {
+		case VisibilityChangeVerifyRequired:
+			writeVerifyRequired(w, r)
+			return
+		case VisibilityChangeTemplateLocked:
+			writeTemplateLocked(w, r)
+			return
+		case VisibilityChangeLeavesTemplate:
+			leavesTemplate = true
+		}
 		finalVisibility = *visibility
 	}
 	finalStatus := existing.Status
@@ -399,6 +434,17 @@ func (h *Handler) HandleUpdateSeatingPlan(w http.ResponseWriter, r *http.Request
 		))
 		return
 	}
+	if leavesTemplate {
+		if _, err := qtx.SetSeatingPlanVerification(ctx, gen.SetSeatingPlanVerificationParams{
+			PlanID: id, State: VerificationUnverified,
+		}); err != nil {
+			h.logger.Error("seating_plan: verification reset failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"seating_plan.update_failed", "failed to update seating plan", r,
+			))
+			return
+		}
+	}
 	if overridesPresent {
 		row, err = qtx.SetSeatingPlanCategoryNameOverrides(ctx, id, existing.OwnerOrgID, overridesJSON)
 		if err != nil {
@@ -410,9 +456,10 @@ func (h *Handler) HandleUpdateSeatingPlan(w http.ResponseWriter, r *http.Request
 		}
 	}
 	if err := h.writeAuditTx(ctx, tx, r, "v1.seating_plan.update", row.ID.String(), map[string]any{
-		"owner_org_id": row.OwnerOrgID.String(),
-		"visibility":   row.Visibility,
-		"status":       row.Status,
+		"owner_org_id":  row.OwnerOrgID.String(),
+		"visibility":    row.Visibility,
+		"status":        row.Status,
+		"left_template": leavesTemplate,
 	}); err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"seating_plan.audit_failed", "failed to write audit event", r,
@@ -539,9 +586,59 @@ func (h *Handler) HandleForkSeatingPlan(w http.ResponseWriter, r *http.Request) 
 		))
 		return
 	}
+	// The verification state is read under the row lock, so a concurrent
+	// needs-fix or a new version that resets the template is seen.
+	sourceLock, err := qtx.LockSeatingPlanForVerification(ctx, source.ID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"seating_plan.not_found", "seating plan not found", r,
+			))
+			return
+		}
+		h.logger.Error("seating_plan: fork source lock failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"seating_plan.fork_failed", "failed to fork seating plan", r,
+		))
+		return
+	}
+	// A plan of another organization is copied only when it is active and
+	// open for copying: a venue template the platform verified
+	// (operator_verified AND verification_state verified) or a plan its owner
+	// opened (public_template). Any other plan answers the same 404 as a
+	// missing one.
+	if !ForkableByOtherOrganization(sourceLock.Status, sourceLock.Visibility, sourceLock.VerificationState) {
+		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+			"seating_plan.not_found", "seating plan not found", r,
+		))
+		return
+	}
+	// A copy of a verified template is ready for sale at once: its geometry
+	// is already verified. It belongs to the new organization alone
+	// (private, never sent for verification).
+	forkStatus := "draft"
+	if IsVerifiedTemplate(sourceLock.Visibility, sourceLock.VerificationState) && source.CurrentVersionID != nil {
+		forkStatus = "active"
+	}
 
 	targetVenue := source.VenueID
 	if venueOverride != nil {
+		// The target venue follows the rule of plan-templates: the forking
+		// organization's own venue, or a venue the platform verified.
+		venue, verr := qtx.GetVenueSessionContext(ctx, *venueOverride)
+		if verr != nil && !errors.Is(verr, pgx.ErrNoRows) {
+			h.logger.Error("seating_plan: fork target venue read failed", slog.String("error", verr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"seating_plan.fork_failed", "failed to fork seating plan", r,
+			))
+			return
+		}
+		if verr != nil || (venue.OrgID != ownerOrgID && !venue.Verified) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"venue.not_found", "venue not found", r,
+			))
+			return
+		}
 		targetVenue = *venueOverride
 	}
 	targetName := source.Name + " (fork)"
@@ -551,7 +648,7 @@ func (h *Handler) HandleForkSeatingPlan(w http.ResponseWriter, r *http.Request) 
 
 	forked, err := qtx.InsertSeatingPlan(
 		ctx, targetVenue, ownerOrgID, targetName,
-		source.PlanType, "private", "draft", &source.ID,
+		source.PlanType, VisibilityPrivate, forkStatus, &source.ID,
 	)
 	if err != nil {
 		h.logger.Error("seating_plan: fork insert failed", slog.String("error", err.Error()))

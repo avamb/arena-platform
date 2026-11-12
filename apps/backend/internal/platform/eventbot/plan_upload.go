@@ -162,21 +162,10 @@ func looksLikeSVG(data []byte) bool {
 }
 
 // planTypeOf picks the plan type the geometry fits: the API refuses a plan
-// whose type disagrees with its places.
+// whose type disagrees with its places. The rule lives in seating.PlanTypeOf,
+// shared with the hall plan intake.
 func planTypeOf(g seating.Geometry) string {
-	ga := 0
-	for _, c := range g.Categories {
-		if c.IsGA() {
-			ga++
-		}
-	}
-	switch {
-	case ga > 0 && g.SeatCount() > 0:
-		return "mixed"
-	case ga > 0:
-		return "general_admission"
-	}
-	return "assigned_seats"
+	return seating.PlanTypeOf(g)
 }
 
 // planNameFor names the plan after the file (without its extension), or after

@@ -140,6 +140,13 @@ type Deps struct {
 	// http.MaxBytesReader. Zero disables the limit.
 	BodyLimitBytes int64
 
+	// BodyLimitOverride, when set, names a larger body cap for the few upload
+	// routes that legitimately carry more than BodyLimitBytes (the hall plan
+	// intake takes up to 80 MB of files). It returns 0 for every other
+	// request, which keeps BodyLimitBytes. The route's handler still caps its
+	// own body exactly; this only lets the bytes past the global limit.
+	BodyLimitOverride func(r *http.Request) int64
+
 	// Metrics is the shared *observability.Metrics that backs the
 	// prometheusMiddleware HTTP histogram + counter and the panic counter.
 	// Nil disables both the prometheusMiddleware and the panic counter
@@ -248,7 +255,7 @@ func NewRouter(deps Deps) chi.Router {
 	}
 	// 9. jsonBodyLimit — only when BodyLimitBytes > 0.
 	if deps.BodyLimitBytes > 0 {
-		r.Use(JSONBodyLimit(deps.BodyLimitBytes))
+		r.Use(JSONBodyLimitWithOverride(deps.BodyLimitBytes, deps.BodyLimitOverride))
 	}
 	// 10. RequireJSONContentType — enforces Content-Type: application/json on
 	//     POST/PUT/PATCH so mutating endpoints never receive non-JSON bodies
@@ -606,10 +613,22 @@ func tracerMiddleware(propagator propagation.TextMapPropagator, tracer trace.Tra
 // — for example tests or future arena-admin binaries — can reuse the same
 // body-limit semantics without duplicating the cap logic.
 func JSONBodyLimit(maxBytes int64) func(http.Handler) http.Handler {
+	return JSONBodyLimitWithOverride(maxBytes, nil)
+}
+
+// JSONBodyLimitWithOverride is JSONBodyLimit where override may name a
+// larger cap for a request (an upload route); a result <= 0 keeps maxBytes.
+func JSONBodyLimitWithOverride(defaultBytes int64, override func(r *http.Request) int64) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch r.Method {
 			case http.MethodPost, http.MethodPut, http.MethodPatch:
+				maxBytes := defaultBytes
+				if override != nil {
+					if n := override(r); n > maxBytes {
+						maxBytes = n
+					}
+				}
 				if maxBytes > 0 {
 					// Fast path: reject immediately when Content-Length already
 					// exceeds the limit. net/http sets r.ContentLength from the

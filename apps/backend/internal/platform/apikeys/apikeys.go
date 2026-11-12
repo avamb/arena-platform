@@ -86,6 +86,9 @@ var ForbiddenScopeExact = map[string]bool{
 	// dispute.respond submits or accepts a payment dispute (migration 0186,
 	// spec 51.3): a site must never answer a dispute without a person.
 	"dispute.respond": true,
+	// venue_plan_intake.curate works the hall plan intakes of every
+	// organization (migration 0216, spec 64): platform superadmin only.
+	"venue_plan_intake.curate": true,
 }
 
 // IsForbiddenScope reports whether scope may never be carried by an API key.

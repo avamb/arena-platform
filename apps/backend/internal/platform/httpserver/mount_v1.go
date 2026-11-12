@@ -101,6 +101,7 @@ func (s *Server) mountV1Routes() {
 		s.mountTextRoutes(r)
 		s.mountEventPageRoutes(r)
 		s.mountSeatingRoutes(r)
+		s.mountVenuePlanRoutes(r)
 		s.mountImportRoutes(r)
 		s.mountCustomerImportRoutes(r)
 		s.mountShopRoutes(r)
