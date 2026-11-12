@@ -208,7 +208,7 @@ func run() error {
 	// payloads to per-org MACS webhook subscribers for ticket lifecycle events.
 	// Delivery failure returns an error so the outbox row retries (at-least-once).
 	//
-	// W1-B7c (#506): the bil24_wp dispatcher is the third member. It delivers
+	// W1-B7c (#506): the bil24_wp dispatcher is another member. It delivers
 	// order/ticket/catalog events to the migrated WordPress sites in Bil24's
 	// own webhook vocabulary, routed by the sales channel each site subscribed
 	// to. It shares the same at-least-once contract: non-2xx retries.
@@ -236,15 +236,21 @@ func run() error {
 		}, 0, logger)
 		go billingAccel.Run(rootCtx)
 	}
-	outboxDispatcher := &multiDispatcher{dispatchers: outboxLegs(
-		salesNotifier,
+	// F-FC-01: every leg is called even when another one fails, and a leg
+	// that delivered an event is never called again for it (state in
+	// outbox_event_legs). The row retries only for the legs still failing.
+	outboxDispatcher, fanOutErr := outbox.NewLegFanOut(outbox.NewPGLegStateStore(pool.Pool), logger, outboxLegs(
+		outbox.Leg{Name: legSalesNotify, Dispatcher: salesNotifier},
 		// Server-side ad conversions (spec 62 8.3): queue only, never fails.
-		conversions.NewDispatcher(conversions.NewPGStore(pool.Pool), logger),
-		baseOutboxDispatcher,
-		macsDispatcher,
-		bil24WPDispatcher,
-		billingAccelLeg(billingAccel),
-	)}
+		outbox.Leg{Name: legConversions, Dispatcher: conversions.NewDispatcher(conversions.NewPGStore(pool.Pool), logger)},
+		outbox.Leg{Name: legWebhook, Dispatcher: baseOutboxDispatcher},
+		outbox.Leg{Name: legMACS, Dispatcher: macsDispatcher},
+		outbox.Leg{Name: legBil24WP, Dispatcher: bil24WPDispatcher},
+		outbox.Leg{Name: legBillingAccel, Dispatcher: billingAccelLeg(billingAccel)},
+	)...)
+	if fanOutErr != nil {
+		return fmt.Errorf("init outbox fan-out: %w", fanOutErr)
+	}
 	outboxStore := outbox.NewPGOutboxEventStore(pool.Pool)
 	outboxEventsDisp, outboxDispErr := outbox.NewOutboxEventsDispatcher(outbox.OutboxEventsDispatcherOptions{
 		Store:           outboxStore,
@@ -1154,12 +1160,6 @@ func coalesce(values ...string) string {
 	return ""
 }
 
-// outboxLegs returns the fan-out members in delivery order, leaving out any
-// leg that is explicitly disabled. OUTBOX_MODE=disabled switches off only the
-// generic OUTBOX_WEBHOOK_URL leg: kept inside the fan-out, its
-// DisabledDispatcher would answer every event with ErrDispatchDisabled, the
-// row would stay unprocessed and be claimed again, and MACS and the selling
-// sites after it would never receive anything.
 // buildBilling makes the collect and rate workers. The rater is nil, and the
 // collector disabled, until the owner names the date X.
 func buildBilling(pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) (*billingcollect.Collector, *billingrate.Rater) {
@@ -1178,30 +1178,31 @@ func buildBilling(pool *pgxpool.Pool, cfg *config.Config, logger *slog.Logger) (
 // an inert no-op (Dispatch on a nil *Accelerator answers nil).
 func billingAccelLeg(a *billingaccel.Accelerator) outbox.Dispatcher { return a }
 
-func outboxLegs(legs ...outbox.Dispatcher) []outbox.Dispatcher {
-	out := make([]outbox.Dispatcher, 0, len(legs))
-	for _, d := range legs {
-		if dm, ok := d.(outbox.DisabledModeDispatcher); ok && dm.IsDisabled() {
+// Stable names of the outbox fan-out legs. They are stored in
+// outbox_event_legs.leg: renaming one makes every pending event call that leg
+// again.
+const (
+	legSalesNotify  = "sales_notify"
+	legConversions  = "conversions"
+	legWebhook      = "webhook"
+	legMACS         = "macs"
+	legBil24WP      = "bil24_wp"
+	legBillingAccel = "billing_accel"
+)
+
+// outboxLegs returns the fan-out members in delivery order, leaving out any
+// leg that is explicitly disabled. OUTBOX_MODE=disabled switches off only the
+// generic OUTBOX_WEBHOOK_URL leg: kept inside the fan-out, its
+// DisabledDispatcher would answer every event with ErrDispatchDisabled and
+// the outbox would leave the row unprocessed, so MACS and the selling sites
+// would never see their event marked done.
+func outboxLegs(legs ...outbox.Leg) []outbox.Leg {
+	out := make([]outbox.Leg, 0, len(legs))
+	for _, l := range legs {
+		if dm, ok := l.Dispatcher.(outbox.DisabledModeDispatcher); ok && dm.IsDisabled() {
 			continue
 		}
-		out = append(out, d)
+		out = append(out, l)
 	}
 	return out
-}
-
-// multiDispatcher fans out Dispatch calls to multiple Dispatcher implementations
-// in order. If any dispatcher returns an error, delivery stops and the error is
-// returned (causing the outbox to retry the entire row). This is at-least-once
-// delivery: on retry, all dispatchers are called again.
-type multiDispatcher struct {
-	dispatchers []outbox.Dispatcher
-}
-
-func (m *multiDispatcher) Dispatch(ctx context.Context, ev outbox.Event) error {
-	for _, d := range m.dispatchers {
-		if err := d.Dispatch(ctx, ev); err != nil {
-			return err
-		}
-	}
-	return nil
 }
