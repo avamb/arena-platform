@@ -809,11 +809,11 @@ def _op_add_gap(m: dict, p: dict, i: int, exact: bool) -> dict:
             index = found[0] if found and found[0] < n - 1 else None
         if index is None:
             if strict:
-                _fail(i, "not_found", "Row %s has no seat to the right of that place." % _q(row["id"]))
+                _fail(i, "not_found", "Row %s has no seat to the right of that position." % _q(row["id"]))
             continue
         hits.append((row, index))
     if not hits:
-        _fail(i, "not_found", "No row of section %s has a seat to the right of that place." % _q(sec["id"]))
+        _fail(i, "not_found", "No row of section %s has a seat to the right of that position." % _q(sec["id"]))
     changed: set = set()
     for row, index in hits:
         step = _row_step(row)
@@ -909,14 +909,14 @@ def _sanitise_issues(m: dict, row_map: dict) -> None:
 
 def _check_limits(m: dict, i: int) -> None:
     if len(m["sections"]) > MAX_SECTIONS:
-        _fail(i, "conflict", "The hall would have more than %d sections." % MAX_SECTIONS)
+        _fail(i, "conflict", "The seating plan would have more than %d sections." % MAX_SECTIONS)
     rows = [r for s in m["sections"] for r in s["rows"]]
     if len(rows) > MAX_ROWS:
-        _fail(i, "conflict", "The hall would have more than %d rows." % MAX_ROWS)
+        _fail(i, "conflict", "The seating plan would have more than %d rows." % MAX_ROWS)
     if any(len(r["seats"]) > MAX_SEATS_IN_ROW for r in rows):
         _fail(i, "conflict", "A row would have more than %d seats." % MAX_SEATS_IN_ROW)
     if _seat_count(m) > MAX_SEATS:
-        _fail(i, "conflict", "The hall would have more than %d seats." % MAX_SEATS)
+        _fail(i, "conflict", "The seating plan would have more than %d seats." % MAX_SEATS)
 
 
 def apply_operations(model: dict, operations: list) -> tuple[dict, dict]:

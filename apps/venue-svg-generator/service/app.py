@@ -402,7 +402,7 @@ def create_app(
     async def job_preview(job_id: str) -> Response:
         result = _finished(job_id)
         if result.get("preview_png_base64") is None:
-            raise ApiError(409, "job.no_preview", "The job has no preview picture: no file gave a seat.")
+            raise ApiError(409, "job.no_preview", "The job has no preview image: no file gave a seat.")
         return Response(base64.b64decode(result["preview_png_base64"]), media_type="image/png")
 
     # -- synchronous routes (FastAPI runs a plain `def` in its thread pool) ----

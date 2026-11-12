@@ -228,9 +228,9 @@ def build_authoring_svg_v2(
     })
     ET.SubElement(root, f"{{{SVG}}}title").text = "Seating plan (authoring export)"
     note = {
-        "PASS": "The validation status of the hall model is PASS.",
-        "QUARANTINE": "The validation status of the hall model is QUARANTINE. Check the hall before you sell.",
-        "SCHEMATIC": "This hall is schematic and not to scale. The validation status of the hall model is "
+        "PASS": "The validation status of the seating plan is PASS.",
+        "QUARANTINE": "The validation status of the seating plan is QUARANTINE. Check the seating plan before you sell.",
+        "SCHEMATIC": "This seating plan is schematic and not to scale. The validation status of the seating plan is "
                      + status + ".",
     }[marked]
     ET.SubElement(root, f"{{{SVG}}}desc").text = (
