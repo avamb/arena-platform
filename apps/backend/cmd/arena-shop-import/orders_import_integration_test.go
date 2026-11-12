@@ -167,6 +167,23 @@ func TestShopImport_OrderHistory(t *testing.T) {
 		t.Fatalf("second run:\n%s", out)
 	}
 
+	// A new export reuses the name #1001 for another order (other Shopify id,
+	// total): the run says so and leaves the stored order alone (F-SH-01).
+	other := row("#1001", "paid", "fulfilled", "2026-10-18 09:00:00 +0300", "800.00", "50.00", "850.00", "0.00", "2", "Red Wine - 1.5", "400.00", "0.00")
+	other[len(other)-1] = "9999999999"
+	orders = write(other)
+	out, err = runOrders()
+	if err != nil || !strings.Contains(out, "1 in conflict with the file") ||
+		!strings.Contains(out, "orders: #1001: already stored, but the file has another Shopify id, total;") {
+		t.Fatalf("conflict run: err=%v\n%s", err, out)
+	}
+	if strings.Contains(out, "1 unchanged") {
+		t.Fatalf("a conflicting order must not count as unchanged:\n%s", out)
+	}
+	if g := read("#1001"); g.total != 45000 {
+		t.Fatalf("the stored order was changed by a conflicting file: %+v", g)
+	}
+
 	// Shopify says #1002 was fulfilled meanwhile: the re-run brings the known order up to date.
 	orders = write(
 		row("#1002", "paid", "fulfilled", "2026-10-20 10:00:00 +0300", "550.00", "0.00", "550.00", "0.00", "1", "Gift Set", "550.00", "0.00"),

@@ -84,6 +84,8 @@ SELECT t.system_ticket_id,
        (t.refund_id IS NOT NULL OR t.refund_date IS NOT NULL OR t.refund_price IS NOT NULL) AS refunded,
        (COALESCE(t.cancellation_reason = 'reissued', false)
         OR EXISTS (SELECT 1 FROM ticket_reissue_items ri WHERE ri.old_ticket_id = t.id)) AS reissued,
+       (SELECT r.reason FROM ticket_reissue_items ri JOIN ticket_reissues r ON r.id = ri.reissue_id
+         WHERE ri.old_ticket_id = t.id ORDER BY r.created_at DESC LIMIT 1) AS reissue_reason,
        s.status AS session_status,
        s.id AS session_id,
        s.start_at AS session_start_at,
@@ -120,10 +122,14 @@ type GuestListRow struct {
 	CancellationReason *string    `json:"cancellation_reason"`
 	Refunded           bool       `json:"refunded"`
 	Reissued           bool       `json:"reissued"`
-	SessionStatus      string     `json:"session_status"`
-	SessionID          uuid.UUID  `json:"session_id"`
-	SessionStartAt     time.Time  `json:"session_start_at"`
-	VenueTimezone      *string    `json:"venue_timezone"`
+	// ReissueReason is ticket_reissues.reason of the operation that replaced
+	// the ticket (sent_to_wrong_address, forwarded_to_stranger, other), nil when
+	// no operation row names it.
+	ReissueReason  *string   `json:"reissue_reason"`
+	SessionStatus  string    `json:"session_status"`
+	SessionID      uuid.UUID `json:"session_id"`
+	SessionStartAt time.Time `json:"session_start_at"`
+	VenueTimezone  *string   `json:"venue_timezone"`
 }
 
 // ListGuestListRows returns the session's tickets sorted by guest name
@@ -152,7 +158,7 @@ func (q *Queries) listGuestListRows(ctx context.Context, sessionID *uuid.UUID, o
 			&i.SeatSector, &i.SeatRow, &i.SeatNumber,
 			&i.Barcode, &i.VIP, &i.EnteredAt, &i.MacsAdmittedScans,
 			&i.OrderNumber, &i.Email, &i.Phone, &i.Invitation, &i.IsTest,
-			&i.TicketStatus, &i.CancellationReason, &i.Refunded, &i.Reissued,
+			&i.TicketStatus, &i.CancellationReason, &i.Refunded, &i.Reissued, &i.ReissueReason,
 			&i.SessionStatus, &i.SessionID, &i.SessionStartAt, &i.VenueTimezone,
 		); err != nil {
 			return nil, err
