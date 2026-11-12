@@ -245,10 +245,10 @@ JOIN   venues v             ON v.id = i.venue_id
 ORDER  BY c.created_at, c.id;
 
 -- name: InsertVenuePlanNotifyLog :one
-INSERT INTO venue_plan_notify_log (intake_id, notify_key)
+INSERT INTO venue_plan_notify_log (subject_id, notify_key)
 VALUES ($1, $2)
 ON CONFLICT DO NOTHING
-RETURNING intake_id;
+RETURNING subject_id;
 
 -- ── seating plan verification ───────────────────────────────────────────────
 

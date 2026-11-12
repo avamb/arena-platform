@@ -43,6 +43,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/observability"
+	venueplannotify "github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/notify"
 )
 
 func main() {
@@ -275,6 +276,9 @@ func run() error {
 		Bil24TokenCacheTTL: cfg.Bil24TokenCacheTTL,
 		Media:              mediaRepo,
 	})
+	// The platform administrators hear of hall plan intakes (spec 64 section 3.2):
+	// each intake change enqueues one venue_plan.notify job in its transaction.
+	srv.SetVenuePlanNotifier(venueplannotify.Notifier{})
 
 	listenErrCh := make(chan error, 1)
 	go func() {

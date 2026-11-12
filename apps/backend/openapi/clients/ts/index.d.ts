@@ -2046,6 +2046,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/bot/venue-plan-notices/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Messages about hall plan intakes that the bot must send
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN`. Returns up to 50
+         *     notices (draft ready, returned, rejected, approved; spec 64) that were
+         *     not told yet, oldest first, and marks them claimed, so each one is
+         *     handed out once. Each notice carries the live Telegram chats of the
+         *     person who sent the intake. A notice whose person has no live bot link
+         *     is still claimed and comes with an empty list of chats.
+         */
+        post: operations["claimBotVenuePlanNotices"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/bot/shop-delivery/steps": {
         parameters: {
             query?: never;
@@ -3480,7 +3505,14 @@ export interface paths {
          *     including per-element details. The plan's current_version_id is
          *     atomically bumped to the newly-created version in the same
          *     transaction. Requires JWT authentication and the
-         *     seating_plan.update.own permission.
+         *     seating_plan.update.own permission. A plan that a platform
+         *     superadmin verified (`visibility` `operator_verified`) is a template
+         *     and must not change without a new verification: when the OWNER
+         *     organization posts a version to it, the plan goes back to
+         *     `visibility` `private` and `verification_state` `unverified` in the
+         *     same transaction. A platform superadmin who posts the version with
+         *     `X-Admin-Reason` keeps the template verified (the superadmin's fix
+         *     comes out as a new version).
          */
         post: operations["createSeatingPlanVersion"];
         delete?: never;
@@ -16344,6 +16376,55 @@ export interface components {
         BotWebLoginNoticesResponse: {
             /** @description Sign-ins not reported yet; each is handed out once. */
             notices: components["schemas"]["BotWebLoginNotice"][];
+        };
+        /** @description A message about a hall plan intake that the bot must send to the person who sent the intake. */
+        BotVenuePlanNotice: {
+            /**
+             * Format: uuid
+             * @description Id of the notice.
+             */
+            id: string;
+            /**
+             * @description What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan) or `approved` (an administrator saved the plan).
+             * @enum {string}
+             */
+            kind: "draft_ready" | "returned" | "rejected" | "approved";
+            /**
+             * Format: uuid
+             * @description Id of the intake the notice is about.
+             */
+            intake_id: string;
+            /**
+             * Format: uuid
+             * @description Id of the organization that owns the intake.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Id of the venue the intake is for.
+             */
+            venue_id: string;
+            /** @description Name of the venue, for the text of the message. */
+            venue_name: string;
+            /**
+             * Format: int32
+             * @description Number of the current draft, or null when the intake has no draft.
+             */
+            current_draft: number | null;
+            /** @description The administrator's note or reason for the organizer, or null when there is none. */
+            note: string | null;
+            /** @description Live Telegram chats of the person who sent the intake. The list is empty when that person has no live bot link; the notice is then claimed and never comes again. */
+            telegram_user_ids: number[];
+            /**
+             * Format: date-time
+             * @description When the notice was made.
+             */
+            created_at: string;
+        };
+        /** @description Answer of POST /v1/bot/venue-plan-notices/claim. */
+        BotVenuePlanNoticesResponse: {
+            /** @description Notices not told yet, oldest first; each is handed out once. */
+            notices: components["schemas"]["BotVenuePlanNotice"][];
         };
         /** @description A staff invitation issued from Telegram whose PDF the bot must send into the issuer's chat. It carries no e-mail or phone of the guest. */
         BotInvitationPdfNotice: {
@@ -45010,6 +45091,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BotWebLoginNoticesResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    claimBotVenuePlanNotices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The notices to send */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotVenuePlanNoticesResponse"];
                 };
             };
             /** @description Missing or wrong service token */

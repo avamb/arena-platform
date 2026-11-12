@@ -310,6 +310,7 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/bot/guest-list-deliveries/{id}/finish", flatPlatform, "service token of the Telegram bot"},
 	{"POST", "/v1/bot/web-login-codes", flatPlatform, "service token of the Telegram bot"},
 	{"POST", "/v1/bot/web-login-notices/claim", flatPlatform, "service token of the Telegram bot"},
+	{"POST", "/v1/bot/venue-plan-notices/claim", flatPlatform, "service token of the Telegram bot"},
 	{"POST", "/v1/bot/telegram-connect/preview", flatPlatform, "service token of the Telegram bot"},
 	{"POST", "/v1/bot/telegram-connect/accept", flatPlatform, "service token of the Telegram bot"},
 	{"POST", "/v1/bot/shop-delivery/steps", flatPlatform, "service token of the bot; the chat must be a shop_delivery chat of the order's organization (hsaleschats)"},

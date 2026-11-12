@@ -206,6 +206,14 @@ const (
 	Owner   BotInvitationCreateRequestRole = "owner"
 )
 
+// Defines values for BotVenuePlanNoticeKind.
+const (
+	BotVenuePlanNoticeKindApproved   BotVenuePlanNoticeKind = "approved"
+	BotVenuePlanNoticeKindDraftReady BotVenuePlanNoticeKind = "draft_ready"
+	BotVenuePlanNoticeKindRejected   BotVenuePlanNoticeKind = "rejected"
+	BotVenuePlanNoticeKindReturned   BotVenuePlanNoticeKind = "returned"
+)
+
 // Defines values for CancelTicketRequestRefundMode.
 const (
 	Automatic CancelTicketRequestRefundMode = "automatic"
@@ -967,10 +975,10 @@ const (
 
 // Defines values for GetV1AdminCustomerImportsIdRowsParamsAction.
 const (
-	GetV1AdminCustomerImportsIdRowsParamsActionCreated        GetV1AdminCustomerImportsIdRowsParamsAction = "created"
-	GetV1AdminCustomerImportsIdRowsParamsActionMatched        GetV1AdminCustomerImportsIdRowsParamsAction = "matched"
-	GetV1AdminCustomerImportsIdRowsParamsActionMergeCandidate GetV1AdminCustomerImportsIdRowsParamsAction = "merge_candidate"
-	GetV1AdminCustomerImportsIdRowsParamsActionSkipped        GetV1AdminCustomerImportsIdRowsParamsAction = "skipped"
+	Created        GetV1AdminCustomerImportsIdRowsParamsAction = "created"
+	Matched        GetV1AdminCustomerImportsIdRowsParamsAction = "matched"
+	MergeCandidate GetV1AdminCustomerImportsIdRowsParamsAction = "merge_candidate"
+	Skipped        GetV1AdminCustomerImportsIdRowsParamsAction = "skipped"
 )
 
 // Defines values for ListEventsParamsVisibility.
@@ -5483,6 +5491,48 @@ type BotTelegramConnectRequest struct {
 
 	// TelegramUsername Its Telegram username, stored with the link (accept only).
 	TelegramUsername *string `json:"telegram_username,omitempty"`
+}
+
+// BotVenuePlanNotice A message about a hall plan intake that the bot must send to the person who sent the intake.
+type BotVenuePlanNotice struct {
+	// CreatedAt When the notice was made.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CurrentDraft Number of the current draft, or null when the intake has no draft.
+	CurrentDraft *int32 `json:"current_draft"`
+
+	// Id Id of the notice.
+	Id openapi_types.UUID `json:"id"`
+
+	// IntakeId Id of the intake the notice is about.
+	IntakeId openapi_types.UUID `json:"intake_id"`
+
+	// Kind What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan) or `approved` (an administrator saved the plan).
+	Kind BotVenuePlanNoticeKind `json:"kind"`
+
+	// Note The administrator's note or reason for the organizer, or null when there is none.
+	Note *string `json:"note"`
+
+	// OrgId Id of the organization that owns the intake.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// TelegramUserIds Live Telegram chats of the person who sent the intake. The list is empty when that person has no live bot link; the notice is then claimed and never comes again.
+	TelegramUserIds []int64 `json:"telegram_user_ids"`
+
+	// VenueId Id of the venue the intake is for.
+	VenueId openapi_types.UUID `json:"venue_id"`
+
+	// VenueName Name of the venue, for the text of the message.
+	VenueName string `json:"venue_name"`
+}
+
+// BotVenuePlanNoticeKind What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan) or `approved` (an administrator saved the plan).
+type BotVenuePlanNoticeKind string
+
+// BotVenuePlanNoticesResponse Answer of POST /v1/bot/venue-plan-notices/claim.
+type BotVenuePlanNoticesResponse struct {
+	// Notices Notices not told yet, oldest first; each is handed out once.
+	Notices []BotVenuePlanNotice `json:"notices"`
 }
 
 // BotWebLoginCodeRequest Body of POST /v1/bot/web-login-codes.

@@ -2089,6 +2089,62 @@ components:
           description: Sign-ins not reported yet; each is handed out once.
           items:
             $ref: "#/components/schemas/BotWebLoginNotice"
+    BotVenuePlanNotice:
+      type: object
+      required: [id, kind, intake_id, org_id, venue_id, venue_name, current_draft, note, telegram_user_ids, created_at]
+      description: A message about a hall plan intake that the bot must send to the person who sent the intake.
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Id of the notice.
+        kind:
+          type: string
+          description: "What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan) or `approved` (an administrator saved the plan)."
+          enum: [draft_ready, returned, rejected, approved]
+        intake_id:
+          type: string
+          format: uuid
+          description: Id of the intake the notice is about.
+        org_id:
+          type: string
+          format: uuid
+          description: Id of the organization that owns the intake.
+        venue_id:
+          type: string
+          format: uuid
+          description: Id of the venue the intake is for.
+        venue_name:
+          type: string
+          description: Name of the venue, for the text of the message.
+        current_draft:
+          type: [integer, "null"]
+          format: int32
+          description: Number of the current draft, or null when the intake has no draft.
+        note:
+          type: [string, "null"]
+          description: The administrator's note or reason for the organizer, or null when there is none.
+        telegram_user_ids:
+          type: array
+          description: Live Telegram chats of the person who sent the intake. The list is empty when that person has no live bot link; the notice is then claimed and never comes again.
+          items:
+            type: integer
+            format: int64
+            description: A Telegram account to tell.
+        created_at:
+          type: string
+          format: date-time
+          description: When the notice was made.
+    BotVenuePlanNoticesResponse:
+      type: object
+      required: [notices]
+      description: Answer of POST /v1/bot/venue-plan-notices/claim.
+      properties:
+        notices:
+          type: array
+          description: Notices not told yet, oldest first; each is handed out once.
+          items:
+            $ref: "#/components/schemas/BotVenuePlanNotice"
 
     BotInvitationPdfNotice:
       type: object
@@ -35231,6 +35287,40 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /v1/bot/venue-plan-notices/claim:
+    post:
+      operationId: claimBotVenuePlanNotices
+      summary: Messages about hall plan intakes that the bot must send
+      description: |
+        Called by the bot PROCESS under `BOT_SERVICE_TOKEN`. Returns up to 50
+        notices (draft ready, returned, rejected, approved; spec 64) that were
+        not told yet, oldest first, and marks them claimed, so each one is
+        handed out once. Each notice carries the live Telegram chats of the
+        person who sent the intake. A notice whose person has no live bot link
+        is still claimed and comes with an empty list of chats.
+      tags: [v1]
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The notices to send
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotVenuePlanNoticesResponse"
+        "401":
+          description: Missing or wrong service token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: Service token not configured or database not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /v1/bot/shop-delivery/steps:
     post:
       operationId: postBotShopDeliveryStep
@@ -40354,7 +40444,14 @@ paths:
         including per-element details. The plan's current_version_id is
         atomically bumped to the newly-created version in the same
         transaction. Requires JWT authentication and the
-        seating_plan.update.own permission.
+        seating_plan.update.own permission. A plan that a platform
+        superadmin verified (`visibility` `operator_verified`) is a template
+        and must not change without a new verification: when the OWNER
+        organization posts a version to it, the plan goes back to
+        `visibility` `private` and `verification_state` `unverified` in the
+        same transaction. A platform superadmin who posts the version with
+        `X-Admin-Reason` keeps the template verified (the superadmin's fix
+        comes out as a new version).
       tags: [v1, seating]
       security:
         - bearerAuth: []

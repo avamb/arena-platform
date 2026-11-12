@@ -13,7 +13,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
 
@@ -228,6 +230,22 @@ func (h *Handler) HandleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.
 	}
 	nextVersion := latest + 1
 
+	// A verified template must never change without a new verification: when the
+	// OWNER organization posts a version, the plan goes back to private and
+	// unverified in this same transaction. A platform superadmin (X-Admin-Reason)
+	// keeps the template verified: the superadmin's fix is the new version. The
+	// row is locked so the decision sees the visibility a concurrent verify or
+	// needs-fix wrote.
+	locked, err := qtx.LockSeatingPlanForVerification(ctx, plan.ID)
+	if err != nil {
+		h.logger.Error("seating_plan: pre-version lock failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"seating_plan.version_create_failed", "failed to create seating plan version", r,
+		))
+		return
+	}
+	resetTemplate := locked.Visibility == VisibilityOperatorVerified && !auth.HasSuperadminOrgAccess(ctx)
+
 	row, err := qtx.InsertSeatingPlanVersion(
 		ctx, plan.ID, nextVersion, canonicalJSON, checksum,
 		svgAssetID, capacitySeated, capacityStanding,
@@ -247,12 +265,32 @@ func (h *Handler) HandleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.
 		))
 		return
 	}
+	if resetTemplate {
+		private := VisibilityPrivate
+		if _, err := qtx.SetSeatingPlanVerification(ctx, gen.SetSeatingPlanVerificationParams{
+			PlanID: plan.ID, State: VerificationUnverified, Visibility: &private,
+		}); err != nil {
+			h.logger.Error("seating_plan: verification reset failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"seating_plan.version_create_failed", "failed to create seating plan version", r,
+			))
+			return
+		}
+		if plan, err = qtx.GetSeatingPlanByID(ctx, plan.ID); err != nil {
+			h.logger.Error("seating_plan: re-read after reset failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"seating_plan.version_create_failed", "failed to create seating plan version", r,
+			))
+			return
+		}
+	}
 	if err := h.writeAuditTx(ctx, tx, r, "v1.seating_plan.version.create", row.ID.String(), map[string]any{
-		"seating_plan_id":   plan.ID.String(),
-		"owner_org_id":      plan.OwnerOrgID.String(),
-		"version_number":    row.VersionNumber,
-		"geometry_checksum": row.GeometryChecksum,
-		"capacity_seated":   row.CapacitySeated,
+		"seating_plan_id":    plan.ID.String(),
+		"owner_org_id":       plan.OwnerOrgID.String(),
+		"version_number":     row.VersionNumber,
+		"geometry_checksum":  row.GeometryChecksum,
+		"capacity_seated":    row.CapacitySeated,
+		"verification_reset": resetTemplate,
 	}); err != nil {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"seating_plan.audit_failed", "failed to write audit event", r,

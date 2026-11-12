@@ -305,6 +305,59 @@ func TestSeatingPlanVerify_TemplateFlow(t *testing.T) {
 	}
 }
 
+// A template never changes without a new verification: a new version posted by
+// the OWNER sends the plan back to private and unverified in the same
+// transaction; a platform superadmin's version (X-Admin-Reason) keeps it
+// verified (spec 64 section 3.4).
+func TestSeatingPlanVerify_OwnerVersionResetsTheTemplate(t *testing.T) {
+	e := newSPVEnv(t)
+	plan := e.plan(t, e.orgA, e.adminA, "SPV reset")
+	verify := "/v1/admin/seating-plans/" + plan.String() + "/verify"
+	versions := "/v1/seating-plans/" + plan.String() + "/versions"
+	svg4, _ := json.Marshal(spvSVG4)
+	body := `{"svg":` + string(svg4) + `}`
+
+	e.call(t, http.StatusOK, "", "POST", verify, e.super, "hall checked", "")
+	if st, vis, _, _, _ := e.planRow(t, plan); st != "verified" || vis != "operator_verified" {
+		t.Fatalf("before: %s %s", st, vis)
+	}
+
+	// The superadmin's fix is a new version and the template stays verified.
+	e.call(t, http.StatusBadRequest, "superadmin.missing_reason", "POST", versions, e.super, "", body)
+	out := e.call(t, http.StatusCreated, "", "POST", versions, e.super, "row fix", body)
+	if v := out["seating_plan_version"].(map[string]any); v["version_number"] != float64(2) {
+		t.Fatalf("superadmin version: %v", v)
+	}
+	if st, vis, _, _, by := e.planRow(t, plan); st != "verified" || vis != "operator_verified" || by == nil {
+		t.Fatalf("after the superadmin's version: %s %s %v", st, vis, by)
+	}
+	if got := out["seating_plan"].(map[string]any)["visibility"]; got != "operator_verified" {
+		t.Errorf("answer visibility %v", got)
+	}
+
+	// The owner's version resets it, in the answer too.
+	out = e.call(t, http.StatusCreated, "", "POST", versions, e.adminA, "", body)
+	if v := out["seating_plan_version"].(map[string]any); v["version_number"] != float64(3) {
+		t.Fatalf("owner version: %v", v)
+	}
+	if got := out["seating_plan"].(map[string]any)["visibility"]; got != "private" {
+		t.Errorf("answer visibility %v, want private", got)
+	}
+	st, vis, _, _, by := e.planRow(t, plan)
+	if st != "unverified" || vis != "private" || by != nil {
+		t.Fatalf("after the owner's version: %s %s %v", st, vis, by)
+	}
+	// No other organization sees a template any more, and the plan is in the queue again.
+	if items := e.templates(t, e.orgB, e.adminB); len(items) != 0 {
+		t.Fatalf("org B still sees the template: %v", items)
+	}
+	// A private plan stays private and unverified when its owner posts again.
+	e.call(t, http.StatusCreated, "", "POST", versions, e.adminA, "", body)
+	if st, vis, _, _, _ := e.planRow(t, plan); st != "unverified" || vis != "private" {
+		t.Fatalf("second owner version: %s %s", st, vis)
+	}
+}
+
 // A plan that is not active, or whose current version is missing, is not
 // verified.
 func TestSeatingPlanVerify_RefusesADraftOrAnEmptyPlan(t *testing.T) {

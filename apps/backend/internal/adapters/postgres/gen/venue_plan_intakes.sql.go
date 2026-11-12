@@ -684,17 +684,17 @@ func (q *Queries) ClaimVenuePlanNotices(ctx context.Context, limit int32) ([]Ven
 }
 
 const insertVenuePlanNotifyLog = `-- name: InsertVenuePlanNotifyLog :one
-INSERT INTO venue_plan_notify_log (intake_id, notify_key)
+INSERT INTO venue_plan_notify_log (subject_id, notify_key)
 VALUES ($1, $2)
 ON CONFLICT DO NOTHING
-RETURNING intake_id`
+RETURNING subject_id`
 
-// InsertVenuePlanNotifyLog records that the notification key of an intake
-// was sent and reports whether it is new: false means it was already sent
-// and must not be sent again.
-func (q *Queries) InsertVenuePlanNotifyLog(ctx context.Context, intakeID uuid.UUID, key string) (bool, error) {
+// InsertVenuePlanNotifyLog records that the notification key of a subject (an
+// intake or a venue) was sent and reports whether it is new: false means it
+// was already sent and must not be sent again.
+func (q *Queries) InsertVenuePlanNotifyLog(ctx context.Context, subjectID uuid.UUID, key string) (bool, error) {
 	var id uuid.UUID
-	err := q.db.QueryRow(ctx, insertVenuePlanNotifyLog, intakeID, key).Scan(&id)
+	err := q.db.QueryRow(ctx, insertVenuePlanNotifyLog, subjectID, key).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, nil
 	}

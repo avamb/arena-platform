@@ -94,6 +94,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesubscribe"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/tierchain"
+	venueplannotify "github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/notify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
@@ -905,6 +906,11 @@ func registerOnboardingHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *c
 	reg.Register(onboarding.JobTypeAdminTelegram, tgHandler)
 	reg.Register(adminnotify.JobTypeEmail, adminnotify.NewEmailHandler(buildEmailSender(cfg, logger), logger))
 	reg.Register(onboarding.JobTypeSweep, onboarding.NewSweepHandler(svc, pool, logger))
+	// Hall plan intake events (spec 64 section 3.2) reach the same administrators
+	// through the same admin_notify jobs.
+	reg.Register(venueplannotify.JobType, venueplannotify.NewHandler(venueplannotify.Options{
+		Pool: pool, AppURL: cfg.AppPublicURL, Telegram: cfg.EventsTelegramBotToken != "", Logger: logger,
+	}))
 }
 
 func registerOpsWatchdogHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier opsalert.Notifier, logger *slog.Logger) {

@@ -230,15 +230,16 @@ COMMENT ON TABLE venue_plan_notices IS
     'What the bot must tell the creator of an intake (draft_ready, returned, rejected, approved). POST /v1/bot/venue-plan-notices/claim sets claimed_at; a notice is told at most once.';
 
 CREATE TABLE venue_plan_notify_log (
-    intake_id  uuid        NOT NULL REFERENCES venue_plan_intakes(id) ON DELETE CASCADE,
+    -- An intake id or a venue id (venue_created has no intake): no FK on purpose.
+    subject_id uuid        NOT NULL,
     notify_key text        NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT venue_plan_notify_log_key_check CHECK (char_length(notify_key) BETWEEN 1 AND 200),
-    PRIMARY KEY (intake_id, notify_key)
+    PRIMARY KEY (subject_id, notify_key)
 );
 
 COMMENT ON TABLE venue_plan_notify_log IS
-    'Dedup of the administrators'' notifications about an intake: a (intake, key) pair is sent once, so a retried worker job never repeats a message.';
+    'Dedup of the administrators'' notifications about an intake or a venue: a (subject, key) pair is sent once, so a retried worker job never repeats a message. subject_id is an intake id or a venue id and has no foreign key.';
 
 ALTER TABLE seating_plans
     ADD COLUMN verification_state text        NULL,

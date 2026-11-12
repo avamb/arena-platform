@@ -31,6 +31,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/richtext"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
+	venueplannotify "github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/notify"
 )
 
 // defaultSessionDuration is applied to end_at because the Bil24 payload never
@@ -293,6 +294,11 @@ func (h *Handler) resolveVenue(ctx context.Context, q *gen.Queries, tx pgx.Tx, p
 	}
 	if err := registerExternal(ctx, tx, compatids.KindVenue, created.ID, v.VenueID); err != nil {
 		return uuid.Nil, err
+	}
+	if !plan.Mode.DryRun {
+		if err := venueplannotify.EnqueueVenueCreated(ctx, tx, created.ID); err != nil {
+			return uuid.Nil, err
+		}
 	}
 	return created.ID, nil
 }
