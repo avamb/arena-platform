@@ -130,14 +130,14 @@ function VenuePlansPage(): JSX.Element {
 
       {active === "queue" ? <QueuePanel /> : null}
       {active === "verification" ? <VerificationPanel /> : null}
-      {active === null ? <p style={mutedStyle}>Your account has no permission for a tab here. Ask a platform administrator for access.</p> : null}
+      {active === null ? <p style={mutedStyle}>Your account has no permission for a tab here. Tell a platform administrator to give you access.</p> : null}
     </div>
   );
 }
 
 const TAB_LABELS: Readonly<Record<VenuePlansTab, string>> = {
   queue: "Queue",
-  verification: "Waiting for verification",
+  verification: "Plans to verify",
 };
 
 export function PlansTabs({
@@ -208,7 +208,7 @@ function QueuePanel(): JSX.Element {
       {query.isLoading ? <p style={mutedStyle}>Loading…</p> : null}
       {query.error ? (
         <div style={errorStyle} data-testid="venue-plans-error">
-          We did not load the intakes: {query.error.message}
+          We did not load the requests:{query.error.message}
         </div>
       ) : null}
       {query.data ? (
@@ -242,7 +242,7 @@ export function QueueFilters({
   return (
     <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 12 }}>
       <label style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>
-        <span style={{ display: "block", marginBottom: 4 }}>State</span>
+        <span style={{ display: "block", marginBottom: 4 }}>Status</span>
         <select
           value={state}
           onChange={(e) => onState(e.target.value)}
@@ -264,7 +264,7 @@ export function QueueFilters({
           onChange={(e) => onUnclaimed(e.target.checked)}
           data-testid="venue-plans-filter-unclaimed"
         />
-        Not claimed by anyone
+        No administrator holds it
       </label>
       <button type="button" style={buttonStyle} onClick={onReload} data-testid="venue-plans-reload">
         Reload
@@ -324,7 +324,7 @@ export function IntakeQueueTable({ items, renderCardLink, callerId, now, forceLa
     },
     {
       id: "claimed",
-      header: "Claimed by",
+      header: "Held by",
       renderCell: (i) => claimedByText(i, callerId),
     },
     {
@@ -337,12 +337,12 @@ export function IntakeQueueTable({ items, renderCardLink, callerId, now, forceLa
   return (
     <ResponsiveTable<VenuePlanIntakeListItem>
       id="venue-plans-table"
-      caption="Seating plan intakes"
+      caption="Seating plan requests"
       columns={columns}
       rows={items}
       rowKey={(i) => i.id}
       forceLayout={forceLayout}
-      empty="No intakes for these filters."
+      empty="No requests for these filters."
     />
   );
 }

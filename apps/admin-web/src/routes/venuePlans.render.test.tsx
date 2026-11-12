@@ -123,7 +123,7 @@ describe("tabs and filters", () => {
   it("renders both tab names and marks the active one", () => {
     const html = renderToStaticMarkup(<PlansTabs tabs={["queue", "verification"]} active="verification" onSelect={() => undefined} />);
     expect(html).toContain("Queue");
-    expect(html).toContain("Waiting for verification");
+    expect(html).toContain("Plans to verify");
     expect(html.match(/aria-selected="true"/g)).toHaveLength(1);
     expect(html).toMatch(/aria-selected="true"[^>]*data-testid="venue-plans-tab-verification"/);
   });
@@ -153,7 +153,7 @@ describe("IntakeQueueTable", () => {
   });
 
   it("renders an empty state and the mobile layout", () => {
-    expect(renderToStaticMarkup(<IntakeQueueTable items={[]} renderCardLink={link} callerId={ME} forceLayout="desktop" />)).toContain("No intakes for these filters.");
+    expect(renderToStaticMarkup(<IntakeQueueTable items={[]} renderCardLink={link} callerId={ME} forceLayout="desktop" />)).toContain("No requests for these filters.");
     expect(renderToStaticMarkup(<IntakeQueueTable items={[item()]} renderCardLink={link} callerId={ME} now={NOW} forceLayout="mobile" />)).toContain('data-layout="mobile"');
   });
 
@@ -179,7 +179,7 @@ describe("intake card", () => {
     expect(html).toMatch(/<strong>3<\/strong> sections/);
     expect(html).toContain("legend_missing");
     expect(html).toContain("Upload an SVG draft");
-    expect(html).toContain("Return to the organizer");
+    expect(html).toContain("Send back to the organizer");
     expect(html).toContain("You, since");
   });
 
@@ -200,7 +200,7 @@ describe("intake card", () => {
   it("turns the actions off with a reason when another administrator holds the intake", () => {
     const html = body(intake({ operator_id: OTHER }), ME);
     expect(html).toMatch(/disabled=""[^>]*data-testid="venue-plan-approve"/);
-    expect(html).toContain("Another administrator holds this intake. Use Take over to continue.");
+    expect(html).toContain("A different administrator holds this request. Use Take control to continue.");
     expect(html).toContain('data-testid="venue-plan-takeover"');
     expect(html).not.toContain('data-testid="venue-plan-claim"');
   });
@@ -208,23 +208,23 @@ describe("intake card", () => {
   it("offers Claim when nobody holds the intake", () => {
     const html = body(intake({ operator_claimed: false, operator_id: null, operator_claimed_at: null }), ME);
     expect(html).toContain('data-testid="venue-plan-claim"');
-    expect(html).toContain("Nobody holds this intake. Press Claim first.");
+    expect(html).toContain("No administrator holds this request. Press Claim first.");
     expect(html).toMatch(/disabled=""[^>]*data-testid="venue-plan-approve"/);
   });
 
   it("turns everything off for a final intake", () => {
     const html = body(intake({ state: "approved", plan_id: "p-1", plan_version: 1 }), ME);
-    expect(html).toContain("The intake is approved. Nothing changes after that.");
+    expect(html).toContain("The request is approved. No change is possible.");
     for (const id of ["venue-plan-approve", "venue-plan-reject", "venue-plan-upload-submit", "venue-plan-return-submit", "venue-plan-claim"]) {
       expect(html).toMatch(new RegExp(`disabled=""[^>]*data-testid="${id}"`));
     }
   });
 
   it("validates the forms", () => {
-    expect(validateRejectReason("  ")).toMatch(/Write the reason/);
+    expect(validateRejectReason("  ")).toMatch(/Write the cause/);
     expect(validateRejectReason("Unreadable scan")).toBeNull();
-    expect(validateRejectReason("x".repeat(1001))).toMatch(/under 1000/);
-    expect(validateDraftFile(null)).toMatch(/Choose/);
+    expect(validateRejectReason("x".repeat(1001))).toMatch(/up to 1000/);
+    expect(validateDraftFile(null)).toMatch(/Select/);
     expect(validateDraftFile(new File(["x"], "a.png", { type: "image/png" }))).toMatch(/must be an SVG/);
     expect(validateDraftFile(new File(["x"], "a.svg", { type: "image/svg+xml" }))).toBeNull();
   });
@@ -272,7 +272,7 @@ describe("verification tab", () => {
         forceLayout="desktop"
       />,
     );
-    expect(html).toContain("No state (imported)");
+    expect(html).toContain("No status (imported)");
     expect(html).toContain("Row 4 is wrong");
     expect(html).toContain("—");
   });
@@ -300,8 +300,8 @@ describe("verification tab", () => {
   });
 
   it("asks for a note of Needs fix", () => {
-    expect(validateNeedsFixNote("")).toMatch(/Write what/);
+    expect(validateNeedsFixNote("")).toMatch(/Write the correction/);
     expect(validateNeedsFixNote("Row 4")).toBeNull();
-    expect(validateNeedsFixNote("x".repeat(1001))).toMatch(/under 1000/);
+    expect(validateNeedsFixNote("x".repeat(1001))).toMatch(/up to 1000/);
   });
 });

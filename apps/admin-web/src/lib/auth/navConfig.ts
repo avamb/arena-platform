@@ -198,7 +198,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["venue_plan_intake.curate", "seating_plan.verify"] },
     scopeKinds: ["global", "platform"],
     purpose:
-      "Seating plans that organizers send for their venues. Work through the queue, upload a draft, return it to the organizer or approve it. Verify a plan on the tab Waiting for verification. Necessary permission: venue_plan_intake.curate for the queue or seating_plan.verify for the verification.",
+      "Seating plans that organizers send for their venues. Work through the queue, upload a draft, send it back to the organizer or approve it. Verify a plan on the tab Plans to verify. Necessary permission: venue_plan_intake.curate for the queue or seating_plan.verify for the verification.",
   },
   {
     id: "orders",

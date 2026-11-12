@@ -95,22 +95,22 @@ export const REJECT_REASON_MAX = 1000;
 /** The reason the organizer reads: 1 to 1000 characters after trimming. */
 export function validateRejectReason(reason: string): string | null {
   const t = reason.trim();
-  if (t === "") return "Write the reason. The organizer reads it.";
-  if (t.length > REJECT_REASON_MAX) return `Keep the reason under ${REJECT_REASON_MAX} characters.`;
+  if (t === "") return "Write the cause. The organizer reads it.";
+  if (t.length > REJECT_REASON_MAX) return `Write up to ${REJECT_REASON_MAX} characters.`;
   return null;
 }
 
 export const DRAFT_NOTE_MAX = 2000;
 
 export function validateDraftFile(file: File | null): string | null {
-  if (file === null) return "Choose an SVG file.";
-  if (!/\.svg$/i.test(file.name) && file.type !== "image/svg+xml") return "The file must be an SVG. Choose an .svg file.";
-  if (file.size > 3 * 1024 * 1024) return "The file is larger than 3 MB. Make it smaller.";
+  if (file === null) return "Select an SVG file.";
+  if (!/\.svg$/i.test(file.name) && file.type !== "image/svg+xml") return "The file must be an SVG. Select an .svg file.";
+  if (file.size > 3 * 1024 * 1024) return "The file is more than 3 MB. Make a file with less data.";
   return null;
 }
 
 export function validateNote(note: string): string | null {
-  return note.trim().length > DRAFT_NOTE_MAX ? `Keep the note under ${DRAFT_NOTE_MAX} characters.` : null;
+  return note.trim().length > DRAFT_NOTE_MAX ? `Write up to ${DRAFT_NOTE_MAX} characters.` : null;
 }
 
 /** The people-facing name of who made a draft. */
@@ -139,9 +139,9 @@ export function escalationLabel(reason: string | null | undefined): string {
     case undefined:
       return "—";
     case "no_generator":
-      return "No generator yet";
+      return "No generator";
     case "organizer_request":
-      return "The organizer asked for an administrator";
+      return "The organizer told an administrator";
     case "answers":
       return "The organizer sent answers";
     case "organizer_text":
@@ -243,20 +243,20 @@ export function IntakeCard({ intakeId }: { readonly intakeId: string }): JSX.Ele
   };
 
   const onClaim = (force: boolean): Promise<void> =>
-    run("claim", () => claimIntake(intakeId, { force }), (n) => void keep(n, force ? "You took over the intake." : "You hold the intake now."), force);
+    run("claim", () => claimIntake(intakeId, { force }), (n) => void keep(n, force ? "You are the administrator of the request." : "You hold the request."), force);
   const onUpload = (file: File, note: string): Promise<void> =>
-    run("upload", () => uploadIntakeDraft(intakeId, file, note), (n) => void keep(n, "The draft is saved. It is the current draft now."), false);
+    run("upload", () => uploadIntakeDraft(intakeId, file, note), (n) => void keep(n, "We saved the draft. It is the draft of the request."), false);
   const onReturn = (note: string): Promise<void> =>
-    run("return", () => returnIntake(intakeId, note), (n) => void keep(n, "The intake went back to the organizer."), false);
+    run("return", () => returnIntake(intakeId, note), (n) => void keep(n, "The request went back to the organizer."), false);
   const onApprove = (): Promise<void> =>
     run(
       "approve",
       () => approveIntake(intakeId, intake?.current_draft ?? 0),
-      (n) => void keep(n, "The seating plan is saved. The organizer gets a message."),
+      (n) => void keep(n, "We saved the seating plan. The organizer gets a message."),
       true,
     );
   const onReject = (reason: string): Promise<void> =>
-    run("reject", () => rejectIntake(intakeId, reason), (n) => void keep(n, "The intake is closed. The organizer reads your reason."), true);
+    run("reject", () => rejectIntake(intakeId, reason), (n) => void keep(n, "We closed the request. The organizer reads your cause."), true);
   const onDownload = (source: VenuePlanIntakeSource, png: boolean): Promise<void> =>
     run(
       "download",
@@ -276,8 +276,8 @@ export function IntakeCard({ intakeId }: { readonly intakeId: string }): JSX.Ele
       {query.error ? (
         <div style={errorStyle} data-testid="venue-plan-load-error">
           {query.error.status === 404
-            ? "This intake does not exist. Go back to the list."
-            : `We did not load the intake. Reload the page. ${query.error.message}`}
+            ? "We cannot find this request. Go back to the list."
+            : `We did not load the request. Reload the page. ${query.error.message}`}
         </div>
       ) : null}
       {notice !== null ? (
@@ -321,7 +321,7 @@ export function IntakeCard({ intakeId }: { readonly intakeId: string }): JSX.Ele
           />
           {dialog === "takeover" ? (
             <Dialog
-              title="Take over the intake"
+              title="Take control of the request"
               testId="venue-plan-takeover-dialog"
               onClose={() => setDialog(null)}
               onSubmit={() => void onClaim(true)}
@@ -331,18 +331,18 @@ export function IntakeCard({ intakeId }: { readonly intakeId: string }): JSX.Ele
                     Cancel
                   </button>
                   <button type="submit" style={primaryButtonStyle} disabled={busy === "claim"} data-testid="venue-plan-takeover-confirm">
-                    Take over
+                    Take control
                   </button>
                 </>
               }
             >
-              <p style={hintStyle}>Another administrator holds this intake. If you take it over, that administrator cannot change it any more.</p>
+              <p style={hintStyle}>A different administrator holds this request. If you take control, that administrator cannot change it.</p>
               {dialogError !== null ? <div style={errorStyle}>{dialogError}</div> : null}
             </Dialog>
           ) : null}
           {dialog === "approve" ? (
             <Dialog
-              title="Approve the current draft"
+              title="Approve the draft"
               testId="venue-plan-approve-dialog"
               onClose={() => setDialog(null)}
               onSubmit={() => void onApprove()}
@@ -359,7 +359,7 @@ export function IntakeCard({ intakeId }: { readonly intakeId: string }): JSX.Ele
             >
               <p style={hintStyle}>
                 Draft {intake.current_draft} becomes a seating plan of {intake.org_name ?? "the organization"} for {intake.venue_name}.
-                The intake closes. The organizer gets a message.
+                The request closes. The organizer gets a message.
               </p>
               {dialogError !== null ? <div style={errorStyle}>{dialogError}</div> : null}
             </Dialog>
@@ -394,7 +394,7 @@ function RejectDialog({
   const problem = validateRejectReason(reason);
   return (
     <Dialog
-      title="Reject the intake"
+      title="Reject the request"
       testId="venue-plan-reject-dialog"
       onClose={onClose}
       onSubmit={() => {
@@ -412,9 +412,9 @@ function RejectDialog({
         </>
       }
     >
-      <p style={hintStyle}>The intake closes. The organizer reads the reason and can send another file.</p>
+      <p style={hintStyle}>The request closes. The organizer reads the cause and can send a different file.</p>
       <label style={labelStyle} htmlFor="venue-plan-reject-reason">
-        Reason for the organizer
+        Cause for the organizer
       </label>
       <textarea
         id="venue-plan-reject-reason"
@@ -478,7 +478,7 @@ export function IntakeCardBody(p: IntakeCardBodyProps): JSX.Element {
 
       {final ? (
         <div style={warningStyle} data-testid="venue-plan-final">
-          The intake is {intakeStateLabel(intake.state).toLowerCase()}. Nothing changes after that.
+          The request is {intakeStateLabel(intake.state).toLowerCase()}. No change is possible.
           {intake.plan_id ? ` The seating plan is ${intake.plan_id}, version ${intake.plan_version ?? 1}.` : ""}
         </div>
       ) : null}
@@ -522,15 +522,15 @@ export function IntakeHeader({
         {intake.org_name ?? intake.org_id.slice(0, 8)} · {intake.venue_name}
       </h1>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
-        <Fact label="State">
+        <Fact label="Status">
           <Pill tone={stateTone(intake.state)} testId="venue-plan-state">
             {intakeStateLabel(intake.state)}
           </Pill>
         </Fact>
         <Fact label="Channel">{intake.channel}</Fact>
-        <Fact label="Why an administrator">{escalationLabel(intake.escalation_reason)}</Fact>
+        <Fact label="Cause for the administrator">{escalationLabel(intake.escalation_reason)}</Fact>
         <Fact label="Received">{formatDateTime(intake.created_at)}</Fact>
-        <Fact label="Waiting" testId="venue-plan-waiting">
+        <Fact label="Wait time" testId="venue-plan-waiting">
           {isFinalState(intake.state) ? "—" : waitingLabel(intake.created_at, now)}
         </Fact>
         <Fact label="Administrator" testId="venue-plan-operator">
@@ -572,7 +572,7 @@ export function ClaimBar({
           onClick={onTakeOver}
           data-testid="venue-plan-takeover"
         >
-          Take over
+          Take control
         </button>
       ) : (
         <button
@@ -588,8 +588,8 @@ export function ClaimBar({
       <span style={mutedStyle} data-testid="venue-plan-claim-hint">
         {gate.enabled
           ? heldByOther
-            ? "Another administrator holds this intake. Take over to continue."
-            : "Claim the intake before you change it. Nobody else can change it then."
+            ? "A different administrator holds this request. Take control to continue."
+            : "Claim the request before you change it. Then no other administrator can change it."
           : gate.why}
       </span>
     </div>
@@ -608,7 +608,7 @@ export function SourcesSection({
   return (
     <div style={sectionStyle} data-testid="venue-plan-sources">
       <div style={sectionTitleStyle}>Files from the organizer</div>
-      <p style={hintStyle}>A download asks for a reason. The platform keeps the reason in the audit log.</p>
+      <p style={hintStyle}>An audit reason is necessary for a download. The platform keeps it in the audit log.</p>
       {sources.length === 0 ? (
         <p style={mutedStyle}>The organizer sent no files.</p>
       ) : (
@@ -616,7 +616,7 @@ export function SourcesSection({
           <thead>
             <tr>
               <th style={thStyle}>Name</th>
-              <th style={thStyle}>Kind</th>
+              <th style={thStyle}>Type</th>
               <th style={thStyle}>Size</th>
               <th style={thStyle}>Details</th>
               <th style={thStyle}></th>
@@ -631,7 +631,7 @@ export function SourcesSection({
                 <td style={tdStyle}>
                   {s.pages !== null && s.pages !== undefined ? `${s.pages} pages` : ""}
                   {s.width !== null && s.width !== undefined && s.height !== null && s.height !== undefined ? `${s.width} × ${s.height} px` : ""}
-                  {s.needs_conversion ? " Converted later." : ""}
+                  {s.needs_conversion ? " We convert the file after this step." : ""}
                 </td>
                 <td style={tdStyle}>
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -705,7 +705,7 @@ export function OrganizerTexts({ intake }: { readonly intake: VenuePlanIntake })
       ) : null}
       {intake.reject_reason ? (
         <p style={{ whiteSpace: "pre-wrap" }}>
-          <strong>Reason of the rejection:</strong> {intake.reject_reason}
+          <strong>Cause:</strong> {intake.reject_reason}
         </p>
       ) : null}
     </div>
@@ -733,7 +733,7 @@ export function DraftSection({
     <div style={sectionStyle} data-testid="venue-plan-drafts">
       <div style={sectionTitleStyle}>Drafts</div>
       {intake.drafts.length === 0 ? (
-        <p style={mutedStyle}>There is no draft yet. Upload an SVG draft below.</p>
+        <p style={mutedStyle}>There is no draft. Upload an SVG draft below.</p>
       ) : (
         <>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }} role="group" aria-label="Drafts">
@@ -773,7 +773,7 @@ export function DraftSection({
               Warnings: {summary.warnings.join(", ")}
             </p>
           ) : null}
-          {draft?.note ? <p style={hintStyle}>Note on the current draft: {draft.note}</p> : null}
+          {draft?.note ? <p style={hintStyle}>Note on this draft:{draft.note}</p> : null}
           {loading ? <p style={mutedStyle}>Loading the image…</p> : null}
           {error !== null ? <div style={errorStyle}>We did not load the image. Reload the page. {error}</div> : null}
           {imageUrl !== null ? (
@@ -875,7 +875,7 @@ function UploadDraftForm({
       }}
     >
       <div style={sectionTitleStyle}>Upload an SVG draft</div>
-      <p style={hintStyle}>Draw the plan by hand, for example in Inkscape. The server checks the geometry before it saves the file.</p>
+      <p style={hintStyle}>Make the plan by hand, for example in Inkscape. The server examines the geometry before it saves the file.</p>
       <label style={labelStyle} htmlFor="venue-plan-upload-file">
         SVG file
       </label>
@@ -935,8 +935,8 @@ function ReturnForm({
         if (problem === null) onReturn(note);
       }}
     >
-      <div style={sectionTitleStyle}>Return to the organizer</div>
-      <p style={hintStyle}>The organizer checks the current draft and approves it. The organizer gets your note in a message.</p>
+      <div style={sectionTitleStyle}>Send back to the organizer</div>
+      <p style={hintStyle}>The organizer examines the draft and approves it. The organizer gets your note in a message.</p>
       <label style={labelStyle} htmlFor="venue-plan-return-note">
         Note (optional)
       </label>
@@ -957,7 +957,7 @@ function ReturnForm({
           disabled={!gate.enabled || busy}
           data-testid="venue-plan-return-submit"
         >
-          {busy ? "Saving…" : "Return to the organizer"}
+          {busy ? "Saving…" : "Send back to the organizer"}
         </button>
         <GateHint gate={gate} />
       </div>

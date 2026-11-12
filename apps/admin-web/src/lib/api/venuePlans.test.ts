@@ -77,8 +77,8 @@ describe("small helpers", () => {
   });
 
   it("labels a missing state as imported", () => {
-    expect(verificationLabel(null)).toBe("No state (imported)");
-    expect(verificationLabel("needs_fix")).toBe("Needs a fix");
+    expect(verificationLabel(null)).toBe("No status (imported)");
+    expect(verificationLabel("needs_fix")).toBe("Correction necessary");
   });
 });
 
@@ -95,7 +95,7 @@ describe("gateFor", () => {
     for (const a of ["claim", "upload_draft", "return", "approve", "reject"] as const) {
       const g = gateFor(a, { ...base, state: "approved" }, ME);
       expect(g.enabled).toBe(false);
-      expect(g.why).toMatch(/Nothing changes after that/);
+      expect(g.why).toMatch(/No change is possible/);
     }
   });
 
@@ -106,11 +106,11 @@ describe("gateFor", () => {
     expect(gateFor("claim", { ...base, operator_claimed: false, operator_id: null }, ME).enabled).toBe(true);
   });
 
-  it("offers Take over when another administrator holds it", () => {
+  it("offers Take control when another administrator holds it", () => {
     expect(gateFor("claim", base, OTHER).enabled).toBe(true);
     const g = gateFor("reject", base, OTHER);
     expect(g.enabled).toBe(false);
-    expect(g.why).toMatch(/Take over/);
+    expect(g.why).toMatch(/Take control/);
   });
 
   it("follows the state rules for the holder", () => {
@@ -129,7 +129,7 @@ describe("error messages", () => {
 
   it.each([
     ["venue_plan_intake.not_claimed", /Claim/],
-    ["venue_plan_intake.claimed_by_other", /Take over/],
+    ["venue_plan_intake.claimed_by_other", /Take control/],
     ["venue_plan_intake.wrong_state", /Reload the card/],
     ["venue_plan_intake.draft_stale", /Reload the card/],
   ])("%s says what to do next", (code, re) => {
@@ -144,13 +144,13 @@ describe("error messages", () => {
     expect(describeValidationError({ code: "seat_overlap", element: "#r1", detail: "two seats" })).toBe("seat_overlap (#r1): two seats");
     const text = intakeErrorMessage(e);
     expect(text).toMatch(/seat_overlap \(#r1\): two seats, no_seats/);
-    expect(text).toMatch(/upload it again/);
+    expect(text).toMatch(/upload the file again/);
   });
 
   it("explains the verify refusals", () => {
-    expect(verifyErrorMessage(err(409, "seating_plan.not_active"))).toMatch(/Only an active plan/);
+    expect(verifyErrorMessage(err(409, "seating_plan.not_active"))).toMatch(/only an active plan/);
     expect(verifyErrorMessage(err(409, "seating_plan.no_current_version"))).toMatch(/upload an SVG/);
-    expect(verifyErrorMessage(err(422, "seating_plan.geometry_invalid", { errors: [{ code: "x" }] }))).toMatch(/Needs fix/);
+    expect(verifyErrorMessage(err(422, "seating_plan.geometry_invalid", { errors: [{ code: "x" }] }))).toMatch(/Correction necessary/);
   });
 });
 
@@ -305,7 +305,7 @@ describe("API calls", () => {
 });
 
 // ---------------------------------------------------------------------------
-// "No state (imported)"
+// "No status (imported)"
 // ---------------------------------------------------------------------------
 
 function plan(patch: Partial<SeatingPlanSummary> & { id: string }): SeatingPlanSummary {

@@ -61,8 +61,8 @@ export const NEEDS_FIX_NOTE_MAX = 1000;
 /** The note of Needs fix: 1 to 1000 characters after trimming. */
 export function validateNeedsFixNote(note: string): string | null {
   const t = note.trim();
-  if (t === "") return "Write what the owner must fix.";
-  if (t.length > NEEDS_FIX_NOTE_MAX) return `Keep the note under ${NEEDS_FIX_NOTE_MAX} characters.`;
+  if (t === "") return "Write the correction that the owner must make.";
+  if (t.length > NEEDS_FIX_NOTE_MAX) return `Write up to ${NEEDS_FIX_NOTE_MAX} characters.`;
   return null;
 }
 
@@ -146,7 +146,7 @@ export function VerificationTable({
               type="button"
               style={busy || verified ? { ...primaryButtonStyle, ...disabledButtonStyle } : primaryButtonStyle}
               disabled={busy || verified}
-              title={verified ? "The plan is verified already." : undefined}
+              title={verified ? "The plan is verified." : undefined}
               onClick={() => onVerify(r)}
               data-testid={`venue-plans-verify-${r.planId}`}
             >
@@ -159,7 +159,7 @@ export function VerificationTable({
               onClick={() => onNeedsFix(r)}
               data-testid={`venue-plans-needsfix-${r.planId}`}
             >
-              Needs fix
+              Correction necessary
             </button>
           </div>
         );
@@ -174,7 +174,7 @@ export function VerificationTable({
       rows={rows}
       rowKey={(r) => r.planId}
       forceLayout={forceLayout}
-      empty="No plans in this state."
+      empty="No plans with this status."
     />
   );
 }
@@ -210,7 +210,7 @@ export function PlanPreviewBox({
         />
       ) : null}
       {!loading && error === null && !url ? (
-        <p style={hintStyle}>The current version has no stored SVG. Open the plan on the Venues screen to see its geometry.</p>
+        <p style={hintStyle}>The version has no stored SVG. Open the plan on the Venues screen to see its geometry.</p>
       ) : null}
     </div>
   );
@@ -238,7 +238,7 @@ function NeedsFixDialog({
   const problem = validateNeedsFixNote(note);
   return (
     <Dialog
-      title={`Needs fix: ${row.name}`}
+      title={`Correction necessary: ${row.name}`}
       testId="venue-plans-needsfix-dialog"
       onClose={onClose}
       onSubmit={() => {
@@ -251,17 +251,17 @@ function NeedsFixDialog({
             Cancel
           </button>
           <button type="submit" style={busy ? { ...dangerButtonStyle, ...disabledButtonStyle } : dangerButtonStyle} disabled={busy} data-testid="venue-plans-needsfix-confirm">
-            {busy ? "Saving…" : "Send back for a fix"}
+            {busy ? "Saving…" : "Send back for correction"}
           </button>
         </>
       }
     >
       <p style={hintStyle}>
-        The plan goes back to private, so no other organization can copy it. Copies made before keep working. The note shows
-        to the owner.
+        The plan goes back to private. No other organization can copy it. Copies stay in use. The owner sees the
+        note.
       </p>
       <label style={labelStyle} htmlFor="venue-plans-needsfix-note">
-        What must be fixed
+        Correction necessary
       </label>
       <textarea
         id="venue-plans-needsfix-note"
@@ -361,8 +361,8 @@ export function VerificationPanel(): JSX.Element {
       const res = await verifyPlan(row.planId);
       setMessage(
         res.changed
-          ? `Verified “${row.name}”. It is the template of ${row.venueName} now.`
-          : `“${row.name}” was verified already. Nothing changed.`,
+          ? `Verified “${row.name}”. It is the template of ${row.venueName}.`
+          : `“${row.name}” is verified. No change.`,
       );
       await afterChange(row);
     } catch (err) {
@@ -377,7 +377,7 @@ export function VerificationPanel(): JSX.Element {
     setDialogError(null);
     try {
       await planNeedsFix(row.planId, note);
-      setMessage(`Sent “${row.name}” back for a fix.`);
+      setMessage(`Sent “${row.name}” back for correction.`);
       setNeedsFixRow(null);
       await afterChange(row);
     } catch (err) {
@@ -412,10 +412,10 @@ export function VerificationPanel(): JSX.Element {
       setNoStateRows(result.plans.map((p) => rowFromNoState(p, orgName)));
       const notes: string[] = [];
       if (stated.truncated) {
-        notes.push("One of the lists of plans with a state reached its limit of 200. A plan that has a state may show here too. Verify works on it all the same.");
+        notes.push("One of the lists of plans with a status has more than 200 plans. The list shows 200 plans. A plan with a status can show here too. Verify works on it too.");
       }
       if (result.failedVenues.length > 0) {
-        notes.push(`We could not read the plans of: ${result.failedVenues.map((v) => v.name).join(", ")}.`);
+        notes.push(`We cannot read the plans of:${result.failedVenues.map((v) => v.name).join(", ")}.`);
       }
       if (result.stopped) notes.push("You stopped the scan. The list is not complete.");
       setScanNotes(notes);
@@ -430,7 +430,7 @@ export function VerificationPanel(): JSX.Element {
     <div data-testid="venue-plans-verification">
       <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 12 }}>
         <label style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>
-          <span style={{ display: "block", marginBottom: 4 }}>State of the plan</span>
+          <span style={{ display: "block", marginBottom: 4 }}>Status of the plan</span>
           <select
             value={filter}
             onChange={(e) => {
@@ -459,13 +459,18 @@ export function VerificationPanel(): JSX.Element {
                 style={{ ...inputStyle, width: 280 }}
                 data-testid="venue-plans-verify-org"
               >
-                <option value="">Choose an organization</option>
+                <option value="">Select an organization</option>
                 {(orgsQuery.data ?? []).map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.name}
                   </option>
                 ))}
               </select>
+              {orgsQuery.isError ? (
+                <span role="alert" style={{ display: "block", marginTop: 4 }} data-testid="venue-plans-verify-org-error">
+                  The list of organizations did not load. Reload the page.
+                </span>
+              ) : null}
             </label>
             <button
               type="button"
@@ -491,8 +496,8 @@ export function VerificationPanel(): JSX.Element {
 
       {isNone ? (
         <p style={hintStyle}>
-          The server list does not show plans that were never sent for verification (plans imported from the old system). Choose
-          an organization, and the page reads the plans of its venues. Verify works on these plans in the same way.
+          The server list does not show plans with no status (imported plans). Select
+          an organization. Then the page reads the plans of its venues. Verify works on these plans too.
         </p>
       ) : null}
       {isNone && scanProgress !== null ? (

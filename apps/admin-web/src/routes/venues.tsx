@@ -816,7 +816,7 @@ function VenuesModule() {
               : `Mark selected as verified (${effectiveSelected.size})`}
           </button>{" "}
           <span style={mutedHintStyle}>
-            Select venues that are not verified. You write one reason for all of them. This never takes a verification back.
+            Select venues that are not verified. You write one audit reason for all of them. A verification stays after this step.
           </span>
           {bulkProgress !== null && bulkRunning ? (
             <div role="status" data-testid="venues-bulk-progress">
@@ -833,12 +833,12 @@ function VenuesModule() {
             <div role="status" data-testid="venues-bulk-result">
               Verified {bulkResult.verified.length} venues.
               {bulkResult.skipped.length > 0
-                ? ` Skipped ${bulkResult.skipped.length} that were verified already.`
+                ? ` Skipped ${bulkResult.skipped.length} that are verified.`
                 : ""}
               {bulkResult.failed.length > 0 ? (
                 <>
                   {" "}
-                  {bulkResult.failed.length} failed. We kept them selected. Fix the cause, then try again.
+                  {bulkResult.failed.length} failed. They stay selected. Correct the cause, then try again.
                   <ul>
                     {bulkResult.failed.map((f) => (
                       <li key={f.id} data-testid={`venues-bulk-failure-${f.id}`}>

@@ -103,9 +103,9 @@ export type VerificationFilter = VerificationState | typeof NO_STATE_FILTER;
 
 const VERIFICATION_LABELS: Readonly<Record<VerificationFilter, string>> = {
   unverified: "Not verified",
-  needs_fix: "Needs a fix",
+  needs_fix: "Correction necessary",
   verified: "Verified",
-  none: "No state (imported)",
+  none: "No status (imported)",
 };
 
 export function verificationLabel(state: string | null | undefined): string {
@@ -201,44 +201,44 @@ export function gateFor(
   callerId: string | null,
 ): ActionGate {
   if (isFinalState(intake.state)) {
-    return { enabled: false, why: `The intake is ${intakeStateLabel(intake.state).toLowerCase()}. Nothing changes after that.` };
+    return { enabled: false, why: `The request is ${intakeStateLabel(intake.state).toLowerCase()}. No change is possible.` };
   }
   const mine = holdsClaim(intake, callerId);
   if (action === "claim") {
     return mine
-      ? { enabled: false, why: "You already hold this intake." }
+      ? { enabled: false, why: "You hold this request." }
       : { enabled: true, why: "" };
   }
   if (!intake.operator_claimed) {
-    return { enabled: false, why: "Nobody holds this intake. Press Claim first." };
+    return { enabled: false, why: "No administrator holds this request. Press Claim first." };
   }
   if (!mine) {
-    return { enabled: false, why: "Another administrator holds this intake. Use Take over to continue." };
+    return { enabled: false, why: "A different administrator holds this request. Use Take control to continue." };
   }
   const hasDraft = intake.current_draft !== null && intake.current_draft !== undefined;
   switch (action) {
     case "upload_draft":
       return intake.state === "operator"
         ? { enabled: true, why: "" }
-        : { enabled: false, why: "A draft can be uploaded only while the intake is with an administrator." };
+        : { enabled: false, why: "You can upload a draft only when the request is with an administrator." };
     case "return":
       if (intake.state !== "operator") {
-        return { enabled: false, why: "Only an intake with an administrator can go back to the organizer." };
+        return { enabled: false, why: "Only a request with an administrator can go back to the organizer." };
       }
       return hasDraft
         ? { enabled: true, why: "" }
-        : { enabled: false, why: "Upload a draft first. The organizer needs something to check." };
+        : { enabled: false, why: "Upload a draft first. The organizer must have a draft to examine." };
     case "approve":
       if (intake.state !== "operator" && intake.state !== "review") {
-        return { enabled: false, why: "Only an intake in review or with an administrator can be approved." };
+        return { enabled: false, why: "You can approve a request only when it is with the organizer or with an administrator." };
       }
       return hasDraft
         ? { enabled: true, why: "" }
-        : { enabled: false, why: "There is no draft to approve yet." };
+        : { enabled: false, why: "There is no draft to approve." };
     case "reject":
       return intake.state === "operator"
         ? { enabled: true, why: "" }
-        : { enabled: false, why: "Only an intake with an administrator can be rejected." };
+        : { enabled: false, why: "You can reject only a request with an administrator." };
   }
 }
 
@@ -276,34 +276,34 @@ export function describeValidationError(e: DraftValidationError): string {
 export function intakeErrorMessage(err: ApiError): string {
   switch (err.code) {
     case "venue_plan_intake.not_claimed":
-      return "Nobody holds this intake yet. Press Claim, then try again.";
+      return "No administrator holds this request. Press Claim, then try again.";
     case "venue_plan_intake.claimed_by_other":
-      return "Another administrator holds this intake. Press Take over if you must continue, or ask them to finish.";
+      return "A different administrator holds this request. Press Take control to continue, or tell that administrator to finish.";
     case "venue_plan_intake.wrong_state":
-      return "The intake is not in a state that allows this action. Reload the card to see where it is now.";
+      return "You cannot do this step with this status of the request. Reload the card to see the new status.";
     case "venue_plan_intake.draft_stale":
-      return "The current draft changed while you worked. Reload the card, check the current draft, then approve it.";
+      return "The draft changed. Reload the card, examine the new draft, then approve it.";
     case "venue_plan_intake.draft_validation_failed": {
       const list = draftValidationErrors(err).map(describeValidationError);
       return list.length > 0
-        ? `The SVG failed the geometry check. Fix these problems and upload it again: ${list.join(", ")}.`
-        : "The SVG failed the geometry check. Fix the file and upload it again.";
+        ? `The geometry check found errors in the SVG. Correct these errors and upload the file again: ${list.join(", ")}.`
+        : "The geometry check found errors in the SVG. Correct the file and upload it again.";
     }
     case "venue_plan_intake.unsupported_format":
-      return "The file is not an SVG document. Choose an .svg file.";
+      return "The file is not an SVG file. Select an .svg file.";
     case "venue_plan_intake.file_too_large":
-      return "The SVG is larger than 3 MB. Make it smaller and upload it again.";
+      return "The SVG is more than 3 MB. Make a file with less data and upload it again.";
     case "venue_plan_intake.invalid_note":
-      return "The note is too long. Keep it under 2000 characters.";
+      return "The note is too long. Write up to 2000 characters.";
     case "venue_plan_intake.invalid_reason":
-      return "Write a reason for the organizer, 1 to 1000 characters.";
+      return "Write a cause for the organizer, 1 to 1000 characters.";
     case "venue_plan_intake.no_draft":
-      return "The intake has no draft. Upload a draft first.";
+      return "The request has no draft. Upload a draft first.";
     case "venue_plan_intake.superadmin_only":
     case "permissions.denied":
-      return "Only a platform administrator with the right to curate seating plans can do this.";
+      return "Only a platform administrator with access to seating plans can do this.";
     case "venue_plan_intake.not_found":
-      return "This intake does not exist. Go back to the list.";
+      return "We cannot find this request. Go back to the list.";
     case "superadmin.missing_reason":
     case "superadmin.reason_required":
       return "Write an audit reason and try again.";
@@ -318,15 +318,15 @@ export function verifyErrorMessage(err: ApiError): string {
     case "seating_plan.geometry_invalid": {
       const list = draftValidationErrors(err).map(describeValidationError);
       return list.length > 0
-        ? `The plan fails the geometry rules. Send it back with Needs fix, or fix it first: ${list.join(", ")}.`
-        : "The plan fails the geometry rules. Send it back with Needs fix, or fix it first.";
+        ? `The geometry check found errors in the plan. Send it back with «Correction necessary», or correct it first: ${list.join(", ")}.`
+        : "The geometry check found errors in the plan. Send it back with «Correction necessary», or correct it first.";
     }
     case "seating_plan.not_active":
-      return "The plan is a draft or archived. Only an active plan can be verified.";
+      return "The plan is a draft or in the archive. You can verify only an active plan.";
     case "seating_plan.no_current_version":
-      return "The plan has no current version. Ask the owner to upload an SVG first.";
+      return "The plan has no version. Tell the owner to upload an SVG first.";
     case "seating_plan.not_found":
-      return "The plan does not exist or was deleted. Reload the list.";
+      return "We cannot find the plan. Reload the list.";
     case "seating_plan.verify_superadmin_only":
     case "permissions.denied":
       return "Only a platform administrator with the right to verify plans can do this.";
