@@ -5,7 +5,7 @@
  */
 import { ApiError, PAGE_READ_TIMEOUT_MS, POSTER_READ_TIMEOUT_MS, UPLOAD_TIMEOUT_MS, call, download, type DownloadedFile } from "@/lib/api/http";
 import { API } from "@/lib/api/routes";
-import type { PageStatsResponse, SalesFunnelResponse } from "@/lib/api/types";
+import type { GettingStarted, PageStatsResponse, SalesFunnelResponse } from "@/lib/api/types";
 import type {
   BillingAccountInvoice,
   BillingAccountInvoiceList,
@@ -321,6 +321,12 @@ export function setGuestListSettings(orgId: string, autoSend: boolean): Promise<
     params: { org_id: orgId },
     body: { auto_send: autoSend },
   });
+}
+
+/** The first steps of the organization the caller may do, and which are done. */
+export async function fetchGettingStarted(orgId: string): Promise<GettingStarted> {
+  const out = await call<{ getting_started: GettingStarted }>({ route: API.gettingStarted, params: { org_id: orgId } });
+  return out.getting_started;
 }
 
 /** The caller's own "send me the guest list" setting in this organization. */

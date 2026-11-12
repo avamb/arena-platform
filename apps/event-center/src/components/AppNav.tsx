@@ -1,9 +1,12 @@
 /**
- * The shell of the event center (spec 62 §12.1, owner decision 2026-11-06):
- * a bar of five items — Events · Orders · Refunds · Summary · More — at the
- * bottom of a phone screen and under the header on a wide one. "More" opens
- * every other section, Promo codes first, then the theme switch, the
- * language and Sign out.
+ * The shell of the event center (spec 62 §12.1, owner decision 2026-11-12):
+ * a bar of five items — Events · Orders · Promotion · Entrance · Menu — at
+ * the bottom of a phone screen and under the header on a wide one.
+ * «Promotion» opens a sheet with the promotion items alone. «Menu» opens the
+ * sheet with every section as a headed group, in the order of the Telegram
+ * bot's menu: New event, My events, Orders and refunds, Promotion, Entrance
+ * to the event, Shop, Settings, Help. What a role cannot use is not shown
+ * (`navGroups`).
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -13,7 +16,8 @@ import type { OrgAccess } from "@/lib/auth";
 import { badgeText, queueCount } from "@/lib/refundQueue";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
-import { shopNavTarget, showShopNav, type ShopMode } from "@/lib/shopModule";
+import { navGroups, promotionItems, type NavGroup } from "@/lib/navMenu";
+import { shopNavTarget, type ShopMode } from "@/lib/shopModule";
 import {
   THEME_MODES,
   a2hsDismissed,
@@ -26,21 +30,24 @@ import {
 import { LanguageSelect } from "@/screens/LanguageSelect";
 import { AnalyticsOptOut } from "@/lib/analytics/AnalyticsOptOut";
 
-export type NavSection = "events" | "orders" | "refunds" | "summary" | "more";
+export type NavSection = "events" | "orders" | "promotion" | "entrance" | "menu";
 
-/** Which of the five items a location belongs to. Everything not in the first four is under "More". */
-export function navSectionOf(pathname: string, search: unknown): NavSection {
+/**
+ * Which of the five items a location belongs to. Summary is under Events and
+ * Refunds under Orders; promo codes, free tickets, links and the mailings are
+ * Promotion; the entrance page is Entrance; everything else is under Menu.
+ */
+export function navSectionOf(pathname: string, _search?: unknown): NavSection {
   const rest = pathname.replace(/^\/o\/[^/]+/, "");
-  if (rest === "" || rest === "/" || rest.startsWith("/events")) {
-    return rest.startsWith("/events/new") ? "more" : "events";
-  }
-  if (rest.startsWith("/refunds")) return "refunds";
-  if (rest.startsWith("/orders")) {
-    const tab = typeof search === "object" && search !== null ? (search as { tab?: unknown }).tab : undefined;
-    return tab === "refunds" ? "refunds" : "orders";
-  }
-  if (rest.startsWith("/summary")) return "summary";
-  return "more";
+  const first = rest.split("/")[1] ?? "";
+  if (first === "") return "events";
+  if (first === "events") return rest.startsWith("/events/new") ? "menu" : "events";
+  if (first === "summary") return "events";
+  // Orders, the refund queue and the "refunds" tab of the orders list are all one item.
+  if (first === "refunds" || first === "orders") return "orders";
+  if (first === "promo" || first === "invitations" || first === "links" || first === "growth") return "promotion";
+  if (first === "entrance") return "entrance";
+  return "menu";
 }
 
 function Icon({ name }: { name: NavSection }) {
@@ -57,18 +64,19 @@ function Icon({ name }: { name: NavSection }) {
         <path d="M9 8h6M9 12h6" />
       </>
     ),
-    refunds: (
+    promotion: (
       <>
-        <path d="M9 14L4 9l5-5" />
-        <path d="M4 9h10a6 6 0 010 12h-3" />
+        <path d="M3 11v3l12 5V6z" />
+        <path d="M15 9a3 3 0 010 6M6 15l1.5 5" />
       </>
     ),
-    summary: (
+    entrance: (
       <>
-        <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+        <path d="M5 21V4a1 1 0 011-1h9a1 1 0 011 1v17M3 21h18" />
+        <circle cx="12.5" cy="12" r="0.8" />
       </>
     ),
-    more: (
+    menu: (
       <>
         <circle cx="5" cy="12" r="1.5" />
         <circle cx="12" cy="12" r="1.5" />
@@ -84,7 +92,7 @@ function Icon({ name }: { name: NavSection }) {
 }
 
 /**
- * The counter on «Refunds» (EC-V5): failed or stuck refunds plus undelivered
+ * The counter on «Orders» (EC-V5): failed or stuck refunds plus undelivered
  * letters, the same `count` the queue screen shows. It rides the queue's own
  * query, so opening the screen costs no second request, and it asks again
  * every minute. A failed read shows no number rather than a wrong one.
@@ -116,15 +124,19 @@ interface NavProps {
   onLogout: () => void;
 }
 
+type SheetMode = "promotion" | "menu";
+
 /** The five-item bar. */
 export function TabBar({ orgId, access, shopMode, orgCount, onLogout }: NavProps) {
   const { t } = useI18n();
   const location = useRouterState({ select: (s) => s.location });
   const section = navSectionOf(location.pathname, location.search);
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [open, setOpen] = useState<SheetMode | null>(null);
   const canOrders = access.can("order.read");
   const canRefunds = access.can("refund.read");
-  const cur = (s: NavSection) => (section === s && !moreOpen ? { "aria-current": "page" as const, className: "tab-item active" } : { className: "tab-item" });
+  const hasPromotion = promotionItems(access.can).length > 0;
+  const cur = (s: NavSection) => (section === s && open === null ? { "aria-current": "page" as const, className: "tab-item active" } : { className: "tab-item" });
+  const toggle = (mode: SheetMode) => setOpen((v) => (v === mode ? null : mode));
 
   return (
     <>
@@ -137,47 +149,58 @@ export function TabBar({ orgId, access, shopMode, orgCount, onLogout }: NavProps
           <Link to="/o/$orgId/orders" params={{ orgId }} search={{}} {...cur("orders")} data-testid="nav-orders">
             <Icon name="orders" />
             <span>{t("nav.orders")}</span>
+            {canRefunds && <RefundsBadge orgId={orgId} />}
           </Link>
         )}
-        {canRefunds && (
-          <Link to="/o/$orgId/refunds" params={{ orgId }} {...cur("refunds")} data-testid="nav-refunds">
-            <Icon name="refunds" />
-            <span>{t("nav.refunds")}</span>
-            <RefundsBadge orgId={orgId} />
-          </Link>
+        {hasPromotion && (
+          <button
+            type="button"
+            className={section === "promotion" || open === "promotion" ? "tab-item active" : "tab-item"}
+            aria-expanded={open === "promotion"}
+            aria-controls="promotion-sheet"
+            onClick={() => toggle("promotion")}
+            data-testid="nav-promotion"
+          >
+            <Icon name="promotion" />
+            <span>{t("nav.promotion")}</span>
+          </button>
         )}
-        <Link to="/o/$orgId/summary" params={{ orgId }} {...cur("summary")} data-testid="nav-summary">
-          <Icon name="summary" />
-          <span>{t("nav.summary")}</span>
+        <Link to="/o/$orgId/entrance" params={{ orgId }} {...cur("entrance")} data-testid="nav-entrance">
+          <Icon name="entrance" />
+          <span>{t("nav.entrance")}</span>
         </Link>
         <button
           type="button"
-          className={section === "more" || moreOpen ? "tab-item active" : "tab-item"}
-          aria-expanded={moreOpen}
+          className={section === "menu" || open === "menu" ? "tab-item active" : "tab-item"}
+          aria-expanded={open === "menu"}
           aria-controls="more-sheet"
-          onClick={() => setMoreOpen((v) => !v)}
+          onClick={() => toggle("menu")}
           data-testid="nav-more"
         >
-          <Icon name="more" />
+          <Icon name="menu" />
           <span>{t("nav.more")}</span>
         </button>
       </nav>
-      {moreOpen && (
-        <MoreSheet
+      {open !== null && (
+        <NavSheet
+          mode={open}
           orgId={orgId}
           access={access}
           shopMode={shopMode}
           orgCount={orgCount}
           onLogout={onLogout}
-          onClose={() => setMoreOpen(false)}
+          onClose={() => setOpen(null)}
         />
       )}
     </>
   );
 }
 
-/** The sections behind "More", in the order of spec 62 §12.1. */
-function MoreSheet({ orgId, access, shopMode, orgCount, onLogout, onClose }: NavProps & { onClose: () => void }) {
+/**
+ * The sheet over the page: the whole Menu (every group, then the theme, the
+ * language, the analytics choice and Sign out) or the Promotion group alone.
+ */
+function NavSheet({ mode, orgId, access, shopMode, orgCount, onLogout, onClose }: NavProps & { mode: SheetMode; onClose: () => void }) {
   const { t } = useI18n();
   const sheet = useRef<HTMLDivElement>(null);
 
@@ -190,126 +213,193 @@ function MoreSheet({ orgId, access, shopMode, orgCount, onLogout, onClose }: Nav
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  const all = navGroups(access, shopMode, orgCount);
+  const groups: NavGroup[] = mode === "menu" ? all : all.filter((g) => g.id === "promotion");
+  const menu = mode === "menu";
+  const title: MessageKey = menu ? "nav.moreTitle" : "nav.section.promotion";
   const item = { className: "more-item", onClick: onClose, activeProps: { "aria-current": "page" as const, className: "active" } };
+
+  const link = (id: string, label: string): ReactNode => {
+    switch (id) {
+      case "nav-new-event":
+        return (
+          <Link to="/o/$orgId/events/new" params={{ orgId }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "menu-events":
+        return (
+          <Link to="/o/$orgId/events" params={{ orgId }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-summary":
+        return (
+          <Link to="/o/$orgId/summary" params={{ orgId }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "menu-orders":
+        return (
+          <Link to="/o/$orgId/orders" params={{ orgId }} search={{}} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-refunds":
+        return (
+          <Link to="/o/$orgId/refunds" params={{ orgId }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-promo":
+        return (
+          <Link to="/o/$orgId/promo" params={{ orgId }} search={{}} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-invitations":
+        return (
+          <Link to="/o/$orgId/invitations" params={{ orgId }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-links":
+        return (
+          <Link to="/o/$orgId/links" params={{ orgId }} search={{}} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-growth":
+        return (
+          <Link to="/o/$orgId/growth" params={{ orgId }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-scanner":
+        return (
+          <Link to="/o/$orgId/entrance" params={{ orgId }} activeOptions={{ includeHash: true }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-guest-list":
+        return (
+          <Link to="/o/$orgId/entrance" params={{ orgId }} hash="guest-list" activeOptions={{ includeHash: true }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-shop":
+        return shopNavTarget(shopMode) === "orders" ? (
+          <Link to="/o/$orgId/shop/orders" params={{ orgId }} search={{}} {...item} data-testid={id}>
+            {label}
+          </Link>
+        ) : (
+          <Link to="/o/$orgId/shop" params={{ orgId }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-org-data":
+        return (
+          <Link to="/o/$orgId/org-data" params={{ orgId }} activeOptions={{ includeHash: true }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-payments":
+        return (
+          <Link to="/o/$orgId/org-data" params={{ orgId }} hash="payments" activeOptions={{ includeHash: true }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-team":
+        return (
+          <Link to="/o/$orgId/team" params={{ orgId }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-promoters":
+        return (
+          <Link to="/o/$orgId/promoters" params={{ orgId }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-venues":
+        return (
+          <Link to="/o/$orgId/venues" params={{ orgId }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-notifications":
+        return (
+          <Link to="/o/$orgId/notifications" params={{ orgId }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-billing":
+        return (
+          <Link to="/o/$orgId/billing" params={{ orgId }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-switch-org":
+        return (
+          <Link to="/orgs" className="more-item" onClick={onClose} data-testid={id}>
+            {label}
+          </Link>
+        );
+      case "nav-help":
+        return (
+          <Link to="/o/$orgId/help" params={{ orgId }} {...item} data-testid={id}>
+            {label}
+          </Link>
+        );
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className="more-backdrop" onClick={onClose} data-testid="more-backdrop">
       <div
-        id="more-sheet"
+        id={menu ? "more-sheet" : "promotion-sheet"}
         ref={sheet}
         className="more-sheet"
         role="dialog"
         aria-modal="true"
         aria-labelledby="more-title"
         onClick={(e) => e.stopPropagation()}
-        data-testid="more-sheet"
+        data-testid={menu ? "more-sheet" : "promotion-sheet"}
       >
         <div className="more-head">
-          <h2 id="more-title">{t("nav.moreTitle")}</h2>
-          <button type="button" className="btn btn-link" onClick={onClose} data-testid="more-close">
+          <h2 id="more-title">{t(title)}</h2>
+          <button type="button" className="btn btn-link" onClick={onClose} data-testid={menu ? "more-close" : "promotion-close"}>
             {t("nav.close")}
           </button>
         </div>
-        <nav aria-label={t("nav.moreTitle")}>
-          <ul className="more-list">
-            {access.can("promo.read") && (
-              <li>
-                <Link to="/o/$orgId/promo" params={{ orgId }} search={{}} {...item} data-testid="nav-promo">
-                  {t("nav.promo")}
-                </Link>
-              </li>
-            )}
-            {access.can("complimentary.read") && (
-              <li>
-                <Link to="/o/$orgId/invitations" params={{ orgId }} {...item} data-testid="nav-invitations">
-                  {t("nav.invitations")}
-                </Link>
-              </li>
-            )}
-            {access.can("promoter.read") && (
-              <li>
-                <Link to="/o/$orgId/promoters" params={{ orgId }} {...item} data-testid="nav-promoters">
-                  {t("nav.promoters")}
-                </Link>
-              </li>
-            )}
-            {access.can("venue.read") && (
-              <li>
-                <Link to="/o/$orgId/venues" params={{ orgId }} {...item} data-testid="nav-venues">
-                  {t("nav.venues")}
-                </Link>
-              </li>
-            )}
-            {access.can("sales_link.read") && (
-              <li>
-                <Link to="/o/$orgId/links" params={{ orgId }} search={{}} {...item} data-testid="nav-links">
-                  {t("nav.links")}
-                </Link>
-              </li>
-            )}
-            {(access.can("promo.read") || access.can("order.read")) && (
-              <li>
-                <Link to="/o/$orgId/growth" params={{ orgId }} {...item} data-testid="nav-growth">
-                  {t("nav.growth")}
-                </Link>
-              </li>
-            )}
-            <li>
-              <Link to="/o/$orgId/notifications" params={{ orgId }} {...item} data-testid="nav-notifications">
-                {t("nav.notifications")}
-              </Link>
-            </li>
-            {access.can("membership.read") && (
-              <li>
-                <Link to="/o/$orgId/team" params={{ orgId }} {...item} data-testid="nav-team">
-                  {t("nav.team")}
-                </Link>
-              </li>
-            )}
-            {showShopNav(shopMode, access.can("shop.read")) && (
-              <li>
-                {shopNavTarget(shopMode) === "orders" ? (
-                  <Link to="/o/$orgId/shop/orders" params={{ orgId }} search={{}} {...item} data-testid="nav-shop">
-                    {t("nav.shop")}
-                  </Link>
-                ) : (
-                  <Link to="/o/$orgId/shop" params={{ orgId }} {...item} data-testid="nav-shop">
-                    {t("nav.shop")}
-                  </Link>
-                )}
-              </li>
-            )}
-            {access.can("billing.read") && (
-              <li>
-                <Link to="/o/$orgId/billing" params={{ orgId }} {...item} data-testid="nav-billing">
-                  {t("nav.billing")}
-                </Link>
-              </li>
-            )}
-            {access.can("org.update") && (
-              <li>
-                <Link to="/o/$orgId/org-data" params={{ orgId }} {...item} data-testid="nav-org-data">
-                  {t("nav.orgData")}
-                </Link>
-              </li>
-            )}
-            {orgCount > 1 && (
-              <li>
-                <Link to="/orgs" className="more-item" onClick={onClose} data-testid="nav-switch-org">
-                  {t("nav.switchOrg")}
-                </Link>
-              </li>
-            )}
-          </ul>
+        <nav aria-label={t(title)}>
+          {groups.map((g) => (
+            <section key={g.id} className="more-group" aria-labelledby={menu ? `more-group-${g.id}` : undefined} data-testid={`more-group-${g.id}`}>
+              {menu && (
+                <h3 id={`more-group-${g.id}`} className="more-group-title">
+                  {t(g.titleKey)}
+                </h3>
+              )}
+              <ul className="more-list">
+                {g.items.map((e) => (
+                  <li key={e.id}>{link(e.id, t(e.labelKey))}</li>
+                ))}
+              </ul>
+            </section>
+          ))}
         </nav>
-        <div className="more-tools">
-          <ThemeSwitch />
-          <LanguageSelect />
-          <AnalyticsOptOut />
-          <button type="button" className="btn more-logout" onClick={onLogout} data-testid="logout">
-            {t("nav.logout")}
-          </button>
-        </div>
+        {menu && (
+          <div className="more-tools">
+            <ThemeSwitch />
+            <LanguageSelect />
+            <AnalyticsOptOut />
+            <button type="button" className="btn more-logout" onClick={onLogout} data-testid="logout">
+              {t("nav.logout")}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -349,9 +439,34 @@ interface InstallPromptEvent extends Event {
   prompt: () => Promise<void>;
 }
 
-/** "Add to home screen": shown once, closed for good with one press. */
+/** The breakpoint where the tab bar moves under the header (styles.css, min-width: 900px). */
+export const WIDE_QUERY = "(min-width: 900px)";
+
+function isWide(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia(WIDE_QUERY).matches;
+}
+
+/** True on a wide screen, and follows a resize. */
+function useWideScreen(): boolean {
+  const [wide, setWide] = useState(isWide);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia(WIDE_QUERY);
+    const on = () => setWide(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  return wide;
+}
+
+/**
+ * "Add to home screen": shown once on a phone, closed for good with one press.
+ * A wide screen is a computer, where the note makes no sense: it never shows.
+ */
 export function A2hsNote() {
   const { t } = useI18n();
+  const wide = useWideScreen();
   const [shown, setShown] = useState(() => !a2hsDismissed() && !runsStandalone());
   const [install, setInstall] = useState<InstallPromptEvent | null>(null);
 
@@ -365,7 +480,7 @@ export function A2hsNote() {
     return () => window.removeEventListener("beforeinstallprompt", onPrompt);
   }, [shown]);
 
-  if (!shown) return null;
+  if (!shown || wide) return null;
   const close = () => {
     dismissA2hs();
     setShown(false);

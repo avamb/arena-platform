@@ -161,6 +161,9 @@ export function PromotersScreen() {
     <section aria-labelledby="promoters-title">
       <h1 id="promoters-title">{t("promoters.title")}</h1>
       <p className="muted">{t("promoters.intro")}</p>
+      <p className="muted" data-testid="promoters-brand-note">
+        {t("promoters.brandNote")}
+      </p>
       {!canManage && (
         <p className="notice" role="status" data-testid="promoters-read-only">
           {t("promoters.readOnly")}

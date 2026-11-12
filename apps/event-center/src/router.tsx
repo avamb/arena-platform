@@ -40,6 +40,8 @@ import { parseIntakeSearch } from "@/lib/venuePlan/intakeState";
 import { PromoterScreen } from "@/screens/PromoterScreen";
 import { NotFoundScreen } from "@/screens/NotFoundScreen";
 import { OrgDataScreen } from "@/screens/OrgDataScreen";
+import { EntranceScreen } from "@/screens/EntranceScreen";
+import { HelpScreen } from "@/screens/HelpScreen";
 import { parseEventsSearch, parseLoginSearch, parseOrdersSearch, parsePromotersSearch } from "@/lib/search";
 import { parseBalanceSearch } from "@/lib/billingPacks";
 import { PromoListScreen } from "@/screens/PromoListScreen";
@@ -218,6 +220,20 @@ const summaryRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/summary",
   component: SummaryScreen,
+});
+
+// The «Entrance» item of the bar: the scanner app and where the guest list is.
+const entranceRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/entrance",
+  component: EntranceScreen,
+});
+
+// What each section of the menu is for.
+const helpRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/help",
+  component: HelpScreen,
 });
 
 const notificationsRoute = createRoute({
@@ -429,6 +445,8 @@ export const routeTree = rootRoute.addChildren([
     orderRoute,
     refundQueueRoute,
     summaryRoute,
+    entranceRoute,
+    helpRoute,
     notificationsRoute,
     growthRoute,
     invitationsRoute,

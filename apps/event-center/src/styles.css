@@ -486,8 +486,8 @@ label {
 }
 
 /*
- * The bar of five items (spec 62 section 12.1): Events, Orders, Refunds,
- * Summary, More. Fixed to the bottom of a phone screen, above the home
+ * The bar of five items (spec 62 section 12.1): Events, Orders, Promotion,
+ * Entrance, Menu. Fixed to the bottom of a phone screen, above the home
  * indicator; on a wide screen it sits under the header, in the same column.
  */
 .tabbar {
@@ -621,6 +621,24 @@ label {
 
 .more-head h2 {
   margin: 0;
+}
+
+/* One section of the Menu sheet: a heading and its items. */
+.more-group {
+  margin-block-start: 1rem;
+}
+
+.more-group + .more-group {
+  margin-block-start: 0.75rem;
+}
+
+.more-group-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .more-list {
@@ -3405,4 +3423,25 @@ fieldset legend {
 }
 .plan-preview-dot {
   fill: var(--ec-ink);
+}
+
+/* "First steps" card at the top of the events list. */
+.first-steps {
+  margin-block-end: 0.75rem;
+}
+.first-steps h2 {
+  margin: 0;
+}
+.first-steps-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+.first-steps-list a,
+.first-steps-list li > span {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  overflow-wrap: anywhere;
 }

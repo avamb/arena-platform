@@ -12,6 +12,7 @@ import type { Tone } from "@/lib/orders";
 import { Badge, Empty, ErrorBox, Loading } from "@/components/ui";
 import { SalesFigures } from "@/components/SalesFigures";
 import { ConnectTelegram } from "@/components/ConnectTelegram";
+import { FirstSteps } from "@/components/FirstSteps";
 import { useOrg } from "@/screens/OrgLayout";
 
 export const EVENTS_PAGE_SIZE = 10;
@@ -98,6 +99,7 @@ export function EventsScreen() {
 
   return (
     <section aria-labelledby="events-title">
+      <FirstSteps orgId={orgId} />
       {/* The one "create" entry of the event center: the header carries none (owner, 2026-11-08). */}
       <div className="events-head">
         <h1 id="events-title">
