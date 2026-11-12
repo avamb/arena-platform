@@ -40647,14 +40647,19 @@ paths:
   /v1/admin/seating-plans:
     get:
       operationId: listV1AdminSeatingPlans
-      summary: Admin - list seating plans by verification state
+      summary: Admin - list seating plans with filters and counts
       description: |
-        The platform superadmin's verification queue (spec 64 section 3.4):
-        live seating plans in one verification state, oldest first, with the
-        names of their organization and venue and the capacity of their
-        current version. Plans never sent for verification (state null) are
-        not listed. Requires JWT, the seating_plan.verify permission and a
-        platform superadmin.
+        The platform superadmin's list of seating plans (spec 64 section
+        3.4) in one request: one page of plans, newest first, the total and
+        the count per verification state. Each plan has the names of its
+        organization, venue, city and country and the capacity of its
+        current version. Without verification_state the list holds plans of
+        every state, also plans that were never sent for verification
+        (state null, filter value none). Archived and deleted plans and the
+        plans of archived or deleted venues are never listed or counted.
+        Draft plans are listed. Requires JWT, the seating_plan.verify
+        permission and a platform superadmin. org_id is a filter, it gives
+        no access.
       tags: [v1, admin, seating]
       security:
         - bearerAuth: []
@@ -40662,32 +40667,119 @@ paths:
         - name: verification_state
           in: query
           required: false
-          description: unverified (default), verified or needs_fix
+          description: |
+            none (never sent for verification), unverified, verified or
+            needs_fix. Without it the list holds every state.
+          schema:
+            type: string
+        - name: org_id
+          in: query
+          required: false
+          description: Only the plans of this organization. Without it the list holds every organization.
+          schema:
+            type: string
+            format: uuid
+        - name: country
+          in: query
+          required: false
+          description: |
+            Only the plans at venues in this country, a 2-letter ISO 3166-1
+            code. The country of a venue is the country of its city, else the
+            country of its address.
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+        - name: city_id
+          in: query
+          required: false
+          description: Only the plans at venues in this city
+          schema:
+            type: string
+            format: uuid
+        - name: q
+          in: query
+          required: false
+          description: A part of the venue name, any letter case, at most 100 characters
+          schema:
+            type: string
+            maxLength: 100
+        - name: lang
+          in: query
+          required: false
+          description: Language of the city names, for example en or ru. locale is the same. Else Accept-Language, else English.
+          schema:
+            type: string
+        - name: locale
+          in: query
+          required: false
+          description: The same as lang
           schema:
             type: string
         - name: limit
           in: query
           required: false
-          description: Page size, 1 to 200 (default 100)
+          description: Page size, 1 to 200 (default 50)
           schema:
             type: integer
             minimum: 1
             maximum: 200
+        - name: offset
+          in: query
+          required: false
+          description: Number of plans to skip, 0 to 1000000 (default 0)
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 1000000
       responses:
         "200":
-          description: Plans in the asked state
+          description: One page of plans, the total and the counts
           content:
             application/json:
               schema:
                 type: object
-                required: [seating_plans]
+                required: [seating_plans, total, limit, offset, counts]
                 properties:
+                  total:
+                    type: integer
+                    format: int64
+                    description: Number of plans that match all filters
+                  limit:
+                    type: integer
+                    description: Page size of this answer
+                  offset:
+                    type: integer
+                    description: Number of plans skipped before this page
+                  counts:
+                    type: object
+                    description: |
+                      Number of plans in each verification state. The counts
+                      use all filters except verification_state.
+                    required: [none, unverified, needs_fix, verified]
+                    properties:
+                      none:
+                        type: integer
+                        format: int64
+                        description: Plans that were never sent for verification
+                      unverified:
+                        type: integer
+                        format: int64
+                        description: Plans that wait for verification
+                      needs_fix:
+                        type: integer
+                        format: int64
+                        description: Plans sent back with a note
+                      verified:
+                        type: integer
+                        format: int64
+                        description: Verified plans
                   seating_plans:
                     type: array
-                    description: Plans in the asked verification state, oldest first
+                    description: One page of plans, newest first
                     items:
                       type: object
-                      required: [plan_id, name, plan_type, visibility, status, owner_org_id, owner_org_name, venue_id, venue_name, created_at]
+                      required: [plan_id, name, plan_type, visibility, status, owner_org_id, owner_org_name, venue_id, venue_name, capacity_seated, capacity_standing, created_at, updated_at]
                       properties:
                         plan_id:
                           type: string
@@ -40725,29 +40817,47 @@ paths:
                         venue_name:
                           type: string
                           description: Name of the venue
+                        city_id:
+                          type: [string, "null"]
+                          format: uuid
+                          description: City of the venue, null when the venue has none
+                        city_name:
+                          type: [string, "null"]
+                          description: Name of the city in the language of the request, else in English
+                        country_iso2:
+                          type: [string, "null"]
+                          description: Country of the venue, a 2-letter ISO 3166-1 code. It is the country of the city, else the country of the address.
                         current_version_id:
                           type: [string, "null"]
                           format: uuid
                           description: Current version, null when the plan has none
                         version_number:
                           type: [integer, "null"]
-                          description: Number of the current version
+                          description: Number of the current version, null when the plan has none
                         capacity_seated:
-                          type: [integer, "null"]
-                          description: Seats of the current version
+                          type: integer
+                          description: Seats of the current version, 0 when the plan has no version
                         capacity_standing:
-                          type: [integer, "null"]
-                          description: Standing places of the current version
+                          type: integer
+                          description: Standing places of the current version, 0 when the plan has no version
                         created_at:
                           type: string
                           format: date-time
                           description: When the plan was created
+                        updated_at:
+                          type: string
+                          format: date-time
+                          description: When the plan was last changed
                         verified_at:
                           type: [string, "null"]
                           format: date-time
                           description: When the plan was verified, null unless verified
         "400":
-          description: seating_plan.invalid_verification_state or seating_plan.invalid_limit
+          description: |
+            seating_plan.invalid_verification_state, seating_plan.invalid_org_id,
+            seating_plan.invalid_country, seating_plan.invalid_city_id,
+            seating_plan.invalid_query, seating_plan.invalid_limit or
+            seating_plan.invalid_offset
           content:
             application/json:
               schema:

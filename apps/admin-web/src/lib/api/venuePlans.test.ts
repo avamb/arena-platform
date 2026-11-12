@@ -17,20 +17,24 @@ import {
   gateFor,
   holdsClaim,
   intakeErrorMessage,
-  isNoStateCandidate,
+  INITIAL_PLAN_FILTER,
+  applyFilterChange,
+  applyPage,
+  cityChoices,
+  countryChoices,
+  filterOptionLabel,
+  listAdminSeatingPlans,
   listIntakes,
+  placeLabel,
   planNeedsFix,
   rejectIntake,
   returnIntake,
-  scanNoStatePlans,
+  seatsLabel,
   uploadIntakeDraft,
-  venuesOfOrganization,
   verifyErrorMessage,
   verifyPlan,
   verificationLabel,
   waitingLabel,
-  type SeatingPlanSummary,
-  type VenueRef,
 } from "@/lib/api/venuePlans";
 import { ApiError } from "@/lib/api/client";
 import { __TEST_ONLY_resetReason, requiresAdminReason, setActiveReason } from "@/lib/api/reason";
@@ -73,12 +77,69 @@ describe("small helpers", () => {
       "/v1/admin/plan-intakes?state=operator&unclaimed=true&limit=100",
     );
     expect(buildIntakeListPath({ state: "", unclaimed: false })).toBe("/v1/admin/plan-intakes?limit=100");
-    expect(buildVerificationListPath("needs_fix")).toBe("/v1/admin/seating-plans?verification_state=needs_fix&limit=200");
   });
 
-  it("labels a missing state as imported", () => {
-    expect(verificationLabel(null)).toBe("No status (imported)");
+  it("labels a missing state", () => {
+    expect(verificationLabel(null)).toBe("No status");
     expect(verificationLabel("needs_fix")).toBe("Correction necessary");
+  });
+});
+
+describe("list of seating plans to verify", () => {
+  const F = INITIAL_PLAN_FILTER;
+
+  it("builds the path from the filters", () => {
+    expect(buildVerificationListPath(F)).toBe("/v1/admin/seating-plans?verification_state=unverified&lang=en&limit=50&offset=0");
+    expect(
+      buildVerificationListPath({ state: "none", orgId: "org-1", country: "cz", cityId: "city-1", q: "  Grand  ", offset: 100 }),
+    ).toBe("/v1/admin/seating-plans?verification_state=none&org_id=org-1&country=CZ&city_id=city-1&q=Grand&lang=en&limit=50&offset=100");
+  });
+
+  it("sends no state for All and cuts the search to 100 characters", () => {
+    const path = buildVerificationListPath({ ...F, state: "all", q: "x".repeat(150) });
+    expect(path).not.toContain("verification_state");
+    expect(new URL(`http://x${path}`).searchParams.get("q")).toHaveLength(100);
+  });
+
+  it("returns to page one on any filter change and clears the city with the country", () => {
+    const onPage3 = applyPage({ ...F, country: "CZ", cityId: "c1" }, 100);
+    expect(onPage3.offset).toBe(100);
+    expect(applyFilterChange(onPage3, { state: "verified" })).toMatchObject({ state: "verified", offset: 0, cityId: "c1" });
+    expect(applyFilterChange(onPage3, { q: "opera" }).offset).toBe(0);
+    expect(applyFilterChange(onPage3, { orgId: "o" }).offset).toBe(0);
+    expect(applyFilterChange(onPage3, { country: "DE" })).toMatchObject({ country: "DE", cityId: "", offset: 0 });
+    expect(applyPage(F, -50).offset).toBe(0);
+  });
+
+  it("shows the counts in the labels", () => {
+    const counts = { none: 50, unverified: 3, needs_fix: 2, verified: 7 };
+    expect(filterOptionLabel("unverified", counts)).toBe("Not verified (3)");
+    expect(filterOptionLabel("none", counts)).toBe("No status (50)");
+    expect(filterOptionLabel("needs_fix", counts)).toBe("Correction necessary (2)");
+    expect(filterOptionLabel("verified", counts)).toBe("Verified (7)");
+    expect(filterOptionLabel("all", counts)).toBe("All (62)");
+    expect(filterOptionLabel("all", undefined)).toBe("All");
+  });
+
+  it("builds country and city choices; a city needs a country", () => {
+    const cities = [
+      { id: "c1", name: "Prague", country_iso2: "CZ" },
+      { id: "c2", name: "Brno", country_iso2: "cz" },
+      { id: "c3", name: "Berlin", country_iso2: "DE" },
+    ];
+    expect(countryChoices([{ iso2: "DE", name: "Germany" }, { iso2: "CZ", name: "Czechia" }]).map((o) => o.value)).toEqual(["CZ", "DE"]);
+    expect(cityChoices(cities, "").length).toBe(0);
+    expect(cityChoices(cities, "CZ").map((o) => o.label)).toEqual(["Brno", "Prague"]);
+  });
+
+  it("writes the place and the seats of a row", () => {
+    expect(placeLabel("Prague", "CZ")).toBe("Prague, CZ");
+    expect(placeLabel(null, "CZ")).toBe("CZ");
+    expect(placeLabel(null, null)).toBe("—");
+    expect(seatsLabel(1200, 0)).toBe("1,200");
+    expect(seatsLabel(1200, 300)).toBe("1,200 + 300 standing");
+    expect(seatsLabel(0, 0)).toBe("0");
+    expect(seatsLabel(null, 0)).toBe("—");
   });
 });
 
@@ -294,6 +355,42 @@ describe("API calls", () => {
     expect(calls[0].headers.Authorization).toBe("Bearer access-1");
   });
 
+  it("reads one page of plans with ONE request and no reason header", async () => {
+    const answer = {
+      seating_plans: [{ plan_id: ID, name: "Main floor" }],
+      total: 123,
+      limit: 50,
+      offset: 50,
+      counts: { none: 50, unverified: 3, needs_fix: 2, verified: 7 },
+    };
+    const { calls } = install(() => json(answer));
+    const page = await listAdminSeatingPlans({
+      state: "needs_fix",
+      orgId: OTHER,
+      country: "CZ",
+      cityId: ME,
+      q: "opera",
+      offset: 50,
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].method).toBe("GET");
+    const u = new URL(calls[0].url);
+    expect(u.pathname).toBe("/v1/admin/seating-plans");
+    expect(Object.fromEntries(u.searchParams)).toEqual({
+      verification_state: "needs_fix",
+      org_id: OTHER,
+      country: "CZ",
+      city_id: ME,
+      q: "opera",
+      lang: "en",
+      limit: "50",
+      offset: "50",
+    });
+    expect(calls[0].headers["X-Admin-Reason"]).toBeUndefined();
+    expect(page.total).toBe(123);
+    expect(page.counts.none).toBe(50);
+  });
+
   it("turns an error answer of the raw transport into an ApiError", async () => {
     install(() => json({ error: { code: "venue_plan_intake.draft_validation_failed", message: "bad", details: { errors: [{ code: "x" }] } } }, 422));
     const file = new File(["x"], "a.svg");
@@ -304,64 +401,3 @@ describe("API calls", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// "No status (imported)"
-// ---------------------------------------------------------------------------
-
-function plan(patch: Partial<SeatingPlanSummary> & { id: string }): SeatingPlanSummary {
-  return {
-    venue_id: "v1",
-    owner_org_id: "org-1",
-    name: "Plan",
-    plan_type: "assigned_seats",
-    visibility: "private",
-    status: "active",
-    source_seating_plan_id: null,
-    current_version_id: "ver-1",
-    category_name_overrides: {},
-    created_at: "2026-10-01T00:00:00Z",
-    updated_at: "2026-10-01T00:00:00Z",
-    ...patch,
-  };
-}
-
-describe("No state scan", () => {
-  const venues: VenueRef[] = [
-    { id: "v1", org_id: "org-1", name: "Main hall" },
-    { id: "v2", org_id: "org-1", name: "Cellar" },
-    { id: "v3", org_id: "org-2", name: "Other" },
-  ];
-
-  it("keeps active plans of the organization with a version and no state", () => {
-    const stated = new Set(["p-stated"]);
-    expect(isNoStateCandidate(plan({ id: "p1" }), "org-1", stated)).toBe(true);
-    expect(isNoStateCandidate(plan({ id: "p-stated" }), "org-1", stated)).toBe(false);
-    expect(isNoStateCandidate(plan({ id: "p2", status: "archived" }), "org-1", stated)).toBe(false);
-    expect(isNoStateCandidate(plan({ id: "p3", status: "draft" }), "org-1", stated)).toBe(false);
-    expect(isNoStateCandidate(plan({ id: "p4", current_version_id: null }), "org-1", stated)).toBe(false);
-    expect(isNoStateCandidate(plan({ id: "p5", owner_org_id: "org-2" }), "org-1", stated)).toBe(false);
-  });
-
-  it("picks the venues of one organization", () => {
-    expect(venuesOfOrganization(venues, "org-1").map((v) => v.id)).toEqual(["v1", "v2"]);
-  });
-
-  it("reads each venue, reports progress and the venues that failed", async () => {
-    const progress: number[] = [];
-    const res = await scanNoStatePlans({
-      orgId: "org-1",
-      venues,
-      stated: new Set(["p-stated"]),
-      concurrency: 2,
-      onProgress: (p) => progress.push(p.completed),
-      fetchPlans: async (venueId) => {
-        if (venueId === "v2") throw new Error("boom");
-        return [plan({ id: "p1", venue_id: "v1" }), plan({ id: "p-stated" }), plan({ id: "p-old", status: "archived" })];
-      },
-    });
-    expect(res.plans.map((p) => p.plan.id)).toEqual(["p1"]);
-    expect(res.plans[0].venue.name).toBe("Main hall");
-    expect(res.failedVenues.map((v) => v.id)).toEqual(["v2"]);
-    expect(progress[progress.length - 1]).toBe(2);
-  });
-});

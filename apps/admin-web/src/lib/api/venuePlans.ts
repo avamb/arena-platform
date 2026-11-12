@@ -7,7 +7,7 @@
  *   POST /v1/admin/plan-intakes/{id}/claim | drafts | return | approve | reject
  *   GET  /v1/admin/plan-intakes/{id}/sources/{source_id}   (X-Admin-Reason on a GET)
  *   GET  /v1/admin/plan-intakes/{id}/drafts/{n}/svg
- *   GET  /v1/admin/seating-plans?verification_state=&limit=
+ *   GET  /v1/admin/seating-plans?verification_state=&org_id=&country=&city_id=&q=&limit=&offset=
  *   POST /v1/admin/seating-plans/{id}/verify | needs-fix
  *
  * Every write and the source download carry X-Admin-Reason: reason.ts decides that
@@ -29,7 +29,6 @@ import {
 } from "@/lib/api/reason";
 import { clearSession, getAccessToken } from "@/lib/api/tokenStore";
 import { requestPermissionRefresh } from "@/lib/auth/permissionRefresh";
-import { runBatch, type BatchProgress } from "@/lib/admin/batch";
 
 type Schemas = components["schemas"];
 
@@ -55,10 +54,13 @@ export interface AdminSeatingPlanRow {
   readonly owner_org_name: string;
   readonly venue_id: string;
   readonly venue_name: string;
+  readonly city_id?: string | null;
+  readonly city_name?: string | null;
+  readonly country_iso2?: string | null;
   readonly current_version_id?: string | null;
   readonly version_number?: number | null;
-  readonly capacity_seated?: number | null;
-  readonly capacity_standing?: number | null;
+  readonly capacity_seated: number;
+  readonly capacity_standing: number;
   readonly created_at: string;
   readonly verified_at?: string | null;
 }
@@ -100,18 +102,40 @@ export const VERIFICATION_STATES = ["unverified", "needs_fix", "verified"] as co
 export type VerificationState = (typeof VERIFICATION_STATES)[number];
 /** The filter value for plans that have no state at all (imported from the old system). */
 export const NO_STATE_FILTER = "none" as const;
-export type VerificationFilter = VerificationState | typeof NO_STATE_FILTER;
+/** The filter value for every state: the server gets no verification_state. */
+export const ALL_STATES_FILTER = "all" as const;
+export type VerificationFilter = VerificationState | typeof NO_STATE_FILTER | typeof ALL_STATES_FILTER;
+
+/** The order of the status filter. */
+export const FILTER_OPTIONS: readonly VerificationFilter[] = [ALL_STATES_FILTER, NO_STATE_FILTER, "unverified", "needs_fix", "verified"];
 
 const VERIFICATION_LABELS: Readonly<Record<VerificationFilter, string>> = {
+  all: "All",
   unverified: "Not verified",
   needs_fix: "Correction necessary",
   verified: "Verified",
-  none: "No status (imported)",
+  none: "No status",
 };
 
 export function verificationLabel(state: string | null | undefined): string {
   if (state === null || state === undefined || state === "") return VERIFICATION_LABELS.none;
   return VERIFICATION_LABELS[state as VerificationFilter] ?? state;
+}
+
+/** How many plans each state holds (counts of GET /v1/admin/seating-plans; every filter but the status applies). */
+export interface VerificationCounts {
+  readonly none: number;
+  readonly unverified: number;
+  readonly needs_fix: number;
+  readonly verified: number;
+}
+
+/** "Not verified (3)"; without counts (not loaded yet) the bare label. "All" is the sum of the four. */
+export function filterOptionLabel(f: VerificationFilter, counts: VerificationCounts | undefined): string {
+  const base = VERIFICATION_LABELS[f];
+  if (counts === undefined) return base;
+  const n = f === ALL_STATES_FILTER ? counts.none + counts.unverified + counts.needs_fix + counts.verified : counts[f];
+  return `${base} (${n})`;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,10 +188,62 @@ export function buildIntakeListPath(f: IntakeListFilter): string {
   return `/v1/admin/plan-intakes?${params.toString()}`;
 }
 
-export function buildVerificationListPath(state: VerificationState, limit = 200): string {
+export const PLANS_PAGE_SIZE = 50;
+export const PLANS_SEARCH_MAX = 100;
+
+/** What the list of plans to verify shows. Every field is optional on the server. */
+export interface PlanListFilter {
+  readonly state: VerificationFilter;
+  /** "" means every organization. */
+  readonly orgId: string;
+  /** ISO-2 code; "" means every country. */
+  readonly country: string;
+  /** "" means every city. */
+  readonly cityId: string;
+  /** A part of the venue name; "" means no search. */
+  readonly q: string;
+  readonly offset: number;
+}
+
+export const INITIAL_PLAN_FILTER: PlanListFilter = {
+  state: "unverified",
+  orgId: "",
+  country: "",
+  cityId: "",
+  q: "",
+  offset: 0,
+};
+
+/**
+ * A change of any filter returns to the first page. A new country clears the city,
+ * because a city belongs to one country. A change of the page alone is applyPage.
+ */
+export function applyFilterChange(
+  prev: PlanListFilter,
+  patch: Partial<Omit<PlanListFilter, "offset">>,
+): PlanListFilter {
+  const next: PlanListFilter = { ...prev, ...patch, offset: 0 };
+  if (patch.country !== undefined && patch.country !== prev.country && patch.cityId === undefined) {
+    return { ...next, cityId: "" };
+  }
+  return next;
+}
+
+export function applyPage(prev: PlanListFilter, offset: number): PlanListFilter {
+  return { ...prev, offset: Math.max(0, offset) };
+}
+
+export function buildVerificationListPath(f: PlanListFilter, limit: number = PLANS_PAGE_SIZE): string {
   const params = new URLSearchParams();
-  params.set("verification_state", state);
+  if (f.state !== ALL_STATES_FILTER) params.set("verification_state", f.state);
+  if (f.orgId !== "") params.set("org_id", f.orgId);
+  if (f.country !== "") params.set("country", f.country.toUpperCase());
+  if (f.cityId !== "") params.set("city_id", f.cityId);
+  const q = f.q.trim().slice(0, PLANS_SEARCH_MAX);
+  if (q !== "") params.set("q", q);
+  params.set("lang", "en");
   params.set("limit", String(limit));
+  params.set("offset", String(f.offset));
   return `/v1/admin/seating-plans?${params.toString()}`;
 }
 
@@ -561,15 +637,17 @@ export async function fetchDraftSvg(intakeId: string, n: number): Promise<Blob> 
 // Verification calls
 // ---------------------------------------------------------------------------
 
-export async function listPlansByVerification(
-  state: VerificationState,
-  limit = 200,
-): Promise<readonly AdminSeatingPlanRow[]> {
-  const res = await authedFetch<{ seating_plans: AdminSeatingPlanRow[] }>({
-    method: "GET",
-    path: buildVerificationListPath(state, limit),
-  });
-  return res.seating_plans;
+export interface AdminSeatingPlanPage {
+  readonly seating_plans: readonly AdminSeatingPlanRow[];
+  readonly total: number;
+  readonly limit: number;
+  readonly offset: number;
+  readonly counts: VerificationCounts;
+}
+
+/** ONE request per view of the list: the page, the total and the counts of every state. */
+export function listAdminSeatingPlans(f: PlanListFilter): Promise<AdminSeatingPlanPage> {
+  return authedFetch<AdminSeatingPlanPage>({ method: "GET", path: buildVerificationListPath(f) });
 }
 
 export function verifyPlan(planId: string): Promise<SeatingPlanVerification> {
@@ -617,116 +695,20 @@ export async function fetchPlanPreviewUrl(planId: string, currentVersionId: stri
 }
 
 // ---------------------------------------------------------------------------
-// "No state (imported)": plans the server never lists
-//
-// GET /v1/admin/seating-plans leaves out plans whose verification_state is NULL, and
-// GET /v1/venues/{venue_id}/seating-plans does not carry the state. So the list is
-// built for ONE organization like this: take its venues (GET /v1/venues, filtered by
-// org_id), read each venue's plans (GET /v1/venues/{id}/seating-plans), and drop every
-// plan that the admin list shows in any of the three states. What is left, active and
-// with a current version, has no state.
+// Rows and geo choices of the list
 // ---------------------------------------------------------------------------
 
-export interface VenueRef {
-  readonly id: string;
-  readonly org_id: string;
-  readonly name: string;
-}
-
-export interface StatedPlanIds {
-  readonly ids: ReadonlySet<string>;
-  /** True when one of the three lists was cut by its limit, so a stated plan may be missing from ids. */
-  readonly truncated: boolean;
-}
-
-export async function loadStatedPlanIds(limit = 200): Promise<StatedPlanIds> {
-  const lists = await Promise.all(VERIFICATION_STATES.map((s) => listPlansByVerification(s, limit)));
-  const ids = new Set<string>();
-  let truncated = false;
-  for (const rows of lists) {
-    if (rows.length >= limit) truncated = true;
-    for (const r of rows) ids.add(r.plan_id);
-  }
-  return { ids, truncated };
-}
-
-export function venuesOfOrganization(venues: readonly VenueRef[], orgId: string): readonly VenueRef[] {
-  return venues.filter((v) => v.org_id === orgId);
-}
-
-/** Active, with a current version, owned by the organization and not in any stated list. */
-export function isNoStateCandidate(
-  plan: Pick<SeatingPlanSummary, "id" | "status" | "current_version_id" | "owner_org_id">,
-  orgId: string,
-  stated: ReadonlySet<string>,
-): boolean {
-  return (
-    plan.status === "active" &&
-    plan.current_version_id !== null &&
-    plan.current_version_id !== undefined &&
-    plan.owner_org_id === orgId &&
-    !stated.has(plan.id)
-  );
-}
-
-export interface NoStatePlan {
-  readonly plan: SeatingPlanSummary;
-  readonly venue: VenueRef;
-}
-
-export interface NoStateScanOptions {
-  readonly orgId: string;
-  readonly venues: readonly VenueRef[];
-  readonly stated: ReadonlySet<string>;
-  readonly concurrency?: number;
-  readonly onProgress?: (p: BatchProgress) => void;
-  readonly shouldStop?: () => boolean;
-  /** Replaceable in tests. */
-  readonly fetchPlans?: (venueId: string) => Promise<readonly SeatingPlanSummary[]>;
-}
-
-export interface NoStateScanResult {
-  readonly plans: readonly NoStatePlan[];
-  readonly failedVenues: readonly VenueRef[];
-  readonly stopped: boolean;
-}
-
-export async function listVenueSeatingPlans(venueId: string): Promise<readonly SeatingPlanSummary[]> {
-  const res = await authedFetch<{ seating_plans: SeatingPlanSummary[] }>({
-    method: "GET",
-    path: `/v1/venues/${encodeURIComponent(venueId)}/seating-plans`,
-  });
-  return res.seating_plans;
-}
-
-export async function scanNoStatePlans(opts: NoStateScanOptions): Promise<NoStateScanResult> {
-  const venues = venuesOfOrganization(opts.venues, opts.orgId);
-  const fetchPlans = opts.fetchPlans ?? listVenueSeatingPlans;
-  const result = await runBatch(
-    venues,
-    async (venue) => {
-      const plans = await fetchPlans(venue.id);
-      return plans
-        .filter((p) => isNoStateCandidate(p, opts.orgId, opts.stated))
-        .map((plan): NoStatePlan => ({ plan, venue }));
-    },
-    { concurrency: opts.concurrency ?? 4, onProgress: opts.onProgress, shouldStop: opts.shouldStop },
-  );
-  return {
-    plans: result.done.flatMap((d) => d.value),
-    failedVenues: result.failed.map((f) => f.item),
-    stopped: result.stopped,
-  };
-}
-
-/** A row of the verification table, whatever list it came from. */
+/** A row of the verification table. */
 export interface VerificationRow {
   readonly planId: string;
   readonly name: string;
   readonly orgName: string;
   readonly venueName: string;
   readonly venueId: string;
+  readonly cityName: string | null;
+  readonly countryIso2: string | null;
   readonly seats: number | null;
+  readonly standing: number;
   readonly createdAt: string;
   readonly state: string | null;
   readonly note: string | null;
@@ -740,7 +722,10 @@ export function rowFromAdminPlan(p: AdminSeatingPlanRow): VerificationRow {
     orgName: p.owner_org_name,
     venueName: p.venue_name,
     venueId: p.venue_id,
+    cityName: p.city_name ?? null,
+    countryIso2: p.country_iso2 ?? null,
     seats: p.capacity_seated ?? null,
+    standing: p.capacity_standing ?? 0,
     createdAt: p.created_at,
     state: p.verification_state ?? null,
     note: p.verification_note ?? null,
@@ -748,17 +733,48 @@ export function rowFromAdminPlan(p: AdminSeatingPlanRow): VerificationRow {
   };
 }
 
-export function rowFromNoState(n: NoStatePlan, orgName: string): VerificationRow {
-  return {
-    planId: n.plan.id,
-    name: n.plan.name,
-    orgName,
-    venueName: n.venue.name,
-    venueId: n.venue.id,
-    seats: null,
-    createdAt: n.plan.created_at,
-    state: null,
-    note: null,
-    currentVersionId: n.plan.current_version_id ?? null,
-  };
+/** "Prague, CZ"; a part that is missing is left out; a dash when both are missing. */
+export function placeLabel(cityName: string | null, countryIso2: string | null): string {
+  const parts = [cityName, countryIso2].filter((s): s is string => s !== null && s !== "");
+  return parts.length === 0 ? "—" : parts.join(", ");
 }
+
+/** "1,200" or "1,200 + 300 standing"; a dash when the plan has no places at all. */
+export function seatsLabel(seats: number | null, standing: number): string {
+  if (seats === null && standing <= 0) return "—";
+  const s = (seats ?? 0).toLocaleString("en-US");
+  return standing > 0 ? `${s} + ${standing.toLocaleString("en-US")} standing` : s;
+}
+
+export interface GeoCountry {
+  readonly iso2: string;
+  readonly name: string;
+}
+
+export interface GeoCity {
+  readonly id: string;
+  readonly name: string;
+  readonly country_iso2: string;
+}
+
+export interface GeoOption {
+  readonly value: string;
+  readonly label: string;
+}
+
+/** The countries of GET /v1/geo/countries as options: value is the ISO-2 code. */
+export function countryChoices(countries: readonly GeoCountry[]): readonly GeoOption[] {
+  return countries
+    .map((c) => ({ value: c.iso2.toUpperCase(), label: `${c.name} (${c.iso2.toUpperCase()})` }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+/** The cities of one country. With no country chosen there is no city to choose. */
+export function cityChoices(cities: readonly GeoCity[], country: string): readonly GeoOption[] {
+  if (country === "") return [];
+  return cities
+    .filter((c) => c.country_iso2.toUpperCase() === country.toUpperCase())
+    .map((c) => ({ value: c.id, label: c.name }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+

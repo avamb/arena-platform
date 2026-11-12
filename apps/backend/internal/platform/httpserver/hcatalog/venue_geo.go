@@ -144,7 +144,7 @@ func (h *Handler) createVenueWithCityByName(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	cityID, cityCreated, err := createOrFindOrgCity(ctx, qtx, gen.CountryRow{ID: ref.ID, Iso2: ref.Iso2, Iso3: ref.Iso3, Slug: ref.Slug, Currency: ref.Currency},
+	cityID, cityCreated, err := createOrFindOrgCity(ctx, tx, qtx, gen.CountryRow{ID: ref.ID, Iso2: ref.Iso2, Iso3: ref.Iso3, Slug: ref.Slug, Currency: ref.Currency},
 		req.CityName, normalizeCityLocale(locale))
 	if err != nil {
 		h.venueGeoFailed(w, r, "city", err)

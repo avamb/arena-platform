@@ -496,6 +496,7 @@ Session lifecycle and times, event status and sales state, promoters, sales chan
 * Publishing through POST .../events/{id}/status bin…
 * The hold gate refuses a cancelled session, and the…
 * A VERIFIED venue is open to every organization (mi…
+* A city is found before it is created: citymatch.FindInCountry (any name, any language, slug, alias of its own country)
 
 ### [Telegram bot: core, wizard and screens](docs/agents/bot-core-wizard.md)
 
@@ -757,6 +758,6 @@ Spec 64: intake states, private plan sources, approve, superadmin verification a
 * The web reads world-countries and venue-directory only through directoryApi.ts; a new country comes only with the venue create
 * The venue chooser is ONE component for the screen Venues and the wizard
 * The web intake refuses a file before any request and keeps one Idempotency-Key per attempt
-* The admin queue /venue-plans finds plans with no verification state by subtraction
+* The admin queue of plans to verify is ONE request; no state parameter means every state, none means NULL
 * A draft SVG of an intake is read by seating.ImportAnySVG (authoring or sbt); the plan version route takes authoring only
 * Only an ACTIVE plan is seen by the queue and by the bot; the library loader activates a plan after its version upload

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -70,10 +71,10 @@ func TestSeatingPlanVerify_ForkableByOtherOrganization(t *testing.T) {
 }
 
 func TestSeatingPlanVerify_FilterAndNote(t *testing.T) {
-	if s, ok := ParseVerificationStateFilter(""); !ok || s != "unverified" {
-		t.Errorf("empty filter = %q %v, want unverified", s, ok)
+	if s, ok := ParseVerificationStateFilter(""); !ok || s != "" {
+		t.Errorf("empty filter = %q %v, want every state", s, ok)
 	}
-	for _, s := range []string{"unverified", "verified", "needs_fix"} {
+	for _, s := range []string{"none", "unverified", "verified", "needs_fix"} {
 		if got, ok := ParseVerificationStateFilter(s); !ok || got != s {
 			t.Errorf("filter %q = %q %v", s, got, ok)
 		}
@@ -163,5 +164,65 @@ func TestSeatingPlanVerify_GateAnswersBeforeTheDatabase(t *testing.T) {
 	h.HandleAdminListSeatingPlans(rec, r)
 	if rec.Code != http.StatusBadRequest || decodeCode(t, rec.Body) != "seating_plan.invalid_verification_state" {
 		t.Errorf("list with an unknown state: %d", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	r = verifyRequest(http.MethodGet, "/v1/admin/seating-plans?q="+strings.Repeat("a", 101), plan, "", true)
+	h.HandleAdminListSeatingPlans(rec, r)
+	if rec.Code != http.StatusBadRequest || decodeCode(t, rec.Body) != "seating_plan.invalid_query" {
+		t.Errorf("list with a long q: %d", rec.Code)
+	}
+}
+
+func TestSeatingPlanVerify_ParseAdminPlansQuery(t *testing.T) {
+	org, city := uuid.New(), uuid.New()
+	got, perr := ParseAdminPlansQuery(url.Values{})
+	if perr != nil || got.State != "" || got.Limit != 50 || got.Offset != 0 ||
+		got.Filter.OwnerOrgID != nil || got.Filter.CityID != nil || got.Filter.Country != "" || got.Filter.VenueNamePart != "" {
+		t.Fatalf("defaults = %+v %v", got, perr)
+	}
+	got, perr = ParseAdminPlansQuery(url.Values{
+		"verification_state": {"none"}, "org_id": {org.String()}, "country": {" es "},
+		"city_id": {city.String()}, "q": {"  Big   50%_hall\\ "}, "limit": {"200"}, "offset": {"400"},
+	})
+	if perr != nil {
+		t.Fatalf("full query refused: %+v", perr)
+	}
+	if got.State != "none" || *got.Filter.OwnerOrgID != org || got.Filter.Country != "ES" || *got.Filter.CityID != city ||
+		got.Filter.VenueNamePart != `Big 50\%\_hall\\` || got.Limit != 200 || got.Offset != 400 {
+		t.Fatalf("full query = %+v", got)
+	}
+	if got, perr := ParseAdminPlansQuery(url.Values{"q": {strings.Repeat("я", 100)}}); perr != nil || got.Filter.VenueNamePart == "" {
+		t.Fatalf("100-character q refused: %+v", perr)
+	}
+	for _, c := range []struct {
+		name string
+		q    url.Values
+		code string
+	}{
+		{"state", url.Values{"verification_state": {"approved"}}, "seating_plan.invalid_verification_state"},
+		{"org", url.Values{"org_id": {"not-a-uuid"}}, "seating_plan.invalid_org_id"},
+		{"country 3 letters", url.Values{"country": {"ESP"}}, "seating_plan.invalid_country"},
+		{"country digits", url.Values{"country": {"1A"}}, "seating_plan.invalid_country"},
+		{"city", url.Values{"city_id": {"x"}}, "seating_plan.invalid_city_id"},
+		{"q", url.Values{"q": {strings.Repeat("я", 101)}}, "seating_plan.invalid_query"},
+		{"limit 0", url.Values{"limit": {"0"}}, "seating_plan.invalid_limit"},
+		{"limit 201", url.Values{"limit": {"201"}}, "seating_plan.invalid_limit"},
+		{"limit text", url.Values{"limit": {"ten"}}, "seating_plan.invalid_limit"},
+		{"offset negative", url.Values{"offset": {"-1"}}, "seating_plan.invalid_offset"},
+		{"offset huge", url.Values{"offset": {"1000001"}}, "seating_plan.invalid_offset"},
+	} {
+		if _, perr := ParseAdminPlansQuery(c.q); perr == nil || perr.Code != c.code {
+			t.Errorf("%s: %+v, want %s", c.name, perr, c.code)
+		}
+	}
+}
+
+func TestSeatingPlanVerify_CountsTotal(t *testing.T) {
+	c := AdminSeatingPlanCounts{None: 1, Unverified: 2, NeedsFix: 3, Verified: 4}
+	for state, want := range map[string]int64{"": 10, "none": 1, "unverified": 2, "needs_fix": 3, "verified": 4} {
+		if got := c.Total(state); got != want {
+			t.Errorf("Total(%q) = %d, want %d", state, got, want)
+		}
 	}
 }

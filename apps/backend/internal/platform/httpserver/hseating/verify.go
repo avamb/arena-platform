@@ -9,7 +9,7 @@
 // /v1/seating-plans/{id}/fork; the copy has its own versions, categories and
 // annotations, the template never changes through it.
 //
-//	GET  /v1/admin/seating-plans?verification_state=   the queue (superadmin)
+//	GET  /v1/admin/seating-plans?verification_state=   the list with filters, page and counts (superadmin)
 //	POST /v1/admin/seating-plans/{plan_id}/verify      verify (superadmin + X-Admin-Reason)
 //	POST /v1/admin/seating-plans/{plan_id}/needs-fix   send back with a note (superadmin + X-Admin-Reason)
 //	GET  /v1/organizations/{org_id}/venues/{venue_id}/plan-templates
@@ -24,6 +24,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -37,6 +39,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/i18n"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 )
 
@@ -58,8 +61,14 @@ const (
 	// needsFixNoteMax is the longest note of needs-fix, in characters.
 	needsFixNoteMax = 1000
 
-	adminPlansDefaultLimit = 100
+	// VerificationNone is the filter value of the admin list for a plan
+	// whose verification_state is NULL (never sent for verification).
+	VerificationNone = "none"
+
+	adminPlansDefaultLimit = 50
 	adminPlansMaxLimit     = 200
+	adminPlansMaxOffset    = 1_000_000
+	adminPlansMaxQueryLen  = 100
 )
 
 var verificationStates = map[string]bool{
@@ -68,14 +77,108 @@ var verificationStates = map[string]bool{
 	VerificationNeedsFix:   true,
 }
 
+var adminPlansIso2Re = regexp.MustCompile(`^[A-Z]{2}$`)
+
 // ParseVerificationStateFilter reads the verification_state query value of
-// the admin list; empty means unverified.
+// the admin list: empty means every state, none means a NULL state.
 func ParseVerificationStateFilter(raw string) (string, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return VerificationUnverified, true
+		return "", true
 	}
-	return raw, verificationStates[raw]
+	return raw, raw == VerificationNone || verificationStates[raw]
+}
+
+// AdminPlansQuery is the parsed query of GET /v1/admin/seating-plans.
+type AdminPlansQuery struct {
+	// State is "" (every state), none or a verification state.
+	State  string
+	Filter gen.AdminSeatingPlanFilter
+	Limit  int
+	Offset int
+}
+
+// AdminPlansParamError is a refused query parameter of the admin list.
+type AdminPlansParamError struct {
+	Code    string
+	Message string
+	Field   string
+	Extra   map[string]any
+}
+
+func adminPlansParamErr(code, message, field string) *AdminPlansParamError {
+	return &AdminPlansParamError{Code: code, Message: message, Field: field}
+}
+
+// ParseAdminPlansQuery reads the filters and the page of the admin list.
+// org_id is a filter for an authorized platform caller, never a grant.
+func ParseAdminPlansQuery(q url.Values) (AdminPlansQuery, *AdminPlansParamError) {
+	out := AdminPlansQuery{Limit: adminPlansDefaultLimit}
+	state, ok := ParseVerificationStateFilter(q.Get("verification_state"))
+	if !ok {
+		return out, adminPlansParamErr("seating_plan.invalid_verification_state",
+			"verification_state must be one of none|unverified|verified|needs_fix", "verification_state")
+	}
+	out.State = state
+	if raw := strings.TrimSpace(q.Get("org_id")); raw != "" {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return out, adminPlansParamErr("seating_plan.invalid_org_id", "Send org_id as a UUID.", "org_id")
+		}
+		out.Filter.OwnerOrgID = &id
+	}
+	if raw := strings.ToUpper(strings.TrimSpace(q.Get("country"))); raw != "" {
+		if !adminPlansIso2Re.MatchString(raw) {
+			return out, adminPlansParamErr("seating_plan.invalid_country",
+				"Send country as a 2-letter ISO 3166-1 code, for example ES.", "country")
+		}
+		out.Filter.Country = raw
+	}
+	if raw := strings.TrimSpace(q.Get("city_id")); raw != "" {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return out, adminPlansParamErr("seating_plan.invalid_city_id", "Send city_id as a UUID.", "city_id")
+		}
+		out.Filter.CityID = &id
+	}
+	text := strings.Join(strings.Fields(q.Get("q")), " ")
+	if utf8.RuneCountInString(text) > adminPlansMaxQueryLen {
+		e := adminPlansParamErr("seating_plan.invalid_query",
+			"The search text is too long. Use at most 100 characters.", "q")
+		e.Extra = map[string]any{"max_length": adminPlansMaxQueryLen}
+		return out, e
+	}
+	out.Filter.VenueNamePart = escapeLike(text)
+	if raw := strings.TrimSpace(q.Get("limit")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > adminPlansMaxLimit {
+			return out, adminPlansParamErr("seating_plan.invalid_limit", "limit must be a whole number from 1 to 200", "limit")
+		}
+		out.Limit = n
+	}
+	if raw := strings.TrimSpace(q.Get("offset")); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 || n > adminPlansMaxOffset {
+			return out, adminPlansParamErr("seating_plan.invalid_offset", "offset must be a whole number from 0 to 1000000", "offset")
+		}
+		out.Offset = n
+	}
+	return out, nil
+}
+
+// escapeLike escapes the LIKE wildcards of a typed text (backslash escape).
+func escapeLike(s string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
+}
+
+// adminPlansLocale is the language of city names: lang, else locale, else
+// Accept-Language, else English (the rule of the venue directory).
+func adminPlansLocale(r *http.Request) string {
+	lang := strings.TrimSpace(r.URL.Query().Get("lang"))
+	if lang == "" {
+		lang = strings.TrimSpace(r.URL.Query().Get("locale"))
+	}
+	return i18n.NegotiateLocale(r.Header.Get("Accept-Language"), lang, "", "en", nil)
 }
 
 // NormalizeNeedsFixNote trims the note of needs-fix and reports whether it
@@ -171,12 +274,49 @@ type AdminSeatingPlanItem struct {
 	OwnerOrgName      string  `json:"owner_org_name"`
 	VenueID           string  `json:"venue_id"`
 	VenueName         string  `json:"venue_name"`
+	CityID            *string `json:"city_id"`
+	CityName          *string `json:"city_name"`
+	CountryIso2       *string `json:"country_iso2"`
 	CurrentVersionID  *string `json:"current_version_id"`
 	VersionNumber     *int32  `json:"version_number"`
-	CapacitySeated    *int32  `json:"capacity_seated"`
-	CapacityStanding  *int32  `json:"capacity_standing"`
+	CapacitySeated    int32   `json:"capacity_seated"`
+	CapacityStanding  int32   `json:"capacity_standing"`
 	CreatedAt         string  `json:"created_at"`
+	UpdatedAt         string  `json:"updated_at"`
 	VerifiedAt        *string `json:"verified_at"`
+}
+
+// AdminSeatingPlanCounts is the number of plans in each verification state
+// under the filters of the request except verification_state.
+type AdminSeatingPlanCounts struct {
+	None       int64 `json:"none"`
+	Unverified int64 `json:"unverified"`
+	NeedsFix   int64 `json:"needs_fix"`
+	Verified   int64 `json:"verified"`
+}
+
+// Total is the count of one state filter value ("" is every state).
+func (c AdminSeatingPlanCounts) Total(state string) int64 {
+	switch state {
+	case VerificationNone:
+		return c.None
+	case VerificationUnverified:
+		return c.Unverified
+	case VerificationNeedsFix:
+		return c.NeedsFix
+	case VerificationVerified:
+		return c.Verified
+	}
+	return c.None + c.Unverified + c.NeedsFix + c.Verified
+}
+
+// AdminSeatingPlanListResponse is the answer of GET /v1/admin/seating-plans.
+type AdminSeatingPlanListResponse struct {
+	SeatingPlans []AdminSeatingPlanItem `json:"seating_plans"`
+	Total        int64                  `json:"total"`
+	Limit        int                    `json:"limit"`
+	Offset       int                    `json:"offset"`
+	Counts       AdminSeatingPlanCounts `json:"counts"`
 }
 
 // PlanTemplateItem is one verified template of a venue.
@@ -254,45 +394,38 @@ func (h *Handler) dbReady(w http.ResponseWriter, r *http.Request) bool {
 // GET /v1/admin/seating-plans
 // ─────────────────────────────────────────────────────────────────────────────
 
-// HandleAdminListSeatingPlans lists the plans in one verification state,
-// oldest first, with their organization and venue names.
+// HandleAdminListSeatingPlans lists the live seating plans for the
+// superadmin, newest first, in one request: filters, one page, the total and
+// the count per verification state. Archived and deleted plans and plans of
+// archived or deleted venues are never listed or counted; draft plans are.
 func (h *Handler) HandleAdminListSeatingPlans(w http.ResponseWriter, r *http.Request) {
 	if !h.dbReady(w, r) || !requireSuperadmin(w, r) {
 		return
 	}
-	q := r.URL.Query()
-	state, ok := ParseVerificationStateFilter(q.Get("verification_state"))
-	if !ok {
-		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-			"seating_plan.invalid_verification_state",
-			"verification_state must be one of unverified|verified|needs_fix", r,
-			map[string]any{"field": "verification_state"},
-		))
+	pq, perr := ParseAdminPlansQuery(r.URL.Query())
+	if perr != nil {
+		details := map[string]any{"field": perr.Field}
+		for k, v := range perr.Extra {
+			details[k] = v
+		}
+		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(perr.Code, perr.Message, r, details))
 		return
 	}
-	limit := adminPlansDefaultLimit
-	if raw := strings.TrimSpace(q.Get("limit")); raw != "" {
-		n, err := strconv.Atoi(raw)
-		if err != nil || n < 1 || n > adminPlansMaxLimit {
-			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
-				"seating_plan.invalid_limit", "limit must be a whole number from 1 to 200", r,
-				map[string]any{"field": "limit"},
-			))
-			return
-		}
-		limit = n
-	}
-	rows, err := h.queries.ListSeatingPlansByVerificationState(r.Context(), state, int32(limit)) //nolint:gosec // 1..200
+	ctx := r.Context()
+	counts, err := h.queries.CountAdminSeatingPlans(ctx, pq.Filter)
 	if err != nil {
-		h.logger.Error("seating_plan: verification list failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"seating_plan.list_failed", "failed to list seating plans", r,
-		))
+		h.adminListFailed(w, r, "counts", err)
+		return
+	}
+	rows, err := h.queries.ListAdminSeatingPlans(ctx, pq.Filter, pq.State, adminPlansLocale(r),
+		int32(pq.Limit), int32(pq.Offset)) //nolint:gosec // limit 1..200, offset 0..1000000
+	if err != nil {
+		h.adminListFailed(w, r, "list", err)
 		return
 	}
 	out := make([]AdminSeatingPlanItem, 0, len(rows))
 	for _, p := range rows {
-		out = append(out, AdminSeatingPlanItem{
+		item := AdminSeatingPlanItem{
 			PlanID:            p.ID.String(),
 			Name:              p.Name,
 			PlanType:          p.PlanType,
@@ -304,15 +437,40 @@ func (h *Handler) HandleAdminListSeatingPlans(w http.ResponseWriter, r *http.Req
 			OwnerOrgName:      p.OrgName,
 			VenueID:           p.VenueID.String(),
 			VenueName:         p.VenueName,
+			CityID:            uuidStrPtr(p.CityID),
+			CityName:          p.CityName,
+			CountryIso2:       p.CountryIso2,
 			CurrentVersionID:  uuidStrPtr(p.CurrentVersionID),
 			VersionNumber:     p.VersionNumber,
-			CapacitySeated:    p.CapacitySeated,
-			CapacityStanding:  p.CapacityStanding,
 			CreatedAt:         p.CreatedAt.UTC().Format(time.RFC3339),
+			UpdatedAt:         p.UpdatedAt.UTC().Format(time.RFC3339),
 			VerifiedAt:        rfc3339Ptr(p.VerifiedAt),
-		})
+		}
+		if p.CapacitySeated != nil {
+			item.CapacitySeated = *p.CapacitySeated
+		}
+		if p.CapacityStanding != nil {
+			item.CapacityStanding = *p.CapacityStanding
+		}
+		out = append(out, item)
 	}
-	httputil.WriteJSON(w, http.StatusOK, map[string]any{"seating_plans": out})
+	c := AdminSeatingPlanCounts{
+		None: counts.None, Unverified: counts.Unverified, NeedsFix: counts.NeedsFix, Verified: counts.Verified,
+	}
+	httputil.WriteJSON(w, http.StatusOK, AdminSeatingPlanListResponse{
+		SeatingPlans: out,
+		Total:        c.Total(pq.State),
+		Limit:        pq.Limit,
+		Offset:       pq.Offset,
+		Counts:       c,
+	})
+}
+
+func (h *Handler) adminListFailed(w http.ResponseWriter, r *http.Request, block string, err error) {
+	h.logger.Error("seating_plan: verification list failed", slog.String("block", block), slog.String("error", err.Error()))
+	httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+		"seating_plan.list_failed", "failed to list seating plans", r,
+	))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
