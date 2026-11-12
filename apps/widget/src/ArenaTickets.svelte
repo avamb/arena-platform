@@ -67,6 +67,7 @@
     seatedTiersOf,
     tiersAreFree,
     planlessGaTiers,
+    gaPreselection,
     identifyGaAreas,
     buildGaItems,
     totalSelectionCount,
@@ -266,7 +267,35 @@
     categoryByCategoryIndex = new Map();
   });
 
-  // ── Checkout state ─────────────────────────────────────────────────────────
+  // One-time preselection of quantity 1 on the first purchasable GA tier, so
+  // the sticky cart bar is visible at once. Done at most once per selected
+  // session: a buyer who sets 0 or removes the line is never overridden.
+  // Skipped when several pickers share the page (promoter date list: every
+  // row mounts its own <arena-tickets cover/frame="hidden">) because each
+  // would open its own cart. Detected by the card signature (frame AND cover
+  // hidden) or by more than one <arena-tickets> element in the document.
+  let gaPreselectDoneFor: string | null = null;
+
+  function sharesPageWithOtherPickers(): boolean {
+    if (frameHidden && coverHidden) return true;
+    const doc = host?.ownerDocument;
+    return !!doc && doc.querySelectorAll('arena-tickets').length > 1;
+  }
+
+  $effect(() => {
+    const session = selectedSession;
+    const tiers = gaTiers;
+    if (!session || tiers.length === 0 || stage !== 'selecting') return;
+    if (gaPreselectDoneFor === session.id) return;
+    untrack(() => {
+      gaPreselectDoneFor = session.id;
+      if (sharesPageWithOtherPickers()) return;
+      const pre = gaPreselection(tiers, gaQuantities, selectedSeatKeys.size);
+      if (pre) gaQuantities = pre;
+    });
+  });
+
+  // ── Checkout state─────────────────────────────────────────────────────────
 
   let checkoutToken = $state<string | null>(null);
   /**
@@ -1206,7 +1235,7 @@
             expiresAt={holdExpiresAt}
             locale={normLocale}
             onOpen={openCartSheet}
-            cta={frameHidden ? t.continue_to_payment : null}
+            cta={t.continue_to_payment}
           />
         {/if}
 
