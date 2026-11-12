@@ -240,8 +240,8 @@ func TestPasswordReset116_SQLQueryFileExists(t *testing.T) {
 	if !strings.Contains(content, "GetPasswordResetToken") {
 		t.Error("password_reset_tokens.sql should contain GetPasswordResetToken query")
 	}
-	if !strings.Contains(content, "MarkPasswordResetTokenUsed") {
-		t.Error("password_reset_tokens.sql should contain MarkPasswordResetTokenUsed query")
+	if !strings.Contains(content, "ConsumePasswordResetToken") {
+		t.Error("password_reset_tokens.sql should contain ConsumePasswordResetToken query")
 	}
 }
 
@@ -253,8 +253,8 @@ func TestPasswordReset116_GenFileExists(t *testing.T) {
 	if !strings.Contains(content, "GetPasswordResetTokenRow") {
 		t.Error("password_reset_tokens.sql.go should contain GetPasswordResetTokenRow struct")
 	}
-	if !strings.Contains(content, "MarkPasswordResetTokenUsed") {
-		t.Error("password_reset_tokens.sql.go should contain MarkPasswordResetTokenUsed")
+	if !strings.Contains(content, "ConsumePasswordResetToken") {
+		t.Error("password_reset_tokens.sql.go should contain ConsumePasswordResetToken")
 	}
 }
 

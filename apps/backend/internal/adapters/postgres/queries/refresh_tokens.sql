@@ -5,20 +5,28 @@ INSERT INTO refresh_tokens (token, user_id, expires_at)
 VALUES ($1, $2, $3);
 
 -- name: GetRefreshToken :one
-SELECT token, user_id, expires_at, revoked_at, created_at
+SELECT token, user_id, expires_at, revoked_at, created_at, revoke_reason
 FROM refresh_tokens
 WHERE token = $1;
 
 -- name: RevokeRefreshToken :exec
+-- A sign-out or a session eviction (migration 0214: revoke_reason). A token
+-- that is already revoked keeps its first time and reason.
 UPDATE refresh_tokens
-SET revoked_at = now()
+SET revoked_at = now(), revoke_reason = 'signed_out'
+WHERE token = $1 AND revoked_at IS NULL;
+
+-- name: RotateRefreshToken :exec
+-- The token was replaced by a newer one on refresh.
+UPDATE refresh_tokens
+SET revoked_at = now(), revoke_reason = 'rotated'
 WHERE token = $1;
 
 -- name: RevokeAllUserRefreshTokens :exec
 -- Revokes every active refresh token for a user in one sweep.
 -- Called when a password reset succeeds or a session-compromise is detected.
 UPDATE refresh_tokens
-SET revoked_at = now()
+SET revoked_at = now(), revoke_reason = 'revoked_all'
 WHERE user_id = $1 AND revoked_at IS NULL;
 
 -- name: GetUserByID :one

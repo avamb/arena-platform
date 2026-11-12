@@ -18,12 +18,17 @@
 //  2. Hash the token: tokenHash = SHA-256(rawToken).
 //  3. Open a read-write DB transaction (rotation requires writes).
 //  4. Fetch the token row by tokenHash; return 401 when not found.
-//  5. If revoked_at IS NOT NULL → SESSION COMPROMISE: revoke all user sessions,
-//     clear Redis session set, return 401 "auth.session_compromised".
+//  5. If revoked_at IS NOT NULL, the revoke reason (migration 0214) decides:
+//     a token replaced by rotation ('rotated', or NULL on a row revoked before
+//     the reason was recorded) is reuse of an old token: revoke all user
+//     sessions, clear the Redis session set, return 401
+//     "auth.session_compromised". A token revoked by a sign-out, a session
+//     eviction or a revoke-all sweep returns 401 "auth.invalid_refresh_token"
+//     and changes nothing.
 //  6. Verify the token has not expired → 401.
 //  7. Fetch the owning user to populate the new JWT claims.
 //  8. Issue a new JWT access token (15-minute TTL).
-//  9. Generate a new refresh token; revoke old token in DB, insert new hash.
+//  9. Generate a new refresh token; mark the old token rotated in DB, insert new hash.
 //
 // 10. Commit transaction.
 // 11. Update Redis: revoke old raw token, track new raw token.
@@ -38,6 +43,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -56,6 +62,12 @@ const (
 	accessTokenTTL  = 15 * time.Minute
 	refreshTokenTTL = 30 * 24 * time.Hour
 )
+
+// setRateLimitRetryAfter puts the wait of an auth.rate_limited answer into
+// the Retry-After header too; the body carries it as retry_after_seconds.
+func setRateLimitRetryAfter(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", strconv.Itoa(int(loginRateLimitWindow.Seconds())))
+}
 
 // loginRateLimiterKey builds the per-key string used by the sliding-window
 // rate limiter. The IP component is derived via httputil.TrustedClientIP so
@@ -109,6 +121,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	rlKey := h.loginRateLimiterKey(r, email)
 	if !h.rateLimiter.Allow(rlKey) {
 		logger.Warn("auth.login: rate limit exceeded", "email_prefix", email[:min(len(email), 5)])
+		setRateLimitRetryAfter(w)
 		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelopeWithDetails(
 			"auth.rate_limited", "too many login attempts; please wait before trying again", r,
 			map[string]any{"retry_after_seconds": int(loginRateLimitWindow.Seconds())},
@@ -326,7 +339,16 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// PR2-03: reuse of a revoked refresh token is treated as full-session compromise.
+	// A token revoked by a sign-out, a session eviction or a revoke-all sweep
+	// is not a sign of theft: the client gets a plain 401 and nothing else
+	// changes.
+	if row.RevokedAt != nil && row.RevokeReason != nil && *row.RevokeReason != gen.RefreshTokenRevokeReasonRotated {
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.invalid_refresh_token", "refresh token has been revoked", r))
+		return
+	}
+
+	// PR2-03: reuse of a token replaced by rotation (or revoked for an unknown
+	// reason, before migration 0214) is treated as full-session compromise.
 	// Revoke all remaining sessions for the account and abort immediately.
 	if row.RevokedAt != nil {
 		logger.Warn("auth.refresh: revoked token reuse — session compromise detected",
@@ -426,7 +448,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// PR2-03: rotate the refresh token — revoke the old one and issue a new one.
+	// PR2-03: rotate the refresh token — mark the old one rotated and issue a new one.
 	newRawToken, err := users.GenerateVerificationToken()
 	if err != nil {
 		logger.Error("auth.refresh: generate new refresh token failed", "error", err)
@@ -435,7 +457,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 	newTokenHash := users.TokenHash(newRawToken)
 
-	if err := q.RevokeRefreshToken(ctx, tokenHash); err != nil {
+	if err := q.RotateRefreshToken(ctx, tokenHash); err != nil {
 		logger.Error("auth.refresh: revoke old token failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.revoke_failed", "failed to revoke old refresh token", r))
 		return

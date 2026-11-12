@@ -18,18 +18,18 @@
 //	POST /v1/auth/password-reset/confirm
 //	  1. Parse and validate the request body (token, new_password).
 //	  2. Validate password length (8–72 chars).
-//	  3. Fetch the token row by SHA-256(token) — 404 when not found.
-//	  4. Check that used_at IS NULL — 410 Gone when already consumed.
-//	  5. Check that expires_at is in the future — 410 Gone when expired.
-//	  6. Hash the new password with bcrypt (cost 12).
-//	  7. UPDATE users SET password_hash = … WHERE id = token.user_id.
-//	  8. Mark the token as used (single-use guarantee).
-//	  9. PR2-03: Revoke ALL active refresh tokens for the user (same tx)
+//	  3. Consume the token by SHA-256(token) in one conditional UPDATE
+//	     (unused and unexpired only), so it is used at most once.
+//	  4. When nothing was consumed: 404 when the token is unknown, 410 Gone
+//	     when it is already used or expired.
+//	  5. Hash the new password with bcrypt (cost 12).
+//	  6. UPDATE users SET password_hash = … WHERE id = token.user_id.
+//	  7. PR2-03: Revoke ALL active refresh tokens for the user (same tx)
 //	     so that old sessions cannot persist after account recovery.
-//	 10. Write audit event (same tx).
-//	 11. COMMIT.
-//	 12. PR2-03: Clear Redis session tracking set for the user (best-effort).
-//	 13. Return 200 OK with user_id and message.
+//	  8. Write audit event (same tx).
+//	  9. COMMIT.
+//	 10. PR2-03: Clear Redis session tracking set for the user (best-effort).
+//	 11. Return 200 OK with user_id and message.
 //
 // Both endpoints are intentionally PUBLIC — no Authorization header required.
 package hauth
@@ -274,23 +274,30 @@ func (h *Handler) PasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
 
 	// PR2-03: look up token by SHA-256 hash; client sent raw token.
 	resetTokenHash := users.TokenHash(req.Token)
-	tokenRow, err := q.GetPasswordResetToken(ctx, resetTokenHash)
+
+	// Consume the token first: one conditional UPDATE, so a token is used at
+	// most once. When nothing is consumed, read the row only to pick the answer.
+	userID, err := q.ConsumePasswordResetToken(ctx, resetTokenHash)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("auth.token_not_found", "reset token not found or already expired", r))
+		if !errors.Is(err, pgx.ErrNoRows) {
+			logger.Error("auth.password_reset.confirm: consume token failed", "error", err)
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database error", r))
 			return
 		}
-		logger.Error("auth.password_reset.confirm: fetch token failed", "error", err)
-		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database error", r))
-		return
-	}
-
-	if tokenRow.UsedAt != nil {
-		httputil.WriteJSON(w, http.StatusGone, httputil.ErrorEnvelope("auth.token_already_used", "this reset token has already been used", r))
-		return
-	}
-
-	if time.Now().UTC().After(tokenRow.ExpiresAt.UTC()) {
+		tokenRow, gErr := q.GetPasswordResetToken(ctx, resetTokenHash)
+		if gErr != nil {
+			if errors.Is(gErr, pgx.ErrNoRows) {
+				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("auth.token_not_found", "reset token not found or already expired", r))
+				return
+			}
+			logger.Error("auth.password_reset.confirm: fetch token failed", "error", gErr)
+			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database error", r))
+			return
+		}
+		if tokenRow.UsedAt != nil {
+			httputil.WriteJSON(w, http.StatusGone, httputil.ErrorEnvelope("auth.token_already_used", "this reset token has already been used", r))
+			return
+		}
 		httputil.WriteJSON(w, http.StatusGone, httputil.ErrorEnvelope("auth.token_expired", "this reset token has expired; please request a new one", r))
 		return
 	}
@@ -302,23 +309,17 @@ func (h *Handler) PasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := q.UpdateUserPassword(ctx, tokenRow.UserID, pwHash); err != nil {
-		logger.Error("auth.password_reset.confirm: update password failed", "error", err, "user_id", tokenRow.UserID)
+	if err := q.UpdateUserPassword(ctx, userID, pwHash); err != nil {
+		logger.Error("auth.password_reset.confirm: update password failed", "error", err, "user_id", userID)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.update_failed", "failed to update password", r))
-		return
-	}
-
-	if err := q.MarkPasswordResetTokenUsed(ctx, resetTokenHash); err != nil {
-		logger.Error("auth.password_reset.confirm: mark token used failed", "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.update_failed", "failed to consume reset token", r))
 		return
 	}
 
 	// PR2-03: revoke ALL active refresh tokens for this user so that old
 	// sessions cannot survive account recovery. This is atomic with the
 	// password update — both succeed or both roll back.
-	if err := q.RevokeAllUserRefreshTokens(ctx, tokenRow.UserID); err != nil {
-		logger.Error("auth.password_reset.confirm: revoke all refresh tokens failed", "error", err, "user_id", tokenRow.UserID)
+	if err := q.RevokeAllUserRefreshTokens(ctx, userID); err != nil {
+		logger.Error("auth.password_reset.confirm: revoke all refresh tokens failed", "error", err, "user_id", userID)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.revoke_failed", "failed to revoke existing sessions", r))
 		return
 	}
@@ -327,10 +328,10 @@ func (h *Handler) PasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
 		auditEv := audit.Event{
 			OccurredAt:   time.Now().UTC(),
 			ActorType:    "user",
-			ActorID:      tokenRow.UserID.String(),
+			ActorID:      userID.String(),
 			Action:       "auth.password_reset_confirm",
 			ResourceType: "user",
-			ResourceID:   tokenRow.UserID.String(),
+			ResourceID:   userID.String(),
 			RequestID:    logging.RequestID(ctx),
 			TraceID:      logging.TraceID(ctx),
 			IP:           httputil.ExtractClientIP(r),
@@ -355,18 +356,18 @@ func (h *Handler) PasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
 	// The DB already has revoked_at set for all tokens, so the Redis clear is
 	// an optimistic cleanup — clients will be rejected on next DB check regardless.
 	if h.sessionStore != nil {
-		if sErr := h.sessionStore.ClearUserSessions(ctx, tokenRow.UserID.String()); sErr != nil {
+		if sErr := h.sessionStore.ClearUserSessions(ctx, userID.String()); sErr != nil {
 			logger.Warn("auth.password_reset.confirm: clear redis sessions failed (DB revocation succeeded)",
-				"error", sErr, "user_id", tokenRow.UserID.String())
+				"error", sErr, "user_id", userID.String())
 		}
 	}
 
 	slog.Info("auth.password_reset.confirm: password reset successful; all sessions revoked",
-		"user_id", tokenRow.UserID.String(),
+		"user_id", userID.String(),
 	)
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{
-		"user_id": tokenRow.UserID.String(),
+		"user_id": userID.String(),
 		"message": "Password has been reset successfully. Please log in with your new password.",
 	})
 }

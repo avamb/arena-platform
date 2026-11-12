@@ -97,6 +97,7 @@ func (h *Handler) WebLink(w http.ResponseWriter, r *http.Request) {
 	code := strings.TrimSpace(req.Code)
 	key := "web-link:" + httputil.TrustedClientIP(r, h.trustedProxyCount)
 	if !h.webLinkLimiter.Allow(key) {
+		setRateLimitRetryAfter(w)
 		httputil.WriteJSON(w, http.StatusTooManyRequests, httputil.ErrorEnvelopeWithDetails(
 			"auth.rate_limited", "too many attempts; please wait before trying again", r,
 			map[string]any{"retry_after_seconds": int(loginRateLimitWindow.Seconds())},

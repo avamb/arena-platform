@@ -120,7 +120,7 @@ func TestPaymentReceiptMedia_IsNotDeletableAndDownloadsAsAnAttachment(t *testing
 	}
 	for header, want := range map[string]string{
 		"Content-Disposition":     "attachment",
-		"Content-Security-Policy": "sandbox",
+		"Content-Security-Policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
 		"X-Content-Type-Options":  "nosniff",
 	} {
 		if got := w.Header().Get(header); got != want {
