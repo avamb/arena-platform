@@ -474,6 +474,7 @@ Places, categories, hold and quota lock order, plan geometry, seat layouts, venu
 * An add-on category (migration 0197, ticket_tiers.i…
 * A seat batch creates price categories in its own transaction (new_tiers, needs tier.create)
 * A seat shows ONE card to the buyer and to the organizer (seat-card.ts)
+* A section or row key is NOT always normalizeKey(name): hash suffix where names collide on a seat
 
 ### [Events, sessions, promoters and sales channels](docs/agents/catalog-sessions-channels.md)
 

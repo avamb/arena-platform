@@ -140,7 +140,8 @@ func ImportSBTSVG(raw []byte) (SBTPlan, []ValidationError, ValidationErrors) {
 	cats, catByIndex, catErrs := parseSBTCategories(root)
 	errs = append(errs, catErrs...)
 
-	sections, seatErrs := parseSBTSections(root, catByIndex)
+	sections, keyWarns, seatErrs := parseSBTSections(root, catByIndex)
+	warnings = append(warnings, keyWarns...)
 	errs = append(errs, seatErrs...)
 	if len(sections) == 0 && !seatErrs.HasCode(ErrSBTSeatCategoryMissing) {
 		errs = append(errs, ValidationError{
@@ -311,7 +312,7 @@ type sbtSeatNode struct {
 // parseSBTSections walks the document, collects every seat circle with
 // its nearest sbt:sect / sbt:row ancestry, and folds them into canonical
 // sections.
-func parseSBTSections(root *xmlNode, catByIndex map[int]SBTCategory) ([]Section, ValidationErrors) {
+func parseSBTSections(root *xmlNode, catByIndex map[int]SBTCategory) ([]Section, []ValidationError, ValidationErrors) {
 	var (
 		errs  ValidationErrors
 		nodes []sbtSeatNode
@@ -357,96 +358,60 @@ func parseSBTSections(root *xmlNode, catByIndex map[int]SBTCategory) ([]Section,
 	// order slices: appending to a []Row while holding a *Row into it
 	// would dangle on reallocation, so rows live outside their section
 	// until assembly.
+	// Section and row keys come from resolveKeys (key_resolve.go), which
+	// needs every seat of the plan first. Pass 1 replays the per-seat rules
+	// (including the stateful sbt:id and duplicate checks) without
+	// reporting, to collect the seats that pass them.
+	var candidates []keySeat
+	{
+		seenName := map[[3]string]bool{}
+		seenExternal := map[int64]bool{}
+		for _, sn := range nodes {
+			externalID, number, _, verr := sbtSeatCheck(sn, catByIndex, seenExternal)
+			if verr != nil {
+				continue
+			}
+			nameTriple := [3]string{sn.sector, sn.rowName, number}
+			if seenName[nameTriple] {
+				continue
+			}
+			seenName[nameTriple] = true
+			seenExternal[externalID] = true
+			candidates = append(candidates, keySeat{sector: sn.sector, row: sn.rowName, number: number})
+		}
+	}
+	keys := resolveKeys(candidates)
+
 	secByKey := map[string]*Section{}
 	rowByKey := map[string]*Row{}
 	rowOrder := map[string][]string{}
 	var secOrder []string
-	seenKey := map[string]bool{}
+	// Deduplication on the display names: after key resolution this is the
+	// same as the final seat key being unique (key_resolve.go).
+	seenName := map[[3]string]bool{}
 	seenExternal := map[int64]bool{}
 
 	for _, sn := range nodes {
 		el := sn.el
-		externalID := parseInt64Attr(sbtAttr(el, "id"))
-		if externalID <= 0 {
-			errs = append(errs, ValidationError{
-				Code:    ErrSBTSeatIDInvalid,
-				Element: sbtAttr(el, "id"),
-				Detail:  "sbt:id must be a positive integer",
-			})
-			continue
-		}
-		if seenExternal[externalID] {
-			errs = append(errs, ValidationError{
-				Code:    ErrSBTDuplicateSeatID,
-				Element: strconv.FormatInt(externalID, 10),
-				Detail:  "sbt:id appears on more than one seat",
-			})
+		externalID, number, catIdx, verr := sbtSeatCheck(sn, catByIndex, seenExternal)
+		if verr != nil {
+			errs = append(errs, *verr)
 			continue
 		}
 
-		number := strings.TrimSpace(sbtAttr(el, "seat"))
-		if number == "" {
-			// Fall back to <title>, which is how the §6 dialect names a
-			// seat; a plan mixing the two conventions still imports.
-			number = strings.TrimSpace(elementText(findDirectChild(el, "title")))
-		}
-		if number == "" {
-			errs = append(errs, ValidationError{
-				Code:    ErrSeatMissingNumber,
-				Element: strconv.FormatInt(externalID, 10),
-				Detail:  "seat <circle> has neither sbt:seat nor <title>",
-			})
-			continue
-		}
-		if sn.sector == "" {
-			errs = append(errs, ValidationError{
-				Code:    ErrRowMissingSectorLabel,
-				Element: strconv.FormatInt(externalID, 10),
-				Detail:  "seat has no ancestor carrying sbt:sect",
-			})
-			continue
-		}
-		if sn.rowName == "" {
-			errs = append(errs, ValidationError{
-				Code:    ErrRowMissingTitle,
-				Element: strconv.FormatInt(externalID, 10),
-				Detail:  "seat has no ancestor carrying sbt:row or a <title>",
-			})
-			continue
-		}
-
-		catRaw := strings.TrimSpace(sbtAttr(el, "cat"))
-		catIdx, catErr := strconv.Atoi(catRaw)
-		if catRaw == "" || catErr != nil {
-			errs = append(errs, ValidationError{
-				Code:    ErrSBTSeatCategoryMissing,
-				Element: strconv.FormatInt(externalID, 10),
-				Detail:  fmt.Sprintf("seat sbt:cat %q is not a category index", catRaw),
-			})
-			continue
-		}
-		if _, ok := catByIndex[catIdx]; !ok {
-			errs = append(errs, ValidationError{
-				Code:    ErrSBTSeatCategoryMissing,
-				Element: strconv.FormatInt(externalID, 10),
-				Detail: fmt.Sprintf(
-					"seat sbt:cat=%d references no <sbt:category> in <metadata>", catIdx),
-			})
-			continue
-		}
-
-		secKey := normalizeKey(sn.sector)
-		rowKey := normalizeKey(sn.rowName)
+		secKey := keys.sectorKey(sn.sector)
+		rowKey := keys.rowKey(secKey, sn.rowName)
 		key := SeatKey(secKey, rowKey, number)
-		if seenKey[key] {
+		nameTriple := [3]string{sn.sector, sn.rowName, number}
+		if seenName[nameTriple] {
 			errs = append(errs, ValidationError{
 				Code:    ErrDuplicateSeat,
-				Element: key,
+				Element: SeatKey(normalizeKey(sn.sector), normalizeKey(sn.rowName), number),
 				Detail:  "duplicate (sector,row,number) triple",
 			})
 			continue
 		}
-		seenKey[key] = true
+		seenName[nameTriple] = true
 		seenExternal[externalID] = true
 
 		if _, ok := secByKey[secKey]; !ok {
@@ -480,7 +445,79 @@ func parseSBTSections(root *xmlNode, catByIndex map[int]SBTCategory) ([]Section,
 		}
 		out = append(out, sec)
 	}
-	return out, errs
+	errs = append(errs, keys.errs...)
+	return out, keys.warnings, errs
+}
+
+// sbtSeatCheck applies the per-seat §13.3 rules, in their reporting order,
+// to one located seat. seenExternal holds the sbt:id values of the seats
+// accepted so far; it is only read here. A nil verr means the seat passes
+// every rule except the duplicate (sector,row,number) check.
+func sbtSeatCheck(sn sbtSeatNode, catByIndex map[int]SBTCategory, seenExternal map[int64]bool) (externalID int64, number string, catIdx int, verr *ValidationError) {
+	el := sn.el
+	externalID = parseInt64Attr(sbtAttr(el, "id"))
+	if externalID <= 0 {
+		return 0, "", 0, &ValidationError{
+			Code:    ErrSBTSeatIDInvalid,
+			Element: sbtAttr(el, "id"),
+			Detail:  "sbt:id must be a positive integer",
+		}
+	}
+	idText := strconv.FormatInt(externalID, 10)
+	if seenExternal[externalID] {
+		return 0, "", 0, &ValidationError{
+			Code:    ErrSBTDuplicateSeatID,
+			Element: idText,
+			Detail:  "sbt:id appears on more than one seat",
+		}
+	}
+
+	number = strings.TrimSpace(sbtAttr(el, "seat"))
+	if number == "" {
+		// Fall back to <title>, which is how the §6 dialect names a
+		// seat; a plan mixing the two conventions still imports.
+		number = strings.TrimSpace(elementText(findDirectChild(el, "title")))
+	}
+	if number == "" {
+		return 0, "", 0, &ValidationError{
+			Code:    ErrSeatMissingNumber,
+			Element: idText,
+			Detail:  "seat <circle> has neither sbt:seat nor <title>",
+		}
+	}
+	if sn.sector == "" {
+		return 0, "", 0, &ValidationError{
+			Code:    ErrRowMissingSectorLabel,
+			Element: idText,
+			Detail:  "seat has no ancestor carrying sbt:sect",
+		}
+	}
+	if sn.rowName == "" {
+		return 0, "", 0, &ValidationError{
+			Code:    ErrRowMissingTitle,
+			Element: idText,
+			Detail:  "seat has no ancestor carrying sbt:row or a <title>",
+		}
+	}
+
+	catRaw := strings.TrimSpace(sbtAttr(el, "cat"))
+	idx, catErr := strconv.Atoi(catRaw)
+	if catRaw == "" || catErr != nil {
+		return 0, "", 0, &ValidationError{
+			Code:    ErrSBTSeatCategoryMissing,
+			Element: idText,
+			Detail:  fmt.Sprintf("seat sbt:cat %q is not a category index", catRaw),
+		}
+	}
+	if _, ok := catByIndex[idx]; !ok {
+		return 0, "", 0, &ValidationError{
+			Code:    ErrSBTSeatCategoryMissing,
+			Element: idText,
+			Detail: fmt.Sprintf(
+				"seat sbt:cat=%d references no <sbt:category> in <metadata>", idx),
+		}
+	}
+	return externalID, number, idx, nil
 }
 
 // sbtStateOccupied is the sbt:state of a seat sold upstream (the BSS code
