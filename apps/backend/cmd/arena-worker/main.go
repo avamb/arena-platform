@@ -881,8 +881,18 @@ func registerBuiltinHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *conf
 func registerOnboardingHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier opsalert.Notifier, logger *slog.Logger) {
 	svc := onboarding.New(onboarding.Options{
 		Pool: pool, Notifier: notifier, Audit: audit.NewPGWriter(pool), Logger: logger, AdminURL: cfg.AppPublicURL,
+		AdminTelegram: cfg.EventsTelegramBotToken != "",
 	})
 	reg.Register(onboarding.JobTypeNotify, svc.HandleNotify)
+	// A new application reaches every platform admin personally through the
+	// event-center bot (arena-bot polls its token, the worker only sends).
+	var adminSender onboarding.AdminTelegramSender
+	if cfg.EventsTelegramBotToken != "" {
+		adminSender = salesnotify.NewTelegramSender(cfg.EventsTelegramBotToken, "")
+	} else {
+		logger.Warn("EVENTS_TELEGRAM_BOT_TOKEN is not set on arena-worker: platform admins get new applications by e-mail only")
+	}
+	reg.Register(onboarding.JobTypeAdminTelegram, onboarding.NewAdminTelegramHandler(adminSender, logger))
 	reg.Register(onboarding.JobTypeSweep, onboarding.NewSweepHandler(svc, pool, logger))
 }
 

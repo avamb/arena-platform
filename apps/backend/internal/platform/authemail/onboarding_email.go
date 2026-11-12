@@ -33,6 +33,9 @@ const (
 	OnboardingKindRejected      = "rejected"
 	// OnboardingKindCode carries the six-digit code of the Telegram channel.
 	OnboardingKindCode = "code"
+	// OnboardingKindAdminNewApplication tells a platform admin about a new or
+	// re-submitted application. Its Russian text lives in code, not in the catalogs.
+	OnboardingKindAdminNewApplication = "admin_new_application"
 )
 
 // OnboardingEmailPayload is the JSON payload of an onboarding.email job.
@@ -52,6 +55,11 @@ type OnboardingEmailPayload struct {
 	// Code is the six-digit e-mail confirmation code of the Telegram channel. NOT logged.
 	Code   string   `json:"code,omitempty"`
 	Fields []string `json:"fields,omitempty"`
+	// Title, Details and Link are used by the admin_new_application kind only:
+	// the headline, the plain-text lines and the application's admin link.
+	Title   string   `json:"title,omitempty"`
+	Details []string `json:"details,omitempty"`
+	Link    string   `json:"link,omitempty"`
 }
 
 // onboardingKindNeedsLink lists the kinds whose button opens the form.
@@ -84,6 +92,8 @@ func (h *Handler) HandleOnboardingEmail(ctx context.Context, payload []byte) err
 			return fmt.Errorf("authemail: onboarding e-mail needs ONBOARDING_SITE_URL")
 		}
 		link = h.siteURL + "/start/confirm?token=" + url.QueryEscape(p.Token) + "&lang=" + url.QueryEscape(normalizeOnboardingLocale(p.Locale))
+	case p.Kind == OnboardingKindAdminNewApplication:
+		link = p.Link
 	case p.Kind == OnboardingKindApproved:
 		// Same decision as the password letters (recipient.go): an organizer
 		// works only in the event center, platform staff in the console.
@@ -177,6 +187,9 @@ var onboardingTexts = map[string]map[string]onboardingText{
 // renderOnboardingEmail returns the subject and both bodies, ok=false for an
 // unknown kind.
 func renderOnboardingEmail(p OnboardingEmailPayload, link string, eventCenterLink bool) (subject, htmlBody, textBody string, ok bool) {
+	if p.Kind == OnboardingKindAdminNewApplication {
+		return renderAdminNewApplication(p, link)
+	}
 	locale := normalizeOnboardingLocale(p.Locale)
 	t, found := onboardingTexts[locale][p.Kind]
 	if !found {

@@ -71,6 +71,9 @@ type Service struct {
 	termsURL   string
 	privacyURL string
 	now        func() time.Time
+	// adminTelegram: the worker holds the event-center bot token, so personal
+	// Telegram messages to platform admins can be queued.
+	adminTelegram bool
 }
 
 // Options configures a Service.
@@ -90,13 +93,16 @@ type Options struct {
 	TermsURL   string
 	PrivacyURL string
 	Now        func() time.Time
+	// AdminTelegram is true when the worker has EVENTS_TELEGRAM_BOT_TOKEN.
+	AdminTelegram bool
 }
 
 // New builds a Service.
 func New(o Options) *Service {
 	s := &Service{pool: o.Pool, notifier: o.Notifier, audit: o.Audit, logger: o.Logger,
 		adminURL: strings.TrimRight(o.AdminURL, "/"), siteURL: strings.TrimRight(o.SiteURL, "/"),
-		termsURL: strings.TrimSpace(o.TermsURL), privacyURL: strings.TrimSpace(o.PrivacyURL), now: o.Now}
+		termsURL: strings.TrimSpace(o.TermsURL), privacyURL: strings.TrimSpace(o.PrivacyURL), now: o.Now,
+		adminTelegram: o.AdminTelegram}
 	if s.logger == nil {
 		s.logger = slog.Default()
 	}

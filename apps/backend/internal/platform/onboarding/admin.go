@@ -151,7 +151,7 @@ func (s *Service) Detail(ctx context.Context, id uuid.UUID) (*Detail, error) {
 	d.WouldApprove = len(d.Checks) == len(checkKeys) && WouldApprove(d.Checks)
 
 	rows, err := s.pool.Query(ctx, `SELECT id, kind, actor_type, actor_id, detail, created_at
-FROM onboarding_application_events WHERE application_id = $1 ORDER BY created_at, id`, id)
+FROM onboarding_application_events WHERE application_id = $1 AND kind <> 'admins_notified' ORDER BY created_at, id`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -642,10 +642,16 @@ func (s *Service) HandleNotify(ctx context.Context, payload []byte) error {
 		return fmt.Errorf("onboarding: notify: load application: %w", err)
 	}
 	switch p.Kind {
-	case NotifySubmitted:
-		s.notifySubmitted(ctx, app, p.WouldApprove, false)
-	case NotifyResubmitted:
-		s.notifySubmitted(ctx, app, p.WouldApprove, true)
+	case NotifySubmitted, NotifyResubmitted:
+		again := p.Kind == NotifyResubmitted
+		told, err := s.notifyAdmins(ctx, app, p.WouldApprove, again)
+		if err != nil {
+			return fmt.Errorf("onboarding: notify platform admins: %w", err)
+		}
+		if !told {
+			s.logger.Warn("onboarding: no platform superadmin to tell about a new application, using the ops chat")
+			s.notifySubmitted(ctx, app, p.WouldApprove, again)
+		}
 	case NotifyApproved:
 		actor := Actor{Type: "operator"}
 		if p.Automatic {
