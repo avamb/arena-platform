@@ -65410,8 +65410,9 @@ paths:
         in (1)`, `Refunded / cancelled (3)`. Checked in is an admitted scan or
         `used_at`. `Checked out (2)` is not derived, because the platform
         stores no scan direction. Status 3 carries a reason: refunded, cancelled, session
-        cancelled, or replaced (the ticket went to a wrong e-mail address and
-        was reissued). Labels follow `locale` (`en`, `ru`, `es`). Same
+        cancelled, or replaced (the ticket was reissued, and the reason is the
+        one the organizer chose: a wrong e-mail address, a stranger who got the
+        ticket, or just "replaced"). Labels follow `locale` (`en`, `ru`, `es`). Same
         csvexport rules and 50 000-row cap as the sales file. The same file
         is built fresh when it is sent automatically to the members who
         turned the guest list on (`PUT .../guest-list-subscription`) and to
