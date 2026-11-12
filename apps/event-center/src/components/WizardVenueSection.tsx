@@ -53,7 +53,8 @@ export function WizardVenueSection({ draft, dispatch, touch, errorOf }: SectionP
   const [countryNames, setCountryNames] = useState<Record<string, string>>({});
 
   // The country that decides the currency: the new venue's, or the chosen venue's own.
-  const currencyCountry = v.mode === "new" ? v.countryIso2 : v.mode === "existing" ? (chosen?.country ?? pickedCountry) : "";
+  const currencyCountry =
+    v.mode === "new" ? v.countryIso2 : v.mode === "existing" ? (chosen?.country ?? (v.existingCountry !== "" ? v.existingCountry : pickedCountry)) : "";
   const currency = useQuery({
     queryKey: ["geo", "currency", currencyCountry],
     queryFn: () => countryCurrency(currencyCountry),

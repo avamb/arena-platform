@@ -6,6 +6,9 @@ import { effectiveTickets } from "@/lib/wizard/datesDraft";
 import { newDraft, parseDraft, reduceDraft, type DraftAction, type WizardDraft } from "@/lib/wizard/draft";
 import {
   MAX_SEAT_CATEGORIES,
+  applySeatingAction,
+  emptySeating,
+  needsSplitByPrice,
   SEAT_COLORS,
   parseSeating,
   planChoiceOf,
@@ -186,5 +189,18 @@ describe("the seated draft", () => {
     delete old.seating;
     expect(parseDraft(old)?.seating.versionId).toBe("");
     expect(parseSeating({ versionId: "x", planName: "y", seats: "many", categories: [], extras: [] }).versionId).toBe("");
+  });
+});
+
+describe("needsSplitByPrice", () => {
+  it("is true for a plan of one category with no extra category", () => {
+    const one = reduceDraft(newDraft("dr2", NOW, "Admission"), { type: "seatingPlan", plan: { versionId: "v1", name: "One", seats: 2, categories: [{ index: 1, name: "All seats", places: 2, ga: false }] } }, NOW).seating;
+    expect(needsSplitByPrice(one)).toBe(true);
+    expect(needsSplitByPrice(emptySeating())).toBe(false);
+    expect(needsSplitByPrice(applySeatingAction(one, { type: "seatingExtraAdd", key: "x" }))).toBe(false);
+  });
+
+  it("is false for a plan of several categories", () => {
+    expect(needsSplitByPrice(seatedDraft().seating)).toBe(false);
   });
 });

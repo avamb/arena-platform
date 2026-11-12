@@ -114,7 +114,7 @@ function VenueCard({ orgId, venueId, canPlans }: { orgId: string; venueId: strin
           )}
         </>
       )}
-      <VenuePlanIntakeSlot orgId={orgId} venueId={venue.id} venueName={venue.name} />
+      <VenuePlanIntakeSlot key={venue.id} orgId={orgId} venueId={venue.id} venueName={venue.name} />
     </section>
   );
 }
@@ -150,7 +150,7 @@ export function VenuesScreen() {
           />
         </>
       ) : (
-        <VenueCard orgId={orgId} venueId={venueId} canPlans={access.can("seating_plan.read")} />
+        <VenueCard key={venueId} orgId={orgId} venueId={venueId} canPlans={access.can("seating_plan.read")} />
       )}
     </section>
   );

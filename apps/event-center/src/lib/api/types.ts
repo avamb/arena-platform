@@ -137,6 +137,19 @@ export type PutTierPriceScheduleRequest = S["PutTierPriceScheduleRequest"];
 export type VenueItem = S["VenueItem"];
 export type SeatingPlan = S["SeatingPlan"];
 export type SeatingPlanVersion = S["SeatingPlanVersion"];
+// Spec 64: the seating plan intake.
+export type VenuePlanIntake = S["VenuePlanIntake"];
+export type VenuePlanIntakeEnvelope = S["VenuePlanIntakeEnvelope"];
+export type VenuePlanIntakeList = S["VenuePlanIntakeList"];
+export type VenuePlanIntakeListItem = S["VenuePlanIntakeListItem"];
+export type VenuePlanIntakeSource = S["VenuePlanIntakeSource"];
+export type VenuePlanDraft = S["VenuePlanDraft"];
+export type VenuePlanDraftSummary = S["VenuePlanDraftSummary"];
+export type VenuePlanApproveRequest = S["VenuePlanApproveRequest"];
+export type ForkSeatingPlanRequest = S["ForkSeatingPlanRequest"];
+export type PlanTemplatesResponse =
+  paths["/v1/organizations/{org_id}/venues/{venue_id}/plan-templates"]["get"]["responses"]["200"]["content"]["application/json"];
+export type PlanTemplate = PlanTemplatesResponse["plan_templates"][number];
 export type GeoCountryItem = S["GeoCountryItem"];
 // F-004: the wizard's new venue and its city.
 export type CreateVenueRequest = S["CreateVenueRequest"];
