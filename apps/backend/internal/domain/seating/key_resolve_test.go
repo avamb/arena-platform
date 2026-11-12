@@ -161,7 +161,7 @@ func assertUniqueSeatKeys(t *testing.T, g Geometry) {
 				}
 				seen[s.Key] = true
 				for _, r := range sec.Key + row.Key {
-					if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
+					if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
 						t.Fatalf("key part %q/%q holds %q", sec.Key, row.Key, r)
 					}
 				}

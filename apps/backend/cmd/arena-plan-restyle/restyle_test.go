@@ -514,9 +514,10 @@ func TestRestyle_MergeGuard(t *testing.T) {
 		name string
 		src  []byte
 	}{
-		{"sbt sectors", sbtPlan([][2]string{{"Партер", "1"}, {"Балкон", "1"}})},
-		{"authoring sectors", authoringPlan([][2]string{{"Партер", "1"}, {"Балкон", "1"}})},
-		{"sbt rows", sbtPlan([][2]string{{"Parter", "А"}, {"Parter", "Б"}})},
+		// Names that share a key with NO seat collision: the importer still
+		// merges them (warning names_share_key), so the guard must refuse.
+		{"sbt sectors", sbtPlan([][2]string{{"Партер", "1"}, {"Балкон", "2"}})},
+		{"authoring sectors", authoringPlan([][2]string{{"Партер", "1"}, {"Балкон", "2"}})},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -549,8 +550,13 @@ func TestRestyle_MergeGuard(t *testing.T) {
 
 func TestRestyle_MergeGuardLatinPlansStayOK(t *testing.T) {
 	for name, src := range map[string][]byte{
-		"sbt":       sbtPlan([][2]string{{"Parter", "A"}, {"Balcony", "B"}}),
-		"authoring": authoringPlan([][2]string{{"Parter", "A"}, {"Balcony", "B"}}),
+		// Names that collide on a seat: since 2026-11-12 the importer keeps
+		// them apart with a hash suffix, so nothing is merged.
+		"sbt sectors collide":       sbtPlan([][2]string{{"Партер", "1"}, {"Балкон", "1"}}),
+		"authoring sectors collide": authoringPlan([][2]string{{"Партер", "1"}, {"Балкон", "1"}}),
+		"sbt rows collide":          sbtPlan([][2]string{{"Parter", "А"}, {"Parter", "Б"}}),
+		"sbt":                       sbtPlan([][2]string{{"Parter", "A"}, {"Balcony", "B"}}),
+		"authoring":                 authoringPlan([][2]string{{"Parter", "A"}, {"Balcony", "B"}}),
 	} {
 		house, rep := Restyle(src, nil)
 		if house == nil || rep.Status == StatusFailed {
