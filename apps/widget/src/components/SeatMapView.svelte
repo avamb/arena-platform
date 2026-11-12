@@ -11,7 +11,7 @@
    *   • 1 500-seat map interactive <100 ms after data.
    */
 
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import type { FeedSession, CategoryPrice, SeatStatusValue } from '../types.js';
   import { fetchSessionSchema } from '../api.js';
   import { getCheckoutI18n } from '../lib/checkout.js';
@@ -23,7 +23,9 @@
     clearConflictHighlight,
     applySelectionHighlights,
     buildCategoryColorMap,
+    buildPriceLabel,
   } from '../lib/seatmap-render.js';
+  import { createSeatCard, seatCardModel, type SeatCard, type SeatCardInput } from '../lib/seat-card.js';
   import {
     IDENTITY,
     fitTransform,
@@ -89,6 +91,70 @@
   // NOT on every seat-status poll tick (2–5 s cadence).
   const catColorMap = $derived(buildCategoryColorMap(categoryPrices, []));
 
+  // ── Seat card ───────────────────────────────────────────────────────────────
+  // One card design for the buyer and the organizer (lib/seat-card.ts). It is
+  // plain DOM inside the map container: showing it never re-renders Svelte and
+  // never re-colours a seat. Plain (non-reactive) variables on purpose.
+
+  interface SeatFacts {
+    sector: string;
+    row: string;
+    seat: string;
+    cat: number;
+  }
+  let seatFacts = new Map<string, SeatFacts>();
+  let seatCard: SeatCard | null = null;
+
+  function indexSeats(geometry: import('../types.js').Geometry): void {
+    const m = new Map<string, SeatFacts>();
+    for (const section of geometry.sections) {
+      for (const row of section.rows) {
+        for (const seat of row.seats) {
+          m.set(seat.key, { sector: section.name, row: row.name, seat: seat.number, cat: seat.category_index });
+        }
+      }
+    }
+    seatFacts = m;
+  }
+
+  function hideSeatCard(): void {
+    seatCard?.hide();
+  }
+
+  function showSeatCard(seatEl: Element | null): void {
+    if (!seatCard || !seatEl) return;
+    const key = seatEl.getAttribute('data-seat-key') ?? '';
+    const facts = seatFacts.get(key);
+    if (!facts) {
+      seatCard.hide();
+      return;
+    }
+    const status = seatEl.getAttribute('data-status') ?? 'available';
+    const selected = seatEl.getAttribute('data-selected') === 'true';
+    const cp = categoryPrices.find((c) => c.index === facts.cat);
+    let state: SeatCardInput['state'] = null;
+    if (status === 'sold') state = { tone: 'sold', text: t.seatcard_sold };
+    else if (status === 'unavailable' || status === 'conflict') state = { tone: 'closed', text: t.seatcard_unavailable };
+    else if (selected) state = { tone: 'selected', text: t.seatcard_selected };
+    else if (status === 'held') state = { tone: 'held', text: t.seatcard_held };
+    const model = seatCardModel({
+      sector: facts.sector,
+      row: facts.row,
+      seat: facts.seat,
+      category: cp?.name ?? null,
+      color: cp?.color ?? null,
+      price: buildPriceLabel(facts.cat, categoryPrices),
+      state,
+      labels: { sector: t.seatcard_sector, row: t.seatcard_row, seat: t.seatcard_seat },
+    });
+    seatCard.show(model, seatEl.getBoundingClientRect());
+  }
+
+  function seatOfEvent(e: Event): Element | null {
+    const target = e.target as Element | null;
+    return target?.closest?.('[data-seat-key]') ?? null;
+  }
+
   // ── Schema fetch ────────────────────────────────────────────────────────────
 
   /**
@@ -113,6 +179,8 @@
       canvasW = schema.geometry.canvas.width || 800;
       canvasH = schema.geometry.canvas.height || 600;
       categoryPrices = schema.category_prices;
+      indexSeats(schema.geometry);
+      hideSeatCard();
       // Initial render with empty statuses (status poll follows immediately).
       svgHTML = buildSeatMapSVG(schema.geometry, schema.category_prices, seatStatuses);
       onSchemaLoaded?.(schema.geometry, schema.category_prices);
@@ -157,11 +225,13 @@
 
   function applyFit(): void {
     if (!svgContainer) return;
+    hideSeatCard();
     const { offsetWidth: w, offsetHeight: h } = svgContainer;
     transform = fitTransform(canvasW, canvasH, w, h);
   }
 
   function applyReset(): void {
+    hideSeatCard();
     transform = IDENTITY;
   }
 
@@ -181,6 +251,8 @@
 
   function onPointerDown(e: PointerEvent): void {
     if (!svgContainer) return;
+    // A gesture starts: the card steps aside (a tap shows it again on release).
+    hideSeatCard();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (activePointers.size === 1) {
@@ -216,8 +288,6 @@
       }
     }
 
-    if (!onSeatTap) return;
-
     // Fast path: e.target is the seat element (works for synthetic/dispatchEvent clicks
     // where there is no active pointer capture).
     let seatEl = (e.target as Element).closest?.('[data-seat-key]') ?? null;
@@ -239,10 +309,18 @@
       }
     }
 
-    if (!seatEl) return;
+    // A tap on empty space puts the card away.
+    if (!seatEl) {
+      hideSeatCard();
+      return;
+    }
     const key = seatEl.getAttribute('data-seat-key') ?? '';
     const status = (seatEl.getAttribute('data-status') ?? 'available') as SeatStatusValue;
-    if (key) onSeatTap(key, status);
+    if (key && onSeatTap) onSeatTap(key, status);
+    // The tap selects at once AND shows the card, so a group does not need two taps per seat.
+    // After the tick the seat carries its new "selected" mark.
+    const shown = seatEl;
+    void tick().then(() => showSeatCard(shown));
   }
 
   // ── Canonical single-stop focus management (WID-T5) ───────────────────────
@@ -294,7 +372,14 @@
    * The current seat retains tabindex="0" as "memory" so the next entry
    * resumes at the last-visited seat rather than jumping back to the first.
    */
+  function onContainerFocusIn(e: FocusEvent): void {
+    // Keyboard focus on a seat tells about the seat, as a mouse hover does.
+    const seatEl = seatOfEvent(e);
+    if (seatEl) showSeatCard(seatEl);
+  }
+
   function onContainerFocusOut(e: FocusEvent): void {
+    hideSeatCard();
     const related = e.relatedTarget as Element | null;
     if (svgContainer && !svgContainer.contains(related)) {
       // Restore container as single Tab stop.
@@ -366,6 +451,11 @@
     const target = e.target as Element;
     const seatEl = target.closest?.('[data-seat-key]') ?? null;
 
+    if (e.key === 'Escape') {
+      hideSeatCard();
+      return;
+    }
+
     if (seatEl) {
       if (e.key === 'Enter' || e.key === ' ') {
         if (!onSeatTap) return;
@@ -373,6 +463,7 @@
         const seatKey = seatEl.getAttribute('data-seat-key') ?? '';
         const status = (seatEl.getAttribute('data-status') ?? 'available') as SeatStatusValue;
         if (seatKey) onSeatTap(seatKey, status);
+        void tick().then(() => showSeatCard(seatEl));
         return;
       }
 
@@ -392,10 +483,18 @@
   }
 
   function onPointerMove(e: PointerEvent): void {
+    // A mouse moving with no button down only hovers: it informs, never acts.
+    if (e.pointerType === 'mouse' && e.buttons === 0) {
+      const seatEl = seatOfEvent(e);
+      if (seatEl) showSeatCard(seatEl);
+      else hideSeatCard();
+      return;
+    }
     activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (activePointers.size === 1 && dragActive) {
       const dx = e.clientX - lastDragX;
       const dy = e.clientY - lastDragY;
+      if (dx !== 0 || dy !== 0) hideSeatCard();
       transform = pan(transform, dx, dy);
       lastDragX = e.clientX;
       lastDragY = e.clientY;
@@ -406,6 +505,7 @@
       const dist = pointerDist(p1, p2);
       const mid = pointerMid(p1, p2);
       if (!svgContainer) return;
+      hideSeatCard();
       const rect = svgContainer.getBoundingClientRect();
       const mx = mid.x - rect.left;
       const my = mid.y - rect.top;
@@ -429,6 +529,7 @@
   function onWheel(e: WheelEvent): void {
     e.preventDefault();
     if (!svgContainer) return;
+    hideSeatCard();
     const rect = svgContainer.getBoundingClientRect();
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
@@ -473,11 +574,14 @@
     // Wheel events are passive by default; we need non-passive to prevent page scroll.
     if (svgContainer) {
       svgContainer.addEventListener('wheel', onWheel, { passive: false });
+      seatCard = createSeatCard(svgContainer);
     }
   });
 
   onDestroy(() => {
     poller?.stop();
+    seatCard?.destroy();
+    seatCard = null;
     if (svgContainer) {
       svgContainer.removeEventListener('wheel', onWheel);
     }
@@ -571,7 +675,9 @@
     onclick={onContainerClick}
     onkeydown={onContainerKeydown}
     onfocus={onContainerFocus}
+    onfocusin={onContainerFocusIn}
     onfocusout={onContainerFocusOut}
+    onpointerleave={hideSeatCard}
     aria-label={t.seatmap_aria_label}
     role="toolbar"
     tabindex="0"

@@ -8,8 +8,9 @@
  * ONE atomic batch, so a buyer's widget never sees a half painted hall. A
  * batch can be undone from the history with one press.
  *
- * Built for a phone (it opens inside Telegram): no hover, finger-sized
- * controls, pinch to zoom, the panel is a bottom sheet. On a desktop the same
+ * Built for a phone (it opens inside Telegram): no action on hover (a mouse
+ * hover and a long press only show the seat card), finger-sized controls,
+ * pinch to zoom, the panel is a bottom sheet. On a desktop the same
  * markup is a map with a panel at its right.
  *
  * The map is the seat map core of the widget (pan and zoom, the decor
@@ -27,7 +28,8 @@ import {
 } from "@/lib/api/endpoints";
 import { ApiError } from "@/lib/api/http";
 import type { SeatBatch } from "@/lib/api/types";
-import { formatNumber } from "@/lib/format";
+import { formatMoney, formatNumber } from "@/lib/format";
+import { seatCardModel, type SeatCardInput, type SeatCardModel } from "@seatmap/lib/seat-card";
 import { useI18n } from "@/lib/i18n";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { Loading } from "@/components/ui";
@@ -39,6 +41,7 @@ import {
   clearTray,
   countByTier,
   effectiveState,
+  isFrozen,
   makeStroke,
   mergeStrokes,
   pushStroke,
@@ -251,6 +254,55 @@ export function SeatManager({ orgId, eventId, sessionId, embed = false }: SeatMa
     [base, merged, colors, preview],
   );
 
+  // ── what the seat card says ─────────────────────────────────────────────
+  // The buyer's card (sector, row, seat, category, price) plus the state the organizer needs: sold, held,
+  // closed, a change in the tray that is not applied yet, or the category the allocator proposes.
+  const cardOf = useCallback(
+    (key: string): SeatCardModel | null => {
+      if (index === null) return null;
+      const info = index.byKey.get(key);
+      const b = base.get(key);
+      if (info === undefined || b === undefined) return null;
+      const rowName = index.rowById.get(index.rowOfSeat.get(key) ?? "")?.name ?? info.rowKey;
+      const sectorName = index.sectionByKey.get(info.sectionKey)?.name ?? info.sectionKey;
+      const tier = b.tierId === null ? undefined : tierViews.find((x) => x.id === b.tierId);
+      let state: SeatCardInput["state"] = null;
+      if (b.status === "sold") state = { tone: "sold", text: t("seats.legend.sold") };
+      else if (b.status === "held") state = { tone: "held", text: t("seats.legend.held") };
+      else if (b.status === "unavailable") state = { tone: "closed", text: t("seats.legend.closed") };
+
+      let pending: string | null = null;
+      if (!isFrozen(b)) {
+        const proposed = preview?.names.get(key);
+        const tr = merged.get(key);
+        if (proposed !== undefined) {
+          pending = t("seats.card.proposed", { name: proposed });
+        } else if (tr !== undefined) {
+          const parts: string[] = [];
+          if (tr.tierId !== undefined && tr.tierId !== b.tierId) {
+            parts.push(tierViews.find((x) => x.id === tr.tierId)?.name ?? "?");
+          }
+          if (tr.status !== undefined && tr.status !== b.status) {
+            parts.push(tr.status === "unavailable" ? t("seats.card.toClosed") : t("seats.card.toOpen"));
+          }
+          if (parts.length > 0) pending = t("seats.card.pending", { change: parts.join(", ") });
+        }
+      }
+      return seatCardModel({
+        sector: sectorName,
+        row: rowName,
+        seat: info.number,
+        category: tier?.name ?? null,
+        color: tier?.color ?? null,
+        price: tier === undefined ? null : formatMoney(tier.price, tier.currency, locale),
+        state,
+        pending,
+        labels: { sector: t("seats.card.sector"), row: t("seats.card.row"), seat: t("seats.card.seat") },
+      });
+    },
+    [index, base, merged, preview, tierViews, t, locale],
+  );
+
   // ── painting ────────────────────────────────────────────────────────────
   const paint = useCallback(
     (keys: Iterable<string>) => {
@@ -385,6 +437,7 @@ export function SeatManager({ orgId, eventId, sessionId, embed = false }: SeatMa
             index={index}
             label={t("seats.mapLabel")}
             look={look}
+            cardOf={cardOf}
             tool={tool}
             stage={stage}
             onSeats={onSeats}

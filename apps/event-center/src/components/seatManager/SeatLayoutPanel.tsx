@@ -42,6 +42,8 @@ import type { TierView } from "@/components/seatManager/SeatPanels";
 export interface LayoutPreview {
   /** seat key -> colour of its proposed slot. */
   readonly colors: ReadonlyMap<string, string>;
+  /** seat key -> name of its proposed slot, for the seat card. */
+  readonly names: ReadonlyMap<string, string>;
 }
 
 interface Props {
@@ -181,11 +183,15 @@ function LayoutForm({
       return;
     }
     const colors = new Map<string, string>();
+    const names = new Map<string, string>();
     const slotIndex = new Map(result.layout.slots.map((s, i) => [s.key, i] as const));
+    const slotName = new Map(result.layout.slots.map((s, i) => [s.key, s.name ?? t("seats.layout.slot", { n: i + 1 })] as const));
     for (const [seat, slot] of Object.entries(result.layout.assignments)) {
       colors.set(seat, slotColor(slotIndex.get(slot) ?? 0));
+      const name = slotName.get(slot);
+      if (name !== undefined) names.set(seat, name);
     }
-    onPreview({ colors });
+    onPreview({ colors, names });
     // onPreview is stable for the life of the manager.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result]);
