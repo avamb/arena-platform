@@ -60,7 +60,7 @@ import {
   singleColumnFormStyle,
 } from "@/components/layout";
 import { VenueSeatingPlansDrawer } from "./venueSeatingPlans";
-import { resolveReasonFor } from "@/lib/api/reason";
+import { VenueBulkVerifyDialog } from "./VenueBulkVerifyDialog";
 import type { BatchProgress } from "@/lib/admin/batch";
 import {
   NO_GEO_FILTER,
@@ -660,6 +660,7 @@ function VenuesModule() {
   const [bulkResult, setBulkResult] = useState<VenueVerifyResult | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
 
   const rows = query.data?.venues ?? [];
   const counts = useMemo(() => countVenuesByReview(rows), [rows]);
@@ -681,24 +682,13 @@ function VenuesModule() {
     [selectedIds, sorted],
   );
 
-  const onBulkVerify = async (): Promise<void> => {
+  const onBulkVerify = async (reason: string): Promise<void> => {
     const chosen = sorted.filter((v) => effectiveSelected.has(v.id));
+    setBulkDialogOpen(false);
     if (chosen.length === 0) return;
     setBulkError(null);
     setBulkResult(null);
     setBulkProgress(null);
-    let reason: string;
-    try {
-      // One reason for the whole batch. The prompt appears once.
-      reason = await resolveReasonFor("/v1/admin/venues");
-    } catch (cause) {
-      setBulkError(
-        cause instanceof Error
-          ? cause.message
-          : "Write an audit reason, then try again.",
-      );
-      return;
-    }
     setBulkRunning(true);
     try {
       const result = await verifyVenuesBatch({
@@ -808,7 +798,7 @@ function VenuesModule() {
             type="button"
             style={primaryButtonStyle}
             disabled={effectiveSelected.size === 0 || bulkRunning}
-            onClick={() => void onBulkVerify()}
+            onClick={() => setBulkDialogOpen(true)}
             data-testid="venues-bulk-verify"
           >
             {bulkRunning
@@ -816,7 +806,7 @@ function VenuesModule() {
               : `Mark selected as verified (${effectiveSelected.size})`}
           </button>{" "}
           <span style={mutedHintStyle}>
-            Select venues that are not verified. You write one audit reason for all of them. A verification stays after this step.
+            Select venues that are not verified. You confirm and write one audit reason for all of them. A verification stays after this step.
           </span>
           {bulkProgress !== null && bulkRunning ? (
             <div role="status" data-testid="venues-bulk-progress">
@@ -876,6 +866,14 @@ function VenuesModule() {
         onOpenPlans={(venue) => setPlansVenue(venue)}
         onReview={(venue) => setReviewVenue(venue)}
       />
+
+      {bulkDialogOpen ? (
+        <VenueBulkVerifyDialog
+          count={effectiveSelected.size}
+          onCancel={() => setBulkDialogOpen(false)}
+          onConfirm={(reason) => void onBulkVerify(reason)}
+        />
+      ) : null}
 
       {reviewVenue !== null ? (
         <VenueReviewDialog

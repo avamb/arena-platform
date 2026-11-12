@@ -19,6 +19,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Route as RootRoute } from "./__root";
 import { RequirePermission } from "@/components/RequirePermission";
 import { ApiError } from "@/lib/api/client";
+import { groupIssues } from "@/lib/admin/groupIssues";
 import {
   approveIntake,
   claimIntake,
@@ -770,7 +771,7 @@ export function DraftSection({
           ) : null}
           {summary && summary.warnings.length > 0 ? (
             <p style={hintStyle} data-testid="venue-plan-warnings">
-              Warnings: {summary.warnings.join(", ")}
+              Warnings: {groupIssues(summary.warnings).join(", ")}
             </p>
           ) : null}
           {draft?.note ? <p style={hintStyle}>Note on this draft:{draft.note}</p> : null}

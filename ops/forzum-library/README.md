@@ -192,7 +192,13 @@ takes at most 1 MiB; the converter marks a larger `house.svg`
 Plans: `loader.py plans --api <base URL> --org <uuid> [--dry-run]` (the bare
 form without `plans` works the same) takes every plan with `convert.json`
 status `ok`, finds or creates the venue under the organization and uploads
-`house.svg` as an unverified plan. A venue is matched by name and city. Zero
+`house.svg` as an unverified plan, then sets the plan to `active`
+(`PATCH /v1/seating-plans/{id}` `{status}`, only after the version is
+uploaded; a failed upload stays `draft`). `--keep-draft` skips the activation.
+A re-run activates plans that an earlier run left in draft with a current
+version and uploads nothing twice: the log entry of such a plan has no
+`activated: true`, so it is looked up on the server again. Verification is not
+done here. A venue is matched by name and city. Zero
 matches: create. One: reuse. More than one, or the same name in another city:
 the plan is not loaded and goes to `<lib>/load/ambiguous.json`.
 `<lib>/load/log.json` records each plan, keyed by the plan folder path
@@ -213,7 +219,10 @@ under one organization.
 - `loader.py venues --api <base URL> --org <uuid> [--dry-run] [--no-mark-verified]`.
   The country name becomes an ISO2 code through a table in `loader.py`; an
   unknown name skips the venue. The city is found in `GET /v1/geo/cities` or
-  created through `POST /v1/organizations/{org}/cities` (idempotent by name).
+  created through `POST /v1/organizations/{org}/cities` (idempotent by name;
+  an existing city is never posted, so its name is never overwritten; the
+  body is UTF-8, locale `ru` for a Cyrillic name, else `en`; a name with `?`
+  or U+FFFD is refused and logged as skipped).
   The time zone is the arena city's, else the zones file; with neither the
   venue is skipped as `timezone unresolved`. A venue is matched by name and
   city as in the plans mode: 0 create, 1 in the same city reuse, else
