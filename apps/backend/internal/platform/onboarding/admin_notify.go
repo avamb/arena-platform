@@ -99,8 +99,8 @@ SELECT u.id, u.email, coalesce((SELECT array_agg(l.telegram_user_id ORDER BY l.t
 FROM users u
 WHERE u.deactivated_at IS NULL
   AND (EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id
-               WHERE ur.user_id = u.id AND ur.org_id IS NULL AND r.name = 'platform_superadmin')
-    OR EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = u.id AND m.role = 'platform_superadmin'))
+               WHERE ur.user_id = u.id AND ur.org_id IS NULL AND r.org_id IS NULL AND r.name = 'platform_superadmin')
+    OR EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = u.id AND m.role = 'platform_superadmin' AND m.status = 'active'))
 ORDER BY u.email`)
 	if err != nil {
 		return nil, err
