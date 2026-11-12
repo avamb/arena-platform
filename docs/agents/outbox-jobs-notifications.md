@@ -55,8 +55,8 @@ Outbox tables and dead letters, worker_jobs retention, per-binary config, ops wa
   `on_ticket_refunded` / `allowed`, like Bil24's Notifications tab. The leg
   reacts to `v1.order.paid`, `v1.ticket.refunded`, `v1.ticket.cancelled`,
   only QUEUES and always returns nil, so Telegram can never delay or
-  re-trigger the WordPress/MACS webhooks; because `multiDispatcher` still
-  re-runs every leg when ANY other leg fails, each announcement is claimed
+  re-trigger the WordPress/MACS webhooks; a leg can still run twice for one
+  event under `outbox.LegFanOut` (a state write lost after delivery), so each announcement is claimed
   once in `sales_notification_deliveries` (`paid:<order>` /
   `refund:<ticket>` — the latter also collapses the refunded+cancelled pair
   of one provider refund). Own bot `SALES_TELEGRAM_BOT_TOKEN` (the ops bot
