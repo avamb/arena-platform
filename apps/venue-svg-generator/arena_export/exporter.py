@@ -59,31 +59,31 @@ def load_profile(path: str | Path | None = None) -> dict[str, Any]:
 def validate_profile(profile: Any) -> dict[str, Any]:
     """Fail closed on a profile that could carry commercial data or a broken category."""
     if not isinstance(profile, dict):
-        raise ValueError("target profile must be a JSON object")
+        raise ValueError("The target profile must be a JSON object.")
     if profile.get("commercial_data") is not False:
-        raise ValueError("target profile must explicitly declare commercial_data=false")
+        raise ValueError("The target profile must contain commercial_data=false.")
     category = profile.get("category")
     if not isinstance(category, dict):
-        raise ValueError("target profile requires a category object")
+        raise ValueError("The target profile must contain a category object.")
     name = category.get("name")
     color = category.get("color")
     if not isinstance(name, str) or not name.strip():
-        raise ValueError("target profile category requires a name")
+        raise ValueError("The category of the target profile must have a name.")
     if not isinstance(color, str) or not _HEX_COLOR.fullmatch(color):
-        raise ValueError("target profile category requires a six-digit hex color")
+        raise ValueError("The category of the target profile must have a six-digit hex color.")
     stroke = profile.get("stroke_width_px", DEFAULT_STROKE_WIDTH_PX)
     if not _is_number(stroke) or stroke < 0:
-        raise ValueError("stroke_width_px must be a non-negative number")
+        raise ValueError("stroke_width_px must be 0 or more.")
     radius = profile.get("seat_radius")
     if radius is not None and (not _is_number(radius) or radius <= 0):
-        raise ValueError("seat_radius must be a positive number")
+        raise ValueError("seat_radius must be more than 0.")
     canvas = profile.get("canvas")
     if canvas is not None:
         _check_canvas(canvas.get("width") if isinstance(canvas, dict) else None,
                       canvas.get("height") if isinstance(canvas, dict) else None)
     legend = profile.get("legend", [])
     if not isinstance(legend, list) or not all(isinstance(item, str) and item for item in legend):
-        raise ValueError("legend must be a list of non-empty strings")
+        raise ValueError("legend must be a list of strings. Each string must contain text.")
     return profile
 
 
@@ -93,20 +93,20 @@ def _is_number(value: Any) -> bool:
 
 def _check_canvas(width: Any, height: Any) -> tuple[float, float]:
     if not _is_number(width) or not _is_number(height) or width <= 0 or height <= 0:
-        raise ValueError("canvas dimensions must be positive numbers")
+        raise ValueError("The width and the height of the canvas must be more than 0.")
     if width > MAX_CANVAS or height > MAX_CANVAS:
-        raise ValueError(f"canvas {width:g}x{height:g} exceeds the importer maximum {MAX_CANVAS:g}")
+        raise ValueError(f"The canvas {width:g}x{height:g} is too large. The maximum of the importer is {MAX_CANVAS:g}.")
     return float(width), float(height)
 
 
 def seat_records(model: dict[str, Any]) -> list[dict[str, Any]]:
     """Seats that may be exported: explicitly numbered, with grid coordinates."""
     if model.get("schema_version") != SCHEMA_VERSION:
-        raise ValueError("unsupported seating JSON schema")
+        raise ValueError("The service does not support this seating JSON schema.")
     if model.get("source_only") is not True or model.get("reference_svg_used") is not False:
-        raise ValueError("source input must be source-only and isolated from reference SVG")
+        raise ValueError("The source must be source-only. It must not use a reference SVG.")
     if (model.get("validation") or {}).get("status") != "PASS":
-        raise ValueError("source validation is not PASS")
+        raise ValueError("The validation status of the source is not PASS.")
     records: list[dict[str, Any]] = []
     for row in model.get("rows", []):
         for seat in row.get("seats", []):
@@ -114,7 +114,7 @@ def seat_records(model: dict[str, Any]) -> list[dict[str, Any]]:
                 continue
             geo = seat.get("computed_geometry") or {}
             if not _is_number(geo.get("grid_x")) or not _is_number(geo.get("grid_y")):
-                raise ValueError(f"seat lacks source geometry: {seat.get('seat_key')}")
+                raise ValueError(f"The seat has no source geometry: {seat.get('seat_key')}")
             section = seat.get("section_label")
             records.append({
                 "seat_key": str(seat["seat_key"]),
@@ -125,7 +125,7 @@ def seat_records(model: dict[str, Any]) -> list[dict[str, Any]]:
                 "y": float(geo["grid_y"]),
             })
     if not records:
-        raise ValueError("source contains no explicitly numbered seats")
+        raise ValueError("The source has no seats with a number that the adapter read.")
     return records
 
 
@@ -177,10 +177,10 @@ def build_authoring_svg(
         "viewBox": f"0 0 {width:g} {height:g}",
         "preserveAspectRatio": "xMidYMid meet",
     })
-    ET.SubElement(root, f"{{{SVG}}}title").text = "Venue plan (authoring export)"
+    ET.SubElement(root, f"{{{SVG}}}title").text = "Seating plan (authoring export)"
     ET.SubElement(root, f"{{{SVG}}}desc").text = (
-        "Generated from seating-json-v1 by venue-svg-generator. "
-        "One temporary placeholder category: prices are assigned later by the organizer."
+        "The venue SVG generator made this seating plan from seating-json-v1. "
+        "It has one temporary category. The organizer sets the prices in Arena."
     )
 
     price = ET.SubElement(root, f"{{{SVG}}}g", {"id": "PriceCategory", f"{{{INK}}}label": "#PriceCategory"})
@@ -221,7 +221,7 @@ def build_authoring_svg(
             groups[key] = group
         seat_id = "seat-" + safe_id(record["seat_key"])
         if seat_id in seat_ids:
-            raise ValueError(f"duplicate XML id: {seat_id}")
+            raise ValueError(f"Two seats have the same XML id: {seat_id}")
         seat_ids.add(seat_id)
         circle = ET.SubElement(group, f"{{{SVG}}}circle", {
             "id": seat_id, "cx": f"{record['x']:g}", "cy": f"{record['y']:g}", "r": f"{seat_radius:g}",

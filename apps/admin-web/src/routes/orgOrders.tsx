@@ -300,10 +300,10 @@ function OrgOrdersModule() {
             Orders
           </h1>
           <p style={subheadingStyle}>
-            Org-scoped orders. Search matches buyer name, e-mail or phone;
-            cancel is only available for <code>pending_payment</code> and{" "}
-            <code>manual_review</code> orders and releases the associated
-            hold.
+            Orders of one organization. Search finds the name, e-mail or phone
+            of the buyer. You can cancel only orders with the status{" "}
+            <code>pending_payment</code> or <code>manual_review</code>. A cancel
+            also releases the hold of the order.
           </p>
         </div>
         <div style={refreshWrapStyle}>
@@ -314,7 +314,7 @@ function OrgOrdersModule() {
             disabled={!orgReady || query.isFetching}
             data-testid="org-orders-refresh"
           >
-            {query.isFetching ? "Refreshing…" : "Refresh"}
+            {query.isFetching ? "Reloading…" : "Reload"}
           </button>
         </div>
       </header>
@@ -354,7 +354,7 @@ function OrgOrdersModule() {
           </div>
         ) : (
           <div style={fieldHintStyle}>
-            Paste an organization UUID, or pick one from the list above.
+            Paste the UUID of an organization, or select one from the list above.
           </div>
         )}
       </div>
@@ -370,7 +370,7 @@ function OrgOrdersModule() {
                 onChange={(e) => setQInput(e.target.value)}
                 style={inputStyle}
                 maxLength={201}
-                placeholder="Name, email, phone…"
+                placeholder="Name, e-mail, phone…"
                 data-testid="org-orders-search-input"
               />
             </label>
@@ -382,7 +382,7 @@ function OrgOrdersModule() {
                 style={inputStyle}
                 data-testid="org-orders-status"
               >
-                <option value="">Any status</option>
+                <option value="">All statuses</option>
                 {ORDER_STATUSES.map((s) => (
                   <option key={s} value={s}>
                     {s}
@@ -515,7 +515,7 @@ function OrdersErrorState({
         <strong>Forbidden.</strong>
         <p style={errorParaStyle}>
           Your account is missing <code style={monoStyle}>order.read</code>.
-          Ask a platform administrator to grant the permission.
+          Tell a platform administrator to give you this permission.
         </p>
       </div>
     );
@@ -524,13 +524,13 @@ function OrdersErrorState({
     return (
       <div style={errorBoxStyle} role="status" data-testid="org-orders-session-expired">
         <strong>Session expired.</strong>
-        <p style={errorParaStyle}>Sign in again to reload orders.</p>
+        <p style={errorParaStyle}>Sign in again, then reload the orders.</p>
       </div>
     );
   }
   return (
     <div style={errorBoxStyle} role="alert" data-testid="org-orders-error">
-      <strong>Failed to load orders.</strong>
+      <strong>We could not load the orders.</strong>
       <div style={errorCodeStyle}>{error?.code ?? "unknown.error"}</div>
       {error?.message ? <div style={errorParaStyle}>{error.message}</div> : null}
       <button type="button" style={errorRetryStyle} onClick={onRetry}>
@@ -616,7 +616,7 @@ function OrderDrawer({
           ref={closeRef}
           onClick={onClose}
           style={drawerCloseStyle}
-          aria-label="Close order details"
+          aria-label="Close the order card"
           data-testid="org-orders-drawer-close"
           title="Close (Esc)"
         >
@@ -639,7 +639,7 @@ function OrderDrawer({
             <dl style={metaListStyle}>
               <MetaRow k="Status" v={<StatusBadge status={order.status} />} />
               <MetaRow k="Buyer" v={order.buyer_name ?? "—"} />
-              <MetaRow k="Email" v={order.buyer_email ?? "—"} />
+              <MetaRow k="E-mail" v={order.buyer_email ?? "—"} />
               <MetaRow k="Phone" v={order.buyer_phone ?? "—"} />
               <MetaRow k="Session" v={<code style={monoStyle}>{order.session_id}</code>} />
               <MetaRow k="Source" v={order.source} />
@@ -647,11 +647,11 @@ function OrderDrawer({
                 k="Total"
                 v={`${formatMoney(order.total, order.currency)} (subtotal ${formatMoney(order.subtotal, order.currency)}, discount ${formatMoney(order.discount, order.currency)}, charge ${formatMoney(order.charge, order.currency)})`}
               />
-              <MetaRow k="External ref" v={order.external_ref ?? "—"} />
+              <MetaRow k="External reference" v={order.external_ref ?? "—"} />
               <MetaRow k="Created" v={formatDate(order.created_at)} />
               <MetaRow k="Paid" v={order.paid_at !== null ? formatDate(order.paid_at) : "—"} />
               <MetaRow
-                k="Cancelled"
+                k="Canceled"
                 v={order.cancelled_at !== null ? formatDate(order.cancelled_at) : "—"}
               />
               <MetaRow
@@ -663,18 +663,18 @@ function OrderDrawer({
 
           <section style={drawerSectionStyle} aria-labelledby="org-orders-drawer-items">
             <h3 id="org-orders-drawer-items" style={drawerSectionTitleStyle}>
-              Items ({order.items.length})
+              Lines ({order.items.length})
             </h3>
             {order.items.length === 0 ? (
               <div style={statusBoxStyle} role="status" data-testid="org-orders-items-empty">
-                No line items.
+                This order has no lines.
               </div>
             ) : (
               <table style={miniTableStyle} data-testid="org-orders-items-table">
                 <thead>
                   <tr>
                     <th scope="col" style={thStyle}>#</th>
-                    <th scope="col" style={thStyle}>Kind</th>
+                    <th scope="col" style={thStyle}>Type</th>
                     <th scope="col" style={thStyle}>Total</th>
                     <th scope="col" style={thStyle}>Ticket</th>
                   </tr>
@@ -731,7 +731,7 @@ function OrderDrawer({
             </h3>
             {order.events.length === 0 ? (
               <div style={statusBoxStyle} role="status" data-testid="org-orders-timeline-empty">
-                No events recorded yet.
+                This order has no recorded events.
               </div>
             ) : (
               <ol style={timelineListStyle} data-testid="org-orders-timeline">
@@ -756,13 +756,13 @@ function OrderDrawer({
             </h3>
             {!isCancellable(order.status) ? (
               <div style={statusBoxStyle} role="status" data-testid="org-orders-cancel-unavailable">
-                Only <code>pending_payment</code> and <code>manual_review</code> orders
-                can be cancelled; this order is <StatusBadge status={order.status} />.
+                You can cancel only orders with the status <code>pending_payment</code> or{" "}
+                <code>manual_review</code>. This order has the status <StatusBadge status={order.status} />.
               </div>
             ) : confirming ? (
               <div style={cancelFormStyle}>
                 <label htmlFor="org-orders-cancel-reason" style={fieldLabelStyle}>
-                  Reason (optional)
+                  Cause (optional)
                 </label>
                 <textarea
                   id="org-orders-cancel-reason"
@@ -771,7 +771,7 @@ function OrderDrawer({
                   style={textareaStyle}
                   rows={2}
                   data-testid="org-orders-cancel-reason"
-                  placeholder="Why is this order being cancelled?"
+                  placeholder="Type the cause of the cancel"
                 />
                 {cancelMut.isError ? (
                   <div style={fieldErrorStyle} data-testid="org-orders-cancel-error">
@@ -786,7 +786,7 @@ function OrderDrawer({
                     disabled={cancelMut.isPending}
                     data-testid="org-orders-cancel-confirm"
                   >
-                    {cancelMut.isPending ? "Cancelling…" : "Confirm cancellation"}
+                    {cancelMut.isPending ? "Canceling…" : "Cancel this order"}
                   </button>
                   <button
                     type="button"
@@ -828,7 +828,7 @@ function DetailErrorState({
       <div style={errorBoxStyle} role="alert" data-testid="org-orders-detail-not-found">
         <strong>Order not found.</strong>
         <p style={errorParaStyle}>
-          {error.message || "This order does not exist, or is not in this organization."}
+          {error.message || "We cannot find this order in this organization."}
         </p>
       </div>
     );
@@ -848,7 +848,7 @@ function DetailErrorState({
   }
   return (
     <div style={errorBoxStyle} role="alert" data-testid="org-orders-detail-error">
-      <strong>Failed to load order.</strong>
+      <strong>We could not load the order.</strong>
       <div style={errorCodeStyle}>{error?.code ?? "unknown.error"}</div>
       {error?.message ? <div style={errorParaStyle}>{error.message}</div> : null}
       <button type="button" style={errorRetryStyle} onClick={onRetry}>
@@ -906,14 +906,14 @@ export function mapServerError(err: ApiError): ServerFieldErrors {
       out.form = err.message;
       return out;
     case "orders.invalid_transition":
-      out.form = "This order can no longer be cancelled.";
+      out.form = "You cannot cancel this order in its current status.";
       return out;
     case "dependency.database_unavailable":
       out.form = err.message;
       return out;
     case "permissions.denied":
       out.form =
-        "Your account is missing the required permission. Ask a platform administrator.";
+        "Your account does not have the necessary permission. Tell a platform administrator.";
       return out;
     default:
       out.form = `${err.message} (${err.code})`;

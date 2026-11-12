@@ -154,7 +154,7 @@ test.describe("invitations on the seat map (live, three roles)", () => {
 
     // A sold seat: refused, the pick stays empty.
     await seatNode(page, "P|1|1").click();
-    await expect(page.getByTestId("inv-note")).toContainText("cannot be given away");
+    await expect(page.getByTestId("inv-note")).toContainText("You cannot give");
     await expect(picked(page)).toHaveCount(0);
 
     // The seat held back and a free one.
@@ -171,7 +171,7 @@ test.describe("invitations on the seat map (live, three roles)", () => {
 
     await fillGuest(page, "Ana López");
     await page.getByTestId("inv-submit").click();
-    await expect(page.getByTestId("inv-result")).toContainText("2 places for Ana López");
+    await expect(page.getByTestId("inv-result")).toContainText("2 seats for Ana López");
     await expect(page.getByTestId("inv-result")).toContainText("From your reserve: 1");
 
     const after = hall();

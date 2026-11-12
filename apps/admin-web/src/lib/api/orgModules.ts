@@ -157,7 +157,7 @@ export function effectivePriceLabel(shop: Pick<OrgModuleShopState, "effective_mo
 export function periodStatusLabel(status: string): string {
   switch (status) {
     case "scheduled":
-      return "Starts later";
+      return "Not started";
     case "in_force":
       return "In force";
     case "ended":
@@ -228,9 +228,9 @@ function priceOf(f: PricingFields, errors: string[]): PriceBody {
   if (f.pricing === "free") return { monthly_price_minor: 0 };
   const amount = f.amount.trim().replace(",", ".");
   const currency = f.currency.trim().toUpperCase();
-  if (!/^\d{1,7}(\.\d{1,2})?$/.test(amount)) errors.push("Monthly price: type an amount such as 19 or 19.90.");
-  else if (Number(amount) <= 0) errors.push("Monthly price: type an amount above 0, or choose Free.");
-  if (currency !== "" && !/^[A-Z]{3}$/.test(currency)) errors.push("Currency: type a code such as EUR, or leave it empty for the billing currency.");
+  if (!/^\d{1,7}(\.\d{1,2})?$/.test(amount)) errors.push("Price for each month: type a number, for example 19 or 19.90.");
+  else if (Number(amount) <= 0) errors.push("Price for each month: type a number more than 0, or select Free.");
+  if (currency !== "" && !/^[A-Z]{3}$/.test(currency)) errors.push("Currency: type a code, for example EUR. If the field is empty, the platform uses the billing currency.");
   if (errors.length > 0) return {};
   const body: PriceBody = { monthly_price_minor: Math.round(Number(amount) * 100) };
   if (currency !== "") body.currency = currency;
@@ -238,15 +238,15 @@ function priceOf(f: PricingFields, errors: string[]): PriceBody {
 }
 
 function reasonProblem(reason: string): string | null {
-  return reason.trim() === "" ? "Reason: write why. It is kept in the audit log." : null;
+  return reason.trim() === "" ? "Reason: type the reason. The platform saves it in the audit log." : null;
 }
 
 /** Checks the "connect" form. The server stays the judge; this catches what can be fixed before sending. */
 export function buildConnectRequest(form: ConnectForm, now: Date = new Date()): Built<ConnectShopModuleRequest> {
   const errors: string[] = [];
   const startsOn = form.startsOn.trim();
-  if (!DATE_RE.test(startsOn)) errors.push("First day: pick a date.");
-  else if (startsOn < todayUTC(now)) errors.push("First day: pick today or a later day (UTC). A day in the past is refused.");
+  if (!DATE_RE.test(startsOn)) errors.push("First day: select a date.");
+  else if (startsOn < todayUTC(now)) errors.push("First day: select today or a day after today (UTC). The platform does not accept a day before today.");
   const price = priceOf(form, errors);
   const rp = reasonProblem(form.reason);
   if (rp !== null) errors.push(rp);
@@ -259,9 +259,9 @@ export function buildConnectRequest(form: ConnectForm, now: Date = new Date()): 
 export function buildRepriceRequest(form: RepriceForm, period: Pick<OrgModulePeriod, "starts_on">, now: Date = new Date()): Built<RepriceOrgModuleRequest> {
   const errors: string[] = [];
   const from = form.from.trim();
-  if (!DATE_RE.test(from)) errors.push("From: pick a date.");
-  else if (from < todayUTC(now)) errors.push("From: pick today or a later day (UTC). A day in the past is refused.");
-  else if (from < period.starts_on) errors.push(`From: the period starts on ${period.starts_on}, pick that day or a later one.`);
+  if (!DATE_RE.test(from)) errors.push("From: select a date.");
+  else if (from < todayUTC(now)) errors.push("From: select today or a day after today (UTC). The platform does not accept a day before today.");
+  else if (from < period.starts_on) errors.push(`From: the period starts on ${period.starts_on}. Select that day or a day after it.`);
   const price = priceOf(form, errors);
   const rp = reasonProblem(form.reason);
   if (rp !== null) errors.push(rp);
@@ -274,9 +274,9 @@ export function buildRepriceRequest(form: RepriceForm, period: Pick<OrgModulePer
 export function buildEndRequest(form: EndForm, period: Pick<OrgModulePeriod, "starts_on">, now: Date = new Date()): Built<EndOrgModuleRequest> {
   const errors: string[] = [];
   const endsOn = form.endsOn.trim();
-  if (!DATE_RE.test(endsOn)) errors.push("Last day: pick a date.");
-  else if (endsOn < addDays(todayUTC(now), -1)) errors.push("Last day: pick yesterday or a later day (UTC). Days already charged stay charged.");
-  else if (endsOn < addDays(period.starts_on, -1)) errors.push(`Last day: the period starts on ${period.starts_on}, the last day cannot be earlier than the day before.`);
+  if (!DATE_RE.test(endsOn)) errors.push("Last day: select a date.");
+  else if (endsOn < addDays(todayUTC(now), -1)) errors.push("Last day: select yesterday or a day after it (UTC). Days that we charged stay charged.");
+  else if (endsOn < addDays(period.starts_on, -1)) errors.push(`Last day: the period starts on ${period.starts_on}. Select the day before it, or a day after it.`);
   const rp = reasonProblem(form.reason);
   if (rp !== null) errors.push(rp);
   if (errors.length > 0) return { ok: false, errors };
@@ -317,7 +317,7 @@ export function checkDomain(domain: string): string | null {
   const d = domain.trim();
   if (d === "") return null;
   if (d.length > 253 || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(d)) {
-    return "Domain: type a host name such as shop.example.com, without https:// or a path. Leave it empty to remove it.";
+    return "Domain: type a host name, for example shop.example.com. Do not type https:// or a path. To remove the domain, keep the field empty.";
   }
   return null;
 }
@@ -328,36 +328,36 @@ export function checkDomain(domain: string): string | null {
 
 /** What a refused call means for the superadmin, in plain words. */
 export function moduleErrorMessage(err: unknown): string {
-  if (!(err instanceof ApiError)) return err instanceof Error ? err.message : "The request failed. Please try again.";
+  if (!(err instanceof ApiError)) return err instanceof Error ? err.message : "We did not complete the request. Please try again.";
   switch (err.code) {
     case "org_module.starts_on_in_past":
-      return "The first day is in the past. Pick today or a later day (UTC): a month that was already charged is never rewritten.";
+      return "The first day is before today. Select today or a day after today (UTC). The platform does not change a month that it charged.";
     case "org_module.from_in_past":
-      return "The new price cannot start in the past. Pick today or a later day (UTC): a month that was already charged is never rewritten.";
+      return "The new price cannot start before today. Select today or a day after today (UTC). The platform does not change a month that it charged.";
     case "org_module.ends_on_in_past":
-      return "The last day is before yesterday. Pick yesterday or a later day (UTC): days already charged stay charged.";
+      return "The last day is before yesterday. Select yesterday or a day after it (UTC). Days that we charged stay charged.";
     case "org_module.overlap":
-      return "The organization already has the module on some of these days. End the current period first, or pick other days.";
+      return "The organization has the module on some of these days. End the active period first, or select different days.";
     case "org_module.already_ended":
-      return "The period already ends on or before that day.";
+      return "The period ends on or before that day.";
     case "org_module.invalid":
-      return "A date, the price or the currency was refused. The currency of an individual price must be the organization's billing currency, and the first day must not be after the last.";
+      return "We did not accept a date, the price or the currency. The currency of an individual price must be the billing currency of the organization. The first day cannot be after the last day.";
     case "org_module.superadmin_only":
       return "Only a platform superadmin can change modules.";
     case "org_module.not_found":
-      return "The period was not found. Reload the page.";
+      return "We did not find the period. Reload the page.";
     case "org_module.organization_not_found":
-      return "The organization was not found.";
+      return "We did not find the organization.";
     case "superadmin.missing_reason":
-      return "Write the reason. It is kept in the audit log.";
+      return "Type the reason. The platform saves it in the audit log.";
     case "shop.duplicate_domain":
-      return "Another organization already uses this domain.";
+      return "A different organization uses this domain.";
     case "shop.invalid_domain":
-      return "That is not a host name the API accepts. Type something like shop.example.com.";
+      return "The API does not accept this host name. Type a name such as shop.example.com.";
     case "shop.settings_changed":
-      return "Someone saved the shop settings while this dialog was open. Close it and open it again.";
+      return "A different person saved the shop settings while this form was open. Close the form and open it again.";
     case "shop.module_not_enabled":
-      return "The shop module is not connected today, so the shop settings are closed. Connect the module first.";
+      return "The shop module is not connected today. Connect the module first. The shop settings stay closed until then.";
     default:
       return err.message;
   }

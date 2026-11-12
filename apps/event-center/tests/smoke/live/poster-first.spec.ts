@@ -48,7 +48,7 @@ async function openWizard(page: Page, role: Role = "org_admin") {
 }
 
 async function statusOk(page: Page) {
-  await expect(page.getByTestId("wizard-status")).toContainText("Everything you filled in is correct", { timeout: 25_000 });
+  await expect(page.getByTestId("wizard-status")).toContainText("All data you added is correct", { timeout: 25_000 });
 }
 
 async function fillManualBasics(page: Page, name: string) {
@@ -88,7 +88,7 @@ test.describe("the poster is the first, conscious decision", () => {
     const poster = page.getByTestId("wizard-poster");
     await expect(poster.locator("legend")).toHaveText("Poster");
     await expect(poster).not.toContainText("optional");
-    await expect(poster).toContainText("Upload a poster — we will offer to fill in the event details.");
+    await expect(poster).toContainText("Upload a poster. We can give you the event data from it.");
     // First block of the form: above the event name.
     const posterBox = (await poster.boundingBox()) as { y: number };
     const eventBox = (await page.getByTestId("wizard-event").boundingBox()) as { y: number };
@@ -102,14 +102,14 @@ test.describe("the poster is the first, conscious decision", () => {
     await fillManualBasics(page, `Poster First Gate ${nonce}`);
     await statusOk(page);
     await expect(page.getByTestId("wizard-create")).toBeDisabled();
-    await expect(page.getByTestId("wizard-create-hint")).toContainText("Upload a poster or choose «Continue without a poster»");
+    await expect(page.getByTestId("wizard-create-hint")).toContainText("Upload a poster or select «Continue without a poster»");
     await noA11yViolations(page);
 
     // The skip is a keyboard-reachable, deliberate action and shows the reminder.
     await page.getByTestId("wizard-poster-skip").focus();
     await expect(page.getByTestId("wizard-poster-skip")).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(page.getByTestId("wizard-poster-skipped")).toHaveText("No poster added. You can upload it later in the event card.");
+    await expect(page.getByTestId("wizard-poster-skipped")).toHaveText("No poster added. You can upload it after that in the event card.");
     await expect(page.getByTestId("wizard-create")).toBeEnabled();
     await expect(page.getByTestId("wizard-poster-skip")).toHaveCount(0);
   });
@@ -221,7 +221,7 @@ test.describe("upload once, review the hints, apply on purpose", () => {
 
     // 2. The person is told the picture is sent for recognition BEFORE the paid request.
     const note = page.getByTestId("wizard-poster-read");
-    await expect(note).toContainText("sent to an automatic text recognition service");
+    await expect(note).toContainText("an automatic text recognition service");
 
     // 3. Read it: the scripted model answers (the real route runs).
     scriptFacts({
@@ -261,21 +261,21 @@ test.describe("upload once, review the hints, apply on purpose", () => {
     // A venue is chosen on purpose from the organization's list, never from the name alone; a city is not applied.
     await expect(page.getByTestId("poster-review-venue-none")).toBeChecked();
     // With a candidate, the poster's city is not offered or applied at all (it would only be a hint without one).
-    await expect(review).not.toContainText("Choose the country and the city");
+    await expect(review).not.toContainText("Select the country and the city");
     // A price needs an explicit category choice; the currency change is announced.
     await expect(page.getByTestId("poster-review-price-none")).toBeChecked();
-    await expect(review).toContainText("Add the others in the tickets section yourself");
+    await expect(review).toContainText("Add the other categories in the tickets section");
     // Model text is plain text: a script in a value would not become markup (checked by the unit tests too).
     await expect(page.getByTestId("poster-review-value-name")).toHaveText("Swan Lake");
     await expect(page.getByTestId("poster-review-value-date")).toHaveText("March 5, 2031");
 
     await page.getByTestId(`poster-review-venue-${hall}`).check();
     await page.getByTestId("poster-review-price-0").check();
-    await expect(review).toContainText("The event currency will be set to EUR.");
+    await expect(review).toContainText("The currency of the event will change to EUR.");
     await page.getByTestId("poster-review-apply").click();
 
     // 5. Only the selected things were filled in.
-    await expect(page.getByTestId("wizard-poster-read-done")).toContainText("Filled in from the poster");
+    await expect(page.getByTestId("wizard-poster-read-done")).toContainText("Added from the poster");
     await expect(page.getByTestId("wizard-name")).toHaveValue("Swan Lake");
     await expect(page.getByTestId("wizard-age")).toHaveValue("12+");
     await expect(richText(page, "wizard-description")).toHaveText("My own description");
@@ -351,7 +351,7 @@ test.describe("upload once, review the hints, apply on purpose", () => {
     await expect(page.getByTestId("poster-review-value-venueNew")).toHaveText(hostile);
     expect(await page.getByTestId("poster-review").locator("img").count()).toBe(0);
     expect(await page.evaluate(() => (window as unknown as { __xss?: number }).__xss)).toBeUndefined();
-    await expect(review).toContainText("The poster names the city «Madrid». Choose the country and the city in the venue section.");
+    await expect(review).toContainText("The poster gives the city «Madrid». Select the country and the city in the venue section.");
     await page.getByTestId("poster-review-apply").click();
     // The name went to the NEW venue form only: no existing venue is chosen, and the organization has no new venue.
     await expect(page.getByTestId("wizard-venue-mode-new")).toBeChecked();
@@ -391,7 +391,7 @@ test.describe("upload once, review the hints, apply on purpose", () => {
     // The venue that is already chosen needs no candidate; a different currency blocks the price.
     await expect(page.getByTestId("poster-review-venue")).toHaveCount(0);
     await expect(page.getByTestId("poster-review-price")).toHaveCount(0);
-    await expect(page.getByTestId("poster-review-notes")).toContainText("The poster prices are in USD, but the event currency is EUR");
+    await expect(page.getByTestId("poster-review-notes")).toContainText("The prices of the poster are in USD, but the currency of the event is EUR");
 
     // Apply with the defaults: only the age changes.
     await page.getByTestId("poster-review-apply").click();
@@ -428,7 +428,7 @@ test.describe("upload once, review the hints, apply on purpose", () => {
     await expect(page.getByTestId("poster-review-apply")).toBeDisabled();
     await page.getByTestId("poster-review-dismiss").click();
     await expect(page.getByTestId("wizard-name")).toHaveValue("Typed while the review was open");
-    await expect(page.getByTestId("wizard-poster-read-done")).toContainText("Nothing was filled in");
+    await expect(page.getByTestId("wizard-poster-read-done")).toContainText("We added no data from the poster");
     await page.getByTestId("wizard-clear").click();
   });
 });
@@ -447,7 +447,7 @@ test.describe("a poster that cannot be read never blocks the form and never lose
     const failed = page.getByTestId("wizard-poster-read-failed");
     await expect(failed).toBeVisible({ timeout: 20_000 });
     await expect(failed).toHaveAttribute("data-reason", "unavailable");
-    await expect(failed).toContainText("could not be read right now");
+    await expect(failed).toContainText("We cannot read the poster at this time");
     expect(writes.read).toBe(1);
     // Nothing retries by itself.
     await page.waitForTimeout(1500);
@@ -463,7 +463,7 @@ test.describe("a poster that cannot be read never blocks the form and never lose
     expect(writes.read).toBe(2);
     // Continue by hand and create: the event gets the uploaded poster.
     await page.getByTestId("wizard-poster-read-manual").click();
-    await expect(page.getByTestId("wizard-poster-read-done")).toContainText("Nothing was filled in");
+    await expect(page.getByTestId("wizard-poster-read-done")).toContainText("We added no data from the poster");
     await fillManualBasics(page, name);
     await statusOk(page);
     await page.getByTestId("wizard-create").click();
@@ -482,7 +482,7 @@ test.describe("a poster that cannot be read never blocks the form and never lose
     await page.getByTestId("wizard-poster-read-button").click();
     const failed = page.getByTestId("wizard-poster-read-failed");
     await expect(failed).toHaveAttribute("data-reason", "unconfigured", { timeout: 20_000 });
-    await expect(failed).toContainText("Reading posters is not available now");
+    await expect(failed).toContainText("Poster reads are not available at this time");
     await expect(page.getByTestId("wizard-poster-read-again")).toHaveCount(0);
     await expect(page.getByTestId("wizard-poster-picker-preview")).toBeVisible();
     await page.getByTestId("wizard-poster-read-manual").click();
@@ -503,7 +503,7 @@ test.describe("a poster that cannot be read never blocks the form and never lose
     await page.getByTestId("wizard-poster-read-button").click();
     const failed = page.getByTestId("wizard-poster-read-failed");
     await expect(failed).toHaveAttribute("data-reason", "quota");
-    await expect(failed).toContainText("used today's poster readings");
+    await expect(failed).toContainText("used the daily limit of poster reads");
     await expect(page.getByTestId("wizard-poster-read-again")).toHaveCount(0);
     await expect(page.getByTestId("wizard-poster-picker-preview")).toBeVisible();
     await expect(page.getByTestId("wizard-name")).toHaveValue("Mine while the limit is reached");

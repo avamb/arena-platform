@@ -103,7 +103,7 @@ describe("the repeat e-mail button", () => {
     await press(el, "shop-order-resend");
     expect(resendShopOrderEmail).toHaveBeenCalledWith(ORG, ID, "received");
     expect(el.querySelector('[data-testid="shop-resend-panel"]')).toBeNull();
-    expect(note(el)).toBe("The e-mail is queued.");
+    expect(note(el)).toBe("We added the e-mail to the queue.");
   });
 
   it("asks which letter for a shipped order, and sends the one that was chosen", async () => {
@@ -114,7 +114,7 @@ describe("the repeat e-mail button", () => {
     expect(el.querySelector('[data-testid="shop-resend-panel"]')?.textContent).toContain("anna@example.test");
     await press(el, "shop-resend-shipped");
     expect(resendShopOrderEmail).toHaveBeenCalledWith(ORG, ID, "shipped");
-    expect(note(el)).toBe("The e-mail is queued.");
+    expect(note(el)).toBe("We added the e-mail to the queue.");
   });
 
   it("offers the refund letter next to the confirmation for a refunded order, and sends the chosen one", async () => {
@@ -127,7 +127,7 @@ describe("the repeat e-mail button", () => {
     expect(el.querySelector('[data-testid="shop-resend-shipped"]')).toBeNull();
     await press(el, "shop-resend-refunded");
     expect(resendShopOrderEmail).toHaveBeenCalledWith(ORG, ID, "refunded");
-    expect(note(el)).toBe("The e-mail is queued.");
+    expect(note(el)).toBe("We added the e-mail to the queue.");
   });
 
   it("says calmly that there is no refund letter when the API answers 409 for it", async () => {
@@ -137,7 +137,7 @@ describe("the repeat e-mail button", () => {
     const el = await mount(order({ status: "refunded", refunded_minor: 4490 }));
     await press(el, "shop-order-resend");
     await press(el, "shop-resend-refunded");
-    expect(note(el)).toBe("Refund letter unavailable: the order has no refund");
+    expect(note(el)).toBe("No refund e-mail. The order has no refund.");
     expect(el.querySelector('[data-testid="shop-order-error"]')).toBeNull();
   });
 
@@ -147,7 +147,7 @@ describe("the repeat e-mail button", () => {
     });
     const el = await mount(order());
     await press(el, "shop-order-resend");
-    expect(note(el)).toContain("less than a minute ago");
+    expect(note(el)).toContain("less than a minute");
     expect(el.querySelector('[data-testid="shop-order-error"]')).toBeNull();
   });
 
@@ -172,12 +172,12 @@ describe("an order without delivery (M-03, M-07)", () => {
     const el = await mount(order({ delivery_kind: "none", ship: { address1: "", city: "", country: "" } }));
     expect(el.querySelector('[data-testid="shop-order-ship"]')).toBeNull();
     expect(el.querySelector('[data-testid="shop-order-courier"]')).toBeNull();
-    expect(el.querySelector('[data-testid="shop-order-no-delivery"]')?.textContent).toBe("No delivery needed");
+    expect(el.querySelector('[data-testid="shop-order-no-delivery"]')?.textContent).toBe("No shipping necessary");
   });
 
   it("keeps both for a shipped parcel, and the action reads as an action", async () => {
     const el = await mount(order());
-    expect(el.querySelector('[data-testid="shop-order-ship"]')?.textContent).toBe("Handed to courier");
+    expect(el.querySelector('[data-testid="shop-order-ship"]')?.textContent).toBe("Given to courier");
     expect(el.querySelector('[data-testid="shop-order-courier"]')).not.toBeNull();
     expect(el.querySelector('[data-testid="shop-order-no-delivery"]')).toBeNull();
   });

@@ -96,7 +96,7 @@ test.describe("the mini app entry /tg (live)", () => {
     const exchange = page.waitForRequest((r) => r.url().endsWith("/v1/auth/telegram-miniapp"));
     await page.goto(`/tg?next=${encodeURIComponent("https://evil.example/o/x")}`);
     expect((await exchange).postDataJSON()).not.toHaveProperty("next");
-    await expect(page.getByRole("heading", { name: "Choose an organization" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Select an organization" })).toBeVisible();
     expect(page.url()).not.toContain("evil.example");
   });
 
@@ -104,7 +104,7 @@ test.describe("the mini app entry /tg (live)", () => {
     const p = person(env, "org_admin");
     await telegramStub(page, initData(p.telegram_user_id, { ageSeconds: 3600 }));
     await page.goto(`/tg?next=${encodeURIComponent(eventPath)}`);
-    await expect(page.getByTestId("tg-enter-error")).toContainText("opened a while ago");
+    await expect(page.getByTestId("tg-enter-error")).toContainText("Your sign-in is too old");
     expect(new URL(page.url()).pathname).toBe("/tg");
   });
 
@@ -113,7 +113,7 @@ test.describe("the mini app entry /tg (live)", () => {
     await telegramStub(page, initData(p.telegram_user_id, { forge: true }));
     await page.goto(`/tg?next=${encodeURIComponent(eventPath)}`);
     const alert = page.getByTestId("tg-enter-error");
-    await expect(alert).toContainText("could not check your Telegram sign-in");
+    await expect(alert).toContainText("cannot check your Telegram sign-in");
     await expect(alert).not.toContainText(/hash|signature|auth\./i);
   });
 

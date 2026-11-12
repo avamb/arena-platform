@@ -113,7 +113,7 @@ describe("refund outside the platform", () => {
     // Only active tickets are listed.
     expect(document.querySelectorAll('[data-testid="extref-ticket"]').length).toBe(2);
     await press("extref-check");
-    expect(byId("extref-problem")?.textContent).toContain("Tick at least one ticket");
+    expect(byId("extref-problem")?.textContent).toContain("Select at least one ticket.");
 
     await act(async () => {
       (document.querySelector('[data-ticket="t1"]') as HTMLInputElement).click();
@@ -167,7 +167,7 @@ describe("refund outside the platform", () => {
     await press("extref-check");
     await press("extref-record");
     const text = byId("extref-refusal")?.textContent ?? "";
-    expect(text).toContain("already recorded for ticket 11");
+    expect(text).toContain("We recorded a refund for ticket 11");
     expect(text).toContain("10.00");
   });
 });

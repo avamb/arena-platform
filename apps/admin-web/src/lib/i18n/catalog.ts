@@ -187,15 +187,15 @@ export const enCatalog: Catalog = {
 
   // Empty/scope states
   "shell.scopeNone":
-    "No scope active — surfaces requiring a scope are hidden.",
+    "No scope is active. Sections that need a scope are hidden.",
   "shell.scopeActive": "Active scope: {label}",
   "shell.nav.empty":
-    "No surfaces available for your current permissions and scope. Ask a platform administrator to grant access, or switch to a different scope.",
+    "Your permissions and scope give no sections. Ask a platform administrator to give you access, or select a different scope.",
 
   // Locale switcher
   "locale.label": "UI language",
   "locale.switch.aria":
-    "Admin UI language switcher. Default is Russian.",
+    "Language switcher of the admin console. The default is Russian.",
   "locale.option.ru": "Russian (Русский)",
   "locale.option.en": "English",
 
@@ -208,38 +208,38 @@ export const enCatalog: Catalog = {
   "action.edit": "Edit",
   "action.add": "Add",
   "action.invite": "Invite",
-  "action.assignRole": "Assign Role",
-  "action.refresh": "Refresh",
+  "action.assignRole": "Give Role",
+  "action.refresh": "Reload",
 
   // Empty states
   "empty.venues":
-    "No venues yet. Press \"Add Venue\" to create the first \"Venue\" record.",
+    "No venues. Press \"Add Venue\" to make the first \"Venue\" record.",
   "empty.organizations":
-    "No organizations yet. Press \"Create Organization\" to add the first \"Organization\" record.",
+    "No organizations. Press \"Create Organization\" to add the first \"Organization\" record.",
   "empty.channels":
-    "No sales channels yet. Press \"Add Channel\" to create the first \"Sales Channel\" record.",
+    "No sales channels. Press \"Add Channel\" to make the first \"Sales Channel\" record.",
   "empty.payments":
-    "No payment provider configs yet. Press \"Add Payment Config\" to add the first \"Payment Provider Config\" record.",
+    "No payment provider configs. Press \"Add Payment Config\" to add the first \"Payment Provider Config\" record.",
   "empty.members":
-    "No members in this organization yet. Press \"Invite\" to add a \"User\" with a role.",
+    "This organization has no members. Press \"Invite\" to add a \"User\" with a role.",
   "empty.networks":
-    "No operator networks yet. Press \"Create Network\" to add the first \"Operator Network\" record.",
+    "No operator networks. Press \"Create Network\" to add the first \"Operator Network\" record.",
 
   // Validation / errors
-  "error.required": "This field is required.",
-  "error.invalid": "Invalid value.",
-  "error.network": "Network error. Please retry.",
+  "error.required": "Fill this field.",
+  "error.invalid": "This value is not correct. Check it and try again.",
+  "error.network": "Network error. Please try again.",
   "error.permissionDenied":
-    "You do not have permission for this operation. Contact a platform administrator.",
+    "You do not have permission for this step. Write to a platform administrator.",
   "error.reasonRequired":
-    "Acting on another tenant requires an audit reason (X-Admin-Reason).",
-  "error.unknown": "An unknown error occurred.",
+    "A step on another tenant needs an audit reason (X-Admin-Reason).",
+  "error.unknown": "An unknown error occurred. Try again. If the error stays, write to support.",
 
   // Reason / cross-tenant
-  "reason.title": "Provide a reason",
+  "reason.title": "Write a reason",
   "reason.help":
-    "This action targets another tenant. The reason is recorded in the audit log and applied to every request until the session ends.",
-  "reason.placeholder": "e.g.: customer support ticket CRM-12345",
+    "This step is for another tenant. The audit log keeps the reason. The reason stays on each request until the session ends.",
+  "reason.placeholder": "Example: buyer support ticket CRM-12345",
 
   // Loading
   "loading.generic": "Loading…",
@@ -248,11 +248,11 @@ export const enCatalog: Catalog = {
   // Forbidden
   "forbidden.title": "Access denied",
   "forbidden.body":
-    "You do not have permission to view this section. If this is unexpected, contact a platform administrator.",
+    "You do not have permission to open this section. If you think this is a mistake, write to a platform administrator.",
 
   // Event description edit form
   "events.descriptionHint":
-    "Editing this field removes links, headings and underline. Use the event center for full formatting.",
+    "A change in this field removes links, headings, and underline. For full formatting, use the event center.",
 
   // Analytics section (spec 50, stage A8)
   ...analyticsEn,

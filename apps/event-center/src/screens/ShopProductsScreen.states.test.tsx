@@ -87,14 +87,14 @@ describe("the products list (SB-14)", () => {
     });
     await idle(el);
     expect(byId(el, "error")).toBeNull();
-    expect(el.textContent).toContain("There are no products yet.");
+    expect(el.textContent).toContain("There are no products. Press «+ Product» to add the first one.");
   });
 
   it("does not print what the address says was deleted", async () => {
     vi.mocked(listShopProducts).mockResolvedValue({ products: [] } as never);
     const el = await mount("?deleted=Your%20account%20is%20closed");
     const notice = byId(el, "shop-products-notice");
-    expect(notice.textContent).toBe("The product is deleted.");
+    expect(notice.textContent).toBe("We deleted the product.");
     expect(el.textContent).not.toContain("account is closed");
   });
 });

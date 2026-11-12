@@ -16,14 +16,14 @@ describe("the map point helper", () => {
     const html = render("32.0853", "34.7818");
     expect(html).toContain('href="https://www.google.com/maps/search/?api=1&amp;query=32.0853,34.7818"');
     expect(html).toContain("Open this point in Google Maps");
-    expect(html).toContain("Put the point at the entrance or the parking, where guests should arrive.");
+    expect(html).toContain("Put the point at the entrance or at the car park, where guests must go.");
   });
 
   it("shows only the hint while the point is empty, incomplete or out of range", () => {
     for (const [lat, lng] of [["", ""], ["32.1", ""], ["abc", "34"], ["95", "34"]]) {
       const html = render(lat, lng);
       expect(html).not.toContain("google.com");
-      expect(html).toContain("entrance or the parking");
+      expect(html).toContain("entrance or at the car park");
     }
   });
 
@@ -57,8 +57,8 @@ describe("the advisory warning", () => {
   it("names the city, the distance and the nearer city, and says the save still works", () => {
     const html = renderWith(far);
     expect(html).toContain("20.5 km from Netanya");
-    expect(html).toContain("nearer to Ramat HaSharon (0.3 km)");
-    expect(html).toContain("You can still save the point");
+    expect(html).toContain("closer to Ramat HaSharon (0.3 km)");
+    expect(html).toContain("You can save the point");
     expect(html).toContain("google.com/maps");
   });
 

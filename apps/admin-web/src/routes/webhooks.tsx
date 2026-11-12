@@ -18,7 +18,8 @@
  * UI shape (matches the master spec for this feature):
  *
  *   - List table — site_url / callback_url / event_types / active /
- *     created_at, plus inline "Edit" / "Delete" actions.
+ *     created_at, plus inline "Edit" / "Deactivate" actions. DELETE only
+ *     deactivates the subscriber (handleDeactivateWebhookSubscriber).
  *   - Create form — callback_url, site_url, event_types multi-select.
  *     The generated `signing_secret` is shown EXACTLY ONCE in a
  *     dismissable banner immediately after creation. Subsequent reads
@@ -153,16 +154,16 @@ interface ListEnvelope {
 export function validateCallbackUrl(raw: string): string | null {
   const value = raw.trim();
   if (value === "") {
-    return "Callback URL is required.";
+    return "Type the callback URL.";
   }
   let parsed: URL;
   try {
     parsed = new URL(value);
   } catch {
-    return "Enter a valid absolute URL (https://…).";
+    return "Type a full URL that starts with https://.";
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    return "Callback URL must use http or https.";
+    return "The callback URL must start with http or https.";
   }
   return null;
 }
@@ -176,10 +177,10 @@ export function validateSiteUrl(raw: string): string | null {
   try {
     const parsed = new URL(value);
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-      return "Site URL must use http or https.";
+      return "The site URL must start with http or https.";
     }
   } catch {
-    return "Enter a valid absolute URL (https://…).";
+    return "Type a full URL that starts with https://.";
   }
   return null;
 }
@@ -280,10 +281,10 @@ function WebhooksAdmin() {
             Webhook Subscribers
           </h1>
           <p style={subheadingStyle}>
-            Manage HTTP endpoints that receive signed outbox events from
-            Arena. Each subscriber stores a callback URL, an event-type
-            filter (empty = wildcard), and an HMAC-SHA256 signing
-            secret used by the dispatcher to sign every delivery body.
+            Manage the HTTP endpoints that receive signed outbox events from
+            Arena. Each subscriber has a callback URL, an event-type
+            filter (empty means wildcard) and an HMAC-SHA256 signing
+            secret. The dispatcher uses the secret to sign the body of each delivery.
           </p>
         </div>
         <div>
@@ -293,7 +294,7 @@ function WebhooksAdmin() {
             onClick={() => setShowCreate((v) => !v)}
             data-testid="webhooks-toggle-create"
           >
-            {showCreate ? "Cancel" : "Register subscriber"}
+            {showCreate ? "Cancel" : "Add subscriber"}
           </button>
         </div>
       </header>
@@ -322,14 +323,14 @@ function WebhooksAdmin() {
       ) : null}
       {listQuery.isError ? (
         <div style={errorBoxStyle} role="alert" data-testid="webhooks-list-error">
-          {(listQuery.error as ApiError).message ?? "Failed to load subscribers."}
+          {(listQuery.error as ApiError).message ?? "We did not load the subscribers."}
         </div>
       ) : null}
 
       {!listQuery.isLoading && subscribers.length === 0 ? (
         <div style={statusBoxStyle} role="status" data-testid="webhooks-empty">
-          No webhook subscribers registered yet. The dispatcher will not
-          fan out events until at least one row is active.
+          No webhook subscribers. The dispatcher sends no events until one
+          subscriber is active.
         </div>
       ) : null}
 
@@ -340,7 +341,7 @@ function WebhooksAdmin() {
           onSelect={(id) => setSelectedId(id === selectedId ? null : id)}
           onDelete={(id) => {
             if (typeof window !== "undefined" && window.confirm) {
-              if (!window.confirm("Deactivate this subscriber? The row is retained for audit.")) {
+              if (!window.confirm("Deactivate this subscriber? The platform stops sending events to it. The subscriber stays in the list as inactive. To send events again, open Edit and set it active.")) {
                 return;
               }
             }
@@ -435,7 +436,7 @@ function SubscribersTable({
               onClick={() => onDelete(s.subscriber_id)}
               data-testid={`webhooks-delete-${s.subscriber_id}`}
             >
-              Delete
+              Deactivate
             </button>
           </div>
         );
@@ -517,7 +518,7 @@ function CreateSubscriberForm({
   return (
     <form style={formStyle} onSubmit={onSubmit} noValidate>
       <Field label="Callback URL" htmlFor="wh-callback" error={errors.callbackUrl}
-        hint="The URL Arena POSTs signed event payloads to.">
+        hint="Arena sends signed event data with POST to this URL.">
         <input
           id="wh-callback"
           type="url"
@@ -529,7 +530,7 @@ function CreateSubscriberForm({
         />
       </Field>
       <Field label="Site URL (optional)" htmlFor="wh-site" error={errors.siteUrl}
-        hint="Human-readable URL; defaults to the callback URL.">
+        hint="URL for people to read. If you keep the field empty, the platform uses the callback URL.">
         <input
           id="wh-site"
           type="url"
@@ -540,7 +541,7 @@ function CreateSubscriberForm({
         />
       </Field>
       <Field label="Event types" htmlFor="wh-events" error={undefined}
-        hint="Leave empty to receive every event type (wildcard).">
+        hint="To receive all event types (wildcard), keep the field empty.">
         <EventTypeMultiSelect
           id="wh-events"
           value={eventTypes}
@@ -559,7 +560,7 @@ function CreateSubscriberForm({
           disabled={mutation.isPending}
           data-testid="webhooks-create-submit"
         >
-          {mutation.isPending ? "Registering…" : "Register subscriber"}
+          {mutation.isPending ? "Adding…" : "Add subscriber"}
         </button>
       </div>
     </form>
@@ -655,7 +656,7 @@ function SubscriberDrawer({
           onChange={setEventTypes}
         />
         <p style={hintStyle}>
-          Empty list = wildcard (receives every event_type).
+          An empty list means wildcard. The subscriber receives all event_type values.
         </p>
       </div>
 
@@ -670,8 +671,8 @@ function SubscriberDrawer({
           />
           <span>
             {active
-              ? "Active — dispatcher delivers matching events"
-              : "Inactive — events are not delivered to this subscriber"}
+              ? "Active. The dispatcher delivers the events that match."
+              : "Inactive. The dispatcher does not deliver events to this subscriber."}
           </span>
         </label>
       </div>
@@ -679,8 +680,8 @@ function SubscriberDrawer({
       <div style={drawerSectionStyle}>
         <h3 style={drawerSectionTitleStyle}>Signing secret</h3>
         <p style={hintStyle}>
-          Write-only after creation. To rotate the secret, deactivate
-          this subscriber and register the callback URL again.
+          You can write the secret only when you create it. To change the secret, deactivate
+          this subscriber. Then add the callback URL again.
         </p>
       </div>
 
@@ -691,7 +692,7 @@ function SubscriberDrawer({
       ) : null}
       {savedAt !== null && !dirty ? (
         <div style={savedBadgeStyle} role="status" data-testid="webhooks-edit-saved">
-          Saved at {formatDateTime(savedAt)}
+          We saved at {formatDateTime(savedAt)}
         </div>
       ) : null}
 
@@ -710,9 +711,9 @@ function SubscriberDrawer({
       <div style={drawerSectionStyle}>
         <h3 style={drawerSectionTitleStyle}>Recent deliveries</h3>
         <p style={hintStyle}>
-          Best-effort: per-subscriber delivery rows are not persisted.
-          Attempts / dispatched_at reflect the source outbox event row
-          (see dispatcher logs for per-subscriber retry detail).
+          The platform does not save a delivery row for each subscriber.
+          The values for attempts and dispatched_at come from the outbox event row.
+          For retries of one subscriber, see the dispatcher logs.
         </p>
         {deliveriesQuery.isLoading ? (
           <div style={statusBoxStyle}>Loading…</div>
@@ -738,7 +739,7 @@ function DeliveriesTable({
   if (attempts.length === 0) {
     return (
       <div style={statusBoxStyle} data-testid="webhooks-deliveries-empty">
-        No matching outbox rows yet.
+        No outbox rows match.
       </div>
     );
   }
@@ -833,7 +834,7 @@ function SecretBanner({
   return (
     <div style={secretBannerStyle} role="status" data-testid="webhooks-secret-banner">
       <div style={secretBannerTitleStyle}>
-        Copy this signing secret now — it is not retrievable later.
+        Copy this signing secret now. You cannot get it again later.
       </div>
       <div style={secretBannerMetaStyle}>
         Subscriber <code>{response.subscriber_id}</code>
@@ -881,7 +882,7 @@ function SecretBanner({
           onClick={onDismiss}
           data-testid="webhooks-secret-dismiss"
         >
-          I have copied it — dismiss
+          I copied it. Close
         </button>
       </div>
     </div>
@@ -974,11 +975,11 @@ export function mapCreateServerError(err: ApiError): CreateFormErrors {
       }
       return { form: err.message };
     case "conflict":
-      return { callbackUrl: "A subscriber with this callback URL already exists." };
+      return { callbackUrl: "A subscriber with this callback URL exists." };
     case "permissions.denied":
-      return { form: "Your account is missing webhook.subscriber.manage." };
+      return { form: "Your account does not have webhook.subscriber.manage." };
     case "service_unavailable":
-      return { form: "Webhook service is not available. Retry shortly." };
+      return { form: "The webhook service is not available. Please try again in a short time." };
     default:
       return { form: `${err.message} (${err.code})` };
   }

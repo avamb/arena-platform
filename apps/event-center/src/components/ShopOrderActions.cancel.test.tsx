@@ -87,7 +87,7 @@ async function mount(locale: "en" | "ru" | "es"): Promise<HTMLElement> {
 
 describe("cancelling an unpaid order (C-06)", () => {
   const cases = [
-    { locale: "en" as const, word: "CANCEL ORDER", intro: "The order closes and its goods go back on sale. Confirm your password." },
+    { locale: "en" as const, word: "CANCEL ORDER", intro: "The order closes and its products go on sale again. Type your password again." },
     { locale: "ru" as const, word: "ОТМЕНИТЬ ЗАКАЗ", intro: "Заказ закроется, товар вернётся в продажу. Подтвердите пароль." },
     { locale: "es" as const, word: "CANCELAR PEDIDO", intro: "El pedido se cierra y sus productos vuelven a la venta. Confirma tu contraseña." },
   ];

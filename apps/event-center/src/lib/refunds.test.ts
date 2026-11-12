@@ -151,7 +151,7 @@ describe("the plan", () => {
         { ticket_id: "a", amount: 2500 },
         { ticket_id: "b", amount: 2500 },
       ],
-      reason: "Buyer asked for a refund",
+      reason: "The buyer requested a refund",
       notify_buyer: true,
     });
   });

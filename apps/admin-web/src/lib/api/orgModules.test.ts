@@ -167,7 +167,7 @@ describe("buildEndRequest", () => {
   it("takes yesterday but not the day before", () => {
     expect(buildEndRequest({ endsOn: "2026-11-05", reason: "x" }, p, NOW).ok).toBe(true);
     const old = buildEndRequest({ endsOn: "2026-11-04", reason: "x" }, p, NOW);
-    expect(!old.ok && old.errors.join(" ")).toContain("Days already charged");
+    expect(!old.ok && old.errors.join(" ")).toContain("Days that we charged");
   });
 
   it("refuses an empty or malformed day", () => {
@@ -243,23 +243,23 @@ describe("moduleErrorMessage", () => {
   const err = (status: number, code: string) => new ApiError(status, { code, message: "raw" });
 
   it("explains a day in the past, for each of the three routes", () => {
-    expect(moduleErrorMessage(err(422, "org_module.starts_on_in_past"))).toContain("first day is in the past");
-    expect(moduleErrorMessage(err(422, "org_module.from_in_past"))).toContain("new price cannot start in the past");
+    expect(moduleErrorMessage(err(422, "org_module.starts_on_in_past"))).toContain("first day is before today");
+    expect(moduleErrorMessage(err(422, "org_module.from_in_past"))).toContain("new price cannot start before today");
     expect(moduleErrorMessage(err(422, "org_module.ends_on_in_past"))).toContain("last day is before yesterday");
   });
 
   it("explains an overlap and the rest", () => {
-    expect(moduleErrorMessage(err(409, "org_module.overlap"))).toContain("already has the module");
-    expect(moduleErrorMessage(err(409, "org_module.already_ended"))).toContain("already ends");
+    expect(moduleErrorMessage(err(409, "org_module.overlap"))).toContain("has the module");
+    expect(moduleErrorMessage(err(409, "org_module.already_ended"))).toContain("ends on or before");
     expect(moduleErrorMessage(err(403, "org_module.superadmin_only"))).toContain("platform superadmin");
-    expect(moduleErrorMessage(err(409, "shop.duplicate_domain"))).toContain("Another organization");
-    expect(moduleErrorMessage(err(409, "shop.settings_changed"))).toContain("Someone saved");
+    expect(moduleErrorMessage(err(409, "shop.duplicate_domain"))).toContain("A different organization");
+    expect(moduleErrorMessage(err(409, "shop.settings_changed"))).toContain("A different person saved");
   });
 
   it("falls back to the server's message, or a plain one", () => {
     expect(moduleErrorMessage(err(500, "org_module.failed"))).toBe("raw");
     expect(moduleErrorMessage(new Error("boom"))).toBe("boom");
-    expect(moduleErrorMessage("x")).toContain("failed");
+    expect(moduleErrorMessage("x")).toContain("did not complete");
   });
 });
 

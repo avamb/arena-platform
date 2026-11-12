@@ -13,7 +13,7 @@ import "@/styles.css";
 
 const rootEl = document.getElementById("root");
 if (rootEl === null) {
-  throw new Error("Admin shell mount point #root not found in index.html");
+  throw new Error("The #root element is not in index.html");
 }
 
 createRoot(rootEl).render(

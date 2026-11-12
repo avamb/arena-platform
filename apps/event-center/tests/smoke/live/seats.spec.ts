@@ -161,7 +161,7 @@ test.describe("the hall of a seated date (live, three roles)", () => {
 
     // A tap on a SOLD seat is refused, and the screen says so.
     await seatNode(page, "P|1|1").click();
-    await expect(page.getByTestId("seat-note")).toContainText("skipped");
+    await expect(page.getByTestId("seat-note")).toContainText("We did not change");
     await expect(trayCount(page)).toContainText("1 seats changed");
 
     // A whole row from the list: row 3 of the Parter (12 seats, all Standard).
@@ -181,7 +181,7 @@ test.describe("the hall of a seated date (live, three roles)", () => {
 
     await page.getByTestId("seat-apply").click();
     await expect(page.getByTestId("seat-note")).toContainText("Applied. 13 seats changed");
-    await expect(trayCount(page)).toContainText("No changes yet");
+    await expect(trayCount(page)).toContainText("No changes.");
 
     const after = hall();
     expect(after.batches).toBe(1);
@@ -197,7 +197,7 @@ test.describe("the hall of a seated date (live, three roles)", () => {
     await expect(page.getByTestId("seat-history-item")).toHaveCount(1);
     await expect(page.getByTestId("seat-history-item")).toHaveAttribute("data-kind", "paint");
     await page.getByTestId("seat-revert").click();
-    await expect(page.getByTestId("seat-note")).toContainText("Undone");
+    await expect(page.getByTestId("seat-note")).toContainText("Canceled");
     const reverted = hall();
     expect(reverted.batches).toBe(2);
     expect(reverted.seats["P|3|1"].tier).toBe(STANDARD);
@@ -254,7 +254,7 @@ test.describe("the hall of a seated date (live, three roles)", () => {
     // A buyer takes seat P|5|2 while the organizer is still thinking.
     seed("sell", "P|5|2");
     await page.getByTestId("seat-apply").click();
-    await expect(page.getByTestId("seat-note")).toContainText("skipped");
+    await expect(page.getByTestId("seat-note")).toContainText("We did not change");
     const h = hall();
     expect(h.seats["P|5|2"]).toEqual({ tier: STANDARD, status: "sold" });
     expect(h.seats["P|5|3"].tier).toBe(ECONOMY);

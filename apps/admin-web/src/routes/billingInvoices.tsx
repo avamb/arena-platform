@@ -92,7 +92,7 @@ type Modal =
 
 function messageOf(err: unknown): string {
   if (err instanceof ApiError) return err.message;
-  return err instanceof Error ? err.message : "The request failed. Please try again.";
+  return err instanceof Error ? err.message : "We did not complete the action. Please try again.";
 }
 
 function BillingInvoicesPage(): JSX.Element {
@@ -245,14 +245,14 @@ function BillingInvoicesPage(): JSX.Element {
         <div>
           <h1 style={headingStyle}>Invoices</h1>
           <p style={subheadingStyle}>
-            Platform invoices to organizations. Make a draft usage invoice for a finished month, issue it for a bank transfer
-            or a card payment, record money that arrived outside the feeds, or void it. Every change asks for a reason and is
-            written to the audit log. Times are in UTC.
+            These are platform invoices to organizations. You can make a draft usage invoice for a month that ended. You can issue it
+            for a bank transfer or a card payment. You can record money that did not come through the feeds. You can void an invoice.
+            For each change, you give a cause. We write each change to the audit log. All times are in UTC.
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" style={buttonStyle} onClick={refresh} data-testid="billing-refresh">
-            Refresh
+            Reload
           </button>
           <button type="button" style={primaryButtonStyle} onClick={openGenerate} data-testid="billing-generate">
             Make a usage invoice

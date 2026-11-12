@@ -31,12 +31,12 @@ describe("validateNetworkSlug", () => {
   });
 
   it.each([
-    ["UPPER", "Slug must be lowercase letters, digits, or hyphens; start and end with [a-z0-9]"],
-    ["-leading-hyphen", "Slug must be lowercase letters, digits, or hyphens; start and end with [a-z0-9]"],
-    ["trailing-hyphen-", "Slug must be lowercase letters, digits, or hyphens; start and end with [a-z0-9]"],
-    ["has space", "Slug must be lowercase letters, digits, or hyphens; start and end with [a-z0-9]"],
-    ["under_score", "Slug must be lowercase letters, digits, or hyphens; start and end with [a-z0-9]"],
-    ["dot.notation", "Slug must be lowercase letters, digits, or hyphens; start and end with [a-z0-9]"],
+    ["UPPER", "Slug must use lowercase letters, digits, and hyphens. It must start and end with [a-z0-9]"],
+    ["-leading-hyphen", "Slug must use lowercase letters, digits, and hyphens. It must start and end with [a-z0-9]"],
+    ["trailing-hyphen-", "Slug must use lowercase letters, digits, and hyphens. It must start and end with [a-z0-9]"],
+    ["has space", "Slug must use lowercase letters, digits, and hyphens. It must start and end with [a-z0-9]"],
+    ["under_score", "Slug must use lowercase letters, digits, and hyphens. It must start and end with [a-z0-9]"],
+    ["dot.notation", "Slug must use lowercase letters, digits, and hyphens. It must start and end with [a-z0-9]"],
   ])("rejects %j", (slug, expected) => {
     expect(validateNetworkSlug(slug)).toBe(expected);
   });
@@ -128,7 +128,7 @@ describe("mapServerError", () => {
 
   it("maps permissions.denied with operator-readable copy", () => {
     const r = mapServerError(envelopeError("permissions.denied", "forbidden"));
-    expect(r.form).toMatch(/missing the required permission/i);
+    expect(r.form).toMatch(/no permission for this/i);
   });
 
   it("falls back to form-level for unknown codes", () => {

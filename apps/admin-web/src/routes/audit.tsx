@@ -83,43 +83,43 @@ export const AUDIT_GAPS: readonly AuditBackendGap[] = [
     label: "List audit events",
     endpoint: "GET /v1/admin/audit",
     purpose:
-      "Filter by actor, action family, organization, network, time window. Page through results.",
+      "Filter by actor, action group, organization, network, and time period. Go through the results page by page.",
   },
   {
     id: "GA2",
     label: "Audit event detail",
     endpoint: "GET /v1/admin/audit/{id}",
     purpose:
-      "Single audit row plus linked target entities (order, ticket, refund, network, organization).",
+      "One audit row and the linked objects (order, ticket, refund, network, organization).",
   },
   {
     id: "GA3",
-    label: "Network-scoped audit",
+    label: "Audit for one network",
     endpoint: "GET /v1/admin/networks/{id}/audit",
     purpose:
-      "Audit feed limited to a single operator network (matches SAUI-08 backlog gap G3).",
+      "Audit feed for one operator network only (matches SAUI-08 backlog gap G3).",
   },
   {
     id: "GA4",
-    label: "Organization-scoped audit",
+    label: "Audit for one organization",
     endpoint: "GET /v1/admin/orgs/{id}/audit",
     purpose:
-      "Audit feed limited to a single tenant organization. No cross-org rows.",
+      "Audit feed for one tenant organization only. No rows of other organizations.",
   },
   {
     id: "GA5",
     label: "Sensitive log channel",
     endpoint: "GET /v1/admin/audit/{id}/raw",
     purpose:
-      "Raw request/response bodies and unmasked PII. Step-up auth + reason required.",
+      "Raw request and response bodies and PII without masks. A second sign-in step and a reason are necessary.",
     gatedBy: SENSITIVE_LOGS_PERMISSION,
   },
   {
     id: "GA6",
-    label: "Trace correlation",
+    label: "Trace link",
     endpoint: "GET /v1/admin/audit/{id}/trace",
     purpose:
-      "Resolve request_id / trace_id -> structured log span + outbound webhook deliveries.",
+      "Find the log span and the outbound webhook deliveries for a request_id or trace_id.",
   },
 ];
 
@@ -141,25 +141,24 @@ function AuditShell() {
             Audit log
           </h1>
           <p style={S.subheadingStyle}>
-            Honest shell. No audit rows are rendered until a backend
-            reader is exposed; mock data on an audit surface would
-            mislead operators during an incident. The endpoints below
-            name the exact backlog items that have to land before this
-            page can be populated. Permission rule: {describeRule(NAV_ENTRY.permission)}.
+            This page is a shell. It shows no audit rows until a backend
+            reader exists. Made-up data on an audit page can mislead
+            operators during an incident. The endpoints below name the
+            backlog items for this page. Permission rule: {describeRule(NAV_ENTRY.permission)}.
           </p>
         </div>
       </header>
 
       <div style={S.statusBoxStyle} role="status">
-        Audit rows ARE being recorded server-side (cross-tenant
-        mutations via /v1/admin/* set X-Admin-Reason and emit
-        audit_logs rows). They are simply not exposed for read yet --
-        do NOT add a placeholder table here. See backlog items below.
+        The server records audit rows. Each cross-tenant change through
+        /v1/admin/* has an X-Admin-Reason header and writes an audit_logs
+        row. The API does not give these rows for reading. Do not add a
+        placeholder table here. See the backlog items below.
       </div>
 
       <div style={S.drawerSectionStyle} aria-labelledby="audit-gaps-h2">
         <h2 id="audit-gaps-h2" style={S.drawerSectionTitleStyle}>
-          Backend gaps blocking this surface
+          Backend gaps for this page
         </h2>
         <div style={S.relatedGridStyle}>
           {AUDIT_GAPS.map((gap) => (
@@ -173,11 +172,11 @@ function AuditShell() {
       </div>
 
       <div style={S.gapNoteStyle}>
-        <strong>Why no inline preview?</strong> The audit_logs table is
-        the source of truth for cross-tenant access. Surfacing a fake
-        preview (even from synthetic data) would train operators to
-        trust the wrong screen during a real incident. When the audit
-        reader lands the table will replace this note in place.
+        <strong>No preview on this page.</strong> The audit_logs table is
+        the source of truth for cross-tenant access. A fake preview,
+        also with test data, teaches operators to trust an incorrect
+        screen during a real incident. When the audit reader exists,
+        the table will replace this note.
       </div>
     </section>
   );
@@ -209,7 +208,7 @@ function GapTile({
           style={S.errorBadgeStyle}
           data-testid={`audit-gap-${gap.id}-locked`}
         >
-          Masked: requires {gap.gatedBy}
+          Masked. Necessary permission: {gap.gatedBy}
         </span>
       ) : null}
     </div>

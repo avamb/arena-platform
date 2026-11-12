@@ -19,7 +19,7 @@ async function signIn(page: Page) {
   await page.getByLabel("E-mail").fill("manager@example.test");
   await page.getByLabel("Password").fill("right-password");
   await page.getByTestId("login-submit").click();
-  await expect(page.getByRole("heading", { name: "Choose an organization" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Select an organization" })).toBeVisible();
 }
 
 async function noA11yViolations(page: Page) {
@@ -58,7 +58,7 @@ test.describe("shop (mock)", () => {
     const rows = page.getByTestId("shop-product-row");
     await expect(rows).toHaveCount(3);
     await expect(rows.first()).toContainText("Riesling");
-    await expect(rows.first()).toContainText("Physical goods");
+    await expect(rows.first()).toContainText("Physical product");
     await expect(rows.first()).toContainText("On sale");
     await expect(rows.first()).toContainText("to");
     await expect(rows.first()).toContainText("12");
@@ -117,12 +117,12 @@ test.describe("shop (mock)", () => {
     await expect(page.getByTestId("shop-stock-changed")).toContainText("The stock changed while you were editing");
     // The number the person typed stays, the server's number is beside it, and nothing was written over it.
     await expect(page.getByTestId("shop-variant-stock-0")).toHaveValue("8");
-    await expect(page.getByTestId("shop-stock-moved")).toContainText("you saw 12, now 9");
+    await expect(page.getByTestId("shop-stock-moved")).toContainText("you saw 12, the stock is 9");
     expect(state.writes[0]).toContain('"expected_stock":12');
 
     await page.getByTestId("shop-variant-stock-0").fill("5");
     await page.getByTestId("shop-product-save").click();
-    await expect(page.getByTestId("shop-savebar-status")).toContainText("Everything is saved.");
+    await expect(page.getByTestId("shop-savebar-status")).toContainText("All changes are saved.");
     expect(state.writes[1]).toContain('"expected_stock":9');
     expect(state.writes[1]).toContain('"stock":5');
   });
@@ -180,7 +180,7 @@ test.describe("shop (mock)", () => {
 
     await page.getByTestId("shop-orders-status").selectOption("manual_review");
     await expect(rows).toHaveCount(1);
-    await expect(rows.first()).toContainText("Needs a manual check");
+    await expect(rows.first()).toContainText("Manual check necessary");
     await page.getByTestId("shop-orders-reset").click();
     await expect(rows).toHaveCount(4);
 
@@ -204,7 +204,7 @@ test.describe("shop (mock)", () => {
     const state = await mockShop(page);
     await signIn(page);
     await page.goto(`/o/${ORG_A}/shop/orders/${ORDER_REVIEW}`);
-    await expect(page.getByTestId("shop-order-review")).toContainText("needs a check");
+    await expect(page.getByTestId("shop-order-review")).toContainText("Please examine this order");
     await expect(page.getByTestId("shop-order-lines")).toContainText("Riesling");
     await noHorizontalScroll(page);
     await noA11yViolations(page);
@@ -221,13 +221,13 @@ test.describe("shop (mock)", () => {
     await page.getByTestId("shop-ship-note").fill("1Z999AA10123456784");
     await noA11yViolations(page);
     await page.getByTestId("shop-ship-submit").click();
-    await expect(page.getByTestId("shop-order-note")).toContainText("The order is handed to the courier.");
+    await expect(page.getByTestId("shop-order-note")).toContainText("The order went to the courier.");
     await expect(page.getByTestId("shop-order-tracking")).toContainText("1Z999AA10123456784");
     // Shipping is the delivery step "handed over" (spec 61 section 7b): one write to .../fulfillment with the number.
     expect(state.writes[0]).toContain("/fulfillment");
     expect(state.writes[0]).toContain('"step":"handed_over"');
     expect(state.writes[0]).toContain("1Z999AA10123456784");
-    await expect(page.getByTestId("shop-order-delivery")).toContainText("Handed to courier");
+    await expect(page.getByTestId("shop-order-delivery")).toContainText("Given to courier");
   });
 
   test("refund: part of the money, the word and the password, then the card shows the rest", async ({ page }) => {
@@ -238,7 +238,7 @@ test.describe("shop (mock)", () => {
     await page.getByTestId("shop-order-refund").click();
     await page.getByTestId("shop-refund-amount").fill("99999");
     await page.getByTestId("shop-refund-continue").click();
-    await expect(page.getByTestId("shop-refund-amount-error")).toContainText("more than what is left");
+    await expect(page.getByTestId("shop-refund-amount-error")).toContainText("more than the sum that remains to refund");
     expect(state.writes).toEqual([]);
 
     await page.getByTestId("shop-refund-amount").fill("10");
@@ -253,7 +253,7 @@ test.describe("shop (mock)", () => {
     expect(state.writes[0]).toContain('"amount_minor":1000');
     expect(state.writes[0]).toContain("Broken bottle");
     await expect(page.getByTestId("shop-order-totals")).toContainText("Left to refund");
-    await expect(page.getByTestId("shop-order-timeline")).toContainText("Money returned");
+    await expect(page.getByTestId("shop-order-timeline")).toContainText("Money sent back");
   });
 
   test("cancel: only an unpaid order, behind the order word and the password", async ({ page }) => {
@@ -271,7 +271,7 @@ test.describe("shop (mock)", () => {
     expect(state.writes).toEqual([]);
     await typeWord(page, "cancel order");
     await confirmPassword(page);
-    await expect(page.getByTestId("shop-order-note")).toContainText("The order is canceled.");
+    await expect(page.getByTestId("shop-order-note")).toContainText("We canceled the order.");
     expect(state.writes[0]).toContain("su-token");
   });
 
@@ -288,7 +288,7 @@ test.describe("shop (mock)", () => {
     await noA11yViolations(page);
     await page.getByTestId("shop-variant-price-0").fill("17");
     await page.getByTestId("shop-product-save").click();
-    await expect(page.getByTestId("shop-savebar-status")).toContainText("Everything is saved.");
+    await expect(page.getByTestId("shop-savebar-status")).toContainText("All changes are saved.");
     expect(state.writes[0]).toContain('"price_minor":1700');
     expect(state.writes[0]).toContain('"track_stock":false');
     expect(state.writes[0]).not.toContain("expected_stock");
@@ -304,9 +304,9 @@ test.describe("shop (mock)", () => {
     await expect(page.getByTestId("shop-product-save")).toBeDisabled();
     await page.getByTestId("shop-product-title").fill("Riesling Reserve");
     await page.getByTestId("shop-variant-stock-1").fill("6");
-    await expect(page.getByTestId("shop-savebar-status")).toContainText("There are unsaved changes.");
+    await expect(page.getByTestId("shop-savebar-status")).toContainText("Some changes are not saved.");
     await page.getByTestId("shop-product-save").click();
-    await expect(page.getByTestId("shop-savebar-status")).toContainText("Everything is saved.");
+    await expect(page.getByTestId("shop-savebar-status")).toContainText("All changes are saved.");
     expect(state.writes).toHaveLength(2);
     expect(state.writes[0]).toContain("PATCH");
     expect(state.writes[0]).toContain('"title":"Riesling Reserve"');
@@ -350,7 +350,7 @@ test.describe("shop (mock)", () => {
     await page.goto(`/o/${ORG_A}/shop/products/${PRODUCT_WINE}`);
     await page.getByTestId("shop-product-title").fill("Riesling Reserve");
     await page.getByTestId("shop-nav-orders").click();
-    await expect(page.getByTestId("unsaved-dialog")).toContainText("There are unsaved changes. Leave?");
+    await expect(page.getByTestId("unsaved-dialog")).toContainText("You have changes that are not saved. Close the page?");
     await noA11yViolations(page);
     await page.getByTestId("unsaved-stay").click();
     await expect(page).toHaveURL(new RegExp("/shop/products/"));
@@ -408,7 +408,7 @@ test.describe("shop (mock)", () => {
     // A value that is not a number is named and nothing is sent.
     await field.fill("lots");
     await field.blur();
-    await expect(row.getByTestId("shop-stock-status")).toContainText("Type a whole number");
+    await expect(row.getByTestId("shop-stock-status")).toContainText("Type a number, 0 or more, with no decimals");
     expect(state.writes).toHaveLength(1);
   });
 
@@ -428,8 +428,8 @@ test.describe("shop (mock)", () => {
     await row.getByTestId("shop-stock-input").first().fill("8");
     await row.getByTestId("shop-stock-input").first().blur();
     const line = row.getByTestId("shop-stock-moved-line");
-    await expect(line).toContainText("Someone changed the stock first.");
-    await expect(line).toContainText("you saw 12, now 9");
+    await expect(line).toContainText("A different user changed the stock first.");
+    await expect(line).toContainText("you saw 12, the stock is 9");
     await expect(line).toContainText("You typed 8");
     await expect(row.getByTestId("shop-stock-input").first()).toHaveValue("9");
     expect(state.writes[0]).toContain('"expected_stock":12');
@@ -466,11 +466,11 @@ test.describe("shop (mock)", () => {
     await page.goto(`/o/${ORG_A}/shop/orders/${ORDER_PAID}`);
     await page.getByTestId("shop-order-ship").click();
     await page.getByTestId("shop-ship-submit").click();
-    await expect(page.getByTestId("shop-order-note")).toContainText("The order is handed to the courier.");
+    await expect(page.getByTestId("shop-order-note")).toContainText("The order went to the courier.");
     await page.getByTestId("shop-nav-orders").click();
     await expect(page.getByTestId("shop-orders-tab-to_ship")).toContainText("To ship (0)");
     await page.getByTestId("shop-orders-tab-to_ship").click();
-    await expect(page.getByText("Nothing to ship. Every paid order has gone out.")).toBeVisible();
+    await expect(page.getByText("No orders to ship. We shipped all paid orders.")).toBeVisible();
   });
 
   test("order card: the delivery steps go packed, handed over, delivered through .../fulfillment and the history lists them", async ({ page }) => {
@@ -480,13 +480,13 @@ test.describe("shop (mock)", () => {
     await page.goto(`/o/${ORG_A}/shop/orders/${ORDER_PAID}`);
     await expect(page.getByTestId("shop-order-delivered")).toHaveCount(0);
     await page.getByTestId("shop-order-packed").click();
-    await expect(page.getByTestId("shop-order-note")).toContainText("The delivery step is now: Packed.");
+    await expect(page.getByTestId("shop-order-note")).toContainText("The delivery step is: Packed.");
     await expect(page.getByTestId("shop-order-packed")).toHaveCount(0);
     await page.getByTestId("shop-order-ship").click();
     await page.getByTestId("shop-ship-submit").click();
-    await expect(page.getByTestId("shop-order-note")).toContainText("The order is handed to the courier.");
+    await expect(page.getByTestId("shop-order-note")).toContainText("The order went to the courier.");
     await page.getByTestId("shop-order-delivered").click();
-    await expect(page.getByTestId("shop-order-note")).toContainText("The delivery step is now: Delivered.");
+    await expect(page.getByTestId("shop-order-note")).toContainText("The delivery step is: Delivered.");
     await expect(page.getByTestId("shop-order-delivered")).toHaveCount(0);
     await expect(page.getByTestId("shop-order-step")).toHaveCount(3);
     expect(state.writes.map((w) => JSON.parse(w.slice(w.indexOf("{"))).step)).toEqual(["packed", "handed_over", "delivered"]);
@@ -538,10 +538,10 @@ test.describe("shop (mock)", () => {
     await page.goto(`/o/${ORG_A}/shop/orders/${ORDER_PAID}`);
     await noA11yViolations(page);
     await page.getByTestId("shop-order-resend").click();
-    await expect(page.getByTestId("shop-order-note")).toHaveText("The e-mail is queued.");
+    await expect(page.getByTestId("shop-order-note")).toHaveText("We added the e-mail to the queue.");
     expect(state.resent).toEqual(["received"]);
     await page.getByTestId("shop-order-resend").click();
-    await expect(page.getByTestId("shop-order-note")).toContainText("less than a minute ago");
+    await expect(page.getByTestId("shop-order-note")).toContainText("in the queue for less than a minute");
     expect(state.resent).toEqual(["received"]);
   });
 
@@ -556,7 +556,7 @@ test.describe("shop (mock)", () => {
     await expect(page.getByTestId("shop-resend-panel")).toContainText("anna@example.test");
     await noA11yViolations(page);
     await page.getByTestId("shop-resend-shipped").click();
-    await expect(page.getByTestId("shop-order-note")).toHaveText("The e-mail is queued.");
+    await expect(page.getByTestId("shop-order-note")).toHaveText("We added the e-mail to the queue.");
     expect(state.resent).toEqual(["shipped"]);
   });
 
@@ -569,7 +569,7 @@ test.describe("shop (mock)", () => {
     await page.goto(`/o/${ORG_A}/shop/orders/${ORDER_DIGITAL}`);
     await page.getByTestId("shop-order-resend").click();
     await expect(page.getByTestId("shop-resend-panel")).toHaveCount(0);
-    await expect(page.getByTestId("shop-order-note")).toHaveText("The e-mail is queued.");
+    await expect(page.getByTestId("shop-order-note")).toHaveText("We added the e-mail to the queue.");
   });
 
   test("the option names label the variant columns", async ({ page }) => {

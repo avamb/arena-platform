@@ -54,7 +54,7 @@ export function VersionsTable({ series, onOpen, onRevoke, onNewVersion }: Versio
   if (series.length === 0) {
     return (
       <p style={mutedStyle} data-testid="billing-prices-empty">
-        No price list yet.
+        No price list.
       </p>
     );
   }
@@ -147,7 +147,7 @@ export function VersionDetailBody({ detail }: { detail: PriceListDetail }): JSX.
         tickets a year: {detail.free_tickets_annual_limit ?? "not set"} · floor per ticket:{" "}
         {detail.floor_per_ticket_minor == null ? "not set" : formatMinor(detail.floor_per_ticket_minor, detail.currency)}
         <br />
-        Created {formatDateTime(detail.created_at)}
+        Added {formatDateTime(detail.created_at)}
         {detail.reason ? ` · reason: ${detail.reason}` : ""}
         {detail.revoked_at ? ` · revoked ${formatDateTime(detail.revoked_at)}` : ""}
       </p>
@@ -249,14 +249,14 @@ export function VersionFormBody(p: VersionFormBodyProps): JSX.Element {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }} data-testid="billing-version-form">
       <p style={hintStyle}>
-        A new price is a new version. It starts at the time you pick, which must be in the future, and never changes a sale
-        that already happened. Every number is yours: nothing is filled in for you. To save typing, copy the numbers of an
-        existing version and change them.
+        A new price is a new version. It starts at the time you select. This time must be in the future. A new version does
+        not change a sale that happened before. You must type each number: the form has no default numbers. To type less,
+        copy the numbers of a version and change them.
       </p>
       {p.bases.length > 0 ? (
         <div>
           <label style={labelStyle} htmlFor="billing-base">
-            Start from an existing version
+            Start from a version
           </label>
           <select
             id="billing-base"
@@ -267,7 +267,7 @@ export function VersionFormBody(p: VersionFormBodyProps): JSX.Element {
             }}
             data-testid="billing-base"
           >
-            <option value="">Pick a version to copy…</option>
+            <option value="">Select a version to copy…</option>
             {p.bases.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.code} v{b.version} · {b.currency} · {versionStatusLabel(b.status)}

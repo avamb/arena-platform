@@ -126,7 +126,7 @@ describe("limitLabel", () => {
 describe("sessionsCellLabel / sessionsCellTitle", () => {
   it("says 'any' for an empty session list", () => {
     expect(sessionsCellLabel([])).toBe("any");
-    expect(sessionsCellTitle([], new Map())).toMatch(/any session/);
+    expect(sessionsCellTitle([], new Map())).toMatch(/all sessions/);
   });
   it("counts sessions, singular vs plural", () => {
     expect(sessionsCellLabel(["s1"])).toBe("1 session");
@@ -335,15 +335,15 @@ describe("mapPromoError", () => {
   it.each([
     ["promo.invalid_code", /required/],
     ["promo.invalid_discount_type", /percent or fixed/],
-    ["promo.invalid_discount_value", /invalid/],
+    ["promo.invalid_discount_value", /not correct/],
     ["promo.invalid_currency", /3-letter/],
     ["promo.currency_required", /Currency is required/],
-    ["promo.invalid_session_id", /sessions is invalid/],
+    ["promo.invalid_session_id", /sessions is not correct/],
     ["promo.invalid_session", /does not belong/],
     ["promo.invalid_valid_from", /Valid-from/],
     ["promo.invalid_valid_until", /Valid-until/],
-    ["promo.duplicate", /already exists/],
-    ["permissions.denied", /missing the required permission/],
+    ["promo.duplicate", /has a promo code with this code/],
+    ["permissions.denied", /no permission for this/],
   ] as const)("maps %s to a readable message", (code, expected) => {
     const err = new ApiError(400, { code, message: "raw" });
     expect(mapPromoError(err)).toMatch(expected);

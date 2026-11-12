@@ -172,7 +172,7 @@ async function openWizardAs(page: Page, role: Role = "org_admin") {
 async function fillWizard(page: Page, name: string) {
   await fillEventAndVenue(page, name, { poster: "leave" });
   await fillFirstDate(page);
-  await expect(page.getByTestId("wizard-status")).toContainText("Everything you filled in is correct", { timeout: 25_000 });
+  await expect(page.getByTestId("wizard-status")).toContainText("All data you added is correct", { timeout: 25_000 });
 }
 
 async function expectPosterShown(page: Page, mediaId: string, img?: Img) {

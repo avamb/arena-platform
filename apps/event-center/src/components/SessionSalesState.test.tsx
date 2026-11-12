@@ -49,8 +49,8 @@ function render(data: SalesStateResponse, over: Partial<SessionSalesStateProps> 
 describe("SessionSalesState", () => {
   it("shows an open session with the two other choices", () => {
     const html = render(open);
-    expect(html).toContain("Set by the platform");
-    expect(html).toContain("Free places: 4. In unpaid holds: 1.");
+    expect(html).toContain("The platform sets it.");
+    expect(html).toContain("Free seats: 4. In unpaid holds: 1.");
     expect(html).toContain('data-testid="sales-state-set-soon"');
     expect(html).toContain('data-testid="sales-state-set-sold_out"');
     expect(html).toContain('data-testid="sales-state-set-open"');
@@ -79,7 +79,7 @@ describe("SessionSalesState", () => {
     expect(html).toContain("Set by hand");
     expect(html).toContain("Ana");
     expect(html).toContain("the Telegram bot");
-    expect(html).toContain("attempts: 2");
+    expect(html).toContain("tries: 2");
     expect(html).toContain('data-testid="sales-state-site-check"');
     expect(html).toContain('data-testid="sales-state-external"');
     expect(html).toContain('data-testid="sales-state-set-open"');
@@ -89,7 +89,7 @@ describe("SessionSalesState", () => {
     const html = render({ ...open, manual: null, effective: "sold_out", free_places: 0 });
     expect(html).toMatch(/aria-checked="true"[^>]*data-choice="sold_out"/);
     expect(html).toContain('data-testid="sales-state-auto-note"');
-    expect(html).toContain("Shown as");
+    expect(html).toContain("No free seat is left");
   });
 
   it("gives a person who may not change sessions no button", () => {

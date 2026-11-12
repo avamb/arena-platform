@@ -69,11 +69,11 @@ def run_pipeline(
     """Returns {validation_status, report, svg, diagnostic_svg}; svg is set only on PASS."""
     adapter_profile = ADAPTER_PROFILES.get(profile_id)
     if adapter_profile is None:
-        raise PipelineError("profile.unknown", "unknown profile")
+        raise PipelineError("profile.unknown", "The service does not know this profile.")
     try:
         model = adapter.extract_workbook(Path(xlsx_path), adapter_profile)
     except Exception as exc:  # corrupt or unsupported workbook; the exception text may hold paths
-        raise PipelineError("extract_failed", f"the workbook could not be read ({type(exc).__name__})") from None
+        raise PipelineError("extract_failed", f"The service cannot read the XLSX file ({type(exc).__name__}).") from None
     status = str((model.get("validation") or {}).get("status", ""))
     report = build_report(model, sha256, size_bytes, profile_id)
     svg = None

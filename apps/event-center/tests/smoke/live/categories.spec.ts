@@ -183,7 +183,7 @@ test.describe("categories of a date (live, three roles)", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
     await page.getByTestId("toggle-btn").click();
     await expect(page.getByTestId("category-notice")).toContainText("Closed");
-    await expect(page.getByTestId("category-notice")).toContainText("already started stay as they are");
+    await expect(page.getByTestId("category-notice")).toContainText("open carts stay as they are");
     await expect(page.getByTestId("category-state")).toContainText("Closed");
     expect((await apiTier(request, STANDING)).is_open).toBe(false);
     expect(rows()[STANDING].is_open).toBe(false);
@@ -197,7 +197,7 @@ test.describe("categories of a date (live, three roles)", () => {
     await expect(page.getByTestId("price-input")).toHaveValue("25");
     await page.getByTestId("price-input").fill("abc");
     await page.getByTestId("price-check").click();
-    await expect(page.getByTestId("price-input-error")).toContainText("That is not a price");
+    await expect(page.getByTestId("price-input-error")).toContainText("This is not a price");
     expect(apiCalls.filter((c) => c.startsWith("PATCH") || c.startsWith("PUT")).length, "no write for a bad price").toBe(before);
 
     // A good price is confirmed first (old -> new), and nothing is written until the press.
@@ -219,9 +219,9 @@ test.describe("categories of a date (live, three roles)", () => {
     await expect(page.getByTestId("price-input")).toHaveValue("40");
     await page.getByTestId("price-input").fill("42");
     await page.getByTestId("price-check").click();
-    await expect(page.getByTestId("price-confirm-window")).toContainText("price window in force now");
+    await expect(page.getByTestId("price-confirm-window")).toContainText("applies to the active price window");
     await page.getByTestId("price-save").click();
-    await expect(page.getByTestId("category-notice")).toContainText("price window in force now was changed");
+    await expect(page.getByTestId("category-notice")).toContainText("We changed the active price window");
     const balcony = await apiTier(request, BALCONY);
     expect(balcony.current_price).toBe(4200);
     expect(balcony.price_amount, "the base price stays").toBe(3500);
@@ -239,7 +239,7 @@ test.describe("categories of a date (live, three roles)", () => {
     await expect(page.getByTestId("window-save")).toBeDisabled();
     await page.getByTestId("date-quick-week").click();
     await page.getByTestId("window-save").click();
-    await expect(page.getByTestId("category-notice")).toContainText("sale dates are changed");
+    await expect(page.getByTestId("category-notice")).toContainText("we changed the sale dates");
     const saved = await apiTier(request, STANDING);
     expect(saved.sale_window_end).not.toBeNull();
     const end = madrid(saved.sale_window_end as string);
@@ -254,7 +254,7 @@ test.describe("categories of a date (live, three roles)", () => {
     await page.getByTestId("window-edit-start").click();
     await page.getByTestId("date-quick-today").click();
     await page.getByTestId("window-save").click();
-    await expect(page.getByTestId("category-notice")).toContainText("sale dates are changed");
+    await expect(page.getByTestId("category-notice")).toContainText("we changed the sale dates");
     const both = await apiTier(request, STANDING);
     expect(madrid(both.sale_window_start as string).time).toBe("00:00:00");
     expect(new Date(both.sale_window_start as string).getTime()).toBeLessThan(new Date(both.sale_window_end as string).getTime());
@@ -270,7 +270,7 @@ test.describe("categories of a date (live, three roles)", () => {
 
     // Remove both limits, one press each.
     await page.getByTestId("window-remove-end").click();
-    await expect(page.getByTestId("category-notice")).toContainText("limit is removed");
+    await expect(page.getByTestId("category-notice")).toContainText("we removed the limit");
     await page.getByTestId("window-remove-start").click();
     await expect(page.getByTestId("category-window")).toContainText("no limits");
     const cleared = await apiTier(request, STANDING);
@@ -293,20 +293,20 @@ test.describe("categories of a date (live, three roles)", () => {
     const before = apiCalls.filter((c) => c.startsWith("PATCH")).length;
     await page.getByTestId("qty-input").fill("abc");
     await page.getByTestId("qty-save").click();
-    await expect(page.getByTestId("qty-input-error")).toContainText("whole number of places");
+    await expect(page.getByTestId("qty-input-error")).toContainText("number of tickets from 1 to 1000000");
     expect(apiCalls.filter((c) => c.startsWith("PATCH")).length, "no PATCH for a bad number").toBe(before);
 
     // Below what is sold: the API says no, the screen says the floor.
     await page.getByTestId("qty-input").fill("2");
     await page.getByTestId("qty-save").click();
-    await expect(page.getByTestId("category-error")).toContainText("3 places are sold or on hold");
+    await expect(page.getByTestId("category-error")).toContainText("3 tickets are sold or on hold");
     expect((await apiTier(request, STANDING)).capacity).toBe(20);
     expect(rows()[STANDING].places).toBe(20);
 
     // More places: the real places are minted.
     await page.getByTestId("qty-input").fill("25");
     await page.getByTestId("qty-save").click();
-    await expect(page.getByTestId("category-notice")).toContainText("now has 25 places");
+    await expect(page.getByTestId("category-notice")).toContainText("the category has 25 tickets");
     await expect(page.getByTestId("category-places")).toContainText("of 25");
     expect((await apiTier(request, STANDING)).capacity).toBe(25);
     const stored = rows()[STANDING];
@@ -343,7 +343,7 @@ test.describe("categories of a date (live, three roles)", () => {
     await openCard(page, FREE);
     await expect(page.getByTestId("price-change")).toHaveCount(0);
     await expect(page.getByTestId("category-price")).toHaveCount(0);
-    await expect(page.getByTestId("category-card")).toContainText("it has no price");
+    await expect(page.getByTestId("category-card")).toContainText("It has no price");
     await expect(page.getByTestId("toggle-btn")).toBeVisible();
     await expect(page.getByTestId("qty-change")).toBeVisible();
 

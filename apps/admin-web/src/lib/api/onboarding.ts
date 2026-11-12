@@ -67,7 +67,7 @@ export interface OnboardingTab {
 export const ONBOARDING_TABS: readonly OnboardingTab[] = [
   { status: "pending_approval", label: "Pending approval" },
   { status: "info_requested", label: "Info requested" },
-  { status: "draft", label: "In progress" },
+  { status: "draft", label: "Draft" },
   { status: "approved", label: "Approved" },
   { status: "rejected", label: "Rejected" },
   { status: "expired", label: "Expired" },
@@ -332,77 +332,77 @@ export const FIELD_LABELS: Readonly<Record<string, string>> = {
   last_name: "Last name",
   email: "E-mail",
   phone: "Phone",
-  telegram_username: "Telegram username",
+  telegram_username: "Telegram user name",
   org_name: "Name on posters and tickets",
-  legal_name: "Registered (legal) name",
-  country: "Country of registration",
+  legal_name: "Legal name",
+  country: "Country of the organization",
   legal_form: "Legal form",
   tax_id: "Tax number",
   tax_id_scheme: "Type of tax number",
-  registration_number: "Company registration number",
-  address_line1: "Registered address",
+  registration_number: "Registration number of the organization",
+  address_line1: "Legal address",
   address_postal_code: "Postal code",
   address_city: "City",
   address_country: "Country of the address",
-  website: "Website",
-  social_links: "Social media links",
-  event_types: "Kinds of events",
+  website: "Site",
+  social_links: "Links to social media",
+  event_types: "Types of events",
   seating: "Seating",
-  events_per_year: "Events per year",
-  tickets_per_year: "Tickets per year",
+  events_per_year: "Events for each year",
+  tickets_per_year: "Tickets for each year",
   avg_ticket_price: "Average ticket price",
   currency: "Currency",
   first_event_date: "Date of the first event",
-  previous_system: "Sells tickets now through",
-  previous_system_name: "Name of the current system",
-  has_website: "Has a website",
-  website_platform: "Website is built on",
+  previous_system: "System that sells the tickets now",
+  previous_system_name: "Name of the system you use now",
+  has_website: "Has a site",
+  website_platform: "Software of the site",
   wants_wp_plugin: "Wants the WordPress plugin",
   payment_provider: "Payment provider",
-  has_payment_account: "Already has an account with it",
+  has_payment_account: "Has an account with this provider",
   notes: "Notes from the applicant",
   accept_terms: "Accepts the terms of service",
   accept_privacy: "Accepts the privacy policy",
-  confirm_authority: "Confirms authority to act for the organization",
-  marketing_opt_in: "Agrees to news and tips (optional)",
+  confirm_authority: "Confirms the right to act for the organization",
+  marketing_opt_in: "Agrees to get news and tips (optional)",
 };
 
 /** Machine value -> readable text, per field. Unknown values print as they are. */
 export const OPTION_LABELS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   tax_id_scheme: {
     vat: "VAT number",
-    ico: "Company ID (IČO and similar)",
+    ico: "ID of the organization (IČO or equal)",
     ein: "EIN (USA)",
     other: "Other",
   },
   event_types: {
     concert: "Concerts",
-    theatre: "Theatre and shows",
+    theatre: "Theater and shows",
     masterclass: "Master classes and workshops",
     festival: "Festivals",
     sport: "Sport",
-    tour: "Tours and excursions",
+    tour: "Tours and trips",
     other: "Other",
   },
   seating: {
-    ga: "Free seating (no assigned seats)",
-    seated: "Assigned seats",
+    ga: "No seats (general admission)",
+    seated: "Seats for each ticket",
     both: "Both",
   },
   events_per_year: { "1-5": "1 to 5", "6-20": "6 to 20", "21-100": "21 to 100", "100+": "More than 100" },
   tickets_per_year: {
-    "<500": "Fewer than 500",
+    "<500": "Less than 500",
     "500-5k": "500 to 5,000",
     "5k-50k": "5,000 to 50,000",
     "50k+": "More than 50,000",
   },
-  previous_system: { bil24: "Bil24", other: "Another system", none: "Does not sell tickets online yet" },
-  website_platform: { wordpress: "WordPress", other: "Something else", none: "No website" },
+  previous_system: { bil24: "Bil24", other: "A different system", none: "Does not sell tickets online" },
+  website_platform: { wordpress: "WordPress", other: "A different software", none: "No site" },
   payment_provider: {
     stripe: "Stripe",
     flitt: "Flitt",
-    other: "Another provider",
-    undecided: "Not decided yet",
+    other: "A different provider",
+    undecided: "Not selected",
   },
 };
 
@@ -502,14 +502,14 @@ export function groupAnswers(
 // ---------------------------------------------------------------------------
 
 export const CHECK_LABELS: Readonly<Record<string, string>> = {
-  email_confirmed: "E-mail confirmed",
+  email_confirmed: "E-mail is confirmed",
   complete: "Form is complete",
-  consents: "Consents given",
+  consents: "Consents are given",
   country_allowed: "Country accepted",
   tax_id_format: "Tax number format",
-  disposable_email: "Not a throw-away e-mail",
-  duplicate: "No duplicate application or organization",
-  payment_provider: "Payment provider named",
+  disposable_email: "Not a temporary e-mail",
+  duplicate: "No second application or organization",
+  payment_provider: "Payment provider is named",
 };
 
 export function checkLabel(key: string): string {
@@ -518,19 +518,19 @@ export function checkLabel(key: string): string {
 
 export const EVENT_LABELS: Readonly<Record<string, string>> = {
   created: "Draft started",
-  email_confirmed: "E-mail confirmed",
+  email_confirmed: "E-mail is confirmed",
   resumed: "Applicant came back",
-  revived: "Expired draft revived",
+  revived: "Expired draft opened again",
   link_sent: "Continue link sent",
-  submitted: "Submitted for approval",
-  resubmitted: "Re-submitted after the questions",
-  info_requested: "Details requested",
-  extended: "Draft extended",
+  submitted: "Sent for approval",
+  resubmitted: "Sent again after the questions",
+  info_requested: "We asked for information",
+  extended: "Draft made longer",
   approved: "Approved",
   rejected: "Rejected",
   purged: "Personal data erased",
-  reminder_sent: "Reminder sent to the applicant",
-  queue_reminder: "Waiting-for-approval reminder sent to the operator",
+  reminder_sent: "We sent a reminder to the applicant",
+  queue_reminder: "We sent a reminder to the operator about applications that wait",
 };
 
 export function eventLabel(kind: string): string {
@@ -559,7 +559,7 @@ export function eventDetailText(e: {
   const d = e.detail ?? {};
   switch (e.kind) {
     case "rejected":
-      return typeof d.reason === "string" ? `Reason: ${d.reason}` : "";
+      return typeof d.reason === "string" ? `Cause: ${d.reason}` : "";
     case "info_requested":
       return Array.isArray(d.fields) ? `Fields: ${d.fields.map((f) => fieldLabel(String(f))).join(", ")}` : "";
     case "extended":
@@ -567,14 +567,14 @@ export function eventDetailText(e: {
     case "approved":
       return [
         typeof d.org_slug === "string" ? `Organization ${d.org_slug}` : "",
-        d.automatic === true ? "approved automatically" : "",
+        d.automatic === true ? "approved by the system" : "",
       ]
         .filter((s) => s !== "")
         .join(", ");
     case "created":
       return typeof d.source === "string" ? `Source: ${sourceLabel(d.source)}` : "";
     case "reminder_sent":
-      return typeof d.number === "number" ? `Reminder #${d.number}` : "";
+      return typeof d.number === "number" ? `Reminder number ${d.number}` : "";
     default:
       return "";
   }
@@ -610,7 +610,7 @@ export interface RejectForm {
 
 export function validateReject(form: RejectForm): Record<string, string> {
   const errors: Record<string, string> = {};
-  if (form.reason.trim() === "") errors.reason = "Give the reason for the rejection.";
+  if (form.reason.trim() === "") errors.reason = "Give the cause of the rejection.";
   return errors;
 }
 
@@ -621,8 +621,8 @@ export interface RequestInfoForm {
 
 export function validateRequestInfo(form: RequestInfoForm): Record<string, string> {
   const errors: Record<string, string> = {};
-  if (form.fields.length === 0) errors.fields = "Pick at least one field to ask about.";
-  if (form.message.trim() === "") errors.message = "Write what the applicant should add or correct.";
+  if (form.fields.length === 0) errors.fields = "Select one field or more to ask about.";
+  if (form.message.trim() === "") errors.message = "Write what the applicant must add or correct.";
   return errors;
 }
 
@@ -632,7 +632,7 @@ export const MAX_EXTEND_DAYS = 1095;
 export function validateExtendDays(raw: string): { days?: number; error?: string } {
   const t = raw.trim();
   if (t === "") return {};
-  if (!/^[0-9]+$/.test(t)) return { error: "Enter a whole number of days." };
+  if (!/^[0-9]+$/.test(t)) return { error: "Enter a number of days without decimals." };
   const n = Number(t);
   if (n < 1 || n > MAX_EXTEND_DAYS) return { error: `Days must be between 1 and ${MAX_EXTEND_DAYS}.` };
   return { days: n };
@@ -646,12 +646,12 @@ export const APPROVAL_MODES = ["manual", "auto_when_complete"] as const;
 export type ApprovalMode = (typeof APPROVAL_MODES)[number];
 
 export const APPROVAL_MODE_LABELS: Readonly<Record<ApprovalMode, string>> = {
-  manual: "Manual — an operator decides every application",
-  auto_when_complete: "Automatic when complete — approves without a human",
+  manual: "Manual. An operator decides on each application.",
+  auto_when_complete: "Automatic when complete. The system approves without a person.",
 };
 
 export const AUTO_MODE_WARNING =
-  "In this mode the system approves every application whose checks all pass, creating the organization, its owner account and a sales page without any human looking at it. Switch it on only after a series of applications where the system's verdict matched the operator's.";
+  "In this mode the system approves each application when all checks pass. It makes the organization, the owner account and a sales page. No person examines the application. Use this mode only after many applications where the decision of the system was the same as the decision of the operator.";
 
 export interface SettingsForm {
   readonly approval_mode: string;
@@ -713,22 +713,22 @@ export interface SettingsCheck {
 export function validateSettings(form: SettingsForm): SettingsCheck {
   const errors: Record<string, string> = {};
   if (!(APPROVAL_MODES as readonly string[]).includes(form.approval_mode)) {
-    errors.approval_mode = "Pick an approval mode.";
+    errors.approval_mode = "Select an approval mode.";
   }
   const ttl = intInRange(form.draft_ttl_days, 7, 1095);
-  if (ttl === null) errors.draft_ttl_days = "Whole days, from 7 to 1095.";
+  if (ttl === null) errors.draft_ttl_days = "Whole days from 7 to 1095.";
   const purge = intInRange(form.purge_after_days, 30, 3650);
-  if (purge === null) errors.purge_after_days = "Whole days, from 30 to 3650.";
+  if (purge === null) errors.purge_after_days = "Whole days from 30 to 3650.";
   const perDay = intInRange(form.max_new_per_day, 1, 100000);
   if (perDay === null) errors.max_new_per_day = "A whole number from 1 to 100000.";
   const countries = parseCountries(form.countries);
   if (countries.invalid.length > 0) {
-    errors.countries = `Not ISO country codes (two letters): ${countries.invalid.join(", ")}.`;
+    errors.countries = `These are not ISO country codes of two letters: ${countries.invalid.join(", ")}.`;
   }
   const terms = form.terms_version.trim();
-  if (terms === "" || terms.length > 40) errors.terms_version = "Required, up to 40 characters.";
+  if (terms === "" || terms.length > 40) errors.terms_version = "This field is necessary. Use 40 characters or less.";
   const privacy = form.privacy_version.trim();
-  if (privacy === "" || privacy.length > 40) errors.privacy_version = "Required, up to 40 characters.";
+  if (privacy === "" || privacy.length > 40) errors.privacy_version = "This field is necessary. Use 40 characters or less.";
   if (Object.keys(errors).length > 0 || ttl === null || purge === null || perDay === null) {
     return { errors };
   }

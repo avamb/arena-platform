@@ -268,7 +268,7 @@ test.describe("organization data (live)", () => {
     seed("hide");
     await page.reload();
     await expect(card(page)).toHaveAttribute("data-seller-state", "operator_hidden");
-    await expect(card(page).getByTestId("seller-state")).toContainText("platform operator hid");
+    await expect(card(page).getByTestId("seller-state")).toContainText("platform operator does not show the seller data");
     // No control of the screen sends seller_hidden; the API refuses the owner too.
     const calls = trackApi(page);
     await card(page).getByTestId("seller-phone").fill("+34 600 111 222");

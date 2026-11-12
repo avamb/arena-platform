@@ -116,7 +116,7 @@ test.describe("the mini app entry /tg", () => {
     await telegramStub(page, INIT_DATA);
     await page.goto(`/tg?next=${encodeURIComponent("https://evil.example/o/x")}`);
 
-    await expect(page.getByRole("heading", { name: "Choose an organization" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Select an organization" })).toBeVisible();
     expect(seen.bodies).toEqual([{ init_data: INIT_DATA }]);
     expect(page.url()).not.toContain("evil.example");
   });
@@ -127,7 +127,7 @@ test.describe("the mini app entry /tg", () => {
     await telegramStub(page, INIT_DATA);
     await page.goto("/tg");
 
-    await expect(page.getByRole("heading", { name: "Choose an organization" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Select an organization" })).toBeVisible();
     expect(page.url()).not.toContain("evil.example");
   });
 
@@ -150,13 +150,13 @@ test.describe("the mini app entry /tg", () => {
   });
 
   const REFUSALS: Array<[number, string, RegExp]> = [
-    [401, "auth.telegram_init_data_invalid", /could not check your Telegram sign-in/],
-    [401, "auth.telegram_init_data_expired", /opened a while ago/],
+    [401, "auth.telegram_init_data_invalid", /cannot check your Telegram sign-in/],
+    [401, "auth.telegram_init_data_expired", /sign-in is too old/],
     [403, "auth.telegram_not_linked", /not linked to an Arena account/],
-    [403, "auth.user_deactivated", /account is switched off/],
+    [403, "auth.user_deactivated", /account is not active/],
     [403, "auth.web_link_superadmin", /platform superadmin/],
-    [429, "auth.rate_limited", /too many attempts/],
-    [503, "auth.telegram_miniapp_not_configured", /not available right now/],
+    [429, "auth.rate_limited", /too many tries/],
+    [503, "auth.telegram_miniapp_not_configured", /does not work at this time/],
   ];
   for (const [status, code, text] of REFUSALS) {
     test(`says what to do after ${status} ${code}, without technical words`, async ({ page }) => {

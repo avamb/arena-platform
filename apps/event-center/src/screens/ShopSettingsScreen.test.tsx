@@ -120,13 +120,13 @@ describe("ShopSettingsForm", () => {
   it("keeps the currency closed while the number of products is not known", () => {
     const html = render({ productCount: null });
     expect(html).not.toContain('data-testid="shop-settings-currency"');
-    expect(html).toContain("Until then the currency stays as it is.");
+    expect(html).toContain("The currency stays the same until then.");
   });
 
   it("says that a currency code does not exist", () => {
     const draft = { ...settingsDraft(settings), currency: "ILX" };
     const html = render({ draft, problems: checkSettings(draft) });
-    expect(html).toContain("There is no such currency code. Type a code like EUR or ILS.");
+    expect(html).toContain("This currency code does not exist. Type a code such as EUR or ILS.");
   });
 
   it("names the countries in the language of the screen and sorts them by that name", () => {
@@ -148,7 +148,7 @@ describe("ShopSettingsForm", () => {
     const draft = { ...settingsDraft(settings), currency: "E", ageGate: "200", contactEmail: "nope" };
     const html = render({ draft, problems: checkSettings(draft) });
     expect(html).toContain("Type three letters, for example EUR.");
-    expect(html).toContain("Type a number from 1 to 99, or leave it empty.");
-    expect(html).toContain("Check the address. It needs the @ sign and a domain.");
+    expect(html).toContain("Type a number from 1 to 99, or keep the field empty.");
+    expect(html).toContain("Examine the address. It must have the @ sign and a domain.");
   });
 });

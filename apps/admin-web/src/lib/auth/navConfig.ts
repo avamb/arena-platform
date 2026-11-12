@@ -125,7 +125,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     label: "Workspace",
     to: "/",
     permission: "always",
-    purpose: "Authenticated landing page; available to any signed-in user.",
+    purpose: "Start page for each user who is signed in.",
   },
   {
     id: "networks",
@@ -134,7 +134,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["network.read", "network.create"] },
     scopeKinds: ["global", "platform", "network"],
     purpose:
-      "Browse and manage operator networks. Requires network.read or network.create.",
+      "Examine and manage operator networks. Necessary permission: network.read or network.create.",
   },
   {
     id: "users",
@@ -143,7 +143,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["superadmin.read", "membership.grant"] },
     scopeKinds: ["global", "platform"],
     purpose:
-      "Create users and assign their first platform or organization role. Requires superadmin.read to view and membership.grant to submit.",
+      "Make users and give each user a first platform or organization role. To view: superadmin.read. To submit: membership.grant.",
   },
   {
     id: "organizations",
@@ -152,7 +152,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["superadmin.read"] },
     scopeKinds: ["global", "platform"],
     purpose:
-      "Cross-tenant organizations explorer. Requires superadmin.read.",
+      "All organizations of all tenants. Necessary permission: superadmin.read.",
   },
   // ---- SAUI-12 legacy-derived module placeholders (events, venues) ----
   // These are catalog-shape modules and slot between organizations
@@ -171,7 +171,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     },
     scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
-      "Event organizer surface (events, sessions, media, pricing, quotas, sync). Shell only -- backend contract gap. Requires event.read, org.read, network.view_sales, or superadmin.read.",
+      "Event organizer page (events, sessions, media, pricing, quotas, sync). This release has an empty page only. The backend contract does not have all necessary parts. Necessary permission: event.read, org.read, network.view_sales or superadmin.read.",
   },
   {
     id: "venues",
@@ -188,7 +188,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     },
     scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
-      "Venue directory (name, city, address, capacity_default). Requires venue.read, venue.create, venue.update, venue.delete, or superadmin.read. The visual seating editor remains deferred.",
+      "Venue directory (name, city, address, capacity_default). Necessary permission: venue.read, venue.create, venue.update, venue.delete or superadmin.read. The visual seating editor is for a later release.",
   },
   {
     id: "orders",
@@ -196,7 +196,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     to: "/orders",
     permission: { anyOf: ["superadmin.read"] },
     scopeKinds: ["global", "platform"],
-    purpose: "Cross-tenant orders. Requires superadmin.read.",
+    purpose: "Orders of all tenants. Necessary permission: superadmin.read.",
   },
   {
     id: "tickets",
@@ -204,7 +204,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     to: "/tickets",
     permission: { anyOf: ["superadmin.read"] },
     scopeKinds: ["global", "platform"],
-    purpose: "Cross-tenant tickets. Requires superadmin.read.",
+    purpose: "Tickets of all tenants. Necessary permission: superadmin.read.",
   },
   {
     id: "refunds",
@@ -212,7 +212,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     to: "/refunds",
     permission: { anyOf: ["superadmin.read"] },
     scopeKinds: ["global", "platform"],
-    purpose: "Cross-tenant refunds. Requires superadmin.read.",
+    purpose: "Refunds of all tenants. Necessary permission: superadmin.read.",
   },
   // ---- SAUI-12 legacy-derived module placeholders (channels, payments,
   // reports, content, pos). Ordered to match the legacy_admin_reference_map
@@ -233,7 +233,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     },
     scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
-      "Sales channel directory (payment_mode, provider, masked merchant credential, fee_percent, reservation TTL override, settings). Requires channel.read, channel.create, channel.update, channel.delete, or superadmin.read. Trusted agents, ETS connections, promotions, and widgets remain deferred.",
+      "Sales channel directory (payment_mode, provider, hidden merchant credential, fee_percent, hold TTL override, settings). Necessary permission: channel.read, channel.create, channel.update, channel.delete or superadmin.read. Trusted agents, ETS connections, promotions and widgets are for a later release.",
   },
   {
     id: "payments",
@@ -248,16 +248,16 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     },
     scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
-      "Payment provider configurations per organization (provider, mode, provider_account_id, status, masked secrets). Requires payment_config.read, payment_config.write, or superadmin.read. Fiscal/POS settings remain deferred.",
+      "Payment provider settings for each organization (provider, mode, provider_account_id, status, hidden secrets). Necessary permission: payment_config.read, payment_config.write or superadmin.read. Fiscal and POS settings are for a later release.",
   },
   {
     id: "customers",
-    label: "Customers",
+    label: "Buyers",
     to: "/customers",
     permission: { anyOf: ["customer.read"] },
     scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
-      "Org-scoped customer directory and card (identities, orders, attributes, consents). Requires customer.read.",
+      "Buyer directory and card for one organization (identities, orders, attributes, consents). Necessary permission: customer.read.",
   },
   {
     id: "org-orders",
@@ -266,7 +266,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["order.read"] },
     scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
-      "Org-scoped order list (number, buyer, session, status, total) with a detail drawer (items, timeline) and cancel action. Requires order.read; cancel requires order.write.",
+      "Order list for one organization (number, buyer, session, status, total). It has a detail drawer (items, timeline) and a cancel action. Necessary permission: order.read. To cancel: order.write.",
   },
   {
     id: "promo_codes",
@@ -275,7 +275,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["promo.read"] },
     scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
-      "Org-scoped discount vouchers (list, create, pause/activate, delete) and their redemption usage report. Requires promo.read; create/update/delete require promo.create / promo.update / promo.delete. Reached from an organization context (e.g. the session overview's \"Manage promo codes\" link) since the URL carries the organization id.",
+      "Discount vouchers for one organization (list, make, pause or activate, delete) and the report of their use. Necessary permission: promo.read. To make, change or delete: promo.create, promo.update or promo.delete. Open this page from an organization, for example with the \"Manage promo codes\" link of the session overview, because the URL has the organization ID.",
   },
   {
     id: "reports",
@@ -290,7 +290,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     },
     scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
-      "Unified reporting by platform, network, organizer, agent, event, period. Shell only -- explicitly out of scope this milestone. Requires network.view_reports, report.read, or superadmin.read.",
+      "One report for platform, network, organizer, agent, event and period. This release has an empty page only. Reports are not in this release. Necessary permission: network.view_reports, report.read or superadmin.read.",
     productionPlaceholder: true,
   },
   {
@@ -300,7 +300,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["superadmin.read"] },
     scopeKinds: ["global", "platform", "network", "organization"],
     purpose:
-      "Notifications, news, subscriptions, widget and content configuration. Shell only. Requires superadmin.read.",
+      "Notifications, news, subscriptions, widget and content settings. This release has an empty page only. Necessary permission: superadmin.read.",
     productionPlaceholder: true,
   },
   {
@@ -310,7 +310,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["superadmin.read", "pos.execute"] },
     scopeKinds: ["global", "platform", "network"],
     purpose:
-      "Cash desk mode (shifts, event selection, cart, payment, fiscal, printing, returns). Shell only -- POS execution explicitly out of scope this milestone. Requires pos.execute or superadmin.read.",
+      "Cash desk mode (work shifts, event selection, cart, payment, fiscal data, printing, returns). This release has an empty page only. POS work is not in this release. Necessary permission: pos.execute or superadmin.read.",
     productionPlaceholder: true,
   },
   {
@@ -320,7 +320,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["superadmin.read"] },
     scopeKinds: ["global", "platform"],
     purpose:
-      "Cross-tenant audit log shell. Requires superadmin.read. Rendered honestly until a backend audit reader is exposed.",
+      "Audit log shell for all tenants. Necessary permission: superadmin.read. The page shows only what is true until the backend has an audit reader.",
   },
   {
     id: "observability",
@@ -329,7 +329,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["superadmin.read"] },
     scopeKinds: ["global", "platform"],
     purpose:
-      "Platform health and observability shell. Requires superadmin.read. Links the operational probes (/healthz, /readyz, /metrics) and documents missing dashboard endpoints.",
+      "Platform health and observability shell. Necessary permission: superadmin.read. It has links to the operational probes (/healthz, /readyz, /metrics). It lists the dashboard endpoints that are not available.",
   },
   {
     id: "geo",
@@ -337,7 +337,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     to: "/geo",
     permission: { anyOf: ["geo.admin"] },
     scopeKinds: ["global", "platform"],
-    purpose: "Maintain countries/cities catalog. Requires geo.admin.",
+    purpose: "Manage the catalog of countries and cities. Necessary permission: geo.admin.",
   },
   {
     id: "webhooks",
@@ -346,16 +346,16 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["webhook.subscriber.manage"] },
     scopeKinds: ["global", "platform"],
     purpose:
-      "Register, edit, and pause HTTP endpoints that receive signed outbox events. Requires webhook.subscriber.manage.",
+      "Add, change and pause HTTP endpoints that receive signed outbox events. Necessary permission: webhook.subscriber.manage.",
   },
   {
     id: "customer_imports",
-    label: "Customer Imports",
+    label: "Buyer Imports",
     to: "/customer-imports",
     permission: { anyOf: ["superadmin.read"] },
     scopeKinds: ["global", "platform"],
     purpose:
-      "Register, dry-run, and apply customer/order export imports (feature #520). Requires superadmin.read.",
+      "Add, test and apply imports of buyer and order exports (feature #520). Necessary permission: superadmin.read.",
   },
   {
     id: "onboarding",
@@ -364,7 +364,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["onboarding.review"] },
     scopeKinds: ["global", "platform"],
     purpose:
-      "Organizer applications: the queue of submitted forms, the system's checks, approve / request details / reject, and the onboarding settings. Requires onboarding.review; the settings tab requires onboarding.settings.",
+      "Organizer applications: the queue of sent forms, the checks of the system, approve, ask for details, reject, and the onboarding settings. Necessary permission: onboarding.review. For the settings tab: onboarding.settings.",
   },
   {
     id: "billing_prices",
@@ -373,7 +373,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["billing.admin"] },
     scopeKinds: ["global", "platform"],
     purpose:
-      "Billing: versions of the price lists (a new price is a new version that starts in the future), the individual rates of organizations, and the terms of billing accounts. Requires billing.admin and a platform superadmin; every change asks for a reason and is audited.",
+      "Billing: versions of the price lists (a new price is a new version that starts in the future), the individual rates of organizations, and the terms of billing accounts. Necessary permission: billing.admin and a platform superadmin. Each change needs a reason, and the platform keeps an audit record.",
   },
   {
     id: "billing_invoices",
@@ -382,7 +382,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["billing.admin"] },
     scopeKinds: ["global", "platform"],
     purpose:
-      "Billing: platform invoices to organizations. Make a draft usage invoice for a finished month, issue it for a bank transfer or a card payment, record money that arrived outside the feeds, or void it. Requires billing.admin and a platform superadmin; every change asks for a reason and is audited.",
+      "Billing: platform invoices to organizations. Make a draft usage invoice for a finished month. Issue it for a bank transfer or a card payment. Record money that came outside the feeds. Or void the invoice. Necessary permission: billing.admin and a platform superadmin. Each change needs a reason, and the platform keeps an audit record.",
   },
   {
     id: "billing_payment_fees",
@@ -391,7 +391,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["billing.admin"] },
     scopeKinds: ["global", "platform"],
     purpose:
-      "Billing: the average card fee (percentage and fixed part, per currency) that a card payer adds to an invoice. A new version starts in the future. Requires billing.admin and a platform superadmin; every change asks for a reason and is audited.",
+      "Billing: the average card fee (percentage and fixed part, for each currency) that a card payer adds to an invoice. A new version starts in the future. Necessary permission: billing.admin and a platform superadmin. Each change needs a reason, and the platform keeps an audit record.",
   },
   {
     id: "billing_bank",
@@ -400,7 +400,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["billing.admin"] },
     scopeKinds: ["global", "platform"],
     purpose:
-      "Billing: incoming bank payments. Match a payment the bank feed could not match to an invoice, ignore it with a reason, or import a statement by hand. Requires billing.admin and a platform superadmin; every change asks for a reason and is audited.",
+      "Billing: bank payments that come in. Match to an invoice a payment that the bank feed did not match. Or ignore it and give a reason. Or import a statement by hand. Necessary permission: billing.admin and a platform superadmin. Each change needs a reason, and the platform keeps an audit record.",
   },
   {
     id: "analytics_flows",
@@ -409,7 +409,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["superadmin.read"] },
     scopeKinds: ["global", "platform"],
     purpose:
-      "Own product analytics: where people leave the bot wizard and the event center flows, step by step, with the previous period for comparison. Read-only. Requires superadmin.read.",
+      "Product analytics of the platform: the steps where people leave the bot wizard and the event center flows, with the previous period for comparison. Read-only. Necessary permission: superadmin.read.",
   },
   {
     id: "analytics_errors",
@@ -418,7 +418,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
     permission: { anyOf: ["superadmin.read"] },
     scopeKinds: ["global", "platform"],
     purpose:
-      "Own product analytics: the most frequent screen errors, bot input errors and rage clicks, with the previous period for comparison. Read-only. Requires superadmin.read.",
+      "Product analytics of the platform: the most frequent screen errors, bot input errors and rage clicks, with the previous period for comparison. Read-only. Necessary permission: superadmin.read.",
   },
 ];
 

@@ -135,7 +135,7 @@ test.describe("refund: unknown outcomes, double presses and exact amounts (live)
     expect(rows(ORDER_OWNER)).toMatchObject({ refunds: 1, states: ["succeeded"], amounts: [2500] });
 
     await page.getByTestId("refund-check").click();
-    await expect(page.getByTestId("refund-result")).toContainText("Nothing was refunded twice");
+    await expect(page.getByTestId("refund-result")).toContainText("We did not refund two times");
     expect(sent).toHaveLength(2);
     expect(sent[0].key, "a key was sent").toBeTruthy();
     expect(sent[1].key, "the retry carries the SAME key").toBe(sent[0].key);

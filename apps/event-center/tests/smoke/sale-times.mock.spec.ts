@@ -13,7 +13,7 @@ async function signIn(page: Page) {
   await page.getByLabel("E-mail").fill("manager@example.test");
   await page.getByLabel("Password").fill("right-password");
   await page.getByTestId("login-submit").click();
-  await expect(page.getByRole("heading", { name: "Choose an organization" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Select an organization" })).toBeVisible();
 }
 
 const url = `/o/${ORG_A}/events/${EVENT}/sessions/${SESSION}`;

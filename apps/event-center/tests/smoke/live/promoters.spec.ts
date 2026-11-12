@@ -116,7 +116,7 @@ test.describe("promoters (live, three roles)", () => {
 
     // A second promoter with the same name is refused in words.
     await createViaUi(page, NAME.toUpperCase());
-    await expect(page.getByTestId("create-error")).toContainText("already has this name");
+    await expect(page.getByTestId("create-error")).toContainText("has this name");
     await page.getByTestId("create-cancel").click();
 
     // The card: the public link is shown and has a copy button.
@@ -134,7 +134,7 @@ test.describe("promoters (live, three roles)", () => {
     await page.getByTestId("input-email").fill("not an address");
     const before = apiCalls.filter((c) => c.startsWith("PATCH")).length;
     await page.getByTestId("field-save").click();
-    await expect(page.getByTestId("field-error")).toContainText("does not look like an e-mail");
+    await expect(page.getByTestId("field-error")).toContainText("This is not an e-mail address");
     expect(apiCalls.filter((c) => c.startsWith("PATCH")).length, "no PATCH for a bad shape").toBe(before);
     await page.getByTestId("field-cancel").click();
 
@@ -164,7 +164,7 @@ test.describe("promoters (live, three roles)", () => {
     await page.getByTestId("input-slug").fill(FOREIGN_SLUG);
     await page.getByTestId("field-save").click();
     await page.getByTestId("slug-confirm-save").click();
-    await expect(page.getByTestId("field-error")).toContainText("already taken");
+    await expect(page.getByTestId("field-error")).toContainText("has this address");
     expect((await apiFind(request, "org_admin", RENAMED)).slug).toBe(oldSlug);
     await page.getByTestId("slug-confirm-back").click();
 
@@ -192,14 +192,14 @@ test.describe("promoters (live, three roles)", () => {
     const ask = page.getByTestId("archive-ask");
     await expect(ask).toContainText("public page");
     await expect(ask).toContainText("stop opening");
-    await expect(ask).toContainText("tickets and letters still show it as the organizer");
+    await expect(ask).toContainText("Tickets and e-mails show it as the organizer");
     // "No" archives nothing.
     await page.getByTestId("archive-cancel").click();
     expect((await apiFind(request, "org_admin", RENAMED)).archived).toBe(false);
 
     await page.getByTestId("archive-open").click();
     await page.getByTestId("archive-confirm").click();
-    await expect(page.getByTestId("promoter-status")).toContainText("is archived");
+    await expect(page.getByTestId("promoter-status")).toContainText("is in the archive");
     const archived = await apiFind(request, "org_admin", RENAMED);
     expect(archived.archived).toBe(true);
     expect(archived.archived_at).not.toBeNull();
@@ -242,7 +242,7 @@ test.describe("promoters (live, three roles)", () => {
     await expect(page.getByTestId("field-value-phone")).toHaveText("+420 123 456 789");
     await page.getByTestId("archive-open").click();
     await page.getByTestId("archive-confirm").click();
-    await expect(page.getByTestId("promoter-status")).toContainText("is archived");
+    await expect(page.getByTestId("promoter-status")).toContainText("is in the archive");
     expect((await apiFind(request, "organizer", MANAGER_NAME)).archived).toBe(true);
     await page.getByTestId("restore").click();
     await expect(page.getByTestId("promoter-status")).toContainText("is active again");

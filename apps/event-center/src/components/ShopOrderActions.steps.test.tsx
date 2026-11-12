@@ -140,7 +140,7 @@ describe("the buttons follow the step", () => {
   });
 
   it("calls the step that is the allowed one \"Handed to courier\", and \"Change the note\" while it is with the courier", async () => {
-    expect(get(await mount(order()), "shop-order-ship")?.textContent).toBe("Handed to courier");
+    expect(get(await mount(order()), "shop-order-ship")?.textContent).toBe("Given to courier");
     const shipped = await mount(order({ fulfillment_step: "handed_over", status: "shipped", shipped_at: "2026-11-01T10:00:00Z" }));
     expect(get(shipped, "shop-order-ship")?.textContent).toBe("Change the note");
   });
@@ -152,7 +152,7 @@ describe("a step is one call and refreshes the card", () => {
     const el = await mount(order());
     await press(el, "shop-order-packed");
     expect(setShopOrderFulfillment).toHaveBeenCalledWith(ORG, ID, { step: "packed" });
-    expect(note(el)).toBe("The delivery step is now: Packed.");
+    expect(note(el)).toBe("The delivery step is: Packed.");
   });
 
   it("delivered: sends the step", async () => {
@@ -170,7 +170,7 @@ describe("a step is one call and refreshes the card", () => {
     await type(el, "shop-ship-note", "  TRACK-1 ");
     await submit(el, "shop-ship-submit");
     expect(setShopOrderFulfillment).toHaveBeenCalledWith(ORG, ID, { step: "handed_over", tracking: "TRACK-1" });
-    expect(note(el)).toBe("The order is handed to the courier.");
+    expect(note(el)).toBe("The order went to the courier.");
   });
 
   it("handed to courier without a number: the step alone, nothing to clear", async () => {
@@ -188,7 +188,7 @@ describe("a step is one call and refreshes the card", () => {
     await type(el, "shop-ship-note", "");
     await submit(el, "shop-ship-submit");
     expect(setShopOrderFulfillment).toHaveBeenCalledWith(ORG, ID, { step: "handed_over", tracking: "" });
-    expect(note(el)).toBe("The tracking number is saved.");
+    expect(note(el)).toBe("We saved the shipping number.");
   });
 });
 
@@ -198,7 +198,7 @@ describe("not delivered asks why", () => {
     await press(el, "shop-order-failed");
     await submit(el, "shop-failed-submit");
     expect(setShopOrderFulfillment).not.toHaveBeenCalled();
-    expect(get(el, "shop-failed-reason-error")?.textContent).toBe("Choose a reason, or describe it.");
+    expect(get(el, "shop-failed-reason-error")?.textContent).toBe("Select a cause or write one.");
   });
 
   it("sends the code of a reason chosen from the list", async () => {
@@ -206,7 +206,7 @@ describe("not delivered asks why", () => {
     const el = await mount(order({ fulfillment_step: "handed_over", status: "shipped", shipped_at: "x" }));
     await press(el, "shop-order-failed");
     const options = [...(get(el, "shop-failed-reason") as HTMLSelectElement).options].map((o) => o.textContent);
-    expect(options).toEqual(["Choose a reason", "No answer by phone", "Not at home", "Wrong address", "Refused to receive", "Other"]);
+    expect(options).toEqual(["Select a cause", "No answer by phone", "Not at home", "Incorrect address", "Buyer did not accept the order", "Other"]);
     await type(el, "shop-failed-reason", "wrong_address");
     await submit(el, "shop-failed-submit");
     expect(setShopOrderFulfillment).toHaveBeenCalledWith(ORG, ID, { step: "failed", reason: "wrong_address" });
@@ -234,7 +234,7 @@ describe("a step that moved meanwhile", () => {
     const el = await mount(order());
     await press(el, "shop-order-packed");
     expect(fetchShopOrder).toHaveBeenCalledWith(ORG, ID);
-    expect(get(el, "shop-order-error")?.textContent).toContain("The order is not at the step this action needs.");
+    expect(get(el, "shop-order-error")?.textContent).toContain("The order is not at the step that this action must have.");
     expect(note(el)).toBe("");
   });
 
@@ -243,7 +243,7 @@ describe("a step that moved meanwhile", () => {
     vi.mocked(fetchShopOrder).mockResolvedValue(order({ status: "refunded" }));
     const el = await mount(order());
     await press(el, "shop-order-packed");
-    expect(get(el, "shop-order-error")?.textContent).toContain("This order was refunded, canceled or expired.");
+    expect(get(el, "shop-order-error")?.textContent).toContain("We refunded, canceled or closed this order.");
   });
 });
 

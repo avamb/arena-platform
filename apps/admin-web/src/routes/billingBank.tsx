@@ -72,7 +72,7 @@ type Modal =
 
 function messageOf(err: unknown): string {
   if (err instanceof ApiError) return err.message;
-  return err instanceof Error ? err.message : "The request failed. Please try again.";
+  return err instanceof Error ? err.message : "We did not complete the request. Please try again.";
 }
 
 function BillingBankPage(): JSX.Element {
@@ -126,24 +126,24 @@ function BillingBankPage(): JSX.Element {
 
   const match = useMutation({
     mutationFn: (v: { txId: string; invoiceId: string }) => matchBankTransaction(v.txId, v.invoiceId),
-    onSuccess: () => done("The payment is matched. The invoice is paid."),
+    onSuccess: () => done("We linked the payment to the invoice. The invoice is paid."),
     onError: failed,
   });
   const ignore = useMutation({
     mutationFn: (v: { txId: string; reason: string }) => ignoreBankTransaction(v.txId, v.reason),
-    onSuccess: () => done("The payment is ignored."),
+    onSuccess: () => done("We ignored the payment."),
     onError: failed,
   });
   const importer = useMutation({
     mutationFn: (transfers: Parameters<typeof importBankTransactions>[0]) => importBankTransactions(transfers),
-    onSuccess: (r) => done(`Statement imported: ${ingestSummary(r)}`),
+    onSuccess: (r) => done(`We imported the statement: ${ingestSummary(r)}`),
     onError: failed,
   });
   const busy = match.isPending || ignore.isPending || importer.isPending;
 
   const submitMatch = (tx: BankTransaction, invoiceId: string): void => {
     if (invoiceId === "") {
-      setFormErrors(["Invoice: pick the invoice this payment paid."]);
+      setFormErrors(["Invoice: select the invoice that this payment paid."]);
       return;
     }
     setFormErrors([]);
@@ -183,14 +183,15 @@ function BillingBankPage(): JSX.Element {
         <div>
           <h1 style={headingStyle}>Bank payments</h1>
           <p style={subheadingStyle}>
-            Incoming bank payments. The payments that wait for you come first: each shows why the bank feed could not match
-            it. Tie it to the invoice it paid, or ignore it with a reason. For a bank without a feed, import a statement by
-            hand. Every change asks for a reason and is written to the audit log. Times are in UTC.
+            Bank payments. First, you see the payments that you must examine. Each one shows the cause that
+            stopped the bank feed from linking it. Link it to the invoice that it paid, or ignore it and give a reason.
+            If the bank has no feed, import a statement by hand. Each change needs a reason. The platform saves it in
+            the audit log. Times are in UTC.
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button type="button" style={buttonStyle} onClick={refresh} data-testid="billing-refresh">
-            Refresh
+            Reload
           </button>
           <button
             type="button"
@@ -253,7 +254,7 @@ function BillingBankPage(): JSX.Element {
 
       {modal.kind === "match" ? (
         <Dialog
-          title="Match the payment to an invoice"
+          title="Link the payment to an invoice"
           testId="billing-match-dialog"
           onClose={close}
           onSubmit={() => submitMatch(modal.tx, modal.invoiceId)}
@@ -263,7 +264,7 @@ function BillingBankPage(): JSX.Element {
                 Cancel
               </button>
               <button type="submit" style={{ ...primaryButtonStyle, ...(busy ? disabledButtonStyle : {}) }} disabled={busy} data-testid="billing-match-confirm">
-                Match and mark paid
+                Link and mark paid
               </button>
             </>
           }
@@ -289,7 +290,7 @@ function BillingBankPage(): JSX.Element {
           footer={
             <>
               <button type="button" style={buttonStyle} onClick={close}>
-                Keep it waiting
+                Keep the payment
               </button>
               <button type="submit" style={{ ...primaryButtonStyle, ...(busy ? disabledButtonStyle : {}) }} disabled={busy} data-testid="billing-ignore-confirm">
                 Ignore payment

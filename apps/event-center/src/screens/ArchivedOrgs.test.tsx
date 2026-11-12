@@ -67,6 +67,6 @@ describe("ArchivedNote", () => {
   it("says plainly that nothing is left to work in when every organization is archived", () => {
     const html = render([gone], true);
     expect(html).toContain("Arena Test Promotions");
-    expect(html).toContain("is archived");
+    expect(html).toContain("is in the archive");
   });
 });

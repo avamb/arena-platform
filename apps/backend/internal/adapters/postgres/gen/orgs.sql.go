@@ -153,13 +153,18 @@ func (q *Queries) ListOrganizations(ctx context.Context) ([]OrganizationRow, err
 }
 
 // ListOrganizationsPage returns one stable page of active organizations.
-// search matches organization names and slugs case-insensitively; pass an empty
+// search matches, case-insensitively, any of the name, legal name, slug, number,
+// id, country, locale, tax and registration numbers, contact e-mail and phone,
+// site, city and sender e-mail; pass an empty
 // string to return every active organization.
 const listOrganizationsPage = `-- name: ListOrganizationsPage :many
 SELECT id, display_number, name, slug, country, default_locale, reservation_ttl_seconds, legal_name, tax_id, tax_id_scheme, registration_number, legal_address_line1, legal_address_line2, legal_address_postal_code, legal_address_city, legal_address_country, contact_email, contact_phone, website_url, kyb_status, kyb_verified_at, sender_email, sender_verification_status, logo_media_id, created_at, updated_at, deleted_at
 FROM   organizations
 WHERE  deleted_at IS NULL
-  AND  ($1 = '' OR name ILIKE '%' || $1 || '%' OR slug ILIKE '%' || $1 || '%')
+  AND  ($1 = '' OR concat_ws(' ', name, legal_name, slug, display_number::text, id::text, country,
+                              default_locale, tax_id, registration_number, contact_email,
+                              contact_phone, website_url, legal_address_city, sender_email)
+                    ILIKE '%' || $1 || '%')
 ORDER  BY created_at ASC, id ASC
 LIMIT  $2 OFFSET $3`
 
@@ -185,7 +190,10 @@ const countOrganizationsPage = `-- name: CountOrganizationsPage :one
 SELECT COUNT(*)
 FROM   organizations
 WHERE  deleted_at IS NULL
-  AND  ($1 = '' OR name ILIKE '%' || $1 || '%' OR slug ILIKE '%' || $1 || '%')`
+  AND  ($1 = '' OR concat_ws(' ', name, legal_name, slug, display_number::text, id::text, country,
+                              default_locale, tax_id, registration_number, contact_email,
+                              contact_phone, website_url, legal_address_city, sender_email)
+                    ILIKE '%' || $1 || '%')`
 
 // CountOrganizationsPage returns the total number of active organizations
 // matching search, independently of a page's limit and offset.

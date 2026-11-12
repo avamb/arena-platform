@@ -231,9 +231,9 @@ export function validateEventForm(
   requireOrg: boolean,
 ): EventFormErrors {
   const errors: EventFormErrors = {};
-  if (v.name.trim() === "") errors.name = "Name is required.";
+  if (v.name.trim() === "") errors.name = "Type a name.";
   if (requireOrg && v.org_id.trim() === "")
-    errors.org_id = "Organization is required.";
+    errors.org_id = "Select an organization.";
   return errors;
 }
 
@@ -335,7 +335,7 @@ export function buildPriceWindows(
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i]!;
     const from = parseLocalDatetime(r.valid_from);
-    if (from === null) return { error: `Window ${i + 1}: start is required.` };
+    if (from === null) return { error: `Window ${i + 1}: type the start.` };
     let to: Date | null = null;
     if (r.valid_to.trim() !== "") {
       to = parseLocalDatetime(r.valid_to);
@@ -346,7 +346,7 @@ export function buildPriceWindows(
     }
     const cents = decimalToCents(r.price_amount);
     if (cents === null || cents < 0) {
-      return { error: `Window ${i + 1}: price must be a decimal (e.g. 12.50).` };
+      return { error: `Window ${i + 1}: price must be a decimal number. Example: 12.50.` };
     }
     out.push({
       valid_from: toRFC3339(r.valid_from),
@@ -361,7 +361,7 @@ export function buildPriceWindows(
     const prev = sorted[i - 1]!;
     const cur = sorted[i]!;
     if (prev.valid_to === null || new Date(cur.valid_from) < new Date(prev.valid_to)) {
-      return { error: "Windows overlap — each moment may carry exactly one price." };
+      return { error: "The windows overlap. Each moment can have only one price." };
     }
   }
   return { windows: sorted };
@@ -816,16 +816,16 @@ export function validateSessionForm(
   const errors: { -readonly [K in keyof SessionFormErrors]?: string } = {};
 
   if (values.venue_id.trim() === "") {
-    errors.venue_id = "Venue is required.";
+    errors.venue_id = "Select a venue.";
   }
 
   const start = parseLocalDatetime(values.start_at);
   if (start === null) {
-    errors.start_at = "Start is required.";
+    errors.start_at = "Type the start.";
   }
   const end = parseLocalDatetime(values.end_at);
   if (end === null) {
-    errors.end_at = "End is required.";
+    errors.end_at = "Type the end.";
   }
   if (start !== null && end !== null && end.getTime() <= start.getTime()) {
     errors.end_at = "End must be after start.";
@@ -834,12 +834,12 @@ export function validateSessionForm(
   const capStr = values.capacity_override.trim();
   if (capStr !== "") {
     if (!/^\d+$/.test(capStr)) {
-      errors.capacity_override = "Capacity override must be a whole number.";
+      errors.capacity_override = "Capacity override must be an integer.";
     } else {
       const cap = Number(capStr);
       if (cap <= 0) {
         errors.capacity_override =
-          "Capacity override must be greater than zero.";
+          "Capacity override must be more than zero.";
       } else if (cap > 2_000_000_000) {
         // The backend stores capacities as int32; refuse anything that
         // would overflow before we hit the wire.
@@ -849,7 +849,7 @@ export function validateSessionForm(
   }
 
   if (!isSessionStatus(values.status)) {
-    errors.status = "Status is invalid.";
+    errors.status = "Select a correct status.";
   }
 
   if (
@@ -857,13 +857,13 @@ export function validateSessionForm(
     values.seating_plan_version_id.trim() === ""
   ) {
     errors.seating_plan_version_id =
-      "A seating plan version is required for seated sessions.";
+      "Select a seating plan version for seated sessions.";
   }
 
   const cur = values.currency.trim();
   if (cur !== "" && !/^[A-Z]{3}$/.test(cur)) {
     errors.currency =
-      "Currency must be a 3-letter uppercase ISO 4217 code (e.g. EUR).";
+      "Type a currency code of 3 uppercase letters (ISO 4217). Example: EUR.";
   }
 
   return errors;
@@ -1235,7 +1235,7 @@ export function validateTierForm(
   const errors: { -readonly [K in keyof TierFormErrors]?: string } = {};
 
   if (values.name.trim() === "") {
-    errors.name = "Name is required.";
+    errors.name = "Type a name.";
   } else if (values.name.length > 200) {
     errors.name = "Name must be at most 200 characters.";
   }
@@ -1248,10 +1248,10 @@ export function validateTierForm(
   if (values.pricing_mode === "fixed") {
     const cents = decimalToCents(values.price_amount);
     if (cents === null) {
-      errors.price_amount = "Price must be a decimal (e.g. 12.50).";
+      errors.price_amount = "Price must be a decimal number. Example: 12.50.";
     } else if (cents <= 0) {
       errors.price_amount =
-        "Fixed price must be greater than zero — use free mode for $0 tiers.";
+        "A fixed price must be more than zero. For a $0 category, use the free mode.";
     }
   } else if (values.pricing_mode === "free") {
     if (values.price_amount.trim() !== "" && values.price_amount.trim() !== "0" && values.price_amount.trim() !== "0.00") {
@@ -1293,11 +1293,11 @@ export function validateTierForm(
       errors.capacity = "Укажите количество: категория владеет своими местами.";
     }
   } else if (!/^\d+$/.test(values.capacity.trim())) {
-    errors.capacity = "Capacity must be a whole number.";
+    errors.capacity = "Capacity must be an integer.";
   } else {
     const cap = Number(values.capacity);
     if (cap <= 0) {
-      errors.capacity = "Capacity must be greater than zero.";
+      errors.capacity = "Capacity must be more than zero.";
     } else if (cap > 2_000_000_000) {
       errors.capacity = "Capacity is too large.";
     }
@@ -1306,10 +1306,10 @@ export function validateTierForm(
   const saleStart = values.sale_window_start.trim();
   const saleEnd = values.sale_window_end.trim();
   if (saleStart !== "" && parseLocalDatetime(saleStart) === null) {
-    errors.sale_window_start = "Sale start must be a valid timestamp.";
+    errors.sale_window_start = "Sale start must be a correct date and time.";
   }
   if (saleEnd !== "" && parseLocalDatetime(saleEnd) === null) {
-    errors.sale_window_end = "Sale end must be a valid timestamp.";
+    errors.sale_window_end = "Sale end must be a correct date and time.";
   }
   if (
     errors.sale_window_start === undefined &&
@@ -1325,7 +1325,7 @@ export function validateTierForm(
   }
 
   if (values.sort_order.trim() === "") {
-    errors.sort_order = "Sort order is required.";
+    errors.sort_order = "Type a sort order.";
   } else if (!/^-?\d+$/.test(values.sort_order.trim())) {
     errors.sort_order = "Sort order must be an integer.";
   } else {
@@ -1348,12 +1348,12 @@ export function mapTierError(err: ApiError): string {
   switch (err.code) {
     case "tier.missing_name":
     case "tier.invalid_name":
-      return "Name is required.";
+      return "Type a name.";
     case "tier.missing_pricing_mode":
     case "tier.invalid_pricing_mode":
       return "Pricing mode must be fixed, free, or pwyw.";
     case "tier.invalid_capacity":
-      return "Capacity must be greater than zero.";
+      return "Capacity must be more than zero.";
     // Квоты категорий (план 08_architecture/23). Категория владеет своими
     // местами, поэтому эти отказы говорят о количестве, а не о «лимите».
     case "tier.capacity_required":
@@ -1378,30 +1378,30 @@ export function mapTierError(err: ApiError): string {
       return "Sale end must be after sale start.";
     case "tier.invalid_sale_window_start":
     case "tier.invalid_sale_window_end":
-      return "Sale window timestamps must be valid.";
+      return "The dates and times of the sale window must be correct.";
     case "tier.not_found":
-      return "Ticket tier no longer exists. The list will be refreshed.";
+      return "This category is not in the system. We reload the list.";
     case "tier.insert_failed":
     case "tier.update_failed":
     case "tier.delete_failed":
-      return err.message || "Server failed to persist the change.";
+      return err.message || "The server did not save the change.";
     case "pricing.fixed_price_required":
     case "catalog.pricing.fixed_price_required":
-      return "Fixed-price tiers require a positive price.";
+      return "A category with a fixed price must have a price of more than zero.";
     case "pricing.free_price_must_be_zero":
     case "catalog.pricing.free_price_must_be_zero":
-      return "Free tiers must have a zero price.";
+      return "A free category must have a price of zero.";
     case "pricing.pwyw_min_greater_than_max":
     case "catalog.pricing.pwyw_min_greater_than_max":
       return "pwyw_min must be less than or equal to pwyw_max.";
     case "permissions.denied":
-      return "Your account is missing the permission required for this action.";
+      return "Your account does not have the necessary permission.";
     default:
       if (err.status === 401) {
-        return "Session expired. Please sign in again.";
+        return "Your session ended. Please sign in again.";
       }
       if (err.status === 403) {
-        return "Forbidden — missing required tier permission.";
+        return "Not permitted. Your account does not have the necessary category permission.";
       }
       return `${err.message} (${err.code})`;
   }
@@ -1577,9 +1577,9 @@ function EventsModule() {
             Events
           </h1>
           <p style={subheadingStyle}>
-            Cross-organization events directory. List is shared across
-            organizations; status transitions (draft, published, cancelled,
-            archived) are owner-gated and require the{" "}
+            This list shows the events of all organizations. Only the owner
+            can change the status of an event (draft, published, cancelled,
+            archived). To change the status, you must have the{" "}
             <code style={monoStyle}>event.publish</code> permission.
           </p>
         </div>
@@ -1591,7 +1591,7 @@ function EventsModule() {
               style={primaryButtonStyle}
               data-testid="events-create-open"
             >
-              Create Event
+              Add an event
             </button>
           ) : null}
           <button
@@ -1853,7 +1853,7 @@ function EventsBody({
     return (
       <div style={statusBoxStyle} role="status" data-testid="events-empty">
         {totalFiltered === 0
-          ? "No events match the current filters."
+          ? "No event fits the filters."
           : "No events on this page."}
       </div>
     );
@@ -1927,7 +1927,7 @@ function EventsBody({
       renderCell: () => (
         <span
           style={mutedHintStyle}
-          title="Open the drawer's Publications tab to view channels."
+          title="Open the Publications tab in the side panel to see the channels."
         >
           —
         </span>
@@ -2034,7 +2034,7 @@ function EventsErrorState({
         <strong>Forbidden.</strong>
         <p style={errorParaStyle}>
           Your account is missing <code style={monoStyle}>event.read</code>.
-          Ask a platform administrator to grant the permission.
+          Tell a platform administrator to give you this permission.
         </p>
       </div>
     );
@@ -2042,14 +2042,14 @@ function EventsErrorState({
   if (error instanceof ApiError && error.status === 401) {
     return (
       <div style={errorBoxStyle} role="status" data-testid="events-session-expired">
-        <strong>Session expired.</strong>
-        <p style={errorParaStyle}>Sign in again to reload events.</p>
+        <strong>Your session ended.</strong>
+        <p style={errorParaStyle}>Sign in again, then reload the events.</p>
       </div>
     );
   }
   return (
     <div style={errorBoxStyle} role="alert" data-testid="events-error">
-      <strong>Failed to load events.</strong>
+      <strong>The events did not load.</strong>
       <div style={errorCodeStyle}>{error?.code ?? "unknown.error"}</div>
       {error?.message ? <div style={errorParaStyle}>{error.message}</div> : null}
       <button type="button" style={errorRetryStyle} onClick={onRetry}>
@@ -2085,9 +2085,9 @@ type DrawerTab = "overview" | "sessions" | "tiers" | "publications" | "activity"
 const DRAWER_TABS: ReadonlyArray<{ id: DrawerTab; label: string }> = [
   { id: "overview", label: "Overview" },
   { id: "sessions", label: "Sessions" },
-  { id: "tiers", label: "Ticket tiers" },
+  { id: "tiers", label: "Ticket categories" },
   { id: "publications", label: "Publications" },
-  { id: "activity", label: "Activity" },
+  { id: "activity", label: "History" },
 ];
 
 interface DrawerProps {
@@ -2180,7 +2180,7 @@ function EventDrawer({
             ×
           </button>
         </header>
-        <nav style={drawerTabBarStyle} aria-label="Event detail tabs">
+        <nav style={drawerTabBarStyle} aria-label="Event tabs">
           {DRAWER_TABS.map((t) => (
             <button
               key={t.id}
@@ -2307,11 +2307,11 @@ function OverviewTab({
       if (err.code === "event.invalid_transition") {
         setErrMsg(
           err.message ||
-            "That status transition is not permitted from the current state.",
+            "You cannot make this status change from the current status.",
         );
       } else if (err.code === "permissions.denied" || err.status === 403) {
         setErrMsg(
-          "Your account is missing event.publish. Ask a platform administrator.",
+          "Your account does not have event.publish. Tell a platform administrator.",
         );
       } else {
         setErrMsg(`${err.message} (${err.code})`);
@@ -2340,7 +2340,7 @@ function OverviewTab({
             Continue setup
           </button>
           <span style={mutedHintStyle}>
-            Draft event — publish requires at least one session with a tier.
+            This is a draft event. To publish it, add a session with a ticket category.
           </span>
         </div>
       ) : null}
@@ -2382,7 +2382,7 @@ function OverviewTab({
       {confirmDelete ? (
         <div style={confirmDeleteStyle} data-testid="events-delete-confirm">
           <span>
-            Are you sure you want to delete this event? This cannot be undone.
+            Delete this event? This step is permanent.
           </span>
           <div style={rowActionsStyle}>
             <button
@@ -2487,14 +2487,14 @@ function OverviewTab({
       ) : null}
 
       <div style={transitionSectionStyle}>
-        <div style={detailLabelStyle}>Status transitions</div>
+        <div style={detailLabelStyle}>Status changes</div>
         {transitions.length === 0 ? (
           <p style={mutedHintStyle}>
-            No further transitions are allowed from <code style={monoStyle}>{event.status}</code>.
+            No more status changes are possible from <code style={monoStyle}>{event.status}</code>.
           </p>
         ) : !canPublish ? (
           <p style={mutedHintStyle}>
-            Status transitions require the{" "}
+            To change the status, you must have the{" "}
             <code style={monoStyle}>event.publish</code> permission.
           </p>
         ) : (
@@ -2660,7 +2660,7 @@ function EventWizard({
       setEvent(data.event);
       setBanner({
         kind: "ok",
-        msg: `Draft event "${data.event.name}" created. Now add a session.`,
+        msg: `We made the draft event "${data.event.name}". Add a session.`,
       });
       setStep(2);
       void queryClient.invalidateQueries({ queryKey: ["events"] });
@@ -2678,7 +2678,7 @@ function EventWizard({
         body: { status: "published" },
       }),
     onSuccess: (data) => {
-      setBanner({ kind: "ok", msg: `Published "${data.event.name}".` });
+      setBanner({ kind: "ok", msg: `We published "${data.event.name}".` });
       void queryClient.invalidateQueries({ queryKey: ["events"] });
       onCompleted();
     },
@@ -2709,7 +2709,7 @@ function EventWizard({
         <header style={drawerHeaderStyle}>
           <div>
             <h2 id="event-wizard-title" style={drawerTitleStyle}>
-              {event === null ? "Create event" : `Set up "${event.name}"`}
+              {event === null ? "New event" : `Edit "${event.name}"`}
             </h2>
             <div style={mutedHintStyle} data-testid="events-wizard-progress">
               <span data-status={stepStatus(1)}>
@@ -2721,7 +2721,7 @@ function EventWizard({
               </span>
               {" · "}
               <span data-status={stepStatus(3)}>
-                {stepStatus(3) === "done" ? "✓" : "3"} Tiers &amp; publish
+                {stepStatus(3) === "done" ? "✓" : "3"} Categories &amp; publish
               </span>
             </div>
           </div>
@@ -2774,7 +2774,7 @@ function EventWizard({
                     required
                     data-testid="events-wizard-org"
                   >
-                    <option value="">— select org —</option>
+                    <option value="">— select organization —</option>
                     {orgs.map((o) => (
                       <option key={o.id} value={o.id}>
                         {o.display_number !== undefined
@@ -2863,7 +2863,7 @@ function EventWizard({
                 >
                   {createEventMutation.isPending
                     ? "Creating…"
-                    : "Create draft & continue"}
+                    : "Save draft and continue"}
                 </button>
               </div>
             </form>
@@ -2872,8 +2872,8 @@ function EventWizard({
           {step === 2 && event !== null ? (
             <div data-testid="events-wizard-step2">
               <p style={mutedHintStyle}>
-                Add the first session. Every session pins a venue, dates and
-                admission mode; capacity is derived from the venue or seating
+                Add the first session. Each session has a venue, dates and an
+                admission mode. The capacity comes from the venue or the seating
                 plan.
               </p>
               <SessionEditor
@@ -2888,7 +2888,7 @@ function EventWizard({
                   setStep(3);
                   setBanner({
                     kind: "ok",
-                    msg: "Session created. Now add at least one ticket tier.",
+                    msg: "We made the session. Add a ticket category.",
                   });
                   void queryClient.invalidateQueries({
                     queryKey: ["events", "detail", event.id, "sessions"],
@@ -2906,7 +2906,7 @@ function EventWizard({
               tiers={tiers}
               onTierAdded={(t, label) => {
                 setTiers((prev) => [...prev, t]);
-                setBanner({ kind: "ok", msg: label ?? `Tier "${t.name}" added.` });
+                setBanner({ kind: "ok", msg: label ?? `We added category "${t.name}".` });
               }}
               onTierError={(msg) => setBanner({ kind: "err", msg })}
               onPublish={() => {
@@ -2930,16 +2930,16 @@ function EventWizard({
 export function mapPublishError(err: ApiError): string {
   switch (err.code) {
     case "event.publish_requires_session":
-      return "Cannot publish: this event has no session yet.";
+      return "You cannot publish this event. It has no session.";
     case "event.publish_requires_priced_tier":
-      return "Cannot publish: every session must have at least one ticket tier.";
+      return "You cannot publish this event. Each session must have a ticket category.";
     case "event.invalid_transition":
-      return err.message || "Status transition is not allowed.";
+      return err.message || "This status change is not possible.";
     case "permissions.denied":
-      return "Missing event.publish permission.";
+      return "Your account does not have the event.publish permission.";
     default:
-      if (err.status === 401) return "Session expired. Sign in again.";
-      if (err.status === 403) return "Forbidden — missing event.publish.";
+      if (err.status === 401) return "Your session ended. Sign in again.";
+      if (err.status === 403) return "Not permitted. Your account does not have the event.publish permission.";
       return `${err.message} (${err.code})`;
   }
 }
@@ -2989,19 +2989,19 @@ function WizardTiersStep({
     <div data-testid="events-wizard-step3">
       {otherDates.length > 0 ? (
         <p style={mutedHintStyle} data-testid="events-wizard-other-dates">
-          Every tier you add here is also added to the other{" "}
+          We also add each category that you add here to the other{" "}
           {otherDates.length === 1 ? "date" : `${otherDates.length} dates`}:{" "}
           {otherDates.map((s) => formatDateTime(s.start_at)).join(", ")}.
         </p>
       ) : null}
       <p style={mutedHintStyle}>
-        Add at least one ticket tier for the session on{" "}
+        Add a ticket category for the session on{" "}
         {formatDateTime(session.start_at)}. Currency is{" "}
         <strong>{session.currency}</strong> (
         {session.currency_source === "derived"
           ? "derived from venue"
           : "set manually on the session"}
-        ) — every tier of this session shares it.
+        ). Each category of this session uses it.
       </p>
 
       {tiers.length > 0 ? (
@@ -3029,7 +3029,7 @@ function WizardTiersStep({
         </ul>
       ) : (
         <div style={statusBoxStyle} data-testid="events-wizard-tiers-empty">
-          No tiers yet — the event cannot be published until you add one.
+          This event has no category. To publish the event, add a category.
         </div>
       )}
 
@@ -3053,7 +3053,7 @@ function WizardTiersStep({
           onClick={() => setShowForm(true)}
           data-testid="events-wizard-add-tier"
         >
-          + Add another tier
+          + Add one more category
         </button>
       )}
 
@@ -3076,7 +3076,7 @@ function WizardTiersStep({
           title={
             canPublish
               ? "Publish this event"
-              : "Add at least one tier before you can publish."
+              : "To publish, add a category."
           }
         >
           {publishBusy ? "Publishing…" : "Publish event"}
@@ -3321,7 +3321,7 @@ function SessionsTab({
       }),
     onSuccess: (_data, id) => {
       setActionErr(null);
-      setActionOk(`Deleted session ${shortenUUID(id)}.`);
+      setActionOk(`We deleted session ${shortenUUID(id)}.`);
       setConfirmDeleteID(null);
       void queryClient.invalidateQueries({ queryKey });
     },
@@ -3337,7 +3337,7 @@ function SessionsTab({
   if (query.isError) {
     return (
       <div style={errorBoxStyle} role="alert">
-        <strong>Failed to load sessions.</strong>
+        <strong>The sessions did not load.</strong>
         <div style={errorCodeStyle}>{query.error?.code ?? "unknown.error"}</div>
       </div>
     );
@@ -3354,7 +3354,7 @@ function SessionsTab({
             {sessions.length} session{sessions.length === 1 ? "" : "s"} for this
             event.
             {serverFlagsOverlap
-              ? " Server reports overlapping sessions exist."
+              ? " The server reports sessions that overlap."
               : ""}
           </div>
         </div>
@@ -3374,7 +3374,7 @@ function SessionsTab({
           </button>
         ) : (
           <span style={mutedHintStyle}>
-            Adding a session requires <code style={monoStyle}>session.create</code>.
+            To add a session, you must have <code style={monoStyle}>session.create</code>.
           </span>
         )}
       </div>
@@ -3415,7 +3415,7 @@ function SessionsTab({
 
       {sessions.length === 0 && editor.kind !== "create" ? (
         <div style={statusBoxStyle} data-testid="events-sessions-empty">
-          No sessions have been scheduled for this event.
+          This event has no session.
         </div>
       ) : null}
 
@@ -3530,7 +3530,7 @@ function SessionsTab({
                           >
                             <span>
                               Delete session {formatDateTime(s.start_at)}? This
-                              cannot be undone.
+                              step is permanent.
                             </span>
                             <div style={rowActionsStyle}>
                               <button
@@ -3760,7 +3760,7 @@ function MACSExportButtons({
         onOk(`${MACS_EXPORT_MODE_LABELS[mode]} downloaded for ${formatDateTime(session.start_at)}.`);
       })
       .catch((err: unknown) => {
-        onErr(err instanceof ApiError ? `${err.code}: ${err.message}` : "MACS export failed.");
+        onErr(err instanceof ApiError ? `${err.code}: ${err.message}` : "The MACS export did not complete.");
       });
   };
 
@@ -3983,9 +3983,9 @@ function SessionEditor({
       onSaved(
         mode.kind === "create"
           ? extras > 0
-            ? `Created session ${formatDateTime(data.session.start_at)} and ${extras} more date${extras === 1 ? "" : "s"}.`
-            : `Created session ${formatDateTime(data.session.start_at)}.`
-          : `Updated session ${shortenUUID(data.session.id)}.`,
+            ? `We made session ${formatDateTime(data.session.start_at)} and ${extras} more date${extras === 1 ? "" : "s"}.`
+            : `We made session ${formatDateTime(data.session.start_at)}.`
+          : `We updated session ${shortenUUID(data.session.id)}.`,
         data.session,
       );
     },
@@ -4046,8 +4046,8 @@ function SessionEditor({
           ) : null}
           {values.venue_id !== "" && selectedVenueTZ === null ? (
             <span style={fieldHintStyle} data-testid="events-session-venue-no-timezone-warning">
-              This venue has no timezone configured — double-check the
-              Start/End times above are entered in UTC.
+              This venue has no time zone. Make sure that you entered the
+              Start and End times above in UTC.
             </span>
           ) : null}
         </label>
@@ -4255,7 +4255,7 @@ function SessionEditor({
       {mode.kind === "create" ? (
         <div style={editorFieldStyle} data-testid="events-session-extra-dates">
           <span style={editorLabelStyle}>
-            Additional dates (same venue, plan and duration)
+            More dates (same venue, plan and length)
           </span>
           {extraStarts.map((v, idx) => (
             <div key={idx} style={{ display: "flex", gap: 6 }}>
@@ -4272,7 +4272,7 @@ function SessionEditor({
                 type="button"
                 style={refreshButtonStyle}
                 onClick={() => setExtraStarts(extraStarts.filter((_, i) => i !== idx))}
-                aria-label="Remove this extra date"
+                aria-label="Remove this date"
               >
                 ×
               </button>
@@ -4285,16 +4285,16 @@ function SessionEditor({
             data-testid="events-session-extra-add"
             disabled={mutation.isPending}
           >
-            + Add another date
+            + Add one more date
           </button>
           {mutation.isPending && extraStarts.length > 0 ? (
             <span style={mutedHintStyle}>
-              Creating… {extraCreated}/{extraStarts.length} extra dates done.
+              Making… {extraCreated}/{extraStarts.length} more dates done.
             </span>
           ) : null}
           {mutation.isError && extraCreated > 0 ? (
             <span style={fieldErrorStyle}>
-              {extraCreated} extra date{extraCreated === 1 ? "" : "s"} were created before the error — refresh the list.
+              We made {extraCreated} more date{extraCreated === 1 ? "" : "s"} before the error. Reload the list.
             </span>
           ) : null}
         </div>
@@ -4307,9 +4307,9 @@ function SessionEditor({
           data-testid="events-session-overlap-warning"
         >
           <strong>Overlap warning:</strong> this time range overlaps{" "}
-          {overlaps.length} existing session
-          {overlaps.length === 1 ? "" : "s"} on this event. The server will
-          accept the change but the list will be flagged as overlapping.
+          {overlaps.length} session
+          {overlaps.length === 1 ? "" : "s"} of this event. The server accepts
+          the change, and the list shows the overlap.
           <ul style={overlapListStyle}>
             {overlaps.map((o) => (
               <li key={o.id}>
@@ -4340,7 +4340,7 @@ function SessionEditor({
           {mutation.isPending
             ? "Saving…"
             : mode.kind === "create"
-              ? "Create session"
+              ? "Add session"
               : "Save changes"}
         </button>
       </div>
@@ -4373,48 +4373,48 @@ export function mapSessionError(err: ApiError): string {
     case "session.invalid_date_range":
       return "End must be after start.";
     case "session.invalid_capacity":
-      return "Capacity must be greater than zero.";
+      return "Capacity must be more than zero.";
     case "session.invalid_status":
       return "Status must be one of draft, scheduled, cancelled, or completed.";
     case "session.invalid_transition":
-      return err.message || "Status transition is not allowed.";
+      return err.message || "This status change is not possible.";
     case "session.not_found":
-      return "Session no longer exists. The list will be refreshed.";
+      return "This session is not in the system. We reload the list.";
     case "session.missing_start_at":
-      return "Start is required.";
+      return "Type the start.";
     case "session.missing_end_at":
-      return "End is required.";
+      return "Type the end.";
     case "session.invalid_start_at":
     case "session.invalid_end_at":
-      return "Start and end must be valid timestamps.";
+      return "Start and end must be a correct date and time.";
     case "session.missing_venue_id":
-      return "Venue is required — pick the venue the session takes place at.";
+      return "Select the venue of the session.";
     case "session.invalid_venue_id":
-      return "Venue ID is not a valid UUID.";
+      return "The venue ID is not a correct UUID.";
     case "session.venue_not_found":
-      return "The selected venue no longer exists.";
+      return "The selected venue is not in the system.";
     case "session.venue_org_mismatch":
       return "The selected venue belongs to a different organization.";
     case "session.invalid_admission_mode":
       return "Admission mode must be general_admission, assigned_seats, or hybrid.";
     case "session.missing_seating_plan_version":
-      return "A seating plan version is required for seated sessions.";
+      return "Select a seating plan version for seated sessions.";
     case "session.invalid_seating_plan_version":
-      return "The selected seating plan version is not valid for this venue.";
+      return "The selected seating plan version does not fit this venue.";
     case "session.seating_plan_not_applicable":
-      return "A general-admission session cannot carry a seating plan version.";
+      return "A general-admission session cannot have a seating plan version.";
     case "session.invalid_currency":
-      return "Currency must be a 3-letter uppercase ISO 4217 code (e.g. EUR).";
+      return "Type a currency code of 3 uppercase letters (ISO 4217). Example: EUR.";
     case "session.currency_unresolvable":
       return (
-        "The venue has no geography to derive a currency from — " +
-        "set an explicit currency for this session."
+        "The venue has no location data, so we cannot get a currency from it. " +
+        "Type a currency for this session."
       );
     case "session.invalid_capacity_override":
-      return "Capacity override must be greater than zero.";
+      return "Capacity override must be more than zero.";
     case "session.capacity_unresolvable":
       return (
-        "Capacity could not be resolved — set a capacity override or give " +
+        "We cannot find the capacity. Type a capacity override or give " +
         "the venue a default capacity."
       );
     case "session.capacity_override_not_applicable":
@@ -4422,16 +4422,16 @@ export function mapSessionError(err: ApiError): string {
       // владеет схема зала, у остальных она равна сумме количеств категорий.
       return err.details?.reason === "category_sum"
         ? "Вместимость сеанса — сумма количеств категорий: измените количество категории."
-        : "This session is bound to a seating plan, which owns the capacity — " +
-            "capacity override does not apply.";
+        : "This session uses a seating plan. The seating plan sets the capacity, " +
+            "so a capacity override does not apply.";
     case "permissions.denied":
-      return "Your account is missing the permission required for this action.";
+      return "Your account does not have the necessary permission.";
     default:
       if (err.status === 401) {
-        return "Session expired. Please sign in again.";
+        return "Your session ended. Please sign in again.";
       }
       if (err.status === 403) {
-        return "Forbidden — missing required session permission.";
+        return "Not permitted. Your account does not have the necessary session permission.";
       }
       return `${err.message} (${err.code})`;
   }
@@ -4536,7 +4536,7 @@ function SessionPosterUpload({ event, session, onUploaded }: SessionPosterUpload
     } catch (err) {
       const msg = err instanceof ApiError
         ? `Upload failed: ${err.message} (${err.code})`
-        : "Upload failed — please try again.";
+        : "The upload did not complete. Please try again.";
       setUploadErr(msg);
     } finally {
       setUploading(false);
@@ -4739,7 +4739,7 @@ function SessionMediaGallery({ session }: { session: SessionItem }) {
         },
       }),
     onSuccess: (data) => {
-      setUiOk(`Gallery saved (${data.items.length} item(s)).`);
+      setUiOk(`We saved the gallery (${data.items.length} item(s)).`);
       setUiError(null);
       setDraft(
         data.items.map((it, idx) => ({
@@ -4792,10 +4792,10 @@ function SessionMediaGallery({ session }: { session: SessionItem }) {
         const ratio = img.width / img.height;
         if (ratio < 0.3 || ratio > 3.5) {
           setUiOk(
-            `Poster uploaded (unusual aspect ratio ${ratio.toFixed(2)} — will still be shown).`,
+            `We uploaded the poster. Its aspect ratio (${ratio.toFixed(2)}) is unusual, but we show it.`,
           );
         } else {
-          setUiOk("Poster added to draft — click Save to persist.");
+          setUiOk("We added the poster to the draft. Click Save to keep it.");
         }
       };
       img.src = URL.createObjectURL(file);
@@ -4812,7 +4812,7 @@ function SessionMediaGallery({ session }: { session: SessionItem }) {
       const msg =
         err instanceof ApiError
           ? `Upload failed: ${err.message} (${err.code})`
-          : "Upload failed — please try again.";
+          : "The upload did not complete. Please try again.";
       setUiError(msg);
     } finally {
       setUploading(false);
@@ -4859,7 +4859,7 @@ function SessionMediaGallery({ session }: { session: SessionItem }) {
     ]);
     setVideoInput("");
     setUiError(null);
-    setUiOk("Video added to draft — click Save to persist.");
+    setUiOk("We added the video to the draft. Click Save to keep it.");
   }
 
   function move(idx: number, delta: number) {
@@ -4921,7 +4921,7 @@ function SessionMediaGallery({ session }: { session: SessionItem }) {
   if (query.isError) {
     return (
       <div style={{ ...containerStyle, ...errorBoxStyle }} role="alert">
-        Failed to load gallery: {query.error.message} ({query.error.code})
+        The gallery did not load: {query.error.message} ({query.error.code})
       </div>
     );
   }
@@ -4934,7 +4934,7 @@ function SessionMediaGallery({ session }: { session: SessionItem }) {
   return (
     <div style={containerStyle}>
       <div style={headerStyle}>
-        Media gallery — {items.length} item(s) ({posterCount} poster
+        Media gallery: {items.length} item(s) ({posterCount} poster
         {posterCount === 1 ? "" : "s"}, cap {SESSION_MEDIA_MAX_POSTERS})
       </div>
       <div style={listStyle}>
@@ -5126,7 +5126,7 @@ function TiersTab({
   if (sessionsQuery.isError) {
     return (
       <div style={errorBoxStyle} role="alert">
-        <strong>Failed to load sessions.</strong>
+        <strong>The sessions did not load.</strong>
         <div style={errorCodeStyle}>
           {sessionsQuery.error?.code ?? "unknown.error"}
         </div>
@@ -5137,7 +5137,7 @@ function TiersTab({
   if (sessions.length === 0) {
     return (
       <div style={statusBoxStyle} data-testid="events-tiers-empty-sessions">
-        No sessions yet -- create a session before adding ticket tiers.
+        This event has no session. Make a session, then add ticket categories.
       </div>
     );
   }
@@ -5205,7 +5205,7 @@ function SessionTiersBlock({
       }),
     onSuccess: (_data, id) => {
       setActionErr(null);
-      setActionOk(`Deleted tier ${shortenUUID(id)}.`);
+      setActionOk(`We deleted category ${shortenUUID(id)}.`);
       setConfirmDeleteID(null);
       void queryClient.invalidateQueries({ queryKey });
     },
@@ -5276,7 +5276,7 @@ function SessionTiersBlock({
           </button>
         ) : (
           <span style={mutedHintStyle}>
-            <code style={monoStyle}>tier.create</code> required.
+            You must have <code style={monoStyle}>tier.create</code>.
           </span>
         )}
       </header>
@@ -5331,16 +5331,16 @@ function SessionTiersBlock({
       ) : null}
 
       {query.isPending ? (
-        <div style={statusBoxStyle}>Loading tiers…</div>
+        <div style={statusBoxStyle}>Loading categories…</div>
       ) : query.isError ? (
         <div style={errorBoxStyle} role="alert">
-          <strong>Failed to load tiers.</strong>
+          <strong>The categories did not load.</strong>
           <div style={errorCodeStyle}>
             {query.error?.code ?? "unknown.error"}
           </div>
         </div>
       ) : sortedTiers.length === 0 && editor.kind === "closed" ? (
-        <div style={statusBoxStyle}>No tiers configured.</div>
+        <div style={statusBoxStyle}>This event has no category.</div>
       ) : sortedTiers.length > 0 ? (
         <div style={tableWrapStyle}>
           <table style={tableStyle}>
@@ -5509,8 +5509,8 @@ function SessionTiersBlock({
                             data-testid={`events-tier-confirm-${t.id}`}
                           >
                             <span>
-                              Delete tier &quot;{t.name}&quot;? This cannot be
-                              undone.
+                              Delete category &quot;{t.name}&quot;? This step
+                              is permanent.
                             </span>
                             <div style={rowActionsStyle}>
                               <button
@@ -5701,7 +5701,7 @@ function PriceScheduleEditor({
       setRows(null);
       void queryClient.invalidateQueries({ queryKey });
       onSaved(
-        `Saved price schedule for "${tier.name}" — current price ${centsToDecimal(data.price_schedule.current_price)} ${tier.currency}.`,
+        `We saved the price schedule for "${tier.name}". The current price is ${centsToDecimal(data.price_schedule.current_price)} ${tier.currency}.`,
       );
     },
     onError: (err) => onError(mapTierError(err)),
@@ -5720,7 +5720,7 @@ function PriceScheduleEditor({
         {loaded?.next_price_change_at
           ? ` · changes ${formatDateTime(loaded.next_price_change_at)}`
           : ""}
-        . Carts lock the price they were quoted; edits apply to new carts only.
+        . A cart keeps the price that it got. A change applies to new carts only.
       </div>
       {effectiveRows.map((r, idx) => (
         <div key={idx} style={editorGridStyle}>
@@ -5737,7 +5737,7 @@ function PriceScheduleEditor({
             />
           </label>
           <label style={editorFieldStyle}>
-            <span style={editorLabelStyle}>Until (empty = open-ended)</span>
+            <span style={editorLabelStyle}>Until (empty = no end)</span>
             <input
               type="datetime-local"
               value={r.valid_to}
@@ -5872,7 +5872,7 @@ function BulkPricingPanel({
           onClick={() => setOpen(true)}
           data-testid="events-bulk-pricing-open"
         >
-          Apply one price grid to several sessions…
+          Apply one price grid to some sessions…
         </button>
       </div>
     );
@@ -5880,10 +5880,10 @@ function BulkPricingPanel({
 
   return (
     <section style={tierBlockStyle} data-testid="events-bulk-pricing">
-      <div style={detailLabelStyle}>Bulk pricing — apply one grid to several sessions</div>
+      <div style={detailLabelStyle}>Bulk pricing: apply one grid to some sessions</div>
       <div style={mutedHintStyle}>
-        Categories are matched by name across the selected sessions (tiers are created per plan
-        category). Every change is audited.
+        We use the name to find each category in the selected sessions. We make a category for each plan
+        category. We write each change to the audit log.
       </div>
       <div style={{ display: "grid", gap: 4, margin: "8px 0" }}>
         {sessions.map((sess) => (
@@ -6075,7 +6075,7 @@ function TierEditor({
           });
           copiedTo += 1;
         } catch (err) {
-          const why = err instanceof ApiError ? mapTierError(err) : "request failed";
+          const why = err instanceof ApiError ? mapTierError(err) : "the request did not complete";
           copyFailures.push(`${formatDateTime(other.start_at)}: ${why}`);
         }
       }
@@ -6088,14 +6088,14 @@ function TierEditor({
           : "";
       onSaved(
         mode.kind === "create"
-          ? `Created tier "${data.tier.name}".${copied}`
-          : `Updated tier "${data.tier.name}".`,
+          ? `We made category "${data.tier.name}".${copied}`
+          : `We updated category "${data.tier.name}".`,
         data.tier,
       );
       if (data.copyFailures.length > 0) {
         onError(
-          `Tier "${data.tier.name}" was created, but not on: ${data.copyFailures.join("; ")}. ` +
-            "Add it on the event's Ticket tiers tab.",
+          `We made category "${data.tier.name}", but not on: ${data.copyFailures.join("; ")}. ` +
+            "Add it on the Ticket categories tab of the event.",
         );
       }
     },
@@ -6125,7 +6125,7 @@ function TierEditor({
       }}
     >
       <div style={detailLabelStyle}>
-        {mode.kind === "create" ? "Add ticket tier" : "Edit ticket tier"}
+        {mode.kind === "create" ? "Add ticket category" : "Edit ticket category"}
       </div>
       <div style={editorGridStyle}>
         <label style={editorFieldStyle}>
@@ -6169,11 +6169,11 @@ function TierEditor({
           {/* AB-44: per-mode help text */}
           <span style={mutedHintStyle}>
             {values.pricing_mode === "fixed"
-              ? "Attendee pays an exact price you set."
+              ? "The attendee pays the price that you set."
               : values.pricing_mode === "free"
-                ? "Admission is free — no payment required."
+                ? "Admission is free. The attendee does not pay."
                 : values.pricing_mode === "pwyw"
-                  ? "Pay what you want — attendee chooses an amount within optional min/max bounds."
+                  ? "Pay what you want. The attendee selects an amount of money between the optional minimum and maximum."
                   : null}
           </span>
         </label>
@@ -6208,7 +6208,7 @@ function TierEditor({
               background: "#f1f5f9",
               color: "#64748b",
             }}
-            title="Every tier of a session is denominated in the session currency (AB-38)."
+            title="All categories of a session use the session currency (AB-38)."
             data-testid="events-tier-currency-readonly"
           />
           <span style={mutedHintStyle}>
@@ -6365,7 +6365,7 @@ function TierEditor({
           {mutation.isPending
             ? "Saving…"
             : mode.kind === "create"
-              ? "Create tier"
+              ? "Add category"
               : "Save changes"}
         </button>
       </div>
@@ -6461,7 +6461,7 @@ export function validatePublicationForm(
   const errors: PublicationFormErrors = {};
   const channel = v.sales_channel_id.trim();
   if (channel === "") {
-    errors.sales_channel_id = "Sales channel is required.";
+    errors.sales_channel_id = "Select a sales channel.";
   } else if (!isUUID(channel)) {
     errors.sales_channel_id = "Sales channel must be a UUID.";
   }
@@ -6525,33 +6525,33 @@ export function mapPublicationError(err: ApiError): string {
     case "publication.invalid_city_id":
       return "City ID is not a valid UUID.";
     case "publication.feed_token_id_required":
-      return "Feed token ID is required.";
+      return "The feed token ID is necessary.";
     case "publication.body_required":
-      return "Request body is required.";
+      return "Add a body to the request.";
     case "publication.content_type_required":
-      return "Request must be sent as JSON.";
+      return "Send the request as JSON.";
     case "publication.invalid_json":
-      return "Request body is not valid JSON.";
+      return "The request body is not correct JSON.";
     // AB-43: FK violations now surface as specific 404s instead of 500.
     case "publication.feed_token_not_found":
-      return "That feed token no longer exists — issue a fresh token on the sales channel and try again.";
+      return "This feed token is not in the system. Issue a new token on the sales channel, then try again.";
     case "publication.city_not_found":
-      return "That city is not in the geo registry — pick another city or leave the scope global.";
+      return "This city is not in the geo list. Select a different city, or keep the scope global.";
     case "publication.event_not_found":
-      return "This event no longer exists — reload the page.";
+      return "This event is not in the system. Reload the page.";
     case "publication.internal":
-      return "The server failed to apply the publication change. Try again.";
+      return "The server did not apply the publication change. Try again.";
     case "feed_token.insert_failed":
     case "feed_token.generate_failed":
-      return "Could not issue a feed token for the selected channel — try again.";
+      return "We did not issue a feed token for the selected channel. Try again.";
     case "permissions.denied":
-      return "Your account is missing the permission required for this action.";
+      return "Your account does not have the necessary permission.";
     default:
       if (err.status === 401) {
-        return "Session expired. Please sign in again.";
+        return "Your session ended. Please sign in again.";
       }
       if (err.status === 403) {
-        return "Forbidden — missing required publication permission.";
+        return "Not permitted. Your account does not have the necessary publication permission.";
       }
       return `${err.message} (${err.code})`;
   }
@@ -6750,7 +6750,7 @@ function PublicationsTab({
   if (!canRead) {
     return (
       <div style={statusBoxStyle} data-testid="events-publications-forbidden">
-        Viewing publications requires the{" "}
+        To see publications, you must have the{" "}
         <code style={monoStyle}>publication.read</code> permission.
       </div>
     );
@@ -6761,7 +6761,7 @@ function PublicationsTab({
   if (query.isError) {
     return (
       <div style={errorBoxStyle} role="alert">
-        <strong>Failed to load publications.</strong>
+        <strong>The publications did not load.</strong>
         <div style={errorCodeStyle}>{query.error?.code ?? "unknown.error"}</div>
       </div>
     );
@@ -6861,7 +6861,7 @@ function PublicationsTab({
               </select>
               {channelsQuery.isError ? (
                 <span style={fieldErrorStyle}>
-                  Could not load channels for this organization.
+                  The channels of this organization did not load.
                 </span>
               ) : null}
               {formErrors.sales_channel_id !== undefined ? (
@@ -6873,8 +6873,8 @@ function PublicationsTab({
               !channelsQuery.isError &&
               channels.length === 0 ? (
                 <span style={mutedHintStyle}>
-                  This organization has no sales channels yet — create one
-                  on the Channels page first.
+                  This organization has no sales channel. First, make one
+                  on the Channels page.
                 </span>
               ) : null}
             </label>
@@ -6891,7 +6891,7 @@ function PublicationsTab({
                   ? `Defaulting to the venue city of the event's first session (${cityLabel(
                       derivedCityID,
                     )}). Open Advanced to override or make it global.`
-                  : "No venue city on the event's sessions — defaulting to global (visible in every geography)."}
+                  : "The sessions of this event have no venue city. The scope is global, so all cities see the event."}
               </div>
             </div>
           </div>
@@ -6914,7 +6914,7 @@ function PublicationsTab({
             <div style={editorGridStyle}>
               <label style={editorFieldStyle}>
                 <span style={editorLabelStyle}>
-                  Feed token (leave empty to use newest active)
+                  Feed token (keep empty to use the newest active token)
                 </span>
                 <select
                   value={form.feed_token_id}
@@ -6938,8 +6938,8 @@ function PublicationsTab({
                     {isUUID(form.sales_channel_id)
                       ? feedTokensQuery.isPending
                         ? "Loading tokens…"
-                        : "Newest active (auto-issue if none)"
-                      : "Pick a channel first"}
+                        : "Newest active (we issue one if there is none)"
+                      : "Select a channel first"}
                   </option>
                   {feedTokens
                     .filter((t) => t.is_active && t.revoked_at === null)
@@ -6998,7 +6998,7 @@ function PublicationsTab({
             </button>
             {citiesQuery.isError ? (
               <span style={mutedHintStyle}>
-                Cities failed to load — you can still publish without a city
+                The cities did not load. You can publish without a city
                 scope.
               </span>
             ) : null}
@@ -7006,14 +7006,14 @@ function PublicationsTab({
         </form>
       ) : (
         <div style={statusBoxStyle} data-testid="events-publications-noperm-create">
-          Publishing requires the{" "}
+          To publish, you must have the{" "}
           <code style={monoStyle}>publication.create</code> permission.
         </div>
       )}
 
       {pubs.length === 0 ? (
         <div style={statusBoxStyle} data-testid="events-publications-empty">
-          This event has not been published to any feed yet.
+          This event is in no feed.
         </div>
       ) : (
         <div style={tableWrapStyle}>
@@ -7114,8 +7114,8 @@ function PublicationsTab({
 function ActivityTab() {
   return (
     <div style={statusBoxStyle} data-testid="events-activity-empty">
-      No activity feed available for this event yet. A per-event audit reader
-      will be wired in when the backend exposes one.
+      This event has no history feed. We will add an audit reader for each
+      event when the backend has one.
     </div>
   );
 }

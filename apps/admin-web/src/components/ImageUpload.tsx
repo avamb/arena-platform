@@ -135,7 +135,7 @@ export interface OwnerTypeConstraint {
 export const OWNER_TYPE_CONSTRAINTS: Record<MediaOwnerType, OwnerTypeConstraint> = {
   org_logo: { minWidth: null, minHeight: null, label: "Organization logo" },
   event_poster: { minWidth: 600, minHeight: 400, label: "Event poster" },
-  artist_photo: { minWidth: null, minHeight: null, label: "Artist photo" },
+  artist_photo: { minWidth: null, minHeight: null, label: "Artist image" },
   // AB-25: seating plan SVG — no dimension constraints (vector, not raster)
   seating_plan_svg: { minWidth: null, minHeight: null, label: "Seating plan SVG" },
   // AB-47: session-level poster — same constraints as event_poster
@@ -364,7 +364,7 @@ export function ImageUpload({
       // Aborted uploads are an intentional user action; surface a
       // gentle inline notice rather than the raw error envelope.
       if (err instanceof ApiError && err.code === "network.aborted") {
-        setServerError("Upload cancelled.");
+        setServerError("Upload canceled.");
         setPendingPreview(null);
         return;
       }
@@ -448,7 +448,7 @@ export function ImageUpload({
       img.onerror = () => {
         setValidationError({
           code: "type",
-          message: "Could not decode image.",
+          message: "The image did not load. Please select a different file.",
         });
         URL.revokeObjectURL(objectUrl);
         setPendingPreview(null);
@@ -511,7 +511,7 @@ export function ImageUpload({
             ? "Uploading…"
             : activeMediaId !== null
               ? "Replace image"
-              : "Choose image"}
+              : "Select image"}
         </button>
         {activeMediaId !== null ? (
           <button
@@ -574,7 +574,7 @@ export function ImageUpload({
                 ? Math.round(uploadProgress.fraction * 100)
                 : undefined
             }
-            aria-label="Upload progress"
+            aria-label="Upload status"
             style={progressTrackStyle}
             data-testid={`${testIdPrefix}-progress-bar`}
           >
@@ -621,7 +621,7 @@ export function ImageUpload({
           style={errorStyle}
           data-testid={`${testIdPrefix}-fetch-error`}
         >
-          Could not load preview: {formatApiError(previewQuery.error)}
+          The preview did not load: {formatApiError(previewQuery.error)}
         </div>
       ) : null}
     </div>

@@ -24265,7 +24265,7 @@ type PostV1AdminOrgModuleRepriceParams struct {
 
 // SuperadminListOrganizationsParams defines parameters for SuperadminListOrganizations.
 type SuperadminListOrganizationsParams struct {
-	// Q Case-insensitive substring search across organization name and slug.
+	// Q Case-insensitive substring search across the name, legal name, slug, number, id, country, locale, tax and registration numbers, contact e-mail and phone, site, city and sender e-mail of the organization.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
 	// Limit Maximum number of rows to return.

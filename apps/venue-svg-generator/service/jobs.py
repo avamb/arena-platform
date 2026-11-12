@@ -61,11 +61,11 @@ def _child_main(conn, runner: Runner, args: tuple, memory_limit_mb: int = 0) -> 
     try:
         payload = {"ok": True, "result": runner(*args)}
     except MemoryError:
-        payload = {"ok": False, "error": {"code": "memory_limit", "message": "the workbook needs more memory than a job may use"}}
+        payload = {"ok": False, "error": {"code": "memory_limit", "message": "The XLSX file needs more memory than a job can use."}}
     except PipelineError as exc:
         payload = {"ok": False, "error": {"code": exc.code, "message": exc.message}}
     except Exception as exc:  # never forward the exception text: it may name host paths
-        payload = {"ok": False, "error": {"code": "internal_error", "message": f"unexpected failure ({type(exc).__name__})"}}
+        payload = {"ok": False, "error": {"code": "internal_error", "message": f"An unexpected error occurred ({type(exc).__name__})."}}
     conn.send_bytes(json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8"))
     conn.close()
 
@@ -139,12 +139,12 @@ class JobManager:
             try:
                 if not parent.poll(self._timeout):
                     proc.terminate()
-                    self._finish(job, error={"code": "timeout", "message": f"the job took longer than {self._timeout:g} seconds"})
+                    self._finish(job, error={"code": "timeout", "message": f"The job did not complete in {self._timeout:g} seconds."})
                     return
                 try:
                     message = json.loads(parent.recv_bytes().decode("utf-8"))
                 except (EOFError, OSError):
-                    self._finish(job, error={"code": "worker_crashed", "message": "the worker stopped without an answer"})
+                    self._finish(job, error={"code": "worker_crashed", "message": "The worker process stopped and did not send a result."})
                     return
                 if message.get("ok"):
                     self._finish(job, result=message["result"])
@@ -156,7 +156,7 @@ class JobManager:
                 if proc.is_alive():
                     proc.kill()
         except Exception as exc:  # the registry must never keep a job "running" forever
-            self._finish(job, error={"code": "internal_error", "message": f"unexpected failure ({type(exc).__name__})"})
+            self._finish(job, error={"code": "internal_error", "message": f"An unexpected error occurred ({type(exc).__name__})."})
         finally:
             for name in os.listdir(tmp_dir):
                 try:

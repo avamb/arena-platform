@@ -130,7 +130,7 @@ test.describe("cancel an unpaid order (live)", () => {
     await expect(page.getByTestId("confirm-word-note")).toBeVisible();
     // A wrong word.
     await typeWord(page, "yes please");
-    await expect(page.getByTestId("confirm-word-note")).toContainText("nothing was changed");
+    await expect(page.getByTestId("confirm-word-note")).toContainText("we made no change");
     // The words of the other actions do not cancel an order, in any language.
     for (const other of ["CANCEL SESSION", "ОТМЕНИТЬ СЕАНС", "CANCELAR SESIÓN", "DELETE", "REFUND"]) {
       await typeWord(page, other);
@@ -253,8 +253,8 @@ test.describe("cancel an unpaid order (live)", () => {
 
     const changed = page.getByTestId("cancel-order-changed");
     await expect(changed).toBeVisible();
-    await expect(changed).toContainText("changed while you were working");
-    await expect(changed).toContainText("nothing was canceled");
+    await expect(changed).toContainText("changed after you opened it");
+    await expect(changed).toContainText("We did not cancel the order");
     await expect(page.getByTestId("confirm-word")).toHaveCount(0);
     // The card was reloaded: it shows the order as paid and no button.
     await expect(page.getByTestId("cancel-order")).toHaveCount(0);

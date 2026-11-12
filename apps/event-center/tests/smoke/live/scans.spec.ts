@@ -91,7 +91,7 @@ test.describe("door scans on the three roles (live)", () => {
       await expect(box.locator('[data-entered="true"]')).toHaveCount(0);
       await expect(box.getByTestId("session-tickets-total")).toContainText("3");
       // The ticket the gate turned away says so, with who reported it and where.
-      const denied = box.getByTestId("session-ticket").filter({ hasText: "Turned away" });
+      const denied = box.getByTestId("session-ticket").filter({ hasText: "Entry refused" });
       await expect(denied).toHaveCount(1);
       await expect(denied).toContainText("Arena scanner · gate North");
       await expect(box.getByTestId("session-ticket").filter({ hasText: "Invitation" })).toHaveCount(1);
@@ -116,7 +116,7 @@ test.describe("door scans on the three roles (live)", () => {
       await expect(scans.nth(0)).toContainText("Entered");
       await expect(scans.nth(0)).toContainText("MACS · gate 2");
       await expect(scans.nth(1)).toHaveAttribute("data-source", "arena_scanner");
-      await expect(scans.nth(1)).toContainText("Turned away");
+      await expect(scans.nth(1)).toContainText("Entry refused");
       await expect(scans.nth(1)).toContainText("Arena scanner · gate North");
       await noA11yViolations(page);
       const width = page.viewportSize()?.width ?? 375;

@@ -436,7 +436,7 @@ describe("the screen Text in the letter", () => {
     vi.mocked(sendEmailNoteTest).mockRejectedValueOnce(new ApiError(429, "event.email_note_test_rate_limited", "slow down"));
     await press(el.querySelector('[data-testid="email-note-test"]'));
     expect(el.querySelector('[data-testid="email-note-error"]')?.textContent).toContain("Too many test letters");
-    expect(el.querySelector('[data-testid="email-note-error"]')?.textContent).toContain("5 test letters an hour");
+    expect(el.querySelector('[data-testid="email-note-error"]')?.textContent).toContain("5 test e-mails for each hour");
     expect(el.querySelector('[data-testid="email-note-status"]')).toBeNull();
   });
 
@@ -464,7 +464,7 @@ describe("the screen Text in the letter", () => {
     expect(el.querySelector('[data-testid="email-note-test"]')).toBeNull();
     expect(el.querySelector('[data-testid="email-note-delete"]')).toBeNull();
     expect(action(el, "format")).toBeNull();
-    expect(el.textContent).toContain("needs the right to edit the event");
+    expect(el.textContent).toContain("must have the right to edit the event");
   });
 });
 

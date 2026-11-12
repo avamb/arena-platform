@@ -165,11 +165,11 @@ test.describe("refund an order (live)", () => {
 
     // Nothing ticked: the screen says so and sends nothing.
     await page.getByTestId("refund-continue").click();
-    await expect(page.getByTestId("refund-problem")).toContainText("Select at least one ticket");
+    await expect(page.getByTestId("refund-problem")).toContainText("Select one ticket or more");
     // A ticket but no reason.
     await ticketBox(page, TICKET_1).check();
     await page.getByTestId("refund-continue").click();
-    await expect(page.getByTestId("refund-problem")).toContainText("reason");
+    await expect(page.getByTestId("refund-problem")).toContainText("cause");
 
     await page.getByTestId("refund-reason-buyer").check();
     await page.getByTestId("refund-letter").uncheck();
@@ -180,8 +180,8 @@ test.describe("refund an order (live)", () => {
     await expect(final).toBeVisible();
     await expect(page.getByTestId("refund-final-ticket")).toHaveCount(1);
     await expect(page.getByTestId("refund-final-amount")).toContainText(/25[.,]00/);
-    await expect(page.getByTestId("refund-final-letter")).toContainText("No letter");
-    await expect(final).toContainText("stop being valid");
+    await expect(page.getByTestId("refund-final-letter")).toContainText("We send no e-mail");
+    await expect(final).toContainText("stop to work for entry");
     await expect(page.getByTestId("refund-needs-approval")).toHaveCount(0);
     await noA11yViolations(page);
 
@@ -224,7 +224,7 @@ test.describe("refund an order (live)", () => {
 
     // The card shows the new state; the refunded ticket is no longer offered.
     await page.getByTestId("refund-close").click();
-    await expect(page.getByText("Partly refunded").first()).toBeVisible();
+    await expect(page.getByText("Refunded in part").first()).toBeVisible();
     await page.getByTestId("refund-open").click();
     await expect(page.getByTestId("refund-ticket")).toHaveCount(1);
     await expect(ticketBox(page, TICKET_1)).toHaveCount(0);
@@ -292,7 +292,7 @@ test.describe("refund an order (live)", () => {
     // sessionStorage, so the dialog promise "5 minutes" holds and the password is NOT asked again.
     await expect(page.getByTestId("step-up")).toHaveCount(0);
     await expect(page.getByTestId("refund-result")).toBeVisible();
-    await expect(page.getByTestId("refund-result")).toContainText("Nothing was refunded twice");
+    await expect(page.getByTestId("refund-result")).toContainText("We did not refund two times");
     await expect(page.getByTestId("refund-result-line")).toHaveAttribute("data-state", "succeeded");
     // One refund, one provider call: the check replayed the first operation.
     expect(rows(ORDER_OWNER)).toMatchObject({ refunds: 1, amounts: [2500], active_tickets: 2 });
@@ -321,7 +321,7 @@ test.describe("refund an order (live)", () => {
     // The API refused it (refund.ticket_scanned): the text follows owners_notice.
     const scanned = page.getByTestId("refund-scanned");
     await expect(scanned).toBeVisible();
-    await expect(scanned).toContainText("already scanned at the entrance");
+    await expect(scanned).toContainText("at the entrance. Arena cannot refund its money");
     await expect(scanned).toContainText("owners got a notice");
     // The panel shows the latest options: nothing left that can be refunded.
     await expect(page.getByTestId("refund-explain")).toHaveAttribute("data-entry", "scanned_all");
@@ -354,7 +354,7 @@ test.describe("refund an order (live)", () => {
     await page.getByTestId("refund-go").click();
     await confirmPassword(page, "organizer");
     await expect(page.getByTestId("refund-result-line")).toHaveAttribute("data-state", "failed");
-    await expect(page.getByTestId("refund-result-line")).toContainText("not returned");
+    await expect(page.getByTestId("refund-result-line")).toContainText("not refunded");
     expect(rows(ORDER_MANAGER)).toMatchObject({ refunds: 1, states: ["failed"], active_tickets: 1, status: "paid" });
 
     // The ticket is still refundable: return 10.00 of it.
@@ -382,7 +382,7 @@ test.describe("refund an order (live)", () => {
     await page.getByTestId("refund-open").click();
     const explain = page.getByTestId("refund-explain");
     await expect(explain).toHaveAttribute("data-entry", "site");
-    await expect(explain).toContainText("seller's own site");
+    await expect(explain).toContainText("through the seller's site");
     await expect(page.getByTestId("refund-pick")).toHaveCount(0);
     expect(calls.filter((c) => c === createPath(ORDER_SITE))).toEqual([]);
     await noA11yViolations(page);

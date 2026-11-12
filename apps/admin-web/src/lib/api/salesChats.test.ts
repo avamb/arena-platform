@@ -48,7 +48,7 @@ describe("kinds", () => {
   it("names what a chat hears in the screen's order", () => {
     expect(kindsLabel(["shop_delivery", "tickets"])).toBe("Tickets, Delivery");
     expect(kindsLabel(["shop_sale"])).toBe("Shop sales");
-    expect(kindsLabel([])).toBe("Nothing");
+    expect(kindsLabel([])).toBe("No kinds");
     expect(kindsLabel(["tickets", "future_kind"])).toBe("Tickets, future_kind");
   });
 
@@ -86,7 +86,7 @@ describe("buildEditChatRequest", () => {
 
   it("refuses an edit that changes nothing", () => {
     const built = buildEditChatRequest(c, { ...editChatForm(c), reason: "r" });
-    expect(!built.ok && built.errors.join(" ")).toContain("Nothing changed");
+    expect(!built.ok && built.errors.join(" ")).toContain("No change");
   });
 
   it("refuses an empty list of kinds and a missing reason", () => {
@@ -102,7 +102,7 @@ describe("chatState", () => {
     expect(chatState(chat({ allowed: false })).label).toBe("Off");
     expect(chatState(chat({ bot_removed_at: "2026-11-05T12:00:00Z" })).label).toBe("Bot removed from the group");
     expect(chatState(chat({ bot_removed_at: "2026-11-05T12:00:00Z", allowed: false })).tone).toBe("bad");
-    expect(chatState(chat({ chat_id: "", connected_at: null })).label).toBe("Waiting for /connect");
+    expect(chatState(chat({ chat_id: "", connected_at: null })).label).toBe("Needs /connect");
   });
 });
 
@@ -120,8 +120,8 @@ describe("countdown", () => {
 
 describe("chatErrorMessage", () => {
   it("explains the codes in plain words", () => {
-    expect(chatErrorMessage(new ApiError(422, { code: "sales_chat.invalid_kinds", message: "x" }))).toContain("Tick at least one");
-    expect(chatErrorMessage(new ApiError(404, { code: "sales_chat.not_found", message: "x" }))).toContain("already deleted");
+    expect(chatErrorMessage(new ApiError(422, { code: "sales_chat.invalid_kinds", message: "x" }))).toContain("Select Tickets, Shop sales or Delivery");
+    expect(chatErrorMessage(new ApiError(404, { code: "sales_chat.not_found", message: "x" }))).toContain("we deleted it before");
     expect(chatErrorMessage(new ApiError(403, { code: "org_module.superadmin_only", message: "x" }))).toContain("platform superadmin");
     expect(chatErrorMessage(new ApiError(500, { code: "something.else", message: "Boom" }))).toBe("Boom");
   });

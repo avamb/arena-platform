@@ -182,9 +182,9 @@ export const STRIPE_CHECKOUT_SESSION_EVENTS: readonly string[] = [
 export function webhookWarningText(code: string): string {
   switch (code) {
     case "refund_events_not_subscribed":
-      return "Your Stripe webhook endpoint does not receive refund events. Add refund.updated (and refund.created, refund.failed) to it in Stripe, or refunds made in the Stripe Dashboard will not reach arena.";
+      return "Your Stripe webhook endpoint does not receive refund events. In Stripe, add refund.updated, refund.created and refund.failed to it. If you do not, refunds that you make in the Stripe Dashboard do not reach Arena.";
     case "webhook_endpoint_not_found":
-      return "Stripe has no webhook endpoint with this configuration's URL. Register it in Stripe Dashboard → Developers → Webhooks, or no payment or refund will be confirmed.";
+      return "Stripe has no webhook endpoint with the URL of this config. Add the URL in Stripe Dashboard → Developers → Webhooks. If you do not, the platform does not confirm payments or refunds.";
     default:
       return code;
   }
@@ -216,35 +216,35 @@ export const STRIPE_API_KEY_PERMISSIONS: readonly StripeKeyPermission[] = [
     access: "Write",
     endpoint: "POST /v1/checkout/sessions",
     need: "required",
-    why: "creates the hosted payment page every purchase goes through",
+    why: "makes the hosted payment page for each purchase",
   },
   {
     resource: "Balance",
     access: "Read",
     endpoint: "GET /v1/balance",
     need: "required",
-    why: "the call behind Check; without it Connection reads rejected even though selling works",
+    why: "the call for Check. Without it, Connection shows rejected, but sales work",
   },
   {
     resource: "Refunds",
     access: "Write",
     endpoint: "POST /v1/refunds, GET /v1/refunds/{id}",
     need: "required",
-    why: "sends a refund from arena and reads its answer back; without it no refund can be sent",
+    why: "sends a refund from Arena and reads the answer. Without it, you cannot send a refund",
   },
   {
     resource: "Webhook Endpoints",
     access: "Read",
     endpoint: "GET /v1/webhook_endpoints",
     need: "optional",
-    why: "lets Check warn when your webhook endpoint misses the refund events; nothing breaks without it",
+    why: "lets Check warn you when your webhook endpoint does not get the refund events. Without it, nothing stops",
   },
   {
     resource: "PaymentIntents",
     access: "Write",
     endpoint: "POST /v1/payment_intents, …/capture",
     need: "future",
-    why: "direct and two-step payments; the widget does not use either",
+    why: "direct payments and two-step payments. The widget does not use them",
   },
 ];
 
@@ -373,24 +373,24 @@ export const UUID_RE =
 
 export function validateOrgID(orgID: string): string | null {
   if (orgID.trim() === "") {
-    return "Organization ID is required";
+    return "Type the organization ID.";
   }
   if (!UUID_RE.test(orgID.trim())) {
-    return "Organization ID must be a UUID";
+    return "The organization ID must be a UUID.";
   }
   return null;
 }
 
 export function validateProvider(provider: string): string | null {
   if (!(PAYMENT_PROVIDERS as readonly string[]).includes(provider)) {
-    return `Provider must be one of ${PAYMENT_PROVIDERS.join(", ")}`;
+    return `Provider must be one of these: ${PAYMENT_PROVIDERS.join(", ")}.`;
   }
   return null;
 }
 
 export function validateMode(mode: string): string | null {
   if (!(PAYMENT_MODES as readonly string[]).includes(mode)) {
-    return "Mode must be 'test' or 'live'";
+    return "Mode must be test or live.";
   }
   return null;
 }
@@ -403,14 +403,14 @@ export function validatePublicConfigJSON(raw: string): string | null {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return "Public config must be valid JSON";
+    return "Public config must be correct JSON.";
   }
   if (
     typeof parsed !== "object" ||
     parsed === null ||
     Array.isArray(parsed)
   ) {
-    return "Public config must be a JSON object (not an array or scalar)";
+    return "Public config must be a JSON object. An array or a single value is not correct.";
   }
   return null;
 }
@@ -529,14 +529,13 @@ function PaymentsModule() {
             Payment Configs
           </h1>
           <p style={subheadingStyle}>
-            Per-organization payment provider configurations. Each row
-            holds the provider slug, mode (test / live), the
-            provider-side merchant account identifier (when applicable),
-            and the credential set. Secrets are stored encrypted on the
-            backend and are NEVER returned to the UI — only the names
-            of stored secret fields and the list of required fields
-            still missing are visible. The fiscal printer and POS-side
-            settings remain out of scope.
+            Payment provider configs for each organization. Each row
+            has the provider slug, the mode (test or live), the account ID
+            at the provider (if the provider has one) and the credentials.
+            The platform saves secrets encrypted. The platform NEVER shows
+            them in this console. You see only the names of the stored
+            secret fields and the required fields that are missing. The
+            fiscal printer and POS settings are not part of this screen.
           </p>
         </div>
         <div style={refreshWrapStyle}>
@@ -547,7 +546,7 @@ function PaymentsModule() {
             disabled={!orgReady || query.isFetching}
             data-testid="payments-refresh"
           >
-            {query.isFetching ? "Refreshing…" : "Refresh"}
+            {query.isFetching ? "Reloading…" : "Reload"}
           </button>
           {canWrite ? (
             <button
@@ -560,8 +559,8 @@ function PaymentsModule() {
               New payment config
             </button>
           ) : (
-            <span style={mutedHintStyle} title="Requires payment_config.write">
-              Create requires payment_config.write
+            <span style={mutedHintStyle} title="You must have payment_config.write">
+              To make a config, you must have payment_config.write
             </span>
           )}
         </div>
@@ -594,7 +593,7 @@ function PaymentsModule() {
               ))}
             </select>
             <details style={{ marginTop: 4 }}>
-              <summary style={fieldHintStyle}>Paste UUID instead</summary>
+              <summary style={fieldHintStyle}>Paste a UUID</summary>
               <input
                 id="payments-org-id"
                 type="text"
@@ -730,26 +729,26 @@ function StripeWebhookSetupPanel({
       {open && (
         <div style={setupPanelBodyStyle} data-testid="stripe-webhook-setup-body">
           <p style={setupPanelTextStyle}>
-            Stripe requires you to register a webhook endpoint so it can
-            notify the platform when payment events occur. Follow these steps:
+            Stripe must send payment events to the platform. For this, add a
+            webhook endpoint in Stripe. Do these steps:
           </p>
           <ol style={setupPanelListStyle}>
             <li>
-              Copy the platform webhook URL below and register it in your
+              Copy the platform webhook URL below. Add it in your
               <strong> Stripe Dashboard → Developers → Webhooks → Add endpoint</strong>.
             </li>
             <li>
-              Under <strong>Events to listen to</strong>, add every event in
-              the list below (the platform ignores unknown types, but
-              missing types delay order status updates).
+              Under <strong>Events to listen to</strong>, add all events in
+              the list below. The platform ignores unknown types. If a type
+              is missing, the status of orders changes later.
             </li>
             <li>
-              After saving, click <strong>Reveal signing secret</strong> to
-              get the <code style={monoStyle}>whsec_…</code> value.
+              After you save, click <strong>Reveal signing secret</strong>.
+              This shows the <code style={monoStyle}>whsec_…</code> value.
             </li>
             <li>
-              Open the Stripe payment config for this organization (or create
-              one), and paste the signing secret into the{" "}
+              Open the Stripe payment config of this organization. If it does
+              not exist, make one. Paste the signing secret in the{" "}
               <strong>webhook_secret</strong> field.
             </li>
           </ol>
@@ -780,7 +779,7 @@ function StripeWebhookSetupPanel({
 
           <div style={setupPanelEventBoxStyle}>
             <div style={setupPanelLabelStyle}>
-              Event types the platform handler understands
+              Event types that the platform handler uses
             </div>
             <ul style={setupPanelEventListStyle} data-testid="stripe-webhook-events">
               {STRIPE_WEBHOOK_EVENTS.map((evt) => (
@@ -797,9 +796,9 @@ function StripeWebhookSetupPanel({
           />
 
           <p style={{ ...setupPanelTextStyle, color: "#854d0e", marginTop: 8 }}>
-            <strong>Test vs. live:</strong> Stripe issues separate webhook signing
-            secrets for test mode and live mode. Create one Payment Config for
-            each mode and store the matching signing secret.
+            <strong>Test and live:</strong> Stripe gives a different webhook signing
+            secret for test mode and for live mode. Make one Payment Config for
+            each mode. Save the correct signing secret in each one.
           </p>
         </div>
       )}
@@ -825,13 +824,13 @@ export function StripeApiKeyPermissionsView() {
       <p style={setupPanelTextStyle}>
         <strong>Stripe Dashboard → Developers → API keys.</strong> A standard
         secret key (<code style={monoStyle}>sk_test_…</code> /{" "}
-        <code style={monoStyle}>sk_live_…</code>) already covers everything
-        below — paste it and you are done.
+        <code style={monoStyle}>sk_live_…</code>) has all the permissions
+        below. Paste it. Nothing more is necessary.
       </p>
       <p style={setupPanelTextStyle}>
-        To hand over a <strong>restricted key</strong> (
-        <code style={monoStyle}>rk_…</code>) instead, use{" "}
-        <strong>Create restricted key</strong> and grant exactly these:
+        To use a <strong>restricted key</strong> (
+        <code style={monoStyle}>rk_…</code>) instead, select{" "}
+        <strong>Create restricted key</strong>. Give it only these permissions:
       </p>
       <ul
         style={setupPanelEventListStyle}
@@ -847,26 +846,25 @@ export function StripeApiKeyPermissionsView() {
                 ? "required"
                 : p.need === "optional"
                   ? "optional"
-                  : "not needed yet"}{" "}
-              —{" "}
+                  : "not necessary now"}.{" "}
               {p.why} (<code style={monoStyle}>{p.endpoint}</code>)
             </span>
           </li>
         ))}
       </ul>
       <p style={setupPanelTextStyle}>
-        Everything else — Customers, Products, Invoices, Subscriptions,
-        Webhook Endpoints, Connect — can stay <strong>None</strong>. What the
-        key may do has nothing to do with{" "}
-        <code style={monoStyle}>webhook_secret</code>, which is a signature,
-        not an access grant.
+        All other permissions (Customers, Products, Invoices, Subscriptions,
+        Webhook Endpoints, Connect) can stay <strong>None</strong>. The
+        permissions of the key do not change{" "}
+        <code style={monoStyle}>webhook_secret</code>. This secret is a
+        signature. It does not give access.
       </p>
       <p style={{ ...setupPanelTextStyle, color: "#854d0e" }}>
-        <strong>The mode has to match.</strong> A test config takes a test key
-        (<code style={monoStyle}>sk_test_</code> /{" "}
-        <code style={monoStyle}>rk_test_</code>), a live config a live one.
-        The form refuses the other mode rather than storing a key that would
-        quietly take no money — or real money.
+        <strong>The mode must match the key.</strong> A test config needs a
+        test key (<code style={monoStyle}>sk_test_</code> /{" "}
+        <code style={monoStyle}>rk_test_</code>). A live config needs a live
+        key. The form does not save a key of a different mode. Such a key
+        takes no money, or it takes real money by mistake.
       </p>
     </div>
   );
@@ -883,17 +881,16 @@ export function PayPlusHelpView({ mode }: { mode: string }) {
       <p style={setupPanelTextStyle}>
         In the PayPlus dashboard: <code style={monoStyle}>api_key</code> and{" "}
         <code style={monoStyle}>secret_key</code> are the API key pair
-        (Settings → API keys); <code style={monoStyle}>payment_page_uid</code>{" "}
-        is the UID of the payment page buyers pay on (Payment pages). The
-        secret key also signs every callback; arena sends its own callback
-        URL with each payment link, so nothing is configured in PayPlus for
-        it.
+        (Settings → API keys). <code style={monoStyle}>payment_page_uid</code>{" "}
+        is the UID of the payment page where buyers pay (Payment pages). The
+        secret key also signs each callback. Arena sends its callback URL
+        with each payment link. In PayPlus, do not set a callback URL.
       </p>
       <p style={{ ...setupPanelTextStyle, color: "#854d0e" }}>
-        <strong>The mode picks the PayPlus host.</strong>{" "}
+        <strong>The mode selects the PayPlus host.</strong>{" "}
         {live
-          ? "A live config talks to restapi.payplus.co.il and charges real cards: paste the production keys."
-          : "A test config talks to restapidev.payplus.co.il: paste the test keys PayPlus issued for the staging environment (production keys are refused there)."}
+          ? "A live config uses restapi.payplus.co.il and charges real cards. Paste the production keys."
+          : "A test config uses restapidev.payplus.co.il. Paste the test keys that PayPlus gave for the staging environment. That host does not accept production keys."}
       </p>
     </div>
   );
@@ -916,8 +913,8 @@ function StripeApiKeyHelpPanel() {
         aria-expanded={open}
         data-testid="stripe-api-key-help-toggle"
       >
-        {open ? "▾" : "▸"} Which Stripe key to paste, and what it must be
-        allowed to do
+        {open ? "▾" : "▸"} Which Stripe key to paste, and which permissions it
+        must have
       </button>
       {open && (
         <div style={setupPanelBodyStyle}>
@@ -955,16 +952,16 @@ export function StripeWebhookConfigUrlsView({
         Your own webhook endpoint (one per Stripe config)
       </div>
       <p style={setupPanelTextStyle}>
-        Register the URL below as a separate endpoint in your Stripe
-        Dashboard and subscribe it to <strong>only</strong> these events —
-        nothing else. The four <code style={monoStyle}>checkout.session.*</code>{" "}
-        events confirm payments; the three{" "}
-        <code style={monoStyle}>refund.*</code> events tell arena about
-        refunds, including the ones you make yourself in the Stripe
-        Dashboard — without them such a refund never reaches arena and the
-        buyer&rsquo;s tickets stay valid. The config id in the path is what lets the
-        platform verify the signature with this organization&rsquo;s own{" "}
-        <code style={monoStyle}>webhook_secret</code>.
+        In your Stripe Dashboard, add the URL below as a separate endpoint.
+        Select <strong>only</strong> these events. The four{" "}
+        <code style={monoStyle}>checkout.session.*</code>{" "}
+        events confirm payments. The three{" "}
+        <code style={monoStyle}>refund.*</code> events tell Arena about
+        refunds. This includes the refunds that you make in the Stripe
+        Dashboard. Without these events, Arena does not get such a refund,
+        and the tickets of the buyer stay valid. The config ID in the path lets the
+        platform check the signature with the{" "}
+        <code style={monoStyle}>webhook_secret</code> of this organization.
       </p>
       <ul
         style={setupPanelEventListStyle}
@@ -981,8 +978,8 @@ export function StripeWebhookConfigUrlsView({
           style={setupPanelTextStyle}
           data-testid="stripe-webhook-config-url-none"
         >
-          No Stripe payment config exists for this organization yet. Create
-          and save one — its webhook URL appears here once it is saved.
+          This organization has no Stripe payment config. Make one and save it.
+          Its webhook URL appears here after you save it.
         </p>
       ) : (
         stripeConfigs.map((config) => (
@@ -1032,8 +1029,7 @@ function StripeConfigWebhookUrlRow({
           style={setupPanelTextStyle}
           data-testid="stripe-webhook-config-url-unsaved"
         >
-          This config has not been saved yet — its webhook URL appears once
-          you save it.
+          This config is not saved. Its webhook URL appears after you save it.
         </p>
       </div>
     );
@@ -1093,7 +1089,7 @@ function PaymentsBody({
   if (!orgReady) {
     return (
       <div style={statusBoxStyle} role="status" data-testid="payments-org-required">
-        Enter an organization UUID above to load its payment configs.
+        Type an organization UUID above. Then the payment configs of the organization load.
       </div>
     );
   }
@@ -1115,9 +1111,8 @@ function PaymentsBody({
   if (rows.length === 0) {
     return (
       <div style={statusBoxStyle} role="status" data-testid="payments-empty">
-        No payment configs exist for this organization yet. Create one
-        to wire a provider (Stripe / AllPay / CloudPayments / YooKassa)
-        to checkout.
+        This organization has no payment configs. Make one to connect a
+        provider (Stripe / AllPay / CloudPayments / YooKassa) to checkout.
       </div>
     );
   }
@@ -1263,7 +1258,7 @@ function StatusBadge({
           color: "#334155",
           borderColor: "#cbd5e1",
         }}
-        title="Every required field holds a value. This does not mean the provider has accepted it — see Connection."
+        title="Each required field has a value. This does not mean that the provider accepted the credentials. See Connection."
         data-testid="payments-status-configured"
       >
         complete
@@ -1331,8 +1326,8 @@ function VerifyButton({ config }: { config: PaymentConfig }) {
         disabled={mutation.isPending}
         title={
           error
-            ? `Could not run the check: ${error.message}`
-            : "Ask the provider whether this credential works"
+            ? `We did not run the check: ${error.message}`
+            : "Ask the provider if this credential works"
         }
         data-testid={`payments-verify-${config.id}`}
       >
@@ -1382,8 +1377,8 @@ function VerificationBadge({
         }}
         title={
           verifiedAt
-            ? `Provider accepted this credential on ${formatDate(verifiedAt)}`
-            : "Provider accepted this credential"
+            ? `The provider accepted this credential on ${formatDate(verifiedAt)}`
+            : "The provider accepted this credential"
         }
         data-testid="payments-verification-ok"
       >
@@ -1402,7 +1397,7 @@ function VerificationBadge({
         }}
         // The provider's own words. An operator reading "Invalid API Key
         // provided" knows what to do; a code of ours would send them to us.
-        title={error ?? "The provider refused this credential"}
+        title={error ?? "The provider did not accept this credential"}
         data-testid="payments-verification-failed"
       >
         rejected
@@ -1419,7 +1414,7 @@ function VerificationBadge({
       }}
       title={
         error ??
-        "Nobody has asked the provider about this credential yet, or it changed since the last check. Press Check."
+        "We did not ask the provider about this credential, or the credential changed after the last check. Press Check."
       }
       data-testid="payments-verification-unverified"
     >
@@ -1475,11 +1470,11 @@ function PaymentsErrorState({
   ) {
     return (
       <div style={errorBoxStyle} role="alert" data-testid="payments-forbidden">
-        <strong>Forbidden.</strong>
+        <strong>No access.</strong>
         <p style={errorParaStyle}>
-          Your account is missing{" "}
+          Your account does not have{" "}
           <code style={monoStyle}>payment_config.read</code>. Ask a
-          platform administrator to grant the permission.
+          platform administrator to give you the permission.
         </p>
       </div>
     );
@@ -1491,14 +1486,14 @@ function PaymentsErrorState({
         role="status"
         data-testid="payments-session-expired"
       >
-        <strong>Session expired.</strong>
-        <p style={errorParaStyle}>Sign in again to reload payment configs.</p>
+        <strong>Your session ended.</strong>
+        <p style={errorParaStyle}>Sign in to reload the payment configs.</p>
       </div>
     );
   }
   return (
     <div style={errorBoxStyle} role="alert" data-testid="payments-error">
-      <strong>Failed to load payment configs.</strong>
+      <strong>We did not load the payment configs.</strong>
       <div style={errorCodeStyle}>{error?.code ?? "unknown.error"}</div>
       {error?.message ? (
         <div style={errorParaStyle}>{error.message}</div>
@@ -1794,7 +1789,7 @@ export function PaymentConfigFormDialog({
             htmlFor="payment-provider"
             error={serverErrors.provider ?? null}
             localError={providerErr}
-            hint="Payment gateway slug. Required secrets per provider are shown below."
+            hint="Slug of the payment gateway. The required secrets for each provider are below."
           >
             <select
               id="payment-provider"
@@ -1824,7 +1819,7 @@ export function PaymentConfigFormDialog({
             htmlFor="payment-mode"
             error={serverErrors.mode ?? null}
             localError={modeErr}
-            hint="'test' uses sandbox credentials; 'live' charges real cards. One row per (provider, mode)."
+            hint="Test uses sandbox credentials. Live charges real cards. There is one row for each provider and mode."
           >
             <select
               id="payment-mode"
@@ -1846,7 +1841,7 @@ export function PaymentConfigFormDialog({
             htmlFor="payment-account-id"
             error={serverErrors.provider_account_id ?? null}
             localError={null}
-            hint="Provider-side merchant identifier shown in dashboards (acct_…, shop id, etc.). Optional."
+            hint="Merchant ID at the provider, as the provider dashboards show it (acct_…, shop ID). Optional."
           >
             <input
               id="payment-account-id"
@@ -1866,7 +1861,7 @@ export function PaymentConfigFormDialog({
             htmlFor="payment-public-config"
             error={serverErrors.public_config ?? null}
             localError={publicConfigErr}
-            hint="Non-secret provider settings (webhook URL, statement descriptor, …). Optional. Must be a JSON object."
+            hint="Provider settings that are not secret (webhook URL, statement descriptor, …). Optional. It must be a JSON object."
           >
             <textarea
               id="payment-public-config"
@@ -1884,7 +1879,7 @@ export function PaymentConfigFormDialog({
               Secrets
               <span style={mutedHintStyle}>
                 {" "}
-                — values are masked on read; leave blank to keep existing
+                The console masks the values. To keep a stored value, keep the field empty.
               </span>
             </legend>
             {provider === "stripe" ? <StripeApiKeyHelpPanel /> : null}
@@ -1926,9 +1921,9 @@ export function PaymentConfigFormDialog({
                       readOnly={locked}
                       placeholder={
                         locked
-                          ? "••• stored — press Replace to change"
+                          ? "••• stored, press Replace to change"
                           : stored && !cleared
-                            ? "••• stored (leave blank to keep)"
+                            ? "••• stored (keep the field empty to keep the value)"
                             : "(not set)"
                       }
                       // "new-password", not "off": Chrome ignores "off" on
@@ -1947,7 +1942,7 @@ export function PaymentConfigFormDialog({
                         type="button"
                         onClick={() => unlockSecretField(key)}
                         style={secretClearButtonStyle}
-                        title="Unlock this field to enter a new value. Until then the stored credential cannot be overwritten."
+                        title="Unlock this field to type a new value. Before that, you cannot replace the stored credential."
                         data-testid={`payments-form-replace-${key}`}
                       >
                         Replace
@@ -1964,7 +1959,7 @@ export function PaymentConfigFormDialog({
                         }
                         data-testid={`payments-form-clear-${key}`}
                       >
-                        {cleared ? "Undo clear" : "Clear"}
+                        {cleared ? "Undo" : "Clear"}
                       </button>
                     ) : null}
                   </div>
@@ -1987,7 +1982,7 @@ export function PaymentConfigFormDialog({
             htmlFor="payment-is-active"
             error={null}
             localError={null}
-            hint="Inactive configs are kept on file but skipped at checkout."
+            hint="The platform keeps inactive configs, but checkout does not use them."
           >
             <label style={checkboxRowStyle}>
               <input
@@ -1997,7 +1992,7 @@ export function PaymentConfigFormDialog({
                 onChange={(e) => setIsActive(e.target.checked)}
                 data-testid="payments-form-is-active"
               />
-              <span>Enabled for checkout</span>
+              <span>Use at checkout</span>
             </label>
           </FieldRow>
 
@@ -2132,14 +2127,13 @@ function DeleteConfirmDialog({
         </header>
         <div style={archiveBodyStyle}>
           <p style={archiveParaStyle}>
-            Archiving a payment config removes it from the active list
-            and stops it being used at checkout. This is a{" "}
-            <strong>soft-delete</strong>: the row is preserved with{" "}
-            <code style={monoStyle}>deleted_at</code> set and a{" "}
+            If you archive a payment config, the platform removes it from the
+            active list. Checkout does not use it. This is a{" "}
+            <strong>soft-delete</strong>. The platform keeps the row and sets{" "}
+            <code style={monoStyle}>deleted_at</code>. The platform also writes a{" "}
             <code style={monoStyle}>v1.payment_config.delete</code>{" "}
-            audit event is written atomically. The encrypted secrets
-            remain in the row but are no longer reachable through the
-            API.
+            audit event in the same step. The encrypted secrets
+            stay in the row. The API does not give access to them.
           </p>
           {error !== null ? (
             <div
@@ -2211,7 +2205,7 @@ export function mapServerError(err: ApiError): ServerFieldErrors {
     case "payment_config.kyb_required_for_live":
       // AB-41: going live is gated on KYB verification.
       out.mode =
-        "A live config can only be active once the organization is KYB-verified. Save it as test, or deactivate it until verification completes.";
+        "A live config can be active only after the organization has KYB verification. Save it as test, or make it inactive until verification is complete.";
       return out;
     case "payment_config.not_found":
       out.form = err.message;
@@ -2223,12 +2217,12 @@ export function mapServerError(err: ApiError): ServerFieldErrors {
       return out;
     case "permissions.denied":
       out.form =
-        "Your account is missing payment_config.write. Ask a platform administrator.";
+        "Your account does not have payment_config.write. Ask a platform administrator.";
       return out;
     case "superadmin.missing_reason":
     case "superadmin.reason_required":
       out.form =
-        "An audit reason is required for cross-tenant changes. Provide a reason in the prompt and retry.";
+        "A change in a different organization needs an audit reason. Type a reason in the prompt and try again.";
       return out;
     default:
       if (field === "provider") {

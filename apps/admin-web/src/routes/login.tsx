@@ -36,8 +36,8 @@ import { Route as RootRoute } from "./__root";
  *     they remain visible when the on-screen keyboard pushes the layout up.
  */
 const loginSchema = z.object({
-  email: z.string().trim().toLowerCase().email({ message: "Enter a valid email." }),
-  password: z.string().min(1, { message: "Password is required." }),
+  email: z.string().trim().toLowerCase().email({ message: "Enter an e-mail address like name@example.com." }),
+  password: z.string().min(1, { message: "Enter your password." }),
 });
 
 type LoginValues = z.infer<typeof loginSchema>;
@@ -63,7 +63,7 @@ function classifyLoginError(err: unknown): LoginErrorOutcome {
   if (err instanceof Error) {
     return { kind: "text", text: err.message };
   }
-  return { kind: "text", text: "Sign-in failed" };
+  return { kind: "text", text: "We did not sign you in. Try again." };
 }
 
 function LoginRoute() {
@@ -124,20 +124,20 @@ function LoginRoute() {
         Sign in
       </h1>
       <p style={subStyle}>
-        Sign in with your operator credentials. Sessions are scoped to this
-        browser tab.
+        Sign in with your operator credentials. Each browser tab has its own
+        session.
       </p>
       <p style={hintStyle} data-testid="login-organizer-hint">
-        Organizer? Sign in to the{" "}
+        Are you an organizer? Sign in to the{" "}
         <a href={eventCenterUrl()} style={{ color: "inherit", textDecoration: "underline" }}>
           event center
         </a>{" "}
-        instead: this console is for Arena staff.
+        instead. This console is for Arena staff.
       </p>
       <p style={hintStyle} data-testid="login-invited-hint">
-        Invited by e-mail? You have no password yet: open the invitation
-        letter and press “Choose password” to set it, then sign in here. The
-        link expired? Use “Forgot your password?” below.
+        Did we invite you by e-mail? You have no password. Open the
+        invitation e-mail and press “Choose password”. Then sign in here. If the
+        link is expired, use “Forgot your password?” below.
       </p>
       {staffOnly ? (
         <div role="alert" aria-live="assertive" style={alertStyle} data-testid="login-staff-only">
@@ -154,7 +154,7 @@ function LoginRoute() {
       ) : null}
       <form onSubmit={onSubmit} style={formStyle} noValidate>
         <label style={labelStyle}>
-          <span>Email</span>
+          <span>E-mail</span>
           <input
             type="email"
             inputMode="email"

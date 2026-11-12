@@ -54,7 +54,7 @@ describe("OrgSummaryView", () => {
     expect(html).toContain("Refunded tickets: 2");
     expect(html).toContain("Active tickets: 3");
     expect(html).toContain("Total");
-    expect(html).toContain("Test orders left out of every figure: 1");
+    expect(html).toContain("Test orders that we left out of all figures: 1");
     expect(html).not.toContain("summary-truncated");
   });
 
@@ -77,6 +77,6 @@ describe("OrgSummaryView", () => {
     const empty = await renderInRouter(<OrgSummaryView orgId={ORG} summary={{ sessions: [], totals: [], test_orders: 0, truncated: false }} />);
     expect(empty).toContain("No sales, invitations or refunds in this period.");
     const cut = await renderInRouter(<OrgSummaryView orgId={ORG} summary={{ ...summary, truncated: true }} />);
-    expect(cut).toContain("Narrow the dates");
+    expect(cut).toContain("Select fewer dates");
   });
 });

@@ -188,7 +188,7 @@ test.describe("session change: failed and repeated writes (live)", () => {
     await page.getByTestId("dry-run-confirm").click();
     // A no-op retry confirms the saved time but cannot confirm the first attempt's notification count.
     await expect(page.getByTestId("session-change-done")).toContainText("22 Jun 2090");
-    await expect(page.getByTestId("session-change-done")).toContainText("The number of queued notifications is not confirmed");
+    await expect(page.getByTestId("session-change-done")).toContainText("We did not make sure of the number of queued notifications");
     await expect(page.getByTestId("session-change-done")).not.toContainText("Letters to buyers queued: 0");
     expect(writes).toHaveLength(2);
     // Whatever the second answer was, nothing was doubled: one session, one journal row, one letter, one paid order.

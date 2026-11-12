@@ -84,7 +84,7 @@ describe("InvoicesTable", () => {
     expect(html).toContain("INV-2026-0001");
     expect(html).toContain("Draft d<");
     expect(html).toContain("100.00 EUR");
-    expect(html).toContain("Bank transfer");
+    expect(html).toContain("Bank payment");
   });
 
   it("offers each action only in the state where it is allowed", () => {
@@ -104,7 +104,7 @@ describe("InvoicesTable", () => {
   it("says so when there is nothing", () => {
     expect(
       renderToStaticMarkup(createElement(InvoicesTable, { invoices: [], orgNames, onOpen: noop, onIssue: noop, onMarkPaid: noop, onVoid: noop })),
-    ).toContain("No invoice in this state");
+    ).toContain("No invoice has this status");
   });
 });
 
@@ -178,7 +178,7 @@ describe("invoice forms", () => {
     );
     expect(html).toContain("103.25 EUR (10325)");
     expect(html).toContain("100.00 EUR (10000)");
-    expect(html).toContain("net of the card fee");
+    expect(html).toContain("without the card fee");
     expect(html).toContain("= 100.00 EUR");
   });
 
@@ -211,17 +211,17 @@ describe("PaymentFeesTable and FeeFormBody", () => {
     expect(html).toContain("0.25 EUR");
     expect(html).toContain("In force");
     expect(html).toContain("Scheduled");
-    expect(html).toContain("Superseded");
+    expect(html).toContain("Replaced");
     expect(html).toContain("contract with the processor");
   });
 
   it("says what a missing fee means", () => {
-    expect(renderToStaticMarkup(createElement(PaymentFeesTable, { fees: [], now }))).toContain("cannot be issued for a card payment");
+    expect(renderToStaticMarkup(createElement(PaymentFeesTable, { fees: [], now }))).toContain("cannot issue an invoice in that currency for a card payment");
   });
 
   it("starts with no number filled in and previews the fee on an example", () => {
     const empty = renderToStaticMarkup(createElement(FeeFormBody, { form: emptyFeeForm(), onChange: noop, errors: [] }));
-    expect(empty).toContain("Nothing is filled in for you");
+    expect(empty).toContain("The form has no default values");
     expect(empty).not.toMatch(/value="\d/);
     expect(empty).not.toContain("billing-fee-example");
     const filled = renderToStaticMarkup(
@@ -268,7 +268,7 @@ describe("bank payments", () => {
         onIgnore: noop,
       }),
     );
-    expect(row(html, "u")).toContain("The amount is not the invoice total");
+    expect(row(html, "u")).toContain("The amount is not the total of the invoice");
     expect(row(html, "u")).toContain("billing-bank-match");
     expect(row(html, "u")).toContain("billing-bank-ignore");
     expect(row(html, "m")).toContain("Paid INV-2026-0001");
@@ -298,7 +298,7 @@ describe("bank payments", () => {
   });
 
   it("asks for a reason to ignore and explains the statement format", () => {
-    expect(renderToStaticMarkup(createElement(IgnoreFormBody, { transaction: tx({}), reason: "", onChange: noop, errors: [] }))).toContain("Why it is ignored");
+    expect(renderToStaticMarkup(createElement(IgnoreFormBody, { transaction: tx({}), reason: "", onChange: noop, errors: [] }))).toContain("Note");
     const html = renderToStaticMarkup(createElement(ImportFormBody, { text: "", onChange: noop, errors: ["Line 2: id is required, at most 200 characters."] }));
     expect(html).toContain("id;booked_at;amount_minor;currency;reference;counterparty");
     expect(html).toContain("whole");

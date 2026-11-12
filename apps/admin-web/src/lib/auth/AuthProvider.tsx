@@ -61,7 +61,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return false;
       }
       const code = err instanceof ApiError ? err.code : "me.unknown";
-      const message = err instanceof Error ? err.message : "Failed to load /v1/me";
+      const message = err instanceof Error ? err.message : "We did not load /v1/me";
       setMeError({ code, message });
       setStatus("me_failed");
       return false;
@@ -238,7 +238,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             boxShadow: "0 8px 24px rgb(15 23 42 / 24%)",
           }}
         >
-          Permissions changed — refreshed.
+          Permissions changed. We reloaded them.
         </div>
       ) : null}
     </AuthContext.Provider>

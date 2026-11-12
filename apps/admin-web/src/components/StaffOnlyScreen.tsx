@@ -14,7 +14,7 @@ export function StaffOnlyScreen() {
   const auth = useAuth();
   return (
     <div role="alert" style={boxStyle} data-testid="staff-only-screen">
-      <h1 style={{ margin: 0, fontSize: 20 }}>This console is for Arena staff</h1>
+      <h1 style={{ margin: 0, fontSize: 20 }}>Only the Arena team can use this console</h1>
       <p style={{ margin: "8px 0", fontSize: 14 }}>{CONSOLE_STAFF_ONLY_MESSAGE}</p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <a href={eventCenterUrl()} style={primaryBtn} data-testid="staff-only-event-center-link">

@@ -113,7 +113,7 @@ test.describe("links and QR twin (live)", () => {
     await page.getByTestId("link-f-label").fill(LABEL);
     await page.getByTestId("link-create-go").click();
     await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/links/[0-9a-f-]{36}`));
-    await expect(page.getByTestId("link-notice")).toContainText("The link is created");
+    await expect(page.getByTestId("link-notice")).toContainText("The link is ready");
     await expect(page.getByTestId("link-title")).toHaveText(LABEL);
     await expect(page.getByTestId("link-placement")).toHaveText("Poster");
     await expect(page.getByTestId("link-short-url")).toHaveText(/\/[a-z0-9]{7}$/);
@@ -191,7 +191,7 @@ test.describe("links and QR twin (live)", () => {
     // The page with all events: a new address.
     await page.getByTestId("link-kind-org_page").check();
     await page.getByTestId("link-retarget-go").click();
-    await expect(page.getByTestId("link-notice")).toContainText("now leads to a new page");
+    await expect(page.getByTestId("link-notice")).toContainText("goes to a new page");
     await expect(page.getByTestId("link-dest")).toContainText(`/${ORG_SLUG}`);
     await expect(page.getByTestId("link-where")).toContainText("Page with all events");
     let saved = await getLink(request, link.id);

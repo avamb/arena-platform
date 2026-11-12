@@ -105,16 +105,16 @@ export function ReasonPromptModal() {
           Audit reason required
         </h2>
         <p id="reason-modal-body" style={bodyStyle}>
-          You are about to read data across tenants. Enter a short, factual
-          business reason; it will be attached to the audit trail for this
-          and subsequent cross-tenant requests in this session.
+          You are about to read data from other organizations. Type a short,
+          true reason. The platform will save it in the audit log for this
+          and all next requests of this type in this session.
         </p>
         <p style={metaStyle} data-testid="reason-modal-path">
-          Triggered by:{" "}
+          Started by:{" "}
           <code style={codeStyle}>{pendingPrompt.path}</code>
         </p>
         <label style={labelStyle} htmlFor="reason-modal-input">
-          Business reason
+          Reason
         </label>
         <input
           id="reason-modal-input"
@@ -125,14 +125,14 @@ export function ReasonPromptModal() {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="e.g. Investigating support ticket #4827"
+          placeholder="Example: support ticket #4827"
           style={inputStyle}
           autoComplete="off"
           data-testid="reason-modal-input"
         />
         <p style={hintStyle}>
-          Avoid generic phrases like &ldquo;browsing&rdquo; or
-          &ldquo;checking&rdquo;. The reason is recorded verbatim.
+          Do not type a general word such as &ldquo;browse&rdquo; or
+          &ldquo;check&rdquo;. The platform saves your reason exactly as you type it.
         </p>
         <div style={actionsStyle}>
           <button
@@ -152,17 +152,17 @@ export function ReasonPromptModal() {
             title={
               canSubmit
                 ? undefined
-                : "Enter a non-empty business reason to enable submission."
+                : "Type a reason to send the form."
             }
           >
-            Confirm reason
+            Save reason
           </button>
           {canSubmit ? null : (
             <span
               id="reason-modal-submit-hint"
               style={visuallyHiddenHintStyle}
             >
-              Enter a non-empty business reason to enable submission.
+              Type a reason to send the form.
             </span>
           )}
         </div>

@@ -110,7 +110,7 @@ async function issueFromReserve(page: Page) {
   await page.getByTestId("inv-delivery-pdf_only").check();
   await page.getByTestId("inv-submit").click();
   const result = page.getByTestId("inv-result");
-  await expect(result).toContainText("1 places for Ana López");
+  await expect(result).toContainText("1 seats for Ana López");
   await expect(result.getByTestId("inv-pdf")).toBeEnabled({ timeout: 15_000 });
   return result;
 }
@@ -146,7 +146,7 @@ test.describe("the invitations mini app at 360 x 740", () => {
     await page.getByTestId("inv-name").fill("Ana López");
     await page.getByTestId("inv-delivery-pdf_only").check();
     await page.getByTestId("inv-submit").click();
-    await expect(page.getByTestId("inv-result")).toContainText("1 places for Ana López");
+    await expect(page.getByTestId("inv-result")).toContainText("1 seats for Ana López");
 
     expect(state.issued).toHaveLength(1);
     const body = state.issued[0] as { seats: unknown; guest: Record<string, unknown>; delivery: string };
@@ -265,7 +265,7 @@ test.describe("the invitations mini app at 360 x 740", () => {
     await mockInvitationsSeats(page);
     await page.goto(LINK);
     const err = page.getByTestId("tg-inv-error");
-    await expect(err).toContainText("This link does not work any more", { timeout: 20_000 });
+    await expect(err).toContainText("This link does not work", { timeout: 20_000 });
     await expect(err).toContainText("invitations button");
     await expect(page.getByTestId("inv-hall")).toHaveCount(0);
     await noHorizontalScroll(page);

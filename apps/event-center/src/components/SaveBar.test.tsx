@@ -42,7 +42,7 @@ describe("SaveBar", () => {
   it("is enabled as soon as something changed, says so, and saves on a press", () => {
     const { button, bar, onSave } = mount({ dirty: true });
     expect(button.disabled).toBe(false);
-    expect(bar.textContent).toContain("unsaved changes");
+    expect(bar.textContent).toContain("changes that are not saved");
     act(() => button.click());
     expect(onSave).toHaveBeenCalledTimes(1);
   });

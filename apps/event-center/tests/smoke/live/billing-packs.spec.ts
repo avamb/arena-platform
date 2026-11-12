@@ -59,7 +59,7 @@ test.describe("billing balance, packs and invoices", () => {
     await expect(packs.last().getByTestId("billing-pack-face")).toHaveText("€1,900.00");
     expect(await packs.count()).toBeGreaterThanOrEqual(7);
     // No platform Stripe key here: no pack offers a card fee.
-    await expect(page.getByTestId("billing-pack-card").first()).toContainText("Card payment is not set up yet");
+    await expect(page.getByTestId("billing-pack-card").first()).toContainText("Card payment is not connected");
     await expect(page.getByText("payment system fee of")).toHaveCount(0);
     await noA11yViolations(page);
 
@@ -74,7 +74,7 @@ test.describe("billing balance, packs and invoices", () => {
       await box.getByTestId("billing-fee-price").fill("20");
       if (seated) await box.getByTestId("billing-fee-seated").check();
       await box.getByTestId("billing-fee-submit").click();
-      await expect(box.getByTestId("billing-fee-amount")).toHaveText(`Commission per ticket: ${euro(quote.service_fee_minor)}`);
+      await expect(box.getByTestId("billing-fee-amount")).toHaveText(`Platform fee for each ticket: ${euro(quote.service_fee_minor)}`);
     }
 
     // A price that is not a number is explained, and no request is sent.
@@ -113,9 +113,9 @@ test.describe("billing balance, packs and invoices", () => {
     await expect(panel.getByTestId("billing-method-bank")).toBeChecked();
     // The card says it is not available here, and cannot be chosen.
     await expect(panel.getByTestId("billing-method-card")).toBeDisabled();
-    await expect(panel.getByTestId("billing-method-card-hint")).toContainText("Card payment is not available now");
+    await expect(panel.getByTestId("billing-method-card-hint")).toContainText("Card payment is not available");
     await expect(panel.getByTestId("billing-order-total")).toContainText("€16.50");
-    await expect(panel).toContainText("Credits appear only after the payment is confirmed");
+    await expect(panel).toContainText("We add the credits to your balance only after we make sure the payment is complete");
 
     const answer = page.waitForResponse((r) => r.request().method() === "POST" && /\/billing\/packs\/[^/]+\/order$/.test(r.url()));
     await panel.getByTestId("billing-order-submit").dblclick();
@@ -138,11 +138,11 @@ test.describe("billing balance, packs and invoices", () => {
 
     // What the owner sees: the invoice, the amount and the reference to write in the transfer.
     const issued = page.getByTestId("billing-issued");
-    await expect(issued).toContainText(`Invoice ${invoice.number} is ready`);
+    await expect(issued).toContainText(`We made invoice ${invoice.number}`);
     await expect(issued.getByTestId("billing-issued-amount")).toContainText(euro(invoice.total_minor));
     await expect(issued.getByTestId("payment-reference")).toHaveText(invoice.payment_reference);
-    await expect(issued.getByTestId("billing-issued-instruction")).toContainText("Write this reference in the details of your transfer");
-    await expect(issued).toContainText("Credits appear only after the payment is confirmed");
+    await expect(issued.getByTestId("billing-issued-instruction")).toContainText("Write this reference in the description of your transfer");
+    await expect(issued).toContainText("We add the credits to your balance only after we make sure the payment is complete");
     // No credits yet: the balance is still 0 until the payment is confirmed.
     await expect(page.getByTestId("billing-balance-EUR").getByTestId("billing-balance-total")).toHaveText("€0.00");
 
@@ -164,7 +164,7 @@ test.describe("billing balance, packs and invoices", () => {
     const card = page.locator(`[data-testid="billing-invoice"][data-invoice-id="${invoice.id}"]`);
     await expect(card).toBeVisible();
     await expect(card).toContainText(`Invoice ${invoice.number}`);
-    await expect(card).toContainText("Waiting for payment");
+    await expect(card).toContainText("Not paid");
     await expect(card.getByTestId("payment-reference")).toHaveText(invoice.payment_reference);
     await expect(card.getByTestId("billing-invoice-pay")).toHaveCount(0);
     await card.getByTestId("billing-invoice-toggle").click();
@@ -180,7 +180,7 @@ test.describe("billing balance, packs and invoices", () => {
     await expect(card).toBeVisible();
 
     // Nothing was paid, so the journal has nothing to say.
-    await expect(page.getByTestId("billing-ledger")).toContainText("No credit changes yet");
+    await expect(page.getByTestId("billing-ledger")).toContainText("No credit changes");
     await noA11yViolations(page);
   });
 
@@ -243,13 +243,13 @@ test.describe("billing balance, packs and invoices", () => {
     const note = page.getByTestId("billing-return");
     await expect(note).toBeVisible();
     await expect(note).toHaveAttribute("data-status", "confirming");
-    await expect(note.getByTestId("billing-return-text")).toContainText("We are confirming your payment");
+    await expect(note.getByTestId("billing-return-text")).toContainText("We make sure that your payment is complete");
     await expect(note.getByTestId("billing-return-text")).not.toContainText("is paid");
 
     await page.goto(`${balanceUrl}?invoice=${first.id}&cancelled=1`);
     const canceled = page.getByTestId("billing-return");
     await expect(canceled).toHaveAttribute("data-status", "cancelled");
-    await expect(canceled.getByTestId("billing-return-text")).toContainText("nothing was charged");
+    await expect(canceled.getByTestId("billing-return-text")).toContainText("we took no money");
 
     // An address that is not a return shows no note.
     await page.goto(`${balanceUrl}?invoice=not-an-id&paid=1`);

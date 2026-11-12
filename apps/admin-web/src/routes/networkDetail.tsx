@@ -121,12 +121,12 @@ export const Route = createRoute({
  */
 const NETWORK_DETAIL_NAV_ENTRY: NavEntry = {
   id: "networks-detail",
-  label: "Operator Network detail",
+  label: "Operator Network page",
   to: "/networks",
   permission: { anyOf: ["network.read"] },
   scopeKinds: ["global", "platform", "network"],
   purpose:
-    "Inspect and manage a single operator network. Requires network.read.",
+    "Examine and manage one operator network. You must have network.read.",
 };
 
 // ---------------------------------------------------------------------------
@@ -185,7 +185,7 @@ export function validateUuid(value: string, label = "value"): string | null {
     return `${label} is required`;
   }
   if (!UUID_RE.test(trimmed)) {
-    return `${label} must be a valid UUID (e.g. 0190a8b0-7d31-7a3c-9c4e-8c0c1d9d9c2a)`;
+    return `${label} must be a correct UUID. Example: 0190a8b0-7d31-7a3c-9c4e-8c0c1d9d9c2a`;
   }
   return null;
 }
@@ -328,8 +328,8 @@ function DetailHeader({
         </p>
         {archived ? (
           <p style={archivedNoticeStyle} role="status" data-testid="network-archived-banner">
-            <strong>Archived.</strong> Roster mutations are disabled for this
-            network. Existing roster rows remain visible for audit purposes.
+            <strong>Archived.</strong> You cannot change the lists of this
+            network. The rows stay visible for audit.
           </p>
         ) : null}
       </div>
@@ -341,7 +341,7 @@ function DetailHeader({
           disabled={query.isFetching}
           data-testid="network-detail-refresh"
         >
-          {query.isFetching ? "Refreshing…" : "Refresh"}
+          {query.isFetching ? "Reloading…" : "Reload"}
         </button>
       </div>
     </header>
@@ -360,9 +360,9 @@ function DetailErrorState({
       <div style={errorBoxStyle} role="alert" data-testid="network-detail-not-found">
         <strong>Network not found.</strong>
         <p style={errorParaStyle}>
-          The operator network does not exist or has been hard-deleted. Use
+          The operator network does not exist, or the platform deleted it. Open
           the <Link to="/networks" style={inlineLinkStyle}>networks list</Link>{" "}
-          to pick another network.
+          to select a different network.
         </p>
       </div>
     );
@@ -373,9 +373,9 @@ function DetailErrorState({
   ) {
     return (
       <div style={errorBoxStyle} role="alert" data-testid="network-detail-forbidden">
-        <strong>Forbidden.</strong>
+        <strong>No access.</strong>
         <p style={errorParaStyle}>
-          Your account is missing <code style={monoStyle}>network.read</code>.
+          Your account does not have <code style={monoStyle}>network.read</code>.
         </p>
       </div>
     );
@@ -383,14 +383,14 @@ function DetailErrorState({
   if (error instanceof ApiError && error.status === 401) {
     return (
       <div style={errorBoxStyle} role="status" data-testid="network-detail-session-expired">
-        <strong>Session expired.</strong>
-        <p style={errorParaStyle}>Sign in again to reload the network.</p>
+        <strong>Your session ended.</strong>
+        <p style={errorParaStyle}>Sign in to reload the network.</p>
       </div>
     );
   }
   return (
     <div style={errorBoxStyle} role="alert" data-testid="network-detail-error">
-      <strong>Failed to load operator network.</strong>
+      <strong>We did not load the operator network.</strong>
       <div style={errorCodeStyle}>{error?.code ?? "unknown.error"}</div>
       {error?.message ? <div style={errorParaStyle}>{error.message}</div> : null}
       <button type="button" style={errorRetryStyle} onClick={onRetry}>
@@ -450,8 +450,8 @@ function OverviewTab({
   if (query.isError) {
     return (
       <div style={statusBoxStyle} role="status">
-        Overview data is unavailable because the detail load failed; see the
-        header for the typed error.
+        The overview data is not available. The network did not load. The
+        header shows the error.
       </div>
     );
   }
@@ -473,25 +473,26 @@ function OverviewTab({
         <dl style={copyDlStyle}>
           <dt style={copyDtStyle}>Platform operators</dt>
           <dd style={copyDdStyle}>
-            <code style={monoStyle}>platform_superadmin</code> role. Administer
-            THE PLATFORM globally — can create / archive networks and edit
-            every network's roster.
+            <code style={monoStyle}>platform_superadmin</code> role. This operator
+            manages the whole platform. This operator can create and archive
+            networks and change the lists of all networks.
           </dd>
           <dt style={copyDtStyle}>Network operators</dt>
           <dd style={copyDdStyle}>
-            <code style={monoStyle}>network_operator</code> role; rows on the{" "}
-            <em>Users</em> tab. Administer ONE network's organizer / agent
-            roster. Cannot create networks or edit the platform itself.
+            <code style={monoStyle}>network_operator</code> role. The rows are on the{" "}
+            <em>Users</em> tab. This operator manages the organizer and agent
+            lists of ONE network. This operator cannot create networks or
+            change the platform.
           </dd>
           <dt style={copyDtStyle}>Organizers</dt>
           <dd style={copyDdStyle}>
-            Organizations attached as <code style={monoStyle}>kind=organizer</code>.
-            Sell tickets for events on behalf of the network.
+            Organizations that you add as <code style={monoStyle}>kind=organizer</code>.
+            They sell tickets for events for the network.
           </dd>
           <dt style={copyDtStyle}>Agents</dt>
           <dd style={copyDdStyle}>
-            Organizations attached as <code style={monoStyle}>kind=agent</code>.
-            External sales channels — can resell but never publish.
+            Organizations that you add as <code style={monoStyle}>kind=agent</code>.
+            They are external sales channels. They can resell. They cannot publish.
           </dd>
         </dl>
       </div>
@@ -584,11 +585,11 @@ function UsersTab({
     <div style={tabContentStyle}>
       <h2 style={tabHeadingStyle}>Network operators</h2>
       <p style={tabHintStyle}>
-        Users assigned here hold the <code style={monoStyle}>network_operator</code>{" "}
-        role and may manage this network's organizer and agent roster.
-        Per migration 0044_network_permissions.sql, only{" "}
-        <strong>platform operators</strong> can change this list (
-        <code style={monoStyle}>network.manage_users</code> is NOT bound to{" "}
+        Each user in this list has the <code style={monoStyle}>network_operator</code>{" "}
+        role. This user can manage the organizer and agent lists of this network.
+        Migration 0044_network_permissions.sql gives the permission to change
+        this list only to <strong>platform operators</strong> (
+        <code style={monoStyle}>network.manage_users</code> is NOT part of{" "}
         <code style={monoStyle}>network_operator</code>).
       </p>
       <RosterStatus query={query} entityLabel="network operators" />
@@ -599,7 +600,7 @@ function UsersTab({
               <th scope="col" style={thStyle}>User</th>
               <th scope="col" style={thStyle}>Role</th>
               <th scope="col" style={thStyle}>Status</th>
-              <th scope="col" style={thStyle}>Assigned</th>
+              <th scope="col" style={thStyle}>Added</th>
               <th scope="col" style={thStyle} aria-label="Actions" />
             </tr>
           </thead>
@@ -607,7 +608,7 @@ function UsersTab({
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={5} style={emptyCellStyle} data-testid="users-empty">
-                  No network operators assigned yet.
+                  This network has no network operators.
                 </td>
               </tr>
             ) : null}
@@ -626,7 +627,7 @@ function UsersTab({
                       disabled={remove.isPending}
                       data-testid={`users-remove-${u.user_id}`}
                     >
-                      Detach
+                      Remove
                     </button>
                   ) : (
                     <span style={mutedHintStyle}>
@@ -641,11 +642,11 @@ function UsersTab({
       ) : null}
 
       <AssignSection
-        title="Assign a network operator"
+        title="Add a network operator"
         canManage={canManage}
         archived={archived}
         permissionName="network.manage_users"
-        canManageExplanation="Only platform operators may assign network operators (network.manage_users is bound to platform_superadmin and admin only)."
+        canManageExplanation="Only platform operators can add network operators. Only platform_superadmin and admin have network.manage_users."
       >
         <form onSubmit={onSubmit} style={formInlineStyle} noValidate>
           <label htmlFor="assign-user-uuid" style={inlineLabelStyle}>
@@ -668,7 +669,7 @@ function UsersTab({
             disabled={!canManage || archived || assign.isPending}
             data-testid="users-assign-submit"
           >
-            {assign.isPending ? "Assigning…" : "Assign"}
+            {assign.isPending ? "Adding…" : "Add"}
           </button>
         </form>
         {assignError !== null ? (
@@ -775,14 +776,14 @@ function OrganizationsTab({ networkId, archived, kind }: OrgsTabProps) {
 
   const heading = kind === "organizer" ? "Organizers" : "Agents";
   const copy = kind === "organizer"
-    ? "Organizations attached as kind=organizer sell tickets for events on behalf of the network."
-    : "Organizations attached as kind=agent act as external sales channels — they can resell but never publish.";
+    ? "Organizations that you add as kind=organizer sell tickets for events for the network."
+    : "Organizations that you add as kind=agent are external sales channels. They can resell. They cannot publish.";
 
   return (
     <div style={tabContentStyle}>
       <h2 style={tabHeadingStyle}>{heading}</h2>
       <p style={tabHintStyle}>
-        {copy} Network operators and platform operators may manage this
+        {copy} Network operators and platform operators can manage this
         list (<code style={monoStyle}>{permName}</code>).
       </p>
       <RosterStatus
@@ -795,7 +796,7 @@ function OrganizationsTab({ networkId, archived, kind }: OrgsTabProps) {
             <tr>
               <th scope="col" style={thStyle}>Organization</th>
               <th scope="col" style={thStyle}>Status</th>
-              <th scope="col" style={thStyle}>Attached</th>
+              <th scope="col" style={thStyle}>Added</th>
               <th scope="col" style={thStyle} aria-label="Actions" />
             </tr>
           </thead>
@@ -803,7 +804,7 @@ function OrganizationsTab({ networkId, archived, kind }: OrgsTabProps) {
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={4} style={emptyCellStyle} data-testid={`${collectionPath}-empty`}>
-                  No {kind === "organizer" ? "organizers" : "agents"} attached yet.
+                  This network has no {kind === "organizer" ? "organizers" : "agents"}.
                 </td>
               </tr>
             ) : null}
@@ -821,7 +822,7 @@ function OrganizationsTab({ networkId, archived, kind }: OrgsTabProps) {
                       disabled={remove.isPending}
                       data-testid={`${collectionPath}-detach-${row.organization_id}`}
                     >
-                      Detach
+                      Remove
                     </button>
                   ) : (
                     <span style={mutedHintStyle}>
@@ -836,12 +837,12 @@ function OrganizationsTab({ networkId, archived, kind }: OrgsTabProps) {
       ) : null}
 
       <AssignSection
-        title={kind === "organizer" ? "Attach an organizer" : "Attach an agent"}
+        title={kind === "organizer" ? "Add an organizer" : "Add an agent"}
         canManage={canManage}
         archived={archived}
         permissionName={permName}
         canManageExplanation={
-          `Requires ${permName}. Bound to platform_superadmin, network_operator, and admin per migration 0044.`
+          `You must have ${permName}. Migration 0044 gives it to platform_superadmin, network_operator and admin.`
         }
       >
         <form onSubmit={onSubmit} style={formInlineStyle} noValidate>
@@ -868,7 +869,7 @@ function OrganizationsTab({ networkId, archived, kind }: OrgsTabProps) {
             disabled={!canManage || archived || assign.isPending}
             data-testid={`${collectionPath}-assign-submit`}
           >
-            {assign.isPending ? "Attaching…" : "Attach"}
+            {assign.isPending ? "Adding…" : "Add"}
           </button>
         </form>
         {assignError !== null ? (
@@ -920,16 +921,16 @@ function RosterStatus<T>({
     ) {
       return (
         <div style={errorBoxStyle} role="alert" data-testid="roster-forbidden">
-          <strong>Forbidden.</strong>
+          <strong>No access.</strong>
           <p style={errorParaStyle}>
-            Your account is missing the read permission for {entityLabel}.
+            Your account does not have the permission to read {entityLabel}.
           </p>
         </div>
       );
     }
     return (
       <div style={errorBoxStyle} role="alert" data-testid="roster-error">
-        <strong>Failed to load {entityLabel}.</strong>
+        <strong>We did not load {entityLabel}.</strong>
         <div style={errorCodeStyle}>{error?.code ?? "unknown.error"}</div>
         {error?.message ? <div style={errorParaStyle}>{error.message}</div> : null}
         <button
@@ -967,11 +968,11 @@ function AssignSection({
       <h3 style={assignHeadingStyle}>{title}</h3>
       {archived ? (
         <p style={mutedHintStyle} data-testid="assign-archived-explain">
-          Roster mutations are disabled because this network is archived.
+          This network is archived. You cannot change its lists.
         </p>
       ) : !canManage ? (
         <p style={mutedHintStyle} data-testid="assign-permission-explain">
-          You lack <code style={monoStyle}>{permissionName}</code>.{" "}
+          You do not have <code style={monoStyle}>{permissionName}</code>.{" "}
           {canManageExplanation}
         </p>
       ) : null}
@@ -989,35 +990,35 @@ function AuditTab() {
     <div style={tabContentStyle}>
       <h2 style={tabHeadingStyle}>Audit</h2>
       <div style={gapBoxStyle} data-testid="audit-gap">
-        <strong>Backend gap (SAUI-09 G3).</strong>
+        <strong>Gap in the API (SAUI-09 G3).</strong>
         <p style={errorParaStyle}>
-          The backend writes <code style={monoStyle}>v1.network.*</code>{" "}
-          audit_events rows for every roster mutation (see{" "}
+          The API writes <code style={monoStyle}>v1.network.*</code>{" "}
+          audit_events rows for each change of a list (see{" "}
           <code style={monoStyle}>network_users.go</code> /{" "}
-          <code style={monoStyle}>network_orgs.go</code>), but does not yet
-          expose a scoped reader endpoint such as{" "}
+          <code style={monoStyle}>network_orgs.go</code>). The API has no
+          endpoint that reads these rows for one network, for example{" "}
           <code style={monoStyle}>GET /v1/admin/networks/{`{id}`}/audit</code>.
-          Until that endpoint exists this tab cannot render a real timeline.
+          This tab cannot show a timeline until this endpoint is ready.
         </p>
         <p style={errorParaStyle}>
-          Other documented gaps for SAUI-09:
+          Other known gaps for SAUI-09:
         </p>
         <ul style={gapListStyle}>
           <li>
             <strong>G1.</strong> <code style={monoStyle}>/v1/admin/networks/*</code>{" "}
-            mutations are NOT in the X-Admin-Reason allowlist
+            changes are NOT in the X-Admin-Reason allowlist
             (see <code style={monoStyle}>REASON_REQUIRED_PREFIXES</code> in{" "}
-            <code style={monoStyle}>lib/api/reason.ts</code>). Either extend
-            the backend allowlist or document the exemption.
+            <code style={monoStyle}>lib/api/reason.ts</code>). Add them to the
+            API allowlist, or write down the exception.
           </li>
           <li>
-            <strong>G2.</strong> No lookup endpoints for candidate users /
-            organizations — operators must paste UUIDs.
+            <strong>G2.</strong> The API has no lookup endpoints for users and
+            organizations. Operators must paste UUIDs.
           </li>
           <li>
-            <strong>G4.</strong> List endpoints omit revoked rows. Add a
+            <strong>G4.</strong> List endpoints do not return revoked rows. Add a{" "}
             <code style={monoStyle}>?include_revoked=true</code> flag to
-            surface roster history.
+            show the history of the lists.
           </li>
         </ul>
       </div>

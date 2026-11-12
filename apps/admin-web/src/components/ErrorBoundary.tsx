@@ -40,10 +40,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
       }
       return (
         <div role="alert" style={errorScreenStyle}>
-          <h1 style={{ margin: 0, fontSize: 20 }}>Admin shell failed to render</h1>
+          <h1 style={{ margin: 0, fontSize: 20 }}>The admin console did not load</h1>
           <pre style={errorMessageStyle}>{error.message}</pre>
           <button type="button" onClick={this.reset} style={buttonStyle}>
-            Retry
+            Try again
           </button>
         </div>
       );

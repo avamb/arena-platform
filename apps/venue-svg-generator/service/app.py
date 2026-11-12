@@ -65,7 +65,7 @@ def create_app(manager: JobManager | None = None, *, max_upload_bytes: int | Non
 
     @app.exception_handler(RequestValidationError)
     async def _bad_request(_: Request, __: RequestValidationError) -> JSONResponse:
-        return JSONResponse({"error": {"code": "request.invalid", "message": "file and profile are required"}}, status_code=400)
+        return JSONResponse({"error": {"code": "request.invalid", "message": "Send the file and the profile. Both are necessary."}}, status_code=400)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
@@ -80,38 +80,38 @@ def create_app(manager: JobManager | None = None, *, max_upload_bytes: int | Non
     ) -> dict[str, str]:
         declared = request.headers.get("content-length")
         if declared and declared.isdigit() and int(declared) > max_upload + MULTIPART_OVERHEAD:
-            raise ApiError(413, "file.too_large", f"the file is larger than {max_upload // (1024 * 1024)} MB")
+            raise ApiError(413, "file.too_large", f"The file is too large. The maximum is {max_upload // (1024 * 1024)} MB.")
         if profile not in ADAPTER_PROFILES:
-            raise ApiError(400, "profile.unknown", "unknown profile; allowed: " + ", ".join(sorted(ADAPTER_PROFILES)))
+            raise ApiError(400, "profile.unknown", "The service does not know this profile. Use one of these profiles: " + ", ".join(sorted(ADAPTER_PROFILES)) + ".")
         target: dict[str, Any] | None = None
         if target_profile:
             if len(target_profile.encode("utf-8")) > MAX_TARGET_PROFILE_BYTES:
-                raise ApiError(400, "target_profile.invalid", "target_profile is too large")
+                raise ApiError(400, "target_profile.invalid", "The target_profile is too large.")
             try:
                 target = validate_profile(json.loads(target_profile))
             except (ValueError, AttributeError) as exc:
                 raise ApiError(400, "target_profile.invalid", str(exc)) from None
         data = await file.read(max_upload + 1)
         if len(data) > max_upload:
-            raise ApiError(413, "file.too_large", f"the file is larger than {max_upload // (1024 * 1024)} MB")
+            raise ApiError(413, "file.too_large", f"The file is too large. The maximum is {max_upload // (1024 * 1024)} MB.")
         if not data.startswith(b"PK\x03\x04"):
-            raise ApiError(400, "file.not_xlsx", "the file is not an XLSX workbook")
+            raise ApiError(400, "file.not_xlsx", "The file is not an XLSX file. Send an XLSX file.")
         try:
             with zipfile.ZipFile(BytesIO(data)) as archive:
                 if sum(item.file_size for item in archive.infolist()) > MAX_UNCOMPRESSED_BYTES:
-                    raise ApiError(400, "file.too_large_unpacked", "the workbook is too large when unpacked")
+                    raise ApiError(400, "file.too_large_unpacked", "The content of the XLSX file is too large.")
         except zipfile.BadZipFile:
-            raise ApiError(400, "file.not_xlsx", "the file is not an XLSX workbook") from None
+            raise ApiError(400, "file.not_xlsx", "The file is not an XLSX file. Send an XLSX file.") from None
         try:
             job_id = jobs.submit(data, profile, target)
         except QueueFull:
-            raise ApiError(503, "queue.full", "too many jobs are waiting, try again later") from None
+            raise ApiError(503, "queue.full", "Too many jobs are in the queue. Try again after some minutes.") from None
         return {"job_id": job_id, "status": "queued", "status_url": f"/jobs/{job_id}"}
 
     def _job(job_id: str):
         job = jobs.get(job_id)
         if job is None:
-            raise ApiError(404, "job.not_found", "no such job (it may have expired)")
+            raise ApiError(404, "job.not_found", "The service cannot find this job. The service keeps a job only for a limited time after it is complete.")
         return job
 
     @app.get("/jobs/{job_id}")
@@ -133,23 +133,23 @@ def create_app(manager: JobManager | None = None, *, max_upload_bytes: int | Non
     def _finished(job_id: str):
         job = _job(job_id)
         if job.status == FAILED:
-            raise ApiError(409, "job.failed", "the job failed; see GET /jobs/{id}")
+            raise ApiError(409, "job.failed", "The job did not complete. Read the error in GET /jobs/{id}.")
         if job.status != DONE or job.result is None:
-            raise ApiError(409, "job.not_ready", "the job has not finished yet")
+            raise ApiError(409, "job.not_ready", "The job is not complete. Try again after some seconds.")
         return job.result
 
     @app.get("/jobs/{job_id}/svg")
     async def job_svg(job_id: str) -> Response:
         result = _finished(job_id)
         if result.get("svg") is None:
-            raise ApiError(409, "job.quarantined", "the model is in quarantine, there is no authoring SVG; see the report")
+            raise ApiError(409, "job.quarantined", "The model is in quarantine. The service did not make an authoring SVG. Read the causes in the report.")
         return Response(result["svg"], media_type="image/svg+xml")
 
     @app.get("/jobs/{job_id}/diagnostic.svg")
     async def job_diagnostic(job_id: str) -> Response:
         result = _finished(job_id)
         if result.get("diagnostic_svg") is None:
-            raise ApiError(404, "job.diagnostic_unavailable", "no diagnostic drawing for this job")
+            raise ApiError(404, "job.diagnostic_unavailable", "This job has no diagnostic drawing.")
         return Response(result["diagnostic_svg"], media_type="image/svg+xml")
 
     return app

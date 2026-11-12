@@ -154,7 +154,7 @@ test.describe("the team (live)", () => {
 
     await invite(page, email, { channel: "web", locale: "es" });
     const notice = page.getByTestId("team-notice");
-    await expect(notice).toContainText(`The invitation is sent to ${email}.`);
+    await expect(notice).toContainText(`We sent the invitation to ${email}.`);
     await expect(notice).toContainText("link to this event center");
     const added = row(page, email);
     await expect(added.getByTestId("team-role")).toHaveText("Manager");
@@ -206,17 +206,17 @@ test.describe("the team (live)", () => {
     // Right after the invitation the letter cannot go out again: the screen says how long to wait.
     await added.getByTestId("team-resend").click();
     const notice = page.getByTestId("team-notice");
-    await expect(notice).toContainText("The letter went out a moment ago.");
+    await expect(notice).toContainText("We sent the e-mail a short time ago.");
     await expect(notice).toContainText(/again in \d+ min/);
     expect(rows(email).jobs, "a refused resend queues nothing").toEqual(["bot.invitation_email"]);
 
     // Ten minutes later it goes out, and the next press is too soon again.
     seed("age", email);
     await added.getByTestId("team-resend").click();
-    await expect(notice).toContainText(`The letter to ${email} is sent again.`);
+    await expect(notice).toContainText(`We sent the e-mail to ${email} again.`);
     expect(rows(email).jobs).toEqual(["bot.invitation_email", "bot.invitation_email"]);
     await added.getByTestId("team-resend").click();
-    await expect(notice).toContainText("The letter went out a moment ago.");
+    await expect(notice).toContainText("We sent the e-mail a short time ago.");
     expect(rows(email).jobs).toHaveLength(2);
 
     // Revoke: the question first, a refusal changes nothing.
@@ -230,8 +230,8 @@ test.describe("the team (live)", () => {
     expect(rows(email).revoked_invitations).toBe(0);
     await added.getByTestId("team-revoke").click();
     await page.getByTestId("team-revoke-dialog-submit").click();
-    await expect(page.getByTestId("team-notice")).toContainText(`The invitation for ${email} is revoked.`);
-    await expect(page.getByTestId("team-notice")).toContainText("never joined");
+    await expect(page.getByTestId("team-notice")).toContainText(`We canceled the invitation for ${email}.`);
+    await expect(page.getByTestId("team-notice")).toContainText("did not accept the invitation");
     await expect(row(page, email)).toHaveCount(0);
     const db = rows(email);
     expect(db.revoked_invitations).toBe(1);
@@ -252,7 +252,7 @@ test.describe("the team (live)", () => {
     await expect(added.getByTestId("team-resend")).toBeVisible();
     await expect(added.getByTestId("team-revoke")).toBeVisible();
     await added.getByTestId("team-resend").click();
-    await expect(page.getByTestId("team-notice")).toContainText(`The letter to ${email} is sent again.`);
+    await expect(page.getByTestId("team-notice")).toContainText(`We sent the e-mail to ${email} again.`);
     await expect(row(page, email).getByTestId("team-state")).toHaveText("Waiting");
   });
 
@@ -267,7 +267,7 @@ test.describe("the team (live)", () => {
     const dialog = page.getByTestId("team-remove-dialog");
     await expect(dialog).toBeVisible();
     await expect(dialog.getByTestId("team-remove-dialog-subject")).toHaveText(REMOVABLE_EMAIL);
-    await expect(dialog).toContainText("cannot open this organization any more");
+    await expect(dialog).toContainText("cannot open this organization");
     // Focus starts on Cancel: Enter must not remove somebody by habit.
     await expect(dialog.getByTestId("team-remove-dialog-cancel")).toBeFocused();
     await noA11yViolations(page);

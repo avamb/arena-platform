@@ -248,7 +248,7 @@ describe("the edit form hint about lost formatting", () => {
     expect(translate("ru", "events.descriptionHint")).toBe(
       "Правка в этом поле убирает ссылки, заголовки и подчёркивание — для полного оформления используйте ивент-центр",
     );
-    expect(translate("en", "events.descriptionHint")).toMatch(/links, headings and underline/);
+    expect(translate("en", "events.descriptionHint")).toMatch(/links, headings, and underline/);
     const src = readFileSync(resolve(__dirname, "../routes/events.tsx"), "utf8");
     expect(src).toContain('t("events.descriptionHint")');
     expect(src).toContain("events-edit-description-hint");

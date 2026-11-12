@@ -163,7 +163,7 @@ export function validateProviderAccountID(
   accountID: string,
 ): string | null {
   if (mode === "direct_merchant" && accountID.trim() === "") {
-    return "Provider account ID is required for direct_merchant";
+    return "Provider account ID is required for direct_merchant.";
   }
   return null;
 }
@@ -178,7 +178,7 @@ export function validateFeePercent(raw: string): string | null {
     return "Fee percent is required";
   }
   if (!/^\d{1,3}(\.\d{1,2})?$/.test(raw.trim())) {
-    return "Fee percent must be a non-negative decimal (e.g. 2.50)";
+    return "Fee percent must be a decimal number of 0 or more, for example 2.50";
   }
   const parsed = Number(raw);
   if (Number.isNaN(parsed) || parsed < 0 || parsed > 100) {
@@ -193,13 +193,13 @@ export function validateReservationTTL(raw: string): string | null {
   }
   const parsed = Number(raw);
   if (!Number.isInteger(parsed)) {
-    return "Reservation TTL must be a whole number of seconds";
+    return "Hold TTL must be a whole number of seconds";
   }
   if (parsed <= 0) {
-    return "Reservation TTL must be positive";
+    return "Hold TTL must be more than 0";
   }
   if (parsed > 86_400) {
-    return "Reservation TTL must be 24 hours (86400s) or less";
+    return "Hold TTL must be 24 hours (86400 seconds) or less";
   }
   return null;
 }
@@ -223,7 +223,7 @@ export function validateSettingsJSON(raw: string): string | null {
     parsed === null ||
     Array.isArray(parsed)
   ) {
-    return "Settings must be a JSON object (not an array or scalar)";
+    return "Settings must be a JSON object. An array or a single value is not correct.";
   }
   return null;
 }
@@ -424,12 +424,11 @@ function ChannelsModule() {
             Sales Channels
           </h1>
           <p style={subheadingStyle}>
-            Each channel defines a payment mode (direct_merchant or
+            Each channel has a payment mode (direct_merchant or
             merchant_of_record), a provider (stripe / allpay), an
-            optional merchant account credential (shown masked on
-            read), the commission fee percent, and an optional
-            reservation TTL override that supersedes the parent
-            organization's seat-hold window.
+            optional merchant account credential (shown masked), the
+            service fee percent, and an optional hold TTL. The hold TTL
+            replaces the seat hold time of the organization.
           </p>
         </div>
         <div style={refreshWrapStyle}>
@@ -453,8 +452,8 @@ function ChannelsModule() {
               New channel
             </button>
           ) : (
-            <span style={mutedHintStyle} title="Requires channel.create">
-              Create requires channel.create
+            <span style={mutedHintStyle} title="You must have the channel.create permission">
+              You must have the channel.create permission to make a channel
             </span>
           )}
         </div>
@@ -614,8 +613,8 @@ function ChannelsBody({
   if (rows.length === 0) {
     return (
       <div style={statusBoxStyle} role="status" data-testid="channels-empty">
-        This organization has no active sales channels. Create the
-        first channel to begin accepting payments.
+        This organization has no active sales channels. Make the
+        first channel. Then the organization can accept payments.
       </div>
     );
   }
@@ -657,7 +656,7 @@ function ChannelsBody({
     },
     {
       id: "ttl",
-      header: "Reservation TTL",
+      header: "Hold TTL",
       renderCell: (c) =>
         c.reservation_ttl_override !== null
           ? `${c.reservation_ttl_override.toLocaleString()} s`
@@ -739,13 +738,13 @@ function ChannelsErrorState({
     return (
       <div style={errorBoxStyle} role="status" data-testid="channels-session-expired">
         <strong>Session expired.</strong>
-        <p style={errorParaStyle}>Sign in again to reload channels.</p>
+        <p style={errorParaStyle}>Sign in again. Then reload the channels.</p>
       </div>
     );
   }
   return (
     <div style={errorBoxStyle} role="alert" data-testid="channels-error">
-      <strong>Failed to load channels.</strong>
+      <strong>We did not load the channels.</strong>
       <div style={errorCodeStyle}>{error?.code ?? "unknown.error"}</div>
       {error?.message ? <div style={errorParaStyle}>{error.message}</div> : null}
       <button type="button" style={errorRetryStyle} onClick={onRetry}>
@@ -935,7 +934,7 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
   }
 
   const title = isEdit ? `Edit ${mode.channel.name}` : "New channel";
-  const submitLabel = isEdit ? "Save changes" : "Create channel";
+  const submitLabel = isEdit ? "Save changes" : "Add channel";
 
   return (
     <div
@@ -967,7 +966,7 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
               htmlFor="channel-org-id-readonly"
               error={null}
               localError={null}
-              hint="Channels are owner-gated; the org cannot be changed by edit."
+              hint="Only the owner can use a channel. You cannot change the organization of a channel."
             >
               <input
                 id="channel-org-id-readonly"
@@ -985,7 +984,7 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
             htmlFor="channel-name"
             error={serverErrors.name ?? null}
             localError={name.length > 0 ? nameErr : null}
-            hint="Operator-visible name. Must be unique within the organization."
+            hint="The name that operators see. The name must be different from the other channels of the organization."
           >
             <input
               id="channel-name"
@@ -1010,7 +1009,7 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
             htmlFor="channel-payment-mode"
             error={serverErrors.payment_mode ?? null}
             localError={modeErr}
-            hint="How the payment flows: Direct Merchant means funds go directly to your provider account (you manage taxes and compliance yourself). Merchant of Record means the platform handles taxes, compliance, and payouts on your behalf."
+            hint="Direct Merchant: the money goes to your provider account. You do the taxes and compliance. Merchant of Record: the platform does the taxes, compliance, and payouts for you."
           >
             <select
               id="channel-payment-mode"
@@ -1037,7 +1036,7 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
             htmlFor="channel-provider"
             error={serverErrors.provider ?? null}
             localError={providerErr}
-            hint="Which payment provider this channel is wired to."
+            hint="The payment provider of this channel."
           >
             <select
               id="channel-provider"
@@ -1072,19 +1071,19 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
             hint={
               provider === "stripe"
                 ? paymentMode === "direct_merchant"
-                  ? "Your Stripe connected account ID — starts with 'acct_'. Find it in your Stripe Dashboard → Settings → Account details."
-                  : "Your Stripe account ID (optional for Merchant of Record mode). Starts with 'acct_'."
+                  ? "Your Stripe connected account ID. It starts with 'acct_'. You find it in your Stripe Dashboard → Settings → Account details."
+                  : "Your Stripe account ID. It starts with 'acct_'. It is optional for Merchant of Record."
                 : provider === "flitt"
-                  ? "Your Flitt merchant ID (a number). Find it in the Flitt portal under Merchant settings. The payment key itself goes into the organization's Payment configs, never here."
+                  ? "Your Flitt merchant ID (a number). You find it in the Flitt portal under Merchant settings. Do not enter the payment key here. Enter it in the Payment configs of the organization."
                 : provider === "payplus"
-                  ? "A label for your PayPlus account, e.g. the terminal number or the business name. The API keys and the payment page UID go into the organization's Payment configs, never here."
+                  ? "A label for your PayPlus account, for example the terminal number or the business name. Do not enter the API keys and the payment page UID here. Enter them in the Payment configs of the organization."
                 : provider === "allpay"
                   ? paymentMode === "direct_merchant"
-                    ? "Your AllPay merchant account ID. Find it in the AllPay merchant portal under Settings → Account."
-                    : "Your AllPay merchant account ID (optional for Merchant of Record mode)."
+                    ? "Your AllPay merchant account ID. You find it in the AllPay merchant portal under Settings → Account."
+                    : "Your AllPay merchant account ID. It is optional for Merchant of Record."
                   : paymentMode === "direct_merchant"
-                    ? "Required: the merchant account credential at the payment provider."
-                    : "Optional: the merchant account credential at the payment provider."
+                    ? "Required. This is the merchant account credential at the payment provider."
+                    : "Optional. This is the merchant account credential at the payment provider."
             }
           >
             {isEdit && !replaceCredential ? (
@@ -1138,7 +1137,7 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
             htmlFor="channel-fee-percent"
             error={serverErrors.fee_percent ?? null}
             localError={feePercent.length > 0 ? feeErr : null}
-            hint="Platform fee charged on each transaction through this channel, as a percentage (e.g. enter 2.50 for 2.5%). Set to 0.00 if there is no platform fee."
+            hint="The service fee that the buyer pays on each order through this channel, in percent. For example, enter 2.50 for 2.5%. Enter 0.00 for no service fee."
           >
             <input
               id="channel-fee-percent"
@@ -1157,11 +1156,11 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
           </FieldRow>
 
           <FieldRow
-            label="Reservation TTL override (seconds)"
+            label="Hold TTL override (seconds)"
             htmlFor="channel-reservation-ttl"
             error={serverErrors.reservation_ttl_override ?? null}
             localError={reservationTTL.length > 0 ? ttlErr : null}
-            hint="Optional override for the parent organization's seat-hold window. Leave blank to inherit."
+            hint="Optional. This replaces the seat hold time of the organization. Keep it empty to use the time of the organization."
           >
             <input
               id="channel-reservation-ttl"
@@ -1191,7 +1190,7 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
               htmlFor="channel-stripe-descriptor"
               error={null}
               localError={stripeDescriptor.length > 0 ? descriptorErr : null}
-              hint="Appears on your customer's bank or card statement. Must be 22 characters or fewer. Leave blank to use the platform default."
+              hint="The buyer sees this text on the bank or card statement. Use 22 characters or less. Keep it empty to use the platform default."
             >
               <input
                 id="channel-stripe-descriptor"
@@ -1212,7 +1211,7 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
               htmlFor="channel-allpay-terminal-id"
               error={null}
               localError={null}
-              hint="Your AllPay merchant terminal ID. Find it in the AllPay merchant portal under Settings → Terminals."
+              hint="Your AllPay merchant terminal ID. You find it in the AllPay merchant portal under Settings → Terminals."
             >
               <input
                 id="channel-allpay-terminal-id"
@@ -1241,7 +1240,7 @@ function ChannelFormDialog({ mode, defaultOrgID, onClose }: FormDialogProps) {
                 htmlFor="channel-settings-advanced"
                 error={serverErrors.settings ?? null}
                 localError={advancedJSON.length > 0 ? advancedErr : null}
-                hint="Optional JSON object for additional provider configuration not covered above (e.g. feature flags). Must be a JSON object — arrays and scalars are rejected."
+                hint="Optional JSON object for provider settings that the fields above do not have, for example feature flags. It must be a JSON object. We refuse an array or a single value."
               >
                 <textarea
                   id="channel-settings-advanced"
@@ -1371,7 +1370,7 @@ function GatewayCredentialSection({
       queryClient.invalidateQueries({ queryKey });
     },
     onError: (err) => {
-      setActionError(err.message || "Failed to issue/rotate the gateway token.");
+      setActionError(err.message || "We did not issue or rotate the gateway token.");
     },
   });
 
@@ -1387,7 +1386,7 @@ function GatewayCredentialSection({
       queryClient.invalidateQueries({ queryKey });
     },
     onError: (err) => {
-      setActionError(err.message || "Failed to disable the gateway.");
+      setActionError(err.message || "We did not disable the gateway.");
     },
   });
 
@@ -1407,8 +1406,8 @@ function GatewayCredentialSection({
     <section style={gatewaySectionStyle} data-testid="channels-gateway-section">
       <h3 style={gatewayTitleStyle}>Bil24-compatible gateway</h3>
       <p style={fieldHintStyle}>
-        Credential used by the WordPress Bil24-compat plugin to call{" "}
-        <code style={monoStyle}>/compat/bil24/*</code> on behalf of this
+        The WordPress Bil24-compat plugin uses this credential for the calls to{" "}
+        <code style={monoStyle}>/compat/bil24/*</code> for this
         channel.
       </p>
 
@@ -1419,14 +1418,14 @@ function GatewayCredentialSection({
       )}
       {error && !isLoading && (
         <p style={fieldErrorStyle} data-testid="channels-gateway-load-error">
-          Failed to load gateway status: {error.message}
+          We did not load the gateway status: {error.message}
         </p>
       )}
 
       {justRotated !== null && (
         <div style={gatewaySecretBoxStyle} data-testid="channels-gateway-token-box">
           <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 600, color: "#065f46" }}>
-            ✓ Token issued. Copy it now — it will not be shown again.
+            ✓ We issued the token. Copy it. We show it one time.
           </p>
           <div style={monoBoxStyle} data-testid="channels-gateway-token-value">
             {justRotated.token}
@@ -1446,7 +1445,7 @@ function GatewayCredentialSection({
               onClick={() => setJustRotated(null)}
               data-testid="channels-gateway-token-dismiss"
             >
-              Dismiss
+              Close
             </button>
           </div>
           <dl style={{ margin: "8px 0 0", fontSize: 11, color: "#334155" }}>
@@ -1590,7 +1589,7 @@ function WPWebhookSection({
       queryClient.invalidateQueries({ queryKey });
     },
     onError: (err) => {
-      setActionError(err.message || "Failed to register the wp-webhook.");
+      setActionError(err.message || "We did not register the wp-webhook.");
     },
   });
 
@@ -1602,7 +1601,7 @@ function WPWebhookSection({
       queryClient.invalidateQueries({ queryKey });
     },
     onError: (err) => {
-      setActionError(err.message || "Failed to deactivate the wp-webhook.");
+      setActionError(err.message || "We did not deactivate the wp-webhook.");
     },
   });
 
@@ -1622,9 +1621,9 @@ function WPWebhookSection({
     <section style={gatewaySectionStyle} data-testid="channels-wpwebhook-section">
       <h3 style={gatewayTitleStyle}>WordPress webhook</h3>
       <p style={fieldHintStyle}>
-        Callback the WordPress Bil24-compat plugin is notified on for this
-        channel. Registering sends a synchronous <code style={monoStyle}>test</code>{" "}
-        event to the callback URL before saving.
+        The callback URL where we notify the WordPress Bil24-compat plugin for this
+        channel. When you register, we first send a <code style={monoStyle}>test</code>{" "}
+        event to the callback URL. We save after the answer.
       </p>
 
       {isLoading && (
@@ -1634,20 +1633,20 @@ function WPWebhookSection({
       )}
       {error && !isLoading && !notConfigured && (
         <p style={fieldErrorStyle} data-testid="channels-wpwebhook-load-error">
-          Failed to load webhook status: {error.message}
+          We did not load the webhook status: {error.message}
         </p>
       )}
       {notConfigured && !isLoading && justRegistered === null && (
         <p style={fieldHintStyle} data-testid="channels-wpwebhook-not-configured">
-          No webhook registered yet.
+          No webhook is registered.
         </p>
       )}
 
       {justRegistered !== null && (
         <div style={gatewaySecretBoxStyle} data-testid="channels-wpwebhook-secret-box">
           <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 600, color: "#065f46" }}>
-            ✓ Webhook registered. Copy the signing secret now — it will not
-            be shown again.
+            ✓ We registered the webhook. Copy the signing secret. We show it
+            one time.
           </p>
           <div style={monoBoxStyle} data-testid="channels-wpwebhook-secret-value">
             {justRegistered.signing_secret}
@@ -1667,7 +1666,7 @@ function WPWebhookSection({
               onClick={() => setJustRegistered(null)}
               data-testid="channels-wpwebhook-secret-dismiss"
             >
-              Dismiss
+              Close
             </button>
           </div>
           <p
@@ -1722,7 +1721,7 @@ function WPWebhookSection({
           data-testid="channels-wpwebhook-callback-input"
         />
         <label htmlFor="channels-wpwebhook-secret-input" style={fieldLabelStyle}>
-          Signing secret (optional — generated if left blank)
+          Signing secret (optional, we make one if it is empty)
         </label>
         <input
           id="channels-wpwebhook-secret-input"
@@ -1730,7 +1729,7 @@ function WPWebhookSection({
           style={inputMonoStyle}
           value={signingSecret}
           onChange={(e) => setSigningSecret(e.target.value)}
-          placeholder="leave blank to auto-generate"
+          placeholder="keep empty to make one automatically"
           data-testid="channels-wpwebhook-secret-input"
         />
       </div>
@@ -1856,11 +1855,11 @@ function DeleteConfirmDialog({
         </header>
         <div style={archiveBodyStyle}>
           <p style={archiveParaStyle}>
-            Archiving a channel removes it from the active list. This is
-            a <strong>soft-delete</strong>: the row is preserved with{" "}
-            <code style={monoStyle}>deleted_at</code> set and a{" "}
+            If you archive a channel, the active list no longer shows it. This is
+            a <strong>soft-delete</strong>. The row stays with{" "}
+            <code style={monoStyle}>deleted_at</code> set, and we write a{" "}
             <code style={monoStyle}>v1.channel.delete</code> audit
-            event is written atomically. Orders that have already used
+            event in the same step. Orders that used
             this channel keep their reference.
           </p>
           {error !== null ? (
@@ -1939,7 +1938,7 @@ export function mapServerError(err: ApiError): ServerFieldErrors {
       // merchant_of_record puts the refund/chargeback risk on the platform, so
       // only a platform superadmin may switch a channel into it.
       out.payment_mode =
-        "Only a platform superadmin can use merchant_of_record. Choose direct_merchant, or ask the platform operator.";
+        "Only a platform superadmin can use merchant_of_record. Select direct_merchant, or tell the platform operator.";
       return out;
     case "channel.duplicate":
       out.name = err.message;
@@ -1954,12 +1953,12 @@ export function mapServerError(err: ApiError): ServerFieldErrors {
       return out;
     case "permissions.denied":
       out.form =
-        "Your account is missing the required permission. Ask a platform administrator.";
+        "Your account has no permission for this. Tell a platform administrator.";
       return out;
     case "superadmin.missing_reason":
     case "superadmin.reason_required":
       out.form =
-        "An audit reason is required for cross-tenant changes. Provide a reason in the prompt and retry.";
+        "A change in another organization needs an audit reason. Enter a reason in the prompt. Then try again.";
       return out;
     default:
       if (field === "name") {

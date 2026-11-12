@@ -82,7 +82,7 @@ async function fillForm(page: Page, name: string) {
   await page.getByTestId("wizard-cat-0-1-name").fill("VIP");
   await page.getByTestId("wizard-cat-0-1-price").fill("60");
   await page.getByTestId("wizard-cat-0-1-places").fill("30");
-  await expect(page.getByTestId("wizard-status")).toContainText("Everything you filled in is correct", { timeout: 25_000 });
+  await expect(page.getByTestId("wizard-status")).toContainText("All data you added is correct", { timeout: 25_000 });
 }
 
 function countCreates(page: Page): string[] {
@@ -200,7 +200,7 @@ test.describe("create a draft GA event", () => {
     await page.getByTestId("wizard-date-add").click();
     await pickDay(page, "wizard-date-1-day", "month");
     await page.getByTestId("wizard-date-1-time").fill("20:30");
-    await expect(page.getByTestId("wizard-status")).toContainText("Everything you filled in is correct", { timeout: 25_000 });
+    await expect(page.getByTestId("wizard-status")).toContainText("All data you added is correct", { timeout: 25_000 });
     await expect(page.getByTestId("wizard-create")).toBeEnabled();
 
     await page.getByTestId("wizard-create").click();
@@ -268,7 +268,7 @@ test.describe("create a draft GA event", () => {
     await expect(page.getByTestId("wizard-name")).toHaveValue(name); // the draft survived a reload
 
     // 3) the retry carries the same key: the platform edits the event it made.
-    await expect(page.getByTestId("wizard-status")).toContainText("Everything you filled in is correct", { timeout: 25_000 });
+    await expect(page.getByTestId("wizard-status")).toContainText("All data you added is correct", { timeout: 25_000 });
     await page.getByTestId("wizard-create").click();
     await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events/[0-9a-f-]{36}$`), { timeout: 30_000 });
     const rows = await eventsNamed(request, name);
