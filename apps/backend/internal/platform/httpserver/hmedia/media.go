@@ -455,7 +455,7 @@ func setDownloadHeaders(h http.Header, contentType, ownerType string) {
 	}
 	h.Set("Content-Type", contentType)
 	h.Set("X-Content-Type-Options", "nosniff")
-	h.Set("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox")
+	h.Set("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; sandbox")
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		mediaType = strings.ToLower(strings.TrimSpace(contentType))

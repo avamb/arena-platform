@@ -102,7 +102,7 @@ func TestDownloadMedia_HardeningHeaders(t *testing.T) {
 		return w
 	}
 
-	const csp = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox"
+	const csp = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; sandbox"
 	cases := []struct {
 		name       string
 		file, typ  string

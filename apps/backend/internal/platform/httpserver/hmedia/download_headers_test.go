@@ -6,7 +6,7 @@ import (
 )
 
 func TestSetDownloadHeaders(t *testing.T) {
-	const csp = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox"
+	const csp = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; sandbox"
 	cases := []struct {
 		name, contentType, owner string
 		wantType                 string

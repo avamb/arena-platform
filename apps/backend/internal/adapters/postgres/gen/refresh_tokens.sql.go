@@ -72,24 +72,30 @@ WHERE token = $1 AND revoked_at IS NULL
 `
 
 // RevokeRefreshToken soft-revokes a refresh token on a sign-out or a session
-// eviction: revoked_at = now(), revoke_reason = 'signed_out'. A token that is
-// already revoked keeps its first time and reason.
+// eviction: revoked_at = now(), revoke_reason = 'signed_out'. token is the
+// stored hash (users.TokenHash), not the raw value. A token that is already
+// revoked keeps its first time and reason.
 func (q *Queries) RevokeRefreshToken(ctx context.Context, token string) error {
 	_, err := q.db.Exec(ctx, revokeRefreshToken, token)
 	return err
 }
 
-const rotateRefreshToken = `-- name: RotateRefreshToken :exec
+const rotateRefreshToken = `-- name: RotateRefreshToken :execrows
 UPDATE refresh_tokens
 SET revoked_at = now(), revoke_reason = 'rotated'
-WHERE token = $1
+WHERE token = $1 AND revoked_at IS NULL
 `
 
-// RotateRefreshToken revokes a refresh token replaced by a newer one on
-// refresh: revoked_at = now(), revoke_reason = 'rotated'.
-func (q *Queries) RotateRefreshToken(ctx context.Context, token string) error {
-	_, err := q.db.Exec(ctx, rotateRefreshToken, token)
-	return err
+// RotateRefreshToken revokes a live refresh token replaced by a newer one on
+// refresh: revoked_at = now(), revoke_reason = 'rotated'. It returns the
+// number of rows changed: 0 means the token was already revoked (another
+// refresh, a sign-out or a sweep came first) and no successor may be issued.
+func (q *Queries) RotateRefreshToken(ctx context.Context, token string) (int64, error) {
+	tag, err := q.db.Exec(ctx, rotateRefreshToken, token)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 const revokeAllUserRefreshTokens = `-- name: RevokeAllUserRefreshTokens :exec

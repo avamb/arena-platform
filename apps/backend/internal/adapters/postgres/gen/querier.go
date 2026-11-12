@@ -29,7 +29,7 @@ type Querier interface {
 	InsertRefreshToken(ctx context.Context, token string, userID uuid.UUID, expiresAt time.Time) error
 	GetRefreshToken(ctx context.Context, token string) (GetRefreshTokenRow, error)
 	RevokeRefreshToken(ctx context.Context, token string) error
-	RotateRefreshToken(ctx context.Context, token string) error
+	RotateRefreshToken(ctx context.Context, token string) (int64, error)
 	RevokeAllUserRefreshTokens(ctx context.Context, userID uuid.UUID) error
 	GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByEmailRow, error)
 

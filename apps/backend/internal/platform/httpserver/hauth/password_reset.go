@@ -18,11 +18,12 @@
 //	POST /v1/auth/password-reset/confirm
 //	  1. Parse and validate the request body (token, new_password).
 //	  2. Validate password length (8–72 chars).
-//	  3. Consume the token by SHA-256(token) in one conditional UPDATE
-//	     (unused and unexpired only), so it is used at most once.
-//	  4. When nothing was consumed: 404 when the token is unknown, 410 Gone
-//	     when it is already used or expired.
-//	  5. Hash the new password with bcrypt (cost 12).
+//	  3. Read the token by SHA-256(token): 404 when unknown, 410 Gone when
+//	     already used or expired (no bcrypt is spent on such a token).
+//	  4. Hash the new password with bcrypt (cost 12), outside the transaction.
+//	  5. In the transaction, consume the token in one conditional UPDATE
+//	     (unused and unexpired only), so it is used at most once; when
+//	     nothing was consumed, answer as in step 3.
 //	  6. UPDATE users SET password_hash = … WHERE id = token.user_id.
 //	  7. PR2-03: Revoke ALL active refresh tokens for the user (same tx)
 //	     so that old sessions cannot persist after account recovery.
@@ -35,6 +36,7 @@
 package hauth
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -262,6 +264,31 @@ func (h *Handler) PasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// PR2-03: look up token by SHA-256 hash; client sent raw token.
+	resetTokenHash := users.TokenHash(req.Token)
+
+	// A cheap read first, so a token that cannot be used is answered without
+	// spending bcrypt on it.
+	pre, err := h.db.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	if err != nil {
+		logger.Error("auth.password_reset.confirm: begin read tx failed", "error", err)
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database is not available", r))
+		return
+	}
+	refused := refuseUnusableResetToken(ctx, gen.New(pre), resetTokenHash, w, r)
+	_ = pre.Rollback(ctx)
+	if refused {
+		return
+	}
+
+	// Hash before the transaction so bcrypt does not run while the token row is locked.
+	pwHash, err := users.HashPassword(req.NewPassword)
+	if err != nil {
+		logger.Error("auth.password_reset.confirm: bcrypt failed", "error", err)
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.password_hash_failed", "failed to hash password", r))
+		return
+	}
+
 	tx, err := h.db.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		logger.Error("auth.password_reset.confirm: begin tx failed", "error", err)
@@ -272,11 +299,8 @@ func (h *Handler) PasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
 
 	q := gen.New(tx)
 
-	// PR2-03: look up token by SHA-256 hash; client sent raw token.
-	resetTokenHash := users.TokenHash(req.Token)
-
-	// Consume the token first: one conditional UPDATE, so a token is used at
-	// most once. When nothing is consumed, read the row only to pick the answer.
+	// Consume the token: one conditional UPDATE, so a token is used at most
+	// once. When nothing is consumed, read the row only to pick the answer.
 	userID, err := q.ConsumePasswordResetToken(ctx, resetTokenHash)
 	if err != nil {
 		if !errors.Is(err, pgx.ErrNoRows) {
@@ -284,28 +308,10 @@ func (h *Handler) PasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
 			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database error", r))
 			return
 		}
-		tokenRow, gErr := q.GetPasswordResetToken(ctx, resetTokenHash)
-		if gErr != nil {
-			if errors.Is(gErr, pgx.ErrNoRows) {
-				httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("auth.token_not_found", "reset token not found or already expired", r))
-				return
-			}
-			logger.Error("auth.password_reset.confirm: fetch token failed", "error", gErr)
-			httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database error", r))
-			return
-		}
-		if tokenRow.UsedAt != nil {
+		if !refuseUnusableResetToken(ctx, q, resetTokenHash, w, r) {
+			// Usable at the first read, gone now: another request took it.
 			httputil.WriteJSON(w, http.StatusGone, httputil.ErrorEnvelope("auth.token_already_used", "this reset token has already been used", r))
-			return
 		}
-		httputil.WriteJSON(w, http.StatusGone, httputil.ErrorEnvelope("auth.token_expired", "this reset token has expired; please request a new one", r))
-		return
-	}
-
-	pwHash, err := users.HashPassword(req.NewPassword)
-	if err != nil {
-		logger.Error("auth.password_reset.confirm: bcrypt failed", "error", err)
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.password_hash_failed", "failed to hash password", r))
 		return
 	}
 
@@ -370,4 +376,30 @@ func (h *Handler) PasswordResetConfirm(w http.ResponseWriter, r *http.Request) {
 		"user_id": userID.String(),
 		"message": "Password has been reset successfully. Please log in with your new password.",
 	})
+}
+
+// refuseUnusableResetToken reads the token row and answers when the token
+// cannot be used: 404 auth.token_not_found when it is unknown, 410
+// auth.token_already_used or auth.token_expired. It writes nothing and
+// returns false when the token is still usable.
+func refuseUnusableResetToken(ctx context.Context, q *gen.Queries, tokenHash string, w http.ResponseWriter, r *http.Request) bool {
+	row, err := q.GetPasswordResetToken(ctx, tokenHash)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope("auth.token_not_found", "reset token not found or already expired", r))
+			return true
+		}
+		logging.FromContext(ctx).Error("auth.password_reset.confirm: fetch token failed", "error", err)
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "database error", r))
+		return true
+	}
+	if row.UsedAt != nil {
+		httputil.WriteJSON(w, http.StatusGone, httputil.ErrorEnvelope("auth.token_already_used", "this reset token has already been used", r))
+		return true
+	}
+	if !time.Now().Before(row.ExpiresAt) {
+		httputil.WriteJSON(w, http.StatusGone, httputil.ErrorEnvelope("auth.token_expired", "this reset token has expired; please request a new one", r))
+		return true
+	}
+	return false
 }

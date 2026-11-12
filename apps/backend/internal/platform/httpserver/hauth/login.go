@@ -457,9 +457,18 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 	newTokenHash := users.TokenHash(newRawToken)
 
-	if err := q.RotateRefreshToken(ctx, tokenHash); err != nil {
+	rotated, err := q.RotateRefreshToken(ctx, tokenHash)
+	if err != nil {
 		logger.Error("auth.refresh: revoke old token failed", "error", err)
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("internal.revoke_failed", "failed to revoke old refresh token", r))
+		return
+	}
+	if rotated == 0 {
+		// Another refresh, a sign-out or a sweep revoked the token after it was
+		// read above. That request owns the outcome: this one issues nothing
+		// and revokes nothing else.
+		_ = tx.Rollback(ctx)
+		httputil.WriteJSON(w, http.StatusUnauthorized, httputil.ErrorEnvelope("auth.invalid_refresh_token", "refresh token has been revoked", r))
 		return
 	}
 	if err := q.InsertRefreshTokenSession(ctx, newTokenHash, actorID, newRefreshExp, session); err != nil {
@@ -527,7 +536,9 @@ func (h *Handler) trackNewSession(ctx context.Context, actorID uuid.UUID, refres
 				} else {
 					eq := gen.New(evictTx)
 					for _, tok := range tokensToEvict {
-						if rErr := eq.RevokeRefreshToken(ctx, tok); rErr != nil {
+						// The session store holds the raw token, the database its
+						// hash; the store itself is revoked by the raw value.
+						if rErr := eq.RevokeRefreshToken(ctx, users.TokenHash(tok)); rErr != nil {
 							logger.Warn("auth.login: DB revoke evicted session failed",
 								"error", rErr,
 								"token_prefix", tok[:min(len(tok), 8)],

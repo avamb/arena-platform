@@ -31446,7 +31446,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "429":
-          description: Too many wrong passwords (`auth.rate_limited`).
+          description: Too many wrong passwords (`auth.rate_limited`, with `Retry-After` in seconds).
           content:
             application/json:
               schema:
@@ -31504,7 +31504,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "429":
-          description: Too many attempts from this address (`auth.rate_limited`).
+          description: Too many attempts from this address (`auth.rate_limited`, with `Retry-After` in seconds).
           content:
             application/json:
               schema:
@@ -31583,7 +31583,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "429":
-          description: Too many attempts from this address (`auth.rate_limited`).
+          description: Too many attempts from this address (`auth.rate_limited`, with `Retry-After` in seconds).
           content:
             application/json:
               schema:

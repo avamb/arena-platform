@@ -40702,7 +40702,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Too many wrong passwords (`auth.rate_limited`). */
+            /** @description Too many wrong passwords (`auth.rate_limited`, with `Retry-After` in seconds). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -40762,7 +40762,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Too many attempts from this address (`auth.rate_limited`). */
+            /** @description Too many attempts from this address (`auth.rate_limited`, with `Retry-After` in seconds). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -40831,7 +40831,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Too many attempts from this address (`auth.rate_limited`). */
+            /** @description Too many attempts from this address (`auth.rate_limited`, with `Retry-After` in seconds). */
             429: {
                 headers: {
                     [name: string]: unknown;
