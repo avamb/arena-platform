@@ -522,10 +522,10 @@ other = "Sí, el mismo sitio"
 other = "Otro recinto"
 
 ["bot.wz.ask_country"]
-other = "¿En qué país?"
+other = "¿En qué país? Elige un botón o escribe el nombre del país."
 
 ["bot.wz.ask_city"]
-other = "¿En qué ciudad? Elige un botón o escribe el nombre de la ciudad."
+other = "¿En qué ciudad? Elige un botón o escribe el nombre de la ciudad. El número indica cuántos recintos hay en la ciudad."
 
 ["bot.wz.city_other"]
 other = "+ Otra ciudad…"
@@ -537,10 +537,10 @@ other = "Nombre de la ciudad."
 other = "Indica el nombre de la ciudad."
 
 ["bot.wz.ask_venue"]
-other = "¿Dónde se celebra? Elige un recinto o añade uno nuevo."
+other = "¿Dónde se celebra? Elige un recinto o escribe una parte del nombre para buscarlo. Si el recinto no está en la lista, añádelo."
 
 ["bot.wz.venue_new"]
-other = "+ Nuevo recinto…"
+other = "El recinto no está en la lista"
 
 ["bot.wz.ask_venue_name"]
 other = "Nombre del recinto, tal como lo conocen los compradores, por ejemplo “Salón comunitario”."
@@ -1361,7 +1361,7 @@ other = "No"
 other = "Listo"
 
 ["bot.onb.country_hint"]
-other = "Elige un país con un botón o escribe su código de dos letras, por ejemplo ES."
+other = "Elige un país entre los primeros botones o elige una parte del mundo. También puedes escribir el nombre del país."
 
 ["bot.onb.terms_link"]
 other = "Condiciones del servicio"
@@ -1426,7 +1426,7 @@ other = "Lamentablemente no podemos abrir una organización con esta solicitud. 
 # ── country regions (bot.wz.region.*) ──
 
 ["bot.wz.ask_region"]
-other = "¿En qué parte del mundo está el recinto?"
+other = "¿En qué parte del mundo está el recinto? Elige una parte del mundo o un país entre los primeros botones. También puedes escribir el nombre del país."
 
 ["bot.wz.regions_back_btn"]
 other = "← Regiones"
@@ -4841,92 +4841,218 @@ other = "📅 Sesiones: distribución de plazas"
 ["bot.wz.t_date_seated_note"]
 other = "Una fecha vendida por plano mantiene sus plazas y categorías. Solo cambian los precios."
 
-["bot.wz.plan_up_ask"]
-other = "El recinto «{{.Venue}}» aún no tiene plano. Envíalo como archivo SVG y venderé las plazas según el plano, con un precio para cada categoría. O seguimos sin plazas numeradas (entrada libre)."
+["bot.wz.plan_in_ask"]
+other = "El recinto «{{.Venue}}» aún no tiene plano. Envía lo que tengas: un PDF, una tabla de Excel o una imagen del plano. Construiremos el plano y te lo mostraremos para que lo revises. También puedes seguir sin plano. Entonces la entrada es libre."
 
-["bot.wz.plan_up_btn"]
-other = "Subir el plano del recinto (SVG)"
+["bot.wz.plan_in_send_btn"]
+other = "Enviar un archivo"
 
-["bot.wz.plan_up_skip_btn"]
-other = "Continuar sin plano"
+["bot.wz.plan_in_skip_btn"]
+other = "Seguir sin plano"
 
-["bot.wz.plan_up_more_btn"]
-other = "Subir otro plano (SVG)"
+["bot.wz.plan_in_upload_btn"]
+other = "Subir un plano de la sala"
 
-["bot.wz.plan_up_file"]
-other = "Envía el plano del recinto como archivo. Debe ser un SVG de hasta {{.Limit}} MB.\n\nEn Telegram pulsa el clip y elige «Archivo», no «Foto».\n\nLas categorías salen de los colores de las plazas: el archivo las enumera en el grupo con id «PriceCategory». Las plazas del mismo color forman una categoría."
+["bot.wz.plan_in_file"]
+other = "Envía los archivos del plano. Puedes enviar hasta {{.Count}} archivos, de {{.Limit}} MB cada uno como máximo. Sirve un PDF, una tabla de Excel (.xlsx) o una imagen (JPEG, PNG). Cuando envíes el último, pulsa «Listo»."
 
-["bot.wz.plan_up_need_file"]
-other = "Eso no es un archivo. Envía el plano como archivo SVG: clip → «Archivo»."
+["bot.wz.plan_in_need_file"]
+other = "Eso no es un archivo. Envía el plano como PDF, tabla de Excel o imagen."
 
-["bot.wz.plan_up_too_big"]
-other = "El archivo es demasiado grande. El límite es {{.Limit}} MB. Guarda un SVG más ligero y envíalo otra vez."
+["bot.wz.plan_in_got"]
+other = "Archivo {{.Count}} recibido. Envía el siguiente o pulsa «Listo»."
 
-["bot.wz.plan_up_failed"]
-other = "No he podido guardar el plano. No se ha cambiado nada. Envía el archivo otra vez en un minuto o continúa sin plano."
+["bot.wz.plan_in_done_btn"]
+other = "Listo"
 
-["bot.wz.plan_up_not_svg"]
-other = "Esto no es un SVG. Envía el plano como archivo SVG o continúa sin plano."
+["bot.wz.plan_in_discard_btn"]
+other = "Cancelar"
 
-["bot.wz.plan_up_bad"]
-other = "Todavía no puedo usar este archivo:\n{{.List}}\n\nCorrige el archivo y envíalo otra vez, o continúa sin plano."
+["bot.wz.plan_in_photo_tip"]
+other = "Imagen recibida. Si tienes el plano como archivo, envíalo como archivo. Así lo leemos con más exactitud."
 
-["bot.wz.plan_up_more_issues"]
-other = "…y {{.Count}} más."
+["bot.wz.plan_in_too_many"]
+other = "Una solicitud admite hasta {{.Count}} archivos. Pulsa «Listo» para enviar estos archivos."
 
-["bot.wz.plan_up_done"]
-other = "Plano «{{.Name}}» guardado: {{.Seats}} plazas en {{.Count}} categorías."
+["bot.wz.plan_in_too_big"]
+other = "El archivo pesa más de {{.Limit}} MB, por eso no lo añadí. Envía un archivo más pequeño o cada página por separado."
 
-["bot.wz.plan_up_line"]
-other = "• {{.Name}}: {{.Places}} plazas"
+["bot.wz.plan_in_too_big_total"]
+other = "Los archivos pesan más de {{.Limit}} MB en total. Pulsa «Listo» para enviar estos archivos. Envía el resto en una solicitud nueva."
 
-["bot.wz.plan_up_line_ga"]
-other = "• {{.Name}}: {{.Places}} plazas (de pie)"
+["bot.wz.plan_in_bad_format"]
+other = "No puedo leer {{if .Name}}el archivo «{{.Name}}»{{else}}uno de los archivos{{end}}. Guardé todos tus archivos. Quítalo o envía otros archivos. Sirven un PDF, una tabla de Excel (.xlsx) o una imagen (JPEG, PNG). Después pulsa «Listo»."
 
-["bot.wz.plan_up_one_category"]
-other = "Todas las plazas están en una sola categoría, así que el precio será el mismo para todas. Para precios distintos, pinta las plazas de colores distintos, enumera los colores en el grupo «PriceCategory» y envía el archivo otra vez."
+["bot.wz.plan_in_unreadable"]
+other = "No puedo abrir {{if .Name}}el archivo «{{.Name}}»{{else}}uno de los archivos{{end}}. Un PDF puede tener hasta 20 páginas. Una imagen puede tener hasta 40 megapíxeles. Guardé todos tus archivos. Quítalo o envía otros archivos. Después pulsa «Listo»."
 
-["bot.wz.plan_up_warn_legend"]
-other = "El archivo no tiene el grupo «Legend». No pasa nada: las categorías salen del grupo «PriceCategory»."
+["bot.wz.plan_in_failed"]
+other = "No he podido enviar los archivos. Pulsa «Listo» otra vez en un minuto."
 
-["bot.wz.plan_up_warn_other"]
-other = "Aviso al leer el archivo: {{.Code}}."
+["bot.wz.plan_in_nothing"]
+other = "Aún no hay archivos. Primero envía un archivo."
 
-["bot.wz.plan_up_issue_invalid"]
-other = "El archivo no se puede leer como SVG."
+["bot.wz.plan_in_received"]
+other = "Archivo recibido. Un administrador de la plataforma construirá el plano. Suele tardar hasta un día laborable. Te escribiré cuando el plano esté listo para revisar."
 
-["bot.wz.plan_up_issue_canvas"]
-other = "El dibujo no tiene tamaño o es demasiado grande. Define el ancho y el alto del dibujo, de 2000 como máximo."
+["bot.wz.plan_in_draft_saved"]
+other = "El borrador del evento está guardado. Seguiremos desde el mismo punto."
 
-["bot.wz.plan_up_issue_categories"]
-other = "No encuentro las categorías. Añade un grupo con id «PriceCategory»: una muestra de color con la etiqueta «#Nombre» por cada categoría."
+["bot.wz.plan_in_svg_note"]
+other = "Este SVG no sirve para vender plazas. Construiremos el plano a partir de él, como de una imagen."
 
-["bot.wz.plan_up_issue_seat_shape"]
-other = "La plaza {{.Element}} no es un círculo. Dibuja cada plaza como un círculo."
+["bot.wz.plan_in_waiting"]
+other = "Tus archivos están con un administrador. Te escribiré cuando el plano esté listo para revisar."
 
-["bot.wz.plan_up_issue_row"]
-other = "Una fila o un sector no tiene la etiqueta necesaria: {{.Element}}. Pon nombre a cada fila y etiqueta a cada sector."
+["bot.wz.plan_in_ready"]
+other = "El plano de «{{.Venue}}» está listo. Compáralo con tu propio plano."
 
-["bot.wz.plan_up_issue_seat_number"]
-other = "Una plaza no tiene número o el número se repite: {{.Element}}."
+["bot.wz.plan_in_returned"]
+other = "Un administrador ha corregido el plano de «{{.Venue}}». Comprueba que todo esté correcto. {{.Note}}"
 
-["bot.wz.plan_up_issue_color"]
-other = "La plaza {{.Element}} tiene un color que no está en el grupo «PriceCategory»."
+["bot.wz.plan_in_check_btn"]
+other = "Revisar el plano"
 
-["bot.wz.plan_up_issue_too_many"]
-other = "Hay demasiadas categorías. El máximo es 15."
+["bot.wz.plan_in_summary"]
+other = "Plano de «{{.Venue}}». Plazas: {{.Seats}}. Filas: {{.Rows}}. Secciones: {{.Sections}}."
 
-["bot.wz.plan_up_issue_no_places"]
-other = "No he encontrado ninguna plaza. Dibuja las plazas como círculos dentro de filas con etiqueta."
+["bot.wz.plan_in_warnings"]
+other = "Avisos: {{.Count}}."
 
-["bot.wz.plan_up_issue_ga"]
-other = "Una zona de pie no está del todo configurada: {{.Element}}. Necesita la etiqueta «#GA Nombre», un color del grupo «PriceCategory» y el número de plazas en su título."
+["bot.wz.plan_in_question"]
+other = "Compara el plano con tu propio plano. ¿Está todo correcto?"
 
-["bot.wz.plan_up_issue_other"]
-other = "El archivo tiene un problema ({{.Code}}): {{.Element}}."
+["bot.wz.plan_in_ok_btn"]
+other = "Correcto"
+
+["bot.wz.plan_in_fix_btn"]
+other = "Corregir"
+
+["bot.wz.plan_in_admin_btn"]
+other = "Llamar a un administrador"
+
+["bot.wz.plan_in_fix_ask"]
+other = "Escribe qué hay que corregir. Por ejemplo: la fila B tiene 12 plazas, no 10."
+
+["bot.wz.plan_in_fix_sent"]
+other = "Gracias. Un administrador corregirá el plano y te escribirá."
+
+["bot.wz.plan_in_fix_long"]
+other = "El texto es demasiado largo. Escribe hasta {{.Limit}} caracteres."
+
+["bot.wz.plan_in_fix_failed"]
+other = "No he podido enviar el texto. Envíalo otra vez."
+
+["bot.wz.plan_in_admin_called"]
+other = "Un administrador ha recibido tu solicitud. Suele responder en un día laborable. Te escribiré cuando el plano esté listo para revisar."
+
+["bot.wz.plan_in_changed"]
+other = "El plano ha cambiado. Revisa la nueva versión."
+
+["bot.wz.plan_in_rounds"]
+other = "Ya has revisado este plano {{.Count}} veces. Si sigue sin estar bien, llama a un administrador."
+
+["bot.wz.plan_in_approve_bad"]
+other = "El plano no ha pasado la comprobación. Llama a un administrador."
+
+["bot.wz.plan_in_rejected"]
+other = "No hemos podido construir el plano de «{{.Venue}}» con estos archivos. Motivo: {{.Reason}}. Envía otro archivo o sigue sin plazas numeradas."
+
+["bot.wz.plan_in_rejected_plain"]
+other = "No hemos podido construir el plano de «{{.Venue}}» con estos archivos. Envía otro archivo o sigue sin plazas numeradas."
+
+["bot.wz.plan_in_again_btn"]
+other = "Enviar otro archivo"
+
+["bot.wz.plan_in_saved"]
+other = "El plano está guardado: {{.Seats}} plazas. Ahora todas las plazas están en una categoría de precio. Para poner precios distintos, abre la tarjeta de la fecha y pulsa «Distribución de plazas»."
+
+["bot.wz.plan_in_saved_wizard"]
+other = "El plano está guardado: {{.Seats}} plazas. Ahora todas las plazas están en una categoría de precio. Cuando guardes el evento, pulsa «Dividir las plazas por precio» para poner precios distintos."
+
+["bot.wz.plan_in_saved_by_admin"]
+other = "Un administrador ha guardado el plano de «{{.Venue}}». Ya puedes usarlo en tus eventos."
+
+["bot.wz.plan_in_open_wait"]
+other = "Ya hay una solicitud para «{{.Venue}}». Un administrador está construyendo el plano. Te escribiré cuando esté listo para revisar."
+
+["bot.wz.plan_in_open_review"]
+other = "Ya hay una solicitud para «{{.Venue}}». El plano está listo para que lo revises."
+
+["bot.wz.plan_in_cancel_btn"]
+other = "Cancelar la solicitud"
+
+["bot.wz.plan_in_cancelled"]
+other = "La solicitud está cancelada."
+
+["bot.wz.plan_in_gone"]
+other = "No encuentro esta solicitud. Abre el menú e inténtalo otra vez."
+
+["bot.wz.plan_in_too_big_server"]
+other = "No pudimos aceptar {{if .Name}}el archivo «{{.Name}}»{{else}}uno de los archivos{{end}} porque es demasiado grande. Guardé todos tus archivos. Quítalo o envía archivos más pequeños. Después pulsa «Listo»."
+
+["bot.wz.plan_in_already"]
+other = "Tu solicitud ya está con nosotros. Te escribiré cuando el plano esté listo."
+
+["bot.wz.plan_in_already_sent"]
+other = "Ya envié estos archivos. Te escribiré cuando el plano esté listo."
+
+["bot.wz.plan_in_skip_ask"]
+other = "¿Cancelar la solicitud del plano de la sala?"
+
+["bot.wz.plan_in_skip_yes_btn"]
+other = "Sí, cancelar la solicitud"
+
+["bot.wz.plan_in_skip_no_btn"]
+other = "No, mantener la solicitud"
+
+["bot.wz.plan_in_remove_last_btn"]
+other = "Quitar el último archivo"
+
+["bot.wz.plan_in_remove_btn"]
+other = "Quitar {{.Name}}"
+
+["bot.wz.plan_in_removed"]
+other = "Quité el archivo. Archivos ahora: {{.Count}}. Envía más o pulsa «Listo»."
+
+["bot.wz.plan_in_notice_org"]
+other = "Esto es sobre la organización «{{.Org}}»."
+
+["bot.wz.plan_in_other_org"]
+other = "Esta solicitud pertenece a «{{.Org}}». Cambia a ella en el menú y abre la solicitud otra vez."
 
 ["bot.wz.venue_shared_note"]
 other = "Los recintos con ✓ son de otros organizadores y los ha comprobado la plataforma. Puedes vender entradas allí. Solo su propietario puede modificar un recinto."
+
+# ── elección del recinto por país, ciudad y recinto (wizard_venue_choice.go, country_choice.go) ──
+
+["bot.geo.matches"]
+other = "He encontrado estos países. Elige uno."
+
+["bot.geo.no_match"]
+other = "No encuentro ningún país llamado «{{.Name}}». Revisa la ortografía y escribe el nombre otra vez, o elige una parte del mundo."
+
+["bot.wz.ask_city_outside"]
+other = "{{.Country}} es nuevo en la plataforma. Escribe el nombre de la ciudad. Añadiré la ciudad junto con el recinto."
+
+["bot.wz.venue_tag_plan"]
+other = "plano de asientos"
+
+["bot.wz.venue_search"]
+other = "Recintos de {{.City}} con «{{.Q}}» en el nombre. Elige un recinto o escribe otra parte del nombre."
+
+["bot.wz.venue_search_none"]
+other = "No encuentro ningún recinto con «{{.Q}}» en el nombre. Escribe otra parte del nombre, muestra todos los recintos o añade uno nuevo."
+
+["bot.wz.venue_all_btn"]
+other = "Mostrar todos los recintos"
+
+["bot.wz.venue_in_new_city"]
+other = "Todavía no hay recintos en {{.City}}. Añade el recinto."
+
+["bot.wz.venue_add_btn"]
+other = "Añadir el recinto"
+
 ["shop.payment.description"]
 other = "{{.Org}}, pedido n.º {{.Number}}"
 

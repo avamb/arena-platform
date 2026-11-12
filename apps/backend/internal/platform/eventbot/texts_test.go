@@ -32,10 +32,12 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		// the page statistics line (page_stats.go)
 		"Views": 12, "Days": 30, "Suspect": 2,
 		// the event-center screens (ec_keys.go)
-		"Filter": "f", "Search": "s", "Legend": "lg", "Query": "q", "Count": 1, "Amount": "1 EUR", "Net": "1 EUR", "Used": 1,
+		"Filter": "f", "Search": "s", "Legend": "lg", "Query": "q", "Q": "q", "Count": 1, "Amount": "1 EUR", "Net": "1 EUR", "Used": 1,
 		"Code": "C", "Discount": "1 EUR", "Closed": "", "Places": 5, "Revenue": "1 EUR", "Transferred": 1, "Pending": "1 EUR",
 		"Unavailable": 1, "Scope": "sc", "Charge": "1 EUR", "RefundCount": 1, "Refunded": "1 EUR", "External": "1 EUR",
 		"PendingOrders": 1, "Rows": 3, "What": "w", "Bot": "@Bot",
+		// the seating plan intake (plan_intake.go)
+		"Sections": 2, "Note": "n",
 		// categories per date (wizard_date_tickets.go)
 		"Prev": "15.12.2026 20:00", "Plan": "P", "Extra": 1,
 		// the orders screens (ord_keys.go)

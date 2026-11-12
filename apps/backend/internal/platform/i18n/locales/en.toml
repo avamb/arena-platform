@@ -693,10 +693,10 @@ other = "Yes, the same venue"
 other = "A different venue"
 
 ["bot.wz.ask_country"]
-other = "Which country?"
+other = "Which country? Select a button, or type the name of the country."
 
 ["bot.wz.ask_city"]
-other = "Which city? Select a button or type the name of the city."
+other = "Which city? Select a button, or type the name of the city. The number shows how many venues are in the city."
 
 ["bot.wz.city_other"]
 other = "+ A different city…"
@@ -708,10 +708,10 @@ other = "Name of the city."
 other = "Please give the city's name."
 
 ["bot.wz.ask_venue"]
-other = "Where is the event? Select a venue or add a new one."
+other = "Where is the event? Select a venue, or type a part of the name to search. If the venue is not in the list, add it."
 
 ["bot.wz.venue_new"]
-other = "+ New venue…"
+other = "The venue is not in the list"
 
 ["bot.wz.ask_venue_name"]
 other = "Name of the venue, as buyers know it, for example “Community center”."
@@ -1533,7 +1533,7 @@ other = "No"
 other = "Done"
 
 ["bot.onb.country_hint"]
-other = "Select a country with a button, or type its two-letter code, for example ES."
+other = "Select a country from the first buttons, or select a part of the world. You can also type the name of the country."
 
 ["bot.onb.terms_link"]
 other = "Terms of service"
@@ -1598,7 +1598,7 @@ other = "Unfortunately we cannot open an organization for this application. If y
 # ── country regions (bot.wz.region.*) ──
 
 ["bot.wz.ask_region"]
-other = "Which part of the world is the venue in?"
+other = "Which part of the world is the venue in? Select a part of the world, or a country from the first buttons. You can also type the name of the country."
 
 ["bot.wz.regions_back_btn"]
 other = "← Regions"
@@ -5013,92 +5013,218 @@ other = "📅 Dates: seat layout"
 ["bot.wz.t_date_seated_note"]
 other = "A date with a seating plan keeps its seats and categories. Only the prices change."
 
-["bot.wz.plan_up_ask"]
-other = "The venue «{{.Venue}}» has no seating plan. Send a plan as an SVG file, and I will sell the seats by the plan with a price for each category. Or continue without seats (free seating)."
+["bot.wz.plan_in_ask"]
+other = "The venue «{{.Venue}}» has no seating plan yet. Please send what you have: a PDF, an Excel table or an image of the plan. We will build the seating plan and show it to you to check. You can also continue without a plan. Then all seats are free seating."
 
-["bot.wz.plan_up_btn"]
-other = "Upload the seating plan (SVG)"
+["bot.wz.plan_in_send_btn"]
+other = "Send a file"
 
-["bot.wz.plan_up_skip_btn"]
+["bot.wz.plan_in_skip_btn"]
 other = "Continue without a plan"
 
-["bot.wz.plan_up_more_btn"]
-other = "Upload a different plan (SVG)"
+["bot.wz.plan_in_upload_btn"]
+other = "Upload a seating plan"
 
-["bot.wz.plan_up_file"]
-other = "Send the seating plan as a file. It must be an SVG, up to {{.Limit}} MB.\n\nIn Telegram, press the paperclip and select “File”, not “Photo”.\n\nThe categories are the colors of the seats. The file lists them in a group with the id “PriceCategory”. Seats of one color make one category."
+["bot.wz.plan_in_file"]
+other = "Send the files of the plan. You can send up to {{.Count}} files, each up to {{.Limit}} MB. Use a PDF, an Excel table (.xlsx) or an image (JPEG, PNG). Press «Done» after the last file."
 
-["bot.wz.plan_up_need_file"]
-other = "That is not a file. Send the seating plan as an SVG file: paperclip → “File”."
+["bot.wz.plan_in_need_file"]
+other = "That is not a file. Please send the plan as a PDF, an Excel table or an image."
 
-["bot.wz.plan_up_too_big"]
-other = "The file is too large. The limit is {{.Limit}} MB. Save a smaller SVG and send it again."
+["bot.wz.plan_in_got"]
+other = "File {{.Count}} received. Send the next file or press «Done»."
 
-["bot.wz.plan_up_failed"]
-other = "I cannot save the plan. We made no changes. Please send the file again in a minute, or continue without a plan."
+["bot.wz.plan_in_done_btn"]
+other = "Done"
 
-["bot.wz.plan_up_not_svg"]
-other = "This is not an SVG. Send the seating plan as an SVG file, or continue without a plan."
+["bot.wz.plan_in_discard_btn"]
+other = "Cancel"
 
-["bot.wz.plan_up_bad"]
-other = "I cannot use this file:\n{{.List}}\n\nCorrect the file and send it again, or continue without a plan."
+["bot.wz.plan_in_photo_tip"]
+other = "Image received. If you have the plan as a file, please send the file. I can read a file more accurately."
 
-["bot.wz.plan_up_more_issues"]
-other = "…and {{.Count}} more."
+["bot.wz.plan_in_too_many"]
+other = "One request holds up to {{.Count}} files. Press «Done» to send these files."
 
-["bot.wz.plan_up_done"]
-other = "We saved the plan «{{.Name}}»: {{.Seats}} seats in {{.Count}} categories."
+["bot.wz.plan_in_too_big"]
+other = "The file is larger than {{.Limit}} MB, so I did not add it. Please send a smaller file or send each page separately."
 
-["bot.wz.plan_up_line"]
-other = "• {{.Name}}: {{.Places}} seats"
+["bot.wz.plan_in_too_big_total"]
+other = "The files are larger than {{.Limit}} MB together. Press «Done» to send these files. Then send the rest in a new request."
 
-["bot.wz.plan_up_line_ga"]
-other = "• {{.Name}}: {{.Places}} tickets (no seat numbers)"
+["bot.wz.plan_in_bad_format"]
+other = "I cannot read {{if .Name}}the file «{{.Name}}»{{else}}one of the files{{end}}. I kept all your files. Please remove it or send other files. Use a PDF, an Excel table (.xlsx) or an image (JPEG, PNG). Then press «Done»."
 
-["bot.wz.plan_up_one_category"]
-other = "All seats are in one category, and the price is the same for all. For different prices, make the seats different colors, list the colors in the “PriceCategory” group and send the file again."
+["bot.wz.plan_in_unreadable"]
+other = "I cannot open {{if .Name}}the file «{{.Name}}»{{else}}one of the files{{end}}. A PDF can have up to 20 pages. An image can have up to 40 megapixels. I kept all your files. Please remove it or send other files. Then press «Done»."
 
-["bot.wz.plan_up_warn_legend"]
-other = "The file has no “Legend” group. This is not a problem, because the categories are in the “PriceCategory” group."
+["bot.wz.plan_in_failed"]
+other = "I could not send the files. Please press «Done» again in a minute."
 
-["bot.wz.plan_up_warn_other"]
-other = "Note on the file: {{.Code}}."
+["bot.wz.plan_in_nothing"]
+other = "There are no files yet. Please send a file first."
 
-["bot.wz.plan_up_issue_invalid"]
-other = "I cannot read the file as an SVG."
+["bot.wz.plan_in_received"]
+other = "File received. A platform administrator will build the seating plan. This usually takes up to one working day. I will write to you when the plan is ready to check."
 
-["bot.wz.plan_up_issue_canvas"]
-other = "The drawing has no size, or it is too large. Give the width and the height of the drawing, 2000 at most."
+["bot.wz.plan_in_draft_saved"]
+other = "I saved your event draft. We will continue from the same place."
 
-["bot.wz.plan_up_issue_categories"]
-other = "I cannot find the categories. Add a group with the id “PriceCategory”: one colored swatch with a label “#Name” for each category."
+["bot.wz.plan_in_svg_note"]
+other = "This SVG does not work for selling seats. We will build the plan from it as from an image."
 
-["bot.wz.plan_up_issue_seat_shape"]
-other = "Seat {{.Element}} is not a circle. Make each seat a circle."
+["bot.wz.plan_in_waiting"]
+other = "Your files are with an administrator. I will write to you when the plan is ready to check."
 
-["bot.wz.plan_up_issue_row"]
-other = "A row or a sector has no correct label: {{.Element}}. Name each row and label each sector."
+["bot.wz.plan_in_ready"]
+other = "The seating plan of «{{.Venue}}» is ready. Please compare it with your own plan."
 
-["bot.wz.plan_up_issue_seat_number"]
-other = "A seat has no number, or the number is in the file more than one time: {{.Element}}."
+["bot.wz.plan_in_returned"]
+other = "An administrator has corrected the seating plan of «{{.Venue}}». Please check that everything is correct. {{.Note}}"
 
-["bot.wz.plan_up_issue_color"]
-other = "Seat {{.Element}} has a color that is not in the “PriceCategory” group."
+["bot.wz.plan_in_check_btn"]
+other = "Check the plan"
 
-["bot.wz.plan_up_issue_too_many"]
-other = "There are too many categories. The most is 15."
+["bot.wz.plan_in_summary"]
+other = "Seating plan of «{{.Venue}}». Seats: {{.Seats}}. Rows: {{.Rows}}. Sections: {{.Sections}}."
 
-["bot.wz.plan_up_issue_no_places"]
-other = "I found no seats in the file. Make each seat a circle in a row that has a label."
+["bot.wz.plan_in_warnings"]
+other = "Warnings: {{.Count}}."
 
-["bot.wz.plan_up_issue_ga"]
-other = "An area without seat numbers has an incorrect setup: {{.Element}}. It must have a label “#GA Name”, a color from the “PriceCategory” group and the number of seats in its title."
+["bot.wz.plan_in_question"]
+other = "Please compare the plan with your own plan. Is everything correct?"
 
-["bot.wz.plan_up_issue_other"]
-other = "The file has a problem ({{.Code}}): {{.Element}}."
+["bot.wz.plan_in_ok_btn"]
+other = "Correct"
+
+["bot.wz.plan_in_fix_btn"]
+other = "Fix it"
+
+["bot.wz.plan_in_admin_btn"]
+other = "Ask an administrator"
+
+["bot.wz.plan_in_fix_ask"]
+other = "Write what to fix. For example: row B has 12 seats, not 10."
+
+["bot.wz.plan_in_fix_sent"]
+other = "Thank you. An administrator will fix the plan and write to you."
+
+["bot.wz.plan_in_fix_long"]
+other = "The text is too long. Please write up to {{.Limit}} characters."
+
+["bot.wz.plan_in_fix_failed"]
+other = "I could not send the text. Please send it again."
+
+["bot.wz.plan_in_admin_called"]
+other = "An administrator has your request. They usually answer within one working day. I will write to you when the plan is ready to check."
+
+["bot.wz.plan_in_changed"]
+other = "The plan has changed. Please check the new version."
+
+["bot.wz.plan_in_rounds"]
+other = "You have checked this plan {{.Count}} times. If it is still not right, please ask an administrator."
+
+["bot.wz.plan_in_approve_bad"]
+other = "The plan did not pass the check. Please ask an administrator."
+
+["bot.wz.plan_in_rejected"]
+other = "We could not build the seating plan of «{{.Venue}}» from these files. Reason: {{.Reason}}. Please send another file or continue without seats."
+
+["bot.wz.plan_in_rejected_plain"]
+other = "We could not build the seating plan of «{{.Venue}}» from these files. Please send another file or continue without seats."
+
+["bot.wz.plan_in_again_btn"]
+other = "Send another file"
+
+["bot.wz.plan_in_saved"]
+other = "I saved the seating plan: {{.Seats}} seats. All seats are in one price category now. To set different prices, open the date card and press «Seat layout»."
+
+["bot.wz.plan_in_saved_wizard"]
+other = "I saved the seating plan: {{.Seats}} seats. All seats are in one price category now. After you save the event, press «Split seats by price» to set different prices."
+
+["bot.wz.plan_in_saved_by_admin"]
+other = "An administrator saved the seating plan of «{{.Venue}}». You can use it in your events."
+
+["bot.wz.plan_in_open_wait"]
+other = "There is already a request for «{{.Venue}}». An administrator is building the plan. I will write to you when it is ready to check."
+
+["bot.wz.plan_in_open_review"]
+other = "There is already a request for «{{.Venue}}». The plan is ready for you to check."
+
+["bot.wz.plan_in_cancel_btn"]
+other = "Cancel the request"
+
+["bot.wz.plan_in_cancelled"]
+other = "I canceled the request."
+
+["bot.wz.plan_in_gone"]
+other = "I cannot find this request. Please open the menu and try again."
+
+["bot.wz.plan_in_too_big_server"]
+other = "We could not take {{if .Name}}the file «{{.Name}}»{{else}}one of the files{{end}} because it is too large. I kept all your files. Please remove it or send smaller files. Then press «Done»."
+
+["bot.wz.plan_in_already"]
+other = "Your request is already with us. I will write to you when the plan is ready."
+
+["bot.wz.plan_in_already_sent"]
+other = "I already sent these files. I will write to you when the plan is ready."
+
+["bot.wz.plan_in_skip_ask"]
+other = "Cancel the request for the seating plan?"
+
+["bot.wz.plan_in_skip_yes_btn"]
+other = "Yes, cancel the request"
+
+["bot.wz.plan_in_skip_no_btn"]
+other = "No, keep the request"
+
+["bot.wz.plan_in_remove_last_btn"]
+other = "Remove the last file"
+
+["bot.wz.plan_in_remove_btn"]
+other = "Remove {{.Name}}"
+
+["bot.wz.plan_in_removed"]
+other = "I removed the file. Files now: {{.Count}}. Send more files or press «Done»."
+
+["bot.wz.plan_in_notice_org"]
+other = "This is about the organization «{{.Org}}»."
+
+["bot.wz.plan_in_other_org"]
+other = "This request belongs to «{{.Org}}». Switch to it in the menu, then open the request again."
 
 ["bot.wz.venue_shared_note"]
 other = "Venues with ✓ belong to other organizers. The platform examined them. You can sell tickets there. Only the owner can change a venue."
+
+# ── venue choice by country, city and venue (wizard_venue_choice.go, country_choice.go) ──
+
+["bot.geo.matches"]
+other = "I found these countries. Please select one."
+
+["bot.geo.no_match"]
+other = "I cannot find a country named “{{.Name}}”. Please check the spelling and type the name again, or select a part of the world."
+
+["bot.wz.ask_city_outside"]
+other = "{{.Country}} is new on the platform. Please type the name of the city. I will add the city together with the venue."
+
+["bot.wz.venue_tag_plan"]
+other = "seating plan"
+
+["bot.wz.venue_search"]
+other = "Venues in {{.City}} with “{{.Q}}” in the name. Select a venue, or type a different part of the name."
+
+["bot.wz.venue_search_none"]
+other = "I cannot find a venue with “{{.Q}}” in the name. Please type a different part of the name, show all venues, or add a new venue."
+
+["bot.wz.venue_all_btn"]
+other = "Show all venues"
+
+["bot.wz.venue_in_new_city"]
+other = "There are no venues in {{.City}} yet. Please add the venue."
+
+["bot.wz.venue_add_btn"]
+other = "Add the venue"
+
 ["shop.payment.description"]
 other = "{{.Org}}, order {{.Number}}"
 

@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/http/openapi"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/analytics"
 )
@@ -124,6 +125,8 @@ type Bot struct {
 
 	selfOnboarding bool
 	noticeEvery    time.Duration
+	// noticeSeam replaces planNoticeTo in tests.
+	noticeSeam     func(context.Context, int64, openapi.BotVenuePlanNotice)
 	siteButton     bool
 	miniappEditor  bool
 	miniappInvites bool
@@ -348,6 +351,7 @@ func (b *Bot) Run(ctx context.Context) error {
 		go b.onbNoticeLoop(ctx)
 	}
 	go b.webNoticeLoop(ctx)
+	go b.planNoticeLoop(ctx)
 	go b.invPDFLoop(ctx)
 	go b.guestListLoop(ctx)
 	go b.dialogSweepLoop(ctx)
@@ -564,7 +568,7 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		return
 	}
 	if m.Document != nil || len(m.Photo) > 0 {
-		if b.wizardPlanFile(ctx, chatID, from, m) || b.wizardPoster(ctx, chatID, from, m) {
+		if b.planIntakeFile(ctx, chatID, from, m) || b.wizardPoster(ctx, chatID, from, m) {
 			return
 		}
 	} else if text != "" && b.wizardText(ctx, chatID, from, text) {
@@ -634,6 +638,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.seatLayoutCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "sl:"))
 	case "og":
 		b.orgDataCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "og:"))
+	case "pi":
+		b.planIntakeCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pi:"))
 	case "ql":
 		b.salesLinkCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ql:"))
 	case "home":

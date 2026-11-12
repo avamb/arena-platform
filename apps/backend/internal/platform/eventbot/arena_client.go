@@ -30,6 +30,8 @@ type ArenaClient struct {
 	http         *http.Client
 	// formatTimeout is how long FormatText waits (default formatCallTimeout).
 	formatTimeout time.Duration
+	// world keeps the world country list per language (arena_client_geo.go).
+	world *worldCache
 }
 
 // NewArenaClient builds a client for baseURL (http://api:8080 in compose).
@@ -41,6 +43,7 @@ func NewArenaClient(baseURL, serviceToken string, httpClient *http.Client) *Aren
 		baseURL:      strings.TrimRight(baseURL, "/"),
 		serviceToken: serviceToken,
 		http:         httpClient,
+		world:        &worldCache{},
 	}
 }
 
@@ -75,6 +78,9 @@ type APIError struct {
 	// TicketNumber is error.details.ticket_number of 409
 	// reissue.ticket_not_reissuable: the ticket that blocks the reissue.
 	TicketNumber int64
+	// FileName is error.details.file_name of a refused plan intake file: the
+	// file the server refused.
+	FileName string
 	// RetryAfter is the Retry-After header of a 429, in seconds (0 when absent).
 	RetryAfter int
 }
@@ -101,7 +107,12 @@ func APIErrorCode(err error) string {
 func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body any, out any) error {
 	route := routeOf(path)
 	var reader io.Reader
-	if body != nil {
+	contentType := "application/json"
+	if mp, ok := body.(multipartBody); ok {
+		// A form already built by the caller (plan intake files).
+		reader = bytes.NewReader(mp.data)
+		contentType = mp.contentType
+	} else if body != nil {
 		raw, err := json.Marshal(body)
 		if err != nil {
 			return fmt.Errorf("encode %s %s: %w", method, route, err)
@@ -123,7 +134,7 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 	// = telegram_bot on every row this call writes.
 	req.Header.Set(audit.HeaderClientChannel, ClientChannel)
 	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", contentType)
 	}
 	if key, ok := ctx.Value(idempotencyKeyCtx{}).(string); ok && key != "" {
 		req.Header.Set("Idempotency-Key", key)
@@ -131,7 +142,7 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
-	res, err := c.http.Do(req)
+	res, err := c.clientFor(ctx).Do(req)
 	if err != nil {
 		return fmt.Errorf("%s %s: %w", method, route, unwrapURLError(err))
 	}
@@ -181,6 +192,7 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 					Blockers        []string `json:"blockers"`
 					RefundableMinor *int64   `json:"refundable_minor"`
 					TicketNumber    int64    `json:"ticket_number"`
+					FileName        string   `json:"file_name"`
 				} `json:"details"`
 			} `json:"error"`
 		}
@@ -188,6 +200,7 @@ func (c *ArenaClient) do(ctx context.Context, method, path, bearer string, body 
 			ae.Blockers = extra.Error.Details.Blockers
 			ae.RefundableMinor = extra.Error.Details.RefundableMinor
 			ae.TicketNumber = extra.Error.Details.TicketNumber
+			ae.FileName = extra.Error.Details.FileName
 		}
 		if n, err := strconv.Atoi(strings.TrimSpace(res.Header.Get("Retry-After"))); err == nil && n > 0 {
 			ae.RetryAfter = n
@@ -412,4 +425,23 @@ type idempotencyKeyCtx struct{}
 
 func withIdempotencyKey(ctx context.Context, key string) context.Context {
 	return context.WithValue(ctx, idempotencyKeyCtx{}, key)
+}
+
+// callTimeoutKey carries a longer timeout for one call (an upload of tens of
+// megabytes does not fit the client's usual 15 seconds).
+type callTimeoutKey struct{}
+
+func withCallTimeout(ctx context.Context, d time.Duration) context.Context {
+	return context.WithValue(ctx, callTimeoutKey{}, d)
+}
+
+// clientFor is the HTTP client of one call: the client's own, or a copy of it
+// with the timeout the context asks for.
+func (c *ArenaClient) clientFor(ctx context.Context) *http.Client {
+	if d, ok := ctx.Value(callTimeoutKey{}).(time.Duration); ok && d > c.http.Timeout {
+		cp := *c.http
+		cp.Timeout = d
+		return &cp
+	}
+	return c.http
 }

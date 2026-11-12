@@ -14,7 +14,7 @@ func TestWizard_CountryQuestionPutsThePosterCityCountryFirst(t *testing.T) {
 	render := func(t *testing.T, city string, keep RefItem) []Button {
 		t.Helper()
 		r := newWizardRun(t, newFakeRefs())
-		r.ws.Defaults = Defaults{CountryID: keep.ID, CountryName: keep.Name}
+		r.ws.Defaults = Defaults{CountryID: keep.ID, CountryName: keep.Name, CountryISO2: keep.ISO2}
 		r.d.Step = stSCountry
 		r.d.Hints.City = city
 		screen, err := r.w.Render(context.Background(), r.ws, r.d)
@@ -27,12 +27,12 @@ func TestWizard_CountryQuestionPutsThePosterCityCountryFirst(t *testing.T) {
 		}
 		return flat
 	}
-	czechia := RefItem{ID: "cz", Name: "Czechia"}
-	spain := RefItem{ID: "es", Name: "Spain"}
+	czechia := RefItem{ID: "cz", Name: "Czechia", ISO2: "CZ"}
+	spain := RefItem{ID: "es", Name: "Spain", ISO2: "ES"}
 
 	t.Run("poster city of another country comes before keep", func(t *testing.T) {
 		rows := render(t, "Valencia", czechia)
-		if len(rows) < 2 || rows[0].Data != "country:es" || !strings.Contains(rows[0].Label, "Spain") {
+		if len(rows) < 2 || rows[0].Data != "country:ES" || !strings.Contains(rows[0].Label, "Spain") {
 			t.Fatalf("first button = %+v, want the poster's Spain", rows)
 		}
 		var keepAt = -1
@@ -48,14 +48,14 @@ func TestWizard_CountryQuestionPutsThePosterCityCountryFirst(t *testing.T) {
 
 	t.Run("a Cyrillic city name works too", func(t *testing.T) {
 		rows := render(t, "Валенсия", czechia)
-		if rows[0].Data != "country:es" {
+		if rows[0].Data != "country:ES" {
 			t.Fatalf("first button = %+v", rows[0])
 		}
 	})
 
 	t.Run("poster country equal to keep shows one button for it", func(t *testing.T) {
 		rows := render(t, "Valencia", spain)
-		if rows[0].Data != "country:es" {
+		if rows[0].Data != "country:ES" {
 			t.Fatalf("first button = %+v", rows[0])
 		}
 		for _, b := range rows {

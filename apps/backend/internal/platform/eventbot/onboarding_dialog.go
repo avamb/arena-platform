@@ -471,10 +471,7 @@ func (b *Bot) onbAsk(ctx context.Context, chatID int64, from *models.User, d *on
 		b.send(ctx, chatID, b.texts.T(loc, "bot.error_generic", nil), nil)
 		return
 	}
-	head := b.texts.T(loc, "bot.onb.progress", map[string]any{"Pct": app.Progress}) + "\n\n<b>" + Esc(f.Label) + "</b>"
-	if f.Hint != "" {
-		head += "\n" + Esc(f.Hint)
-	}
+	head := b.onbHead(loc, app, f)
 	switch f.Type {
 	case "select":
 		rows := [][]models.InlineKeyboardButton{}
@@ -490,23 +487,7 @@ func (b *Bot) onbAsk(ctx context.Context, chatID int64, from *models.User, d *on
 			btn(b.texts.T(loc, "bot.onb.no_btn", nil), "onb:b:"+key+":0"),
 		}))
 	case "country":
-		codes := form.Schema.AcceptedCountries
-		if len(codes) == 0 {
-			codes = popularCountries
-		}
-		rows := [][]models.InlineKeyboardButton{}
-		var row []models.InlineKeyboardButton
-		for _, cc := range codes {
-			row = append(row, btn(flagOf(cc)+" "+cc, "onb:c:"+key+":"+cc))
-			if len(row) == 3 {
-				rows = append(rows, row)
-				row = nil
-			}
-		}
-		if len(row) > 0 {
-			rows = append(rows, row)
-		}
-		b.send(ctx, chatID, head+"\n\n"+b.texts.T(loc, "bot.onb.country_hint", nil), inline(rows...))
+		b.onbCountryAsk(ctx, chatID, nil, loc, head, key, "", 1, nil)
 	default:
 		b.send(ctx, chatID, head, nil)
 	}
@@ -707,7 +688,8 @@ func (b *Bot) onbText(ctx context.Context, chatID int64, from *models.User, d *o
 		b.onbAsk(ctx, chatID, from, d, app, key)
 		return
 	case "country":
-		text = strings.ToUpper(text)
+		b.onbCountryTyped(ctx, chatID, from, d, app, f, text)
+		return
 	}
 	b.onbSave(ctx, chatID, from, d, app, key, text)
 }
@@ -861,6 +843,9 @@ func (b *Bot) onbCallback(ctx context.Context, chatID int64, msgID int, from *mo
 			return
 		}
 		b.onbChoice(ctx, chatID, from, d, &app, parts[1], parts[2], parts[3])
+	case "cr", "cp":
+		// A region or a page of the country question (onboarding_country.go).
+		b.onbCountryPress(ctx, chatID, msgID, loc, &app, parts)
 	case "m", "md":
 		if len(parts) < 3 {
 			return
