@@ -157,9 +157,7 @@ type InsertInput struct {
 	Height         *int32
 }
 
-// Insert records a freshly-uploaded object's metadata and returns the row.
-func (r *Repo) Insert(ctx context.Context, in InsertInput) (Object, error) {
-	const q = `
+const insertObjectSQL = `
 		INSERT INTO media_objects (
 			org_id, owner_type, owner_id, storage_backend, storage_key,
 			content_type, byte_size, checksum_sha256, width, height
@@ -169,8 +167,11 @@ func (r *Repo) Insert(ctx context.Context, in InsertInput) (Object, error) {
 		          content_type, byte_size, checksum_sha256, width, height,
 		          created_at, deleted_at
 	`
+
+// Insert records a freshly-uploaded object's metadata and returns the row.
+func (r *Repo) Insert(ctx context.Context, in InsertInput) (Object, error) {
 	var obj Object
-	err := r.pool.QueryRow(ctx, q,
+	err := r.pool.QueryRow(ctx, insertObjectSQL,
 		in.OrgID, in.OwnerType, in.OwnerID, in.StorageBackend, in.StorageKey,
 		in.ContentType, in.ByteSize, in.ChecksumSHA256, in.Width, in.Height,
 	).Scan(

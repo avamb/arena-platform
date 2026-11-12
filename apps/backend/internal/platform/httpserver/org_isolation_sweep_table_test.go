@@ -58,8 +58,15 @@ type sweepIDs struct {
 	Alloc       uuid.UUID
 	Issuance    uuid.UUID
 	PlanVersion uuid.UUID
+	PlanVenue   uuid.UUID // the venue of PlanVersion's plan (not verified)
 	PartnerOrg  uuid.UUID // partner of Alloc
 	SalesLink   uuid.UUID // a tracked sales link of the event (QL-4)
+
+	// A hall plan intake of the world's venue (spec 64): in review with draft
+	// 1 (a source SVG), one source file and one open question of that draft.
+	Intake         uuid.UUID
+	IntakeSource   uuid.UUID
+	IntakeQuestion uuid.UUID
 }
 
 // sweepRow is one hole x one method.
@@ -242,6 +249,45 @@ func sweepRows() []sweepRow {
 		{hole: "H8", name: "seat block", route: "PATCH /v1/organizations/{org_id}/events/{event_id}/sessions/{id}/seats", perm: "session.seats.manage",
 			path: func(id sweepIDs) string { return sessionBase(id, id.Event, id.Session3) + "/seats" },
 			body: func(_ sweepIDs) string { return `{"action":"block","seat_keys":["S|A|1","S|A|2"]}` }},
+		// Spec 64 §3.4: the templates of a venue the path organization neither
+		// owns nor may use (not verified) are not listed.
+		{hole: "V64", name: "venue plan templates", route: "GET /v1/organizations/{org_id}/venues/{venue_id}/plan-templates", perm: "seating_plan.read",
+			path: func(id sweepIDs) string { return orgPath(id) + "/venues/" + id.PlanVenue.String() + "/plan-templates" }},
+
+		// -- Spec 64 hall plan intakes (hvenueplan): the intake is read by
+		// (id, org_id) and its files and drafts by (child, intake), so a foreign
+		// intake is 404 before anything else (an API key is refused only after
+		// that). The create row names a venue of A that is not verified.
+		{hole: "VPI", name: "plan intake create on a foreign venue", route: "POST /v1/organizations/{org_id}/venues/{venue_id}/plan-intakes", perm: "seating_plan.create",
+			path:       func(id sweepIDs) string { return orgPath(id) + "/venues/" + id.PlanVenue.String() + "/plan-intakes" },
+			body:       func(_ sweepIDs) string { return `{}` },
+			attackOnly: true},
+		{hole: "VPI", name: "plan intake get", route: "GET /v1/organizations/{org_id}/plan-intakes/{intake_id}", perm: "seating_plan.read",
+			path: func(id sweepIDs) string { return orgPath(id) + "/plan-intakes/" + id.Intake.String() }},
+		{hole: "VPI", name: "plan intake source", route: "GET /v1/organizations/{org_id}/plan-intakes/{intake_id}/sources/{source_id}", perm: "seating_plan.read",
+			path: func(id sweepIDs) string {
+				return orgPath(id) + "/plan-intakes/" + id.Intake.String() + "/sources/" + id.IntakeSource.String()
+			}},
+		{hole: "VPI", name: "plan intake draft svg", route: "GET /v1/organizations/{org_id}/plan-intakes/{intake_id}/drafts/{n}/svg", perm: "seating_plan.read",
+			path: func(id sweepIDs) string { return orgPath(id) + "/plan-intakes/" + id.Intake.String() + "/drafts/1/svg" }},
+		{hole: "VPI", name: "plan intake answers", route: "POST /v1/organizations/{org_id}/plan-intakes/{intake_id}/answers", perm: "seating_plan.create",
+			path: func(id sweepIDs) string { return orgPath(id) + "/plan-intakes/" + id.Intake.String() + "/answers" },
+			body: func(id sweepIDs) string {
+				return fmt.Sprintf(`{"draft":1,"answers":[{"question_id":%q,"answer":"left_to_right"}]}`, id.IntakeQuestion)
+			}},
+		{hole: "VPI", name: "plan intake corrections text", route: "POST /v1/organizations/{org_id}/plan-intakes/{intake_id}/corrections-text", perm: "seating_plan.create",
+			path: func(id sweepIDs) string {
+				return orgPath(id) + "/plan-intakes/" + id.Intake.String() + "/corrections-text"
+			},
+			body: func(_ sweepIDs) string { return `{"draft":1,"text":"Row 5 has 22 seats"}` }},
+		{hole: "VPI", name: "plan intake escalate", route: "POST /v1/organizations/{org_id}/plan-intakes/{intake_id}/escalate", perm: "seating_plan.create",
+			path: func(id sweepIDs) string { return orgPath(id) + "/plan-intakes/" + id.Intake.String() + "/escalate" },
+			body: func(_ sweepIDs) string { return `{"text":"please help"}` }},
+		{hole: "VPI", name: "plan intake cancel", route: "POST /v1/organizations/{org_id}/plan-intakes/{intake_id}/cancel", perm: "seating_plan.create",
+			path: func(id sweepIDs) string { return orgPath(id) + "/plan-intakes/" + id.Intake.String() + "/cancel" }},
+		{hole: "VPI", name: "plan intake approve", route: "POST /v1/organizations/{org_id}/plan-intakes/{intake_id}/approve", perm: "seating_plan.create",
+			path: func(id sweepIDs) string { return orgPath(id) + "/plan-intakes/" + id.Intake.String() + "/approve" },
+			body: func(_ sweepIDs) string { return `{"draft":1}` }},
 
 		// -- QL-4 sales links: {id} is a link; every query is scoped by (id, org_id).
 		{hole: "QL4", name: "sales link get", route: "GET /v1/organizations/{org_id}/sales-links/{id}", perm: "sales_link.read",

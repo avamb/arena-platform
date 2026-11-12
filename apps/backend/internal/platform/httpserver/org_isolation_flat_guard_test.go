@@ -198,6 +198,21 @@ var flatRouteFamilies = []flatFamily{
 	{"DELETE", "/v1/admin/networks/{id}/organizers/{orgId}", flatPlatform, "superadmin or platform permission"},
 	{"DELETE", "/v1/admin/networks/{id}/users/{userId}", flatPlatform, "superadmin or platform permission"},
 	{"PATCH", "/v1/admin/venues/{id}/review", flatPlatform, "venue.curate + superadmin marker in the handler"},
+	// Hall plan intakes (spec 64): venue_plan_intake.curate (platform_superadmin
+	// only, never an API key scope) + the superadmin marker in hvenueplan;
+	// writes and the source download also need X-Admin-Reason.
+	{"GET", "/v1/admin/plan-intakes", flatPlatform, "venue_plan_intake.curate + superadmin marker in the handler"},
+	{"GET", "/v1/admin/plan-intakes/{intake_id}", flatPlatform, "venue_plan_intake.curate + superadmin marker in the handler"},
+	{"GET", "/v1/admin/plan-intakes/{intake_id}/drafts/{n}/svg", flatPlatform, "venue_plan_intake.curate + superadmin marker in the handler"},
+	{"GET", "/v1/admin/plan-intakes/{intake_id}/sources/{source_id}", flatPlatform, "venue_plan_intake.curate + superadmin marker + X-Admin-Reason in the handler"},
+	{"POST", "/v1/admin/plan-intakes/{intake_id}/approve", flatPlatform, "venue_plan_intake.curate + superadmin marker + X-Admin-Reason in the handler"},
+	{"POST", "/v1/admin/plan-intakes/{intake_id}/claim", flatPlatform, "venue_plan_intake.curate + superadmin marker + X-Admin-Reason in the handler"},
+	{"POST", "/v1/admin/plan-intakes/{intake_id}/drafts", flatPlatform, "venue_plan_intake.curate + superadmin marker + X-Admin-Reason in the handler"},
+	{"POST", "/v1/admin/plan-intakes/{intake_id}/reject", flatPlatform, "venue_plan_intake.curate + superadmin marker + X-Admin-Reason in the handler"},
+	{"POST", "/v1/admin/plan-intakes/{intake_id}/return", flatPlatform, "venue_plan_intake.curate + superadmin marker + X-Admin-Reason in the handler"},
+	{"GET", "/v1/admin/seating-plans", flatPlatform, "seating_plan.verify + superadmin marker in the handler"},
+	{"POST", "/v1/admin/seating-plans/{plan_id}/verify", flatPlatform, "seating_plan.verify + superadmin marker + X-Admin-Reason in the handler"},
+	{"POST", "/v1/admin/seating-plans/{plan_id}/needs-fix", flatPlatform, "seating_plan.verify + superadmin marker + X-Admin-Reason in the handler"},
 	{"DELETE", "/v1/admin/users/{user_id}", flatPlatform, "superadmin or platform permission"},
 	{"DELETE", "/v1/admin/users/{user_id}/global-roles/{role}", flatPlatform, "superadmin or platform permission"},
 	{"GET", "/v1/admin/customer-imports/{id}", flatPlatform, "superadmin or platform permission"},
@@ -381,7 +396,7 @@ var flatRouteFamilies = []flatFamily{
 	{"POST", "/v1/venues/{venue_id}/seating-plans", flatRowGuard, "membership of the owner organization"},
 	{"PATCH", "/v1/seating-plans/{id}", flatRowGuard, "membership of the owner organization"},
 	{"POST", "/v1/seating-plans/{id}/versions", flatRowGuard, "membership of the owner organization"},
-	{"POST", "/v1/seating-plans/{id}/fork", flatRowGuard, "membership of the target organization"},
+	{"POST", "/v1/seating-plans/{id}/fork", flatRowGuard, "membership of the target organization; a source of another organization must be an active operator_verified or public_template plan, else 404"},
 
 	// ── catalog shared for reading ──────────────────────────────────────────
 	{"GET", "/v1/venues", flatSharedRead, "contacts of other organizations removed"},

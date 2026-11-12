@@ -18953,8 +18953,10 @@ type SeatingPlan struct {
 	// VenueId UUIDv7 of the venue the plan is attached to.
 	VenueId openapi_types.UUID `json:"venue_id"`
 
-	// Visibility Share scope. Defaults to private on create; move to shared_read
-	// or public_template to enable cross-org read / fork.
+	// Visibility Share scope. Defaults to private on create. shared_read lets other
+	// organizations read the plan; public_template also lets them fork
+	// it. operator_verified marks a venue template and is set only by
+	// POST /v1/admin/seating-plans/{plan_id}/verify.
 	Visibility SeatingPlanVisibility `json:"visibility"`
 }
 
@@ -18967,8 +18969,10 @@ type SeatingPlanPlanType string
 // session bindings (existing bindings are unaffected).
 type SeatingPlanStatus string
 
-// SeatingPlanVisibility Share scope. Defaults to private on create; move to shared_read
-// or public_template to enable cross-org read / fork.
+// SeatingPlanVisibility Share scope. Defaults to private on create. shared_read lets other
+// organizations read the plan; public_template also lets them fork
+// it. operator_verified marks a venue template and is set only by
+// POST /v1/admin/seating-plans/{plan_id}/verify.
 type SeatingPlanVisibility string
 
 // SeatingPlanAnnotations The allocator annotations stored with a seating plan (task S1d). They
@@ -19015,6 +19019,40 @@ type SeatingPlanValidationIssue struct {
 
 	// Element Offending SVG element identifier (id, label, or synthetic descriptor).
 	Element *string `json:"element,omitempty"`
+}
+
+// SeatingPlanVerification A seating plan after POST /v1/admin/seating-plans/{plan_id}/verify or
+// /needs-fix (spec 64 section 3.4, migration 0216).
+type SeatingPlanVerification struct {
+	// Changed False when a repeated verify found the plan already verified and changed nothing
+	Changed bool `json:"changed"`
+
+	// OwnerOrgId Organization that owns the plan
+	OwnerOrgId openapi_types.UUID `json:"owner_org_id"`
+
+	// PlanId Id of the plan
+	PlanId openapi_types.UUID `json:"plan_id"`
+
+	// Status draft, active or archived
+	Status string `json:"status"`
+
+	// VenueId Venue of the plan
+	VenueId openapi_types.UUID `json:"venue_id"`
+
+	// VenueReviewStatus review_status of the venue, verified once a plan of it is verified
+	VenueReviewStatus string `json:"venue_review_status"`
+
+	// VerificationNote The superadmin's note of needs-fix, null after verify
+	VerificationNote *string `json:"verification_note"`
+
+	// VerificationState verified or needs_fix
+	VerificationState string `json:"verification_state"`
+
+	// VerifiedAt When the plan was verified, null unless verified
+	VerifiedAt *time.Time `json:"verified_at"`
+
+	// Visibility operator_verified after verify; private after needs-fix of a template
+	Visibility string `json:"visibility"`
 }
 
 // SeatingPlanVersion Immutable-once-bound snapshot of a seating plan's canonical geometry.
@@ -23738,6 +23776,290 @@ type VenueItem struct {
 // reports). Defaults to `active` when not set on create.
 type VenueItemStatus string
 
+// VenuePlanApproveRequest Approve a draft of a hall plan intake.
+type VenuePlanApproveRequest struct {
+	// Draft Number of the draft to approve; it must be the current draft.
+	Draft int `json:"draft"`
+
+	// Name Name of the new seating plan, 1 to 200 characters (default the venue name).
+	Name *string `json:"name,omitempty"`
+}
+
+// VenuePlanCorrection An answer set or a text correction of the organizer (administrators' card only).
+type VenuePlanCorrection struct {
+	// CreatedAt When it was sent.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Draft Number of the draft it was made on.
+	Draft *int `json:"draft"`
+
+	// Id Id of the correction.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind organizer_text, operator_edit or answer.
+	Kind string `json:"kind"`
+
+	// Status pending, applied or rejected.
+	Status string `json:"status"`
+
+	// Text The organizer's text, null for answers.
+	Text *string `json:"text"`
+}
+
+// VenuePlanDraft The current draft of a hall plan intake.
+type VenuePlanDraft struct {
+	// Author Who made the draft (generator, organizer_answers, organizer_text, operator, operator_svg, source_svg).
+	Author string `json:"author"`
+
+	// CreatedAt When the draft was made.
+	CreatedAt time.Time `json:"created_at"`
+
+	// N Number of the draft inside the intake (1, 2, ...).
+	N int `json:"n"`
+
+	// Note The administrator's note on the draft, null when none.
+	Note *string `json:"note"`
+
+	// Questions The questions of this draft.
+	Questions []VenuePlanQuestion `json:"questions"`
+
+	// Summary What the draft holds.
+	Summary VenuePlanDraftSummary `json:"summary"`
+
+	// SvgPath Path of the route that streams the draft SVG (needs the same authorization as the card).
+	SvgPath string `json:"svg_path"`
+}
+
+// VenuePlanDraftHistoryItem One draft in the history of an intake.
+type VenuePlanDraftHistoryItem struct {
+	// Author Who made the draft.
+	Author string `json:"author"`
+
+	// CreatedAt When the draft was made.
+	CreatedAt time.Time `json:"created_at"`
+
+	// N Number of the draft.
+	N int `json:"n"`
+}
+
+// VenuePlanDraftSummary What a draft of a hall plan holds, read from its SVG when the draft was made.
+type VenuePlanDraftSummary struct {
+	// PlanType The plan type the geometry fits (assigned_seats, general_admission or mixed).
+	PlanType string `json:"plan_type"`
+
+	// Rows Number of rows over every section.
+	Rows int `json:"rows"`
+
+	// Seats Number of seats of the draft.
+	Seats int `json:"seats"`
+
+	// Sections Number of sections.
+	Sections int `json:"sections"`
+
+	// Warnings Codes of the importer's warnings (for example legend_missing).
+	Warnings []string `json:"warnings"`
+}
+
+// VenuePlanIntake A hall plan intake (spec 64): the files an organization sent for a
+// venue, its state and its current draft. The administrators' card also
+// carries org_name, operator_id, operator_claimed_at and corrections.
+type VenuePlanIntake struct {
+	// Channel Where the intake was sent from (telegram_bot or event_center_web).
+	Channel string `json:"channel"`
+
+	// ClosedAt When the intake reached a final state.
+	ClosedAt *time.Time `json:"closed_at"`
+
+	// Corrections The organizer's answers and text corrections (administrators' card only).
+	Corrections *[]VenuePlanCorrection `json:"corrections,omitempty"`
+
+	// CreatedAt When the intake was sent.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CurrentDraft Number of the current draft, null before the first draft.
+	CurrentDraft *int `json:"current_draft"`
+
+	// Draft The current draft, null before the first draft.
+	Draft *VenuePlanDraft `json:"draft"`
+
+	// Drafts Every draft, oldest first.
+	Drafts []VenuePlanDraftHistoryItem `json:"drafts"`
+
+	// EscalationReason Why the intake went to an administrator, null when it did not.
+	EscalationReason *string `json:"escalation_reason"`
+
+	// EscalationText The organizer's text when they called an administrator.
+	EscalationText *string `json:"escalation_text"`
+
+	// Id Id of the intake.
+	Id openapi_types.UUID `json:"id"`
+
+	// OperatorClaimed True while an administrator works on the intake.
+	OperatorClaimed bool `json:"operator_claimed"`
+
+	// OperatorClaimedAt When the administrator took it (administrators' card only).
+	OperatorClaimedAt *time.Time `json:"operator_claimed_at"`
+
+	// OperatorId The administrator who took the intake (administrators' card only).
+	OperatorId *openapi_types.UUID `json:"operator_id"`
+
+	// OrgId Organization that sent the intake.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Name of the organization (administrators' card only).
+	OrgName *string `json:"org_name,omitempty"`
+
+	// PlanId The seating plan made from the approved draft.
+	PlanId *openapi_types.UUID `json:"plan_id"`
+
+	// PlanVersion Version number of that plan (1).
+	PlanVersion *int `json:"plan_version"`
+
+	// RejectReason Why the administrator could not build the plan.
+	RejectReason *string `json:"reject_reason"`
+
+	// ReturnNote The administrator's note when the draft was returned to the organizer.
+	ReturnNote *string `json:"return_note"`
+
+	// ReviewRounds Number of drafts made so far.
+	ReviewRounds int `json:"review_rounds"`
+
+	// Sources The files of the intake, in the order they were sent.
+	Sources []VenuePlanIntakeSource `json:"sources"`
+
+	// State received, generating, review, operator, approved, rejected or cancelled.
+	State string `json:"state"`
+
+	// UpdatedAt When the intake last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// VenueId Venue the plan is for.
+	VenueId openapi_types.UUID `json:"venue_id"`
+
+	// VenueName Name of the venue.
+	VenueName string `json:"venue_name"`
+}
+
+// VenuePlanIntakeEnvelope One hall plan intake card.
+type VenuePlanIntakeEnvelope struct {
+	// Intake The intake card.
+	Intake VenuePlanIntake `json:"intake"`
+}
+
+// VenuePlanIntakeList A list of hall plan intakes, newest first.
+type VenuePlanIntakeList struct {
+	// Intakes The intakes.
+	Intakes []VenuePlanIntakeListItem `json:"intakes"`
+}
+
+// VenuePlanIntakeListItem A hall plan intake in a list. The administrators' list adds org_name, venue_city, operator_id and operator_claimed_at.
+type VenuePlanIntakeListItem struct {
+	// Channel Where it was sent from.
+	Channel string `json:"channel"`
+
+	// CreatedAt When it was sent.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CurrentDraft Number of the current draft.
+	CurrentDraft *int `json:"current_draft"`
+
+	// EscalationReason Why it went to an administrator.
+	EscalationReason *string `json:"escalation_reason"`
+
+	// Id Id of the intake.
+	Id openapi_types.UUID `json:"id"`
+
+	// OperatorClaimed True while an administrator works on it.
+	OperatorClaimed bool `json:"operator_claimed"`
+
+	// OperatorClaimedAt When the administrator took it (administrators' list only).
+	OperatorClaimedAt *time.Time `json:"operator_claimed_at"`
+
+	// OperatorId The administrator who took it (administrators' list only).
+	OperatorId *openapi_types.UUID `json:"operator_id"`
+
+	// OrgId Organization that sent it.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Name of the organization (administrators' list only).
+	OrgName *string `json:"org_name,omitempty"`
+
+	// PlanId The plan made from it, once approved.
+	PlanId *openapi_types.UUID `json:"plan_id"`
+
+	// State State of the intake.
+	State string `json:"state"`
+
+	// UpdatedAt When it last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// VenueCity City of the venue (administrators' list only).
+	VenueCity *string `json:"venue_city"`
+
+	// VenueId Venue the plan is for.
+	VenueId openapi_types.UUID `json:"venue_id"`
+
+	// VenueName Name of the venue.
+	VenueName string `json:"venue_name"`
+}
+
+// VenuePlanIntakeSource A file sent with a hall plan intake. It has no public link; it is downloaded through the intake routes only.
+type VenuePlanIntakeSource struct {
+	// ByteSize Size of the stored file in bytes (a JPEG without its metadata).
+	ByteSize int64 `json:"byte_size"`
+
+	// DownloadPath Path of the route that downloads the file as an attachment.
+	DownloadPath string `json:"download_path"`
+
+	// FileName The file name as sent, without folders.
+	FileName string `json:"file_name"`
+
+	// Height Height of a picture in pixels, else null.
+	Height *int `json:"height"`
+
+	// Id Id of the file.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Format decided from the content (pdf, xlsx, xls, csv, jpeg, png, webp, heic, tiff, bmp, gif, svg).
+	Kind string `json:"kind"`
+
+	// NeedsConversion True for HEIC and old Excel files, which are converted later.
+	NeedsConversion bool `json:"needs_conversion"`
+
+	// Pages Number of pages of a PDF when it could be counted, else null.
+	Pages *int `json:"pages"`
+
+	// PngCopyPath Path of the PNG copy of a WEBP, TIFF, BMP or GIF picture, else null.
+	PngCopyPath *string `json:"png_copy_path"`
+
+	// Width Width of a picture in pixels, else null.
+	Width *int `json:"width"`
+}
+
+// VenuePlanQuestion A question of a draft to the organizer (written by the generator, wave 2).
+type VenuePlanQuestion struct {
+	// Answer The organizer's answer, null while the question is open.
+	Answer interface{} `json:"answer"`
+
+	// AnsweredAt When the question was answered, null while it is open.
+	AnsweredAt *time.Time `json:"answered_at"`
+
+	// Id Id of the question; the answers route names it as question_id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Type of the question (numbering, row_count, unavailable_seats, sections, stage, row_label).
+	Kind string `json:"kind"`
+
+	// Options The answers offered.
+	Options []interface{} `json:"options"`
+
+	// Region The part of the picture to show with the question, null when none.
+	Region *map[string]interface{} `json:"region"`
+
+	// Target What the question is about (section, row, seat keys).
+	Target map[string]interface{} `json:"target"`
+}
+
 // WebhookSubscriberListResponse Non-paginated list envelope returned by
 // `GET /v1/webhooks/subscribers`. Backed by
 // `ListActiveWebhookSubscribers`, so only `active = TRUE`
@@ -24335,6 +24657,96 @@ type CreateAdminOrgSalesChatCodeParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// ListAdminVenuePlanIntakesParams defines parameters for ListAdminVenuePlanIntakes.
+type ListAdminVenuePlanIntakesParams struct {
+	// State Only intakes in this state.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// OrgId Only intakes of this organization.
+	OrgId *openapi_types.UUID `form:"org_id,omitempty" json:"org_id,omitempty"`
+
+	// Unclaimed true for the intakes no administrator has taken.
+	Unclaimed *bool `form:"unclaimed,omitempty" json:"unclaimed,omitempty"`
+
+	// Limit At most this many intakes, 1 to 200 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ApproveAdminVenuePlanIntakeParams defines parameters for ApproveAdminVenuePlanIntake.
+type ApproveAdminVenuePlanIntakeParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// ClaimAdminVenuePlanIntakeJSONBody defines parameters for ClaimAdminVenuePlanIntake.
+type ClaimAdminVenuePlanIntakeJSONBody struct {
+	// Force true takes the intake over from another administrator.
+	Force *bool `json:"force,omitempty"`
+}
+
+// ClaimAdminVenuePlanIntakeParams defines parameters for ClaimAdminVenuePlanIntake.
+type ClaimAdminVenuePlanIntakeParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// CreateAdminVenuePlanIntakeDraftJSONBody defines parameters for CreateAdminVenuePlanIntakeDraft.
+type CreateAdminVenuePlanIntakeDraftJSONBody struct {
+	// Note A note on the draft, up to 2000 characters.
+	Note *string `json:"note,omitempty"`
+
+	// Svg The SVG document as text.
+	Svg string `json:"svg"`
+}
+
+// CreateAdminVenuePlanIntakeDraftMultipartBody defines parameters for CreateAdminVenuePlanIntakeDraft.
+type CreateAdminVenuePlanIntakeDraftMultipartBody struct {
+	// Note A note on the draft, up to 2000 characters.
+	Note *string `json:"note,omitempty"`
+
+	// Svg The SVG file.
+	Svg openapi_types.File `json:"svg"`
+}
+
+// CreateAdminVenuePlanIntakeDraftParams defines parameters for CreateAdminVenuePlanIntakeDraft.
+type CreateAdminVenuePlanIntakeDraftParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// RejectAdminVenuePlanIntakeJSONBody defines parameters for RejectAdminVenuePlanIntake.
+type RejectAdminVenuePlanIntakeJSONBody struct {
+	// Reason Why the plan cannot be built, shown to the organizer, 1 to 1000 characters.
+	Reason string `json:"reason"`
+}
+
+// RejectAdminVenuePlanIntakeParams defines parameters for RejectAdminVenuePlanIntake.
+type RejectAdminVenuePlanIntakeParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// ReturnAdminVenuePlanIntakeJSONBody defines parameters for ReturnAdminVenuePlanIntake.
+type ReturnAdminVenuePlanIntakeJSONBody struct {
+	// Note What the organizer should know, up to 2000 characters.
+	Note *string `json:"note,omitempty"`
+}
+
+// ReturnAdminVenuePlanIntakeParams defines parameters for ReturnAdminVenuePlanIntake.
+type ReturnAdminVenuePlanIntakeParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// DownloadAdminVenuePlanIntakeSourceParams defines parameters for DownloadAdminVenuePlanIntakeSource.
+type DownloadAdminVenuePlanIntakeSourceParams struct {
+	// Format png for the PNG copy; leave out for the file as sent.
+	Format *string `form:"format,omitempty" json:"format,omitempty"`
+
+	// XAdminReason Human-readable business reason for reading the file. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // SuperadminListRefundsParams defines parameters for SuperadminListRefunds.
 type SuperadminListRefundsParams struct {
 	// Limit Maximum number of rows to return.
@@ -24358,6 +24770,33 @@ type DeleteAdminSalesChatParams struct {
 
 // PatchAdminSalesChatParams defines parameters for PatchAdminSalesChat.
 type PatchAdminSalesChatParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// ListV1AdminSeatingPlansParams defines parameters for ListV1AdminSeatingPlans.
+type ListV1AdminSeatingPlansParams struct {
+	// VerificationState unverified (default), verified or needs_fix
+	VerificationState *string `form:"verification_state,omitempty" json:"verification_state,omitempty"`
+
+	// Limit Page size, 1 to 200 (default 100)
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// PostV1AdminSeatingPlansPlanIdNeedsFixJSONBody defines parameters for PostV1AdminSeatingPlansPlanIdNeedsFix.
+type PostV1AdminSeatingPlansPlanIdNeedsFixJSONBody struct {
+	// Note What must be fixed, 1 to 1000 characters after trimming
+	Note string `json:"note"`
+}
+
+// PostV1AdminSeatingPlansPlanIdNeedsFixParams defines parameters for PostV1AdminSeatingPlansPlanIdNeedsFix.
+type PostV1AdminSeatingPlansPlanIdNeedsFixParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminSeatingPlansPlanIdVerifyParams defines parameters for PostV1AdminSeatingPlansPlanIdVerify.
+type PostV1AdminSeatingPlansPlanIdVerifyParams struct {
 	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
 	XAdminReason string `json:"X-Admin-Reason"`
 }
@@ -25255,6 +25694,54 @@ type PostV1OrganizationsOrgIdOrdersOrderIdReissueTicketsParams struct {
 	IdempotencyKey string `json:"Idempotency-Key"`
 }
 
+// ListVenuePlanIntakesParams defines parameters for ListVenuePlanIntakes.
+type ListVenuePlanIntakesParams struct {
+	// State Only intakes in this state.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// VenueId Only intakes of this venue.
+	VenueId *openapi_types.UUID `form:"venue_id,omitempty" json:"venue_id,omitempty"`
+
+	// Limit At most this many intakes, 1 to 200 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// AnswerVenuePlanIntakeJSONBody defines parameters for AnswerVenuePlanIntake.
+type AnswerVenuePlanIntakeJSONBody struct {
+	// Answers 1 to 50 answers.
+	Answers []struct {
+		// Answer The answer, one of the question's options or a value.
+		Answer interface{} `json:"answer"`
+
+		// QuestionId Id of a question of that draft.
+		QuestionId openapi_types.UUID `json:"question_id"`
+	} `json:"answers"`
+
+	// Draft Number of the draft the answers are for; it must be the current draft.
+	Draft int `json:"draft"`
+}
+
+// CorrectVenuePlanIntakeTextJSONBody defines parameters for CorrectVenuePlanIntakeText.
+type CorrectVenuePlanIntakeTextJSONBody struct {
+	// Draft Number of the draft the text is about; it must be the current draft.
+	Draft int `json:"draft"`
+
+	// Text What to fix, 1 to 2000 characters.
+	Text string `json:"text"`
+}
+
+// EscalateVenuePlanIntakeJSONBody defines parameters for EscalateVenuePlanIntake.
+type EscalateVenuePlanIntakeJSONBody struct {
+	// Text What the administrator should know, up to 1000 characters.
+	Text *string `json:"text,omitempty"`
+}
+
+// DownloadVenuePlanIntakeSourceParams defines parameters for DownloadVenuePlanIntakeSource.
+type DownloadVenuePlanIntakeSourceParams struct {
+	// Format png for the PNG copy; leave out for the file as sent.
+	Format *string `form:"format,omitempty" json:"format,omitempty"`
+}
+
 // ListOrgPromoCodeAttemptsParams defines parameters for ListOrgPromoCodeAttempts.
 type ListOrgPromoCodeAttemptsParams struct {
 	// PromoCodeId Narrow the journal to one promo code (UUID).
@@ -25586,6 +26073,21 @@ type PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody struct {
 type PatchV1OrganizationsOrgIdTicketsTicketIdVipJSONBody struct {
 	// Vip True to mark the ticket as VIP, false to take the mark off.
 	Vip bool `json:"vip"`
+}
+
+// CreateVenuePlanIntakeMultipartBody defines parameters for CreateVenuePlanIntake.
+type CreateVenuePlanIntakeMultipartBody struct {
+	// Channel Where the intake is sent from, telegram_bot or event_center_web (default).
+	Channel *string `json:"channel,omitempty"`
+
+	// Files The files of the plan, 1 to 10, 80 MB together.
+	Files []openapi_types.File `json:"files"`
+}
+
+// CreateVenuePlanIntakeParams defines parameters for CreateVenuePlanIntake.
+type CreateVenuePlanIntakeParams struct {
+	// IdempotencyKey Optional key (up to 200 characters); the same key in the same organization returns the same intake.
+	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
 }
 
 // CreatePaymentIntentParams defines parameters for CreatePaymentIntent.
@@ -26022,11 +26524,32 @@ type PostV1AdminOrganizationModuleShopJSONRequestBody = ConnectShopModuleRequest
 // CreateAdminOrgSalesChatCodeJSONRequestBody defines body for CreateAdminOrgSalesChatCode for application/json ContentType.
 type CreateAdminOrgSalesChatCodeJSONRequestBody = SalesChatConnectCodeRequest
 
+// ApproveAdminVenuePlanIntakeJSONRequestBody defines body for ApproveAdminVenuePlanIntake for application/json ContentType.
+type ApproveAdminVenuePlanIntakeJSONRequestBody = VenuePlanApproveRequest
+
+// ClaimAdminVenuePlanIntakeJSONRequestBody defines body for ClaimAdminVenuePlanIntake for application/json ContentType.
+type ClaimAdminVenuePlanIntakeJSONRequestBody ClaimAdminVenuePlanIntakeJSONBody
+
+// CreateAdminVenuePlanIntakeDraftJSONRequestBody defines body for CreateAdminVenuePlanIntakeDraft for application/json ContentType.
+type CreateAdminVenuePlanIntakeDraftJSONRequestBody CreateAdminVenuePlanIntakeDraftJSONBody
+
+// CreateAdminVenuePlanIntakeDraftMultipartRequestBody defines body for CreateAdminVenuePlanIntakeDraft for multipart/form-data ContentType.
+type CreateAdminVenuePlanIntakeDraftMultipartRequestBody CreateAdminVenuePlanIntakeDraftMultipartBody
+
+// RejectAdminVenuePlanIntakeJSONRequestBody defines body for RejectAdminVenuePlanIntake for application/json ContentType.
+type RejectAdminVenuePlanIntakeJSONRequestBody RejectAdminVenuePlanIntakeJSONBody
+
+// ReturnAdminVenuePlanIntakeJSONRequestBody defines body for ReturnAdminVenuePlanIntake for application/json ContentType.
+type ReturnAdminVenuePlanIntakeJSONRequestBody ReturnAdminVenuePlanIntakeJSONBody
+
 // CreateAdminOperatorSalesChatCodeJSONRequestBody defines body for CreateAdminOperatorSalesChatCode for application/json ContentType.
 type CreateAdminOperatorSalesChatCodeJSONRequestBody = SalesChatConnectCodeRequest
 
 // PatchAdminSalesChatJSONRequestBody defines body for PatchAdminSalesChat for application/json ContentType.
 type PatchAdminSalesChatJSONRequestBody = SalesChatPatchRequest
+
+// PostV1AdminSeatingPlansPlanIdNeedsFixJSONRequestBody defines body for PostV1AdminSeatingPlansPlanIdNeedsFix for application/json ContentType.
+type PostV1AdminSeatingPlansPlanIdNeedsFixJSONRequestBody PostV1AdminSeatingPlansPlanIdNeedsFixJSONBody
 
 // PostV1AdminUsersJSONRequestBody defines body for PostV1AdminUsers for application/json ContentType.
 type PostV1AdminUsersJSONRequestBody = AdminCreateUserRequest
@@ -26433,6 +26956,18 @@ type CreatePaymentProviderConfigJSONRequestBody = CreatePaymentProviderConfigReq
 // UpdatePaymentProviderConfigJSONRequestBody defines body for UpdatePaymentProviderConfig for application/json ContentType.
 type UpdatePaymentProviderConfigJSONRequestBody = UpdatePaymentProviderConfigRequest
 
+// AnswerVenuePlanIntakeJSONRequestBody defines body for AnswerVenuePlanIntake for application/json ContentType.
+type AnswerVenuePlanIntakeJSONRequestBody AnswerVenuePlanIntakeJSONBody
+
+// ApproveVenuePlanIntakeJSONRequestBody defines body for ApproveVenuePlanIntake for application/json ContentType.
+type ApproveVenuePlanIntakeJSONRequestBody = VenuePlanApproveRequest
+
+// CorrectVenuePlanIntakeTextJSONRequestBody defines body for CorrectVenuePlanIntakeText for application/json ContentType.
+type CorrectVenuePlanIntakeTextJSONRequestBody CorrectVenuePlanIntakeTextJSONBody
+
+// EscalateVenuePlanIntakeJSONRequestBody defines body for EscalateVenuePlanIntake for application/json ContentType.
+type EscalateVenuePlanIntakeJSONRequestBody EscalateVenuePlanIntakeJSONBody
+
 // CreatePromoCodeJSONRequestBody defines body for CreatePromoCode for application/json ContentType.
 type CreatePromoCodeJSONRequestBody = CreatePromoCodeRequest
 
@@ -26552,6 +27087,9 @@ type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest
 
 // PatchV1OrganizationsOrgIdVenuesIdJSONRequestBody defines body for PatchV1OrganizationsOrgIdVenuesId for application/json ContentType.
 type PatchV1OrganizationsOrgIdVenuesIdJSONRequestBody = UpdateVenueRequest
+
+// CreateVenuePlanIntakeMultipartRequestBody defines body for CreateVenuePlanIntake for multipart/form-data ContentType.
+type CreateVenuePlanIntakeMultipartRequestBody CreateVenuePlanIntakeMultipartBody
 
 // CreatePaymentIntentJSONRequestBody defines body for CreatePaymentIntent for application/json ContentType.
 type CreatePaymentIntentJSONRequestBody = CreatePaymentIntentRequest
