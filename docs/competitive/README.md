@@ -31,6 +31,7 @@
 - [social_messenger_selling_2026-10-24_ru.md](social_messenger_selling_2026-10-24_ru.md) — продажи внутри Facebook, Instagram, Messenger, Telegram, WhatsApp: что есть у конкурентов и что разрешают платформы (24.10.2026). Связанный бэклог: `09_autoforge/social_selling_backlog.md`.
 
 ### Отдельные конкуренты
+- [eventfrog_2026-11-12_ru.md](eventfrog_2026-11-12_ru.md) — Eventfrog (Швейцария, DACH): билеты до CHF 50 бесплатно за счёт рекламы в СМИ, деньги до конца события у платформы (12.11.2026).
 - [fridayticket_2026-11-09_ru.md](fridayticket_2026-11-09_ru.md) — FridayTicket (fridayticket.com): витрина-перепродавец русскоязычных гастролей, организатор скрыт, ретаргетинг в Facebook; как найти организаторов туров (09.11.2026).
 - [xtix_2026-11-03_ru.md](xtix_2026-11-03_ru.md) — XTIX (xtix.ai, Кипр, Израиль), конкурент в русскоязычной нише (03.11.2026).
 - [tickettailor_analysis_2026-09-04.md](tickettailor_analysis_2026-09-04.md), [tickettailor_win_features_2026-09-27.md](tickettailor_win_features_2026-09-27.md) — Ticket Tailor: разбор и функции, которые стоит повторить.
