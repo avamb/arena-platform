@@ -1226,6 +1226,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/getting-started": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return which first steps of an organization are done
+         * @description Returns the four first steps of an organization and whether each is
+         *     done, in a fixed order: `org_data`, `payments`, `event`,
+         *     `sales_link`. A step is listed only when the caller holds its
+         *     permission IN this organization, by the same per-organization
+         *     checker the route gates use: `org_data` needs `org.update`,
+         *     `payments` needs `payment_config.read`, `event` needs
+         *     `import.bil24_session` (the event wizard's import), `sales_link`
+         *     needs `sales_link.manage`.
+         *
+         *     The server decides every flag from the organization's data:
+         *     `org_data` is done when the seller data is complete (the rule of
+         *     GET .../seller-profile: no organization field is missing and every
+         *     sales page is shown or hidden by the operator); `payments` when an
+         *     active payment configuration was accepted by the provider; `event`
+         *     when the organization has an event (a draft counts); `sales_link`
+         *     when it has a sales link. `complete` is true when every listed step
+         *     is done, also when no step is listed. Read-only.
+         *
+         *     Who may call it: a user with an active membership in the
+         *     organization, an organization API key of that organization, and a
+         *     platform superadmin. Anyone else gets 403 `org.access_denied`.
+         */
+        get: operations["getV1OrganizationsOrgIdGettingStarted"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/password-reset/request": {
         parameters: {
             query?: never;
@@ -15830,6 +15870,37 @@ export interface components {
              * @example false
              */
             platform_staff?: boolean;
+        };
+        /** @description The answer of GET /v1/organizations/{org_id}/getting-started. */
+        GettingStartedResponse: {
+            /** @description The first steps of the organization the caller may do. */
+            getting_started: components["schemas"]["GettingStarted"];
+        };
+        /**
+         * @description The first steps of an organization that the caller may do, and
+         *     whether all of them are done.
+         */
+        GettingStarted: {
+            /** @description True when every listed step is done. An empty list is complete. */
+            complete: boolean;
+            /**
+             * @description The steps the caller holds the permission for in this
+             *     organization, always in the order org_data, payments, event,
+             *     sales_link. Never null.
+             */
+            steps: components["schemas"]["GettingStartedStep"][];
+        };
+        /** @description One first step of an organization. */
+        GettingStartedStep: {
+            /**
+             * @description The step: `org_data` (seller data complete), `payments` (a
+             *     payment provider connected and accepted), `event` (an event
+             *     created, a draft counts), `sales_link` (a sales link created).
+             * @enum {string}
+             */
+            key: "org_data" | "payments" | "event" | "sales_link";
+            /** @description True when the organization's data shows the step is done. */
+            done: boolean;
         };
         /**
          * @description The caller's access inside one organization, returned by
@@ -42904,6 +42975,90 @@ export interface operations {
                 };
             };
             /** @description The membership or permission lookup failed (`org.membership_check_failed`). */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The permission checker is not wired (`dependency.org_access_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1OrganizationsOrgIdGettingStarted: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization the caller asks about. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The first steps of the organization the caller may do. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GettingStartedResponse"];
+                };
+            };
+            /** @description org_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The caller is not a member of this organization, or the API key
+             *     belongs to another organization (`org.access_denied`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization does not exist or was archived (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The membership or permission lookup failed
+             *     (`org.membership_check_failed`), or the organization's data could
+             *     not be read (`getting_started.lookup_failed`).
+             */
             500: {
                 headers: {
                     [name: string]: unknown;
