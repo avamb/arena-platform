@@ -619,8 +619,8 @@ export const en = {
 
   // 4-6
   "nav.promoters": "Brands (names on events)",
-  "promoters.title": "Promoters",
-  "promoters.intro": "A promoter is a partner who puts on an event that you sell. Tickets show its name as the organizer.",
+  "promoters.title": "Brands",
+  "promoters.intro": "A brand is a partner who holds an event, and you sell the tickets. Tickets show the name of the brand as the organizer.",
   "promoters.tab.active": "Active ({count})",
   "promoters.tab.archived": "Archived ({count})",
   "promoters.empty.active": "No promoters. When a partner puts on an event that you sell, add them here.",
@@ -695,7 +695,7 @@ export const en = {
   "promoters.restore.done": "{name} is active again.",
   // 4-3
   "nav.growth": "Messages to buyers",
-  "growth.title": "Mailings and reminders",
+  "growth.title": "Messages to buyers",
   "growth.noAccess": "Only the owner and the managers see this page.",
   "growth.settings.title": "Settings",
   "growth.reminder.label": "Remind the buyer about an order not paid",
@@ -963,7 +963,7 @@ export const en = {
   "refund.scanned.next": "If the scanner read the ticket in error, write to Arena support. The operator can allow one refund.",
   // 4-4
   "nav.invitations": "Free tickets",
-  "invitations.title": "Invitations",
+  "invitations.title": "Free tickets",
   "invitations.intro": "Free tickets for guests you name. A ticket goes to the guest by e-mail, to you, or only as a PDF to download. Invitations are not sales.",
   "invitations.noAccess": "You do not have access to invitations in this organization. Please tell the owner to give you the manager role.",
   "invitations.issue.title": "Invite guests",

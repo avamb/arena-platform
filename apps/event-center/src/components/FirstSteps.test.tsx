@@ -5,7 +5,7 @@
  */
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory, createRootRoute, createRouter } from "@tanstack/react-router";
 import { I18nProvider } from "@/lib/i18n";
@@ -33,8 +33,8 @@ const state = (done: Partial<Record<Key, boolean>>, keys: Key[] = ["org_data", "
   return { complete: steps.every((s) => s.done), steps };
 };
 
-async function mountCard(): Promise<HTMLElement> {
-  const root = createRootRoute({ component: () => <FirstSteps orgId="org1" /> });
+async function mountCard(can: (p: string) => boolean = () => true): Promise<HTMLElement> {
+  const root = createRootRoute({ component: () => <FirstSteps orgId="org1" access={{ can }} /> });
   const router = createRouter({ routeTree: root, history: createMemoryHistory({ initialEntries: ["/"] }) });
   await act(async () => {
     await router.load();
@@ -65,7 +65,10 @@ const card = (el: HTMLElement) => el.querySelector('[data-testid="first-steps"]'
 const linkOf = (el: HTMLElement, key: Key) => el.querySelector(`a[data-testid="first-step-${key}"]`) as HTMLAnchorElement | null;
 
 
+beforeEach(() => vi.stubEnv("VITE_FEATURE_WIZARD", "1"));
+
 afterEach(() => {
+  vi.unstubAllEnvs();
   while (roots.length > 0) {
     const r = roots.pop() as Root;
     act(() => r.unmount());
@@ -112,6 +115,24 @@ describe("FirstSteps", () => {
     expect(linkOf(el, "event")).toBeNull();
     expect(linkOf(el, "payments")).not.toBeNull();
     expect(linkOf(el, "sales_link")).not.toBeNull();
+  });
+
+  it("shows the event step as plain text when the person cannot create an event", async () => {
+    fetchGettingStarted.resolves(state({}));
+    const el = await mountCard((p) => p !== "import.bil24_session");
+    const row = el.querySelector('[data-testid="first-step-row-event"]') as HTMLElement;
+    expect(row.getAttribute("data-done")).toBe("false");
+    expect(row.textContent).toBe("Add the first event");
+    expect(row.querySelector("a")).toBeNull();
+    expect(linkOf(el, "payments")).not.toBeNull();
+  });
+
+  it("shows the event step as plain text when the wizard is off", async () => {
+    vi.stubEnv("VITE_FEATURE_WIZARD", "0");
+    fetchGettingStarted.resolves(state({}));
+    const el = await mountCard();
+    expect(linkOf(el, "event")).toBeNull();
+    expect(el.querySelector('[data-testid="first-step-row-event"]')?.textContent).toBe("Add the first event");
   });
 
   it("is gone when every step is done", async () => {

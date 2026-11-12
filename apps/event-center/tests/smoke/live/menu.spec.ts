@@ -60,7 +60,7 @@ function expectedGroups(perms: string[]): [string, string[]][] {
   const groups: [string, string[]][] = [
     ["new", can("import.bil24_session") ? ["nav-new-event"] : []],
     ["events", ["menu-events", "nav-summary"]],
-    ["orders", [...(can("order.read") ? ["menu-orders"] : []), ...(can("refund.read") ? ["nav-refunds"] : [])]],
+    ["orders", [...(can("order.read") ? ["menu-orders"] : []), ...(can("refund.read") ? ["menu-refunds"] : [])]],
     [
       "promotion",
       [
@@ -94,7 +94,7 @@ const TARGET: Record<string, RegExp> = {
   "menu-events": /\/events$/,
   "nav-summary": /\/summary$/,
   "menu-orders": /\/orders$/,
-  "nav-refunds": /\/refunds$/,
+  "menu-refunds": /\/refunds$/,
   "nav-promo": /\/promo$/,
   "nav-invitations": /\/invitations$/,
   "nav-links": /\/links$/,
@@ -138,9 +138,13 @@ test.describe("the sectioned menu on the three roles (live)", () => {
       await expect(page.getByTestId("nav-promotion")).toHaveCount(hasPromotion ? 1 : 0);
       await expect(page.getByTestId("nav-entrance")).toBeVisible();
       await expect(page.getByTestId("nav-more")).toBeVisible();
-      await expect(page.getByTestId("tabbar").locator(".tab-item")).toHaveCount(3 + (can("order.read") ? 1 : 0) + (hasPromotion ? 1 : 0));
-      // Refunds and the summary moved into the Menu sheet.
-      await expect(page.getByTestId("nav-refunds")).toHaveCount(0);
+      // Without order.read the second item is Refunds, when the role holds refund.read.
+      const refundsOnBar = !can("order.read") && can("refund.read");
+      await expect(page.getByTestId("nav-refunds")).toHaveCount(refundsOnBar ? 1 : 0);
+      await expect(page.getByTestId("tabbar").locator(".tab-item")).toHaveCount(
+        3 + (can("order.read") || refundsOnBar ? 1 : 0) + (hasPromotion ? 1 : 0),
+      );
+      // The summary moved into the Menu sheet.
       await expect(page.getByTestId("nav-summary")).toHaveCount(0);
       await noOverflow(page, "the events list with the bar");
 

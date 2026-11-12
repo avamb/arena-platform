@@ -2733,16 +2733,16 @@ other = "Falta algo en el código. Vuelve y revisa los pasos."
 other = "🎭 Marcas (nombres en los eventos)"
 
 ["bot.prom.list_title"]
-other = "🎭 <b>Marcas</b> · {{.Org}} · {{.Total}} en total · pág. {{.Page}}/{{.Pages}}\nUna marca es el nombre con el que vendes un evento. Antes se llamaba promotor."
+other = "🎭 <b>Marcas</b> · {{.Org}} · {{.Total}} en total · pág. {{.Page}}/{{.Pages}}\nUna marca es el nombre con el que vendes un evento. Antes lo llamábamos promotor."
 
 ["bot.prom.list_hint"]
-other = "Toca un promotor para ver y cambiar sus datos."
+other = "Toca una marca para ver y cambiar sus datos."
 
 ["bot.prom.empty"]
-other = "Aún no hay promotores. Un promotor es un socio cuyos eventos vendes. Pulsa «➕ Promotor» abajo para añadir uno, o añádelo al crear un evento."
+other = "Aún no hay marcas. Una marca es un socio cuyos eventos vendes. Pulsa «➕ Marca» abajo para añadir una, o añádela al crear un evento."
 
 ["bot.prom.add_btn"]
-other = "➕ Promotor"
+other = "➕ Marca"
 
 ["bot.prom.new_ask"]
 other = "➕ <b>Nuevo promotor.</b> Escribe su nombre. Se imprime en las entradas como organizador. Dos promotores activos no pueden tener el mismo nombre."

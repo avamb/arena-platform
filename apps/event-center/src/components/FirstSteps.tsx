@@ -8,6 +8,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { fetchGettingStarted } from "@/lib/api/endpoints";
+import type { OrgAccess } from "@/lib/auth";
+import { wizardGate } from "@/lib/features";
 import type { GettingStarted, GettingStartedStep } from "@/lib/api/types";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
@@ -55,8 +57,9 @@ function StepLink({ orgId, step, children }: { orgId: string; step: StepKey; chi
   }
 }
 
-export function FirstSteps({ orgId }: { orgId: string }) {
+export function FirstSteps({ orgId, access }: { orgId: string; access: Pick<OrgAccess, "can"> }) {
   const { t } = useI18n();
+  const canAddEvent = wizardGate(access.can) === "ok";
   const steps = useQuery({
     queryKey: ["gettingStarted", orgId],
     queryFn: () => fetchGettingStarted(orgId),
@@ -81,6 +84,8 @@ export function FirstSteps({ orgId }: { orgId: string }) {
                 <span className="visually-hidden">{t("firstSteps.stepDone")}: </span>
                 {t(LABELS[s.key])}
               </span>
+            ) : s.key === "event" && !canAddEvent ? (
+              <span>{t(LABELS[s.key])}</span>
             ) : (
               <StepLink orgId={orgId} step={s.key}>
                 {t(LABELS[s.key])}

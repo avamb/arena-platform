@@ -99,7 +99,7 @@ export function EventsScreen() {
 
   return (
     <section aria-labelledby="events-title">
-      <FirstSteps orgId={orgId} />
+      <FirstSteps orgId={orgId} access={access} />
       {/* The one "create" entry of the event center: the header carries none (owner, 2026-11-08). */}
       <div className="events-head">
         <h1 id="events-title">

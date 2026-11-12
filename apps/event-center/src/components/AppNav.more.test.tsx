@@ -93,7 +93,7 @@ describe("Menu", () => {
     expect(groupsOf(el)).toEqual([
       ["Новое мероприятие", ["nav-new-event"]],
       ["Мои мероприятия", ["menu-events", "nav-summary"]],
-      ["Заказы и возвраты", ["menu-orders", "nav-refunds"]],
+      ["Заказы и возвраты", ["menu-orders", "menu-refunds"]],
       ["Продвижение", ["nav-promo", "nav-invitations", "nav-links", "nav-growth"]],
       ["Вход на мероприятие", ["nav-scanner", "nav-guest-list"]],
       ["Магазин", ["nav-shop"]],
@@ -122,7 +122,7 @@ describe("Menu", () => {
     const el = await mountBar(["promo.read"], 1);
     act(() => more(el).click());
     expect(groupsOf(el).map(([title]) => title)).toEqual(["Мои мероприятия", "Продвижение", "Вход на мероприятие", "Настройки", "Помощь"]);
-    expect(el.querySelector('[data-testid="nav-refunds"]')).toBeNull();
+    expect(el.querySelector('[data-testid="menu-refunds"]')).toBeNull();
   });
 
   it("opens the Promotion sheet with the promotion items alone", async () => {

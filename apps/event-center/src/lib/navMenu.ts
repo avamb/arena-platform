@@ -51,7 +51,7 @@ export function navGroups(access: NavPerson, shopMode: ShopMode, orgCount: numbe
       titleKey: "nav.section.orders",
       items: [
         ...(can("order.read") ? [{ id: "menu-orders", labelKey: "nav.orders" } as NavEntry] : []),
-        ...(can("refund.read") ? [{ id: "nav-refunds", labelKey: "nav.refunds" } as NavEntry] : []),
+        ...(can("refund.read") ? [{ id: "menu-refunds", labelKey: "nav.refunds" } as NavEntry] : []),
       ],
     },
     { id: "promotion", titleKey: "nav.section.promotion", items: promotionItems(can) },

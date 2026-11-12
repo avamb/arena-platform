@@ -2905,16 +2905,16 @@ other = "Something is missing in the code. Go back and examine the steps."
 other = "🎭 Brands (names on events)"
 
 ["bot.prom.list_title"]
-other = "🎭 <b>Brands</b> · {{.Org}} · {{.Total}} in all · page {{.Page}}/{{.Pages}}\nA brand is the name under which you sell an event. It was called a promoter."
+other = "🎭 <b>Brands</b> · {{.Org}} · {{.Total}} in all · page {{.Page}}/{{.Pages}}\nA brand is the name under which you sell an event. We called it a promoter before."
 
 ["bot.prom.list_hint"]
-other = "Tap a promoter to see and edit its data."
+other = "Tap a brand to see and edit its data."
 
 ["bot.prom.empty"]
-other = "There are no promoters. A promoter is a partner. You sell the events of this partner. Press “➕ Promoter” below to add one, or add one when you make an event."
+other = "There are no brands. A brand is a partner. You sell the events of this partner. Press “➕ Brand” below to add one, or add one when you make an event."
 
 ["bot.prom.add_btn"]
-other = "➕ Promoter"
+other = "➕ Brand"
 
 ["bot.prom.new_ask"]
 other = "➕ <b>New promoter.</b> Type its name. Tickets show it as the organizer. Two active promoters cannot share a name."

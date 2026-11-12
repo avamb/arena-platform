@@ -63,6 +63,20 @@ describe("TabBar", () => {
     expect(html.match(/class="tab-item/g)?.length).toBe(3);
   });
 
+  it("makes the second item follow the role: Orders, Refunds or none", async () => {
+    const both = await bar(["order.read", "refund.read"]);
+    expect(both).toContain('data-testid="nav-orders"');
+    expect(both).not.toContain('data-testid="nav-refunds"');
+    const refundsOnly = await bar(["refund.read"]);
+    expect(refundsOnly).not.toContain('data-testid="nav-orders"');
+    expect(refundsOnly).toContain('data-testid="nav-refunds"');
+    expect(refundsOnly).toContain("/o/org1/refunds");
+    expect(refundsOnly.match(/class="tab-item/g)?.length).toBe(4);
+    const neither = await bar([]);
+    expect(neither).not.toContain('data-testid="nav-orders"');
+    expect(neither).not.toContain('data-testid="nav-refunds"');
+  });
+
   it("shows Promotion to who has only free tickets", async () => {
     const html = await bar(["complimentary.read"]);
     expect(html).toContain('data-testid="nav-promotion"');

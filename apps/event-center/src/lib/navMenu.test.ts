@@ -29,7 +29,7 @@ describe("navGroups", () => {
     expect(shape(OWNER, "full", 2)).toEqual([
       ["new", ["nav-new-event"]],
       ["events", ["menu-events", "nav-summary"]],
-      ["orders", ["menu-orders", "nav-refunds"]],
+      ["orders", ["menu-orders", "menu-refunds"]],
       ["promotion", ["nav-promo", "nav-invitations", "nav-links", "nav-growth"]],
       ["entrance", ["nav-scanner", "nav-guest-list"]],
       ["shop", ["nav-shop"]],

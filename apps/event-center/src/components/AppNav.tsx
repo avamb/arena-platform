@@ -152,6 +152,13 @@ export function TabBar({ orgId, access, shopMode, orgCount, onLogout }: NavProps
             {canRefunds && <RefundsBadge orgId={orgId} />}
           </Link>
         )}
+        {!canOrders && canRefunds && (
+          <Link to="/o/$orgId/refunds" params={{ orgId }} {...cur("orders")} data-testid="nav-refunds">
+            <Icon name="orders" />
+            <span>{t("nav.refunds")}</span>
+            <RefundsBadge orgId={orgId} />
+          </Link>
+        )}
         {hasPromotion && (
           <button
             type="button"
@@ -245,7 +252,7 @@ function NavSheet({ mode, orgId, access, shopMode, orgCount, onLogout, onClose }
             {label}
           </Link>
         );
-      case "nav-refunds":
+      case "menu-refunds":
         return (
           <Link to="/o/$orgId/refunds" params={{ orgId }} {...item} data-testid={id}>
             {label}

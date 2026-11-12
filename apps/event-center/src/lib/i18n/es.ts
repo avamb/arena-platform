@@ -619,8 +619,8 @@ export const es: Record<MessageKey, string> = {
 
   // 4-6
   "nav.promoters": "Marcas (nombre en los eventos)",
-  "promoters.title": "Promotores",
-  "promoters.intro": "Un promotor es un socio que organiza un evento cuyas entradas vendes tú. En las entradas su nombre aparece como organizador.",
+  "promoters.title": "Marcas",
+  "promoters.intro": "Una marca es un socio que organiza un evento cuyas entradas vendes tú. En las entradas su nombre aparece como organizador.",
   "promoters.tab.active": "Activos ({count})",
   "promoters.tab.archived": "Archivados ({count})",
   "promoters.empty.active": "Todavía no hay promotores. Cuando un socio organice un evento cuyas entradas vendes tú, añádelo aquí.",
@@ -695,7 +695,7 @@ export const es: Record<MessageKey, string> = {
   "promoters.restore.done": "{name} vuelve a estar activo.",
   // 4-3
   "nav.growth": "Mensajes a compradores",
-  "growth.title": "Envíos y recordatorios",
+  "growth.title": "Mensajes a los compradores",
   "growth.noAccess": "Esta página la ven el propietario y los gestores.",
   "growth.settings.title": "Ajustes",
   "growth.reminder.label": "Recordar al comprador un pedido sin pagar",
@@ -963,7 +963,7 @@ export const es: Record<MessageKey, string> = {
   "refund.scanned.next": "Si alguien escaneó la entrada por error, escribe al soporte de Arena. El operador puede permitir una devolución.",
   // 4-4
   "nav.invitations": "Entradas gratuitas",
-  "invitations.title": "Invitaciones",
+  "invitations.title": "Entradas gratuitas",
   "invitations.intro": "Entradas gratis para los invitados que nombras. La entrada puede ir al invitado por e-mail, a ti, o solo como PDF para descargar. Las invitaciones no son ventas.",
   "invitations.noAccess": "No tienes acceso a las invitaciones de esta organización. Pide al propietario que te dé el rol de gestor.",
   "invitations.issue.title": "Invitar a gente",

@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -145,4 +146,93 @@ func TestGettingStarted_RealRouter_StepsPermissionsAndFlags(t *testing.T) {
 	if _, done, complete = e.gettingStarted(t, org, managerTok); !complete || !done["event"] || !done["sales_link"] {
 		t.Errorf("manager after filling: done %v complete %v", done, complete)
 	}
+}
+
+// The access gate of GET .../getting-started on the real router, beyond
+// owner, manager, stranger and no token: a member of another organization,
+// API keys of another and of the same organization, an archived organization
+// and a platform superadmin without X-Admin-Reason (same answer as GET .../me).
+func TestGettingStarted_RealRouter_AccessGate(t *testing.T) {
+	e := newSec1Env(t)
+	ctx := context.Background()
+	orgA, orgB := e.org(t, "GSA"), e.org(t, "GSB")
+	t.Cleanup(func() {
+		for _, stmt := range []string{
+			`DELETE FROM sales_links WHERE org_id = ANY($1)`,
+			`DELETE FROM events WHERE org_id = ANY($1)`,
+		} {
+			if _, err := e.srv.pgxPool.Exec(ctx, stmt, []uuid.UUID{orgA, orgB}); err != nil {
+				t.Logf("cleanup %q: %v", stmt, err)
+			}
+		}
+	})
+	// Organization B has an event and a sales link, A has neither: a fact of B
+	// leaking into an answer about A would show as done.
+	if _, err := e.srv.pgxPool.Exec(ctx, `INSERT INTO events (org_id, name, status, visibility) VALUES ($1, 'GS B draft', 'draft', 'public')`, orgB); err != nil {
+		t.Fatalf("insert event: %v", err)
+	}
+	if _, err := e.srv.pgxPool.Exec(ctx, `INSERT INTO sales_links (org_id, code, target_kind, label) VALUES ($1, $2, 'org_page', 'GS B link')`, orgB, gsSalesLinkCode()); err != nil {
+		t.Fatalf("insert sales link: %v", err)
+	}
+
+	path := func(org uuid.UUID) string { return "/v1/organizations/" + org.String() + "/getting-started" }
+	noFacts := func(t *testing.T, who, out string) {
+		t.Helper()
+		if strings.Contains(out, "getting_started") || strings.Contains(out, `"steps"`) {
+			t.Errorf("%s: refusal carries steps: %s", who, out)
+		}
+	}
+
+	// (a) A member (owner) of B asks about A: 403 org.access_denied.
+	ownerB := e.user(t, "gs-owner-b")
+	e.member(t, ownerB, orgB, "org_admin")
+	tokB := e.token(t, ownerB)
+	out := e.expect(t, http.StatusForbidden, http.MethodGet, path(orgA), tokB, "", "")
+	if sec1Code(out) != "org.access_denied" {
+		t.Errorf("member of another org: code %q; want org.access_denied", sec1Code(out))
+	}
+	noFacts(t, "member of another org", out)
+
+	// (b) An API key of B asks about A: refused. A key of A asks about A: 200,
+	// only its scopes' steps, and none of B's facts.
+	scopes := []string{"event.read", "import.bil24_session", "sales_link.manage"}
+	keyA, keyB := e.key(t, orgA, scopes...), e.key(t, orgB, scopes...)
+	st, out := e.do(t, http.MethodGet, path(orgA), keyB, "", "")
+	t.Logf("api key of another org: %d %s", st, out)
+	if st != http.StatusForbidden || sec1Code(out) != "org.access_denied" {
+		t.Errorf("api key of another org: %d %q; want 403 org.access_denied", st, sec1Code(out))
+	}
+	noFacts(t, "api key of another org", out)
+	keys, done, complete := e.gettingStarted(t, orgA, keyA)
+	if !reflect.DeepEqual(keys, []string{"event", "sales_link"}) {
+		t.Errorf("api key of the same org: steps %v; want [event sales_link]", keys)
+	}
+	if done["event"] || done["sales_link"] || complete {
+		t.Errorf("api key of A sees B's facts: done %v complete %v", done, complete)
+	}
+	// Control: B's own key does see B's facts.
+	if _, done, _ = e.gettingStarted(t, orgB, keyB); !done["event"] || !done["sales_link"] {
+		t.Errorf("api key of B: done %v; want event and sales_link done", done)
+	}
+
+	// (d) A platform superadmin without X-Admin-Reason: the same status as GET .../me.
+	_, saTok := e.superadmin(t)
+	meSt, meOut := e.do(t, http.MethodGet, "/v1/organizations/"+orgA.String()+"/me", saTok, "", "")
+	gsSt, gsOut := e.do(t, http.MethodGet, path(orgA), saTok, "", "")
+	t.Logf("superadmin without reason: /me %d, getting-started %d %s", meSt, gsSt, gsOut)
+	if gsSt != meSt {
+		t.Errorf("superadmin without reason: getting-started %d %s; /me %d %s", gsSt, gsOut, meSt, meOut)
+	}
+
+	// (c) An archived organization: its member gets 404 org.not_found.
+	ownerA := e.user(t, "gs-owner-a")
+	e.member(t, ownerA, orgA, "org_admin")
+	tokA := e.token(t, ownerA)
+	e.gettingStarted(t, orgA, tokA)
+	e.expect(t, http.StatusOK, http.MethodPost, "/v1/admin/organizations/"+orgA.String()+"/archive", saTok, "getting-started gate test", "")
+	out = e.expect(t, http.StatusNotFound, http.MethodGet, path(orgA), tokA, "", "")
+	if sec1Code(out) != "org.not_found" {
+		t.Errorf("archived org member: code %q; want org.not_found", sec1Code(out))
+	}
+	noFacts(t, "archived org member", out)
 }
