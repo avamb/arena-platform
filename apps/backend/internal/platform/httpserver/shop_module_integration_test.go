@@ -37,6 +37,7 @@ import (
 type shopModuleEnv struct {
 	*shopFixture
 	managerA string
+	agentA   string
 	super    string
 }
 
@@ -70,6 +71,15 @@ func newShopModuleEnvWith(t *testing.T, extra func(*config.Config)) *shopModuleE
 		t.Fatalf("InsertMembership: %v", err)
 	}
 	e.managerA = mint(mgr.ID)
+	agent, err := f.q.InsertUser(ctx, "shop-agent-"+uuid.NewString()+"@example.test", "x", "en")
+	if err != nil {
+		t.Fatalf("InsertUser: %v", err)
+	}
+	f.users = append(f.users, agent.ID)
+	if _, err := f.q.InsertMembership(ctx, agent.ID, f.orgA, "agent"); err != nil {
+		t.Fatalf("InsertMembership: %v", err)
+	}
+	e.agentA = mint(agent.ID)
 	sup, err := f.q.InsertUser(ctx, "shop-super-"+uuid.NewString()+"@example.test", "x", "en")
 	if err != nil {
 		t.Fatalf("InsertUser: %v", err)
@@ -385,6 +395,16 @@ func TestShopModule_MeAndOrganizationList(t *testing.T) {
 	}
 	if mods := me["organization_memberships"].([]any)[0].(map[string]any)["modules"].([]any); len(mods) != 0 {
 		t.Fatalf("modules of B = %v; want []", mods)
+	}
+
+	// An agent has no shop.read: the shop is not offered to them, although the
+	// organization has the module (F-SH-02).
+	code, me = e.doReason(http.MethodGet, "/v1/me", e.agentA, "", "")
+	if code != http.StatusOK || meShopMode(t, me, e.orgA) != "" {
+		t.Fatalf("/v1/me of an agent of A = %d %v; want shop_mode null", code, me)
+	}
+	if mods := me["organization_memberships"].([]any)[0].(map[string]any)["modules"].([]any); len(mods) != 0 {
+		t.Fatalf("modules of A for an agent = %v; want []", mods)
 	}
 
 	// The superadmin's organization list (the bot's chooser).

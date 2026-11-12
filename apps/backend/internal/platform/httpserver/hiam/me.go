@@ -290,6 +290,12 @@ func (h *Handler) HandleMe(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "could not load organization modules", r))
 		return
 	}
+	// The shop is shown only where the caller may open it (F-SH-02).
+	if err := h.withholdShopFromMembersWithoutAccess(ctx, memberships, dtos, actor.Roles); err != nil {
+		logger.Warn("me: GetPermissionsForRoles for the shop failed", "err", err)
+		httputil.WriteJSON(w, http.StatusServiceUnavailable, httputil.ErrorEnvelope("dependency.database_unavailable", "could not load user permissions", r))
+		return
+	}
 
 	staff, err := h.meQueries.IsPlatformStaff(ctx, userID)
 	if err != nil {
