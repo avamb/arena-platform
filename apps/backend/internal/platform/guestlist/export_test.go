@@ -54,7 +54,10 @@ func TestSplitName(t *testing.T) {
 func TestStatusOf_FourMACSStatesAndReasons(t *testing.T) {
 	at := time.Date(2026, 11, 20, 18, 0, 0, 0, time.UTC)
 	gone := "Refunded / cancelled (3)"
-	replaced := "Replaced: sent to a wrong e-mail address"
+	replaced := "Replaced"
+	wrongAddress := "Replaced: sent to a wrong e-mail address"
+	stranger := "Replaced: forwarded to a stranger"
+	wrong, forwarded, other := "sent_to_wrong_address", "forwarded_to_stranger", "other"
 	for _, tc := range []struct {
 		name     string
 		row      gen.GuestListRow
@@ -72,9 +75,13 @@ func TestStatusOf_FourMACSStatesAndReasons(t *testing.T) {
 		{"cancelled", gen.GuestListRow{TicketStatus: "cancelled"}, StatusRefunded, ReasonCancelled, gone, "Cancelled"},
 		{"revoked invitation", gen.GuestListRow{TicketStatus: "revoked"}, StatusRefunded, ReasonCancelled, gone, "Cancelled"},
 		{"session cancelled", gen.GuestListRow{TicketStatus: "active", SessionStatus: "cancelled"}, StatusRefunded, ReasonSessionCancelled, gone, "Session cancelled"},
-		{"reissued", gen.GuestListRow{TicketStatus: "transferred", Reissued: true}, StatusRefunded, ReasonReissued, gone, replaced},
+		// The reason is the one the organizer chose (F-C-02), not always "wrong address".
+		{"reissued, reason not known", gen.GuestListRow{TicketStatus: "transferred", Reissued: true}, StatusRefunded, ReasonReissued, gone, replaced},
+		{"reissued, wrong address", gen.GuestListRow{TicketStatus: "transferred", Reissued: true, ReissueReason: &wrong}, StatusRefunded, ReasonReissuedWrongAddress, gone, wrongAddress},
+		{"reissued, forwarded to a stranger", gen.GuestListRow{TicketStatus: "transferred", Reissued: true, ReissueReason: &forwarded}, StatusRefunded, ReasonReissuedStranger, gone, stranger},
+		{"reissued, other", gen.GuestListRow{TicketStatus: "transferred", Reissued: true, ReissueReason: &other}, StatusRefunded, ReasonReissued, gone, replaced},
 		// A replaced ticket that had been scanned is still status 3.
-		{"reissued after entry", gen.GuestListRow{TicketStatus: "transferred", Reissued: true, EnteredAt: &at, MacsAdmittedScans: 1}, StatusRefunded, ReasonReissued, gone, replaced},
+		{"reissued after entry", gen.GuestListRow{TicketStatus: "transferred", Reissued: true, ReissueReason: &wrong, EnteredAt: &at, MacsAdmittedScans: 1}, StatusRefunded, ReasonReissuedWrongAddress, gone, wrongAddress},
 	} {
 		code, reason := StatusOf(tc.row)
 		if code != tc.code || reason != tc.reason {
@@ -97,12 +104,13 @@ func TestBuild_XLSXBarcodeIsATextCellAndRowsAreMapped(t *testing.T) {
 	entered := time.Date(2026, 11, 20, 18, 31, 0, 0, time.UTC)
 	order, barcode, phone, email, tier := int64(1000000500), "4600051000001", "+34600111222", "anna@example.com", "VIP"
 	row, seat := "3", "12"
+	forwardedReason := "forwarded_to_stranger"
 	start := time.Date(2026, 11, 20, 19, 0, 0, 0, time.UTC)
 	q := fakeQuerier{rows: []gen.GuestListRow{
 		{SystemTicketID: 349, GuestName: "Anna Ivanova", TierName: &tier, Barcode: &barcode, EnteredAt: &entered,
 			OrderNumber: &order, Email: &email, Phone: &phone, VIP: true, SeatRow: &row, SeatNumber: &seat,
 			TicketStatus: "active", SessionStatus: "scheduled", SessionStartAt: start},
-		{SystemTicketID: 7, GuestName: "Bob Adams", TicketStatus: "transferred", Reissued: true, SessionStartAt: start},
+		{SystemTicketID: 7, GuestName: "Bob Adams", TicketStatus: "transferred", Reissued: true, ReissueReason: &forwardedReason, SessionStartAt: start},
 	}}
 	file, err := Build(context.Background(), q, uuid.New(), uuid.New(), "en", madrid, 0, XLSX)
 	if err != nil {
@@ -116,7 +124,7 @@ func TestBuild_XLSXBarcodeIsATextCellAndRowsAreMapped(t *testing.T) {
 	// B first, C phone, D e-mail, E category, F row, G seat, H status,
 	// I reason, J barcode, K order, M ticket.
 	for ref, want := range map[string]string{
-		"A2": "Adams", "B2": "Bob", "J2": ean13.PlatformCode(7), "H2": "Refunded / cancelled (3)", "I2": "Replaced: sent to a wrong e-mail address",
+		"A2": "Adams", "B2": "Bob", "J2": ean13.PlatformCode(7), "H2": "Refunded / cancelled (3)", "I2": "Replaced: forwarded to a stranger",
 		"A3": "Ivanova", "B3": "Anna", "C3": phone, "D3": email, "E3": tier, "F3": "3", "G3": "12",
 		"H3": "Checked in (1)", "I3": "", "J3": barcode, "K3": "1000000500", "M3": "349",
 	} {

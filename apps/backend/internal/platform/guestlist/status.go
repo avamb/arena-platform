@@ -24,14 +24,20 @@ const (
 	ReasonRefunded         = "refunded"
 	ReasonCancelled        = "cancelled"
 	ReasonSessionCancelled = "session_cancelled"
-	ReasonReissued         = "reissued"
+	// ReasonReissued is a replaced ticket whose reason is "other" or not
+	// known; the two below name the reason the organizer gave (F-C-02).
+	ReasonReissued             = "reissued"
+	ReasonReissuedWrongAddress = "reissued_wrong_address"
+	ReasonReissuedStranger     = "reissued_stranger"
 )
 
 // StatusOf maps a ticket onto a MACS holderStatus and, for 3, the reason.
 //
-//   - status 3, reason reissued: the ticket was replaced because it went to a
-//     wrong e-mail address (tickets.status 'transferred', cancellation_reason
-//     'reissued', table ticket_reissues);
+//   - status 3, reason reissued: the ticket was replaced (tickets.status
+//     'transferred', cancellation_reason 'reissued', table ticket_reissues). The
+//     reason is the one the organizer chose (ticket_reissues.reason): a wrong
+//     e-mail address, a stranger who got the ticket, or the neutral "replaced"
+//     for "other" and for a ticket no operation row names;
 //   - status 3, reason refunded: a cancelled/revoked ticket that carries a
 //     refund (refund_id, refund_date or refund_price);
 //   - status 3, reason cancelled: any other non-active ticket;
@@ -48,7 +54,7 @@ func StatusOf(r gen.GuestListRow) (code int, reason string) {
 	if r.TicketStatus != "active" {
 		switch {
 		case r.Reissued:
-			return StatusRefunded, ReasonReissued
+			return StatusRefunded, reissueReason(r.ReissueReason)
 		case r.Refunded:
 			return StatusRefunded, ReasonRefunded
 		default:
@@ -64,6 +70,21 @@ func StatusOf(r gen.GuestListRow) (code int, reason string) {
 	return StatusValid, ReasonNone
 }
 
+// reissueReason maps ticket_reissues.reason onto the guest list's reason.
+func reissueReason(reason *string) string {
+	if reason == nil {
+		return ReasonReissued
+	}
+	switch *reason {
+	case "sent_to_wrong_address":
+		return ReasonReissuedWrongAddress
+	case "forwarded_to_stranger":
+		return ReasonReissuedStranger
+	default:
+		return ReasonReissued
+	}
+}
+
 var statusLabels = map[string][4]string{
 	"en": {"Valid", "Checked in", "Checked out", "Refunded / cancelled"},
 	"ru": {"Действителен", "Вошёл", "Вышел", "Возврат / отмена"},
@@ -72,11 +93,14 @@ var statusLabels = map[string][4]string{
 
 var reasonLabels = map[string]map[string]string{
 	"en": {ReasonRefunded: "Refunded", ReasonCancelled: "Cancelled", ReasonSessionCancelled: "Session cancelled",
-		ReasonReissued: "Replaced: sent to a wrong e-mail address"},
+		ReasonReissued: "Replaced", ReasonReissuedWrongAddress: "Replaced: sent to a wrong e-mail address",
+		ReasonReissuedStranger: "Replaced: forwarded to a stranger"},
 	"ru": {ReasonRefunded: "Возврат", ReasonCancelled: "Отменён", ReasonSessionCancelled: "Сеанс отменён",
-		ReasonReissued: "Заменён: билет ушёл на неверный e-mail"},
+		ReasonReissued: "Заменён", ReasonReissuedWrongAddress: "Заменён: билет ушёл на неверный e-mail",
+		ReasonReissuedStranger: "Заменён: билет попал к постороннему"},
 	"es": {ReasonRefunded: "Devuelta", ReasonCancelled: "Cancelada", ReasonSessionCancelled: "Sesión cancelada",
-		ReasonReissued: "Sustituida: enviada a un e-mail equivocado"},
+		ReasonReissued: "Sustituida", ReasonReissuedWrongAddress: "Sustituida: enviada a un e-mail equivocado",
+		ReasonReissuedStranger: "Sustituida: llegó a un desconocido"},
 }
 
 // StatusLabel is the status as the file prints it: the words and, in
