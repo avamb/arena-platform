@@ -28,6 +28,9 @@ DE_CITY = "c0000000-0000-7000-8000-000000000002"
 class FakeArena:
     def __init__(self):
         self.requests = []  # (method, path, body)
+        self.raw_bodies = []  # (path, raw request bytes)
+        self.fail_versions = False  # answer 500 to a version upload
+        self.fail_activation = False  # answer 500 to PATCH /v1/seating-plans/{id}
         self.venues = []
         self.plans = []
         self.versions = []
@@ -56,7 +59,9 @@ class FakeArena:
 
             def _body(self):
                 n = int(self.headers.get("Content-Length") or 0)
-                return json.loads(self.rfile.read(n)) if n else None
+                raw = self.rfile.read(n) if n else b""
+                fake.raw_bodies.append((self.path, raw))
+                return json.loads(raw.decode("utf-8")) if raw else None
 
             def _authed(self):
                 return self.headers.get("Authorization") == "Bearer " + TOKEN
@@ -122,7 +127,17 @@ class FakeArena:
                          "plan_type": body["plan_type"], "visibility": "private", "status": "draft", "current_version_id": None}
                     fake.plans.append(p)
                     return self._send(201, {"seating_plan": p})
+                if parts[:2] == ["v1", "seating-plans"] and len(parts) == 3 and method == "PATCH":
+                    if fake.fail_activation:
+                        return self._send(500, {"error": {"code": "boom", "message": "boom"}})
+                    for p in fake.plans:
+                        if p["id"] == parts[2]:
+                            p["status"] = body["status"]
+                            return self._send(200, {"seating_plan": p})
+                    return self._send(404, {"error": {"code": "nf", "message": "nf"}})
                 if parts[:2] == ["v1", "seating-plans"] and len(parts) == 4 and parts[3] == "versions" and method == "POST":
+                    if fake.fail_versions:
+                        return self._send(500, {"error": {"code": "boom", "message": "boom"}})
                     for p in fake.plans:
                         if p["id"] == parts[2]:
                             p["current_version_id"] = str(uuid.uuid4())
@@ -272,6 +287,69 @@ class LoaderTests(unittest.TestCase):
         (self.lib / "load" / "log.json").unlink()
         self.go()
         self.assertEqual(len(self.fake.writes()), n)
+        self.assertEqual(len(self.fake.versions), 1)
+
+    def plan_patches(self):
+        return [r for r in self.fake.requests if r[0] == "PATCH" and r[1].startswith("/v1/seating-plans/")]
+
+    def test_plan_is_activated_after_upload(self):
+        make_plan(self.lib, 1001)
+        self.go()
+        self.assertEqual([p["status"] for p in self.fake.plans], ["active"])
+        self.assertEqual(self.plan_patches()[0][2], {"status": "active"})
+        order = [r[1].rsplit("/", 1)[-1] for r in self.fake.requests if "/seating-plans/" in r[1]]
+        self.assertEqual(order, ["versions", self.fake.plans[0]["id"]])  # version first, then the PATCH
+        self.assertEqual([r for r in self.fake.requests if "/verify" in r[1] or r[1].endswith("/review")], [])
+        log = json.loads((self.lib / "load" / "log.json").read_text(encoding="utf-8"))
+        self.assertTrue(all(v["activated"] for v in log["plans"].values()))
+
+    def test_failed_upload_is_not_activated(self):
+        self.fake.fail_versions = True
+        make_plan(self.lib, 1001)
+        self.go()
+        self.assertEqual(self.plan_patches(), [])
+        self.assertEqual([p["status"] for p in self.fake.plans], ["draft"])
+        log = json.loads((self.lib / "load" / "log.json").read_text(encoding="utf-8"))
+        self.assertEqual({v["status"] for v in log["plans"].values()}, {"failed"})
+
+    def test_rerun_activates_a_draft_plan_without_second_upload(self):
+        make_plan(self.lib, 1001)
+        self.go("--keep-draft")
+        self.assertEqual(self.plan_patches(), [])
+        self.assertEqual([p["status"] for p in self.fake.plans], ["draft"])
+        self.assertEqual(len(self.fake.versions), 1)
+        posts_before = [r for r in self.fake.requests if r[0] == "POST" and r[1] != "/v1/auth/login"]
+        self.go()  # the log says "loaded", yet the plan is still draft
+        self.assertEqual([p["status"] for p in self.fake.plans], ["active"])
+        self.assertEqual(len(self.fake.versions), 1)
+        self.assertEqual([r for r in self.fake.requests if r[0] == "POST" and r[1] != "/v1/auth/login"], posts_before)
+        self.assertEqual(len(self.plan_patches()), 1)
+        self.go()  # nothing left to do
+        self.assertEqual(len(self.plan_patches()), 1)
+        # an old log entry without the "activated" key, and a lost log, are repaired the same way
+        self.fake.plans[0]["status"] = "draft"
+        (self.lib / "load" / "log.json").unlink()
+        self.go()
+        self.assertEqual([p["status"] for p in self.fake.plans], ["active"])
+        self.assertEqual(len(self.fake.versions), 1)
+
+    def test_keep_draft_leaves_plans_draft(self):
+        make_plan(self.lib, 1001)
+        self.go("--keep-draft")
+        self.go("--keep-draft")
+        self.assertEqual(self.plan_patches(), [])
+        self.assertEqual([p["status"] for p in self.fake.plans], ["draft"])
+        self.assertEqual(len(self.fake.versions), 1)
+
+    def test_failed_activation_is_retried_next_run(self):
+        self.fake.fail_activation = True
+        make_plan(self.lib, 1001)
+        self.go()
+        log = json.loads((self.lib / "load" / "log.json").read_text(encoding="utf-8"))
+        self.assertEqual({(v["status"], v["activated"]) for v in log["plans"].values()}, {("loaded", False)})
+        self.fake.fail_activation = False
+        self.go()
+        self.assertEqual([p["status"] for p in self.fake.plans], ["active"])
         self.assertEqual(len(self.fake.versions), 1)
 
     def test_missing_timezone_is_skipped(self):
@@ -439,6 +517,43 @@ class VenuesTests(unittest.TestCase):
         self.assertEqual(len(self.venue_posts()), 2)
         new_city = [c for c in self.fake.cities if c["name"] == "Cheb"][0]["id"]
         self.assertEqual({p[2]["city_id"] for p in self.venue_posts()}, {new_city})
+
+    def inventory_with_city(self, city_name):
+        make_inventory(self.lib, [V(1, "Prague Hall", 1, 12)])
+        cities = json.loads((self.lib / "inventory" / "cities.json").read_text(encoding="utf-8"))
+        cities.append({"countryId": 1, "cityId": 12, "cityName": city_name})
+        (self.lib / "inventory" / "cities.json").write_text(json.dumps(cities, ensure_ascii=False), encoding="utf-8")
+        self.zones({"12": "Europe/Prague"})
+
+    def test_cyrillic_city_name_travels_as_utf8_bytes(self):
+        self.inventory_with_city("Прага")
+        code, _ = self.go()
+        self.assertEqual(code, 0)
+        posts = self.city_posts()
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0][2], {"country_id": "x1", "name": "Прага", "locale": "ru"})
+        raw = [b for p, b in self.fake.raw_bodies if p.endswith("/cities")][0]
+        self.assertIn("Прага".encode("utf-8"), raw)
+        self.assertNotIn(b"?", raw)
+        self.assertEqual(loader.city_locale("Prague"), "en")
+
+    def test_mangled_city_name_is_refused_not_sent(self):
+        self.inventory_with_city("?????")
+        code, text = self.go()
+        self.assertEqual(code, 0)
+        self.assertEqual(self.city_posts(), [])
+        self.assertEqual(self.venue_posts(), [])
+        self.assertIn("city name refused", self.read("venues-log.json")["venues"]["1"]["reason"])
+        self.assertTrue(loader.mangled_name("Pra?a"))
+        self.assertTrue(loader.mangled_name("Pra�a"))
+        self.assertFalse(loader.mangled_name("Прага"))
+
+    def test_existing_city_is_never_posted(self):
+        # A city already in the reference is found by its English name: no POST, so no name is overwritten.
+        make_inventory(self.lib, [V(1, "Berlin Hall", 2, 20)])
+        self.go()
+        self.assertEqual(self.city_posts(), [])
+        self.assertEqual([c["name"] for c in self.fake.cities if c["country_iso2"] == "DE"], ["Berlin"])
 
     def test_unresolved_timezone_and_unknown_country(self):
         make_inventory(self.lib, [V(1, "Cheb A", 1, 11), V(4, "Lost Hall", 9, 90)])

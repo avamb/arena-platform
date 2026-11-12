@@ -104,6 +104,15 @@ export function pruneSelection(selected: ReadonlySet<string>, rows: readonly Ven
   return next.size === selected.size ? selected : next;
 }
 
+/**
+ * The X-Admin-Reason header does not carry non-Latin text: a valid reason is not empty
+ * after trimming and holds only printable ASCII characters.
+ */
+export function isLatinReason(reason: string): boolean {
+  const t = reason.trim();
+  return t !== "" && /^[\x20-\x7E]+$/.test(t);
+}
+
 export interface VenueVerifyFailure {
   readonly id: string;
   readonly name: string;

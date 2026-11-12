@@ -71,7 +71,7 @@ export interface Permissions {
 
 export interface IntakeActions {
   view: boolean;
-  /** "Correct": approve the current draft. */
+  /** "The plan is correct": approve the current draft. */
   approve: boolean;
   /** "Fix it": send the written correction. */
   fix: boolean;

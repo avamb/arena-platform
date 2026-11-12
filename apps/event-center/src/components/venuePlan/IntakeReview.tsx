@@ -1,7 +1,7 @@
 /**
  * The review of a draft (spec 64 section 2.3): the draft large with pan and
  * zoom, what it holds, the files the person sent beside it to compare, the box
- * "Write what to fix" and the buttons "Correct", "Fix it", "Ask an
+ * "Write what to fix" and the buttons "The plan is correct", "Send a correction", "Ask an
  * administrator" and "Cancel the upload". The rules of the buttons are
  * lib/venuePlan/intakeState.ts.
  */

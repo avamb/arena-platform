@@ -690,7 +690,7 @@ func (b *Bot) planReview(ctx context.Context, chatID int64, msgID *int, from *mo
 func (b *Bot) sendPlanPreview(ctx context.Context, chatID int64, svg []byte, caption string, kb *models.InlineKeyboardMarkup) error {
 	var sent *models.Message
 	var err error
-	g, _, issues := seating.ImportSVG(svg)
+	g, _, issues := seating.ImportAnySVG(svg)
 	var png []byte
 	if len(issues) == 0 {
 		png, err = planpreview.Render(g, planPreviewSide)

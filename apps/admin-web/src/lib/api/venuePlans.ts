@@ -18,6 +18,7 @@
 import type { components } from "@openapi/index";
 import { config } from "@/lib/config";
 import { ApiError, authedFetch, refresh } from "@/lib/api/client";
+import { groupIssues } from "@/lib/admin/groupIssues";
 import { clientChannelHeaders } from "@/lib/api/channel";
 import {
   MISSING_REASON_CODE,
@@ -284,7 +285,7 @@ export function intakeErrorMessage(err: ApiError): string {
     case "venue_plan_intake.draft_stale":
       return "The draft changed. Reload the card, examine the new draft, then approve it.";
     case "venue_plan_intake.draft_validation_failed": {
-      const list = draftValidationErrors(err).map(describeValidationError);
+      const list = groupIssues(draftValidationErrors(err).map(describeValidationError));
       return list.length > 0
         ? `The geometry check found errors in the SVG. Correct these errors and upload the file again: ${list.join(", ")}.`
         : "The geometry check found errors in the SVG. Correct the file and upload it again.";
@@ -316,7 +317,7 @@ export function intakeErrorMessage(err: ApiError): string {
 export function verifyErrorMessage(err: ApiError): string {
   switch (err.code) {
     case "seating_plan.geometry_invalid": {
-      const list = draftValidationErrors(err).map(describeValidationError);
+      const list = groupIssues(draftValidationErrors(err).map(describeValidationError));
       return list.length > 0
         ? `The geometry check found errors in the plan. Send it back with «Correction necessary», or correct it first: ${list.join(", ")}.`
         : "The geometry check found errors in the plan. Send it back with «Correction necessary», or correct it first.";

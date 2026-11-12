@@ -403,7 +403,7 @@ func sourceSVGDraft(files []incoming) (int, json.RawMessage) {
 // checkPlanSVG imports an SVG and validates it for the plan type its geometry
 // fits, like the bot's plan upload.
 func checkPlanSVG(raw []byte) (seating.Geometry, []seating.ValidationError, string, seating.ValidationErrors) {
-	g, warnings, errs := seating.ImportSVG(raw)
+	g, warnings, errs := seating.ImportAnySVG(raw)
 	planType := seating.PlanTypeOf(g)
 	if len(errs) == 0 {
 		errs = seating.ValidateForPlanType(g, planType)

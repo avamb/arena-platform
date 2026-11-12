@@ -3,13 +3,16 @@
 
 KNOWN GAP (checked 2026-11-12 against apps/backend/openapi/openapi.yaml and
 08_architecture/64 section 3.4): the API has NO way to create a plan with a
-"verification" mark. A plan and its venue are unverified by default:
-`seating_plan.verify` and `POST /v1/admin/seating-plans/{id}/verify` and
-`PATCH /v1/admin/venues/{id}/review` belong to the platform operator and this
-tool never calls them. So the loader uploads the normal way (plan in status
-`draft`, visibility `private`, owned by --org) and publishes and verifies
-nothing. Nobody can tell a library plan from any other draft plan except by
-its name until the operator verifies it by hand.
+"verification" mark. A plan is unverified by default:
+`seating_plan.verify` and `POST /v1/admin/seating-plans/{id}/verify` belong to
+the platform operator and this tool never calls them. The loader uploads the
+normal way (visibility `private`, owned by --org) and, once the version is
+uploaded, sets the plan to status `active` with PATCH /v1/seating-plans/{id}
+{status} (the admin queue and the bot look at active plans only). The
+activation comes AFTER the upload; a failed upload leaves the plan draft.
+`--keep-draft` keeps the old behaviour. A re-run activates a plan that an
+earlier run left draft with a current version, and uploads nothing twice.
+Verification stays the operator's job.
 
 Modes: `plans` (also the bare form with no subcommand), `venues` (every
 inventory venue, with or without a plan; `--mark-verified` is the ONLY place
@@ -31,6 +34,7 @@ Routes used (all JSON, bearer token after the login):
   GET  /v1/venues/{venue}/seating-plans    plans of the venue
   POST /v1/venues/{venue}/seating-plans    {owner_org_id, name, plan_type}
   POST /v1/seating-plans/{plan}/versions   {svg}
+  PATCH /v1/seating-plans/{plan}           {status: "active"}   (after the upload)
 
 Time zone: the server does not derive it from coordinates. It is taken, in this
 order, from `--timezones <json>` (Forzum cityId -> IANA zone) or from the
@@ -91,7 +95,11 @@ class Client:
         self._refresh = None
 
     def _do(self, method: str, path: str, body=None, auth: bool = True, headers=None):
-        data = None if body is None else json.dumps(body).encode("utf-8")
+        # The body is always UTF-8 bytes (never the console code page, never "?").
+        try:
+            data = None if body is None else json.dumps(body, ensure_ascii=False).encode("utf-8")
+        except UnicodeEncodeError as e:
+            raise ApiError(0, f"request text cannot be encoded as UTF-8: {e.reason}") from None
         req = urllib.request.Request(self.base + path, data=data, method=method)
         req.add_header("Accept", "application/json")
         # The default urllib agent is refused by the CDN in front of the API (403, code 1010).
@@ -99,7 +107,7 @@ class Client:
         for k, v in (headers or {}).items():
             req.add_header(k, v)
         if data is not None:
-            req.add_header("Content-Type", "application/json")
+            req.add_header("Content-Type", "application/json; charset=utf-8")
         if auth and self._access:
             req.add_header("Authorization", "Bearer " + self._access)
         try:
@@ -180,7 +188,8 @@ def _now() -> str:
 
 
 class Loader:
-    def __init__(self, client, org, lib, dry_run, timezones, out, pause_ms=0):
+    def __init__(self, client, org, lib, dry_run, timezones, out, pause_ms=0, keep_draft=False):
+        self.keep_draft = keep_draft
         self.c = client
         self.org = org
         self.lib = lib
@@ -262,7 +271,8 @@ class Loader:
         plan_name = str(plan.get("seatingPlanName") or f"Plan {pid}")
         if self.dry:
             rec["status"] = "dry-run"
-            rec["reason"] = ("would create venue and " if action == "create" else "would reuse venue and ") + "upload plan"
+            rec["reason"] = ("would create venue and " if action == "create" else "would reuse venue and ") + "upload plan" + (
+                "" if self.keep_draft else " and activate it (a plan already uploaded is only activated)")
             rec["venueId"] = venue["id"] if venue else None
             return rec
         try:
@@ -283,9 +293,11 @@ class Loader:
             plan_uuid = None
             if same:
                 if same[0].get("current_version_id"):
+                    # Uploaded by an earlier run: upload nothing, only activate a draft.
                     rec["seatingPlanUuid"] = same[0]["id"]
                     rec["status"] = "loaded"
                     rec["reason"] = "already present on the server"
+                    self._activate(rec, same[0]["id"], same[0].get("status"))
                     return rec
                 plan_uuid = same[0]["id"]
             if plan_uuid is None:
@@ -299,11 +311,32 @@ class Loader:
             self._sleep()
             self.c.request("POST", f"/v1/seating-plans/{plan_uuid}/versions", {"svg": svg})
             rec["status"] = "loaded"
+            # Only after the version is on the server; a failed upload raised above and stays draft.
+            self._activate(rec, plan_uuid, "draft")
             return rec
         except ApiError as e:
             rec["status"] = "failed"
             rec["reason"] = str(e)
             return rec
+
+    def _activate(self, rec, plan_uuid, current_status):
+        """PATCH status=active on a plan that has a current version. Never verifies."""
+        if self.keep_draft:
+            rec["activated"] = False
+            return
+        if current_status == "active":
+            rec["activated"] = True
+            return
+        try:
+            self._sleep()
+            self.c.request("PATCH", f"/v1/seating-plans/{plan_uuid}", {"status": "active"})
+            rec["activated"] = True
+            rec.pop("activateError", None)
+        except ApiError as e:
+            # The plan is uploaded; the next run only repeats the activation.
+            rec["activated"] = False
+            rec["activateError"] = str(e)
+            rec["reason"] = f"uploaded, activation failed: {e}"
 
 
 def parse_args(argv):
@@ -317,6 +350,9 @@ def parse_args(argv):
     p.add_argument("--only-plan", help="seatingPlanId to load")
     p.add_argument("--limit", type=int, help="most plans to handle in this run")
     p.add_argument("--timezones", help="JSON file: Forzum cityId -> IANA time zone")
+    p.add_argument("--keep-draft", action="store_true",
+                   help="leave uploaded plans in status draft (the old behaviour); by default a plan is set "
+                        "active once its version is uploaded")
     p.add_argument("--pause-ms", type=int, default=200)
     p.add_argument("--production", action="store_true", help="allow a host without 'staging' in its name")
     p.add_argument("--i-have-the-owners-go-ahead", dest="go_ahead", action="store_true")
@@ -430,7 +466,7 @@ def run_plans(args, input_fn, getpass_fn, out) -> int:
 
     try:
         org = resolve_org(client, org)
-        ld = Loader(client, org, lib, args.dry_run, tz, out, args.pause_ms)
+        ld = Loader(client, org, lib, args.dry_run, tz, out, args.pause_ms, args.keep_draft)
         ld.load_reference()
     except ApiError as e:
         print(f"Cannot read the server: {e}", file=sys.stderr)
@@ -450,7 +486,9 @@ def run_plans(args, input_fn, getpass_fn, out) -> int:
             continue
         if str(plan.get("venueId")) in {str(x) for x in args.exclude_venue}:
             continue
-        if log["plans"].get(plan_key(folder), {}).get("status") == "loaded":
+        done = log["plans"].get(plan_key(folder), {})
+        # A plan loaded by an earlier run but never activated comes back: the run only activates it.
+        if done.get("status") == "loaded" and (args.keep_draft or done.get("activated")):
             continue
         todo.append((folder, plan))
     if args.limit is not None:
@@ -509,6 +547,21 @@ _COUNTRY_RAW = {
 COUNTRY_ISO2 = {norm(k): v for k, v in _COUNTRY_RAW.items()}
 
 VERIFY_REASON = "Forzum library venues load, verified by the platform owner"
+
+
+def mangled_name(name) -> str:
+    """Why a name must not be sent (a failed encoding left '?' or U+FFFD in it), or '' when it is fine."""
+    s = str(name or "")
+    if "?" in s:
+        return f"{s!r} contains '?', which is what a failed encoding leaves behind"
+    if "�" in s:
+        return f"{s!r} contains the replacement character U+FFFD"
+    return ""
+
+
+def city_locale(name) -> str:
+    """The language a city name is written in: ru for Cyrillic, else en (the server also stores it as en)."""
+    return "ru" if re.search(r"[Ѐ-ӿ]", str(name or "")) else "en"
 
 
 def country_iso2(name):
@@ -713,12 +766,17 @@ class VenueLoader(Loader):
                 self.verify(rec)
                 return rec
             if city is None:
+                bad = mangled_name(e["cityName"])
+                if bad:
+                    # Never send a name that a failed encoding already ruined.
+                    return {**rec, "status": "skipped", "reason": f"city name refused: {bad}"}
                 if self.dry:
                     city = {"id": None, "timezone": None, "country_iso2": iso}
                 else:
                     self._sleep()
                     made = self.c.request("POST", f"/v1/organizations/{self.org}/cities",
-                                          {"country_id": self.country_ids[iso], "name": e["cityName"], "locale": "en"})
+                                          {"country_id": self.country_ids[iso], "name": e["cityName"],
+                                           "locale": city_locale(e["cityName"])})
                     city = {**made["city"], "country_iso2": iso}
                     if made.get("created") is False:
                         self.say(f"city {e['cityName']} ({iso}): already existed under another name, reused")

@@ -305,10 +305,13 @@ func (w *Wizard) renderCity(ctx context.Context, ws WizSession, d *Draft, header
 		rows = append(rows, []Button{{Label: t("bot.wz.keep_btn", map[string]any{"Value": ws.Defaults.CityName}), Data: "keep"}})
 	}
 	listed := map[string]bool{}
+	var dirCities []DirCity
+	var refCities []RefItem
 	ask := t("bot.wz.ask_city", nil)
 	if !s.outsideReference() {
 		// The cities with venues lead, with their number of venues.
 		if dir, ok := w.directory(ctx, ws, s.CountryISO2, "", ""); ok {
+			dirCities = dir.Cities
 			for i, c := range dir.Cities {
 				if i >= maxDirectoryCities {
 					break
@@ -333,21 +336,22 @@ func (w *Wizard) renderCity(ctx context.Context, ws WizSession, d *Draft, header
 		for _, c := range rest {
 			rows = append(rows, []Button{{Label: c.Name, Data: "city:" + c.ID}})
 		}
-		for _, c := range cities {
-			listed[geotz.Normalize(c.Name)] = true
-		}
+		refCities = cities
 	} else {
 		ask = t("bot.wz.ask_city_outside", map[string]any{"Country": Esc(s.CountryName)})
 	}
 	// The platform's own list holds only cities somebody already used, so the
 	// country's biggest cities follow as buttons (in a country of the platform
 	// they are added when pressed, elsewhere the name only waits).
+	// A suggestion that is a platform city under any of its names is not shown
+	// again (wizard_city_dedupe.go); its button index stays the geotz index.
+	known := w.platformCityNames(ctx, ws, s, dirCities, refCities)
 	shown := 0
 	for i, name := range geotz.TopCities(s.CountryISO2) {
 		if shown >= maxCitySuggestions {
 			break
 		}
-		if listed[geotz.Normalize(name)] {
+		if known.has(name) {
 			continue
 		}
 		rows = append(rows, []Button{{Label: truncate(name, 40), Data: "city:g:" + strconv.Itoa(i)}})

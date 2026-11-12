@@ -29,7 +29,14 @@ const (
 	MinSide = 64
 	MaxSide = 2000
 	// margin is the empty border around the plan, in pixels.
-	margin = 24
+	// It leaves room for a row name left of the first seat and a sector name
+	// above the first row, so the labels stay inside the picture.
+	margin = 40
+	// longRow is the seat count from which a row name is also put at its right end.
+	longRow = 12
+	// Size of a label of the basic 7x13 font, in pixels.
+	labelHeight = 13
+	labelAscent = 11
 	// defaultSeatRadius is the seat radius in canvas units for a seat without one.
 	defaultSeatRadius = 4.0
 	// minSeatPx and maxSeatPx bound the drawn seat radius, in pixels.
@@ -50,7 +57,12 @@ var (
 // pixels (the value is kept between MinSide and MaxSide).
 func Render(g seating.Geometry, maxSide int) ([]byte, error) {
 	maxSide = min(max(maxSide, MinSide), MaxSide)
+	st, hasStage := findStage(g.DecorSVG)
 	b, ok := boundsOf(g)
+	if ok && hasStage {
+		b.add(st.x, st.y)
+		b.add(st.x+st.w, st.y+st.h)
+	}
 	if !ok {
 		return nil, ErrEmpty
 	}
@@ -90,9 +102,55 @@ func Render(g seating.Geometry, maxSide int) ([]byte, error) {
 			line(img, x0, y0, x1, y1, col)
 		}
 	}
+	// occupied marks every pixel a seat or a drawn label covers, so a label
+	// is never put over a seat or over another label.
+	occupied := make([]bool, w*h)
+	mark := func(x0, y0, x1, y1 int) {
+		for y := max(y0, 0); y < min(y1, h); y++ {
+			for x := max(x0, 0); x < min(x1, w); x++ {
+				occupied[y*w+x] = true
+			}
+		}
+	}
+	free := func(x0, y0, x1, y1 int) bool {
+		if x0 < 0 || y0 < 0 || x1 > w || y1 > h {
+			return false
+		}
+		for y := y0; y < y1; y++ {
+			for x := x0; x < x1; x++ {
+				if occupied[y*w+x] {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	// Seats are collected first (they fill the occupancy map), the stage is
+	// drawn under them, then the seats, then the names.
+	type dot struct {
+		x, y, r int
+		col     color.RGBA
+	}
+	type rowInfo struct {
+		name                         string
+		leftX, leftY, rightX, rightY float64
+		leftR, rightR                int
+		seats                        int
+	}
+	type secInfo struct {
+		name string
+		minX float64
+		minY float64
+		topR int
+		set  bool
+	}
+	var dots []dot
+	var rows []rowInfo
+	var secs []secInfo
 	for _, sec := range g.Sections {
+		si := secInfo{name: strings.TrimSpace(sec.Name), minX: math.Inf(1), minY: math.Inf(1)}
 		for _, row := range sec.Rows {
-			minX, labelY := math.Inf(1), 0.0
+			ri := rowInfo{name: strings.TrimSpace(row.Name), leftX: math.Inf(1), rightX: math.Inf(-1)}
 			for _, s := range row.Seats {
 				if !usable(s.X, s.Y) {
 					continue
@@ -107,14 +165,68 @@ func Render(g seating.Geometry, maxSide int) ([]byte, error) {
 				}
 				rp := min(max(int(math.Round(r*scale)), minSeatPx), maxSeatPx)
 				x, y := px(s.X, s.Y)
-				disc(img, x, y, rp, col)
-				if s.X < minX {
-					minX, labelY = s.X, s.Y
+				dots = append(dots, dot{x, y, rp, col})
+				mark(x-rp, y-rp, x+rp+1, y+rp+1)
+				ri.seats++
+				if s.X < ri.leftX {
+					ri.leftX, ri.leftY, ri.leftR = s.X, s.Y, rp
 				}
+				if s.X > ri.rightX {
+					ri.rightX, ri.rightY, ri.rightR = s.X, s.Y, rp
+				}
+				if s.X < si.minX {
+					si.minX = s.X
+				}
+				if s.Y < si.minY {
+					si.minY, si.topR = s.Y, rp
+				}
+				si.set = true
 			}
-			if name := strings.TrimSpace(row.Name); name != "" && !math.IsInf(minX, 1) && printable(name) {
-				x, y := px(minX, labelY)
-				label(img, name, x-maxSeatPx-labelWidth(name), y+4)
+			if ri.seats > 0 {
+				rows = append(rows, ri)
+			}
+		}
+		if si.set {
+			secs = append(secs, si)
+		}
+	}
+	if hasStage {
+		drawStage(img, st, px)
+	}
+	for _, d := range dots {
+		disc(img, d.x, d.y, d.r, d.col)
+	}
+	// Names the basic font cannot draw are skipped (labelOK): it has the
+	// printable ASCII range only, so a name like "Партер" is not drawn.
+	for _, si := range secs {
+		if !sectionLabelOK(si.name) {
+			continue
+		}
+		x, y := px(si.minX, si.minY)
+		tw := labelWidth(si.name)
+		x0, y0 := x-si.topR, y-si.topR-4-labelHeight
+		if free(x0, y0, x0+tw, y0+labelHeight) {
+			label(img, si.name, x0, y0+labelAscent)
+			mark(x0, y0, x0+tw, y0+labelHeight)
+		}
+	}
+	for _, ri := range rows {
+		if !rowLabelOK(ri.name) {
+			continue
+		}
+		tw := labelWidth(ri.name)
+		x, y := px(ri.leftX, ri.leftY)
+		x0, y0 := x-ri.leftR-3-tw, y-labelHeight/2
+		if free(x0, y0, x0+tw, y0+labelHeight) {
+			label(img, ri.name, x0, y0+labelAscent)
+			mark(x0, y0, x0+tw, y0+labelHeight)
+		}
+		if ri.seats >= longRow {
+			x, y = px(ri.rightX, ri.rightY)
+			x0, y0 = x+ri.rightR+3, y-labelHeight/2
+			if free(x0, y0, x0+tw, y0+labelHeight) {
+				label(img, ri.name, x0, y0+labelAscent)
+				mark(x0, y0, x0+tw, y0+labelHeight)
 			}
 		}
 	}
@@ -126,6 +238,11 @@ func Render(g seating.Geometry, maxSide int) ([]byte, error) {
 }
 
 type bounds struct{ minX, minY, maxX, maxY float64 }
+
+func (b *bounds) add(x, y float64) {
+	b.minX, b.maxX = math.Min(b.minX, x), math.Max(b.maxX, x)
+	b.minY, b.maxY = math.Min(b.minY, y), math.Max(b.maxY, y)
+}
 
 // maxCoord bounds a coordinate the picture accepts.
 const maxCoord = 1e9
@@ -150,10 +267,7 @@ func clampPx(v float64, side int) int {
 // proportions of the plan.
 func boundsOf(g seating.Geometry) (bounds, bool) {
 	b := bounds{minX: math.Inf(1), minY: math.Inf(1), maxX: math.Inf(-1), maxY: math.Inf(-1)}
-	add := func(x, y float64) {
-		b.minX, b.maxX = math.Min(b.minX, x), math.Max(b.maxX, x)
-		b.minY, b.maxY = math.Min(b.minY, y), math.Max(b.maxY, y)
-	}
+	add := b.add
 	found := false
 	for _, sec := range g.Sections {
 		for _, row := range sec.Rows {
@@ -259,14 +373,59 @@ func abs(v int) int {
 	return v
 }
 
-// printable reports whether the basic font has every character of s.
+// printable reports whether the basic font has every character of s: it has
+// the printable ASCII range only (Cyrillic, accents and so on are missing).
 func printable(s string) bool {
 	for _, r := range s {
 		if r < 0x20 || r > 0x7e {
 			return false
 		}
 	}
-	return len(s) <= 6
+	return true
+}
+
+// rowLabelOK reports whether a row name is drawn: non-empty, ASCII, short.
+func rowLabelOK(s string) bool { return s != "" && len(s) <= 6 && printable(s) }
+
+// sectionLabelOK is the same for a sector name, which may be longer.
+func sectionLabelOK(s string) bool { return s != "" && len(s) <= 24 && printable(s) }
+
+var (
+	stageFill = color.RGBA{R: 217, G: 217, B: 217, A: 255}
+	stageEdge = color.RGBA{R: 90, G: 90, B: 90, A: 255}
+)
+
+// drawStage fills the stage rectangle and writes its word in the middle when
+// the word is ASCII and the stage is wider than tall (the basic font cannot
+// be rotated). The word may be taller than a thin bar; it is then written
+// over the bar's middle, on the white around it.
+func drawStage(img *image.RGBA, st stageRect, px func(x, y float64) (int, int)) {
+	x0, y0 := px(st.x, st.y)
+	x1, y1 := px(st.x+st.w, st.y+st.h)
+	if x1 <= x0 {
+		x1 = x0 + 1
+	}
+	if y1 <= y0 {
+		y1 = y0 + 1
+	}
+	for y := y0; y <= y1; y++ {
+		for x := x0; x <= x1; x++ {
+			if x == x0 || x == x1 || y == y0 || y == y1 {
+				set(img, x, y, stageEdge)
+			} else {
+				set(img, x, y, stageFill)
+			}
+		}
+	}
+	word := strings.TrimSpace(st.word)
+	if word == "" || !printable(word) || len(word) > 24 || st.w < st.h {
+		return
+	}
+	tw := labelWidth(word)
+	if tw > x1-x0 {
+		return
+	}
+	label(img, word, (x0+x1-tw)/2, (y0+y1)/2+labelAscent/2-1)
 }
 
 func labelWidth(s string) int { return len(s) * basicfont.Face7x13.Advance }
