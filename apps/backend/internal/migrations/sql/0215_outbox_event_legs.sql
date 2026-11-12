@@ -1,4 +1,4 @@
--- 0214_outbox_event_legs.sql — per-leg delivery state of the outbox fan-out
+-- 0215_outbox_event_legs.sql — per-leg delivery state of the outbox fan-out
 -- (finding F-FC-01).
 --
 -- arena-worker hands every outbox_events row to several legs (sales_notify,

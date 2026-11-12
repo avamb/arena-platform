@@ -1,5 +1,5 @@
 // Package outbox — LegFanOut: a named-leg fan-out with per-leg delivery state
-// (finding F-FC-01, migration 0214).
+// (finding F-FC-01, migration 0215).
 //
 // arena-worker hands every outbox_events row to several legs (Telegram sales
 // notifications, ad conversions, the generic webhook, MACS, the WordPress
@@ -113,6 +113,10 @@ func (f *LegFanOut) Legs() []string {
 // delivered. A state write that fails after a successful leg is only logged:
 // the leg may then be called again on the next attempt (at-least-once).
 // An event without an ID gets a plain fan-out without state.
+//
+// A leg that answers ErrDispatchDisabled made no attempt: it is not recorded
+// and not part of the returned error. Only when every leg still owed the
+// event is disabled does Dispatch return ErrDispatchDisabled.
 func (f *LegFanOut) Dispatch(ctx context.Context, ev Event) error {
 	stateful := f.store != nil && ev.ID != ""
 
@@ -133,11 +137,20 @@ func (f *LegFanOut) Dispatch(ctx context.Context, ev Event) error {
 	}
 	results := make([]result, 0, len(f.legs))
 	var failures []error
+	disabled := 0
 	for _, l := range f.legs {
 		if states[l.Name] {
 			continue // delivered on an earlier attempt
 		}
 		err := l.Dispatcher.Dispatch(ctx, ev)
+		if errors.Is(err, ErrDispatchDisabled) {
+			// A disabled leg made no attempt: it is neither a delivery nor a
+			// failure. Joined into the error it would make the outbox leave
+			// the row untouched (no attempts, no dead-letter) and hide the
+			// real failures of the other legs.
+			disabled++
+			continue
+		}
 		results = append(results, result{leg: l.Name, err: err})
 		if err != nil {
 			failures = append(failures, fmt.Errorf("%s: %w", l.Name, err))
@@ -149,9 +162,6 @@ func (f *LegFanOut) Dispatch(ctx context.Context, ev Event) error {
 		// the pass: a delivered leg that is not recorded is called again.
 		writeBase := context.WithoutCancel(ctx)
 		for _, r := range results {
-			if r.err != nil && errors.Is(r.err, ErrDispatchDisabled) {
-				continue // a disabled leg made no attempt
-			}
 			writeCtx, cancel := context.WithTimeout(writeBase, legStateWriteTimeout)
 			var werr error
 			if r.err == nil {
@@ -183,6 +193,11 @@ func (f *LegFanOut) Dispatch(ctx context.Context, ev Event) error {
 		}
 	}
 
+	if len(results) == 0 && disabled > 0 {
+		// Every leg still owed the event is disabled: keep today's disabled
+		// mode, the row stays untouched until a leg is switched back on.
+		return ErrDispatchDisabled
+	}
 	return errors.Join(failures...)
 }
 
@@ -203,7 +218,7 @@ var _ Dispatcher = (*LegFanOut)(nil)
 // =============================================================================
 
 // PGLegStateStore implements LegStateStore against outbox_event_legs
-// (migration 0214). Rows go away with their outbox_events row (ON DELETE
+// (migration 0215). Rows go away with their outbox_events row (ON DELETE
 // CASCADE).
 type PGLegStateStore struct {
 	pool *pgxpool.Pool

@@ -235,14 +235,45 @@ func TestLegFanOut_DisabledLegRecordsNoAttempt(t *testing.T) {
 		Leg{Name: "bad", Dispatcher: &countingLeg{err: errors.New("down")}},
 	)
 	err := f.Dispatch(context.Background(), Event{ID: "evt-7"})
-	if !errors.Is(err, ErrDispatchDisabled) {
-		t.Fatalf("err = %v, want ErrDispatchDisabled kept in the join", err)
+	// The outbox treats ErrDispatchDisabled as "leave the row untouched": kept
+	// in the join, it would hide the real failure of "bad" — no attempt would
+	// be counted and the row would never dead-letter.
+	if errors.Is(err, ErrDispatchDisabled) {
+		t.Fatalf("err = %v, a disabled leg must not be part of the error", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "bad: down") {
+		t.Fatalf("err = %v, want the failure of the bad leg", err)
 	}
 	if _, ok := store.attempts["evt-7"]["off"]; ok {
 		t.Error("a disabled leg recorded an attempt")
 	}
 	if store.attempts["evt-7"]["bad"] != 1 {
 		t.Errorf("bad attempts = %d, want 1", store.attempts["evt-7"]["bad"])
+	}
+}
+
+// A disabled leg next to delivering legs lets the event close.
+func TestLegFanOut_DisabledLegDoesNotKeepTheEventOpen(t *testing.T) {
+	store := newFakeLegStore()
+	ok := &countingLeg{}
+	f := mustFanOut(t, store,
+		Leg{Name: "off", Dispatcher: DisabledDispatcher{}},
+		Leg{Name: "ok", Dispatcher: ok},
+	)
+	if err := f.Dispatch(context.Background(), Event{ID: "evt-8"}); err != nil {
+		t.Fatalf("err = %v, want nil", err)
+	}
+	if ok.calls != 1 {
+		t.Errorf("ok calls = %d, want 1", ok.calls)
+	}
+}
+
+// When every leg still owed the event is disabled, the disabled mode stays:
+// the row is left untouched until a leg is switched back on.
+func TestLegFanOut_OnlyDisabledLegsKeepDisabledMode(t *testing.T) {
+	f := mustFanOut(t, newFakeLegStore(), Leg{Name: "off", Dispatcher: DisabledDispatcher{}})
+	if err := f.Dispatch(context.Background(), Event{ID: "evt-9"}); !errors.Is(err, ErrDispatchDisabled) {
+		t.Fatalf("err = %v, want ErrDispatchDisabled", err)
 	}
 }
 

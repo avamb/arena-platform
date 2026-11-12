@@ -119,6 +119,31 @@ WHERE id = '<row id>';
 Do this one row at a time and watch the worker logs — a bulk requeue of many rows against a
 site that is still broken just re-fills the dead-letter queue.
 
+**A requeue sends only to the legs that have not delivered yet** (migration 0215, F-FC-01).
+The worker hands every row to named legs — `sales_notify`, `conversions`, `webhook`, `macs`,
+`bil24_wp` (the WordPress/native sites), `billing_accel` — and remembers each leg's result in
+`outbox_event_legs`. A leg with `delivered_at` set is skipped on every later attempt, also
+after the requeue above. See which legs delivered and which failed:
+
+```sql
+SELECT leg, attempts, delivered_at, last_error
+FROM outbox_event_legs
+WHERE event_id = '<row id>'
+ORDER BY leg;
+```
+
+To send the event to the sites AGAIN although that leg already delivered (a site lost the
+order on its side, say), delete that leg's row, then requeue the event as above:
+
+```sql
+DELETE FROM outbox_event_legs WHERE event_id = '<row id>' AND leg = 'bil24_wp';
+```
+
+Mind that `bil24_wp` is ONE leg for all sites of the channel: it is delivered only when every
+subscribed site accepted the event, and a retry calls every site again, including the ones
+that already took it (at-least-once, as before 0215). Per-site state inside `bil24_wp` is
+not built yet: known limit, next task.
+
 ## 5. Switch a site to the compat gateway (feature toggle)
 
 Two independent switches, at two different levels:
