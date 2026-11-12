@@ -65114,6 +65114,14 @@ export interface operations {
              *     `PUBLIC_TICKETS_BASE_URL` fallback is configured, or
              *     `idempotency.key_too_long` for an `Idempotency-Key` over 255
              *     bytes.
+             *
+             *     `checkout.invalid_email` (`details.field` is `holder_email`) when
+             *     the buyer's e-mail address is malformed: spaces, no domain, a
+             *     domain without a dot, or a top-level domain that is not letters
+             *     only (an IDN `xn--` one is accepted). It is refused before any
+             *     hold or order is written. The same code is answered when the
+             *     payment provider refuses the address after the hold was taken;
+             *     the hold is then released and the order cancelled at once.
              */
             400: {
                 headers: {
@@ -65202,7 +65210,9 @@ export interface operations {
              *     fields, consent) could not be read, or
              *     `checkout.payment_start_failed` — the payment provider refused to
              *     create the hosted checkout page. Nothing was charged and no
-             *     redirect URL exists; the hold expires on its own.
+             *     redirect URL exists. When the provider refused for good (it
+             *     answered and created nothing) the hold is released and the order
+             *     cancelled at once; otherwise the hold expires on its own.
              *
              *     `checkout.payment_start_failed` is answered with 503 rather than
              *     502 on purpose: this endpoint is public and fronted by Cloudflare,

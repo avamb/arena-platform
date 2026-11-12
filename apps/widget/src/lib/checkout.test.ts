@@ -170,6 +170,46 @@ describe('isValidEmail', () => {
   test('invalid: empty string', () => {
     expect(isValidEmail('')).toBe(false);
   });
+
+  // F-BR-03: the address a buyer typed that Stripe refused after the hold.
+  test('invalid: the F-BR-03 address, with and without the space', () => {
+    expect(isValidEmail('assistant+fc043@abhteam.comRUN1109-FC FC-0')).toBe(false);
+    expect(isValidEmail('assistant+fc043@abhteam.comRUN1109-FC')).toBe(false);
+  });
+
+  test.each([
+    'an na@example.com',
+    'anna@exa mple.com',
+    'anna@example.c0m',
+    'anna@example.123',
+    'anna@example.c',
+    'anna@example..com',
+    'anna@.example.com',
+    'anna@example.com.',
+    'anna@-example.com',
+    'anna@exam_ple.com',
+    'anna@@example.com',
+    'an@na@example.com',
+    '.anna@example.com',
+    'an..na@example.com',
+    'Anna <anna@example.com>',
+    'anna@example.com,bob@example.com',
+    `${'a'.repeat(65)}@example.com`,
+  ])('invalid: %s', (email) => {
+    expect(isValidEmail(email)).toBe(false);
+  });
+
+  test.each([
+    'assistant+fc043@abhteam.com',
+    'Anna.Smith@Example.COM',
+    "o'brien@example.ie",
+    'user@123.example.io',
+    'user@example.xn--p1ai',
+    'user@пример.рф',
+    '  user@example.com  ',
+  ])('valid: %s', (email) => {
+    expect(isValidEmail(email)).toBe(true);
+  });
 });
 
 // ─── validateBuyerForm ───────────────────────────────────────────────────────
