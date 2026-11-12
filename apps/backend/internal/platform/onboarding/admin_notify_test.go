@@ -60,7 +60,7 @@ func TestAdminTelegramHandler(t *testing.T) {
 		t.Fatalf("nil sender: %v", err)
 	}
 	// A refused chat is not retried.
-	refuse := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	refuse := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(403)
 		_, _ = w.Write([]byte(`{"ok":false,"error_code":403,"description":"Forbidden: bot was blocked by the user"}`))
 	}))
