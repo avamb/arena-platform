@@ -524,6 +524,7 @@ The event-center bot process, dialogs, feed, menu, wizard state machine, edit ca
 * A Telegram file link carries the bot token, and so…
 * DialogStore.Load reports an expired dialog exactly…
 * The bot wizard takes a hall plan as an SVG FILE (e…
+* Venue choice by country, city and venue, and the shared country screen (directory and world list, a new country only with a venue)…
 
 ### [Orders, invitations and door scans](docs/agents/orders-invitations-scans.md)
 
@@ -748,3 +749,6 @@ Spec 64: intake states, private plan sources, approve, superadmin verification a
 * The notify handler sends nothing twice and tells no person
 * The bot claims organizer notices with POST /v1/bot/venue-plan-notices/claim
 * Seams for the later waves are nil in wave 1
+* The bot sends the files of a plan as ONE intake and never builds a plan itself (pi: callbacks, paused draft, notice loop)
+* The world country table is worldgeo, and only a venue or an approved application creates a reference country (never an API key)
+* The venue directory is GET .../venue-directory, own plus verified venues, the access of shared-venues
