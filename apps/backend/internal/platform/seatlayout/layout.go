@@ -539,7 +539,7 @@ func applyLayoutTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, in ApplyLay
 	if err := Validate(batchIn); err != nil {
 		return ApplyLayoutResult{}, err
 	}
-	b, err := applyChangesLocked(ctx, tx, txq, version, orgID, batchIn)
+	b, err := applyChangesLocked(ctx, tx, txq, version, orgID, batchIn, nil)
 	if err != nil {
 		return ApplyLayoutResult{}, err
 	}
@@ -605,22 +605,10 @@ func resolveSlots(ctx context.Context, txq *gen.Queries, in ApplyLayoutInput) ([
 			if s.Currency != "" && s.Currency != currency {
 				return nil, nil, &SlotCurrencyError{SlotKey: s.Key, Want: currency, Got: s.Currency}
 			}
-			mode := "free"
-			if s.PriceAmount > 0 {
-				mode = "fixed"
-			}
-			row, err := txq.InsertTicketTier(ctx, in.SessionID, s.Name, mode, s.PriceAmount, currency,
-				nil, nil, nil, nil, nil, s.SortOrder)
+			id, err := insertCategory(ctx, txq, in.SessionID, currency, s.Name, s.PriceAmount, s.Color, s.SortOrder)
 			if err != nil {
-				return nil, nil, fmt.Errorf("seatlayout: create category %q: %w", s.Name, err)
+				return nil, nil, err
 			}
-			if s.Color != "" {
-				color := s.Color
-				if _, err := txq.SetTicketTierColor(ctx, row.ID, in.SessionID, &color); err != nil {
-					return nil, nil, fmt.Errorf("seatlayout: colour category %q: %w", s.Name, err)
-				}
-			}
-			id := row.ID
 			slots = append(slots, SlotTier{SlotKey: s.Key, Name: s.Name, Action: ActionCreate, TierID: &id})
 			tierOf[s.Key] = id
 		}
@@ -629,4 +617,28 @@ func resolveSlots(ctx context.Context, txq *gen.Queries, in ApplyLayoutInput) ([
 		return nil, nil, &UnmappedSlotsError{Slots: unmapped}
 	}
 	return slots, tierOf, nil
+}
+
+// insertCategory creates one category of a session inside the caller's
+// transaction: the session's currency, pricing mode free for price 0 and
+// fixed otherwise, no capacity or sale window, and the colour when one is
+// given (already normalized). It is the one way the layout apply and the
+// batch's new_tiers create a category.
+func insertCategory(ctx context.Context, txq *gen.Queries, sessionID uuid.UUID, currency, name string, price int64, color string, sortOrder int32) (uuid.UUID, error) {
+	mode := "free"
+	if price > 0 {
+		mode = "fixed"
+	}
+	row, err := txq.InsertTicketTier(ctx, sessionID, name, mode, price, currency,
+		nil, nil, nil, nil, nil, sortOrder)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("seatlayout: create category %q: %w", name, err)
+	}
+	if color != "" {
+		c := color
+		if _, err := txq.SetTicketTierColor(ctx, row.ID, sessionID, &c); err != nil {
+			return uuid.Nil, fmt.Errorf("seatlayout: colour category %q: %w", name, err)
+		}
+	}
+	return row.ID, nil
 }

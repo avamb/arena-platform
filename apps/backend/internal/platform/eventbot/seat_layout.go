@@ -11,9 +11,9 @@ package eventbot
 // algorithm takes (the number of categories and their prices), because the
 // bot cuts the hall into the categories the date ALREADY has - their names and
 // prices are the organizer's, the allocator only decides which seats go to
-// which. A batch cannot create a category yet (new_tiers is refused), so a
-// proposal is applied only when it has exactly one slot per category, the
-// dearest slot going to the dearest category.
+// which. A batch can create categories (new_tiers), but the bot does not use
+// that: a proposal is applied only when it has exactly one slot per category,
+// the dearest slot going to the dearest category.
 
 import (
 	"crypto/sha256"

@@ -314,8 +314,10 @@ func Seats(g seating.Geometry) []PlacedSeat {
 
 // Evaluate computes the revenue estimate of a layout over the geometry's
 // seats: frozen seats at their own price, open assigned seats at the price
-// of their slot, closed seats nowhere. Every algorithm should end with it so
-// the figures mean the same thing whichever algorithm made them.
+// of their slot, closed seats nowhere. It also gives the realistic estimate
+// (sold seats in full, the rest at the sell-through rate of their slot,
+// SellThroughRates). Every algorithm should end with it so the figures mean
+// the same thing whichever algorithm made them.
 func Evaluate(g seating.Geometry, l Layout, st SessionState) Metrics {
 	m := Metrics{Currency: st.Currency}
 	idx := make(map[string]int, len(l.Slots))
@@ -352,14 +354,96 @@ func Evaluate(g seating.Geometry, l Layout, st SessionState) Metrics {
 			bs.RevenueMinor += bs.PriceAmount
 		}
 	}
+	prices := make([]int64, len(l.Slots))
+	for i, s := range l.Slots {
+		prices[i] = s.PriceAmount
+	}
+	rates := SellThroughRates(prices)
+	var expected float64 // everything but the sold seats, in minor units
 	for i := range m.BySlot {
 		m.RevenueRemainingMinor += m.BySlot[i].RevenueMinor
 		if m.TotalSeats > 0 {
 			m.BySlot[i].Share = float64(m.BySlot[i].Seats) / float64(m.TotalSeats)
 		}
+		expected += float64(m.BySlot[i].RevenueMinor) * rates[i]
+	}
+	for _, s := range Seats(g) {
+		if f, ok := st.SoldHeld[s.Key]; ok && f.Status == StatusHeld {
+			expected += float64(f.PriceMinor) * nearestLevelRate(prices, f.PriceMinor)
+		}
 	}
 	m.RevenueEstimateMinor = m.RevenueSoldMinor + m.RevenueHeldMinor + m.RevenueRemainingMinor
+	m.RealisticRevenueMinor = m.RevenueSoldMinor + int64(math.Floor(expected+0.5))
 	return m
+}
+
+// Sell-through rates of the realistic estimate (Metrics.RealisticRevenueMinor):
+// the share of its open seats the dearest and the cheapest price level are
+// expected to sell. The levels between are linear by rank; a single level
+// sells at the midpoint (0.75).
+const (
+	SellThroughDearest  = 0.90
+	SellThroughCheapest = 0.60
+)
+
+// priceLevels returns the distinct prices, the dearest first.
+func priceLevels(prices []int64) []int64 {
+	seen := make(map[int64]bool, len(prices))
+	levels := make([]int64, 0, len(prices))
+	for _, p := range prices {
+		if !seen[p] {
+			seen[p] = true
+			levels = append(levels, p)
+		}
+	}
+	sort.Slice(levels, func(i, j int) bool { return levels[i] > levels[j] })
+	return levels
+}
+
+// levelRate is the sell-through rate of the price level of rank r (0 = the
+// dearest) among n levels.
+func levelRate(r, n int) float64 {
+	if n <= 1 {
+		return (SellThroughDearest + SellThroughCheapest) / 2
+	}
+	return SellThroughDearest - (SellThroughDearest-SellThroughCheapest)*float64(r)/float64(n-1)
+}
+
+// SellThroughRates returns the expected sell-through rate of each slot price,
+// in the order given: slots are ranked by price among the DISTINCT price
+// levels, the dearest level at SellThroughDearest, the cheapest at
+// SellThroughCheapest, linear by rank between them; slots of one price share
+// a rate, and a single price level gets the midpoint, 0.75.
+func SellThroughRates(prices []int64) []float64 {
+	levels := priceLevels(prices)
+	rank := make(map[int64]int, len(levels))
+	for i, p := range levels {
+		rank[p] = i
+	}
+	out := make([]float64, len(prices))
+	for i, p := range prices {
+		out[i] = levelRate(rank[p], len(levels))
+	}
+	return out
+}
+
+// nearestLevelRate is the rate of the slot price level nearest to price (a
+// tie goes to the dearer level); with no slots, the single-level rate. A
+// held seat has no slot of the proposal, so it takes the rate of the level
+// its held price sits at.
+func nearestLevelRate(prices []int64, price int64) float64 {
+	levels := priceLevels(prices)
+	best, bestDiff := 0, int64(-1)
+	for i, p := range levels {
+		d := p - price
+		if d < 0 {
+			d = -d
+		}
+		if bestDiff < 0 || d < bestDiff {
+			best, bestDiff = i, d
+		}
+	}
+	return levelRate(best, len(levels))
 }
 
 // ─── run ────────────────────────────────────────────────────────────────────

@@ -18204,6 +18204,9 @@ type SeatBatch struct {
 	// Changes The seats the batch changed.
 	Changes []SeatBatchChange `json:"changes"`
 
+	// CreatedTiers The categories the batch created from `new_tiers`, in request order; an empty array when it created none. Only in the answer of an apply or a revert (a revert creates none); the stored batch does not keep it, the audit event carries `created_tier_ids`.
+	CreatedTiers *[]SeatBatchCreatedTier `json:"created_tiers,omitempty"`
+
 	// Id UUID of the batch.
 	Id openapi_types.UUID `json:"id"`
 
@@ -18244,16 +18247,37 @@ type SeatBatchChange struct {
 	To SeatBatchSeatState `json:"to"`
 }
 
-// SeatBatchChangeRequest What one seat should become; at least one of tier_id and status.
+// SeatBatchChangeRequest What one seat should become; at least one of tier_id, new_tier_key and status.
 type SeatBatchChangeRequest struct {
+	// NewTierKey The `key` of an entry of `new_tiers` to put the seat in, instead of tier_id (both set is 400 `seat_batch.invalid_change`; an unknown key is 400 `seat_batch.unknown_new_tier_key`).
+	NewTierKey *string `json:"new_tier_key,omitempty"`
+
 	// SeatKey The seat's key.
 	SeatKey string `json:"seat_key"`
 
 	// Status `available` or `unavailable`.
 	Status *string `json:"status,omitempty"`
 
-	// TierId The category to put the seat in, a live category of this session.
+	// TierId The category to put the seat in, a live category of this session. Not together with new_tier_key.
 	TierId *openapi_types.UUID `json:"tier_id,omitempty"`
+}
+
+// SeatBatchCreatedTier A category the batch created.
+type SeatBatchCreatedTier struct {
+	// Color Colour of the category, lower-case `#rrggbb`, null for none.
+	Color *string `json:"color"`
+
+	// Key The key the request gave the category.
+	Key string `json:"key"`
+
+	// Name Name of the category, trimmed.
+	Name string `json:"name"`
+
+	// PriceAmount Price in minor units.
+	PriceAmount int64 `json:"price_amount"`
+
+	// TierId UUID of the created category.
+	TierId openapi_types.UUID `json:"tier_id"`
 }
 
 // SeatBatchList One page of a session's batches.
@@ -18268,6 +18292,24 @@ type SeatBatchList struct {
 	Total int64 `json:"total"`
 }
 
+// SeatBatchNewTier A category the batch creates, in the session's currency; pricing mode `free` for price 0, `fixed` otherwise.
+type SeatBatchNewTier struct {
+	// Color Colour of the category, `#rrggbb` (`seat_batch.invalid_new_tier_color`); null or empty for none.
+	Color *string `json:"color"`
+
+	// Key The client's id of the category, `[A-Za-z0-9_-]{1,40}`, unique in the request (`seat_batch.invalid_new_tier`, `seat_batch.duplicate_new_tier_key`).
+	Key string `json:"key"`
+
+	// Name Name of the category, 1 to 100 characters after trimming (`seat_batch.invalid_new_tier_name`); must differ, ignoring case, from the other new tiers (`seat_batch.duplicate_new_tier_name`) and from every live category of the session (409 `seat_batch.tier_name_taken`).
+	Name string `json:"name"`
+
+	// PriceAmount Price in minor units, 0 to 1 000 000 000 (`seat_batch.invalid_new_tier_price`).
+	PriceAmount int64 `json:"price_amount"`
+
+	// SortOrder Display order of the category; absent places it after the live categories, in request order.
+	SortOrder *int32 `json:"sort_order,omitempty"`
+}
+
 // SeatBatchRequest One batch of seat changes (task S1c).
 type SeatBatchRequest struct {
 	// Changes The seats to change, at most 10 000. A seat_key may appear twice only with the same target.
@@ -18276,8 +18318,13 @@ type SeatBatchRequest struct {
 	// Kind `paint` (tier_id only), `close` (status unavailable only), `open` (status available only) or `apply_layout` (either or both).
 	Kind string `json:"kind"`
 
-	// NewTiers Categories to create inside the batch. Not supported yet; a non-empty list answers 422 `seat_batch.new_tiers_unsupported`.
-	NewTiers *[]map[string]interface{} `json:"new_tiers,omitempty"`
+	// NewTiers Categories to create inside the batch, in the same transaction as
+	// the seat changes (kinds `paint` and `apply_layout` only, else 400
+	// `seat_batch.new_tiers_not_allowed`). A change names one by its
+	// `key` in `new_tier_key`; every new tier must be named by at least
+	// one change. Live plus new categories may not exceed 15. Needs the
+	// `tier.create` permission in the organization as well.
+	NewTiers *[]SeatBatchNewTier `json:"new_tiers,omitempty"`
 }
 
 // SeatBatchSeatState A seat's category and status before or after a batch.
@@ -18572,6 +18619,14 @@ type SeatLayoutMetrics struct {
 
 	// HeldSeats Seats in a hold.
 	HeldSeats int `json:"held_seats"`
+
+	// RealisticRevenueMinor The estimate if not every seat sells: sold seats in full at their
+	// price, every open free seat at its slot's price times the slot's
+	// sell-through rate, a held seat at its price times the rate of the
+	// slot price level nearest to it. Slots are ranked among the distinct
+	// price levels: the dearest sells 0.90, the cheapest 0.60, linear by
+	// rank between; a single price level sells 0.75. Rounded half up.
+	RealisticRevenueMinor int64 `json:"realistic_revenue_minor"`
 
 	// RevenueEstimateMinor Sold plus held plus remaining.
 	RevenueEstimateMinor int64 `json:"revenue_estimate_minor"`
