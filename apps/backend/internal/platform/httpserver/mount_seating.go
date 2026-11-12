@@ -129,4 +129,8 @@ func (s *Server) mountSeatingRoutes(r chi.Router) {
 			s.handleSuggestSeatLayout,
 		)
 	})
+
+	// Spec 64 section 3.4: the superadmin's verification of a plan and the
+	// verified templates of a venue (mount_seating_admin.go).
+	s.mountSeatingAdminRoutes(r)
 }
