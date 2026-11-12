@@ -4746,8 +4746,8 @@ other = "<b>{{.Name}}</b>\n{{.When}}"
 ["bot.sl.not_seated"]
 other = "This date has no seating plan. There are no seats for a layout."
 
-["bot.sl.need_two"]
-other = "For the seat layout, I need two open categories with seats on this date. Open or add a category in «Categories». Then go back here."
+["bot.sl.need_one"]
+other = "For the seat layout, I need an open category with seats on this date. Open or add a category in «Categories». Then go back here."
 
 ["bot.sl.intro"]
 other = "🪑 <b>Seat layout</b>\nI will divide the seats of the venue between these categories. The best seats go to the category with the highest price. I change nothing until you press Apply. After that, you can cancel the change."
@@ -4819,7 +4819,7 @@ other = "We could not change the seats. We did not apply anything. Please examin
 other = "<b>Proposed layout</b> (we did not change anything)"
 
 ["bot.sl.preview_line"]
-other = "• {{.Name}}, {{.Price}}: {{.Seats}} seats ({{.Share}}%)"
+other = "• {{.Name}}, {{.Price}}: {{.Seats}} seats ({{.Share}}%), full house {{.Money}}"
 
 ["bot.sl.preview_frozen"]
 other = "🔒 These stay as they are: {{.Sold}} sold, {{.Held}} held."
@@ -4865,6 +4865,69 @@ other = "You canceled this change before."
 
 ["bot.sl.err_undo_gone"]
 other = "I cannot find this change."
+
+["bot.sl.intro_one"]
+other = "🪑 <b>Seat layout</b>\nThis date has one category. I will divide its seats into several categories with different prices. The best seats get the highest price. I create the new categories only when you press Apply. After that, you can cancel the change, but the new categories stay."
+
+["bot.sl.q_cats"]
+other = "Into how many categories do I divide the seats?"
+
+["bot.sl.q_top"]
+other = "Categories: {{.Cats}}. What is the price of the best seats ({{.Currency}})? Type a number, for example 120."
+
+["bot.sl.q_bottom"]
+other = "What is the price of the cheapest seats ({{.Currency}})? It must be lower than {{.Top}}. Type a number."
+
+["bot.sl.err_price"]
+other = "I do not understand this price. Type a number more than zero, for example 120 or 49.90."
+
+["bot.sl.err_bottom"]
+other = "The price of the cheapest seats must be lower than the price of the best seats ({{.Top}}). Type a different price."
+
+["bot.sl.split_line"]
+other = "Categories: {{.Cats}}, price from {{.Bottom}} to {{.Top}}."
+
+["bot.sl.new_cat_name"]
+other = "Category {{.N}}"
+
+["bot.sl.preview_line_new"]
+other = "• {{.Name}} (new), {{.Price}}: {{.Seats}} seats ({{.Share}}%), full house {{.Money}}"
+
+["bot.sl.preview_realistic"]
+other = "📈 Realistic estimate: about {{.Money}}. We count sold seats in full. For the other seats we count from 90% of the seats at the highest price to 60% at the lowest price."
+
+["bot.sl.preview_hint_new"]
+other = "Press Apply to create new categories ({{.Cats}}) and put the free seats ({{.Count}}) in the categories. After that, you can cancel the change, but the new categories stay."
+
+["bot.sl.created_title"]
+other = "New categories:"
+
+["bot.sl.old_empty"]
+other = "The category «{{.Name}}» has no seats now. If you do not need it, close it in «Categories». I did not close it."
+
+["bot.sl.undo_hint_new"]
+other = "If you do not want this layout, press «Cancel change». The seats go back to their previous category. The new categories stay: close them in «Categories» if you do not need them. Seats that someone sold or held after the change stay as they are."
+
+["bot.sl.undone_new"]
+other = "The new categories stay. If you do not need them, close them in «Categories»."
+
+["bot.sl.err_tier_forbidden"]
+other = "New categories need more rights. An owner or administrator of the organization must do this. I did not change anything."
+
+["bot.sl.err_name_taken"]
+other = "A category with this name now exists on this date. I did not change anything. These are new names. Examine the layout and press Apply again."
+
+["bot.sl.err_too_many_tiers"]
+other = "This date would have too many categories (15 at most). I did not change anything. Select fewer categories, or delete the categories you do not need in «Categories», and try again."
+
+["bot.sl.err_method_one"]
+other = "This method needs two categories on the date. Select a different method or add a category in «Categories»."
+
+["bot.sl.split_btn"]
+other = "🪑 Split seats by price"
+
+["bot.sl.split_params_btn"]
+other = "✏ Categories and prices"
 
 ["layoutgen.algorithm.desirability"]
 other = "By closeness to the stage"

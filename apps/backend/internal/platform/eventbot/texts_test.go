@@ -45,7 +45,7 @@ func TestEventBot_LocaleBundleHasEveryKey(t *testing.T) {
 		// the Materials screens (materials_keys.go)
 		"Caption": "c", "Seller": "s", "Lat": "50.075500", "Lon": "14.437800",
 		// the seat layout screens (seat_layout_keys.go)
-		"Seats": 3, "Share": 40, "Changed": 2, "Same": 1,
+		"Seats": 3, "Share": 40, "Changed": 2, "Same": 1, "Cats": 3, "Top": "1 EUR", "Bottom": "1 EUR",
 		// a hall plan sent from the wizard (plan_upload.go)
 		"Element": "e",
 		// the smart price screen (smart_price.go)

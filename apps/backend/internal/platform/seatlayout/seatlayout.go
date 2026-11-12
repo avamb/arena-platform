@@ -5,13 +5,25 @@
 //
 // ApplyBatch runs in ONE transaction with the platform lock order
 // (AGENTS.md): the sessions row first (IncrementSessionSeatStatusVersion,
-// the only seat_status_version bump of the batch), then the named
+// the only seat_status_version bump of the batch), then the new categories
+// of the batch (new_tiers: ticket_tiers INSERTs, see below), then the named
 // session_seats rows FOR UPDATE in seat_key order — the order
 // CreateSeatedHold locks them in, so a batch and a buyer's hold serialize
 // on the sessions row and can never deadlock — then one conditional UPDATE,
 // then the session_seat_batches row. inventory_ledger is not touched: a
 // batch changes neither the number of places nor what is held or sold. The
 // whole transaction is retried on 40P01 / 40001 (txretry).
+//
+// New categories (new_tiers, kinds paint and apply_layout only): a batch may
+// create price categories and name them in its changes by a client-chosen key
+// (Change.NewTierKey) instead of a tier_id. They are created in the batch
+// transaction right after the sessions row lock, through the same helper the
+// saved-layout apply uses (insertCategory: session currency, pricing mode
+// free for price 0 and fixed otherwise, optional colour), so any failure of
+// the batch rolls the categories back too. A revert of such a batch puts the
+// seats back and LEAVES the created categories, possibly empty: a category
+// may already be referenced elsewhere, and deleting one is the category
+// route's decision, not the batch's.
 //
 // Rules (owner decision 2026-10-15, re-layout after sales started):
 //
@@ -31,7 +43,9 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -72,17 +86,35 @@ type TxStarter interface {
 
 // Change is one seat of a batch request. TierID nil keeps the category,
 // Status nil keeps the status; at least one of them must be set.
+// NewTierKey names a category of the batch's NewTiers instead of TierID (the
+// two are exclusive); ApplyBatchTx turns it into the created category's id.
 type Change struct {
-	SeatKey string     `json:"seat_key"`
-	TierID  *uuid.UUID `json:"tier_id,omitempty"`
-	Status  *string    `json:"status,omitempty"`
+	SeatKey    string     `json:"seat_key"`
+	TierID     *uuid.UUID `json:"tier_id,omitempty"`
+	NewTierKey string     `json:"new_tier_key,omitempty"`
+	Status     *string    `json:"status,omitempty"`
 }
 
 // NewTier is a category to create inside the batch (spec 26 section 3.3).
-// Not supported yet: a non-empty list is refused with ErrNewTiersUnsupported.
+// Key is the client's id of it, unique in the request, that changes name in
+// NewTierKey. Color is optional (#rrggbb). SortOrder nil places the category
+// after the session's live ones, in request order.
 type NewTier struct {
+	Key         string `json:"key"`
 	Name        string `json:"name"`
 	PriceAmount int64  `json:"price_amount"`
+	Color       string `json:"color,omitempty"`
+	SortOrder   *int32 `json:"sort_order,omitempty"`
+}
+
+// CreatedTier is a category a batch created: the request key and the id it
+// got. Color is empty when the category has none.
+type CreatedTier struct {
+	Key         string    `json:"key"`
+	TierID      uuid.UUID `json:"tier_id"`
+	Name        string    `json:"name"`
+	PriceAmount int64     `json:"price_amount"`
+	Color       string    `json:"color,omitempty"`
 }
 
 // Actor is who applies a batch. ID is NULL for a principal that is not a
@@ -152,15 +184,18 @@ type Batch struct {
 	Skipped           []SkippedSeat
 	// Noops is filled only on the Batch ApplyBatch / Revert return.
 	Noops []NoopSeat
+	// CreatedTiers is filled only on the ApplyBatch return (and seen by the
+	// AuditFunc): the categories the batch created, in request order. It is
+	// not stored with the batch.
+	CreatedTiers []CreatedTier
 }
 
 // Errors.
 var (
-	ErrSessionNotFound     = errors.New("seatlayout: session not found")
-	ErrNewTiersUnsupported = errors.New("seatlayout: creating a category inside a batch is not supported")
-	ErrBatchNotFound       = errors.New("seatlayout: batch not found")
-	ErrAlreadyReverted     = errors.New("seatlayout: batch already reverted")
-	ErrRevertOfRevert      = errors.New("seatlayout: a revert batch cannot be reverted")
+	ErrSessionNotFound = errors.New("seatlayout: session not found")
+	ErrBatchNotFound   = errors.New("seatlayout: batch not found")
+	ErrAlreadyReverted = errors.New("seatlayout: batch already reverted")
+	ErrRevertOfRevert  = errors.New("seatlayout: a revert batch cannot be reverted")
 )
 
 // InputError is a request the batch refuses before touching the database.
@@ -201,17 +236,116 @@ type AuditError struct{ Err error }
 func (e *AuditError) Error() string { return "seatlayout: audit: " + e.Err.Error() }
 func (e *AuditError) Unwrap() error { return e.Err }
 
+// Error codes of the new_tiers rules. Every one is an *InputError; the HTTP
+// layer answers 400 except where noted.
+const (
+	// CodeNewTiersNotAllowed: new_tiers on a kind other than paint / apply_layout.
+	CodeNewTiersNotAllowed = "seat_batch.new_tiers_not_allowed"
+	// CodeInvalidNewTier: a key that is not [A-Za-z0-9_-]{1,40}.
+	CodeInvalidNewTier = "seat_batch.invalid_new_tier"
+	// CodeDuplicateNewTierKey: two new tiers share a key.
+	CodeDuplicateNewTierKey = "seat_batch.duplicate_new_tier_key"
+	// CodeInvalidNewTierName: an empty or too long name.
+	CodeInvalidNewTierName = "seat_batch.invalid_new_tier_name"
+	// CodeInvalidNewTierPrice: a negative or too large price.
+	CodeInvalidNewTierPrice = "seat_batch.invalid_new_tier_price"
+	// CodeInvalidNewTierColor: a colour that is not #rrggbb.
+	CodeInvalidNewTierColor = "seat_batch.invalid_new_tier_color"
+	// CodeDuplicateNewTierName: two new tiers have the same name (trimmed,
+	// ignoring case).
+	CodeDuplicateNewTierName = "seat_batch.duplicate_new_tier_name"
+	// CodeTierNameTaken: a new tier's name equals (trimmed, ignoring case) a
+	// live category's of the session (HTTP 409).
+	CodeTierNameTaken = "seat_batch.tier_name_taken"
+	// CodeUnknownNewTierKey: a change names a key new_tiers does not have.
+	CodeUnknownNewTierKey = "seat_batch.unknown_new_tier_key"
+	// CodeUnusedNewTier: a new tier no change refers to.
+	CodeUnusedNewTier = "seat_batch.unused_new_tier"
+	// CodeTooManyTiers: live plus new categories above seating.MaxCategories
+	// (HTTP 422).
+	CodeTooManyTiers = "seat_batch.too_many_tiers"
+)
+
+// NormalizeColor checks a category colour, #rrggbb, and returns it in lower
+// case. It is the one colour rule of a category: the category routes, the
+// saved layouts and the batch's new_tiers all use it.
+func NormalizeColor(s string) (string, bool) {
+	v := strings.TrimSpace(s)
+	if !colorRE.MatchString(v) {
+		return "", false
+	}
+	return strings.ToLower(v), true
+}
+
+// normalizeNewTiers checks the new tiers of a request without the database
+// and returns them trimmed (name) and lower-cased (colour).
+func normalizeNewTiers(tiers []NewTier) ([]NewTier, error) {
+	if len(tiers) > MaxSlots {
+		return nil, &InputError{Code: CodeTooManyTiers,
+			Message: fmt.Sprintf("a session has at most %d categories", MaxSlots),
+			Details: map[string]any{"max": MaxSlots, "received": len(tiers)}}
+	}
+	out := make([]NewTier, 0, len(tiers))
+	keys := make(map[string]bool, len(tiers))
+	names := make(map[string]bool, len(tiers))
+	for i, t := range tiers {
+		details := func(field string) map[string]any {
+			return map[string]any{"field": fmt.Sprintf("new_tiers[%d].%s", i, field), "index": i, "key": t.Key}
+		}
+		if !slotKeyRE.MatchString(t.Key) {
+			return nil, &InputError{Code: CodeInvalidNewTier,
+				Message: fmt.Sprintf("new_tiers[].key must match [A-Za-z0-9_-]{1,%d}", maxSlotKeyLen), Details: details("key")}
+		}
+		if keys[t.Key] {
+			return nil, &InputError{Code: CodeDuplicateNewTierKey,
+				Message: "new_tiers[].key must be unique in the request", Details: details("key")}
+		}
+		keys[t.Key] = true
+		name := strings.TrimSpace(t.Name)
+		if name == "" || utf8.RuneCountInString(name) > maxSlotNameLen {
+			return nil, &InputError{Code: CodeInvalidNewTierName,
+				Message: fmt.Sprintf("new_tiers[].name must be 1 to %d characters", maxSlotNameLen), Details: details("name")}
+		}
+		folded := strings.ToLower(name)
+		if names[folded] {
+			return nil, &InputError{Code: CodeDuplicateNewTierName,
+				Message: "two new tiers have the same name, ignoring case", Details: details("name")}
+		}
+		names[folded] = true
+		if t.PriceAmount < 0 || t.PriceAmount > maxPriceMinor {
+			return nil, &InputError{Code: CodeInvalidNewTierPrice,
+				Message: "new_tiers[].price_amount must be between 0 and 1000000000 minor units", Details: details("price_amount")}
+		}
+		color := ""
+		if strings.TrimSpace(t.Color) != "" {
+			c, ok := NormalizeColor(t.Color)
+			if !ok {
+				return nil, &InputError{Code: CodeInvalidNewTierColor,
+					Message: "new_tiers[].color must be #rrggbb", Details: details("color")}
+			}
+			color = c
+		}
+		out = append(out, NewTier{Key: t.Key, Name: name, PriceAmount: t.PriceAmount, Color: color, SortOrder: t.SortOrder})
+	}
+	return out, nil
+}
+
 // Validate checks a request's shape without the database.
 func Validate(in BatchInput) error {
-	if len(in.NewTiers) > 0 {
-		return ErrNewTiersUnsupported
-	}
 	switch in.Kind {
 	case KindPaint, KindClose, KindOpen, KindApplyLayout:
 	default:
 		return &InputError{Code: "seat_batch.invalid_kind",
 			Message: "kind must be one of paint|close|open|apply_layout",
 			Details: map[string]any{"field": "kind"}}
+	}
+	if len(in.NewTiers) > 0 && in.Kind != KindPaint && in.Kind != KindApplyLayout {
+		return &InputError{Code: CodeNewTiersNotAllowed,
+			Message: "new_tiers is allowed only in a paint or apply_layout batch",
+			Details: map[string]any{"field": "new_tiers", "kind": string(in.Kind)}}
+	}
+	if _, err := normalizeNewTiers(in.NewTiers); err != nil {
+		return err
 	}
 	if len(in.Changes) == 0 {
 		return &InputError{Code: "seat_batch.no_changes", Message: "changes must be a non-empty array",
@@ -220,6 +354,10 @@ func Validate(in BatchInput) error {
 	if len(in.Changes) > MaxChanges {
 		return &InputError{Code: "seat_batch.too_many_changes", Message: "changes exceeds the per-batch cap",
 			Details: map[string]any{"max": MaxChanges, "received": len(in.Changes)}}
+	}
+	newKeys := make(map[string]bool, len(in.NewTiers))
+	for _, t := range in.NewTiers {
+		newKeys[t.Key] = false
 	}
 	seen := make(map[string]Change, len(in.Changes))
 	for i, c := range in.Changes {
@@ -230,25 +368,37 @@ func Validate(in BatchInput) error {
 		if c.SeatKey == "" {
 			return bad("changes[].seat_key is required")
 		}
-		if c.TierID == nil && c.Status == nil {
-			return bad("a change needs tier_id or status")
+		if c.TierID != nil && c.NewTierKey != "" {
+			return bad("a change sets tier_id or new_tier_key, not both")
+		}
+		hasTier := c.TierID != nil || c.NewTierKey != ""
+		if !hasTier && c.Status == nil {
+			return bad("a change needs tier_id, new_tier_key or status")
 		}
 		if c.Status != nil && *c.Status != StatusAvailable && *c.Status != StatusUnavailable {
 			return bad("status must be available or unavailable")
 		}
 		switch in.Kind {
 		case KindPaint:
-			if c.TierID == nil || c.Status != nil {
-				return bad("a paint batch sets tier_id only")
+			if !hasTier || c.Status != nil {
+				return bad("a paint batch sets tier_id or new_tier_key only")
 			}
 		case KindClose:
-			if c.TierID != nil || c.Status == nil || *c.Status != StatusUnavailable {
+			if hasTier || c.Status == nil || *c.Status != StatusUnavailable {
 				return bad("a close batch sets status unavailable only")
 			}
 		case KindOpen:
-			if c.TierID != nil || c.Status == nil || *c.Status != StatusAvailable {
+			if hasTier || c.Status == nil || *c.Status != StatusAvailable {
 				return bad("an open batch sets status available only")
 			}
+		}
+		if c.NewTierKey != "" {
+			if _, ok := newKeys[c.NewTierKey]; !ok {
+				return &InputError{Code: CodeUnknownNewTierKey,
+					Message: "changes[].new_tier_key names no entry of new_tiers",
+					Details: map[string]any{"index": i, "seat_key": c.SeatKey, "new_tier_key": c.NewTierKey}}
+			}
+			newKeys[c.NewTierKey] = true
 		}
 		if prev, dup := seen[c.SeatKey]; dup && !sameChange(prev, c) {
 			return &InputError{Code: "seat_batch.duplicate_seat_key",
@@ -257,11 +407,21 @@ func Validate(in BatchInput) error {
 		}
 		seen[c.SeatKey] = c
 	}
+	for i, t := range in.NewTiers {
+		if !newKeys[t.Key] {
+			return &InputError{Code: CodeUnusedNewTier,
+				Message: "a new tier is not named by any change",
+				Details: map[string]any{"field": fmt.Sprintf("new_tiers[%d].key", i), "index": i, "key": t.Key}}
+		}
+	}
 	return nil
 }
 
 func sameChange(a, b Change) bool {
 	if (a.TierID == nil) != (b.TierID == nil) || (a.TierID != nil && *a.TierID != *b.TierID) {
+		return false
+	}
+	if a.NewTierKey != b.NewTierKey {
 		return false
 	}
 	return (a.Status == nil) == (b.Status == nil) && (a.Status == nil || *a.Status == *b.Status)
@@ -299,13 +459,93 @@ func ApplyBatchTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, in BatchInpu
 	if err != nil {
 		return Batch{}, err
 	}
-	return applyChangesLocked(ctx, tx, txq, version, orgID, in)
+	var created []CreatedTier
+	if len(in.NewTiers) > 0 {
+		// After the sessions row lock and before any seat lock (the package
+		// comment's order). A failure later in the batch rolls these back.
+		created, err = createNewTiers(ctx, txq, in.SessionID, in.NewTiers)
+		if err != nil {
+			return Batch{}, err
+		}
+		idOf := make(map[string]uuid.UUID, len(created))
+		for _, c := range created {
+			idOf[c.Key] = c.TierID
+		}
+		changes := make([]Change, len(in.Changes))
+		for i, c := range in.Changes {
+			if c.NewTierKey != "" {
+				id := idOf[c.NewTierKey] // Validate proved every key is in new_tiers
+				c.TierID, c.NewTierKey = &id, ""
+			}
+			changes[i] = c
+		}
+		in.Changes, in.NewTiers = changes, nil
+	}
+	return applyChangesLocked(ctx, tx, txq, version, orgID, in, created)
+}
+
+// createNewTiers creates the batch's new categories inside the batch
+// transaction. The session's live categories are read here, under the
+// sessions row lock: a name equal to a live category's (trimmed, ignoring
+// case) is refused, and so are live plus new above seating.MaxCategories.
+func createNewTiers(ctx context.Context, txq *gen.Queries, sessionID uuid.UUID, tiers []NewTier) ([]CreatedTier, error) {
+	tiers, err := normalizeNewTiers(tiers)
+	if err != nil {
+		return nil, err
+	}
+	live, err := txq.ListTicketTiersBySession(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("seatlayout: load categories: %w", err)
+	}
+	if len(live)+len(tiers) > MaxSlots {
+		return nil, &InputError{Code: CodeTooManyTiers,
+			Message: fmt.Sprintf("a session has at most %d categories", MaxSlots),
+			Details: map[string]any{"max": MaxSlots, "live": len(live), "new": len(tiers)}}
+	}
+	liveNames := make(map[string]bool, len(live))
+	var nextSort int32
+	for _, t := range live {
+		liveNames[strings.ToLower(strings.TrimSpace(t.Name))] = true
+		if t.SortOrder >= nextSort {
+			nextSort = t.SortOrder + 1
+		}
+	}
+	for i, t := range tiers {
+		if liveNames[strings.ToLower(t.Name)] {
+			return nil, &InputError{Code: CodeTierNameTaken,
+				Message: "a new tier has the name of a category the session already has",
+				Details: map[string]any{"field": fmt.Sprintf("new_tiers[%d].name", i), "index": i, "key": t.Key}}
+		}
+	}
+	currency, err := txq.GetSessionCurrency(ctx, sessionID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrSessionNotFound
+		}
+		return nil, fmt.Errorf("seatlayout: session currency: %w", err)
+	}
+	out := make([]CreatedTier, 0, len(tiers))
+	for _, t := range tiers {
+		order := nextSort
+		if t.SortOrder != nil {
+			order = *t.SortOrder
+		} else {
+			nextSort++
+		}
+		id, err := insertCategory(ctx, txq, sessionID, currency, t.Name, t.PriceAmount, t.Color, order)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, CreatedTier{Key: t.Key, TierID: id, Name: t.Name, PriceAmount: t.PriceAmount, Color: t.Color})
+	}
+	return out, nil
 }
 
 // applyChangesLocked is ApplyBatchTx after the sessions row lock: check the
 // categories, lock the seats, decide, write. ApplyLayout calls it too, with
-// the changes it built under the same lock.
-func applyChangesLocked(ctx context.Context, tx pgx.Tx, txq *gen.Queries, version int64, orgID uuid.UUID, in BatchInput) (Batch, error) {
+// the changes it built under the same lock. created is what the batch created
+// (reported on the Batch, before the audit runs).
+func applyChangesLocked(ctx context.Context, tx pgx.Tx, txq *gen.Queries, version int64, orgID uuid.UUID, in BatchInput, created []CreatedTier) (Batch, error) {
 	tierIDs := distinctTierIDs(in.Changes)
 	if len(tierIDs) > 0 {
 		live, err := txq.ListActiveSessionTierIDs(ctx, in.SessionID, tierIDs)
@@ -328,7 +568,7 @@ func applyChangesLocked(ctx context.Context, tx pgx.Tx, txq *gen.Queries, versio
 	}
 	return applyLocked(ctx, tx, txq, applyArgs{
 		orgID: orgID, sessionID: in.SessionID, version: version, actor: in.Actor,
-		kind: in.Kind, targets: targets, strict: in.Strict, audit: in.Audit,
+		kind: in.Kind, targets: targets, strict: in.Strict, audit: in.Audit, created: created,
 	})
 }
 
@@ -455,6 +695,7 @@ type applyArgs struct {
 	revertsBatchID   *uuid.UUID
 	tierOK           func(uuid.UUID) bool
 	audit            AuditFunc
+	created          []CreatedTier
 }
 
 // applyLocked runs after the sessions lock: lock the seats, decide, write.
@@ -552,7 +793,10 @@ func applyLocked(ctx context.Context, tx pgx.Tx, txq *gen.Queries, a applyArgs) 
 		ID: row.ID, OrgID: row.OrgID, SessionID: row.SessionID, ActorID: row.ActorID,
 		ActorLabel: row.ActorLabel, Kind: Kind(row.Kind), SeatStatusVersion: row.SeatStatusVersion,
 		AppliedAt: row.AppliedAt, RevertsBatchID: row.RevertsBatchID,
-		Changes: changes, Skipped: skipped, Noops: noops,
+		Changes: changes, Skipped: skipped, Noops: noops, CreatedTiers: a.created,
+	}
+	if b.CreatedTiers == nil {
+		b.CreatedTiers = []CreatedTier{}
 	}
 	if a.audit != nil {
 		if err := a.audit(ctx, tx, b); err != nil {

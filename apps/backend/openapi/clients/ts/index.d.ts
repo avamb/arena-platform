@@ -12140,11 +12140,23 @@ export interface paths {
          *     and reverted. A sold or held seat is frozen: it is listed in
          *     `skipped` with a reason and the batch still applies the rest. A
          *     General Admission place opens and closes but never changes category
-         *     (`ga_unit`). `new_tiers` (creating a category inside the batch) is not
-         *     supported yet and answers 422 `seat_batch.new_tiers_unsupported`.
+         *     (`ga_unit`).
+         *
+         *     `new_tiers` creates price categories in the same transaction, right
+         *     after the session row lock and before the seats are locked; changes
+         *     name them by `new_tier_key`. If anything in the batch fails, no
+         *     category is left behind. A sold or held seat named with a new
+         *     category keeps its own and is listed in `skipped`. The answer lists
+         *     the categories in `created_tiers`. Reverting such a batch puts the
+         *     seats back and KEEPS the created categories, which may then hold no
+         *     seat.
+         *
          *     Requires the `session.seats.manage` permission in the
-         *     organization. Audited as `v1.session.seat_batch.apply` with
-         *     `batch_id`.
+         *     organization; a batch with `new_tiers` also requires `tier.create`
+         *     there (the permission of the create-category route; an organization
+         *     API key needs both scopes). Audited as
+         *     `v1.session.seat_batch.apply` with `batch_id` and
+         *     `created_tier_ids`.
          */
         post: operations["postV1OrganizationsOrgIdSessionsSessionIdSeatBatches"];
         delete?: never;
@@ -12194,7 +12206,9 @@ export interface paths {
          *     `reverted_at` and `reverted_by_batch_id`. A batch is reverted at most
          *     once and a revert is never reverted. A revert that would put back no
          *     seat at all is refused with 409 `seat_batch.nothing_to_revert` and
-         *     writes nothing. Requires the
+         *     writes nothing. Categories the original batch created (`new_tiers`)
+         *     are kept: the revert puts the seats back only, so such a category
+         *     may be left without seats. Requires the
          *     `session.seats.manage` permission in the organization.
          *     Audited as `v1.session.seat_batch.revert` with `batch_id`.
          */
@@ -19341,18 +19355,65 @@ export interface components {
             kind: string;
             /** @description The seats to change, at most 10 000. A seat_key may appear twice only with the same target. */
             changes: components["schemas"]["SeatBatchChangeRequest"][];
-            /** @description Categories to create inside the batch. Not supported yet; a non-empty list answers 422 `seat_batch.new_tiers_unsupported`. */
-            new_tiers?: Record<string, never>[];
+            /**
+             * @description Categories to create inside the batch, in the same transaction as
+             *     the seat changes (kinds `paint` and `apply_layout` only, else 400
+             *     `seat_batch.new_tiers_not_allowed`). A change names one by its
+             *     `key` in `new_tier_key`; every new tier must be named by at least
+             *     one change. Live plus new categories may not exceed 15. Needs the
+             *     `tier.create` permission in the organization as well.
+             */
+            new_tiers?: components["schemas"]["SeatBatchNewTier"][];
         };
-        /** @description What one seat should become; at least one of tier_id and status. */
+        /** @description A category the batch creates, in the session's currency; pricing mode `free` for price 0, `fixed` otherwise. */
+        SeatBatchNewTier: {
+            /** @description The client's id of the category, `[A-Za-z0-9_-]{1,40}`, unique in the request (`seat_batch.invalid_new_tier`, `seat_batch.duplicate_new_tier_key`). */
+            key: string;
+            /** @description Name of the category, 1 to 100 characters after trimming (`seat_batch.invalid_new_tier_name`); must differ, ignoring case, from the other new tiers (`seat_batch.duplicate_new_tier_name`) and from every live category of the session (409 `seat_batch.tier_name_taken`). */
+            name: string;
+            /**
+             * Format: int64
+             * @description Price in minor units, 0 to 1 000 000 000 (`seat_batch.invalid_new_tier_price`).
+             */
+            price_amount: number;
+            /** @description Colour of the category, `#rrggbb` (`seat_batch.invalid_new_tier_color`); null or empty for none. */
+            color?: string | null;
+            /**
+             * Format: int32
+             * @description Display order of the category; absent places it after the live categories, in request order.
+             */
+            sort_order?: number;
+        };
+        /** @description A category the batch created. */
+        SeatBatchCreatedTier: {
+            /** @description The key the request gave the category. */
+            key: string;
+            /**
+             * Format: uuid
+             * @description UUID of the created category.
+             */
+            tier_id: string;
+            /** @description Name of the category, trimmed. */
+            name: string;
+            /**
+             * Format: int64
+             * @description Price in minor units.
+             */
+            price_amount: number;
+            /** @description Colour of the category, lower-case `#rrggbb`, null for none. */
+            color: string | null;
+        };
+        /** @description What one seat should become; at least one of tier_id, new_tier_key and status. */
         SeatBatchChangeRequest: {
             /** @description The seat's key. */
             seat_key: string;
             /**
              * Format: uuid
-             * @description The category to put the seat in, a live category of this session.
+             * @description The category to put the seat in, a live category of this session. Not together with new_tier_key.
              */
             tier_id?: string;
+            /** @description The `key` of an entry of `new_tiers` to put the seat in, instead of tier_id (both set is 400 `seat_batch.invalid_change`; an unknown key is 400 `seat_batch.unknown_new_tier_key`). */
+            new_tier_key?: string;
             /** @description `available` or `unavailable`. */
             status?: string;
         };
@@ -19436,6 +19497,8 @@ export interface components {
             skipped: components["schemas"]["SeatBatchSkipped"][];
             /** @description Seats that already were in the requested state. Only in the answer of an apply or a revert. */
             unchanged_seat_keys?: string[];
+            /** @description The categories the batch created from `new_tiers`, in request order; an empty array when it created none. Only in the answer of an apply or a revert (a revert creates none); the stored batch does not keep it, the audit event carries `created_tier_ids`. */
+            created_tiers?: components["schemas"]["SeatBatchCreatedTier"][];
         };
         /** @description One row of the batch list; the per-seat arrays are only in SeatBatch. */
         SeatBatchSummary: {
@@ -20922,6 +20985,16 @@ export interface components {
              * @description Sold plus held plus remaining.
              */
             revenue_estimate_minor: number;
+            /**
+             * Format: int64
+             * @description The estimate if not every seat sells: sold seats in full at their
+             *     price, every open free seat at its slot's price times the slot's
+             *     sell-through rate, a held seat at its price times the rate of the
+             *     slot price level nearest to it. Slots are ranked among the distinct
+             *     price levels: the dearest sells 0.90, the cheapest 0.60, linear by
+             *     rank between; a single price level sells 0.75. Rounded half up.
+             */
+            realistic_revenue_minor: number;
             /** @description The estimate per proposed category. */
             by_slot: components["schemas"]["SeatLayoutSlotMetrics"][];
         };
@@ -81081,7 +81154,7 @@ export interface operations {
                     "application/json": components["schemas"]["SeatBatch"];
                 };
             };
-            /** @description Invalid path parameter or body (`seat_batch.invalid_body` — the decoder's text is in `details.reason`, the body is capped at 1 MiB; `seat_batch.invalid_kind`, `seat_batch.no_changes`, `seat_batch.invalid_change`, `seat_batch.duplicate_seat_key`). */
+            /** @description Invalid path parameter or body (`seat_batch.invalid_body` — the decoder's text is in `details.reason`, the body is capped at 1 MiB; `seat_batch.invalid_kind`, `seat_batch.no_changes`, `seat_batch.invalid_change`, `seat_batch.duplicate_seat_key`, `seat_batch.new_tiers_not_allowed`, `seat_batch.invalid_new_tier`, `seat_batch.duplicate_new_tier_key`, `seat_batch.invalid_new_tier_name`, `seat_batch.duplicate_new_tier_name`, `seat_batch.invalid_new_tier_price`, `seat_batch.invalid_new_tier_color`, `seat_batch.unknown_new_tier_key`, `seat_batch.unused_new_tier`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -81099,7 +81172,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it, or the batch has `new_tiers` and the actor does not hold `tier.create` there (`permissions.denied`, `details.permission`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -81117,7 +81190,16 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description More than 10 000 changes (`seat_batch.too_many_changes`), a category that is not a live category of this session (`seat_batch.tier_not_in_session`), or `new_tiers` (`seat_batch.new_tiers_unsupported`). */
+            /** @description A new tier has the name of a live category of the session (`seat_batch.tier_name_taken`). Nothing was written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description More than 10 000 changes (`seat_batch.too_many_changes`), a category that is not a live category of this session (`seat_batch.tier_not_in_session`), or live plus new categories above 15 (`seat_batch.too_many_tiers`). Nothing was written. */
             422: {
                 headers: {
                     [name: string]: unknown;

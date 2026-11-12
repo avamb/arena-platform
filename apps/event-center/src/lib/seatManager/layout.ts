@@ -9,7 +9,16 @@
  */
 import type { SeatLayoutAlgorithm, SeatLayoutParam, SeatLayoutProposal } from "@/lib/api/types";
 import { currencyDigits } from "@/lib/promo";
-import { makeStroke, type Brush, type Merged, type SeatState, type Stroke } from "@/lib/seatManager/pending";
+import {
+  makeStroke,
+  nextPendingKey,
+  pendingTierId,
+  type Brush,
+  type Merged,
+  type PendingTier,
+  type SeatState,
+  type Stroke,
+} from "@/lib/seatManager/pending";
 
 export type FieldValue = number | boolean | string | number[] | undefined;
 export type FormValues = Record<string, FieldValue>;
@@ -37,7 +46,33 @@ export function initialValues(alg: SeatLayoutAlgorithm): FormValues {
  * Only an empty `prices` parameter is filled, and only when the categories fit its length. The count of categories
  * follows it, because the algorithm wants one price per category.
  */
-export function prefillFromTiers(alg: SeatLayoutAlgorithm, values: FormValues, tierPrices: readonly number[]): FormValues {
+export function prefillFromTiers(
+  alg: SeatLayoutAlgorithm,
+  values: FormValues,
+  tierPrices: readonly number[],
+  canCreateTiers = false,
+): FormValues {
+  // One category and the right to create more: the layout is a split of this category's price, so the form does not pin
+  // one category. `prices` stays empty, the count is the algorithm's own (3 when that is 1), `price_max` is the price.
+  if (canCreateTiers && tierPrices.length === 1) {
+    const next: FormValues = { ...values };
+    const count = alg.params.find((x) => x.name === "categories" && x.type === "integer");
+    if (count !== undefined) {
+      const cur = next[count.name];
+      if (typeof cur !== "number" || cur <= 1) {
+        let n = 3;
+        if (typeof count.max === "number") n = Math.min(n, count.max);
+        if (typeof count.min === "number") n = Math.max(n, count.min);
+        next[count.name] = n;
+      }
+    }
+    const max = alg.params.find((x) => x.name === "price_max" && x.type === "integer" && x.unit === UNIT_MINOR);
+    const price = tierPrices[0]!;
+    if (max !== undefined && next[max.name] === undefined && price > 0 && (typeof max.max !== "number" || price <= max.max)) {
+      next[max.name] = price;
+    }
+    return next;
+  }
   const p = alg.params.find((x) => x.name === "prices" && x.type === "integer_list" && x.unit === UNIT_MINOR);
   if (p === undefined || values[p.name] !== undefined) return values;
   const list = [...tierPrices].filter((n) => Number.isInteger(n) && n >= 0).sort((a, b) => b - a);
@@ -162,8 +197,8 @@ export interface TierForMapping {
 /**
  * Suggests which existing category takes each slot: the slot with the same
  * price first, then the dearest slot to the dearest category, and so on. A
- * category is used once. A slot with nothing left stays unmapped (null): a
- * batch cannot create a category yet (seat_batch.new_tiers_unsupported).
+ * category is used once. A slot with nothing left stays unmapped (null);
+ * mappingWithNew() turns it into "New category".
  */
 export function suggestMapping(slots: SeatLayoutProposal["slots"], tiers: readonly TierForMapping[]): Map<string, string | null> {
   const out = new Map<string, string | null>();
@@ -187,6 +222,174 @@ export function suggestMapping(slots: SeatLayoutProposal["slots"], tiers: readon
     out.set(s.key, next.id);
   }
   return out;
+}
+
+/** The mapping value of a slot that becomes a NEW category (made in the tray, created by "Apply"). */
+export const NEW_CATEGORY = "@new";
+
+/**
+ * The first mapping of a proposal: what suggestMapping finds, and "New category" for every slot it leaves without
+ * one. So a layout with more slots than the date has categories needs no extra step.
+ */
+export function mappingWithNew(slots: SeatLayoutProposal["slots"], tiers: readonly TierForMapping[]): Map<string, string | null> {
+  const out = suggestMapping(slots, tiers);
+  for (const [slot, tier] of out) if (tier === null) out.set(slot, NEW_CATEGORY);
+  return out;
+}
+
+// ─── a new category: the fields, and the rules the server applies ────────
+
+/** The server's limits (seatlayout / SeatBatchNewTier). */
+export const MAX_TIERS = 15;
+export const MAX_TIER_NAME = 100;
+export const MAX_TIER_PRICE = 1_000_000_000;
+
+/** What a person types for a new category. The price is in major units, as in every money field. */
+export interface NewTierDraft {
+  readonly name: string;
+  readonly price: string;
+  readonly color: string;
+}
+
+export interface NewTierValue {
+  readonly name: string;
+  /** Minor units. */
+  readonly price: number;
+  /** Lower case `#rrggbb`. */
+  readonly color: string;
+}
+
+export interface DraftErrors {
+  name?: "empty" | "long" | "taken";
+  price?: "bad" | "max";
+  color?: "bad";
+}
+
+export type DraftCheck = { readonly ok: true; readonly value: NewTierValue } | { readonly ok: false; readonly errors: DraftErrors };
+
+const HEX = /^#[0-9a-fA-F]{6}$/;
+
+/** The key two names are compared by: trimmed, case ignored (the server does the same). */
+export function nameKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+/**
+ * The draft the way the server will judge it: a name of 1 to 100 characters that no live category and no other new
+ * category has (case ignored), a price of 0 to 1 000 000 000 minor units, a colour `#rrggbb`.
+ */
+export function checkDraft(draft: NewTierDraft, currency: string, taken: ReadonlySet<string>): DraftCheck {
+  const errors: DraftErrors = {};
+  const name = draft.name.trim();
+  if (name === "") errors.name = "empty";
+  else if ([...name].length > MAX_TIER_NAME) errors.name = "long";
+  else if (taken.has(nameKey(name))) errors.name = "taken";
+  const price = parseMajor(draft.price, currency);
+  if (price === null) errors.price = "bad";
+  else if (price > MAX_TIER_PRICE) errors.price = "max";
+  if (!HEX.test(draft.color)) errors.color = "bad";
+  if (errors.name !== undefined || errors.price !== undefined || errors.color !== undefined) return { ok: false, errors };
+  return { ok: true, value: { name, price: price!, color: draft.color.toLowerCase() } };
+}
+
+/**
+ * Checks the drafts of all new slots together: a name must also differ from the drafts before it. The first of two
+ * equal names is fine, the second is "taken".
+ */
+export function checkDrafts(
+  drafts: ReadonlyMap<string, NewTierDraft>,
+  currency: string,
+  takenNames: readonly string[],
+): Map<string, DraftCheck> {
+  const taken = new Set(takenNames.map(nameKey));
+  const out = new Map<string, DraftCheck>();
+  for (const [slot, d] of drafts) {
+    const res = checkDraft(d, currency, taken);
+    out.set(slot, res);
+    // Even an otherwise bad draft keeps its name: the next one must not repeat it.
+    if (d.name.trim() !== "") taken.add(nameKey(d.name));
+  }
+  return out;
+}
+
+/** True when `adding` more categories would break the limit of 15 per date. */
+export function overTierLimit(live: number, pending: number, adding: number): boolean {
+  return live + pending + adding > MAX_TIERS;
+}
+
+/** What a slot proposes, as the form's starting values. */
+export function draftOfSlot(slot: SeatLayoutProposal["slots"][number], currency: string, fallbackName: string, fallbackColor: string): NewTierDraft {
+  return {
+    name: slot.name !== undefined && slot.name.trim() !== "" ? slot.name : fallbackName,
+    price: majorText(slot.price_amount, currency),
+    color: slot.color !== undefined && HEX.test(slot.color) ? slot.color.toLowerCase() : fallbackColor,
+  };
+}
+
+/**
+ * The mapping with every "new category" slot turned into a category of the tray: its key, and a mapping value that is
+ * that category's id. A new slot with no seat to move makes no category (it would be refused as unused).
+ */
+export function resolveNewSlots(
+  proposal: SeatLayoutProposal,
+  mapping: SlotMapping,
+  values: ReadonlyMap<string, NewTierValue>,
+  existing: readonly PendingTier[],
+): { mapping: Map<string, string | null>; created: PendingTier[] } {
+  const seatsOf = new Map<string, number>();
+  for (const slot of Object.values(proposal.assignments)) seatsOf.set(slot, (seatsOf.get(slot) ?? 0) + 1);
+  const out = new Map<string, string | null>();
+  const created: PendingTier[] = [];
+  for (const slot of proposal.slots) {
+    const m = mapping.get(slot.key) ?? null;
+    if (m !== NEW_CATEGORY) {
+      out.set(slot.key, m);
+      continue;
+    }
+    const v = values.get(slot.key);
+    if (v === undefined || (seatsOf.get(slot.key) ?? 0) === 0) {
+      out.set(slot.key, null);
+      continue;
+    }
+    const key = nextPendingKey([...existing, ...created]);
+    created.push({ key, name: v.name, price: v.price, color: v.color });
+    out.set(slot.key, pendingTierId(key));
+  }
+  return { mapping: out, created };
+}
+
+// ─── the preview table ───────────────────────────────────────────────────
+
+export interface PreviewRow {
+  readonly slotKey: string;
+  readonly name: string;
+  readonly seats: number;
+  readonly price: number;
+  /** Open seats at the price, as the server counts them (`revenue_minor`). */
+  readonly revenue: number;
+}
+
+export interface PreviewTable {
+  readonly rows: PreviewRow[];
+  readonly totalSeats: number;
+  readonly totalRevenue: number;
+}
+
+/** "Category, seats, price, at a full house" from the slots and `metrics.by_slot`, with the totals. */
+export function previewTable(
+  slots: SeatLayoutProposal["slots"],
+  bySlot: readonly { slot_key: string; seats: number; price_amount: number; revenue_minor: number }[],
+  slotName: (slot: SeatLayoutProposal["slots"][number], index: number) => string,
+): PreviewTable {
+  const rows: PreviewRow[] = slots.map((s, i) => {
+    const m = bySlot.find((x) => x.slot_key === s.key);
+    return { slotKey: s.key, name: slotName(s, i), seats: m?.seats ?? 0, price: m?.price_amount ?? s.price_amount, revenue: m?.revenue_minor ?? 0 };
+  });
+  return {
+    rows,
+    totalSeats: rows.reduce((n, r) => n + r.seats, 0),
+    totalRevenue: rows.reduce((n, r) => n + r.revenue, 0),
+  };
 }
 
 /** True when every slot has a category: nothing is left out of the transfer. */

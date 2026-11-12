@@ -11,19 +11,18 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/seatlayout"
 )
-
-var tierColorRE = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
 // parseTierColor reads a tri-state colour: absent = keep, null or "" =
 // clear, a value = set (stored lower-case). A malformed value answers
-// 400 tier.invalid_color.
+// 400 tier.invalid_color. The rule itself is seatlayout.NormalizeColor, the
+// one colour rule of a category (the seat batch's new_tiers use it too).
 func parseTierColor(w http.ResponseWriter, r *http.Request, in optionalString) (color *string, set bool, ok bool) {
 	if !in.Present {
 		return nil, false, true
@@ -31,15 +30,14 @@ func parseTierColor(w http.ResponseWriter, r *http.Request, in optionalString) (
 	if in.Value == nil || strings.TrimSpace(*in.Value) == "" {
 		return nil, true, true
 	}
-	v := strings.TrimSpace(*in.Value)
-	if !tierColorRE.MatchString(v) {
+	v, valid := seatlayout.NormalizeColor(*in.Value)
+	if !valid {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"tier.invalid_color", "color must be #rrggbb", r,
 			map[string]any{"field": "color"},
 		))
 		return nil, false, false
 	}
-	v = strings.ToLower(v)
 	return &v, true, true
 }
 

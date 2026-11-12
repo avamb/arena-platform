@@ -101,9 +101,6 @@ func TestValidate(t *testing.T) {
 	if err := Validate(BatchInput{Kind: KindApplyLayout, Changes: []Change{{SeatKey: "a", Status: strp("sold")}}}); err == nil {
 		t.Fatal("status sold must be refused")
 	}
-	if err := Validate(BatchInput{Kind: KindPaint, NewTiers: []NewTier{{Name: "X"}}, Changes: []Change{{SeatKey: "a", TierID: &tier}}}); !errors.Is(err, ErrNewTiersUnsupported) {
-		t.Fatalf("new tiers: %v", err)
-	}
 	many := make([]Change, MaxChanges+1)
 	for i := range many {
 		many[i] = Change{SeatKey: uuid.NewString(), TierID: &tier}
@@ -111,6 +108,86 @@ func TestValidate(t *testing.T) {
 	var ie *InputError
 	if err := Validate(BatchInput{Kind: KindPaint, Changes: many}); !errors.As(err, &ie) || ie.Code != "seat_batch.too_many_changes" {
 		t.Fatalf("too many: %v", err)
+	}
+}
+
+func TestValidate_NewTiers(t *testing.T) {
+	tier := uuid.New()
+	nt := func(key, name string, price int64) NewTier { return NewTier{Key: key, Name: name, PriceAmount: price} }
+	paintNew := func(key string) Change { return Change{SeatKey: "s-" + key, NewTierKey: key} }
+
+	ok := []BatchInput{
+		{Kind: KindPaint, NewTiers: []NewTier{nt("vip", "VIP", 5000), nt("cheap", "Cheap", 0)},
+			Changes: []Change{paintNew("vip"), paintNew("cheap"), {SeatKey: "x", TierID: &tier}}},
+		{Kind: KindApplyLayout, NewTiers: []NewTier{{Key: "k_1-A", Name: "  Side  ", PriceAmount: 1, Color: "#AbCdEf"}},
+			Changes: []Change{{SeatKey: "a", NewTierKey: "k_1-A", Status: strp(StatusUnavailable)}}},
+		// A seat named twice with the same new tier is the same target.
+		{Kind: KindPaint, NewTiers: []NewTier{nt("a", "A", 1)}, Changes: []Change{paintNew("a"), paintNew("a")}},
+	}
+	for i, in := range ok {
+		if err := Validate(in); err != nil {
+			t.Fatalf("ok case %d: %v", i, err)
+		}
+	}
+
+	long := strings.Repeat("я", maxSlotNameLen+1)
+	sixteen := make([]NewTier, MaxSlots+1)
+	sixteenChanges := make([]Change, MaxSlots+1)
+	for i := range sixteen {
+		k := "k" + string(rune('a'+i))
+		sixteen[i] = nt(k, "N"+k, 1)
+		sixteenChanges[i] = paintNew(k)
+	}
+	bad := map[string]BatchInput{
+		CodeNewTiersNotAllowed: {Kind: KindClose, NewTiers: []NewTier{nt("a", "A", 1)},
+			Changes: []Change{{SeatKey: "a", Status: strp(StatusUnavailable)}}},
+		CodeInvalidNewTier:      {Kind: KindPaint, NewTiers: []NewTier{nt("bad key", "A", 1)}, Changes: []Change{paintNew("bad key")}},
+		CodeDuplicateNewTierKey: {Kind: KindPaint, NewTiers: []NewTier{nt("a", "A", 1), nt("a", "B", 1)}, Changes: []Change{paintNew("a")}},
+		CodeInvalidNewTierName:  {Kind: KindPaint, NewTiers: []NewTier{nt("a", "   ", 1)}, Changes: []Change{paintNew("a")}},
+		CodeInvalidNewTierPrice: {Kind: KindPaint, NewTiers: []NewTier{nt("a", "A", -1)}, Changes: []Change{paintNew("a")}},
+		CodeInvalidNewTierColor: {Kind: KindPaint, NewTiers: []NewTier{{Key: "a", Name: "A", Color: "red"}}, Changes: []Change{paintNew("a")}},
+		CodeDuplicateNewTierName: {Kind: KindPaint, NewTiers: []NewTier{nt("a", "Balcony", 1), nt("b", " balcony ", 2)},
+			Changes: []Change{paintNew("a"), paintNew("b")}},
+		CodeUnknownNewTierKey: {Kind: KindPaint, NewTiers: []NewTier{nt("a", "A", 1)}, Changes: []Change{paintNew("a"), paintNew("zz")}},
+		CodeUnusedNewTier:     {Kind: KindPaint, NewTiers: []NewTier{nt("a", "A", 1), nt("b", "B", 1)}, Changes: []Change{paintNew("a")}},
+		CodeTooManyTiers:      {Kind: KindPaint, NewTiers: sixteen, Changes: sixteenChanges},
+		"seat_batch.invalid_change": {Kind: KindPaint, NewTiers: []NewTier{nt("a", "A", 1)},
+			Changes: []Change{{SeatKey: "s", TierID: &tier, NewTierKey: "a"}}},
+		"seat_batch.duplicate_seat_key": {Kind: KindPaint, NewTiers: []NewTier{nt("a", "A", 1), nt("b", "B", 1)},
+			Changes: []Change{{SeatKey: "s", NewTierKey: "a"}, {SeatKey: "s", NewTierKey: "b"}}},
+	}
+	for code, in := range bad {
+		var ie *InputError
+		if err := Validate(in); !errors.As(err, &ie) || ie.Code != code {
+			t.Fatalf("%s: got %v", code, err)
+		}
+	}
+	var ie *InputError
+	if err := Validate(BatchInput{Kind: KindPaint, NewTiers: []NewTier{nt("a", long, 1)}, Changes: []Change{paintNew("a")}}); !errors.As(err, &ie) || ie.Code != CodeInvalidNewTierName {
+		t.Fatalf("long name: %v", err)
+	}
+	// A paint batch may not set a status next to a new tier.
+	if err := Validate(BatchInput{Kind: KindPaint, NewTiers: []NewTier{nt("a", "A", 1)},
+		Changes: []Change{{SeatKey: "s", NewTierKey: "a", Status: strp(StatusAvailable)}}}); !errors.As(err, &ie) || ie.Code != "seat_batch.invalid_change" {
+		t.Fatalf("paint with status: %v", err)
+	}
+
+	norm, err := normalizeNewTiers([]NewTier{{Key: "a", Name: "  Side  ", PriceAmount: 1, Color: " #AbCdEf "}})
+	if err != nil || norm[0].Name != "Side" || norm[0].Color != "#abcdef" {
+		t.Fatalf("normalize = %+v (%v)", norm, err)
+	}
+}
+
+func TestNormalizeColor(t *testing.T) {
+	for in, want := range map[string]string{"#AABBCC": "#aabbcc", " #0a0b0c ": "#0a0b0c"} {
+		if got, ok := NormalizeColor(in); !ok || got != want {
+			t.Fatalf("%q = %q %v", in, got, ok)
+		}
+	}
+	for _, in := range []string{"", "red", "#abc", "#gggggg", "aabbcc", "#aabbccdd"} {
+		if _, ok := NormalizeColor(in); ok {
+			t.Fatalf("%q accepted", in)
+		}
 	}
 }
 

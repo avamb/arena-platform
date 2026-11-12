@@ -4574,8 +4574,8 @@ other = "<b>{{.Name}}</b>\n{{.When}}"
 ["bot.sl.not_seated"]
 other = "Esta sesión no tiene plano del recinto, así que no hay plazas que distribuir."
 
-["bot.sl.need_two"]
-other = "Para distribuir el recinto necesito al menos dos categorías abiertas con plazas en esta sesión. Abre o añade una en «Categorías» y vuelve."
+["bot.sl.need_one"]
+other = "Para distribuir el recinto necesito una categoría abierta con plazas en esta sesión. Abre o añade una en «Categorías» y vuelve."
 
 ["bot.sl.intro"]
 other = "🪑 <b>Distribución de plazas</b>\nDividiré el recinto entre estas categorías: las mejores plazas van a la más cara. No cambia nada hasta que pulses «Aplicar», y después podrás deshacerlo."
@@ -4647,7 +4647,7 @@ other = "No se pudieron cambiar las plazas. No se ha aplicado nada. Revisa las c
 other = "<b>Distribución propuesta</b> (todavía no se ha cambiado nada)"
 
 ["bot.sl.preview_line"]
-other = "• {{.Name}} — {{.Price}}: {{.Seats}} plazas ({{.Share}}%)"
+other = "• {{.Name}} — {{.Price}}: {{.Seats}} plazas ({{.Share}}%), con sala llena {{.Money}}"
 
 ["bot.sl.preview_frozen"]
 other = "🔒 Se quedan como están: {{.Sold}} vendidas, {{.Held}} en reserva."
@@ -4693,6 +4693,69 @@ other = "Ese cambio ya se deshizo."
 
 ["bot.sl.err_undo_gone"]
 other = "Ya no encuentro ese cambio."
+
+["bot.sl.intro_one"]
+other = "🪑 <b>Distribución de plazas</b>\nEn esta sesión hay una categoría. Dividiré sus plazas en varias categorías con precios distintos: las mejores plazas tienen el precio más alto. Las categorías nuevas se crean solo cuando pulses «Aplicar». Después podrás deshacer el cambio, pero las categorías nuevas se quedan."
+
+["bot.sl.q_cats"]
+other = "¿En cuántas categorías divido las plazas?"
+
+["bot.sl.q_top"]
+other = "Categorías: {{.Cats}}. ¿Qué precio tienen las mejores plazas ({{.Currency}})? Escribe un número, por ejemplo 120."
+
+["bot.sl.q_bottom"]
+other = "¿Qué precio tienen las plazas más baratas ({{.Currency}})? Debe ser menor que {{.Top}}. Escribe un número."
+
+["bot.sl.err_price"]
+other = "No entiendo este precio. Escribe un número mayor que cero, por ejemplo 120 o 49,90."
+
+["bot.sl.err_bottom"]
+other = "El precio de las plazas más baratas debe ser menor que el de las mejores ({{.Top}}). Escribe otro precio."
+
+["bot.sl.split_line"]
+other = "Categorías: {{.Cats}}, precio de {{.Bottom}} a {{.Top}}."
+
+["bot.sl.new_cat_name"]
+other = "Categoría {{.N}}"
+
+["bot.sl.preview_line_new"]
+other = "• {{.Name}} (nueva) — {{.Price}}: {{.Seats}} plazas ({{.Share}}%), con sala llena {{.Money}}"
+
+["bot.sl.preview_realistic"]
+other = "📈 Estimación realista: unos {{.Money}}. Las plazas vendidas cuentan completas. Para las demás contamos del 90% de las plazas al precio más alto al 60% al precio más bajo."
+
+["bot.sl.preview_hint_new"]
+other = "Pulsa «Aplicar» y se crearán categorías nuevas ({{.Cats}}), y las plazas libres ({{.Count}}) pasarán a las categorías. Después podrás deshacer el cambio, pero las categorías nuevas se quedan."
+
+["bot.sl.created_title"]
+other = "Categorías nuevas:"
+
+["bot.sl.old_empty"]
+other = "La categoría «{{.Name}}» ya no tiene plazas. Si no la necesitas, ciérrala en «Categorías». No la he cerrado yo."
+
+["bot.sl.undo_hint_new"]
+other = "Si no te gusta, pulsa «Deshacer». Las plazas vuelven a su categoría anterior. Las categorías nuevas se quedan: si no las necesitas, ciérralas en «Categorías». Las plazas que mientras tanto se hayan vendido o estén en reserva se quedan como están."
+
+["bot.sl.undone_new"]
+other = "Las categorías nuevas se quedan. Si no las necesitas, ciérralas en «Categorías»."
+
+["bot.sl.err_tier_forbidden"]
+other = "Para crear categorías hacen falta más permisos. Debe hacerlo un propietario o administrador de la organización. No he cambiado nada."
+
+["bot.sl.err_name_taken"]
+other = "Ya existe una categoría con este nombre en esta sesión. No he cambiado nada. Estos son nombres nuevos. Revisa la distribución y pulsa «Aplicar» otra vez."
+
+["bot.sl.err_too_many_tiers"]
+other = "Esta sesión tendría demasiadas categorías (15 como máximo). No he cambiado nada. Elige menos categorías o elimina las que no necesites en «Categorías» e inténtalo de nuevo."
+
+["bot.sl.err_method_one"]
+other = "Este método necesita dos categorías en la sesión. Elige otro método o añade una categoría en «Categorías»."
+
+["bot.sl.split_btn"]
+other = "🪑 Dividir las plazas por precio"
+
+["bot.sl.split_params_btn"]
+other = "✏ Categorías y precios"
 
 ["layoutgen.algorithm.desirability"]
 other = "Por cercanía al escenario"

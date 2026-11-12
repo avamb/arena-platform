@@ -731,6 +731,20 @@ export interface CheckoutI18nStrings {
   seatmap_reset_title: string;
   /** Accessible label for the "reset view" button. */
   seatmap_reset_aria: string;
+  /** Seat card: the word before a sector name. */
+  seatcard_sector: string;
+  /** Seat card: the word before a row name. */
+  seatcard_row: string;
+  /** Seat card: the word before a seat number. */
+  seatcard_seat: string;
+  /** Seat card state line: the seat is sold. */
+  seatcard_sold: string;
+  /** Seat card state line: another buyer holds the seat. */
+  seatcard_held: string;
+  /** Seat card state line: the seat is not on sale. */
+  seatcard_unavailable: string;
+  /** Seat card state line: the buyer has chosen the seat. */
+  seatcard_selected: string;
   /** Hint above the plan when every seated category is free. */
   seat_hint_free: string;
   /** Hint above the plan when seated categories cost money. */
@@ -802,6 +816,13 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seatmap_fit_aria: 'Fit seat map to screen',
     seatmap_reset_title: 'Reset view',
     seatmap_reset_aria: 'Reset seat map view',
+    seatcard_sector: 'Sector',
+    seatcard_row: 'Row',
+    seatcard_seat: 'Seat',
+    seatcard_sold: 'Sold',
+    seatcard_held: 'Held by another buyer',
+    seatcard_unavailable: 'Not on sale',
+    seatcard_selected: 'Selected',
     seat_hint_free: 'Free entry ticket: choose a seat on the seating plan.',
     seat_hint_paid: 'Choose your seats on the seating plan.',
     seat_hint_free_label: 'Free',
@@ -864,6 +885,13 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seatmap_fit_aria: 'Вписать схему зала в экран',
     seatmap_reset_title: 'Сбросить вид',
     seatmap_reset_aria: 'Сбросить вид схемы зала',
+    seatcard_sector: 'Сектор',
+    seatcard_row: 'Ряд',
+    seatcard_seat: 'Место',
+    seatcard_sold: 'Продано',
+    seatcard_held: 'В брони у другого покупателя',
+    seatcard_unavailable: 'Не в продаже',
+    seatcard_selected: 'Выбрано',
     seat_hint_free: 'Бесплатный входной билет: выберите место на схеме.',
     seat_hint_paid: 'Выберите места на схеме.',
     seat_hint_free_label: 'Бесплатно',
@@ -926,6 +954,13 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seatmap_fit_aria: 'Přizpůsobit mapu sedadel obrazovce',
     seatmap_reset_title: 'Obnovit zobrazení',
     seatmap_reset_aria: 'Obnovit zobrazení mapy sedadel',
+    seatcard_sector: 'Sektor',
+    seatcard_row: 'Řada',
+    seatcard_seat: 'Sedadlo',
+    seatcard_sold: 'Prodáno',
+    seatcard_held: 'Drží jiný kupující',
+    seatcard_unavailable: 'Není v prodeji',
+    seatcard_selected: 'Vybráno',
     seat_hint_free: 'Vstupenka zdarma: vyberte místo ve schématu.',
     seat_hint_paid: 'Vyberte místa ve schématu.',
     seat_hint_free_label: 'Zdarma',
@@ -987,6 +1022,13 @@ export const CHECKOUT_I18N: Record<CheckoutLocale, CheckoutI18nStrings> = {
     seatmap_fit_aria: 'התאם מפת מושבים למסך',
     seatmap_reset_title: 'אפס תצוגה',
     seatmap_reset_aria: 'אפס תצוגת מפת המושבים',
+    seatcard_sector: 'אזור',
+    seatcard_row: 'שורה',
+    seatcard_seat: 'מושב',
+    seatcard_sold: 'נמכר',
+    seatcard_held: 'מוחזק על ידי קונה אחר',
+    seatcard_unavailable: 'לא למכירה',
+    seatcard_selected: 'נבחר',
     seat_hint_free: 'כרטיס כניסה חינם: בחרו מקום בתרשים.',
     seat_hint_paid: 'בחרו מקומות בתרשים.',
     seat_hint_free_label: 'חינם',

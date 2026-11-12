@@ -1762,6 +1762,85 @@ fieldset legend {
 .sm-slot-map select {
   max-width: 11rem;
 }
+.sm-slots li {
+  flex-wrap: wrap;
+}
+.sm-newtier {
+  flex-basis: 100%;
+  padding: 0.25rem 0 0.5rem;
+}
+.sm-newtier-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.5rem;
+}
+.sm-newtier-fields input[type="color"] {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.15rem;
+}
+.sm-addtier {
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.sm-brush-pending {
+  display: flex;
+  gap: 0.25rem;
+}
+.sm-brush-pending .sm-brush {
+  flex: 1;
+  min-width: 0;
+}
+.sm-brush-remove {
+  flex: none;
+  width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.sm-pending-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.sm-table-wrap {
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+.sm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.sm-table caption {
+  text-align: start;
+  padding-bottom: 0.25rem;
+  color: var(--muted, inherit);
+}
+.sm-table th,
+.sm-table td {
+  padding: 0.35rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  font-weight: normal;
+}
+.sm-table thead th,
+.sm-table tfoot th,
+.sm-table tfoot td {
+  font-weight: 600;
+}
+.sm-table .sm-num {
+  text-align: end;
+  white-space: nowrap;
+}
 .sm-stage {
   display: flex;
   align-items: center;

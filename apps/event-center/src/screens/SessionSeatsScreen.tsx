@@ -1,6 +1,6 @@
 import { Link, useParams } from "@tanstack/react-router";
 import { useI18n } from "@/lib/i18n";
-import { useEmbedded } from "@/lib/seatManager/embed";
+import { useEmbedded, useSeatsTab } from "@/lib/seatManager/embed";
 import { SeatManager } from "@/components/seatManager/SeatManager";
 import { useOrg } from "@/screens/OrgLayout";
 
@@ -15,6 +15,7 @@ export function SessionSeatsScreen() {
   const { orgId, access } = useOrg();
   const { eventId, sessionId } = useParams({ from: "/o/$orgId/events/$eventId/sessions/$sessionId/seats" });
   const embed = useEmbedded();
+  const tab = useSeatsTab();
 
   if (!access.can("session.seats.manage")) {
     return (
@@ -44,7 +45,15 @@ export function SessionSeatsScreen() {
           <h1 id="seats-title">{t("seats.title")}</h1>
         </>
       )}
-      <SeatManager key={`${orgId}:${sessionId}`} orgId={orgId} eventId={eventId} sessionId={sessionId} embed={embed} />
+      <SeatManager
+        key={`${orgId}:${sessionId}`}
+        orgId={orgId}
+        eventId={eventId}
+        sessionId={sessionId}
+        embed={embed}
+        initialTab={tab ?? undefined}
+        canCreateTiers={access.can("tier.create")}
+      />
     </article>
   );
 }
