@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -139,7 +140,7 @@ WHERE application_id = $1 AND kind IN ('submitted', 'resubmitted') ORDER BY crea
 		return false, err
 	}
 	if round == "" && app.SubmittedAt != nil {
-		round = app.SubmittedAt.UTC().Format("2006-01-02T15:04:05.000000Z")
+		round = app.SubmittedAt.UTC().Format(time.RFC3339Nano)
 	}
 	var done bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM onboarding_application_events
