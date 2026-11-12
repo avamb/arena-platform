@@ -81,6 +81,14 @@ manifest line without a file, a Russian venue and a test plan are listed in
 `ingest_editor.py --draft-manifest` writes a manifest draft from the file
 names for the owner to complete.
 
+The Editor manifest also has a `status` per line. Only `saved` lines (or lines without a status
+that have a file) are copied. `no_picture`, `no_plan` and `skipped_test` lines are not errors: the
+report lists them in `noPicture`, `noPlan` and `skippedTest`. `generalAdmission` holds the `noPicture`
+lines whose plan name starts with GA, General, Без мест or Входн, or whose note says
+`category table only` or `without seats`. `notCopied` stays for real problems. The `planVersion` of
+this manifest is the file format mark, not the hall version: it never picks the newest plan.
+Seats are read from the Editor template (`<circle>` with `sbt:seat` under a `<g>` with `sbt:sect`).
+
 ## Inventory files (`<lib>/inventory/`)
 
 - `raw/<COMMAND>[_<ids>].json`: each answer as received.
@@ -114,7 +122,10 @@ with the id as a suffix (`Czechia_203/Karlovy-Vary_1234`).
 are the same hall keep the newest one (`status: downloaded`); the others
 stay listed as `skipped` with `reason: "older version of <id>"`. Two plans
 are the same hall when their sets of (sector, row, seat) are equal, or when
-their names are equal after the version mark is removed.
+their names are equal after the version mark is removed. For Editor plans a
+name that is only a version mark is the default hall name, plans with `comb` in
+the name are grouped only with other `comb` plans, and the newest is the
+highest `seatingPlanId`.
 
 ## House style (`house.svg`)
 

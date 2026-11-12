@@ -535,3 +535,99 @@ func TestRestyle_MergeGuardLatinPlansStayOK(t *testing.T) {
 		}
 	}
 }
+
+// templatePlan is a Forzum Editor template: no sbt:id, no sbt:state, no
+// category names, swatch circles without sbt:seat.
+func templatePlan(noCatSeat bool) []byte {
+	var b strings.Builder
+	b.WriteString(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:sbt="http://www.w3.org/2015/sbt/1.0" viewBox="0 0 300 200">`)
+	b.WriteString(`<metadata><sbt:category sbt:index="1" sbt:color="#ff0000" sbt:class="cat-1" sbt:id="11"/><sbt:category sbt:index="2" sbt:color="#00ff00" sbt:class="cat-2" sbt:id="12"/></metadata>`)
+	b.WriteString(`<g id="Legend"><circle sbt:cat="1" sbt:ordinal="1" cx="5" cy="5" r="3"/><circle sbt:cat="2" sbt:ordinal="2" cx="15" cy="5" r="3"/></g>`)
+	for si, sec := range []string{"Parter", "Balcony"} {
+		for ri := 1; ri <= 3; ri++ {
+			if si == 1 && ri == 3 {
+				continue
+			}
+			b.WriteString(`<g sbt:row="` + strconv.Itoa(ri) + `" sbt:sect="` + sec + `">`)
+			for s := 1; s <= 4; s++ {
+				cat := `sbt:cat="` + strconv.Itoa(si+1) + `" `
+				if noCatSeat && si == 0 && ri == 1 && s == 1 {
+					cat = ""
+				}
+				b.WriteString(`<circle sbt:seat="` + strconv.Itoa(s) + `" ` + cat + `cx="` + strconv.Itoa(50+10*s) +
+					`" cy="` + strconv.Itoa(60+si*60+ri*10) + `" r="3"/>`)
+			}
+			b.WriteString(`</g>`)
+		}
+	}
+	b.WriteString(`<text x="150" y="190">Stage</text></svg>`)
+	return []byte(b.String())
+}
+
+func TestRestyle_TemplateDialect(t *testing.T) {
+	src := templatePlan(false)
+	orig := string(src)
+	house, rep := Restyle(src, nil)
+	if string(src) != orig {
+		t.Fatal("source was modified")
+	}
+	if rep.Status == StatusFailed || house == nil {
+		t.Fatalf("status %s reasons %v errors %v", rep.Status, rep.Reasons, rep.Errors)
+	}
+	if rep.Dialect != "sbt-template" || len(rep.Adapted) != 2 {
+		t.Fatalf("dialect %q adapted %v", rep.Dialect, rep.Adapted)
+	}
+	hg, _, herrs := seating.ImportSVG(house)
+	if len(herrs) > 0 {
+		t.Fatalf("house import: %v", herrs)
+	}
+	if errs := seating.ValidateForPlanType(hg, "assigned_seats"); len(errs) > 0 {
+		t.Fatalf("validate: %v", errs)
+	}
+	if rep.SourceSeats != 20 || rep.HouseSeats != 20 {
+		t.Fatalf("seats source %d house %d", rep.SourceSeats, rep.HouseSeats)
+	}
+	if rep.Sectors != 2 || rep.Rows != 5 {
+		t.Fatalf("sectors %d rows %d", rep.Sectors, rep.Rows)
+	}
+	if rep.SeatsByCategory["First"] != 12 || rep.SeatsByCategory["Second"] != 8 || len(rep.SeatsByCategory) != 2 {
+		t.Fatalf("by category %v", rep.SeatsByCategory)
+	}
+	for _, r := range rep.HouseRows {
+		if r.Seats != 4 {
+			t.Fatalf("row %v", r)
+		}
+	}
+	if len(rep.HouseRows) != 5 || len(rep.SourceRows) != 5 {
+		t.Fatalf("rows %d/%d", len(rep.SourceRows), len(rep.HouseRows))
+	}
+	for _, c := range hg.Categories {
+		if c.Name != "First" && c.Name != "Second" {
+			t.Fatalf("category %q", c.Name)
+		}
+	}
+}
+
+func TestRestyle_TemplateSeatWithoutCategoryFails(t *testing.T) {
+	house, rep := Restyle(templatePlan(true), nil)
+	if rep.Status != StatusFailed || house != nil {
+		t.Fatalf("status %s house %v", rep.Status, house != nil)
+	}
+	if rep.Dialect != "sbt-template" {
+		t.Fatalf("dialect %q", rep.Dialect)
+	}
+	if len(rep.Reasons) == 0 || !strings.Contains(rep.Reasons[0], "template seats: 20 in the source, 19 imported") {
+		t.Fatalf("reasons %v", rep.Reasons)
+	}
+}
+
+func TestRestyle_PlainSBTIsNotATemplate(t *testing.T) {
+	src := inlineSBT("A", "")
+	if _, ok := adaptTemplate(src); ok {
+		t.Fatal("a session plan was taken for a template")
+	}
+	_, rep := Restyle(src, nil)
+	if rep.Dialect != "sbt" || len(rep.Adapted) != 0 {
+		t.Fatalf("dialect %q adapted %v", rep.Dialect, rep.Adapted)
+	}
+}

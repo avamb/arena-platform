@@ -17,10 +17,11 @@ import sys
 import xml.etree.ElementTree as ET
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # works under python -I
-from download import (TEST_RE, dedupe, norm_name, now, plan_dir, rebuild_manifest)
+from download import (TEST_RE, dedupe, newest_by_id, now, plan_dir, rebuild_manifest)
 from forzum_client import DEFAULT_LIB, is_russian, load_json, save_json
 
 INKSCAPE_LABEL = "{http://www.inkscape.org/namespaces/inkscape}label"
+SBT = "{http://www.w3.org/2015/sbt/1.0}"
 
 
 def file_problem(src, rel):
@@ -37,20 +38,99 @@ def file_problem(src, rel):
     return None
 
 
-def count_seats(svg_path):
-    """Number of <circle> inside elements whose inkscape:label starts with '#'."""
+def read_seats(svg_path):
+    """List of (sector, row, seat), one per seat circle. Three dialects:
+    template (circle with sbt:seat under a g with sbt:sect / sbt:row), session sbt (circle with sbt:id
+    and sbt:state) and authoring (any circle inside an element whose inkscape:label starts with '#')."""
     root = ET.parse(svg_path).getroot()
+    out = []
 
-    def rec(node, inside):
-        n = 0
-        labelled = str(node.get(INKSCAPE_LABEL) or "").startswith("#")
-        if (inside or labelled) and node.tag.rsplit("}", 1)[-1] == "circle":
-            n += 1
+    def walk(node, sect, row, label, idx):
+        sect = node.get(SBT + "sect", sect)
+        row = node.get(SBT + "row", row)
+        if str(node.get(INKSCAPE_LABEL) or "").startswith("#"):
+            label = str(node.get(INKSCAPE_LABEL))
+            idx = [0]
+        if node.tag.rsplit("}", 1)[-1] == "circle":
+            if node.get(SBT + "seat") is not None:
+                out.append((str(sect or ""), str(row or ""), str(node.get(SBT + "seat"))))
+            elif node.get(SBT + "id") is not None and node.get(SBT + "state") is not None:
+                out.append((str(sect or ""), str(row or ""), str(node.get(SBT + "id"))))
+            elif label is not None:
+                idx[0] += 1
+                title = ""
+                for ch in node:
+                    if ch.tag.rsplit("}", 1)[-1] == "title":
+                        title = (ch.text or "").strip()
+                out.append(("", label, title or str(idx[0])))
         for ch in node:
-            n += rec(ch, inside or labelled)
-        return n
+            walk(ch, sect, row, label, idx)
 
-    return rec(root, False)
+    walk(root, None, None, None, [0])
+    return out
+
+
+def count_seats(svg_path):
+    return len(read_seats(svg_path))
+
+
+def seat_signature(svg_path):
+    try:
+        return set(read_seats(svg_path))
+    except (ET.ParseError, OSError):
+        return set()
+
+
+# --- same hall among the editor plans of one venue -------------------------------------------
+
+_DATE_RE = re.compile(r"\s*\b\d{1,2}[/.]\d{4}\s*$")
+_VER_RE = re.compile(r"(\bver(?:sion)?\.?\s*\d+|\bv\.?\s*\d+|\bверсия\s*\d+|\(\s*\d+\s*\))", re.IGNORECASE)
+_TAIL_RE = re.compile(r"\s*[_\-]\s*\d+\s*$")
+_COMB_TOKEN_RE = re.compile(r"\bcom\w*\s*\d*", re.IGNORECASE)
+
+
+def is_comb(name):
+    return bool(re.search(r"comb|\bcom\d", str(name or ""), re.IGNORECASE))
+
+
+def hall_key(name):
+    """The hall name without the version mark (and without the 'comb' word). '' means the default name."""
+    s = str(name or "").lower()
+    if is_comb(s):
+        s = _COMB_TOKEN_RE.sub(" ", s)
+    s = _DATE_RE.sub("", s)
+    s = _VER_RE.sub(" ", s)
+    for _ in range(3):
+        s = _TAIL_RE.sub("", s)
+    return re.sub(r"\s+", " ", s).strip(" -_.()")
+
+
+def _match(a, b):
+    """How two (path, rec, seats, _) items are the same hall: 'names', 'seats' or None."""
+    if is_comb(a[1]["seatingPlanName"]) != is_comb(b[1]["seatingPlanName"]):
+        return None
+    if hall_key(a[1]["seatingPlanName"]) == hall_key(b[1]["seatingPlanName"]):
+        return "names"
+    if a[2] and a[2] == b[2]:
+        return "seats"
+    return None
+
+
+def editor_seats(path, rec):
+    return seat_signature(os.path.join(os.path.dirname(path), "source.svg"))
+
+
+def editor_same(a, b):
+    return _match(a, b) is not None
+
+
+def editor_pick(group):
+    """Newest = highest numeric seatingPlanId; planVersion is the file format mark and never decides."""
+    newest = newest_by_id(group)
+    how = {_match(newest, g) for g in group if g is not newest}
+    how.discard(None)
+    kind = "names" if how == {"names"} else "seats" if how == {"seats"} else "names, seats"
+    return newest, "same hall by %s, newest by plan id" % kind
 
 
 def norm_rel(p):
@@ -69,7 +149,10 @@ JSONL_FIELDS = {
     "seatingplanid": "seatingPlanId",
     "planname": "seatingPlanName", "seatingplanname": "seatingPlanName",
     "version": "version", "planversion": "version",
+    "status": "manifestStatus", "note": "note", "skippedplans": "skippedPlans",
 }
+
+GA_NAME_RE = re.compile(r"^\s*(GA|General|Без мест|Входн)", re.IGNORECASE)
 
 
 def canon_key(k):
@@ -192,24 +275,31 @@ def venue_data(row, venues, countries, cities):
             "cityId": row.get("cityId") or "ed", "cityName": names[1]}
 
 
-def to_version(v):
-    if blank(v):
-        return None
-    s = str(v).strip()
-    try:
-        return (0, float(s), "")
-    except ValueError:
-        return (1, 0.0, s)
+def is_general_admission(row):
+    name = str(row.get("seatingPlanName") or "")
+    note = str(row.get("note") or "").lower()
+    return bool(GA_NAME_RE.search(name)) or "category table only" in note or "without seats" in note
 
 
-def make_pick(lib):
-    def pick(group):
-        recs = [g[1] for g in group]
-        if all(not blank(r.get("version")) for r in recs):
-            return max(group, key=lambda g: to_version(g[1]["version"])), "newest by manifest version"
-        return (max(group, key=lambda g: os.path.getmtime(os.path.join(os.path.dirname(g[0]), "source.svg"))),
-                "newest by file modification time")
-    return pick
+def route_status(row, report):
+    """Routes a manifest line that is not a plan to copy. Returns True when the line was routed."""
+    status = str(row.get("manifestStatus") or "").strip().lower()
+    if status in ("", "saved"):
+        return False
+    vid, vname = row.get("venueId"), row.get("venueName")
+    if status == "no_picture":
+        entry = {"venueId": vid, "venueName": vname, "seatingPlanId": row.get("seatingPlanId"),
+                 "planName": row.get("seatingPlanName"), "note": row.get("note")}
+        report["noPicture"].append(entry)
+        if is_general_admission(row):
+            report["generalAdmission"].append(entry)
+    elif status == "no_plan":
+        report["noPlan"].append({"venueId": vid, "venueName": vname})
+    elif status == "skipped_test":
+        report["skippedTest"].append({"venueId": vid, "venueName": vname, "skippedPlans": row.get("skippedPlans")})
+    else:
+        report["notCopied"].append({"file": row.get("file") or None, "reason": "manifest status %s" % status})
+    return True
 
 
 def ingest(lib, src):
@@ -218,9 +308,12 @@ def ingest(lib, src):
         print("error: no manifest.jsonl, manifest.json or manifest.csv in %s" % src, file=sys.stderr)
         return None
     venues, countries, cities = inventory_lookup(lib)
-    report = {"ingested": [], "unchanged": [], "notCopied": []}
+    report = {"ingested": [], "unchanged": [], "notCopied": [], "noPicture": [], "noPlan": [],
+              "skippedTest": [], "generalAdmission": []}
     listed = set()
     for row in rows:
+        if not row.get("_reject") and route_status(row, report):
+            continue
         rel = norm_rel(row.get("file")) if not blank(row.get("file")) else ""
         if rel:
             listed.add(rel)
@@ -293,7 +386,7 @@ def ingest(lib, src):
             if isinstance(r, dict) and r.get("source") == "editor":
                 entries.append((p, r))
     entries.sort(key=lambda e: e[0])
-    dedupe(entries, make_pick(lib))
+    dedupe(entries, editor_pick, seats_of=editor_seats, same=editor_same)
     for p, r in entries:
         if r.get("status") == "skipped" and str(r.get("reason", "")).startswith("older version"):
             report.setdefault("olderVersions", []).append({"plan": r["seatingPlanId"], "reason": r["reason"]})
@@ -321,8 +414,11 @@ def main(argv=None):
     report = ingest(a.lib, src)
     if report is None:
         return 2
-    print("ingest: %d new, %d unchanged, %d not copied" % (
-        len(report["ingested"]), len(report["unchanged"]), len(report["notCopied"])))
+    print("ingest: %d new, %d unchanged, %d not copied, %d no picture (%d general admission), "
+          "%d no plan, %d skipped test, %d older versions" % (
+              len(report["ingested"]), len(report["unchanged"]), len(report["notCopied"]),
+              len(report["noPicture"]), len(report["generalAdmission"]), len(report["noPlan"]),
+              len(report["skippedTest"]), len(report.get("olderVersions", []))))
     return 0
 
 

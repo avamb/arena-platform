@@ -21,6 +21,16 @@ def svg(n_in, n_out=2):
     return ('<svg %s><g inkscape:label="#Row 1">%s</g><g id="decor">%s</g></svg>' % (NS, ins, outs)).encode("utf-8")
 
 
+def tpl(rows):
+    """Editor template: rows = [(sector, row, seats)]; plus one swatch circle with sbt:ordinal."""
+    s = '<circle sbt:cat="1" sbt:ordinal="1" cx="0" cy="-9" r="5"/>'
+    for sect, row, n in rows:
+        s += '<g sbt:row="%s" sbt:sect="%s">%s</g>' % (
+            row, sect, "".join('<circle id="s%d" sbt:cat="1" sbt:seat="%d" cx="%d" cy="1" r="1"/>' % (i, i, i)
+                               for i in range(1, n + 1)))
+    return ('<svg %s xmlns:sbt="http://www.w3.org/2015/sbt/1.0">%s</svg>' % (NS, s)).encode("utf-8")
+
+
 class IngestTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -174,31 +184,82 @@ class IngestTest(unittest.TestCase):
         self.assertEqual(self.run_tool(), 0)
         self.assertIn("X9", self.plans())
 
-    def test_dedupe_by_version_then_mtime(self):
-        self.put("v1.svg", svg(2))
-        self.put("v2.svg", svg(3))
-        self.manifest([self.row(file="v1.svg", seatingPlanId="A", seatingPlanName="Hall v1", version=1),
-                       self.row(file="v2.svg", seatingPlanId="B", seatingPlanName="Hall v2", version=2)])
+    def many(self, specs):
+        """specs: (planId, planName, svg bytes[, planVersion]); one venue. Runs the tool, returns statuses."""
+        rows = []
+        for spec in specs:
+            pid, name, data = spec[0], spec[1], spec[2]
+            self.put("%s.svg" % pid, data)
+            rows.append(self.row(file="%s.svg" % pid, seatingPlanId=str(pid), seatingPlanName=name,
+                                 venueId="7", version=spec[3] if len(spec) > 3 else "1.1"))
+        self.manifest(rows)
         self.run_tool()
-        p = self.plans()
-        self.assertEqual(p["B"][1]["status"], "downloaded")
-        self.assertEqual(p["A"][1]["status"], "skipped")
-        self.assertEqual(p["A"][1]["reason"], "older version of B (newest by manifest version)")
+        return {pid: r["status"] for pid, (_, r) in self.plans().items()}
+
+    def test_90er_v3_newest_kept_and_version_never_decides(self):
+        st = self.many([(9452, "90er", svg(2), "9.9"), (9459, "90er v3", svg(3), "1.1")])
+        self.assertEqual(st, {"9452": "skipped", "9459": "downloaded"})
+        self.assertEqual(self.plans()["9452"][1]["reason"],
+                         "older version of 9459 (same hall by names, newest by plan id)")
         with open(os.path.join(self.lib, "plans", "manifest.json"), encoding="utf-8") as f:
             self.assertEqual(len(json.load(f)["plans"]), 2)
 
-    def test_dedupe_by_mtime_when_no_version(self):
-        a = self.put("v1.svg", svg(2))
-        b = self.put("v2.svg", svg(3))
-        now = time.time()
-        os.utime(a, (now - 500, now - 500))
-        os.utime(b, (now, now))
-        self.manifest([self.row(file="v1.svg", seatingPlanId="Z", seatingPlanName="Hall (1)"),
-                       self.row(file="v2.svg", seatingPlanId="A", seatingPlanName="Hall (2)")])
-        self.run_tool()
-        p = self.plans()
-        self.assertEqual(p["A"][1]["status"], "downloaded")
-        self.assertEqual(p["Z"][1]["reason"], "older version of A (newest by file modification time)")
+    def test_ver_and_comb_groups(self):
+        st = self.many([(101, "ver1", tpl([("A", "1", 2)])), (102, "ver2", tpl([("A", "1", 3)])),
+                        (103, "ver3", tpl([("A", "1", 4)])), (104, "com1", tpl([("B", "1", 5)])),
+                        (105, "COMB2", tpl([("B", "1", 6)])), (106, "Combined 3", tpl([("B", "1", 7)])),
+                        (107, "Big hall", tpl([("C", "9", 8)]))])
+        self.assertEqual(st, {"101": "skipped", "102": "skipped", "103": "downloaded", "104": "skipped",
+                              "105": "skipped", "106": "downloaded", "107": "downloaded"})
+
+    def test_different_hall_words_stay_separate(self):
+        st = self.many([(1, "MALÉHO SÁLU", tpl([("A", "1", 2)])), (2, "VELKÉHO SÁLU", tpl([("A", "1", 3)])),
+                        (3, "AS1", tpl([("B", "1", 4)])), (4, "AS2", tpl([("B", "1", 5)]))])
+        self.assertEqual(set(st.values()), {"downloaded"})
+
+    def test_same_seats_different_names_newest_id(self):
+        st = self.many([(5, "Hall A", tpl([("A", "1", 3)])), (12, "Other name", tpl([("A", "1", 3)]))])
+        self.assertEqual(st, {"5": "skipped", "12": "downloaded"})
+        self.assertIn("by seats", self.plans()["5"][1]["reason"])
+
+    def test_comb_never_merged_with_plain_by_seats(self):
+        same = tpl([("A", "1", 3)])
+        st = self.many([(5, "Hall", same), (6, "Hall COMB1", same)])
+        self.assertEqual(set(st.values()), {"downloaded"})
+
+    def test_template_seats_count_and_signature(self):
+        p = self.put("t.svg", tpl([("A", "1", 3), ("B", "2", 2)]))
+        seats = ingest_editor.read_seats(p)
+        self.assertEqual(len(seats), 5)  # swatch circle (sbt:ordinal) is not a seat
+        self.assertEqual(ingest_editor.seat_signature(p), {("A", "1", "1"), ("A", "1", "2"), ("A", "1", "3"),
+                                                            ("B", "2", "1"), ("B", "2", "2")})
+
+    def test_session_sbt_dialect_seats(self):
+        data = ('<svg %s xmlns:sbt="http://www.w3.org/2015/sbt/1.0"><g sbt:sect="S" sbt:row="3">'
+                '<circle sbt:id="11" sbt:state="free"/><circle sbt:id="12" sbt:state="sold"/></g>'
+                '<circle sbt:ordinal="1"/></svg>' % NS).encode("utf-8")
+        p = self.put("s.svg", data)
+        self.assertEqual(ingest_editor.seat_signature(p), {("S", "3", "11"), ("S", "3", "12")})
+
+    def test_manifest_statuses_routed(self):
+        self.put("7_1.svg", svg(2))
+        base = {"country": "Czechia", "city": "Prague", "venueName": "V"}
+        lines = [dict(base, venueId=7, seatingPlanId=1, planName="Hall", status="saved", file="7_1.svg"),
+                 dict(base, venueId=8, seatingPlanId=2, planName="Hall B", status="no_picture", note="plan without seats"),
+                 dict(base, venueId=8, seatingPlanId=3, planName="General admission", status="no_picture", note="x"),
+                 dict(base, venueId=8, seatingPlanId=4, planName="Balcony", status="no_picture",
+                      note="category table only, no seat picture"),
+                 dict(base, venueId=8, seatingPlanId=5, planName="Stage", status="no_picture", note="empty"),
+                 dict(base, venueId=9, status="no_plan"),
+                 dict(base, venueId=10, status="skipped_test", skippedPlans="test one")]
+        self.jsonl([json.dumps(x) for x in lines])
+        self.assertEqual(self.run_tool(), 0)
+        rep = self.report()
+        self.assertEqual((len(rep["ingested"]), len(rep["notCopied"]), len(rep["noPicture"]), len(rep["noPlan"]),
+                          len(rep["skippedTest"]), len(rep["generalAdmission"])), (1, 0, 4, 1, 1, 3))
+        self.assertEqual(rep["noPicture"][0]["planName"], "Hall B")
+        self.assertEqual(rep["skippedTest"][0]["skippedPlans"], "test one")
+        self.assertIn("no picture", self.out.getvalue())
 
     def test_draft_manifest(self):
         self.put("Karlovy-Vary/thermal_big_hall.svg", svg(1))

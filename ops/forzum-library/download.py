@@ -114,11 +114,30 @@ def rebuild_manifest(lib):
     return items
 
 
-def dedupe(entries, pick=None):
+def default_seats_of(path, rec):
+    return seat_set(load_json(os.path.join(os.path.dirname(path), "schema.json"), {}))
+
+
+def default_same_hall(a, b):
+    """a, b: (path, record, seat set, normalized name). Same seats or same name without version mark."""
+    return bool((a[2] and a[2] == b[2]) or (a[3] and a[3] == b[3]))
+
+
+def newest_by_id(group):
+    """The item with the highest seatingPlanId (numeric when both are integers)."""
+    return max(group, key=cmp_to_key(lambda x, y: compare_plan_ids(x[1]["seatingPlanId"], y[1]["seatingPlanId"])))
+
+
+def dedupe(entries, pick=None, seats_of=None, same=None):
     """entries: list of (plan.json path, record). Keep the newest of each same-hall group.
 
     pick(group) -> (newest item of the group, rule text); the default keeps the highest seatingPlanId.
+    seats_of(path, record) -> set of (sector, row, seat); same(a, b) -> bool on two
+    (path, record, seats, normalized name) items. The defaults read schema.json and use
+    equal seats or equal names.
     """
+    seats_of = seats_of or default_seats_of
+    same = same or default_same_hall
     by_venue = {}
     for path, rec in entries:
         if rec["status"] == "downloaded":
@@ -126,8 +145,7 @@ def dedupe(entries, pick=None):
     for items in by_venue.values():
         info = []
         for path, rec in items:
-            seats = seat_set(load_json(os.path.join(os.path.dirname(path), "schema.json"), {}))
-            info.append((path, rec, seats, norm_name(rec["seatingPlanName"])))
+            info.append((path, rec, seats_of(path, rec), norm_name(rec["seatingPlanName"])))
         parent = list(range(len(info)))
 
         def find(i):
@@ -137,8 +155,7 @@ def dedupe(entries, pick=None):
 
         for i in range(len(info)):
             for j in range(i + 1, len(info)):
-                same = (info[i][2] and info[i][2] == info[j][2]) or (info[i][3] and info[i][3] == info[j][3])
-                if same:
+                if same(info[i], info[j]):
                     parent[find(i)] = find(j)
         groups = {}
         for i in range(len(info)):
@@ -147,7 +164,7 @@ def dedupe(entries, pick=None):
             if len(g) < 2:
                 continue
             if pick is None:
-                newest, rule = max(g, key=cmp_to_key(lambda x, y: compare_plan_ids(x[1]["seatingPlanId"], y[1]["seatingPlanId"]))), ""
+                newest, rule = newest_by_id(g), ""
             else:
                 newest, rule = pick(g)
             for path, rec, _, _ in g:
