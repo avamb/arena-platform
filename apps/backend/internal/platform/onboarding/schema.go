@@ -17,6 +17,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/worldgeo"
 )
 
 // SchemaVersion is bumped when a field is removed or changes meaning.
@@ -282,8 +284,14 @@ func NormalizeValue(f Field, v any) (any, string) {
 		}
 		return p, ""
 	case KindCountry:
+		// Any country of the ISO world table (spec 64 section 2.1.1); the
+		// settings list and the arena reference only make a warning of the
+		// country_allowed check.
 		c := strings.ToUpper(s)
 		if !countryPattern.MatchString(c) {
+			return nil, "invalid"
+		}
+		if _, ok := worldgeo.Lookup(c); !ok {
 			return nil, "invalid"
 		}
 		return c, ""

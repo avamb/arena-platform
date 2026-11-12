@@ -6978,10 +6978,18 @@ type CreateOrderRefundsResponse struct {
 	Replayed bool `json:"replayed"`
 }
 
-// CreateOrgCityRequest Body of POST /v1/organizations/{org_id}/cities.
+// CreateOrgCityRequest Body of POST /v1/organizations/{org_id}/cities. Name the country by `country_id` or by `country_iso2`.
 type CreateOrgCityRequest struct {
-	// CountryId The existing country the city belongs to.
-	CountryId openapi_types.UUID `json:"country_id"`
+	// CountryId The existing country the city belongs to. Wins over `country_iso2` when both are sent.
+	CountryId *openapi_types.UUID `json:"country_id,omitempty"`
+
+	// CountryIso2 ISO 3166-1 alpha-2 code of the country, instead of `country_id`.
+	// The country must already be in the platform reference: a country
+	// outside it is 409 `city.country_not_in_reference`, because a new
+	// country comes only with a venue (POST
+	// /v1/organizations/{org_id}/venues with `country_iso2` and
+	// `city_name`).
+	CountryIso2 *string `json:"country_iso2,omitempty"`
 
 	// Locale Language of `name` (e.g. "cs", "ru", "en"; a region subtag is
 	// dropped). Defaults to "en". A non-English name is also stored as
@@ -7522,8 +7530,17 @@ type CreateVenueRequest struct {
 	// CapacityDefault Optional default capacity (positive integer).
 	CapacityDefault *int `json:"capacity_default"`
 
-	// CityId Optional UUID of a row in the geo.cities reference table.
+	// CityId Optional UUID of a row in the geo.cities reference table. Send
+	// either `city_id` or `country_iso2` with `city_name`; both groups
+	// together are 400 `venue.city_conflict`.
 	CityId *openapi_types.UUID `json:"city_id,omitempty"`
+
+	// CityName Name of the venue's city inside `country_iso2`, sent with it
+	// instead of `city_id`. The city is found by name (any locale, case
+	// and spacing ignored) or created, with the rules of
+	// `POST /v1/organizations/{org_id}/cities`, in the venue's
+	// transaction.
+	CityName *string `json:"city_name,omitempty"`
 
 	// ContactEmail Public contact email (V-1 field).
 	ContactEmail *openapi_types.Email `json:"contact_email,omitempty"`
@@ -7535,6 +7552,18 @@ type CreateVenueRequest struct {
 	// When set, must equal the owning organization's country
 	// unless an explicit override flag is passed.
 	Country *string `json:"country,omitempty"`
+
+	// CountryIso2 ISO 3166-1 alpha-2 code of the country of the venue's city, sent
+	// with `city_name` instead of `city_id`. Any country of
+	// `GET /v1/geo/world-countries`: a country the platform reference
+	// does not have is created from the world table (iso3, slug,
+	// currency, region, English and Russian names) in the venue's
+	// transaction, and the platform administrators are told. An
+	// organization API key may use a reference country but never
+	// creates one (403 `venue.country_create_forbidden`). A code the
+	// world table does not know is 400 `venue.unknown_country`. When
+	// `country` is not sent, the venue's `country` takes this code.
+	CountryIso2 *string `json:"country_iso2,omitempty"`
 
 	// GeoLat WGS-84 latitude in decimal degrees (V-1 field).
 	GeoLat *float64 `json:"geo_lat,omitempty"`
@@ -9700,7 +9729,7 @@ type GeoCountriesResponse struct {
 
 // GeoCountryCurrencyResponse Response of GET /v1/geo/countries/{iso2}/currency.
 type GeoCountryCurrencyResponse struct {
-	// Currency ISO 4217 currency of the country, as stored on the platform's country row.
+	// Currency ISO 4217 currency of the country, as stored on the platform's country row, else the one of the embedded world table.
 	Currency string `json:"currency"`
 }
 
@@ -9839,6 +9868,45 @@ type GeoUpdateCountryRequest struct {
 
 	// Slug Updated URL-safe slug
 	Slug *string `json:"slug,omitempty"`
+}
+
+// GeoWorldCountriesResponse Response of GET /v1/geo/world-countries.
+type GeoWorldCountriesResponse struct {
+	// Countries Every ISO 3166-1 country, sorted by `name`.
+	Countries []GeoWorldCountryItem `json:"countries"`
+
+	// Regions The seven regions in display order: europe, middle_east, asia, africa, north_america, latin_america, oceania. The client names them with its own texts.
+	Regions []string `json:"regions"`
+}
+
+// GeoWorldCountryItem One ISO 3166-1 country of the embedded world table.
+type GeoWorldCountryItem struct {
+	// CountryId UUID of the reference country when `in_reference` is true, else null.
+	CountryId *openapi_types.UUID `json:"country_id"`
+
+	// Currency ISO 4217 national currency, the currency a reference row of this country gets.
+	Currency string `json:"currency"`
+
+	// HasOrganizers True when at least one organization is registered in this country. The quick pick of a form is the countries with organizers.
+	HasOrganizers bool `json:"has_organizers"`
+
+	// InReference True when the platform reference (`GET /v1/geo/countries`) has the country.
+	InReference bool `json:"in_reference"`
+
+	// Iso2 ISO 3166-1 alpha-2 code.
+	Iso2 string `json:"iso2"`
+
+	// Iso3 ISO 3166-1 alpha-3 code.
+	Iso3 string `json:"iso3"`
+
+	// Name Name in the request language, Russian for `ru` and English for any other.
+	Name string `json:"name"`
+
+	// NameEn English name, whatever the request language.
+	NameEn string `json:"name_en"`
+
+	// Region One of europe, middle_east, asia, africa, north_america, latin_america, oceania.
+	Region string `json:"region"`
 }
 
 // GrantMembershipRequest Request body for `POST /v1/organizations/{org_id}/members`
@@ -23770,6 +23838,141 @@ type ValidatePromoCodeResponse struct {
 // ValidatePromoCodeResponseValid Always `true` on a 200 response.
 type ValidatePromoCodeResponseValid bool
 
+// VenueCreatedCity The city of a venue created with `country_iso2` and `city_name`.
+type VenueCreatedCity struct {
+	// CountryIso2 ISO 3166-1 alpha-2 code of the city's country.
+	CountryIso2 string `json:"country_iso2"`
+
+	// Id UUID of the city, found by name or created.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the city in the request language, else English.
+	Name string `json:"name"`
+}
+
+// VenueCreatedCountry A country row the venue request created from the embedded world table.
+type VenueCreatedCountry struct {
+	// Currency ISO 4217 currency stored on the new row.
+	Currency string `json:"currency"`
+
+	// Id UUID of the new reference country.
+	Id openapi_types.UUID `json:"id"`
+
+	// Iso2 ISO 3166-1 alpha-2 code.
+	Iso2 string `json:"iso2"`
+
+	// Name Name in the request language, Russian for `ru` and English for any other.
+	Name string `json:"name"`
+
+	// Region Region of the new row, one of europe, middle_east, asia, africa, north_america, latin_america, oceania.
+	Region string `json:"region"`
+}
+
+// VenueDirectoryCity A city of the requested country with venues in the organization's scope.
+type VenueDirectoryCity struct {
+	// CountryIso2 ISO 3166-1 alpha-2 code of the city's country.
+	CountryIso2 string `json:"country_iso2"`
+
+	// Id UUID of the city.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name in the request language, else English, else the slug.
+	Name string `json:"name"`
+
+	// OwnVenues Of those, the organization's own venues.
+	OwnVenues int64 `json:"own_venues"`
+
+	// Venues Venues in scope in this city.
+	Venues int64 `json:"venues"`
+}
+
+// VenueDirectoryCountry A country with venues in the organization's scope.
+type VenueDirectoryCountry struct {
+	// CountryId UUID of the reference country, null when only a venue's address names it.
+	CountryId *openapi_types.UUID `json:"country_id"`
+
+	// Iso2 ISO 3166-1 alpha-2 code.
+	Iso2 string `json:"iso2"`
+
+	// Name Name in the request language, else English, else the code.
+	Name string `json:"name"`
+
+	// OwnVenues Of those, the organization's own venues.
+	OwnVenues int64 `json:"own_venues"`
+
+	// Region One of europe, middle_east, asia, africa, north_america, latin_america, oceania, or other for a country the world table does not know.
+	Region string `json:"region"`
+
+	// Venues Venues in scope in this country.
+	Venues int64 `json:"venues"`
+}
+
+// VenueDirectoryResponse Response of GET /v1/organizations/{org_id}/venue-directory.
+type VenueDirectoryResponse struct {
+	// Cities The cities of `country` with venues in scope; empty without `country`.
+	Cities []VenueDirectoryCity `json:"cities"`
+
+	// Countries Every country with at least one venue in scope, never filtered.
+	Countries []VenueDirectoryCountry `json:"countries"`
+
+	// QuickPick Up to 8 ISO codes, no duplicates: the countries of the organization's own venues (most venues first), the organization's own country, then reference countries where organizers work.
+	QuickPick []string `json:"quick_pick"`
+
+	// Total Count of the filtered venues before `limit`; 0 without a filter.
+	Total int64 `json:"total"`
+
+	// Venues The filtered venues, own first, then by name; empty without a filter.
+	Venues []VenueDirectoryVenue `json:"venues"`
+}
+
+// VenueDirectoryVenue A venue of the directory. It never carries the venue's contacts.
+type VenueDirectoryVenue struct {
+	// Address Free-form address of the venue, null when unset.
+	Address *string `json:"address"`
+
+	// AddressLine1 Street address line 1, null when unset.
+	AddressLine1 *string `json:"address_line1"`
+
+	// CapacityDefault Default capacity, null when unset.
+	CapacityDefault *int `json:"capacity_default"`
+
+	// CityId UUID of the venue's city, null when it has none.
+	CityId *openapi_types.UUID `json:"city_id"`
+
+	// CityName Name of the venue's city in the request language, null without a city.
+	CityName *string `json:"city_name"`
+
+	// CountryIso2 Country of the venue (its city's country, else its address country), null when unknown.
+	CountryIso2 *string `json:"country_iso2"`
+
+	// GeoLat WGS-84 latitude, null when unknown.
+	GeoLat *float64 `json:"geo_lat"`
+
+	// GeoLng WGS-84 longitude, null when unknown.
+	GeoLng *float64 `json:"geo_lng"`
+
+	// HasOwnPlan True when the organization has an active seating plan with a current version at the venue.
+	HasOwnPlan bool `json:"has_own_plan"`
+
+	// HasPlan True when `has_own_plan` is true or the venue has a verified seating plan template the organization may copy (GET .../venues/{venue_id}/plan-templates).
+	HasPlan bool `json:"has_plan"`
+
+	// Id UUID of the venue.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the venue.
+	Name string `json:"name"`
+
+	// Own True when the venue belongs to the path organization.
+	Own bool `json:"own"`
+
+	// ReviewStatus verified or unverified (migration 0182). Another organization's venue is always verified here.
+	ReviewStatus string `json:"review_status"`
+
+	// Timezone IANA time zone of the venue.
+	Timezone *string `json:"timezone"`
+}
+
 // VenueItem A single active venue (physical event location owned by one organization).
 // Any authenticated org may read venue data, but only the owning org may
 // create, update, or soft-delete a venue.
@@ -25178,6 +25381,15 @@ type GetV1GeoCountriesParams struct {
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
 }
 
+// GetV1GeoWorldCountriesParams defines parameters for GetV1GeoWorldCountries.
+type GetV1GeoWorldCountriesParams struct {
+	// Lang Language of `name`. `ru` gives Russian names, any other language English ones. Overrides Accept-Language.
+	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+
+	// Locale Alias of `lang`, read only when `lang` is absent.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
 // PostMACSScanEventsParams defines parameters for PostMACSScanEvents.
 type PostMACSScanEventsParams struct {
 	// XMACSSubscriberId Id of the MACS subscriber (GET /v1/organizations/{org_id}/macs-webhook answers it).
@@ -26178,6 +26390,36 @@ type PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody struct {
 type PatchV1OrganizationsOrgIdTicketsTicketIdVipJSONBody struct {
 	// Vip True to mark the ticket as VIP, false to take the mark off.
 	Vip bool `json:"vip"`
+}
+
+// GetV1OrganizationsOrgIdVenueDirectoryParams defines parameters for GetV1OrganizationsOrgIdVenueDirectory.
+type GetV1OrganizationsOrgIdVenueDirectoryParams struct {
+	// Country Two-letter ISO 3166-1 code; narrows `venues` and fills `cities`.
+	Country *string `form:"country,omitempty" json:"country,omitempty"`
+
+	// CityId Only venues in this city (UUID from `cities` or GET /v1/geo/cities).
+	CityId *openapi_types.UUID `form:"city_id,omitempty" json:"city_id,omitempty"`
+
+	// Q A part of the venue name, any letter case, at most 100 characters.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Most venues to return, 1 to 200 (default 100). `total` is the count before the limit.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Lang Language of country and city names. Overrides Accept-Language.
+	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+
+	// Locale Alias of `lang`, read only when `lang` is absent.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// PostV1OrganizationsOrgIdVenuesParams defines parameters for PostV1OrganizationsOrgIdVenues.
+type PostV1OrganizationsOrgIdVenuesParams struct {
+	// Lang Language of the `city.name` and `created_country.name` in the answer, and of the name of a new city. Overrides Accept-Language.
+	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+
+	// Locale Alias of `lang`, read only when `lang` is absent.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
 // CreateVenuePlanIntakeMultipartBody defines parameters for CreateVenuePlanIntake.

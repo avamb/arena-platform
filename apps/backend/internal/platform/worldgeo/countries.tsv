@@ -1,0 +1,249 @@
+AD	AND	EUR	europe	Andorra	Андорра
+AE	ARE	AED	middle_east	United Arab Emirates	Объединённые Арабские Эмираты
+AF	AFG	AFN	asia	Afghanistan	Афганистан
+AG	ATG	XCD	latin_america	Antigua and Barbuda	Антигуа и Барбуда
+AI	AIA	XCD	latin_america	Anguilla	Ангилья
+AL	ALB	ALL	europe	Albania	Албания
+AM	ARM	AMD	europe	Armenia	Армения
+AO	AGO	AOA	africa	Angola	Ангола
+AQ	ATA	USD	oceania	Antarctica	Антарктида
+AR	ARG	ARS	latin_america	Argentina	Аргентина
+AS	ASM	USD	oceania	American Samoa	Американское Самоа
+AT	AUT	EUR	europe	Austria	Австрия
+AU	AUS	AUD	oceania	Australia	Австралия
+AW	ABW	AWG	latin_america	Aruba	Аруба
+AX	ALA	EUR	europe	Åland Islands	Аландские острова
+AZ	AZE	AZN	asia	Azerbaijan	Азербайджан
+BA	BIH	BAM	europe	Bosnia and Herzegovina	Босния и Герцеговина
+BB	BRB	BBD	latin_america	Barbados	Барбадос
+BD	BGD	BDT	asia	Bangladesh	Бангладеш
+BE	BEL	EUR	europe	Belgium	Бельгия
+BF	BFA	XOF	africa	Burkina Faso	Буркина-Фасо
+BG	BGR	EUR	europe	Bulgaria	Болгария
+BH	BHR	BHD	middle_east	Bahrain	Бахрейн
+BI	BDI	BIF	africa	Burundi	Бурунди
+BJ	BEN	XOF	africa	Benin	Бенин
+BL	BLM	EUR	latin_america	Saint Barthélemy	Сен-Бартелеми
+BM	BMU	BMD	north_america	Bermuda	Бермудские острова
+BN	BRN	BND	asia	Brunei	Бруней
+BO	BOL	BOB	latin_america	Bolivia	Боливия
+BQ	BES	USD	latin_america	Caribbean Netherlands	Карибские Нидерланды
+BR	BRA	BRL	latin_america	Brazil	Бразилия
+BS	BHS	BSD	latin_america	Bahamas	Багамские Острова
+BT	BTN	BTN	asia	Bhutan	Бутан
+BV	BVT	NOK	europe	Bouvet Island	Остров Буве
+BW	BWA	BWP	africa	Botswana	Ботсвана
+BY	BLR	BYN	europe	Belarus	Беларусь
+BZ	BLZ	BZD	latin_america	Belize	Белиз
+CA	CAN	CAD	north_america	Canada	Канада
+CC	CCK	AUD	oceania	Cocos (Keeling) Islands	Кокосовые острова
+CD	COD	CDF	africa	DR Congo	ДР Конго
+CF	CAF	XAF	africa	Central African Republic	Центральноафриканская Республика
+CG	COG	XAF	africa	Republic of the Congo	Республика Конго
+CH	CHE	CHF	europe	Switzerland	Швейцария
+CI	CIV	XOF	africa	Côte d'Ivoire	Кот-д’Ивуар
+CK	COK	NZD	oceania	Cook Islands	Острова Кука
+CL	CHL	CLP	latin_america	Chile	Чили
+CM	CMR	XAF	africa	Cameroon	Камерун
+CN	CHN	CNY	asia	China	Китай
+CO	COL	COP	latin_america	Colombia	Колумбия
+CR	CRI	CRC	latin_america	Costa Rica	Коста-Рика
+CU	CUB	CUP	latin_america	Cuba	Куба
+CV	CPV	CVE	africa	Cape Verde	Кабо-Верде
+CW	CUW	XCG	latin_america	Curaçao	Кюрасао
+CX	CXR	AUD	oceania	Christmas Island	Остров Рождества
+CY	CYP	EUR	europe	Cyprus	Кипр
+CZ	CZE	CZK	europe	Czechia	Чехия
+DE	DEU	EUR	europe	Germany	Германия
+DJ	DJI	DJF	africa	Djibouti	Джибути
+DK	DNK	DKK	europe	Denmark	Дания
+DM	DMA	XCD	latin_america	Dominica	Доминика
+DO	DOM	DOP	latin_america	Dominican Republic	Доминиканская Республика
+DZ	DZA	DZD	africa	Algeria	Алжир
+EC	ECU	USD	latin_america	Ecuador	Эквадор
+EE	EST	EUR	europe	Estonia	Эстония
+EG	EGY	EGP	africa	Egypt	Египет
+EH	ESH	MAD	africa	Western Sahara	Западная Сахара
+ER	ERI	ERN	africa	Eritrea	Эритрея
+ES	ESP	EUR	europe	Spain	Испания
+ET	ETH	ETB	africa	Ethiopia	Эфиопия
+FI	FIN	EUR	europe	Finland	Финляндия
+FJ	FJI	FJD	oceania	Fiji	Фиджи
+FK	FLK	FKP	latin_america	Falkland Islands	Фолклендские острова
+FM	FSM	USD	oceania	Micronesia	Микронезия
+FO	FRO	DKK	europe	Faroe Islands	Фарерские острова
+FR	FRA	EUR	europe	France	Франция
+GA	GAB	XAF	africa	Gabon	Габон
+GB	GBR	GBP	europe	United Kingdom	Великобритания
+GD	GRD	XCD	latin_america	Grenada	Гренада
+GE	GEO	GEL	europe	Georgia	Грузия
+GF	GUF	EUR	latin_america	French Guiana	Французская Гвиана
+GG	GGY	GBP	europe	Guernsey	Гернси
+GH	GHA	GHS	africa	Ghana	Гана
+GI	GIB	GIP	europe	Gibraltar	Гибралтар
+GL	GRL	DKK	north_america	Greenland	Гренландия
+GM	GMB	GMD	africa	Gambia	Гамбия
+GN	GIN	GNF	africa	Guinea	Гвинея
+GP	GLP	EUR	latin_america	Guadeloupe	Гваделупа
+GQ	GNQ	XAF	africa	Equatorial Guinea	Экваториальная Гвинея
+GR	GRC	EUR	europe	Greece	Греция
+GS	SGS	GBP	latin_america	South Georgia and the South Sandwich Islands	Южная Георгия и Южные Сандвичевы острова
+GT	GTM	GTQ	latin_america	Guatemala	Гватемала
+GU	GUM	USD	oceania	Guam	Гуам
+GW	GNB	XOF	africa	Guinea-Bissau	Гвинея-Бисау
+GY	GUY	GYD	latin_america	Guyana	Гайана
+HK	HKG	HKD	asia	Hong Kong	Гонконг
+HM	HMD	AUD	oceania	Heard Island and McDonald Islands	Остров Херд и острова Макдональд
+HN	HND	HNL	latin_america	Honduras	Гондурас
+HR	HRV	EUR	europe	Croatia	Хорватия
+HT	HTI	HTG	latin_america	Haiti	Гаити
+HU	HUN	HUF	europe	Hungary	Венгрия
+ID	IDN	IDR	asia	Indonesia	Индонезия
+IE	IRL	EUR	europe	Ireland	Ирландия
+IL	ISR	ILS	middle_east	Israel	Израиль
+IM	IMN	GBP	europe	Isle of Man	Остров Мэн
+IN	IND	INR	asia	India	Индия
+IO	IOT	USD	asia	British Indian Ocean Territory	Британская территория в Индийском океане
+IQ	IRQ	IQD	middle_east	Iraq	Ирак
+IR	IRN	IRR	middle_east	Iran	Иран
+IS	ISL	ISK	europe	Iceland	Исландия
+IT	ITA	EUR	europe	Italy	Италия
+JE	JEY	GBP	europe	Jersey	Джерси
+JM	JAM	JMD	latin_america	Jamaica	Ямайка
+JO	JOR	JOD	middle_east	Jordan	Иордания
+JP	JPN	JPY	asia	Japan	Япония
+KE	KEN	KES	africa	Kenya	Кения
+KG	KGZ	KGS	asia	Kyrgyzstan	Киргизия
+KH	KHM	KHR	asia	Cambodia	Камбоджа
+KI	KIR	AUD	oceania	Kiribati	Кирибати
+KM	COM	KMF	africa	Comoros	Коморы
+KN	KNA	XCD	latin_america	Saint Kitts and Nevis	Сент-Китс и Невис
+KP	PRK	KPW	asia	North Korea	КНДР
+KR	KOR	KRW	asia	South Korea	Южная Корея
+KW	KWT	KWD	middle_east	Kuwait	Кувейт
+KY	CYM	KYD	latin_america	Cayman Islands	Острова Кайман
+KZ	KAZ	KZT	asia	Kazakhstan	Казахстан
+LA	LAO	LAK	asia	Laos	Лаос
+LB	LBN	LBP	middle_east	Lebanon	Ливан
+LC	LCA	XCD	latin_america	Saint Lucia	Сент-Люсия
+LI	LIE	CHF	europe	Liechtenstein	Лихтенштейн
+LK	LKA	LKR	asia	Sri Lanka	Шри-Ланка
+LR	LBR	LRD	africa	Liberia	Либерия
+LS	LSO	LSL	africa	Lesotho	Лесото
+LT	LTU	EUR	europe	Lithuania	Литва
+LU	LUX	EUR	europe	Luxembourg	Люксембург
+LV	LVA	EUR	europe	Latvia	Латвия
+LY	LBY	LYD	africa	Libya	Ливия
+MA	MAR	MAD	africa	Morocco	Марокко
+MC	MCO	EUR	europe	Monaco	Монако
+MD	MDA	MDL	europe	Moldova	Молдова
+ME	MNE	EUR	europe	Montenegro	Черногория
+MF	MAF	EUR	latin_america	Saint Martin	Сен-Мартен
+MG	MDG	MGA	africa	Madagascar	Мадагаскар
+MH	MHL	USD	oceania	Marshall Islands	Маршалловы Острова
+MK	MKD	MKD	europe	North Macedonia	Северная Македония
+ML	MLI	XOF	africa	Mali	Мали
+MM	MMR	MMK	asia	Myanmar	Мьянма
+MN	MNG	MNT	asia	Mongolia	Монголия
+MO	MAC	MOP	asia	Macao	Макао
+MP	MNP	USD	oceania	Northern Mariana Islands	Северные Марианские острова
+MQ	MTQ	EUR	latin_america	Martinique	Мартиника
+MR	MRT	MRU	africa	Mauritania	Мавритания
+MS	MSR	XCD	latin_america	Montserrat	Монтсеррат
+MT	MLT	EUR	europe	Malta	Мальта
+MU	MUS	MUR	africa	Mauritius	Маврикий
+MV	MDV	MVR	asia	Maldives	Мальдивы
+MW	MWI	MWK	africa	Malawi	Малави
+MX	MEX	MXN	latin_america	Mexico	Мексика
+MY	MYS	MYR	asia	Malaysia	Малайзия
+MZ	MOZ	MZN	africa	Mozambique	Мозамбик
+NA	NAM	NAD	africa	Namibia	Намибия
+NC	NCL	XPF	oceania	New Caledonia	Новая Каледония
+NE	NER	XOF	africa	Niger	Нигер
+NF	NFK	AUD	oceania	Norfolk Island	Остров Норфолк
+NG	NGA	NGN	africa	Nigeria	Нигерия
+NI	NIC	NIO	latin_america	Nicaragua	Никарагуа
+NL	NLD	EUR	europe	Netherlands	Нидерланды
+NO	NOR	NOK	europe	Norway	Норвегия
+NP	NPL	NPR	asia	Nepal	Непал
+NR	NRU	AUD	oceania	Nauru	Науру
+NU	NIU	NZD	oceania	Niue	Ниуэ
+NZ	NZL	NZD	oceania	New Zealand	Новая Зеландия
+OM	OMN	OMR	middle_east	Oman	Оман
+PA	PAN	USD	latin_america	Panama	Панама
+PE	PER	PEN	latin_america	Peru	Перу
+PF	PYF	XPF	oceania	French Polynesia	Французская Полинезия
+PG	PNG	PGK	oceania	Papua New Guinea	Папуа — Новая Гвинея
+PH	PHL	PHP	asia	Philippines	Филиппины
+PK	PAK	PKR	asia	Pakistan	Пакистан
+PL	POL	PLN	europe	Poland	Польша
+PM	SPM	EUR	north_america	Saint Pierre and Miquelon	Сен-Пьер и Микелон
+PN	PCN	NZD	oceania	Pitcairn Islands	Острова Питкэрн
+PR	PRI	USD	latin_america	Puerto Rico	Пуэрто-Рико
+PS	PSE	ILS	middle_east	Palestine	Палестина
+PT	PRT	EUR	europe	Portugal	Португалия
+PW	PLW	USD	oceania	Palau	Палау
+PY	PRY	PYG	latin_america	Paraguay	Парагвай
+QA	QAT	QAR	middle_east	Qatar	Катар
+RE	REU	EUR	africa	Réunion	Реюньон
+RO	ROU	RON	europe	Romania	Румыния
+RS	SRB	RSD	europe	Serbia	Сербия
+RU	RUS	RUB	europe	Russia	Россия
+RW	RWA	RWF	africa	Rwanda	Руанда
+SA	SAU	SAR	middle_east	Saudi Arabia	Саудовская Аравия
+SB	SLB	SBD	oceania	Solomon Islands	Соломоновы Острова
+SC	SYC	SCR	africa	Seychelles	Сейшельские Острова
+SD	SDN	SDG	africa	Sudan	Судан
+SE	SWE	SEK	europe	Sweden	Швеция
+SG	SGP	SGD	asia	Singapore	Сингапур
+SH	SHN	SHP	africa	Saint Helena, Ascension and Tristan da Cunha	Острова Святой Елены, Вознесения и Тристан-да-Кунья
+SI	SVN	EUR	europe	Slovenia	Словения
+SJ	SJM	NOK	europe	Svalbard and Jan Mayen	Шпицберген и Ян-Майен
+SK	SVK	EUR	europe	Slovakia	Словакия
+SL	SLE	SLE	africa	Sierra Leone	Сьерра-Леоне
+SM	SMR	EUR	europe	San Marino	Сан-Марино
+SN	SEN	XOF	africa	Senegal	Сенегал
+SO	SOM	SOS	africa	Somalia	Сомали
+SR	SUR	SRD	latin_america	Suriname	Суринам
+SS	SSD	SSP	africa	South Sudan	Южный Судан
+ST	STP	STN	africa	São Tomé and Príncipe	Сан-Томе и Принсипи
+SV	SLV	USD	latin_america	El Salvador	Сальвадор
+SX	SXM	XCG	latin_america	Sint Maarten	Синт-Мартен
+SY	SYR	SYP	middle_east	Syria	Сирия
+SZ	SWZ	SZL	africa	Eswatini	Эсватини
+TC	TCA	USD	latin_america	Turks and Caicos Islands	Тёркс и Кайкос
+TD	TCD	XAF	africa	Chad	Чад
+TF	ATF	EUR	africa	French Southern Territories	Французские Южные территории
+TG	TGO	XOF	africa	Togo	Того
+TH	THA	THB	asia	Thailand	Таиланд
+TJ	TJK	TJS	asia	Tajikistan	Таджикистан
+TK	TKL	NZD	oceania	Tokelau	Токелау
+TL	TLS	USD	asia	Timor-Leste	Восточный Тимор
+TM	TKM	TMT	asia	Turkmenistan	Туркмения
+TN	TUN	TND	africa	Tunisia	Тунис
+TO	TON	TOP	oceania	Tonga	Тонга
+TR	TUR	TRY	middle_east	Turkey	Турция
+TT	TTO	TTD	latin_america	Trinidad and Tobago	Тринидад и Тобаго
+TV	TUV	AUD	oceania	Tuvalu	Тувалу
+TW	TWN	TWD	asia	Taiwan	Тайвань
+TZ	TZA	TZS	africa	Tanzania	Танзания
+UA	UKR	UAH	europe	Ukraine	Украина
+UG	UGA	UGX	africa	Uganda	Уганда
+UM	UMI	USD	oceania	United States Minor Outlying Islands	Внешние малые острова США
+US	USA	USD	north_america	United States	Соединённые Штаты
+UY	URY	UYU	latin_america	Uruguay	Уругвай
+UZ	UZB	UZS	asia	Uzbekistan	Узбекистан
+VA	VAT	EUR	europe	Vatican City	Ватикан
+VC	VCT	XCD	latin_america	Saint Vincent and the Grenadines	Сент-Винсент и Гренадины
+VE	VEN	VES	latin_america	Venezuela	Венесуэла
+VG	VGB	USD	latin_america	British Virgin Islands	Британские Виргинские острова
+VI	VIR	USD	latin_america	U.S. Virgin Islands	Виргинские острова США
+VN	VNM	VND	asia	Vietnam	Вьетнам
+VU	VUT	VUV	oceania	Vanuatu	Вануату
+WF	WLF	XPF	oceania	Wallis and Futuna	Уоллис и Футуна
+WS	WSM	WST	oceania	Samoa	Самоа
+YE	YEM	YER	middle_east	Yemen	Йемен
+YT	MYT	EUR	africa	Mayotte	Майотта
+ZA	ZAF	ZAR	africa	South Africa	Южная Африка
+ZM	ZMB	ZMW	africa	Zambia	Замбия
+ZW	ZWE	ZWG	africa	Zimbabwe	Зимбабве
