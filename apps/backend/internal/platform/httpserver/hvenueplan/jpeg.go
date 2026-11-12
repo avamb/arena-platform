@@ -135,7 +135,7 @@ func orientationSegment(orientation int) []byte {
 	body = append(body, 0x00, 0x01)                          // one entry
 	body = append(body, 0x01, 0x12, 0x00, 0x03)              // Orientation, SHORT
 	body = append(body, 0x00, 0x00, 0x00, 0x01)              // count 1
-	body = append(body, 0x00, byte(orientation), 0x00, 0x00) // value
+	body = append(body, 0x00, byte(orientation), 0x00, 0x00) //nolint:gosec // value, an EXIF orientation is 1..8
 	body = append(body, 0x00, 0x00, 0x00, 0x00)              // no next IFD
 	seg := []byte{0xFF, markerAPP1, 0, 0}
 	binary.BigEndian.PutUint16(seg[2:], uint16(len(body)+2)) //nolint:gosec // a few dozen bytes
@@ -156,18 +156,19 @@ func exifOrientation(t []byte) int {
 	default:
 		return 0
 	}
-	off := int(bo.Uint32(t[4:8]))
+	off := int(bo.Uint32(t[4:8])) //nolint:gosec // G602: len(t) >= 8 is checked above
 	if off < 8 || off+2 > len(t) {
 		return 0
 	}
-	n := int(bo.Uint16(t[off : off+2]))
+	n := int(bo.Uint16(t[off : off+2])) //nolint:gosec // G602: off+2 <= len(t) is checked above
 	for e := 0; e < n; e++ {
 		p := off + 2 + e*12
 		if p+12 > len(t) {
 			return 0
 		}
+		//nolint:gosec // G602: p+12 <= len(t) is checked above
 		if bo.Uint16(t[p:p+2]) == 0x0112 && bo.Uint16(t[p+2:p+4]) == 3 {
-			v := int(bo.Uint16(t[p+8 : p+10]))
+			v := int(bo.Uint16(t[p+8 : p+10])) //nolint:gosec // G602: same bound
 			if v >= 1 && v <= 8 {
 				return v
 			}

@@ -170,6 +170,7 @@ func looksLikeSVG(data []byte) bool {
 	if len(bytes.TrimSpace(data)) == 0 || !utf8.Valid(data[:min(len(data), 4096)]) {
 		return false
 	}
+	//nolint:gosec // G709: only the first 64 tokens are read to find the root element, nothing is decoded into a value
 	dec := xml.NewDecoder(bytes.NewReader(data))
 	dec.Strict = false
 	for i := 0; i < 64; i++ {
