@@ -117,7 +117,34 @@ def test_empty_operation_list_is_a_no_op(model):
     assert out == model
     assert diff == {"changes": [], "totals": {"seat_count_before": 25, "seat_count_after": 25,
                                               "affected_seat_count": 0, "affected_fraction": 0.0,
-                                              "requires_confirmation": False}}
+                                              "requires_confirmation": False,
+                                              "confirmation_reset": False}}
+
+
+def test_applied_operation_resets_confirmation(model):
+    confirmed = copy.deepcopy(model)
+    confirmed["confirmed"] = True
+    out, diff = run(confirmed, [{"op": "set_stage_side", "side": "left"}])
+    assert out["confirmed"] is False
+    assert diff["totals"]["confirmation_reset"] is True
+    out, diff = run(model, [{"op": "set_stage_side", "side": "left"}])
+    assert out["confirmed"] is False
+    assert diff["totals"]["confirmation_reset"] is False
+
+
+def test_empty_operation_list_keeps_confirmation(model):
+    confirmed = copy.deepcopy(model)
+    confirmed["confirmed"] = True
+    out, diff = run(confirmed, [])
+    assert out["confirmed"] is True
+    assert diff["totals"]["confirmation_reset"] is False
+
+
+def test_echoed_client_value_is_capped(model):
+    with pytest.raises(OperationError) as info:
+        apply_operations(model, [{"op": "remove_row", "row_id": "x" * 100}])
+    assert "x" * 81 not in info.value.message
+    assert len(info.value.message) < 200
 
 
 def test_one_change_line_per_operation_with_code_and_index(model):

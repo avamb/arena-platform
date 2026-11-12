@@ -210,3 +210,34 @@ def test_committed_fixture_is_current(name, maker, profile):
         json_path.write_text(json.dumps(expected, indent=2) + "\n", encoding="utf-8", newline="\n")
     assert svg_path.read_text(encoding="utf-8") == svg, "regenerate with VENUE_GEN_REGEN_FIXTURE=1"
     assert json.loads(json_path.read_text(encoding="utf-8")) == expected
+
+
+def test_unlabelled_section_and_main_section_never_export_the_same_triple(profile):
+    model = synthetic_v2()
+    first = model["sections"][0]
+    first["label"] = "Main"
+    twin = copy.deepcopy(model["sections"][1])
+    twin.update(id="s-twin", label=None, label_status="unknown")
+    for row in twin["rows"]:
+        row["id"] = "twin-" + row["id"]
+        for seat in row["seats"]:
+            seat["key"] = "twin-" + seat["key"]
+    model["sections"].append(twin)
+    twin_row, first_row = twin["rows"][0], first["rows"][0]
+    twin_row["label"], twin_row["seats"][0]["number"] = first_row["label"], first_row["seats"][0]["number"]
+    model = revalidate(model)
+    svg, info = build_authoring_svg_v2(model, profile)
+    triples = [(s["section"], s["row"], s["number"]) for s in info["seats"]]
+    assert len(triples) == len(set(triples))
+    assert ("Main", first_row["label"], first_row["seats"][0]["number"]) not in triples
+    assert info["omitted_seat_count"] >= 2
+    assert any("duplicate_identity" in i["codes"] for i in model["issues"])
+
+
+def test_blank_identity_is_never_exported(profile):
+    model = synthetic_v2()
+    seats = [s for _, _, s in iter_seats(model)]
+    seats[0]["number"] = "  "
+    svg, info = build_authoring_svg_v2(revalidate(model), profile)
+    assert info["omitted_seat_count"] == 1
+    assert info["seat_count"] == len(seats) - 1

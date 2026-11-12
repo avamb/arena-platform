@@ -4,4 +4,4 @@ from .convert import (  # noqa: F401
 )
 from .issues import ADAPTER_CODE_TO_TYPE, ISSUE_TYPES, make_issue, type_for_code  # noqa: F401
 from .schema import SCHEMA_VERSION, load_schema, validate_schema  # noqa: F401
-from .validate import is_sellable, iter_sellable, iter_seats, revalidate  # noqa: F401
+from .validate import clean_text, is_sellable, iter_sellable, iter_seats, revalidate  # noqa: F401

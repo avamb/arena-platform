@@ -24,10 +24,10 @@ and the seat coordinates are the model coordinates.
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from collections import Counter
 from typing import Any, Optional
 
-from hall_model import iter_seats
-from hall_model.validate import _identity_counts, _sellable
+from hall_model import clean_text, iter_sellable, iter_seats
 
 from .exporter import (
     CANVAS_MARGIN,
@@ -94,13 +94,13 @@ def build_authoring_svg_v2(
     color = str(category["color"])
     stroke_width = profile.get("stroke_width_px", DEFAULT_STROKE_WIDTH_PX)
 
-    counts = _identity_counts(model)
+    sellable_ids = {id(seat) for _, _, seat in iter_sellable(model)}
     records: list[dict[str, Any]] = []
     unavailable: list[dict[str, Any]] = []
     total = 0
     for section, row, seat in iter_seats(model):
         total += 1
-        section_name = "Main" if section.get("label") is None else str(section["label"])
+        section_name = clean_text(section.get("label")) or "Main"
         if seat.get("status") == "unavailable":
             unavailable.append({
                 "section": section_name,
@@ -110,16 +110,19 @@ def build_authoring_svg_v2(
             })
             continue
         pos = _position(seat)
-        if pos is None or not _sellable(counts, section, row, seat):
+        if pos is None or id(seat) not in sellable_ids:
             continue
         records.append({
             "seat_key": str(seat["key"]),
             "section": section_name,
-            "row": str(row["label"]),
-            "number": str(seat["number"]),
+            "row": clean_text(row.get("label")),
+            "number": clean_text(seat.get("number")),
             "x": pos[0],
             "y": pos[1],
         })
+    # Fail closed: two seats with one exported (section, row, number) are both dropped.
+    triples = Counter((r["section"], r["row"], r["number"]) for r in records)
+    records = [r for r in records if triples[(r["section"], r["row"], r["number"])] == 1]
 
     status = _status_of(model)
     marked = _marked(model, status)

@@ -85,7 +85,7 @@
       "required": ["id", "label", "label_status", "rows"],
       "properties": {
         "id": {"$ref": "#/$defs/id"},
-        "label": {"type": ["string", "null"], "maxLength": 200},
+        "label": {"type": ["string", "null"], "minLength": 1, "maxLength": 200},
         "label_status": {"enum": ["read", "observed", "confirmed", "unknown"]},
         "placement": {
           "type": "object",
@@ -105,7 +105,7 @@
       "required": ["id", "label", "label_status", "numbering", "seats"],
       "properties": {
         "id": {"$ref": "#/$defs/id"},
-        "label": {"type": ["string", "null"], "maxLength": 200},
+        "label": {"type": ["string", "null"], "minLength": 1, "maxLength": 200},
         "label_status": {"enum": ["read", "observed", "confirmed", "unknown"]},
         "confidence": {"$ref": "#/$defs/unit"},
         "numbering": {
@@ -138,7 +138,7 @@
       "required": ["key", "number", "number_status", "status", "confidence", "position"],
       "properties": {
         "key": {"$ref": "#/$defs/id"},
-        "number": {"type": ["string", "null"], "maxLength": 40},
+        "number": {"type": ["string", "null"], "minLength": 1, "maxLength": 40},
         "number_status": {"enum": ["read", "observed", "rule", "confirmed", "unknown"]},
         "status": {"enum": ["available", "unavailable"]},
         "unavailable_reason": {"type": ["string", "null"], "maxLength": 200},

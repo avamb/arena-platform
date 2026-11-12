@@ -71,6 +71,17 @@ def _fail(i: int, code: str, message: str):
     raise OperationError(i, code, message)
 
 
+ECHO_LIMIT = 80
+
+
+def _q(value: Any) -> str:
+    """A client value for an error message: its repr, at most ECHO_LIMIT characters."""
+    text = repr(value)
+    if len(text) > ECHO_LIMIT:
+        text = text[:ECHO_LIMIT - 3] + "..."
+    return text
+
+
 # ---------------------------------------------------------------- parameter checks
 
 def _is_int(v: Any) -> bool:
@@ -128,7 +139,7 @@ def _p_numbering(i: int, v: Any) -> dict:
         _fail(i, "invalid_value", "numbering must be an object with rule and start.")
     for k in v:
         if k not in ("rule", "start"):
-            _fail(i, "unknown_parameter", "numbering has an unknown field %r." % (k,))
+            _fail(i, "unknown_parameter", "numbering has an unknown field %s." % _q(k))
     if "rule" not in v:
         _fail(i, "missing_parameter", "numbering needs a rule.")
     rule = _p_enum(i, "numbering.rule", v["rule"], KNOWN_RULES)
@@ -141,7 +152,7 @@ def _check_names(i: int, name: str, op: dict) -> None:
     allowed = set(spec["required"]) | set(spec["optional"]) | {p for g in spec["one_of"] for p in g}
     for key in op:
         if key != "op" and key not in allowed:
-            _fail(i, "unknown_parameter", "Operation %s has no parameter %r." % (name, key))
+            _fail(i, "unknown_parameter", "Operation %s has no parameter %s." % (name, _q(key)))
     for key in spec["required"]:
         if key not in op:
             _fail(i, "missing_parameter", "Operation %s needs the parameter %s." % (name, key))
@@ -159,7 +170,7 @@ def _find_section(model: dict, section_id: str, i: int) -> tuple[int, dict]:
     for si, sec in enumerate(model["sections"]):
         if sec["id"] == section_id:
             return si, sec
-    _fail(i, "not_found", "Section %r does not exist." % section_id)
+    _fail(i, "not_found", "Section %s does not exist." % _q(section_id))
 
 
 def _find_row(model: dict, row_id: str, i: int) -> tuple[dict, int, dict]:
@@ -167,7 +178,7 @@ def _find_row(model: dict, row_id: str, i: int) -> tuple[dict, int, dict]:
         for ri, row in enumerate(sec["rows"]):
             if row["id"] == row_id:
                 return sec, ri, row
-    _fail(i, "not_found", "Row %r does not exist." % row_id)
+    _fail(i, "not_found", "Row %s does not exist." % _q(row_id))
 
 
 def _ref(obj: Optional[dict]) -> Optional[dict]:
@@ -314,13 +325,13 @@ def _ruled(row: dict) -> bool:
 def _check_label_free(i: int, rows: list, label: str, skip_row_id: Optional[str] = None) -> None:
     for r in rows:
         if r["label"] == label and r["id"] != skip_row_id:
-            _fail(i, "conflict", "The section already has a row with the label %r." % label)
+            _fail(i, "conflict", "The section already has a row with the label %s." % _q(label))
 
 
 def _check_section_label_free(i: int, model: dict, label: str, skip_ids=()) -> None:
     for s in model["sections"]:
         if s["label"] == label and s["id"] not in skip_ids:
-            _fail(i, "conflict", "A section with the label %r already exists." % label)
+            _fail(i, "conflict", "A section with the label %s already exists." % _q(label))
 
 
 def _result(**kw) -> dict:
@@ -395,7 +406,7 @@ def _op_set_numbering(m: dict, p: dict, i: int, exact: bool) -> dict:
         rows = sec["rows"]
         row_ref = None
         if not rows:
-            _fail(i, "conflict", "Section %r has no rows." % sec["id"])
+            _fail(i, "conflict", "Section %s has no rows." % _q(sec["id"]))
     old = [{"row_id": r["id"], "rule": (r.get("numbering") or {}).get("rule", "unknown"),
             "start": (r.get("numbering") or {}).get("start")} for r in rows]
     changed: set = set()
@@ -419,7 +430,7 @@ def _position_of_row(i: int, sec: dict, position: Any) -> int:
             for ri, r in enumerate(rows):
                 if r["id"] == ref:
                     return ri if key == "before_row_id" else ri + 1
-            _fail(i, "not_found", "Row %r is not in section %r." % (ref, sec["id"]))
+            _fail(i, "not_found", "Row %s is not in section %s." % (_q(ref), _q(sec["id"])))
     _fail(i, "invalid_value", 'position must be "start", "end", {"before_row_id": id} or {"after_row_id": id}.')
 
 
@@ -538,7 +549,7 @@ def _op_split_section(m: dict, p: dict, i: int, exact: bool) -> dict:
         rid = _p_id(i, "after_row_id", p["after_row_id"])
         idx = next((ri for ri, r in enumerate(sec["rows"]) if r["id"] == rid), None)
         if idx is None:
-            _fail(i, "not_found", "Row %r is not in section %r." % (rid, sec["id"]))
+            _fail(i, "not_found", "Row %s is not in section %s." % (_q(rid), _q(sec["id"])))
         if idx == len(sec["rows"]) - 1:
             _fail(i, "conflict", "The second part would have no rows.")
         first_rows, second_rows = sec["rows"][:idx + 1], sec["rows"][idx + 1:]
@@ -658,7 +669,7 @@ def _op_add_section(m: dict, p: dict, i: int, exact: bool) -> dict:
             _fail(i, "invalid_value", "rows[%d] must be an object with label and seat_count." % n)
         for k in r:
             if k not in ("label", "seat_count"):
-                _fail(i, "unknown_parameter", "rows[%d] has an unknown field %r." % (n, k))
+                _fail(i, "unknown_parameter", "rows[%d] has an unknown field %s." % (n, _q(k)))
         for k in ("label", "seat_count"):
             if k not in r:
                 _fail(i, "missing_parameter", "rows[%d] needs %s." % (n, k))
@@ -675,7 +686,7 @@ def _op_add_section(m: dict, p: dict, i: int, exact: bool) -> dict:
             _fail(i, "invalid_value", "position must be an object with relative_to and side.")
         for k in position:
             if k not in ("relative_to", "side"):
-                _fail(i, "unknown_parameter", "position has an unknown field %r." % (k,))
+                _fail(i, "unknown_parameter", "position has an unknown field %s." % _q(k))
         for k in ("relative_to", "side"):
             if k not in position:
                 _fail(i, "missing_parameter", "position needs %s." % k)
@@ -746,9 +757,9 @@ def _match_numbers(i: int, row: dict, numbers: list[str]) -> set:
     for n in numbers:
         hits = [s["key"] for s in row["seats"] if s["number"] == n]
         if not hits:
-            _fail(i, "not_found", "Row %r has no seat with the number %r." % (row["id"], n))
+            _fail(i, "not_found", "Row %s has no seat with the number %s." % (_q(row["id"]), _q(n)))
         if len(hits) > 1:
-            _fail(i, "conflict", "Row %r has more than one seat with the number %r." % (row["id"], n))
+            _fail(i, "conflict", "Row %s has more than one seat with the number %s." % (_q(row["id"]), _q(n)))
         keys.add(hits[0])
     return keys
 
@@ -757,7 +768,7 @@ def _match_keys(i: int, row: dict, keys: list[str]) -> set:
     have = {s["key"] for s in row["seats"]}
     for k in keys:
         if k not in have:
-            _fail(i, "not_found", "Row %r has no seat with the key %r." % (row["id"], k))
+            _fail(i, "not_found", "Row %s has no seat with the key %s." % (_q(row["id"]), _q(k)))
     return set(keys)
 
 
@@ -794,15 +805,15 @@ def _op_add_gap(m: dict, p: dict, i: int, exact: bool) -> dict:
         else:
             found = [k for k, s in enumerate(row["seats"]) if s["number"] == number]
             if len(found) > 1:
-                _fail(i, "conflict", "Row %r has more than one seat with the number %r." % (row["id"], number))
+                _fail(i, "conflict", "Row %s has more than one seat with the number %s." % (_q(row["id"]), _q(number)))
             index = found[0] if found and found[0] < n - 1 else None
         if index is None:
             if strict:
-                _fail(i, "not_found", "Row %r has no seat to the right of that place." % row["id"])
+                _fail(i, "not_found", "Row %s has no seat to the right of that place." % _q(row["id"]))
             continue
         hits.append((row, index))
     if not hits:
-        _fail(i, "not_found", "No row of section %r has a seat to the right of that place." % sec["id"])
+        _fail(i, "not_found", "No row of section %s has a seat to the right of that place." % _q(sec["id"]))
     changed: set = set()
     for row, index in hits:
         step = _row_step(row)
@@ -836,7 +847,7 @@ def _op_remove_seats(m: dict, p: dict, i: int, exact: bool) -> dict:
     sec, _, row = _find_row(m, _p_id(i, "row_id", p["row_id"]), i)
     keys = _pick_seats(i, row, p)
     if len(keys) >= len(row["seats"]):
-        _fail(i, "conflict", "This removes every seat of row %r. Use remove_row." % row["id"])
+        _fail(i, "conflict", "This removes every seat of row %s. Use remove_row." % _q(row["id"]))
     before = len(row["seats"])
     _remove_seats(row, keys)
     return _result(section=_ref(sec), row=_ref(row), before={"seat_count": before},
@@ -927,7 +938,7 @@ def apply_operations(model: dict, operations: list) -> tuple[dict, dict]:
             _fail(i, "missing_parameter", "An operation needs the field op.")
         name = op["op"]
         if not isinstance(name, str) or name not in OPERATIONS:
-            _fail(i, "unknown_operation", "Unknown operation %r." % (name if isinstance(name, str) else str(type(name).__name__),))
+            _fail(i, "unknown_operation", "Unknown operation %s." % (_q(name) if isinstance(name, str) else str(type(name).__name__)))
         _check_names(i, name, op)
         res = _HANDLERS[name](work, op, i, exact)
         _sanitise_issues(work, res["row_map"])
@@ -941,6 +952,9 @@ def apply_operations(model: dict, operations: list) -> tuple[dict, dict]:
             "seats_added": len(res["added"]), "seats_removed": len(res["removed"]),
             "seats_changed": len(res["changed"]),
         })
+    was_confirmed = bool(work.get("confirmed"))
+    if operations:
+        work["confirmed"] = False   # a changed hall must be confirmed again
     if exact and geometry_edited:
         work["geometry_edited"] = True
     if exact:
@@ -949,7 +963,7 @@ def apply_operations(model: dict, operations: list) -> tuple[dict, dict]:
         result = relayout(work)
     errors = validate_schema(result)
     if errors:
-        _fail(max(len(operations) - 1, 0), "conflict", "The result is not a valid model: %s" % errors[0])
+        _fail(max(len(operations) - 1, 0), "conflict", "The result is not a valid model: %s" % errors[0][:ECHO_LIMIT])
     seats_after = _seat_count(result)
     biggest = max(seats_before, seats_after)
     diff = {
@@ -960,6 +974,7 @@ def apply_operations(model: dict, operations: list) -> tuple[dict, dict]:
             "affected_seat_count": len(touched),
             "affected_fraction": round(len(touched) / biggest, 4) if biggest else 0.0,
             "requires_confirmation": biggest > 0 and len(touched) * 2 > biggest,
+            "confirmation_reset": bool(operations) and was_confirmed,
         },
     }
     return result, diff

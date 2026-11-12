@@ -23,10 +23,24 @@ def iter_seats(model: dict) -> Iterator[tuple[dict, dict, dict]]:
                 yield section, row, seat
 
 
-def _identity(section: dict, row: dict, seat: dict) -> Optional[tuple]:
-    if row.get("label") is None or seat.get("number") is None:
+MAIN_SECTION = "Main"
+
+
+def clean_text(value: Any) -> Optional[str]:
+    """A label or a number as text without outer blanks. Null, empty and blank are all None."""
+    if value is None:
         return None
-    return (section.get("label"), row.get("label"), seat.get("number"))
+    text = str(value).strip()
+    return text or None
+
+
+def _identity(section: dict, row: dict, seat: dict) -> Optional[tuple]:
+    row_label = clean_text(row.get("label"))
+    number = clean_text(seat.get("number"))
+    if row_label is None or number is None:
+        return None
+    # A section without a label is exported as "Main": it is the same section as one labelled "Main".
+    return (clean_text(section.get("label")) or MAIN_SECTION, row_label, number)
 
 
 def _identity_counts(model: dict) -> Counter:
@@ -42,8 +56,7 @@ def _sellable(counts: Counter, section: dict, row: dict, seat: dict) -> bool:
     ident = _identity(section, row, seat)
     return (
         seat.get("status") == "available"
-        and seat.get("number") is not None
-        and row.get("label") is not None
+        and ident is not None
         and counts[ident] == 1
         and seat.get("number_status") != "observed"
         and row.get("label_status") != "observed"
@@ -149,14 +162,15 @@ def revalidate(model: dict) -> dict:
             seats = row.get("seats", [])
             if not seats:
                 continue
-            name = row["label"] if row.get("label") is not None else "#%d" % row_index
-            where = "Row %s of section %s" % (name, section["label"] if section.get("label") is not None else section["id"])
-            no_number = [s for s in seats if s.get("status") == "available" and s.get("number") is None]
+            row_name = clean_text(row.get("label"))
+            name = row_name if row_name is not None else "#%d" % row_index
+            where = "Row %s of section %s" % (name, clean_text(section.get("label")) or section["id"])
+            no_number = [s for s in seats if s.get("status") == "available" and clean_text(s.get("number")) is None]
             if no_number:
                 add(NUMBERING_UNKNOWN, section, row, no_number,
                     _codes_of(seats, NUMBERING_UNKNOWN) or ["seat_number_absent"],
                     "%s has %s without a number." % (where, _plural(len(no_number), "seat", "seats")))
-            if row.get("label") is None:
+            if row_name is None:
                 add(ROW_LABEL_UNKNOWN, section, row, seats,
                     _codes_of(seats, ROW_LABEL_UNKNOWN) or ["row_label_absent"],
                     "%s has no label." % where)

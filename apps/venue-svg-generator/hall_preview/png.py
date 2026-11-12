@@ -7,8 +7,7 @@ from typing import Any, Optional
 
 from PIL import Image, ImageDraw, ImageFont
 
-from hall_model import iter_seats
-from hall_model.validate import _identity_counts
+from hall_model import clean_text, iter_sellable, iter_seats
 
 DEJAVU = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 WHITE = (255, 255, 255)
@@ -74,7 +73,7 @@ def render_preview_png(model: dict[str, Any], decor_labels: Optional[dict[str, s
     """PNG bytes of the hall. The longest side is at most `max_px`."""
     max_px = max(64, int(max_px))
     stage_label = str((decor_labels or {}).get("stage") or "STAGE")
-    counts = _identity_counts(model)
+    sellable_ids = {id(seat) for _, _, seat in iter_sellable(model)}
 
     seats: list[tuple[float, float, str, str]] = []   # x, y, kind, number text
     row_ends: dict[str, list] = {}
@@ -83,13 +82,14 @@ def render_preview_png(model: dict[str, Any], decor_labels: Optional[dict[str, s
         pos = _pos(seat)
         if pos is None:
             continue
-        number, label = seat.get("number"), row.get("label")
+        number, label = clean_text(seat.get("number")), clean_text(row.get("label"))
         if seat.get("status") == "unavailable":
             kind, text = "unavailable", ""
-        elif number is not None and label is not None and counts[(section.get("label"), label, number)] == 1:
-            kind, text = "available", str(number)
+        elif id(seat) in sellable_ids:
+            kind, text = "available", number
         else:
-            kind, text = "unknown", "?"
+            # Not sellable (no identity, a duplicate, or only observed): orange, with its number if it has one.
+            kind, text = "unknown", number if number is not None else "?"
         seats.append((pos[0], pos[1], kind, text))
         if label is not None:
             ends = row_ends.setdefault(row["id"], [str(label), pos[0], pos[0], pos[1]])

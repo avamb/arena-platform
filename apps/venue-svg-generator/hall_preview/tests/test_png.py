@@ -84,3 +84,17 @@ def test_cyrillic_and_hebrew_labels_do_not_raise():
     m["sections"][1]["rows"][0]["label"] = "Ряд"
     png = render_preview_png(m, {"stage": "Сцена במה"})
     assert png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_observed_seat_is_orange_not_available():
+    m = model()
+    for _, _, s in iter_seats(m):
+        s["number_status"] = "observed"
+    found = colours(render_preview_png(m))
+    assert NO_IDENTITY in found and AVAILABLE not in found
+    m = model()
+    for section in m["sections"]:
+        for row in section["rows"]:
+            row["label_status"] = "observed"
+    found = colours(render_preview_png(m))
+    assert NO_IDENTITY in found and AVAILABLE not in found

@@ -179,6 +179,49 @@ def test_adapter_code_mapping():
     assert "unavailable_seats" not in ADAPTER_CODE_TO_TYPE.values()
 
 
+def test_blank_number_and_label_are_schema_errors():
+    for path, key in ((("sections", 0, "rows", 0, "seats", 0), "number"),
+                      (("sections", 0, "rows", 0), "label"), (("sections", 0), "label")):
+        m = model()
+        node = m
+        for p in path:
+            node = node[p]
+        node[key] = ""
+        assert validate_schema(m), (path, key)
+
+
+def test_whitespace_number_and_label_are_treated_like_null():
+    m = stage_known(model())
+    m["sections"][0]["rows"][0]["seats"][1]["number"] = "   "
+    out = revalidate(m)
+    assert types(out) == ["numbering_unknown"]
+    assert out["validation"]["sellable_seat_count"] == 1
+    m = stage_known(model())
+    m["sections"][0]["rows"][0]["label"] = " \t"
+    out = revalidate(m)
+    assert types(out) == ["row_label_unknown"]
+    assert out["validation"]["sellable_seat_count"] == 0
+
+
+def test_identity_compares_stripped_values():
+    m = stage_known(model())
+    m["sections"][0]["rows"][0]["seats"][1]["number"] = " 1 "
+    out = revalidate(m)
+    assert out["validation"]["sellable_seat_count"] == 0
+    assert "duplicate_identity" in out["issues"][0]["codes"]
+
+
+def test_unlabelled_section_and_main_section_collide():
+    m = stage_known(model())
+    m["sections"][0]["label"] = "Main"
+    m["sections"].append({"id": "s2", "label": None, "label_status": "unknown", "rows": [
+        {"id": "s2-r1", "label": "1", "label_status": "read",
+         "numbering": {"rule": "explicit", "start": None}, "seats": [seat("c", "1", 2.0, 3.0)]}]})
+    out = revalidate(m)
+    assert out["validation"]["sellable_seat_count"] == 1   # only seat b of the first row
+    assert any("duplicate_identity" in i["codes"] for i in out["issues"])
+
+
 def test_make_issue_rejects_unknown_type():
     import pytest
     with pytest.raises(ValueError):
