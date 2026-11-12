@@ -748,3 +748,7 @@ Spec 64: intake states, private plan sources, approve, superadmin verification a
 * The notify handler sends nothing twice and tells no person
 * The bot claims organizer notices with POST /v1/bot/venue-plan-notices/claim
 * Seams for the later waves are nil in wave 1
+* The web calls two routes that are not in openapi.yaml yet, only through directoryApi.ts
+* The venue chooser is ONE component for the screen Venues and the wizard
+* The web intake refuses a file before any request and keeps one Idempotency-Key per attempt
+* The admin queue /venue-plans finds plans with no verification state by subtraction
