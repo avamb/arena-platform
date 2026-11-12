@@ -155,6 +155,10 @@ func TestExistingOrder_ConflictsNamesWhatDiffers(t *testing.T) {
 	if d := have.conflicts(same, "9000000001"); len(d) != 0 {
 		t.Fatalf("the same order must not conflict: %v", d)
 	}
+	// The case of an e-mail address is not a difference.
+	if d := have.conflicts(plannedOrder{Total: 25000, BuyerEmail: "A@Example.com", Lines: make([]plannedLine, 1)}, "9000000001"); len(d) != 0 {
+		t.Fatalf("e-mail case must not conflict: %v", d)
+	}
 	// An export without an id (or a stored order without one) cannot tell ids apart.
 	if d := have.conflicts(same, ""); len(d) != 0 {
 		t.Fatalf("a missing id is not a conflict: %v", d)

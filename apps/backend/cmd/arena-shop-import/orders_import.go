@@ -438,7 +438,7 @@ func (e existingOrder) conflicts(p plannedOrder, shopifyID string) []string {
 	if e.Total != p.Total {
 		out = append(out, "total")
 	}
-	if e.Email != p.BuyerEmail {
+	if !strings.EqualFold(e.Email, p.BuyerEmail) {
 		out = append(out, "buyer e-mail")
 	}
 	if e.Lines != len(p.Lines) {

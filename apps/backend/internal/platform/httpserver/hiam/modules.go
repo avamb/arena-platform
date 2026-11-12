@@ -117,29 +117,33 @@ func (h *Handler) withholdShopFromMembersWithoutAccess(ctx context.Context, rows
 		}
 	}
 	allowed := map[string]bool{}
-	for i, m := range rows {
-		if i >= len(dtos) || (dtos[i].ShopMode == nil && !containsString(dtos[i].Modules, "shop")) {
+	for i := range dtos {
+		if i >= len(rows) {
+			break
+		}
+		dto, role := &dtos[i], rows[i].Role
+		if dto.ShopMode == nil && !containsString(dto.Modules, "shop") {
 			continue
 		}
-		ok, seen := allowed[m.Role]
+		ok, seen := allowed[role]
 		if !seen {
-			perms, err := h.meQueries.GetPermissionsForRoles(ctx, append([]string{m.Role}, platform...))
+			perms, err := h.meQueries.GetPermissionsForRoles(ctx, append([]string{role}, platform...))
 			if err != nil {
 				return err
 			}
 			ok = containsString(perms, shopReadPermission)
-			allowed[m.Role] = ok
+			allowed[role] = ok
 		}
 		if ok {
 			continue
 		}
-		kept := make([]string, 0, len(dtos[i].Modules))
-		for _, mod := range dtos[i].Modules {
+		kept := make([]string, 0, len(dto.Modules))
+		for _, mod := range dto.Modules {
 			if mod != "shop" {
 				kept = append(kept, mod)
 			}
 		}
-		dtos[i].Modules, dtos[i].ShopMode = kept, nil
+		dto.Modules, dto.ShopMode = kept, nil
 	}
 	return nil
 }
