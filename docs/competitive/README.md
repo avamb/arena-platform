@@ -27,6 +27,9 @@
 ### Перепродавцы и дистрибуция
 - [reseller_integration_scenarios_2026-11-09_ru.md](reseller_integration_scenarios_2026-11-09_ru.md) — перепродавцы билетов (FridayTicket, Kontramarka и др.) как партнёры: 17 сценариев интеграции, что уже есть в Arena, риски, первые шаги (09.11.2026).
 
+### Конструкторы сайтов и плагины
+- [site_builders_ticketing_2026-11-12_ru.md](site_builders_ticketing_2026-11-12_ru.md) — продажа билетов на Wix, Squarespace, Shopify, Tilda и в плагинах WordPress (Tickera, FooEvents, The Events Calendar): цены, схема зала, вход, цена билета €25, как Arena встраивается в конструкторы (12.11.2026).
+
 ### Продажи в соцсетях и мессенджерах
 - [social_messenger_selling_2026-10-24_ru.md](social_messenger_selling_2026-10-24_ru.md) — продажи внутри Facebook, Instagram, Messenger, Telegram, WhatsApp: что есть у конкурентов и что разрешают платформы (24.10.2026). Связанный бэклог: `09_autoforge/social_selling_backlog.md`.
 
