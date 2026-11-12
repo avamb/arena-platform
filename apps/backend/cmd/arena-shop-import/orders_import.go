@@ -416,6 +416,35 @@ type existingOrder struct {
 	PaidAt    *time.Time
 	ShippedAt *time.Time
 	Cancelled *time.Time
+	// The fields below are never rewritten by a re-run. They only tell a
+	// refreshed order from a different order that carries the same name.
+	ShopifyID string
+	Total     int64
+	Email     string
+	Lines     int
+}
+
+// conflicts lists what a known order stores differently from the same-named
+// order of the file: the Shopify id, the total, the buyer's e-mail and the
+// number of lines. The key of a known order is only (org, source, name), so a
+// new export that reuses a name for another order must not pass as unchanged
+// (F-SH-01, acceptance run 2026-11-09). The names are fields, never values: a
+// report carries no buyer data.
+func (e existingOrder) conflicts(p plannedOrder, shopifyID string) []string {
+	var out []string
+	if shopifyID != "" && e.ShopifyID != "" && e.ShopifyID != shopifyID {
+		out = append(out, "Shopify id")
+	}
+	if e.Total != p.Total {
+		out = append(out, "total")
+	}
+	if e.Email != p.BuyerEmail {
+		out = append(out, "buyer e-mail")
+	}
+	if e.Lines != len(p.Lines) {
+		out = append(out, "number of lines")
+	}
+	return out
 }
 
 func sameTime(a, b *time.Time) bool {
@@ -439,11 +468,21 @@ func (im *Importer) storeOrder(ctx context.Context, o ImportOrder, p plannedOrde
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var have existingOrder
-	err = tx.QueryRow(ctx, `SELECT id, status, refunded_minor, paid_at, shipped_at, cancelled_at
-		FROM shop_orders WHERE org_id = $1 AND source = $2 AND external_ref = $3`,
-		im.opt.OrgID, shopifyOrderSource, p.ExternalRef).Scan(&have.ID, &have.Status, &have.Refunded, &have.PaidAt, &have.ShippedAt, &have.Cancelled)
+	err = tx.QueryRow(ctx, `SELECT o.id, o.status, o.refunded_minor, o.paid_at, o.shipped_at, o.cancelled_at,
+			COALESCE(o.metadata->'shopify'->>'id', ''), o.total, COALESCE(o.buyer_email, ''),
+			(SELECT count(*) FROM shop_order_items i WHERE i.order_id = o.id)
+		FROM shop_orders o WHERE o.org_id = $1 AND o.source = $2 AND o.external_ref = $3`,
+		im.opt.OrgID, shopifyOrderSource, p.ExternalRef).Scan(&have.ID, &have.Status, &have.Refunded, &have.PaidAt, &have.ShippedAt, &have.Cancelled,
+		&have.ShopifyID, &have.Total, &have.Email, &have.Lines)
 	switch {
 	case err == nil:
+		// A different order under a known name is reported and left alone:
+		// neither refreshed nor counted as unchanged.
+		if diff := have.conflicts(p, o.ShopifyID); len(diff) > 0 {
+			im.rep.problem("orders: %s: already stored, but the file has another %s; the stored order was left as it is",
+				o.Name, strings.Join(diff, ", "))
+			return outConflict, nil
+		}
 		if have.matches(p) {
 			return outUnchanged, nil
 		}

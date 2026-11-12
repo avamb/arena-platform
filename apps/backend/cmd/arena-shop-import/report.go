@@ -14,13 +14,19 @@ const (
 	outUnchanged = "unchanged"
 	outSkipped   = "skipped"
 	outFailed    = "failed"
+	// outConflict is a known entity the file describes differently (an order
+	// whose Shopify id, total, buyer or lines differ from what is stored). The
+	// stored record is left as it is and the run reports it (F-SH-01).
+	outConflict = "conflict"
 )
 
 // Counter tallies one kind of entity. Reasons explain skipped and failed
 // ones (and warnings), keyed by a short text.
 type Counter struct {
 	Created, Updated, Unchanged, Skipped, Failed int
-	Reasons                                      map[string]int
+	// Conflict counts known entities the file disagrees with (see outConflict).
+	Conflict int
+	Reasons  map[string]int
 }
 
 func (c *Counter) add(outcome, reason string) {
@@ -35,6 +41,8 @@ func (c *Counter) add(outcome, reason string) {
 		c.Skipped++
 	case outFailed:
 		c.Failed++
+	case outConflict:
+		c.Conflict++
 	}
 	if reason != "" {
 		if c.Reasons == nil {
@@ -44,7 +52,9 @@ func (c *Counter) add(outcome, reason string) {
 	}
 }
 
-func (c *Counter) total() int { return c.Created + c.Updated + c.Unchanged + c.Skipped + c.Failed }
+func (c *Counter) total() int {
+	return c.Created + c.Updated + c.Unchanged + c.Skipped + c.Failed + c.Conflict
+}
 
 // Report is what a run did (or, in a dry run, would do). It carries counts,
 // product handles and amounts, never a customer's name, e-mail or phone.
@@ -116,12 +126,12 @@ func writeCounter(w io.Writer, name string, c *Counter, dry bool) {
 	if c.total() == 0 && len(c.Reasons) == 0 {
 		return
 	}
-	verbs := [5]string{"created", "updated", "unchanged", "skipped", "failed"}
+	verbs := [6]string{"created", "updated", "unchanged", "skipped", "failed", "in conflict with the file"}
 	if dry {
-		verbs = [5]string{"would be created", "would be updated", "unchanged", "skipped", "would fail"}
+		verbs = [6]string{"would be created", "would be updated", "unchanged", "skipped", "would fail", "in conflict with the file"}
 	}
 	var parts []string
-	for i, n := range []int{c.Created, c.Updated, c.Unchanged, c.Skipped, c.Failed} {
+	for i, n := range []int{c.Created, c.Updated, c.Unchanged, c.Skipped, c.Failed, c.Conflict} {
 		if n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", n, verbs[i]))
 		}

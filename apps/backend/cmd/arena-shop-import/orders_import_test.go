@@ -148,3 +148,40 @@ func TestVariantIndex_AmbiguousNamesMatchNothing(t *testing.T) {
 		t.Fatal("two variants of one name must not be guessed between")
 	}
 }
+
+func TestExistingOrder_ConflictsNamesWhatDiffers(t *testing.T) {
+	have := existingOrder{ShopifyID: "9000000001", Total: 25000, Email: "a@example.com", Lines: 1}
+	same := plannedOrder{Total: 25000, BuyerEmail: "a@example.com", Lines: make([]plannedLine, 1)}
+	if d := have.conflicts(same, "9000000001"); len(d) != 0 {
+		t.Fatalf("the same order must not conflict: %v", d)
+	}
+	// An export without an id (or a stored order without one) cannot tell ids apart.
+	if d := have.conflicts(same, ""); len(d) != 0 {
+		t.Fatalf("a missing id is not a conflict: %v", d)
+	}
+	other := plannedOrder{Total: 45000, BuyerEmail: "b@example.com", Lines: make([]plannedLine, 2)}
+	got := strings.Join(have.conflicts(other, "9999999999"), ",")
+	if got != "Shopify id,total,buyer e-mail,number of lines" {
+		t.Fatalf("conflicts = %q", got)
+	}
+}
+
+func TestReport_ConflictIsCountedAndPrinted(t *testing.T) {
+	var c Counter
+	c.add(outUnchanged, "")
+	c.add(outConflict, "")
+	if c.Conflict != 1 || c.Unchanged != 1 || c.total() != 2 {
+		t.Fatalf("counter: %+v", c)
+	}
+	r := &Report{OrdersImport: c}
+	r.problem("orders: %s: already stored, but the file has another %s", "#1001", "total")
+	var b strings.Builder
+	r.Write(&b)
+	out := b.String()
+	if !strings.Contains(out, "1 unchanged, 1 in conflict with the file") || !strings.Contains(out, "#1001: already stored") {
+		t.Fatalf("report:\n%s", out)
+	}
+	if failures(r) != 0 {
+		t.Fatalf("a conflict is reported, it does not fail the run")
+	}
+}
