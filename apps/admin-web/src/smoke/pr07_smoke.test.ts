@@ -261,3 +261,62 @@ describe("PR-07 apps/admin-web/Dockerfile", () => {
     expect(dockerfile).not.toMatch(/VITE_API_BASE_URL=https?:\/\/[^$]/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 7. Security headers, favicon and version.json (F-FC-04, acceptance run
+//    2026-11-09): the live console had no CSP and no frame protection, a 404
+//    favicon and an HTML answer for /version.json.
+// ---------------------------------------------------------------------------
+
+describe("F-FC-04 admin-web headers, favicon and build id", () => {
+  const nginxConf = readFileSync(join(ADMIN_WEB_ROOT, "nginx.conf"), "utf8");
+  const headers = readFileSync(
+    join(ADMIN_WEB_ROOT, "security-headers.conf.template"),
+    "utf8",
+  );
+  const dockerfile = readFileSync(join(ADMIN_WEB_ROOT, "Dockerfile"), "utf8");
+
+  it("sends a CSP that forbids framing and names the API origin", () => {
+    expect(headers).toMatch(/Content-Security-Policy/);
+    expect(headers).toMatch(/frame-ancestors 'none'/);
+    expect(headers).toMatch(/connect-src 'self' __API_ORIGIN__/);
+    expect(headers).toMatch(/script-src 'self'/);
+    expect(headers).toMatch(/X-Frame-Options "DENY"/);
+    expect(headers).toMatch(/Referrer-Policy/);
+  });
+
+  it("allows the OpenStreetMap pin preview frame and nothing else", () => {
+    expect(headers).toMatch(/frame-src https:\/\/www\.openstreetmap\.org;/);
+  });
+
+  it("includes the headers file in EVERY location (add_header is not inherited)", () => {
+    // One include per location block plus the server level.
+    const locations = (nginxConf.match(/^\s*location\s/gm) ?? []).length;
+    const includes = (
+      nginxConf.match(/include \/etc\/nginx\/snippets\/security-headers\.conf;/g) ?? []
+    ).length;
+    expect(locations).toBeGreaterThanOrEqual(5);
+    expect(includes).toBe(locations + 1);
+  });
+
+  it("serves /version.json as a real file, not the SPA fallback", () => {
+    expect(nginxConf).toMatch(/location = \/version\.json/);
+    const block = nginxConf.slice(nginxConf.indexOf("location = /version.json"));
+    expect(block.slice(0, block.indexOf("}"))).toMatch(/try_files \$uri =404/);
+    const vite = readFileSync(join(ADMIN_WEB_ROOT, "vite.config.ts"), "utf8");
+    expect(vite).toMatch(/fileName: "version\.json"/);
+  });
+
+  it("ships the favicon index.html points to", () => {
+    const html = readFileSync(join(ADMIN_WEB_ROOT, "index.html"), "utf8");
+    expect(html).toMatch(/href="\/favicon\.svg"/);
+    expect(html).toMatch(/<html lang="en">/);
+    expect(readFileSync(join(ADMIN_WEB_ROOT, "public/favicon.svg"), "utf8")).toMatch(/<svg/);
+  });
+
+  it("bakes the API origin into the headers file at image build", () => {
+    expect(dockerfile).toMatch(/security-headers\.conf\.template/);
+    expect(dockerfile).toMatch(/__API_ORIGIN__/);
+    expect(dockerfile).toMatch(/\/etc\/nginx\/snippets\/security-headers\.conf/);
+  });
+});

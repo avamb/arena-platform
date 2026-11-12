@@ -107,8 +107,9 @@ func Reissue(ctx context.Context, db Beginner, in Input) (Result, error) {
 	if err == nil {
 		return res, nil
 	}
-	// Two identical requests at once: the loser hits the key's unique
-	// constraint and answers what the winner wrote.
+	// Two identical requests at once: the loser waits on the subject lock and
+	// then replays the winner's row inside its transaction. If it still hits
+	// the key's unique constraint, it answers what the winner wrote.
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "ticket_reissues_org_key_uq" {
 		return replayOutsideTx(ctx, db, in, fp)
@@ -181,6 +182,10 @@ func reissueTx(ctx context.Context, db Beginner, in Input, fp string) (Result, e
 	o, err := loadOrder(ctx, tx, in.OrgID, in.OrderID, true)
 	if err != nil {
 		return Result{}, err
+	}
+	// A request that waited on the lock sees the winner's committed row now.
+	if res, found, err := replay(ctx, tx, in, fp); found || err != nil {
+		return res, err
 	}
 	if o.Status != "paid" && o.Status != "partially_refunded" {
 		return Result{}, ErrNotPaid

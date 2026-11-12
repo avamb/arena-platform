@@ -56,7 +56,7 @@ func (h *Handler) changeUserLifecycle(w http.ResponseWriter, r *http.Request, de
 			return
 		}
 		if err == nil {
-			_, err = tx.Exec(r.Context(), `UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, userID)
+			_, err = tx.Exec(r.Context(), `UPDATE refresh_tokens SET revoked_at = now(), revoke_reason = 'revoked_all' WHERE user_id = $1 AND revoked_at IS NULL`, userID)
 		}
 	} else {
 		var changed uuid.UUID
@@ -149,7 +149,7 @@ func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err == nil {
-		_, err = tx.Exec(r.Context(), `UPDATE refresh_tokens SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL`, userID)
+		_, err = tx.Exec(r.Context(), `UPDATE refresh_tokens SET revoked_at=now(), revoke_reason='revoked_all' WHERE user_id=$1 AND revoked_at IS NULL`, userID)
 	}
 	if err != nil {
 		h.adminRoleDependencyUnavailable(w, r)

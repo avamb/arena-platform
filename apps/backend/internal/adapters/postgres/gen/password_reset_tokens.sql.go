@@ -52,15 +52,20 @@ func (q *Queries) GetPasswordResetToken(ctx context.Context, token string) (GetP
 	return i, err
 }
 
-const markPasswordResetTokenUsed = `-- name: MarkPasswordResetTokenUsed :exec
+const consumePasswordResetToken = `-- name: ConsumePasswordResetToken :one
 UPDATE password_reset_tokens
 SET used_at = now()
-WHERE token = $1
+WHERE token = $1 AND used_at IS NULL AND expires_at > now()
+RETURNING user_id
 `
 
-// MarkPasswordResetTokenUsed stamps used_at on the token row so subsequent
-// replay attempts are rejected with 410 Gone.
-func (q *Queries) MarkPasswordResetTokenUsed(ctx context.Context, token string) error {
-	_, err := q.db.Exec(ctx, markPasswordResetTokenUsed, token)
-	return err
+// ConsumePasswordResetToken stamps used_at on an unused, unexpired token and
+// returns its owner. A token is
+// consumed at most once. Returns pgx.ErrNoRows when the token is unknown,
+// already used or expired.
+func (q *Queries) ConsumePasswordResetToken(ctx context.Context, token string) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, consumePasswordResetToken, token)
+	var userID uuid.UUID
+	err := row.Scan(&userID)
+	return userID, err
 }

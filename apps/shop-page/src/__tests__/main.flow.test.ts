@@ -125,6 +125,19 @@ describe('storefront wiring', () => {
     expect(robots()).toBe('noindex');
   });
 
+  it('F-SH-05: a product or page that does not exist draws the not-found page and is not for the index', async () => {
+    const robots = (): string | null => document.querySelector('meta[name="robots"]')?.getAttribute('content') ?? null;
+    await go('/einatwinery/products/no-such-product');
+    await until(() => document.querySelector('.template-404') !== null, 'the not-found page of a product');
+    expect(robots()).toBe('noindex');
+    await go('/einatwinery/pages/no-such-page');
+    await until(() => document.querySelector('.template-404') !== null && robots() === 'noindex', 'the not-found page of a page');
+    // A real page is indexable again.
+    await go('/einatwinery/products/a');
+    await until(() => document.querySelector('.template-404') === null && document.querySelector('form[data-type="add-to-cart-form"]') !== null, 'a real product');
+    expect(robots()).toBeNull();
+  });
+
   it('SA-22: opening the checkout reloads the catalog without the browser cache', async () => {
     const before = calls.filter((c) => c.url.endsWith('/v1/public/shop/einatwinery')).length;
     await go('/einatwinery/checkout');

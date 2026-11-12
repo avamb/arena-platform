@@ -400,9 +400,11 @@ func (h *Handler) DownloadMedia(w http.ResponseWriter, r *http.Request) {
 		}
 		if vres, ok := h.media.OpenVariant(ctx, obj, wantW); ok {
 			defer func() { _ = vres.Body.Close() }()
-			if vres.ContentType != "" {
-				w.Header().Set("Content-Type", vres.ContentType)
+			variantType := vres.ContentType
+			if variantType == "" {
+				variantType = obj.ContentType
 			}
+			setDownloadHeaders(w.Header(), variantType, obj.OwnerType)
 			w.Header().Set("Content-Length", strconv.FormatInt(vres.Size, 10))
 			w.Header().Set("Cache-Control", "private, max-age=60")
 			w.WriteHeader(http.StatusOK)
@@ -427,20 +429,40 @@ func (h *Handler) DownloadMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	defer func() { _ = res.Body.Close() }()
 
-	if obj.ContentType != "" {
-		w.Header().Set("Content-Type", obj.ContentType)
-	}
-	if obj.OwnerType == mediastore.OwnerPaymentReceipt {
-		// The copy may be the provider's own HTML page: it is downloaded,
-		// never rendered on the API's origin.
-		w.Header().Set("Content-Disposition", "attachment")
-		w.Header().Set("Content-Security-Policy", "sandbox")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-	}
+	setDownloadHeaders(w.Header(), obj.ContentType, obj.OwnerType)
 	w.Header().Set("Content-Length", strconv.FormatInt(obj.ByteSize, 10))
 	w.Header().Set("Cache-Control", "private, max-age=60")
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.Copy(w, res.Body)
+}
+
+// inlineSafeTypes are the pictures that may be shown without a download prompt.
+var inlineSafeTypes = map[string]bool{
+	"image/png":     true,
+	"image/jpeg":    true,
+	"image/gif":     true,
+	"image/webp":    true,
+	"image/avif":    true,
+	"image/svg+xml": true,
+}
+
+// setDownloadHeaders sets the type and the hardening headers of a download.
+// Every answer is sandboxed and not sniffed; anything but an inline-safe
+// picture (and any payment receipt) is an attachment.
+func setDownloadHeaders(h http.Header, contentType, ownerType string) {
+	if strings.TrimSpace(contentType) == "" {
+		contentType = "application/octet-stream"
+	}
+	h.Set("Content-Type", contentType)
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Content-Security-Policy", "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; sandbox")
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		mediaType = strings.ToLower(strings.TrimSpace(contentType))
+	}
+	if ownerType == mediastore.OwnerPaymentReceipt || !inlineSafeTypes[mediaType] {
+		h.Set("Content-Disposition", "attachment")
+	}
 }
 
 // absoluteSignedURL prefixes a host-relative signed path with the API

@@ -11134,8 +11134,9 @@ export interface paths {
          *     in (1)`, `Refunded / cancelled (3)`. Checked in is an admitted scan or
          *     `used_at`. `Checked out (2)` is not derived, because the platform
          *     stores no scan direction. Status 3 carries a reason: refunded, cancelled, session
-         *     cancelled, or replaced (the ticket went to a wrong e-mail address and
-         *     was reissued). Labels follow `locale` (`en`, `ru`, `es`). Same
+         *     cancelled, or replaced (the ticket was reissued, and the reason is the
+         *     one the organizer chose: a wrong e-mail address, a stranger who got the
+         *     ticket, or just "replaced"). Labels follow `locale` (`en`, `ru`, `es`). Same
          *     csvexport rules and 50 000-row cap as the sales file. The same file
          *     is built fresh when it is sent automatically to the members who
          *     turned the guest list on (`PUT .../guest-list-subscription`) and to
@@ -40497,7 +40498,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Rate limit exceeded — too many login attempts for this IP+email */
+            /** @description Rate limit exceeded — too many login attempts for this IP+email (`auth.rate_limited`, with `Retry-After` in seconds). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -40548,7 +40549,12 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Refresh token invalid, expired, or revoked */
+            /**
+             * @description Refresh token invalid, expired, or revoked (`auth.invalid_refresh_token`,
+             *     `auth.refresh_token_expired`). A token that was already exchanged for a
+             *     new one ends every session of the account (`auth.session_compromised`);
+             *     a token ended by sign-out or by such a sweep is only refused.
+             */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -40697,7 +40703,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Too many wrong passwords (`auth.rate_limited`). */
+            /** @description Too many wrong passwords (`auth.rate_limited`, with `Retry-After` in seconds). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -40757,7 +40763,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Too many attempts from this address (`auth.rate_limited`). */
+            /** @description Too many attempts from this address (`auth.rate_limited`, with `Retry-After` in seconds). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -40826,7 +40832,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Too many attempts from this address (`auth.rate_limited`). */
+            /** @description Too many attempts from this address (`auth.rate_limited`, with `Retry-After` in seconds). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -64126,7 +64132,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Streaming response carrying the stored bytes, or the resized copy when `w` asked for one (then `Content-Type` and `Content-Length` are the copy's). */
+            /** @description Streaming response carrying the stored bytes, or the resized copy when `w` asked for one (then `Content-Type` and `Content-Length` are the copy's). Every answer carries `X-Content-Type-Options` nosniff and a sandbox `Content-Security-Policy`; any type other than a PNG, JPEG, GIF, WebP, AVIF or SVG picture also carries `Content-Disposition` attachment. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -65114,6 +65120,14 @@ export interface operations {
              *     `PUBLIC_TICKETS_BASE_URL` fallback is configured, or
              *     `idempotency.key_too_long` for an `Idempotency-Key` over 255
              *     bytes.
+             *
+             *     `checkout.invalid_email` (`details.field` is `holder_email`) when
+             *     the buyer's e-mail address is malformed: spaces, no domain, a
+             *     domain without a dot, or a top-level domain that is not letters
+             *     only (an IDN `xn--` one is accepted). It is refused before any
+             *     hold or order is written. The same code is answered when the
+             *     payment provider refuses the address after the hold was taken;
+             *     the hold is then released and the order cancelled at once.
              */
             400: {
                 headers: {
@@ -65202,7 +65216,9 @@ export interface operations {
              *     fields, consent) could not be read, or
              *     `checkout.payment_start_failed` — the payment provider refused to
              *     create the hosted checkout page. Nothing was charged and no
-             *     redirect URL exists; the hold expires on its own.
+             *     redirect URL exists. When the provider refused for good (it
+             *     answered and created nothing) the hold is released and the order
+             *     cancelled at once; otherwise the hold expires on its own.
              *
              *     `checkout.payment_start_failed` is answered with 503 rather than
              *     502 on purpose: this endpoint is public and fronted by Cloudflare,
