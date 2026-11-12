@@ -194,13 +194,26 @@ func (h *Handler) writeAudit(ctx context.Context, tx pgx.Tx, r *http.Request, ac
 	if h.audit == nil {
 		return nil
 	}
+	return h.audit.WriteTx(ctx, tx, h.auditEvent(ctx, r, action, in, meta))
+}
+
+// writeAuditNoTx records a read that changes nothing (the administrator's
+// source download) outside any transaction.
+func (h *Handler) writeAuditNoTx(ctx context.Context, r *http.Request, action string, in gen.VenuePlanIntakeRow, meta map[string]any) error {
+	if h.audit == nil {
+		return nil
+	}
+	return h.audit.Write(ctx, h.auditEvent(ctx, r, action, in, meta))
+}
+
+func (h *Handler) auditEvent(ctx context.Context, r *http.Request, action string, in gen.VenuePlanIntakeRow, meta map[string]any) audit.Event {
 	actor, _ := auth.ActorFromContext(ctx)
 	if meta == nil {
 		meta = map[string]any{}
 	}
 	meta["org_id"] = in.OrgID.String()
 	meta["venue_id"] = in.VenueID.String()
-	return h.audit.WriteTx(ctx, tx, audit.Event{
+	return audit.Event{
 		OccurredAt:   h.now().UTC(),
 		ActorType:    "user",
 		ActorID:      actor.ID,
@@ -211,7 +224,7 @@ func (h *Handler) writeAudit(ctx context.Context, tx pgx.Tx, r *http.Request, ac
 		TraceID:      logging.TraceID(ctx),
 		IP:           httputil.ExtractClientIP(r),
 		Metadata:     meta,
-	})
+	}
 }
 
 // moveState moves the locked intake from its state to `to`, checking the

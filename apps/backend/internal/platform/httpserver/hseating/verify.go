@@ -86,12 +86,20 @@ func NormalizeNeedsFixNote(raw string) (string, bool) {
 	return note, n >= 1 && n <= needsFixNoteMax
 }
 
+// IsVerifiedTemplate reports whether a plan is a venue template: visibility
+// operator_verified AND verification_state verified. A plan that carries
+// operator_verified from before the verification routes (state NULL) is not a
+// template until the verify route is run on it.
+func IsVerifiedTemplate(visibility string, verificationState *string) bool {
+	return visibility == VisibilityOperatorVerified && verificationState != nil && *verificationState == VerificationVerified
+}
+
 // ForkableByOtherOrganization reports whether a plan of one organization may
-// be copied by another one: an active plan that the platform verified
-// (operator_verified) or that its owner opened for copying (public_template).
+// be copied by another one: an active verified template (IsVerifiedTemplate)
+// or an active plan its owner opened for copying (public_template).
 // shared_read is readable by other organizations but not copied.
-func ForkableByOtherOrganization(status, visibility string) bool {
-	return status == "active" && (visibility == VisibilityOperatorVerified || visibility == VisibilityPublicTemplate)
+func ForkableByOtherOrganization(status, visibility string, verificationState *string) bool {
+	return status == "active" && (IsVerifiedTemplate(visibility, verificationState) || visibility == VisibilityPublicTemplate)
 }
 
 // VisibilityChange is the decision on a visibility asked for through plan

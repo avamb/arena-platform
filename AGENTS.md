@@ -730,7 +730,7 @@ Spec 64: intake states, private plan sources, approve, superadmin verification a
 * Approve is ONE transaction and the billing fact sits behind a SAVEPOINT
 * operator_verified is set ONLY by the verify route
 * Fork rules: a private plan of another organization is not copied
-* A new version posted by the OWNER resets a verified template, a superadmin's does not
+* A new version on ANY write path resets a verified template, only a superadmin's with X-Admin-Reason does not
 * Four events tell every platform administrator through the job venue_plan.notify
 * The notify handler sends nothing twice and tells no person
 * The bot claims organizer notices with POST /v1/bot/venue-plan-notices/claim

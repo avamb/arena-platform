@@ -52,6 +52,11 @@ func (h *Handler) HandleAdminApprove(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Checked early so nothing is read or stored for a caller without the
+	// claim; the locked transaction checks it again.
+	if !holdsClaim(w, r, in) {
+		return
+	}
 	h.approve(w, r, in, true, reason)
 }
 
@@ -159,7 +164,9 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, in gen.VenuePl
 			st.drop(ctx)
 		}
 	}()
-	h.locked(w, r, in.ID, admin, http.StatusOK, func(ctx context.Context, tx pgx.Tx, q *gen.Queries, cur gen.VenuePlanIntakeRow) (gen.VenuePlanIntakeRow, bool) {
+	// committed is true only after the transaction really committed: a failed
+	// commit removes the stored SVG again.
+	committed = h.locked(w, r, in.ID, admin, http.StatusOK, func(ctx context.Context, tx pgx.Tx, q *gen.Queries, cur gen.VenuePlanIntakeRow) (gen.VenuePlanIntakeRow, bool) {
 		if cur.OrgID != in.OrgID {
 			writeErr(w, r, http.StatusNotFound, "venue_plan_intake.not_found", "hall plan intake not found")
 			return cur, false
@@ -169,7 +176,7 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, in gen.VenuePl
 			wrongState(w, r, cur.State)
 			return cur, false
 		}
-		if admin && !claimedByCaller(w, r, cur) {
+		if admin && !holdsClaim(w, r, cur) {
 			return cur, false
 		}
 		if cur.CurrentDraft == nil || *cur.CurrentDraft != d.N {
@@ -234,28 +241,39 @@ func (h *Handler) approve(w http.ResponseWriter, r *http.Request, in gen.VenuePl
 			h.failed(w, r, "notify", err)
 			return cur, false
 		}
-		committed = true // the deferred cleanup must not remove the SVG of a committed plan
 		return out, true
 	})
 }
 
 // billingFact writes the free venue_plan_intake fact behind a SAVEPOINT. It
-// never fails the approval: an organization without a billing account is
-// skipped, any other error is logged.
+// never fails the approval: the reads and the write all run inside the
+// SAVEPOINT, so any error there rolls back to it and leaves the approval
+// transaction usable; an organization without a billing account is skipped,
+// any other error is logged.
 func (h *Handler) billingFact(ctx context.Context, tx pgx.Tx, q *gen.Queries, in gen.VenuePlanIntakeRow, admin bool) {
-	sources, err := q.ListVenuePlanIntakeSources(ctx, in.ID)
+	sp, err := tx.Begin(ctx)
 	if err != nil {
-		h.logger.Warn("venue plan intake: billing fact skipped", "intake_id", in.ID.String(), "error", err.Error())
+		h.logger.Warn("venue plan intake: billing savepoint failed", "intake_id", in.ID.String(), "error", err.Error())
 		return
 	}
-	drafts, err := q.ListVenuePlanDrafts(ctx, in.ID)
-	if err != nil {
+	skip := func(err error) {
+		_ = sp.Rollback(ctx)
 		h.logger.Warn("venue plan intake: billing fact skipped", "intake_id", in.ID.String(), "error", err.Error())
+	}
+	sq := q.WithTx(sp)
+	sources, err := sq.ListVenuePlanIntakeSources(ctx, in.ID)
+	if err != nil {
+		skip(err)
 		return
 	}
-	questions, err := q.ListVenuePlanQuestions(ctx, in.ID)
+	drafts, err := sq.ListVenuePlanDrafts(ctx, in.ID)
 	if err != nil {
-		h.logger.Warn("venue plan intake: billing fact skipped", "intake_id", in.ID.String(), "error", err.Error())
+		skip(err)
+		return
+	}
+	questions, err := sq.ListVenuePlanQuestions(ctx, in.ID)
+	if err != nil {
+		skip(err)
 		return
 	}
 	fact := billing.VenuePlanIntakeFact{
@@ -269,11 +287,6 @@ func (h *Handler) billingFact(ctx context.Context, tx pgx.Tx, q *gen.Queries, in
 		if d.Author == string(venueplan.AuthorOperator) || d.Author == string(venueplan.AuthorOperatorSVG) {
 			fact.OperatorInvolved = true
 		}
-	}
-	sp, err := tx.Begin(ctx)
-	if err != nil {
-		h.logger.Warn("venue plan intake: billing savepoint failed", "intake_id", in.ID.String(), "error", err.Error())
-		return
 	}
 	if err := billing.RecordVenuePlanIntake(ctx, sp, fact); err != nil {
 		_ = sp.Rollback(ctx)

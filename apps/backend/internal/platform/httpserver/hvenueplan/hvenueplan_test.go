@@ -9,8 +9,13 @@ import (
 	"image/png"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+
+	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan"
 )
 
@@ -115,6 +120,75 @@ func TestStripJPEGMetadata_DropsEXIFKeepsPictureAndOrientation(t *testing.T) {
 	}
 	if _, _, err := stripJPEGMetadata([]byte{0xFF, 0xD8, 0x00}); err == nil {
 		t.Error("a broken JPEG was accepted")
+	}
+}
+
+// A phone appends more pictures (MPF) with their own EXIF after the EOI of the
+// main picture: the stored JPEG ends at the first EOI after the scan data.
+func TestStripJPEGMetadata_EndsAtFirstEOIAfterScan(t *testing.T) {
+	plain := encoded(t, func(b *bytes.Buffer, i image.Image) error { return jpeg.Encode(b, i, nil) })
+	if !bytes.HasSuffix(plain, []byte{0xFF, 0xD9}) {
+		t.Fatal("the test JPEG does not end with EOI")
+	}
+	second := append([]byte{0xFF, 0xD8, 0xFF, 0xE1, 0x00, 0x12}, []byte("Exif\x00\x00GPS-TRAILER")...)
+	second = append(second, 0xFF, 0xD9)
+	in := append(append(append([]byte{}, plain...), second...), []byte("MPF-TRAILING-BYTES")...)
+
+	out, _, err := stripJPEGMetadata(in)
+	if err != nil {
+		t.Fatalf("strip: %v", err)
+	}
+	if !bytes.Equal(out, plain) {
+		t.Errorf("stored %d bytes, want the %d bytes up to the first EOI", len(out), len(plain))
+	}
+	for _, s := range []string{"GPS-TRAILER", "MPF-TRAILING-BYTES"} {
+		if bytes.Contains(out, []byte(s)) {
+			t.Errorf("%q survived after the EOI", s)
+		}
+	}
+	// Stuffed bytes and restart markers inside the scan do not end it.
+	scan := []byte{0x12, 0xFF, 0x00, 0x34, 0xFF, 0xD3, 0x56, 0xFF, 0xD9, 0x99}
+	if got := scanEnd(scan, 0); got != 7 {
+		t.Errorf("scanEnd = %d, want 7", got)
+	}
+}
+
+// The request that lost the Idempotency-Key insert race answers like a
+// replay: an intake of another venue is 409 idempotency_key_reused.
+func TestAnswerExisting_OtherVenueIs409(t *testing.T) {
+	h := New(nil, nil, nil, nil)
+	rec := httptest.NewRecorder()
+	in := gen.VenuePlanIntakeRow{ID: uuid.New(), VenueID: uuid.New()}
+	h.answerExisting(rec, httptest.NewRequest(http.MethodPost, "/", nil), in, uuid.New())
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "venue_plan_intake.idempotency_key_reused") {
+		t.Errorf("answer %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Every administrator write but claim needs the caller's own claim.
+func TestHoldsClaim(t *testing.T) {
+	me, other := uuid.New(), uuid.New()
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	req = req.WithContext(auth.WithActor(req.Context(), auth.Actor{ID: me.String()}))
+	cases := []struct {
+		name     string
+		operator *uuid.UUID
+		ok       bool
+		code     string
+	}{
+		{"unclaimed", nil, false, "venue_plan_intake.not_claimed"},
+		{"claimed by another", &other, false, "venue_plan_intake.claimed_by_other"},
+		{"claimed by the caller", &me, true, ""},
+	}
+	for _, c := range cases {
+		rec := httptest.NewRecorder()
+		got := holdsClaim(rec, req, gen.VenuePlanIntakeRow{OperatorID: c.operator})
+		if got != c.ok {
+			t.Errorf("%s: %v, want %v", c.name, got, c.ok)
+		}
+		if !c.ok && (rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), c.code)) {
+			t.Errorf("%s: %d %s", c.name, rec.Code, rec.Body.String())
+		}
 	}
 }
 

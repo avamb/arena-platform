@@ -3356,9 +3356,12 @@ export interface paths {
          * @description Guardrail #13. Copies a seating plan of another organization into a
          *     target owner_org_id. The source must be active and open for copying:
          *     a venue template that a platform superadmin verified
-         *     (operator_verified) or a plan its owner opened (public_template).
-         *     Any other source (private, shared_read, draft, archived) answers 404
-         *     seating_plan.not_found. The current version geometry (if any) is
+         *     (operator_verified with verification_state verified) or a plan its
+         *     owner opened (public_template). Any other source (private,
+         *     shared_read, draft, archived, operator_verified without a verified
+         *     state) answers 404 seating_plan.not_found. A venue_id in the body
+         *     must be the target organization's own venue or a verified venue,
+         *     otherwise 404 venue.not_found. The current version geometry (if any) is
          *     duplicated into the new plan as version 1 in the same transaction, so
          *     later versions, category names and annotations of the copy never
          *     change the source. The copy is private and never sent for
@@ -3385,8 +3388,8 @@ export interface paths {
          * List the verified seating plan templates of a venue
          * @description Returns the venue templates an organization may copy with
          *     POST /v1/seating-plans/{id}/fork: the active seating plans of the venue
-         *     that a platform superadmin verified (visibility operator_verified) and
-         *     that have a current version. The venue must be the organization's own
+         *     that a platform superadmin verified (visibility operator_verified and
+         *     verification_state verified) and that have a current version. The venue must be the organization's own
          *     or a venue of another organization that the platform verified
          *     (migration 0182); any other venue answers 404 venue.not_found.
          *     Requires JWT, the seating_plan.read permission and membership of the
@@ -7391,7 +7394,7 @@ export interface paths {
         };
         /**
          * Admin - download a file of a hall plan intake
-         * @description Streams the file as an attachment with Content-Security-Policy sandbox, nosniff and no caching; format=png streams the PNG copy. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
+         * @description Streams the file as an attachment with Content-Security-Policy sandbox, nosniff and no caching; format=png streams the PNG copy. Every download writes the audit event v1.venue_plan_intake.source_download with the reason, the file id and its sha256. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
          */
         get: operations["downloadAdminVenuePlanIntakeSource"];
         put?: never;
@@ -7457,7 +7460,7 @@ export interface paths {
          *     geometry fits BEFORE anything is stored; a refused SVG answers 422
          *     with the list of errors. The draft (author operator_svg) becomes the
          *     current draft; the intake stays with the administrator until return.
-         *     The intake must be in operator and not held by another administrator.
+         *     The intake must be in operator and taken by the caller with claim.
          *     Requires JWT, venue_plan_intake.curate, a platform superadmin and
          *     X-Admin-Reason.
          */
@@ -7479,7 +7482,7 @@ export interface paths {
         put?: never;
         /**
          * Admin - return the draft to the organizer
-         * @description Moves the intake from operator to review with an optional note (up to 2000 characters) and leaves a notice for the organizer. The intake needs a current draft. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
+         * @description Moves the intake from operator to review with an optional note (up to 2000 characters) and leaves a notice for the organizer. The intake needs a current draft and must be taken by the caller with claim. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
          */
         post: operations["returnAdminVenuePlanIntake"];
         delete?: never;
@@ -7499,7 +7502,7 @@ export interface paths {
         put?: never;
         /**
          * Admin - approve the current draft as the hall plan
-         * @description Same as the organization's approve, from review or operator, and leaves an approved notice for the organizer. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
+         * @description Same as the organization's approve, from review or operator, and leaves an approved notice for the organizer. The intake must be taken by the caller with claim. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
          */
         post: operations["approveAdminVenuePlanIntake"];
         delete?: never;
@@ -7519,7 +7522,7 @@ export interface paths {
         put?: never;
         /**
          * Admin - close an intake the plan cannot be built from
-         * @description Moves the intake from operator to rejected with the reason (1 to 1000 characters) the organizer will read, and leaves a rejected notice. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
+         * @description Moves the intake from operator to rejected with the reason (1 to 1000 characters) the organizer will read, and leaves a rejected notice. The intake must be taken by the caller with claim. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
          */
         post: operations["rejectAdminVenuePlanIntake"];
         delete?: never;
@@ -50550,8 +50553,9 @@ export interface operations {
             };
             /**
              * @description seating_plan.not_found: the source plan does not exist, or it
-             *     belongs to another organization and is not an active
-             *     operator_verified or public_template plan
+             *     belongs to another organization and is not an active verified
+             *     template or public_template plan. venue.not_found: venue_id is
+             *     neither the target organization's own venue nor a verified venue
              */
             404: {
                 headers: {
@@ -66456,7 +66460,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The intake is not in operator, or another administrator holds it. */
+            /** @description The intake is not in operator, nobody has taken it (venue_plan_intake.not_claimed), or another administrator holds it (venue_plan_intake.claimed_by_other). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -66579,7 +66583,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The intake is not in operator, has no draft, or another administrator holds it. */
+            /** @description The intake is not in operator, has no draft, nobody has taken it (venue_plan_intake.not_claimed), or another administrator holds it (venue_plan_intake.claimed_by_other). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -66681,7 +66685,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The intake is not in review or operator, draft is not the current one, or another administrator holds it. */
+            /** @description The intake is not in review or operator, draft is not the current one, nobody has taken it (venue_plan_intake.not_claimed), or another administrator holds it (venue_plan_intake.claimed_by_other). */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -66786,7 +66790,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The intake is not in operator, or another administrator holds it. */
+            /** @description The intake is not in operator, nobody has taken it (venue_plan_intake.not_claimed), or another administrator holds it (venue_plan_intake.claimed_by_other). */
             409: {
                 headers: {
                     [name: string]: unknown;

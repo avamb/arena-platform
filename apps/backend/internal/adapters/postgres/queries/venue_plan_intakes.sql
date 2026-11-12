@@ -284,6 +284,7 @@ JOIN   venues v        ON v.id = p.venue_id
 LEFT JOIN seating_plan_versions sv ON sv.id = p.current_version_id
 WHERE  p.venue_id = $1
   AND  p.visibility = 'operator_verified'
+  AND  p.verification_state = 'verified'
   AND  p.status = 'active'
   AND  p.deleted_at IS NULL
   AND  p.current_version_id IS NOT NULL

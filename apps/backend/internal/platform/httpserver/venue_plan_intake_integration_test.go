@@ -359,6 +359,13 @@ func TestVenuePlanIntake_FilesToAdministratorAndApproval(t *testing.T) {
 	if r := e.do(t, http.MethodGet, adminSrc, e.super, "check the plan", "", nil, nil); r.status != http.StatusOK || !bytes.Equal(r.body, got.body) {
 		t.Errorf("admin download: %d", r.status)
 	}
+	// The administrator's download is in the audit log: reason, file id and
+	// sha256, never the content. The organization's own download is not.
+	if n := e.count(t, `SELECT count(*) FROM audit_events a JOIN venue_plan_intake_sources s ON s.id::text = a.metadata->>'source_id'
+		WHERE a.action = 'v1.venue_plan_intake.source_download' AND a.resource_id = $1 AND a.metadata->>'reason' = 'check the plan'
+		  AND a.metadata->>'sha256' = s.sha256 AND s.id = $2 AND a.metadata::text NOT LIKE '%GPSSECRET%'`, id, jpg["id"].(string)); n != 1 {
+		t.Errorf("source download audit rows: %d, want 1", n)
+	}
 
 	// The administrator takes it, draws the plan, returns it.
 	adm := "/v1/admin/plan-intakes/" + id
@@ -440,6 +447,9 @@ func TestVenuePlanIntake_BadAdminDraftStoresNothing(t *testing.T) {
 	e := newVPIEnv(t)
 	id := e.create(t, e.orgA, e.venueA, e.ownerA, nil, vpiFile{"plan.pdf", vpiPDF()}).intake(t)["id"].(string)
 	adm := "/v1/admin/plan-intakes/" + id
+	if r := e.jsonDo(t, http.MethodPost, adm+"/claim", e.super, "taking it", ""); r.status != http.StatusOK {
+		t.Fatalf("claim: %d %s", r.status, r.body)
+	}
 	mediaBefore := e.count(t, `SELECT count(*) FROM media_objects WHERE org_id = $1`, e.orgA)
 	bad, _ := json.Marshal(map[string]any{"svg": `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><circle r="1"/></svg>`})
 	r := e.jsonDo(t, http.MethodPost, adm+"/drafts", e.super, "drawn", string(bad))
@@ -537,8 +547,91 @@ func TestVenuePlanIntake_APIKeyIsRefused(t *testing.T) {
 			t.Errorf("check %d: %d %s", i, r.status, r.body)
 		}
 	}
+	// The POST actions are refused too, and nothing changes.
+	posts := map[string]string{
+		"/answers":          `{"draft":1,"answers":[{"question_id":"` + uuid.NewString() + `","answer":"x"}]}`,
+		"/corrections-text": `{"draft":1,"text":"fix"}`, "/escalate": `{}`, "/cancel": ``, "/approve": `{"draft":1}`,
+	}
+	for suffix, body := range posts {
+		if r := e.jsonDo(t, http.MethodPost, orgIntakePath(e.orgA, id)+suffix, key, "", body); r.status != http.StatusForbidden || r.code() != "venue_plan_intake.api_key_forbidden" {
+			t.Errorf("POST %s with an API key: %d %s", suffix, r.status, r.body)
+		}
+	}
 	if e.count(t, `SELECT count(*) FROM venue_plan_intakes WHERE org_id = $1`, e.orgA) != 1 {
 		t.Error("the API key created an intake")
+	}
+	if e.count(t, `SELECT count(*) FROM venue_plan_intakes WHERE id = $1 AND state = 'review' AND current_draft = 1 AND plan_id IS NULL`, id) != 1 ||
+		e.count(t, `SELECT count(*) FROM venue_plan_corrections WHERE intake_id = $1`, id) != 0 ||
+		e.count(t, `SELECT count(*) FROM seating_plans WHERE owner_org_id = $1`, e.orgA) != 0 {
+		t.Error("an API key changed the intake")
+	}
+}
+
+// Two approve requests of the same intake at once make exactly one plan; the
+// other answers 409. The organization has no billing account: the approval
+// succeeds and no billable event is written.
+func TestVenuePlanIntake_ConcurrentApproveMakesOnePlan(t *testing.T) {
+	e := newVPIEnv(t)
+	id := e.create(t, e.orgA, e.venueA, e.ownerA, nil, vpiFile{"plan.svg", vpiPlanSVG(t)}).intake(t)["id"].(string)
+	url := e.ts.URL + orgIntakePath(e.orgA, id) + "/approve"
+	statuses := make(chan int, 2)
+	start := make(chan struct{})
+	for i := 0; i < 2; i++ {
+		go func() {
+			<-start
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, strings.NewReader(`{"draft":1}`))
+			if err != nil {
+				statuses <- 0
+				return
+			}
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+e.ownerA)
+			resp, err := e.ts.Client().Do(req)
+			if err != nil {
+				statuses <- 0
+				return
+			}
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
+			statuses <- resp.StatusCode
+		}()
+	}
+	close(start)
+	got := map[int]int{}
+	for i := 0; i < 2; i++ {
+		got[<-statuses]++
+	}
+	if got[http.StatusOK] != 1 || got[http.StatusConflict] != 1 {
+		t.Fatalf("statuses %v, want one 200 and one 409", got)
+	}
+	if n := e.count(t, `SELECT count(*) FROM seating_plans WHERE owner_org_id = $1`, e.orgA); n != 1 {
+		t.Errorf("plans %d, want 1", n)
+	}
+	if n := e.count(t, `SELECT count(*) FROM media_objects WHERE org_id = $1 AND owner_type = 'seating_plan_svg'`, e.orgA); n != 1 {
+		t.Errorf("plan SVG media %d, want 1", n)
+	}
+	if n := e.count(t, `SELECT count(*) FROM billable_events WHERE subject_id = $1`, id); n != 0 {
+		t.Errorf("billable events %d for an organization without a billing account", n)
+	}
+}
+
+// Approve for an organization without a billing account succeeds and writes
+// no billable event.
+func TestVenuePlanIntake_ApproveWithoutBillingAccount(t *testing.T) {
+	e := newVPIEnv(t)
+	id := e.create(t, e.orgA, e.venueA, e.ownerA, nil, vpiFile{"plan.svg", vpiPlanSVG(t)}).intake(t)["id"].(string)
+	if n := e.count(t, `SELECT count(*) FROM billing_accounts WHERE org_id = $1`, e.orgA); n != 0 {
+		t.Fatalf("the fixture organization has %d billing accounts", n)
+	}
+	r := e.jsonDo(t, http.MethodPost, orgIntakePath(e.orgA, id)+"/approve", e.ownerA, "", `{"draft":1}`)
+	if r.status != http.StatusOK || r.intake(t)["state"] != "approved" {
+		t.Fatalf("approve: %d %s", r.status, r.body)
+	}
+	if n := e.count(t, `SELECT count(*) FROM billable_events WHERE subject_id = $1`, id); n != 0 {
+		t.Errorf("billable events %d, want 0", n)
+	}
+	if n := e.count(t, `SELECT count(*) FROM seating_plans WHERE owner_org_id = $1 AND status = 'active'`, e.orgA); n != 1 {
+		t.Errorf("plans %d, want 1", n)
 	}
 }
 
@@ -571,6 +664,36 @@ func TestVenuePlanIntake_AdminGate(t *testing.T) {
 	}
 	if r := e.do(t, http.MethodGet, adm, e.super, "", "", nil, nil); r.status != http.StatusOK || r.intake(t)["org_name"] == nil {
 		t.Errorf("admin card: %d %s", r.status, r.body)
+	}
+	// Every write but claim needs the caller's claim: an intake nobody holds
+	// answers 409 not_claimed and nothing changes.
+	mediaBefore := e.count(t, `SELECT count(*) FROM media_objects WHERE org_id = $1`, e.orgA)
+	draftBody, _ := json.Marshal(map[string]any{"svg": string(vpiPlanSVG(t))})
+	unclaimed := map[string]string{"/drafts": string(draftBody), "/return": `{}`, "/approve": `{"draft":1}`, "/reject": `{"reason":"no"}`}
+	for suffix, body := range unclaimed {
+		if r := e.jsonDo(t, http.MethodPost, adm+suffix, e.super, "check", body); r.status != http.StatusConflict || r.code() != "venue_plan_intake.not_claimed" {
+			t.Errorf("unclaimed %s: %d %s", suffix, r.status, r.body)
+		}
+	}
+	if e.count(t, `SELECT count(*) FROM venue_plan_intakes WHERE id = $1 AND state = 'operator' AND current_draft IS NULL`, id) != 1 ||
+		e.count(t, `SELECT count(*) FROM media_objects WHERE org_id = $1`, e.orgA) != mediaBefore {
+		t.Error("a write on an unclaimed intake changed it")
+	}
+	// Another administrator holds it: 409 claimed_by_other.
+	otherID := e.user(t, "super2")
+	e.exec(t, `INSERT INTO user_roles (user_id, role_id, org_id)
+	           SELECT $1, id, NULL FROM roles WHERE name = 'platform_superadmin' AND org_id IS NULL`, otherID)
+	t.Cleanup(func() {
+		_, _ = e.srv.pgxPool.Exec(context.Background(), `DELETE FROM user_roles WHERE user_id = $1`, otherID)
+	})
+	if r := e.jsonDo(t, http.MethodPost, adm+"/claim", e.token(t, otherID), "mine", ""); r.status != http.StatusOK {
+		t.Fatalf("claim by another administrator: %d %s", r.status, r.body)
+	}
+	if r := e.jsonDo(t, http.MethodPost, adm+"/reject", e.super, "check", `{"reason":"no"}`); r.status != http.StatusConflict || r.code() != "venue_plan_intake.claimed_by_other" {
+		t.Errorf("reject of another administrator's intake: %d %s", r.status, r.body)
+	}
+	if r := e.jsonDo(t, http.MethodPost, adm+"/claim", e.super, "taking over", `{"force":true}`); r.status != http.StatusOK {
+		t.Fatalf("forced claim: %d %s", r.status, r.body)
 	}
 	// Rejecting needs the intake and writes the notice.
 	if r := e.jsonDo(t, http.MethodPost, adm+"/reject", e.super, "unreadable", `{"reason":"The scan is too blurry"}`); r.status != http.StatusOK || r.intake(t)["state"] != "rejected" {

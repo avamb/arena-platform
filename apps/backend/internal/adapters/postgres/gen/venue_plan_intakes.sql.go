@@ -798,14 +798,16 @@ const listVerifiedSeatingPlansOfVenue = `-- name: ListVerifiedSeatingPlansOfVenu
 ` + seatingPlanVerificationSelect + `
 WHERE  p.venue_id = $1
   AND  p.visibility = 'operator_verified'
+  AND  p.verification_state = 'verified'
   AND  p.status = 'active'
   AND  p.deleted_at IS NULL
   AND  p.current_version_id IS NOT NULL
 ORDER  BY p.name, p.id`
 
-// ListVerifiedSeatingPlansOfVenue lists the active operator_verified plans
-// of a venue that have a current version: the templates another
-// organization may fork.
+// ListVerifiedSeatingPlansOfVenue lists the active plans of a venue that are
+// operator_verified AND in verification state verified and that have a
+// current version: the templates another organization may fork. A plan that
+// carries operator_verified with a NULL state is not listed.
 func (q *Queries) ListVerifiedSeatingPlansOfVenue(ctx context.Context, venueID uuid.UUID) ([]SeatingPlanVerificationRow, error) {
 	rows, err := q.db.Query(ctx, listVerifiedSeatingPlansOfVenue, venueID)
 	return collectRows(rows, err, scanSeatingPlanVerification)

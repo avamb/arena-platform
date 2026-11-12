@@ -28,13 +28,14 @@ const (
 type lockedFn func(ctx context.Context, tx pgx.Tx, q *gen.Queries, in gen.VenuePlanIntakeRow) (gen.VenuePlanIntakeRow, bool)
 
 // locked runs fn on the intake locked FOR UPDATE, commits, and answers the
-// card with status.
-func (h *Handler) locked(w http.ResponseWriter, r *http.Request, id uuid.UUID, admin bool, status int, fn lockedFn) {
+// card with status. It reports whether the transaction really committed: a
+// caller that stored bytes before the transaction keeps them only then.
+func (h *Handler) locked(w http.ResponseWriter, r *http.Request, id uuid.UUID, admin bool, status int, fn lockedFn) bool {
 	ctx := r.Context()
 	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		writeErr(w, r, http.StatusServiceUnavailable, "dependency.database_unavailable", "failed to begin transaction")
-		return
+		return false
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := h.queries.WithTx(tx)
@@ -42,20 +43,21 @@ func (h *Handler) locked(w http.ResponseWriter, r *http.Request, id uuid.UUID, a
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			writeErr(w, r, http.StatusNotFound, "venue_plan_intake.not_found", "hall plan intake not found")
-			return
+			return false
 		}
 		h.failed(w, r, "lock", err)
-		return
+		return false
 	}
 	out, ok := fn(ctx, tx, q, in)
 	if !ok {
-		return
+		return false
 	}
 	if err := tx.Commit(ctx); err != nil {
 		h.failed(w, r, "commit", err)
-		return
+		return false
 	}
 	h.writeCard(w, r, status, out, admin)
+	return true
 }
 
 // currentDraftRow checks that n is the current draft of the locked intake.

@@ -81,12 +81,39 @@ func stripJPEGMetadata(in []byte) (out []byte, orientation int, err error) {
 		}
 		i += segLen
 		if marker == markerSOS {
-			// The entropy-coded data and everything after it are the picture.
-			buf.Write(in[i:])
-			return finishJPEG(buf.Bytes(), exifSlot, orientation), orientation, nil
+			// The entropy-coded data of the scan is the picture. It ends at the
+			// next marker that is not a stuffed byte or a restart: further
+			// segments and scans (a progressive JPEG) go through this loop, and
+			// the picture ends at the first EOI. Anything a phone appends after
+			// it (MPF pictures with their own EXIF) is dropped.
+			end := scanEnd(in, i)
+			buf.Write(in[i:end])
+			i = end
+			if i >= len(in) {
+				// No EOI: keep the picture as it was sent.
+				return finishJPEG(buf.Bytes(), exifSlot, orientation), orientation, nil
+			}
 		}
 	}
 	return nil, 0, errBadJPEG
+}
+
+// scanEnd returns the index of the 0xFF that starts the first real marker
+// after the entropy-coded data beginning at i, or len(in) when there is none.
+// 0xFF 0x00 (a stuffed byte) and 0xFF 0xD0..0xD7 (restarts) belong to the data.
+func scanEnd(in []byte, i int) int {
+	for j := i; j+1 < len(in); j++ {
+		if in[j] != 0xFF {
+			continue
+		}
+		next := in[j+1]
+		if next == 0x00 || (next >= 0xD0 && next <= 0xD7) {
+			j++
+			continue
+		}
+		return j
+	}
+	return len(in)
 }
 
 // finishJPEG puts the minimal orientation block where the first EXIF block was.

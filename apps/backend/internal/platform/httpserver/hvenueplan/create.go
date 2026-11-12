@@ -117,9 +117,10 @@ func (h *Handler) HandleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !created {
-		// Another request with the same Idempotency-Key won the race.
+		// Another request with the same Idempotency-Key won the race: the
+		// same answer as a replay, including the check of the venue.
 		st.drop(ctx)
-		h.writeCard(w, r, http.StatusOK, in, false)
+		h.answerExisting(w, r, in, venueID)
 		return
 	}
 	h.writeCard(w, r, http.StatusAccepted, in, false)
@@ -168,13 +169,21 @@ func (h *Handler) replay(w http.ResponseWriter, r *http.Request, orgID, venueID 
 		h.failed(w, r, "idempotency lookup", err)
 		return true
 	}
+	h.answerExisting(w, r, in, venueID)
+	return true
+}
+
+// answerExisting answers a create whose Idempotency-Key already made an
+// intake, both for a replay and for the request that lost the insert race:
+// 409 venue_plan_intake.idempotency_key_reused when that intake is for
+// another venue, else the intake with 200.
+func (h *Handler) answerExisting(w http.ResponseWriter, r *http.Request, in gen.VenuePlanIntakeRow, venueID uuid.UUID) {
 	if in.VenueID != venueID {
 		writeErr(w, r, http.StatusConflict, "venue_plan_intake.idempotency_key_reused",
 			"this Idempotency-Key was already used for another venue, please send a new key")
-		return true
+		return
 	}
 	h.writeCard(w, r, http.StatusOK, in, false)
-	return true
 }
 
 // readParts reads the multipart body: the files (1..10, 80 MB in total, each

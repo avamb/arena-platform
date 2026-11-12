@@ -160,12 +160,18 @@ func TrustedClientIP(r *http.Request, trustedProxies int) string {
 	return remoteAddr()
 }
 
+// AdminReason reads the trimmed X-Admin-Reason header without answering;
+// "" when it is missing or blank.
+func AdminReason(r *http.Request) string {
+	return strings.TrimSpace(r.Header.Get("X-Admin-Reason"))
+}
+
 // RequireAdminReason validates the X-Admin-Reason header used by superadmin and
 // network-mutation endpoints. Returns the non-empty trimmed reason on success, or
 // writes a 400 error envelope and returns ("", false) so callers can return
 // immediately.
 func RequireAdminReason(w http.ResponseWriter, r *http.Request) (string, bool) {
-	reason := strings.TrimSpace(r.Header.Get("X-Admin-Reason"))
+	reason := AdminReason(r)
 	if reason == "" {
 		WriteJSON(w, http.StatusBadRequest, ErrorEnvelope(
 			"superadmin.missing_reason",

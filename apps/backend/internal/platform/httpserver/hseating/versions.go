@@ -13,7 +13,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/auth"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
@@ -159,18 +158,26 @@ func (h *Handler) HandleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.
 	}
 	// Ownership gate: only the owning org may add new versions. Foreign plan
 	// IDs resolve as 404 (same as the update handler) so plan existence is
-	// not leaked to non-members. Superadmins bypass membership with an
-	// audited X-Admin-Reason (requireOrgMembership in authz.go).
-	versionMember, err := requireOrgMembership(w, r, h.queries, plan.OwnerOrgID)
-	if errors.Is(err, errResponseWritten) {
-		return
-	}
-	if err != nil {
-		h.logger.Error("seating_plan: version create membership lookup failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-			"seating_plan.version_create_failed", "failed to create seating plan version", r,
-		))
-		return
+	// not leaked to non-members. A platform superadmin with a non-empty
+	// X-Admin-Reason bypasses membership (audited) and is the only caller
+	// whose version keeps a verified template verified. A superadmin without
+	// the header is checked like any member, and a template is reset; a
+	// superadmin who is not a member still gets 400 superadmin.missing_reason.
+	superadminFix := auth.HasSuperadminOrgAccess(ctx) && httputil.AdminReason(r) != ""
+	versionMember := superadminFix
+	if !superadminFix {
+		versionMember, err = actorIsMemberOfOrg(ctx, h.queries, plan.OwnerOrgID)
+		if err != nil {
+			h.logger.Error("seating_plan: version create membership lookup failed", slog.String("error", err.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"seating_plan.version_create_failed", "failed to create seating plan version", r,
+			))
+			return
+		}
+		if !versionMember && auth.HasSuperadminOrgAccess(ctx) {
+			_, _ = httputil.RequireAdminReason(w, r) // answers 400: the header is missing
+			return
+		}
 	}
 	if !versionMember {
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
@@ -230,13 +237,13 @@ func (h *Handler) HandleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.
 	}
 	nextVersion := latest + 1
 
-	// A verified template must never change without a new verification: when the
-	// OWNER organization posts a version, the plan goes back to private and
-	// unverified in this same transaction. A platform superadmin (X-Admin-Reason)
-	// keeps the template verified: the superadmin's fix is the new version. The
-	// row is locked so the decision sees the visibility a concurrent verify or
-	// needs-fix wrote.
-	locked, err := qtx.LockSeatingPlanForVerification(ctx, plan.ID)
+	// A verified template must never change without a new verification: unless
+	// a platform superadmin posts with X-Admin-Reason (the superadmin's fix is
+	// the new version), the plan goes back to private and unverified in this
+	// same transaction. The shared rule (gen.LockSeatingPlanForNewVersion) locks
+	// the row, so the decision sees the visibility a concurrent verify or
+	// needs-fix wrote; the Bil24 import applies the same rule.
+	resetTemplate, err := qtx.LockSeatingPlanForNewVersion(ctx, plan.ID, superadminFix)
 	if err != nil {
 		h.logger.Error("seating_plan: pre-version lock failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
@@ -244,7 +251,6 @@ func (h *Handler) HandleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.
 		))
 		return
 	}
-	resetTemplate := locked.Visibility == VisibilityOperatorVerified && !auth.HasSuperadminOrgAccess(ctx)
 
 	row, err := qtx.InsertSeatingPlanVersion(
 		ctx, plan.ID, nextVersion, canonicalJSON, checksum,
@@ -264,25 +270,6 @@ func (h *Handler) HandleCreateSeatingPlanVersion(w http.ResponseWriter, r *http.
 			"seating_plan.version_create_failed", "failed to set current seating plan version", r,
 		))
 		return
-	}
-	if resetTemplate {
-		private := VisibilityPrivate
-		if _, err := qtx.SetSeatingPlanVerification(ctx, gen.SetSeatingPlanVerificationParams{
-			PlanID: plan.ID, State: VerificationUnverified, Visibility: &private,
-		}); err != nil {
-			h.logger.Error("seating_plan: verification reset failed", slog.String("error", err.Error()))
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"seating_plan.version_create_failed", "failed to create seating plan version", r,
-			))
-			return
-		}
-		if plan, err = qtx.GetSeatingPlanByID(ctx, plan.ID); err != nil {
-			h.logger.Error("seating_plan: re-read after reset failed", slog.String("error", err.Error()))
-			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
-				"seating_plan.version_create_failed", "failed to create seating plan version", r,
-			))
-			return
-		}
 	}
 	if err := h.writeAuditTx(ctx, tx, r, "v1.seating_plan.version.create", row.ID.String(), map[string]any{
 		"seating_plan_id":    plan.ID.String(),

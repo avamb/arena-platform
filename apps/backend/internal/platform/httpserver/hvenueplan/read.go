@@ -264,14 +264,15 @@ func (h *Handler) HandleAdminGet(w http.ResponseWriter, r *http.Request) {
 // HandleSource answers GET .../plan-intakes/{intake_id}/sources/{source_id}.
 func (h *Handler) HandleSource(w http.ResponseWriter, r *http.Request) {
 	if in, ok := h.orgIntake(w, r); ok {
-		h.serveSource(w, r, in)
+		h.serveSource(w, r, in, "")
 	}
 }
 
 // HandleAdminSource answers GET /v1/admin/plan-intakes/{intake_id}/sources/{source_id}.
+// Every download writes the audit event v1.venue_plan_intake.source_download.
 func (h *Handler) HandleAdminSource(w http.ResponseWriter, r *http.Request) {
-	if in, _, ok := h.adminIntake(w, r, true); ok {
-		h.serveSource(w, r, in)
+	if in, reason, ok := h.adminIntake(w, r, true); ok {
+		h.serveSource(w, r, in, reason)
 	}
 }
 
@@ -289,7 +290,11 @@ func (h *Handler) HandleAdminDraftSVG(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) serveSource(w http.ResponseWriter, r *http.Request, in gen.VenuePlanIntakeRow) {
+// serveSource streams a file of the intake. adminReason is the administrator's
+// X-Admin-Reason ("" on the organization route); an administrator's download
+// is recorded in the audit log (reason, file id, sha256, never the content)
+// before a byte is sent.
+func (h *Handler) serveSource(w http.ResponseWriter, r *http.Request, in gen.VenuePlanIntakeRow, adminReason string) {
 	sid, ok := httputil.UUIDPathParam(w, r, "source_id")
 	if !ok {
 		return
@@ -320,6 +325,18 @@ func (h *Handler) serveSource(w http.ResponseWriter, r *http.Request, in gen.Ven
 	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": name})
 	if disposition == "" {
 		disposition = "attachment"
+	}
+	if adminReason != "" {
+		format := "original"
+		if mediaID != src.MediaID {
+			format = "png"
+		}
+		if err := h.writeAuditNoTx(r.Context(), r, "v1.venue_plan_intake.source_download", in, map[string]any{
+			"reason": adminReason, "source_id": src.ID.String(), "sha256": src.Sha256, "format": format,
+		}); err != nil {
+			h.failed(w, r, "audit", err)
+			return
+		}
 	}
 	h.stream(w, r, mediaID, disposition)
 }

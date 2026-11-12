@@ -41,6 +41,19 @@ func claimedByCaller(w http.ResponseWriter, r *http.Request, in gen.VenuePlanInt
 	return true
 }
 
+// holdsClaim is the gate of every administrator write but claim (drafts,
+// return, approve, reject): the caller must have taken the intake with claim.
+// An intake nobody holds answers 409 venue_plan_intake.not_claimed, one that
+// another administrator holds 409 venue_plan_intake.claimed_by_other.
+func holdsClaim(w http.ResponseWriter, r *http.Request, in gen.VenuePlanIntakeRow) bool {
+	if in.OperatorID == nil {
+		writeErr(w, r, http.StatusConflict, "venue_plan_intake.not_claimed",
+			"take the intake with claim before you change it")
+		return false
+	}
+	return claimedByCaller(w, r, in)
+}
+
 type claimBody struct {
 	Force bool `json:"force"`
 }
@@ -168,6 +181,11 @@ func (h *Handler) HandleAdminDraft(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Checked early so nothing is stored for a caller without the claim; the
+	// locked transaction checks it again.
+	if !holdsClaim(w, r, in) {
+		return
+	}
 	svg, note, ok := readDraftUpload(w, r)
 	if !ok {
 		return
@@ -202,12 +220,14 @@ func (h *Handler) HandleAdminDraft(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	me := actorUserID(ctx)
-	h.locked(w, r, in.ID, true, http.StatusCreated, func(ctx context.Context, tx pgx.Tx, q *gen.Queries, cur gen.VenuePlanIntakeRow) (gen.VenuePlanIntakeRow, bool) {
+	// committed is true only after the transaction really committed: a failed
+	// commit removes the stored SVG again.
+	committed = h.locked(w, r, in.ID, true, http.StatusCreated, func(ctx context.Context, tx pgx.Tx, q *gen.Queries, cur gen.VenuePlanIntakeRow) (gen.VenuePlanIntakeRow, bool) {
 		if cur.State != string(venueplan.StateOperator) {
 			wrongState(w, r, cur.State)
 			return cur, false
 		}
-		if !claimedByCaller(w, r, cur) {
+		if !holdsClaim(w, r, cur) {
 			return cur, false
 		}
 		obj, err := h.media.InsertTx(ctx, tx, mediastore.InsertInput{
@@ -238,7 +258,6 @@ func (h *Handler) HandleAdminDraft(w http.ResponseWriter, r *http.Request) {
 			h.failed(w, r, "audit", err)
 			return cur, false
 		}
-		committed = true
 		return out, true
 	})
 }
@@ -270,7 +289,7 @@ func (h *Handler) HandleAdminReturn(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.locked(w, r, in.ID, true, http.StatusOK, func(ctx context.Context, tx pgx.Tx, q *gen.Queries, cur gen.VenuePlanIntakeRow) (gen.VenuePlanIntakeRow, bool) {
-		if !claimedByCaller(w, r, cur) {
+		if !holdsClaim(w, r, cur) {
 			return cur, false
 		}
 		if cur.State == string(venueplan.StateOperator) && cur.CurrentDraft == nil {
@@ -313,7 +332,7 @@ func (h *Handler) HandleAdminReject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.locked(w, r, in.ID, true, http.StatusOK, func(ctx context.Context, tx pgx.Tx, q *gen.Queries, cur gen.VenuePlanIntakeRow) (gen.VenuePlanIntakeRow, bool) {
-		if !claimedByCaller(w, r, cur) {
+		if !holdsClaim(w, r, cur) {
 			return cur, false
 		}
 		out, ok := h.finishMove(ctx, w, r, tx, q, cur, venueplan.StateRejected,

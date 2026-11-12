@@ -586,11 +586,28 @@ func (h *Handler) HandleForkSeatingPlan(w http.ResponseWriter, r *http.Request) 
 		))
 		return
 	}
+	// The verification state is read under the row lock, so a concurrent
+	// needs-fix or a new version that resets the template is seen.
+	sourceLock, err := qtx.LockSeatingPlanForVerification(ctx, source.ID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"seating_plan.not_found", "seating plan not found", r,
+			))
+			return
+		}
+		h.logger.Error("seating_plan: fork source lock failed", slog.String("error", err.Error()))
+		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+			"seating_plan.fork_failed", "failed to fork seating plan", r,
+		))
+		return
+	}
 	// A plan of another organization is copied only when it is active and
 	// open for copying: a venue template the platform verified
-	// (operator_verified) or a plan its owner opened (public_template). Any
-	// other plan answers the same 404 as a missing one.
-	if !ForkableByOtherOrganization(source.Status, source.Visibility) {
+	// (operator_verified AND verification_state verified) or a plan its owner
+	// opened (public_template). Any other plan answers the same 404 as a
+	// missing one.
+	if !ForkableByOtherOrganization(sourceLock.Status, sourceLock.Visibility, sourceLock.VerificationState) {
 		httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
 			"seating_plan.not_found", "seating plan not found", r,
 		))
@@ -600,12 +617,28 @@ func (h *Handler) HandleForkSeatingPlan(w http.ResponseWriter, r *http.Request) 
 	// is already verified. It belongs to the new organization alone
 	// (private, never sent for verification).
 	forkStatus := "draft"
-	if source.Visibility == VisibilityOperatorVerified && source.CurrentVersionID != nil {
+	if IsVerifiedTemplate(sourceLock.Visibility, sourceLock.VerificationState) && source.CurrentVersionID != nil {
 		forkStatus = "active"
 	}
 
 	targetVenue := source.VenueID
 	if venueOverride != nil {
+		// The target venue follows the rule of plan-templates: the forking
+		// organization's own venue, or a venue the platform verified.
+		venue, verr := qtx.GetVenueSessionContext(ctx, *venueOverride)
+		if verr != nil && !errors.Is(verr, pgx.ErrNoRows) {
+			h.logger.Error("seating_plan: fork target venue read failed", slog.String("error", verr.Error()))
+			httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
+				"seating_plan.fork_failed", "failed to fork seating plan", r,
+			))
+			return
+		}
+		if verr != nil || (venue.OrgID != ownerOrgID && !venue.Verified) {
+			httputil.WriteJSON(w, http.StatusNotFound, httputil.ErrorEnvelope(
+				"venue.not_found", "venue not found", r,
+			))
+			return
+		}
 		targetVenue = *venueOverride
 	}
 	targetName := source.Name + " (fork)"

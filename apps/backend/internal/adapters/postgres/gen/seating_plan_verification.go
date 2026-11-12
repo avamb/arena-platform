@@ -46,6 +46,32 @@ func (q *Queries) LockSeatingPlanForVerification(ctx context.Context, id uuid.UU
 	return r, err
 }
 
+// LockSeatingPlanForNewVersion locks a live plan before a new version is
+// added to it and applies the rule that a verified template never changes
+// without a new verification: when the plan is operator_verified it goes back
+// to private and unverified in the caller's transaction. keepTemplate skips
+// the reset (a platform superadmin's fix through the versions route with
+// X-Admin-Reason). Every write path that adds a version to an EXISTING plan
+// calls this inside its transaction before inserting the version. reset
+// reports whether the plan left the template state; pgx.ErrNoRows when the
+// plan does not exist or is deleted.
+func (q *Queries) LockSeatingPlanForNewVersion(ctx context.Context, planID uuid.UUID, keepTemplate bool) (reset bool, err error) {
+	locked, err := q.LockSeatingPlanForVerification(ctx, planID)
+	if err != nil {
+		return false, err
+	}
+	if keepTemplate || locked.Visibility != "operator_verified" {
+		return false, nil
+	}
+	private := "private"
+	if _, err := q.SetSeatingPlanVerification(ctx, SetSeatingPlanVerificationParams{
+		PlanID: planID, State: "unverified", Visibility: &private,
+	}); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 const markVenueVerifiedIfNot = `-- name: MarkVenueVerifiedIfNot :execrows
 UPDATE venues
 SET    review_status = 'verified',

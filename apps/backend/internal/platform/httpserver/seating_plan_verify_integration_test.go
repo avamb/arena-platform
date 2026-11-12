@@ -358,6 +358,109 @@ func TestSeatingPlanVerify_OwnerVersionResetsTheTemplate(t *testing.T) {
 	}
 }
 
+// The superadmin exemption needs a non-empty X-Admin-Reason: a superadmin who
+// is also a member of the owner organization and posts a version without the
+// header is answered like any member, and the template is reset.
+func TestSeatingPlanVerify_SuperadminMemberWithoutReasonResetsTheTemplate(t *testing.T) {
+	e := newSPVEnv(t)
+	plan := e.plan(t, e.orgA, e.adminA, "SPV member superadmin")
+	e.member(t, e.superID, e.orgA, "org_admin")
+	verify := "/v1/admin/seating-plans/" + plan.String() + "/verify"
+	versions := "/v1/seating-plans/" + plan.String() + "/versions"
+	svg4, _ := json.Marshal(spvSVG4)
+	body := `{"svg":` + string(svg4) + `}`
+
+	e.call(t, http.StatusOK, "", "POST", verify, e.super, "hall checked", "")
+	// With the reason: the superadmin's fix keeps the template.
+	e.call(t, http.StatusCreated, "", "POST", versions, e.super, "row fix", body)
+	if st, vis, _, _, _ := e.planRow(t, plan); st != "verified" || vis != "operator_verified" {
+		t.Fatalf("after the version with a reason: %s %s", st, vis)
+	}
+	// Without the reason: no 400, the version is a member's and the template is reset.
+	out := e.call(t, http.StatusCreated, "", "POST", versions, e.super, "", body)
+	if got := out["seating_plan"].(map[string]any)["visibility"]; got != "private" {
+		t.Errorf("answer visibility %v, want private", got)
+	}
+	if st, vis, _, _, by := e.planRow(t, plan); st != "unverified" || vis != "private" || by != nil {
+		t.Fatalf("after the version without a reason: %s %s %v", st, vis, by)
+	}
+}
+
+// A template is visibility operator_verified AND verification_state verified.
+// A plan that carries operator_verified from before the verification routes
+// (state NULL) is not listed and not copied by another organization.
+func TestSeatingPlanVerify_OperatorVerifiedWithoutStateIsNotATemplate(t *testing.T) {
+	e := newSPVEnv(t)
+	legacy := e.plan(t, e.orgA, e.adminA, "SPV legacy")
+	if _, err := e.srv.pgxPool.Exec(context.Background(),
+		`UPDATE seating_plans SET visibility = 'operator_verified', verification_state = NULL WHERE id = $1`, legacy); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.srv.pgxPool.Exec(context.Background(),
+		`UPDATE venues SET review_status = 'verified', verified_at = now() WHERE id = $1`, e.venueA); err != nil {
+		t.Fatal(err)
+	}
+	if items := e.templates(t, e.orgB, e.adminB); len(items) != 0 {
+		t.Fatalf("org B lists a plan without a verified state: %v", items)
+	}
+	if items := e.templates(t, e.orgA, e.adminA); len(items) != 0 {
+		t.Fatalf("org A lists a plan without a verified state: %v", items)
+	}
+	e.call(t, http.StatusNotFound, "seating_plan.not_found", "POST", "/v1/seating-plans/"+legacy.String()+"/fork", e.adminB, "",
+		fmt.Sprintf(`{"owner_org_id":%q}`, e.orgB))
+
+	// The verify route makes it a template.
+	e.call(t, http.StatusOK, "", "POST", "/v1/admin/seating-plans/"+legacy.String()+"/verify", e.super, "legacy checked", "")
+	if items := e.templates(t, e.orgB, e.adminB); len(items) != 1 {
+		t.Fatalf("org B templates after verify: %v", items)
+	}
+}
+
+// A venue_id in the fork body follows the rule of plan-templates: the forking
+// organization's own venue or a verified venue, else 404 venue.not_found.
+func TestSeatingPlanVerify_ForkVenueOverride(t *testing.T) {
+	e := newSPVEnv(t)
+	template := e.plan(t, e.orgA, e.adminA, "SPV fork venue")
+	e.call(t, http.StatusOK, "", "POST", "/v1/admin/seating-plans/"+template.String()+"/verify", e.super, "hall checked", "")
+	ctx := context.Background()
+	otherA, ownB := uuid.New(), uuid.New()
+	for _, v := range []struct {
+		id  uuid.UUID
+		org uuid.UUID
+	}{{otherA, e.orgA}, {ownB, e.orgB}} {
+		if _, err := e.srv.pgxPool.Exec(ctx, `INSERT INTO venues (id, org_id, name, timezone) VALUES ($1, $2, $3, 'Europe/Prague')`,
+			v.id, v.org, "SPV venue "+v.id.String()[:8]); err != nil {
+			t.Fatalf("venue fixture: %v", err)
+		}
+	}
+	fork := "/v1/seating-plans/" + template.String() + "/fork"
+	var before int
+	count := func() int {
+		var n int
+		if err := e.srv.pgxPool.QueryRow(ctx, `SELECT count(*) FROM seating_plans WHERE owner_org_id = $1`, e.orgB).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	before = count()
+	// Another organization's venue that is not verified, and a venue that does not exist.
+	for _, venue := range []uuid.UUID{otherA, uuid.New()} {
+		e.call(t, http.StatusNotFound, "venue.not_found", "POST", fork, e.adminB, "",
+			fmt.Sprintf(`{"owner_org_id":%q,"venue_id":%q}`, e.orgB, venue))
+	}
+	if count() != before {
+		t.Fatal("a refused fork made a plan")
+	}
+	// The forking organization's own venue, and a verified venue (the template's).
+	out := e.call(t, http.StatusCreated, "", "POST", fork, e.adminB, "",
+		fmt.Sprintf(`{"owner_org_id":%q,"venue_id":%q,"name":"SPV copy own venue"}`, e.orgB, ownB))
+	if got := out["seating_plan"].(map[string]any)["venue_id"]; got != ownB.String() {
+		t.Errorf("fork venue %v, want %s", got, ownB)
+	}
+	e.call(t, http.StatusCreated, "", "POST", fork, e.adminB, "",
+		fmt.Sprintf(`{"owner_org_id":%q,"venue_id":%q,"name":"SPV copy verified venue"}`, e.orgB, e.venueA))
+}
+
 // A plan that is not active, or whose current version is missing, is not
 // verified.
 func TestSeatingPlanVerify_RefusesADraftOrAnEmptyPlan(t *testing.T) {

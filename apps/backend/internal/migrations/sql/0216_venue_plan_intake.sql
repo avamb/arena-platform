@@ -259,7 +259,7 @@ CREATE INDEX seating_plans_unverified_idx
     WHERE verification_state = 'unverified' AND deleted_at IS NULL;
 
 COMMENT ON COLUMN seating_plans.verification_state IS
-    'NULL = never sent for verification (plans made before migration 0216, or by hand); unverified = built by a plan intake and waiting for a platform superadmin; verified; needs_fix (verification_note says why).';
+    'NULL = never sent for verification (plans made before migration 0216, or by hand); unverified = built by a plan intake and waiting for a platform superadmin; verified; needs_fix (verification_note says why). A plan is a venue template only when visibility = operator_verified AND verification_state = verified: an operator_verified plan with a NULL state is not listed or copied until the verify route is run on it.';
 
 ALTER TABLE media_objects
     DROP CONSTRAINT IF EXISTS media_objects_owner_type_check;

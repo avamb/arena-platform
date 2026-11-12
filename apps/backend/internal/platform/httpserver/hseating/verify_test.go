@@ -43,21 +43,29 @@ func TestSeatingPlanVerify_DecideVisibilityChange(t *testing.T) {
 }
 
 func TestSeatingPlanVerify_ForkableByOtherOrganization(t *testing.T) {
+	verified, unverified, needsFix := "verified", "unverified", "needs_fix"
 	cases := []struct {
 		status, visibility string
+		state              *string
 		want               bool
 	}{
-		{"active", "operator_verified", true},
-		{"active", "public_template", true},
-		{"active", "shared_read", false},
-		{"active", "private", false},
-		{"draft", "operator_verified", false},
-		{"archived", "public_template", false},
+		{"active", "operator_verified", &verified, true},
+		{"active", "operator_verified", nil, false},
+		{"active", "operator_verified", &unverified, false},
+		{"active", "operator_verified", &needsFix, false},
+		{"active", "public_template", nil, true},
+		{"active", "shared_read", &verified, false},
+		{"active", "private", &verified, false},
+		{"draft", "operator_verified", &verified, false},
+		{"archived", "public_template", nil, false},
 	}
 	for _, c := range cases {
-		if got := ForkableByOtherOrganization(c.status, c.visibility); got != c.want {
-			t.Errorf("ForkableByOtherOrganization(%q, %q) = %v, want %v", c.status, c.visibility, got, c.want)
+		if got := ForkableByOtherOrganization(c.status, c.visibility, c.state); got != c.want {
+			t.Errorf("ForkableByOtherOrganization(%q, %q, %v) = %v, want %v", c.status, c.visibility, c.state, got, c.want)
 		}
+	}
+	if IsVerifiedTemplate("operator_verified", nil) {
+		t.Error("an operator_verified plan without a verification state is not a template")
 	}
 }
 
