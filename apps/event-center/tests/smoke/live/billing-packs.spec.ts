@@ -138,7 +138,7 @@ test.describe("billing balance, packs and invoices", () => {
 
     // What the owner sees: the invoice, the amount and the reference to write in the transfer.
     const issued = page.getByTestId("billing-issued");
-    await expect(issued).toContainText(`Invoice ${invoice.number} is ready`);
+    await expect(issued).toContainText(`We made invoice ${invoice.number}`);
     await expect(issued.getByTestId("billing-issued-amount")).toContainText(euro(invoice.total_minor));
     await expect(issued.getByTestId("payment-reference")).toHaveText(invoice.payment_reference);
     await expect(issued.getByTestId("billing-issued-instruction")).toContainText("Write this reference in the description of your transfer");

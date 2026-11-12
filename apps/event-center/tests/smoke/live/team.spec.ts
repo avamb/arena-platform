@@ -213,7 +213,7 @@ test.describe("the team (live)", () => {
     // Ten minutes later it goes out, and the next press is too soon again.
     seed("age", email);
     await added.getByTestId("team-resend").click();
-    await expect(notice).toContainText(`The letter to ${email} is sent again.`);
+    await expect(notice).toContainText(`We sent the e-mail to ${email} again.`);
     expect(rows(email).jobs).toEqual(["bot.invitation_email", "bot.invitation_email"]);
     await added.getByTestId("team-resend").click();
     await expect(notice).toContainText("We sent the e-mail a short time ago.");
@@ -252,7 +252,7 @@ test.describe("the team (live)", () => {
     await expect(added.getByTestId("team-resend")).toBeVisible();
     await expect(added.getByTestId("team-revoke")).toBeVisible();
     await added.getByTestId("team-resend").click();
-    await expect(page.getByTestId("team-notice")).toContainText(`The letter to ${email} is sent again.`);
+    await expect(page.getByTestId("team-notice")).toContainText(`We sent the e-mail to ${email} again.`);
     await expect(row(page, email).getByTestId("team-state")).toHaveText("Waiting");
   });
 

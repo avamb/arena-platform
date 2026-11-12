@@ -164,7 +164,7 @@ test.describe("promoters (live, three roles)", () => {
     await page.getByTestId("input-slug").fill(FOREIGN_SLUG);
     await page.getByTestId("field-save").click();
     await page.getByTestId("slug-confirm-save").click();
-    await expect(page.getByTestId("field-error")).toContainText("already taken");
+    await expect(page.getByTestId("field-error")).toContainText("has this address");
     expect((await apiFind(request, "org_admin", RENAMED)).slug).toBe(oldSlug);
     await page.getByTestId("slug-confirm-back").click();
 
@@ -199,7 +199,7 @@ test.describe("promoters (live, three roles)", () => {
 
     await page.getByTestId("archive-open").click();
     await page.getByTestId("archive-confirm").click();
-    await expect(page.getByTestId("promoter-status")).toContainText("is archived");
+    await expect(page.getByTestId("promoter-status")).toContainText("is in the archive");
     const archived = await apiFind(request, "org_admin", RENAMED);
     expect(archived.archived).toBe(true);
     expect(archived.archived_at).not.toBeNull();
@@ -242,7 +242,7 @@ test.describe("promoters (live, three roles)", () => {
     await expect(page.getByTestId("field-value-phone")).toHaveText("+420 123 456 789");
     await page.getByTestId("archive-open").click();
     await page.getByTestId("archive-confirm").click();
-    await expect(page.getByTestId("promoter-status")).toContainText("is archived");
+    await expect(page.getByTestId("promoter-status")).toContainText("is in the archive");
     expect((await apiFind(request, "organizer", MANAGER_NAME)).archived).toBe(true);
     await page.getByTestId("restore").click();
     await expect(page.getByTestId("promoter-status")).toContainText("is active again");

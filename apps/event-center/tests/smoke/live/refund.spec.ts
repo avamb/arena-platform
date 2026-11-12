@@ -169,7 +169,7 @@ test.describe("refund an order (live)", () => {
     // A ticket but no reason.
     await ticketBox(page, TICKET_1).check();
     await page.getByTestId("refund-continue").click();
-    await expect(page.getByTestId("refund-problem")).toContainText("reason");
+    await expect(page.getByTestId("refund-problem")).toContainText("cause");
 
     await page.getByTestId("refund-reason-buyer").check();
     await page.getByTestId("refund-letter").uncheck();
@@ -180,7 +180,7 @@ test.describe("refund an order (live)", () => {
     await expect(final).toBeVisible();
     await expect(page.getByTestId("refund-final-ticket")).toHaveCount(1);
     await expect(page.getByTestId("refund-final-amount")).toContainText(/25[.,]00/);
-    await expect(page.getByTestId("refund-final-letter")).toContainText("No letter");
+    await expect(page.getByTestId("refund-final-letter")).toContainText("We send no e-mail");
     await expect(final).toContainText("stop to work for entry");
     await expect(page.getByTestId("refund-needs-approval")).toHaveCount(0);
     await noA11yViolations(page);
@@ -224,7 +224,7 @@ test.describe("refund an order (live)", () => {
 
     // The card shows the new state; the refunded ticket is no longer offered.
     await page.getByTestId("refund-close").click();
-    await expect(page.getByText("Partly refunded").first()).toBeVisible();
+    await expect(page.getByText("Refunded in part").first()).toBeVisible();
     await page.getByTestId("refund-open").click();
     await expect(page.getByTestId("refund-ticket")).toHaveCount(1);
     await expect(ticketBox(page, TICKET_1)).toHaveCount(0);

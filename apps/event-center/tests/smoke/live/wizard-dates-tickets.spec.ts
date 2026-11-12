@@ -161,7 +161,7 @@ test.describe("event wizard: dates and tickets", () => {
     await page.getByTestId("wizard-step-0-0-price").fill("5");
     // The wizard cannot know this rule: the platform's check says it, with the pointer of the field.
     await expect(page.getByTestId("wizard-tickets-0-error")).toContainText("A free ticket cannot have price changes", { timeout: 25_000 });
-    await expect(status(page)).toContainText("to fix");
+    await expect(status(page)).toContainText("to correct");
     await page.getByTestId("wizard-cat-0-0-price").fill("8");
     await correct(page);
   });

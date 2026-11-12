@@ -109,7 +109,7 @@ test.describe("resend tickets on the three roles (live)", () => {
       await noA11yViolations(page);
       await page.getByTestId("resend-same").click();
       // Confirmation: nothing is queued before it.
-      await expect(page.getByTestId("resend-confirm-text")).toContainText("(the order's address)");
+      await expect(page.getByTestId("resend-confirm-text")).toContainText("(the address of the order)");
       await expect(page.getByTestId("resend-same-codes")).toHaveCount(0);
       expect(calls.includes(`POST ${resendPath}`), "nothing sent before the confirmation").toBe(false);
       await page.getByTestId("resend-send").click();

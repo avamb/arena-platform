@@ -299,14 +299,14 @@ test.describe("categories of a date (live, three roles)", () => {
     // Below what is sold: the API says no, the screen says the floor.
     await page.getByTestId("qty-input").fill("2");
     await page.getByTestId("qty-save").click();
-    await expect(page.getByTestId("category-error")).toContainText("3 places are sold or on hold");
+    await expect(page.getByTestId("category-error")).toContainText("3 tickets are sold or on hold");
     expect((await apiTier(request, STANDING)).capacity).toBe(20);
     expect(rows()[STANDING].places).toBe(20);
 
     // More places: the real places are minted.
     await page.getByTestId("qty-input").fill("25");
     await page.getByTestId("qty-save").click();
-    await expect(page.getByTestId("category-notice")).toContainText("now has 25 places");
+    await expect(page.getByTestId("category-notice")).toContainText("the category has 25 tickets");
     await expect(page.getByTestId("category-places")).toContainText("of 25");
     expect((await apiTier(request, STANDING)).capacity).toBe(25);
     const stored = rows()[STANDING];
@@ -343,7 +343,7 @@ test.describe("categories of a date (live, three roles)", () => {
     await openCard(page, FREE);
     await expect(page.getByTestId("price-change")).toHaveCount(0);
     await expect(page.getByTestId("category-price")).toHaveCount(0);
-    await expect(page.getByTestId("category-card")).toContainText("it has no price");
+    await expect(page.getByTestId("category-card")).toContainText("It has no price");
     await expect(page.getByTestId("toggle-btn")).toBeVisible();
     await expect(page.getByTestId("qty-change")).toBeVisible();
 

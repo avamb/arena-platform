@@ -97,7 +97,7 @@ test.describe("sales state (live, three roles)", () => {
     await expect(block).toBeVisible();
     await expect(page.getByTestId("sales-state-value")).toContainText("Open");
     await expect(page.getByTestId("sales-state-origin")).toContainText("The platform sets it");
-    await expect(page.getByTestId("sales-state-places")).toContainText("Free places: 5");
+    await expect(page.getByTestId("sales-state-places")).toContainText("Free seats: 5");
     await expect(page.getByTestId("sales-state-set-open")).toHaveAttribute("aria-checked", "true");
     await noA11yViolations(page);
 
@@ -110,7 +110,7 @@ test.describe("sales state (live, three roles)", () => {
     await page.getByTestId("sales-state-set-sold_out").click();
     await expect(page.getByTestId("sales-state-confirm")).toContainText("if seats are left");
     await page.getByTestId("sales-state-confirm-submit").click();
-    await expect(page.getByTestId("sales-state-done")).toHaveText("Done. Sales state: Sold out.");
+    await expect(page.getByTestId("sales-state-done")).toHaveText("Done. Sales status: Sold out.");
     await expect(page.getByTestId("sales-state-origin")).toContainText("Set by hand");
 
     const st = await readState(request);
@@ -134,7 +134,7 @@ test.describe("sales state (live, three roles)", () => {
 
     await page.getByTestId("sales-state-set-open").click();
     await page.getByTestId("sales-state-confirm-submit").click();
-    await expect(page.getByTestId("sales-state-done")).toHaveText("Done. Sales state: Open.");
+    await expect(page.getByTestId("sales-state-done")).toHaveText("Done. Sales status: Open.");
     await expect(page.getByTestId("sales-state-history-row")).toHaveCount(2);
 
     expect((await readState(request)).manual).toBeNull();

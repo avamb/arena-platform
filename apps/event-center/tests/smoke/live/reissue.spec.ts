@@ -166,7 +166,7 @@ test.describe("replace tickets on the three roles (live)", () => {
       await page.getByTestId("reissue-continue").click();
       await expect(page.getByTestId("reissue-check-tickets")).toContainText(`order №${order.number} to replace: 2`);
       await expect(page.getByTestId("reissue-check-to")).toContainText(RIGHT_EMAIL);
-      await expect(page.getByTestId("reissue-check-scanned")).toContainText(`Ticket №${order.tickets[1].number} was already used at the door`);
+      await expect(page.getByTestId("reissue-check-scanned")).toContainText(`The scanner read ticket №${order.tickets[1].number} at the entrance`);
       await expect(page.getByTestId("reissue-check-provider")).toContainText("AllPay");
       await noA11yViolations(page);
       expect(calls.includes(`POST ${postPath}`), "nothing sent before the word").toBe(false);
@@ -174,7 +174,7 @@ test.describe("replace tickets on the three roles (live)", () => {
       // 4. A wrong word changes nothing.
       await page.getByTestId("reissue-go").click();
       await typeWord(page, "REPLACE");
-      await expect(page.getByTestId("confirm-word-note")).toContainText("does not match");
+      await expect(page.getByTestId("confirm-word-note")).toContainText("The text is different from the word");
       expect(calls.includes(`POST ${postPath}`), "a wrong word sends nothing").toBe(false);
       expect(inspect(order.order_id).reissues).toEqual([]);
 
@@ -204,7 +204,7 @@ test.describe("replace tickets on the three roles (live)", () => {
       await expect(entry).toHaveAttribute("data-state", "pending");
       await expect(page.getByTestId("reissue-entry-tickets")).toContainText(`№${order.tickets[0].number} → №`);
       // O-5: the code used at the door before the replacement is named on the entry.
-      await expect(page.getByTestId("reissue-entry-old-before")).toContainText(`Old code №${order.tickets[1].number} was used at the entrance`);
+      await expect(page.getByTestId("reissue-entry-old-before")).toContainText(`The scanner read the first code №${order.tickets[1].number} at the entrance`);
 
       // A second reissue waits for the first letter: the dialog offers "Send the letter again".
       await page.getByTestId("reissue-open").click();

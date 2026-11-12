@@ -96,7 +96,7 @@ test.describe("event wizard: Event and Venue", () => {
     await page.getByTestId("wizard-name").fill("");
     // The code import.action_name_required, in words, under the name.
     await expect(page.getByTestId("wizard-name-error")).toHaveText("Type the name of the event.", { timeout: 20_000 });
-    await expect(status(page)).toContainText("1 to fix");
+    await expect(status(page)).toContainText("1 to correct");
     // The date and the category are fine: no general error either.
     await expect(page.getByTestId("wizard-general")).toHaveCount(0);
     await noA11yViolations(page);
@@ -141,7 +141,7 @@ test.describe("event wizard: Event and Venue", () => {
 
     // Seats are a whole number.
     await page.getByTestId("wizard-venue-capacity").fill("lots");
-    await expect(page.getByTestId("wizard-venue-capacity-error")).toContainText("whole number");
+    await expect(page.getByTestId("wizard-venue-capacity-error")).toContainText("without decimals");
     await noA11yViolations(page);
   });
 

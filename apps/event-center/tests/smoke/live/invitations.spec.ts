@@ -352,7 +352,7 @@ test.describe("invitations (live)", () => {
     await pickCategory(page);
     const many = (n: number) => Array.from({ length: n }, (_, i) => `inv-many-${i}@example.test`).join("\n");
     await page.getByTestId("invite-guests").fill(many(PLACES + 1));
-    await expect(page.getByTestId("invite-over-free")).toContainText(`free places (${PLACES})`);
+    await expect(page.getByTestId("invite-over-free")).toContainText(`free seats (${PLACES})`);
     await expect(page.getByTestId("invite-block")).toHaveCount(0);
     await expect(page.getByTestId("invite-review")).toBeEnabled();
     await page.getByTestId("invite-guests").fill(many(51));

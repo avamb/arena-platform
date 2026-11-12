@@ -178,7 +178,7 @@ test.describe.serial("promo codes twin (live)", () => {
     await expect(page.getByTestId("promo-picker")).toContainText("Sold in CZK, while this code is in EUR.");
     await page.getByTestId("promo-pick-event").selectOption({ label: env.event_name });
     await page.getByTestId("promo-pick-session").first().check();
-    await expect(page.getByTestId("promo-pick-count")).toContainText("Chosen sessions: 1");
+    await expect(page.getByTestId("promo-pick-count")).toContainText("Selected sessions: 1");
 
     await page.getByTestId("date-quick-week").click();
     const until = (await page.getByTestId("promo-f-until-value").innerText()).trim().slice(0, 10);
@@ -207,13 +207,13 @@ test.describe.serial("promo codes twin (live)", () => {
     await page.getByTestId("promo-f-scope-pick").check();
     await page.getByTestId("promo-pick-event").selectOption({ label: CZECH });
     await page.getByTestId("promo-pick-session").first().check();
-    await expect(page.getByTestId("promo-pick-count")).toContainText("Chosen sessions: 1");
+    await expect(page.getByTestId("promo-pick-count")).toContainText("Selected sessions: 1");
     // Now the discount becomes a fixed one in EUR: the CZK session cannot stay ticked.
     await page.getByTestId("promo-f-type-fixed_amount").check();
     await page.getByTestId("promo-f-currency").fill("eur");
-    await expect(page.getByTestId("promo-pick-count")).toContainText("Chosen sessions: 0");
+    await expect(page.getByTestId("promo-pick-count")).toContainText("Selected sessions: 0");
     await expect(page.getByTestId("promo-pick-session").first()).not.toBeChecked();
-    await expect(page.getByTestId("promo-pick-dropped")).toContainText("another currency than EUR");
+    await expect(page.getByTestId("promo-pick-dropped")).toContainText("sold in a different currency than EUR");
   });
 
   test("owner: pause and activate change the status", async ({ page, request }) => {
@@ -221,7 +221,7 @@ test.describe.serial("promo codes twin (live)", () => {
     await signInAs(page, person(env, "org_admin"));
     await page.goto(`/o/${env.org_id}/promo/${row.id}`);
     await page.getByTestId("promo-pause").click();
-    await expect(page.getByTestId("promo-notice")).toContainText("is paused");
+    await expect(page.getByTestId("promo-notice")).toContainText("is on pause");
     await expect(page.getByTestId("promo-activate")).toBeVisible();
     expect((await codeByName(request, FIXED))?.status).toBe("paused");
     await page.getByTestId("promo-activate").click();
@@ -240,7 +240,7 @@ test.describe.serial("promo codes twin (live)", () => {
     await page.getByTestId("promo-sessions-open").click();
     await page.getByTestId("promo-pick-event").selectOption({ label: SWAN });
     await page.getByTestId("promo-pick-all").click();
-    await expect(page.getByTestId("promo-pick-count")).toContainText("Chosen sessions: 3");
+    await expect(page.getByTestId("promo-pick-count")).toContainText("Selected sessions: 3");
     await page.getByTestId("promo-sessions-save").click();
     await expect(page.getByTestId("promo-notice")).toContainText("works on the selected sessions");
     expect(new Set((await codeByName(request, FIXED))?.applies_to_session_ids)).toEqual(new Set([env.session_id, ...swan]));
@@ -249,9 +249,9 @@ test.describe.serial("promo codes twin (live)", () => {
     await page.getByTestId("promo-sessions-open").click();
     await page.getByTestId("promo-pick-event").selectOption({ label: SWAN });
     await page.getByTestId("promo-pick-none").click();
-    await expect(page.getByTestId("promo-pick-count")).toContainText("Chosen sessions: 1");
+    await expect(page.getByTestId("promo-pick-count")).toContainText("Selected sessions: 1");
     await page.getByTestId("promo-sessions-save").click();
-    await expect(page.getByTestId("promo-sessions")).toContainText("Chosen sessions: 1");
+    await expect(page.getByTestId("promo-sessions")).toContainText("Selected sessions: 1");
     expect((await codeByName(request, FIXED))?.applies_to_session_ids).toEqual([env.session_id]);
 
     // Emptying the list is not a save: it would turn the code into a club code.
@@ -277,13 +277,13 @@ test.describe.serial("promo codes twin (live)", () => {
     // A wrong word changes nothing.
     await page.getByRole("textbox").fill("remove");
     await page.getByTestId("confirm-word-submit").click();
-    await expect(page.getByTestId("confirm-word")).toContainText("does not match");
+    await expect(page.getByTestId("confirm-word")).toContainText("The text is different from the word");
     expect(await codeByName(request, CLUB)).toBeDefined();
     // The right word, in any case.
     await page.getByRole("textbox").fill("delete");
     await page.getByTestId("confirm-word-submit").click();
     await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/promo`));
-    await expect(page.getByTestId("promo-notice")).toContainText(`${CLUB} is deleted`);
+    await expect(page.getByTestId("promo-notice")).toContainText(`We deleted code ${CLUB}`);
     expect(await codeByName(request, CLUB)).toBeUndefined();
 
     // The server still refuses the name of a deleted code (a soft delete).
@@ -325,7 +325,7 @@ test.describe.serial("promo codes twin (live)", () => {
     await page.getByTestId("promo-delete").click();
     await page.getByRole("textbox").fill("DELETE");
     await page.getByTestId("confirm-word-submit").click();
-    await expect(page.getByTestId("promo-notice")).toContainText(`${MANAGER_CODE} is deleted`);
+    await expect(page.getByTestId("promo-notice")).toContainText(`We deleted code ${MANAGER_CODE}`);
     expect(await codeByName(request, MANAGER_CODE, "organizer")).toBeUndefined();
   });
 
