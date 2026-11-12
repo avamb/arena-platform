@@ -15,7 +15,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { liveEnv, noA11yViolations, person, richText, signInAs, type Role } from "./liveEnv";
-import { skipPoster } from "./wizardHelpers";
+import { pickWizardVenue, skipPoster } from "./wizardHelpers";
 import {
   auth,
   base,
@@ -53,8 +53,7 @@ async function statusOk(page: Page) {
 
 async function fillManualBasics(page: Page, name: string) {
   await page.getByTestId("wizard-name").fill(name);
-  await page.getByTestId("wizard-venue-mode-existing").check();
-  await page.getByTestId("wizard-venue-pick").selectOption({ label: "E2E Hall" });
+  await pickWizardVenue(page, "E2E Hall");
   await page.getByTestId("wizard-currency").fill("EUR");
   // Commit the text-field blur before opening the calendar. On a touch
   // viewport validation can move the toggle between pointer down and up.
@@ -251,7 +250,7 @@ test.describe("upload once, review the hints, apply on purpose", () => {
     await expect(page.getByTestId("wizard-date-0-day-value")).toHaveAttribute("data-value", "");
     // The currency field only exists once a venue is chosen: nothing chose one.
     await expect(page.getByTestId("wizard-currency")).toHaveCount(0);
-    await expect(page.getByTestId("wizard-venue-pick")).toHaveCount(0);
+    await expect(page.getByTestId("venue-chooser")).toHaveCount(0);
     await noA11yViolations(page);
 
     // Typed text is a replacement that is off by default; empty fields are on.
@@ -281,7 +280,7 @@ test.describe("upload once, review the hints, apply on purpose", () => {
     await expect(richText(page, "wizard-description")).toHaveText("My own description");
     await expect(page.getByTestId("wizard-date-0-day-value")).toHaveAttribute("data-value", "2031-03-05");
     await expect(page.getByTestId("wizard-date-0-time")).toHaveValue("19:30");
-    await expect(page.getByTestId("wizard-venue-pick")).toContainText("E2E Hall");
+    await expect(page.getByTestId("wizard-venue-chosen")).toContainText("E2E Hall");
     await expect(page.getByTestId("wizard-currency")).toHaveValue("EUR");
     await expect(page.getByTestId("wizard-cat-0-0-name")).toHaveValue("Stalls");
     await expect(page.getByTestId("wizard-cat-0-0-price")).toHaveValue("34.90");

@@ -28,7 +28,7 @@
  */
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { liveEnv, noA11yViolations, person, richText, signInAs, type Role } from "./liveEnv";
-import { fillFirstDate, openWizard, trackChecks } from "./wizardHelpers";
+import { clearWizardCountry, fillFirstDate, openWizard, pickWizardCountry, pickWizardVenue, trackChecks } from "./wizardHelpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -70,8 +70,7 @@ test.describe("event wizard: Event and Venue", () => {
     await richText(page, "wizard-description").fill("A twin test event.");
     await page.getByTestId("wizard-age").selectOption("6+");
     await page.getByTestId("wizard-promoter").selectOption({ label: "E2E Wizard Promoter" });
-    await page.getByTestId("wizard-venue-mode-existing").check();
-    await page.getByTestId("wizard-venue-pick").selectOption({ label: "E2E Hall" });
+    await pickWizardVenue(page, "E2E Hall");
     await expect(page.getByTestId("wizard-venue-facts")).toContainText("Europe/Madrid");
     await expect(page.getByTestId("wizard-venue-facts")).toContainText("300");
     // The hall has no country, so no currency comes from it: type one.
@@ -86,8 +85,7 @@ test.describe("event wizard: Event and Venue", () => {
 
   test("an empty name is reported by the check under the name field", async ({ page }) => {
     await openWizard(page, "org_admin");
-    await page.getByTestId("wizard-venue-mode-existing").check();
-    await page.getByTestId("wizard-venue-pick").selectOption({ label: "E2E Hall" });
+    await pickWizardVenue(page, "E2E Hall");
     await page.getByTestId("wizard-currency").fill("EUR");
     await fillFirstDate(page);
     await page.getByTestId("wizard-name").fill("A name");
@@ -113,7 +111,7 @@ test.describe("event wizard: Event and Venue", () => {
     await page.getByTestId("wizard-name").fill(`${EVENT_NAME} new venue`);
     await page.getByTestId("wizard-venue-mode-new").check();
     await page.getByTestId("wizard-venue-name").fill(NEW_HALL);
-    await page.getByTestId("wizard-venue-country").selectOption("ES");
+    await pickWizardCountry(page, "ES");
     // Spain has several zones: the person chooses; the currency came from the country.
     await expect(page.getByTestId("wizard-currency")).toHaveValue("EUR", { timeout: 15_000 });
     await page.getByTestId("wizard-venue-city").fill("barc");
@@ -128,15 +126,15 @@ test.describe("event wizard: Event and Venue", () => {
     await expect(status(page)).toContainText("All data you added is correct", { timeout: 20_000 });
 
     // A country with ONE zone fills the zone in without a question.
-    await page.getByTestId("wizard-venue-country").selectOption("CZ");
+    await pickWizardCountry(page, "CZ");
     await expect(page.getByTestId("wizard-tz-single")).toContainText("Europe/Prague", { timeout: 15_000 });
     await expect(page.getByTestId("wizard-currency")).toHaveValue("CZK", { timeout: 15_000 });
     await expect(status(page)).toContainText("All data you added is correct", { timeout: 20_000 });
 
     // No country: the currency that came from the country goes with it (a typed one would stay).
-    await page.getByTestId("wizard-venue-country").selectOption("");
+    await clearWizardCountry(page);
     await expect(page.getByTestId("wizard-currency")).toHaveValue("", { timeout: 15_000 });
-    await page.getByTestId("wizard-venue-country").selectOption("CZ");
+    await pickWizardCountry(page, "CZ");
     await expect(page.getByTestId("wizard-currency")).toHaveValue("CZK", { timeout: 15_000 });
 
     // Seats are a whole number.
@@ -150,7 +148,7 @@ test.describe("event wizard: Event and Venue", () => {
     await page.getByTestId("wizard-name").fill("Zone test");
     await page.getByTestId("wizard-venue-mode-new").check();
     await page.getByTestId("wizard-venue-name").fill(`Zoneless ${nonce}`);
-    await page.getByTestId("wizard-venue-country").selectOption("ES");
+    await pickWizardCountry(page, "ES");
     await page.getByTestId("wizard-venue-capacity").fill("50");
     await page.getByTestId("wizard-venue-timezone").focus();
     await page.getByTestId("wizard-venue-timezone").blur();
@@ -159,8 +157,7 @@ test.describe("event wizard: Event and Venue", () => {
 
   test("the check is rate limited while a person types", async ({ page }) => {
     await openWizard(page, "org_admin");
-    await page.getByTestId("wizard-venue-mode-existing").check();
-    await page.getByTestId("wizard-venue-pick").selectOption({ label: "E2E Hall" });
+    await pickWizardVenue(page, "E2E Hall");
     await page.getByTestId("wizard-currency").fill("EUR");
     await fillFirstDate(page);
     await page.waitForTimeout(1500);
@@ -191,8 +188,7 @@ test.describe("event wizard: Event and Venue", () => {
     const stamps = trackChecks(page);
     await openWizard(page, "organizer");
     await page.getByTestId("wizard-name").fill(`Manager ${nonce}`);
-    await page.getByTestId("wizard-venue-mode-existing").check();
-    await page.getByTestId("wizard-venue-pick").selectOption({ label: "E2E Hall" });
+    await pickWizardVenue(page, "E2E Hall");
     await page.getByTestId("wizard-currency").fill("EUR");
     await fillFirstDate(page);
     await expect(status(page)).toContainText("All data you added is correct", { timeout: 20_000 });

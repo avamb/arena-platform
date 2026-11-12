@@ -3222,3 +3222,72 @@ fieldset legend {
   background: var(--bad-text);
   color: var(--bad-bg);
 }
+
+/* Venue chooser (spec 64 section 2.1.1) */
+.venue-chooser {
+  display: grid;
+  gap: 0.5rem;
+}
+.chooser-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.chooser-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.chooser-sub {
+  margin: 0.5rem 0 0;
+}
+.chooser-chips,
+.chooser-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.chooser-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.chooser-chip {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.chooser-list {
+  display: grid;
+  gap: 0.4rem;
+}
+.chooser-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  background: var(--surface, transparent);
+  border: 1px solid var(--border, currentColor);
+  border-radius: 8px;
+}
+.chooser-row[aria-current="true"] {
+  border-width: 2px;
+}
+.chooser-row:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.chooser-row-name {
+  font-weight: 600;
+}
+.chooser-marks {
+  display: inline-flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}

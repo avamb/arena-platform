@@ -34,6 +34,7 @@ import { BillingInvoicesScreen } from "@/screens/BillingInvoicesScreen";
 import { BillingScreen } from "@/screens/BillingScreen";
 import { InvitationsScreen } from "@/screens/InvitationsScreen";
 import { PromotersScreen } from "@/screens/PromotersScreen";
+import { VenuesScreen } from "@/screens/VenuesScreen";
 import { PromoterScreen } from "@/screens/PromoterScreen";
 import { NotFoundScreen } from "@/screens/NotFoundScreen";
 import { OrgDataScreen } from "@/screens/OrgDataScreen";
@@ -274,6 +275,10 @@ const promoterRoute = createRoute({
   component: PromoterScreen,
 });
 
+// Spec 64 section 2.1.1: the venue chooser and the venue card.
+const venuesRoute = createRoute({ getParentRoute: () => orgRoute, path: "/venues", component: VenuesScreen });
+const venueRoute = createRoute({ getParentRoute: () => orgRoute, path: "/venues/$venueId", component: VenuesScreen });
+
 // 4-3: promo codes. "new" is listed before "$codeId" so it is never read as an id.
 const promoRoute = createRoute({
   getParentRoute: () => orgRoute,
@@ -423,6 +428,8 @@ export const routeTree = rootRoute.addChildren([
     billingInvoicesRoute,
     promotersRoute,
     promoterRoute,
+    venuesRoute,
+    venueRoute,
     promoRoute,
     promoNewRoute,
     promoCodeRoute,

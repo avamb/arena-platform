@@ -12,7 +12,7 @@
  */
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { liveEnv, noA11yViolations, person, richText, signInAs, type Role } from "./liveEnv";
-import { skipPoster, pickDay } from "./wizardHelpers";
+import { skipPoster, pickDay, pickWizardCountry, pickWizardVenue, searchVenueRows } from "./wizardHelpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -70,8 +70,7 @@ async function fillForm(page: Page, name: string) {
   await skipPoster(page);
   await page.getByTestId("wizard-name").fill(name);
   await richText(page, "wizard-description").fill("A twin-test show");
-  await page.getByTestId("wizard-venue-mode-existing").check();
-  await page.getByTestId("wizard-venue-pick").selectOption({ label: "E2E Hall" });
+  await pickWizardVenue(page, "E2E Hall");
   await page.getByTestId("wizard-currency").fill("EUR");
   await pickDay(page, "wizard-date-0-day", "week");
   await page.getByTestId("wizard-date-0-time").fill("19:00");
@@ -188,7 +187,7 @@ test.describe("create a draft GA event", () => {
     await page.getByTestId("wizard-venue-mode-new").check();
     await expect(page.getByTestId("wizard-venue-new-note")).toBeVisible();
     await page.getByTestId("wizard-venue-name").fill(hall);
-    await page.getByTestId("wizard-venue-country").selectOption("ES");
+    await pickWizardCountry(page, "ES");
     await expect(page.getByTestId("wizard-currency")).toHaveValue("EUR", { timeout: 15_000 });
     await page.getByTestId("wizard-venue-city").fill("Barcelona");
     await page.getByTestId("wizard-venue-timezone").selectOption("Europe/Madrid");
@@ -230,7 +229,7 @@ test.describe("create a draft GA event", () => {
     // The venue is a venue of the organization from now on: the next event can pick it.
     await page.goto(`/o/${env.org_id}/events/new`);
     await page.getByTestId("wizard-venue-mode-existing").check();
-    await expect(page.getByTestId("wizard-venue-pick").locator("option", { hasText: hall })).toHaveCount(1);
+    await expect(await searchVenueRows(page, hall)).toHaveCount(1);
   });
 
   test("a refusal and a lost answer keep the draft; the retry cannot make a second event", async ({ page, request }) => {
