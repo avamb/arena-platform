@@ -870,7 +870,7 @@ jobs:
 
       - name: Image smoke (the HTTP service answers /healthz)
         run: |
-          docker run -d --name venue-gen-smoke -p 18090:8090 arena_new/arena-venue-gen:ci
+          docker run -d --name venue-gen-smoke -p 18090:8090 -e VENUE_GEN_TOKEN=ci-smoke-token-not-a-secret arena_new/arena-venue-gen:ci
           for i in $(seq 1 20); do
             if curl -fsS http://127.0.0.1:18090/healthz; then ok=1; break; fi
             sleep 1

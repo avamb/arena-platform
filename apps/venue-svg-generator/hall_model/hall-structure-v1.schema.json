@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hall-structure-v1",
+  "title": "hall-structure-v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "stage", "sections"],
+  "properties": {
+    "schema_version": {"const": "hall-structure-v1"},
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["side", "confidence"],
+      "properties": {
+        "side": {"enum": ["top", "bottom", "left", "right", "unknown"]},
+        "confidence": {"$ref": "#/$defs/unit"}
+      }
+    },
+    "sections": {"type": "array", "maxItems": 60, "items": {"$ref": "#/$defs/section"}}
+  },
+  "$defs": {
+    "unit": {"type": "number", "minimum": 0, "maximum": 1},
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "rows"],
+      "properties": {
+        "label": {"type": ["string", "null"], "maxLength": 200},
+        "confidence": {"$ref": "#/$defs/unit"},
+        "placement": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["band", "order"],
+          "properties": {
+            "band": {"type": "integer", "minimum": 0, "maximum": 1000},
+            "order": {"type": "integer", "minimum": 0, "maximum": 1000}
+          }
+        },
+        "rows": {"type": "array", "maxItems": 400, "items": {"$ref": "#/$defs/row"}}
+      }
+    },
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "seat_count"],
+      "properties": {
+        "label": {"type": ["string", "null"], "maxLength": 200},
+        "seat_count": {"type": "integer", "minimum": 1, "maximum": 600},
+        "confidence": {"$ref": "#/$defs/unit"},
+        "numbering": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["rule"],
+              "properties": {
+                "rule": {"enum": ["left_to_right", "right_to_left", "from_center"]},
+                "start": {"type": "integer", "minimum": 0, "maximum": 100000}
+              }
+            }
+          ]
+        },
+        "aisles_after": {"type": "array", "maxItems": 599, "items": {"type": "integer", "minimum": 1, "maximum": 599}}
+      }
+    }
+  }
+}
