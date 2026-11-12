@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "seating-json-v2",
+  "title": "seating-json-v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "lane", "confirmed", "sources", "coordinate_space", "stage", "sections", "issues"],
+  "properties": {
+    "schema_version": {"const": "seating-json-v2"},
+    "lane": {"enum": ["exact", "schematic"]},
+    "confirmed": {"type": "boolean"},
+    "source_only": {"type": "boolean"},
+    "reference_svg_used": {"type": "boolean"},
+    "geometry_edited": {"type": "boolean"},
+    "sources": {"type": "array", "maxItems": 20, "items": {"$ref": "#/$defs/source"}},
+    "coordinate_space": {"$ref": "#/$defs/coordinate_space"},
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["side", "confidence"],
+      "properties": {
+        "side": {"enum": ["top", "bottom", "left", "right", "unknown"]},
+        "confidence": {"$ref": "#/$defs/unit"}
+      }
+    },
+    "sections": {"type": "array", "maxItems": 60, "items": {"$ref": "#/$defs/section"}},
+    "issues": {"type": "array", "maxItems": 2000, "items": {"$ref": "#/$defs/issue"}},
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "seat_count", "sellable_seat_count", "blocking_issue_count", "open_issue_count"],
+      "properties": {
+        "status": {"enum": ["PASS", "QUARANTINE"]},
+        "seat_count": {"type": "integer", "minimum": 0},
+        "sellable_seat_count": {"type": "integer", "minimum": 0},
+        "blocking_issue_count": {"type": "integer", "minimum": 0},
+        "open_issue_count": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "$defs": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 120},
+    "unit": {"type": "number", "minimum": 0, "maximum": 1},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "kind", "sha256", "size_bytes", "adapter", "adapter_version", "adapter_profile"],
+      "properties": {
+        "index": {"type": "integer", "minimum": 0},
+        "kind": {"type": "string", "minLength": 1, "maxLength": 40},
+        "sha256": {"type": "string", "minLength": 1, "maxLength": 128},
+        "size_bytes": {"type": ["integer", "null"], "minimum": 0},
+        "adapter": {"type": ["string", "null"], "maxLength": 120},
+        "adapter_version": {"type": ["string", "null"], "maxLength": 60},
+        "adapter_profile": {"type": ["string", "null"], "maxLength": 200}
+      }
+    },
+    "coordinate_space": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["units", "source_units", "scale", "offset_x", "offset_y"],
+      "properties": {
+        "units": {"const": "seat_pitch"},
+        "source_units": {"enum": ["grid", "pt", "px", "none"]},
+        "scale": {"type": "number", "exclusiveMinimum": 0},
+        "offset_x": {"type": "number"},
+        "offset_y": {"type": "number"},
+        "page_offsets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["page", "offset_y"],
+            "properties": {
+              "page": {"type": "integer", "minimum": 1},
+              "offset_y": {"type": "number"}
+            }
+          }
+        }
+      }
+    },
+    "section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "label_status", "rows"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "label": {"type": ["string", "null"], "maxLength": 200},
+        "label_status": {"enum": ["read", "observed", "confirmed", "unknown"]},
+        "rows": {"type": "array", "maxItems": 400, "items": {"$ref": "#/$defs/row"}}
+      }
+    },
+    "row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "label_status", "numbering", "seats"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "label": {"type": ["string", "null"], "maxLength": 200},
+        "label_status": {"enum": ["read", "observed", "confirmed", "unknown"]},
+        "confidence": {"$ref": "#/$defs/unit"},
+        "numbering": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rule", "start"],
+          "properties": {
+            "rule": {"enum": ["left_to_right", "right_to_left", "from_center", "explicit", "unknown"]},
+            "start": {"type": ["integer", "null"]}
+          }
+        },
+        "seats": {"type": "array", "maxItems": 600, "items": {"$ref": "#/$defs/seat"}},
+        "gaps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["after_seat_key", "width"],
+            "properties": {
+              "after_seat_key": {"$ref": "#/$defs/id"},
+              "width": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
+    },
+    "seat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "number", "number_status", "status", "confidence", "position"],
+      "properties": {
+        "key": {"$ref": "#/$defs/id"},
+        "number": {"type": ["string", "null"], "maxLength": 40},
+        "number_status": {"enum": ["read", "observed", "rule", "confirmed", "unknown"]},
+        "status": {"enum": ["available", "unavailable"]},
+        "unavailable_reason": {"type": ["string", "null"], "maxLength": 200},
+        "confidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["geometry", "number", "identity"],
+          "properties": {
+            "geometry": {"$ref": "#/$defs/unit"},
+            "number": {"$ref": "#/$defs/unit"},
+            "identity": {"$ref": "#/$defs/unit"}
+          }
+        },
+        "position": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["x", "y"],
+              "properties": {"x": {"type": "number"}, "y": {"type": "number"}}
+            }
+          ]
+        },
+        "evidence": {"type": "object"}
+      }
+    },
+    "bbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["space", "source_index", "page", "x0", "y0", "x1", "y1"],
+      "properties": {
+        "space": {"const": "source"},
+        "source_index": {"type": ["integer", "null"], "minimum": 0},
+        "page": {"type": ["integer", "null"], "minimum": 1},
+        "x0": {"type": "number"},
+        "y0": {"type": "number"},
+        "x1": {"type": "number"},
+        "y1": {"type": "number"}
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "origin", "blocking", "resolved", "codes", "message", "target"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1, "maxLength": 240},
+        "type": {"enum": ["numbering_unknown", "row_label_unknown", "row_count_mismatch", "unavailable_seats", "section_split", "stage_unknown", "unknown"]},
+        "origin": {"enum": ["derived", "reported"]},
+        "blocking": {"type": "boolean"},
+        "resolved": {"type": "boolean"},
+        "codes": {"type": "array", "items": {"type": "string", "maxLength": 200}},
+        "message": {"type": "string", "maxLength": 1000},
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["section_id", "row_id", "seat_keys", "bbox"],
+          "properties": {
+            "section_id": {"type": ["string", "null"]},
+            "row_id": {"type": ["string", "null"]},
+            "seat_keys": {"type": "array", "items": {"type": "string"}},
+            "bbox": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/bbox"}]}
+          }
+        }
+      }
+    }
+  }
+}
