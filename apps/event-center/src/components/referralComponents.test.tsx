@@ -85,8 +85,8 @@ describe("RewardRow", () => {
   it("explains a reward that ended without money", () => {
     const html = render(<ul><RewardRow r={reward({ state: "not_possible", reason: "card_closed" })} zone={undefined} /></ul>);
     expect(html).toContain("Not possible");
-    expect(html).toContain("could not go back to the buyer");
-    expect(render(<ul><RewardRow r={reward({ state: "failed", reason: "some_provider_code" })} zone={undefined} /></ul>)).toContain("ended without a payout");
+    expect(html).toContain("We cannot send the money to the buyer");
+    expect(render(<ul><RewardRow r={reward({ state: "failed", reason: "some_provider_code" })} zone={undefined} /></ul>)).toContain("ended with no payment");
   });
 
   it("marks a friend who took the money back and says the cashback stays", () => {

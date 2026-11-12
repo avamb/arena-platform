@@ -64,7 +64,7 @@ test.describe("billing usage", () => {
     await expect(summary.getByTestId("billing-event-alltime")).toBeVisible();
     await expect(summary.getByTestId("billing-total-EUR")).toContainText("€1.77");
     await expect(summary.getByTestId("billing-total-EUR")).toContainText("Charges: 4");
-    await expect(summary.getByTestId("billing-by-rule")).toContainText("Fixed fee per ticket");
+    await expect(summary.getByTestId("billing-by-rule")).toContainText("Fixed fee for each ticket");
     await expect(summary.getByTestId("billing-by-session").locator("li")).toHaveCount(1);
     await expect(page.getByTestId("billing-row")).toHaveCount(4);
     await page.getByTestId("billing-event-clear").click();

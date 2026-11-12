@@ -100,13 +100,13 @@ test.describe.serial("promo codes twin (live)", () => {
     const used = page.getByTestId("promo-row").filter({ hasText: USED });
     await expect(used).toContainText("10% off");
     await expect(used).toContainText("Active");
-    await expect(used).toContainText("several currencies");
+    await expect(used).toContainText("different currencies");
     await noA11yViolations(page);
 
     await used.getByTestId("promo-code").click();
     await expect(page.getByTestId("promo-card-code")).toHaveText(USED);
     await expect(page.getByTestId("promo-usage")).toContainText("Used: 2");
-    await expect(page.getByTestId("promo-usage")).toContainText("several currencies");
+    await expect(page.getByTestId("promo-usage")).toContainText("different currencies");
     await expect(page.getByTestId("promo-usage-row")).toHaveCount(2);
     await expect(page.getByTestId("promo-usage-table")).toContainText("Alice Promotest");
     await expect(page.getByTestId("promo-usage-table")).toContainText("Boris Promotest");
@@ -131,7 +131,7 @@ test.describe.serial("promo codes twin (live)", () => {
     await expect(page.getByTestId("promo-review")).toContainText(CLUB);
     await page.getByTestId("promo-create-go").click();
     await expect(page.getByTestId("promo-card-code")).toHaveText(CLUB);
-    await expect(page.getByTestId("promo-notice")).toContainText("is created");
+    await expect(page.getByTestId("promo-notice")).toContainText("We made code");
 
     const row = (await codeByName(request, CLUB)) as PromoCode;
     expect(row.discount_type).toBe("percent");
@@ -149,7 +149,7 @@ test.describe.serial("promo codes twin (live)", () => {
     await page.getByTestId("promo-f-code").fill(CLUB.toLowerCase());
     await page.getByTestId("promo-f-value").fill("20");
     await page.getByTestId("promo-review").click();
-    await expect(page.getByRole("alert")).toContainText("already have a code with this name");
+    await expect(page.getByRole("alert")).toContainText("You have a code with this name");
     expect((await listCodes(request)).length).toBe(before);
     // Spaces are not allowed in a code: buyers type it by hand.
     await page.getByTestId("promo-f-code").fill("two words");
@@ -170,7 +170,7 @@ test.describe.serial("promo codes twin (live)", () => {
     await page.getByTestId("promo-f-scope-pick").check();
     // No pick yet: an empty list would be a club code, so it is refused.
     await page.getByTestId("promo-review").click();
-    await expect(page.getByRole("alert")).toContainText("Choose at least one session");
+    await expect(page.getByRole("alert")).toContainText("Select one session or more");
 
     // A session sold in CZK cannot take a EUR code: its box is off.
     await page.getByTestId("promo-pick-event").selectOption({ label: CZECH });
@@ -242,7 +242,7 @@ test.describe.serial("promo codes twin (live)", () => {
     await page.getByTestId("promo-pick-all").click();
     await expect(page.getByTestId("promo-pick-count")).toContainText("Chosen sessions: 3");
     await page.getByTestId("promo-sessions-save").click();
-    await expect(page.getByTestId("promo-notice")).toContainText("works on the chosen sessions now");
+    await expect(page.getByTestId("promo-notice")).toContainText("works on the selected sessions");
     expect(new Set((await codeByName(request, FIXED))?.applies_to_session_ids)).toEqual(new Set([env.session_id, ...swan]));
 
     // Take that event's dates away: the other event's date is kept.
@@ -263,7 +263,7 @@ test.describe.serial("promo codes twin (live)", () => {
 
     // "All sessions" is its own, explicit button: the empty list is stored.
     await page.getByTestId("promo-sessions-all").click();
-    await expect(page.getByTestId("promo-notice")).toContainText("works on all sessions now");
+    await expect(page.getByTestId("promo-notice")).toContainText("works on all sessions, new ones too");
     await expect(page.getByTestId("promo-sessions")).toContainText("All sessions");
     expect((await codeByName(request, FIXED))?.applies_to_session_ids).toEqual([]);
   });
@@ -342,7 +342,7 @@ test.describe.serial("promo codes twin (live)", () => {
     await page.goto(`/o/${env.org_id}/promo`);
     await expect(page.getByTestId("promo-no-access")).toContainText("does not include promo codes");
     await page.goto(`/o/${env.org_id}/promo/new`);
-    await expect(page.getByTestId("promo-no-access")).toContainText("does not allow creating promo codes");
+    await expect(page.getByTestId("promo-no-access")).toContainText("does not let you add promo codes");
     await page.goto(`/o/${env.org_id}/promo/${used.id}`);
     await expect(page.getByTestId("promo-no-access")).toBeVisible();
     await noA11yViolations(page);

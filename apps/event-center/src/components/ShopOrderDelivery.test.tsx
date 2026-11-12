@@ -39,16 +39,16 @@ describe("ShopOrderDelivery", () => {
     expect(html).toContain("Not delivered");
     expect(html.match(/data-testid="shop-order-step"/g)).toHaveLength(4);
     expect(html).toContain("Packed · Marina · event center");
-    expect(html).toContain("Handed to courier · Ivan · delivery group");
-    expect(html).toContain("Tracking number: TRACK-9");
-    expect(html).toContain("Reason: Not at home");
+    expect(html).toContain("Given to courier · Ivan · delivery group");
+    expect(html).toContain("Shipping number: TRACK-9");
+    expect(html).toContain("Cause: Not at home");
     expect(html).toContain("Telegram bot");
     expect(html).toContain("called twice");
   });
 
   it("shows a typed reason as it was written, escaped", () => {
     const html = render(<ShopOrderDelivery order={order()} country="ES" />);
-    expect(html).toContain("Reason: gate &lt;closed&gt;");
+    expect(html).toContain("Cause: gate &lt;closed&gt;");
     expect(html).not.toContain("gate <closed>");
   });
 
@@ -78,10 +78,10 @@ describe("ShopStepBadge", () => {
   it("shows the step and, past two days, how long an order has waited", () => {
     const waiting = order({ status: "paid", fulfillment_step: "waiting", shipped_at: null, paid_at: "2026-11-01T10:00:00Z" });
     const html = render(<ShopStepBadge order={waiting} now={NOW} />);
-    expect(html).toContain("Waiting to be packed");
-    expect(html).toContain("waiting 5 days");
+    expect(html).toContain("Not packed");
+    expect(html).toContain("wait time: 5 days");
     const fresh = render(<ShopStepBadge order={{ ...waiting, paid_at: "2026-11-06T08:00:00Z" } as ShopOrder} now={NOW} />);
-    expect(fresh).toContain("Waiting to be packed");
+    expect(fresh).toContain("Not packed");
     expect(fresh).not.toContain("waiting 0");
     expect(fresh).not.toContain("days");
   });

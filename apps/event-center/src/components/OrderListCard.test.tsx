@@ -57,7 +57,7 @@ describe("the expanded order card", () => {
   it("keeps the Test and letter-failed badges of the old row", async () => {
     const html = await renderInRouter(<OrderListCard orgId="org1" order={order({ is_test: true, letter_failed: true })} />);
     expect(html).toContain("Test");
-    expect(html).toContain("Letter not delivered");
+    expect(html).toContain("E-mail not received");
   });
 
   it("renders an order whose tickets are not issued yet, without a buyer phone", async () => {

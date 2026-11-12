@@ -49,7 +49,7 @@ describe("SessionSaleTimes", () => {
 
   it("tells a venue without a zone apart from a summary that did not load", () => {
     const venue = render({ timezone: null });
-    expect(venue).toContain("no time zone on file");
+    expect(venue).toContain("The venue has no time zone");
     expect(venue).toMatch(/write to support/i);
     expect(venue).not.toContain('data-testid="sales-end-change"');
 
@@ -57,6 +57,6 @@ describe("SessionSaleTimes", () => {
     expect(unloaded).toContain("could not load the time zone");
     expect(unloaded).toContain("Reload the page");
     expect(unloaded).toMatch(/write to support/i);
-    expect(unloaded).not.toContain("no time zone on file");
+    expect(unloaded).not.toContain("The venue has no time zone");
   });
 });

@@ -142,7 +142,7 @@ describe("the storefront switch", () => {
     const el = await mount(settings({ can_open: false, open_blockers: ["no_active_product", "payment_not_configured"] }));
     const list = byId(el, "shop-storefront-blockers");
     expect(list.textContent).toContain("There is no product on sale.");
-    expect(list.textContent).toContain("Online payment is not connected for the shop yet.");
+    expect(list.textContent).toContain("Online payment is not connected for the shop.");
     expect(list.textContent).not.toContain("settings are not saved");
     expect(byId(el, "shop-storefront-fix-products").getAttribute("href")).toContain("/shop/products");
     expect(byId(el, "shop-storefront-fix-payments")).not.toBeNull();
@@ -163,7 +163,7 @@ describe("the storefront switch", () => {
     vi.mocked(setShopStorefront).mockRejectedValue(new ApiError(422, "shop.cannot_open", "no", undefined, { blockers: ["settings_not_saved", "no_active_product"] }));
     const el = await mount(settings());
     await press(el, "shop-storefront-toggle");
-    expect(byId(el, "shop-storefront-error").textContent).toContain("The storefront cannot be opened yet.");
+    expect(byId(el, "shop-storefront-error").textContent).toContain("You cannot open the storefront.");
     expect(byId(el, "shop-storefront-blocker-settings_not_saved")).not.toBeNull();
     expect(byId(el, "shop-storefront-blocker-no_active_product")).not.toBeNull();
     expect(byId(el, "shop-storefront-status").textContent).toBe("Closed");
@@ -174,7 +174,7 @@ describe("the storefront switch", () => {
     vi.mocked(setShopStorefront).mockRejectedValue(new ApiError(404, "shop.module_not_enabled", "no"));
     const el = await mount(settings());
     await press(el, "shop-storefront-toggle");
-    expect(byId(el, "shop-storefront-error").textContent).toContain("The shop is not connected for this organization.");
+    expect(byId(el, "shop-storefront-error").textContent).toContain("We did not connect the shop for this organization.");
   });
 
   it("is only a statement without shop.manage", async () => {

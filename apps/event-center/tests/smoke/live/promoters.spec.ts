@@ -116,7 +116,7 @@ test.describe("promoters (live, three roles)", () => {
 
     // A second promoter with the same name is refused in words.
     await createViaUi(page, NAME.toUpperCase());
-    await expect(page.getByTestId("create-error")).toContainText("already has this name");
+    await expect(page.getByTestId("create-error")).toContainText("has this name");
     await page.getByTestId("create-cancel").click();
 
     // The card: the public link is shown and has a copy button.
@@ -134,7 +134,7 @@ test.describe("promoters (live, three roles)", () => {
     await page.getByTestId("input-email").fill("not an address");
     const before = apiCalls.filter((c) => c.startsWith("PATCH")).length;
     await page.getByTestId("field-save").click();
-    await expect(page.getByTestId("field-error")).toContainText("does not look like an e-mail");
+    await expect(page.getByTestId("field-error")).toContainText("This is not an e-mail address");
     expect(apiCalls.filter((c) => c.startsWith("PATCH")).length, "no PATCH for a bad shape").toBe(before);
     await page.getByTestId("field-cancel").click();
 
@@ -192,7 +192,7 @@ test.describe("promoters (live, three roles)", () => {
     const ask = page.getByTestId("archive-ask");
     await expect(ask).toContainText("public page");
     await expect(ask).toContainText("stop opening");
-    await expect(ask).toContainText("tickets and letters still show it as the organizer");
+    await expect(ask).toContainText("Tickets and e-mails show it as the organizer");
     // "No" archives nothing.
     await page.getByTestId("archive-cancel").click();
     expect((await apiFind(request, "org_admin", RENAMED)).archived).toBe(false);

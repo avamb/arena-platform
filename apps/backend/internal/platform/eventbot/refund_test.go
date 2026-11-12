@@ -91,7 +91,7 @@ func TestRefundResultText_NamesEveryOutcome(t *testing.T) {
 		{Amount: 2500, Currency: "EUR", State: "manual_review"},
 	}}
 	got := b.refundResultText("en", refundDialog{Num: 1000000500, Provider: "stripe"}, res)
-	for _, want := range []string{"1000000500", "returned", "Stripe", "failed: card closed", "manual check"} {
+	for _, want := range []string{"1000000500", "refunded", "Stripe", "error: card closed", "support must check it by hand"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("result text lacks %q:\n%s", want, got)
 		}

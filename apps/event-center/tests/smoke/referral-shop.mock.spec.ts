@@ -14,7 +14,7 @@ async function signIn(page: Page) {
   await page.getByLabel("E-mail").fill("manager@example.test");
   await page.getByLabel("Password").fill("right-password");
   await page.getByTestId("login-submit").click();
-  await expect(page.getByRole("heading", { name: "Choose an organization" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Select an organization" })).toBeVisible();
 }
 
 async function noA11yViolations(page: Page) {
@@ -56,7 +56,7 @@ test.describe("spec 52 refer a friend for the shop (mock)", () => {
     await expect(page.getByTestId("shop-settings-form")).toBeVisible();
     const section = page.getByTestId("referral");
     await expect(section).toHaveAttribute("data-target", "shop");
-    await expect(page.getByTestId("referral-none")).toContainText("not started for the shop");
+    await expect(page.getByTestId("referral-none")).toContainText("did not start for the shop");
     await expect(section).toContainText("A shop buyer who paid gets a personal code");
     await noHorizontalScroll(page);
 
@@ -67,7 +67,7 @@ test.describe("spec 52 refer a friend for the shop (mock)", () => {
     await expect(page.getByTestId("referral-rules-list").locator("li")).toHaveCount(4);
     await noA11yViolations(page);
     await page.getByTestId("referral-rules-submit").click();
-    await expect(page.getByTestId("referral-rules")).toContainText("rules are not accepted");
+    await expect(page.getByTestId("referral-rules")).toContainText("You did not accept the rules");
     expect(state.writes).toEqual([]);
 
     await page.getByTestId("referral-rules-tick").check();
@@ -90,7 +90,7 @@ test.describe("spec 52 refer a friend for the shop (mock)", () => {
     await page.goto(settingsUrl);
     await expect(page.getByTestId("referral-status")).toHaveText("Active");
     await page.getByTestId("referral-pause").click();
-    await expect(page.getByTestId("referral-status")).toHaveText("Paused");
+    await expect(page.getByTestId("referral-status")).toHaveText("On pause");
     await page.getByTestId("referral-resume").click();
     await expect(page.getByTestId("referral-status")).toHaveText("Active");
     await page.getByTestId("referral-end").click();
@@ -109,7 +109,7 @@ test.describe("spec 52 refer a friend for the shop (mock)", () => {
     await signIn(page);
     await page.goto(settingsUrl);
     const blocked = page.getByTestId("referral-blocked");
-    await expect(blocked).toContainText("cannot be paid for the shop");
+    await expect(blocked).toContainText("We cannot pay the cashback for the shop");
     await expect(blocked).toContainText("payment channel of the shop");
     await expect(page.getByTestId("referral-form")).toHaveCount(0);
     await noHorizontalScroll(page);
@@ -122,7 +122,7 @@ test.describe("spec 52 refer a friend for the shop (mock)", () => {
     const state = await mockReferral(page, { permissions: SHOP_READER, program: { ...LIVE, status: "paused" } });
     await signIn(page);
     await page.goto(settingsUrl);
-    await expect(page.getByTestId("referral-status")).toHaveText("Paused");
+    await expect(page.getByTestId("referral-status")).toHaveText("On pause");
     await expect(page.getByTestId("referral-readonly")).toBeVisible();
     await expect(page.getByTestId("referral-form")).toHaveCount(0);
     await expect(page.getByTestId("referral-actions")).toHaveCount(0);

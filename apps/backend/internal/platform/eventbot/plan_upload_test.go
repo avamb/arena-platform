@@ -123,7 +123,7 @@ func TestPlanReport(t *testing.T) {
 	b := planTestBot(t)
 	two := PlanRef{Name: "Hall <1>", Seats: 12, Categories: []PlanCategory{{Index: 1, Name: "Parterre", Places: 8}, {Index: 2, Name: "Floor", Places: 4, GA: true}}}
 	text := b.planReport("en", two, []string{seating.WarnLegendMissing})
-	for _, want := range []string{"Hall &lt;1&gt;", "12 places", "2 categories", "Parterre: 8 places", "Floor: 4 places (standing)", "Legend"} {
+	for _, want := range []string{"Hall &lt;1&gt;", "12 seats", "2 categories", "Parterre: 8 seats", "Floor: 4 tickets (no seat numbers)", "Legend"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("report lacks %q:\n%s", want, text)
 		}

@@ -138,7 +138,7 @@ func TestEventCard_NoSessions(t *testing.T) {
 	b := ecTestBot(t)
 	var sb strings.Builder
 	rows := b.writeCardFigures(&sb, "en", uuid.New(), ecEventSummary(t, 0), false)
-	if !strings.Contains(sb.String(), "no dates yet") || len(rows) != 1 {
+	if !strings.Contains(sb.String(), "This event has no dates.") || len(rows) != 1 {
 		t.Errorf("no-sessions card: %q rows=%d", sb.String(), len(rows))
 	}
 }
@@ -150,13 +150,13 @@ func TestSummaryText_MoneyDownToTheNet(t *testing.T) {
 	text := b.summaryText("en", summaryView{Title: sum.Event.Name, Scope: "All dates (2)", Figures: figuresFromEvent(sum)})
 	for _, want := range []string{
 		"Summary: Swan &lt;Lake&gt;",
-		"Tickets: valid 8, canceled or returned 2, entered 4, transferred 1",
-		"Orders: paid 4, awaiting payment 1",
-		"Places: sold 12, available 30, held 2, withheld 6, total 50",
-		"Paid 100 EUR in 4 orders (discounts 5 EUR, service charge 2 EUR)",
-		"Refunds: 2 for 13 EUR, of which 3 EUR outside the system",
+		"Tickets: valid 8, canceled or refunded 2, entered 4, transferred 1",
+		"Orders: paid 4, unpaid 1",
+		"Seats: sold 12, available 30, held 2, closed 6, total 50",
+		"Paid 100 EUR in 4 orders (discounts 5 EUR, service fee 2 EUR)",
+		"Refunds: 2 for 13 EUR, of which 3 EUR not in the system",
 		"Net: <b>87 EUR</b>",
-		"Awaiting payment: 25 EUR in 1 orders",
+		"Unpaid: 25 EUR in 1 orders",
 		"• Standing &lt;b&gt;",
 	} {
 		if !strings.Contains(text, want) {

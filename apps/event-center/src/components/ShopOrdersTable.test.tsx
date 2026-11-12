@@ -40,7 +40,7 @@ describe("ShopOrdersTable", () => {
     expect(html).toContain("Anna Smith");
     expect(html).toContain("anna@example.com");
     expect(html).toContain("Paid");
-    expect(html).toContain("Needs a manual check");
+    expect(html).toContain("Manual check necessary");
     expect(html).toContain("Shipping");
     expect(html).toContain("Pickup");
     expect(html).toMatch(/44[.,]90/);

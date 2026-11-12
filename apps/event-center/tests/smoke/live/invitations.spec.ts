@@ -241,7 +241,7 @@ test.describe("invitations (live)", () => {
     expect((await apiIssueOld(request, "org_admin", "inv-ru@example.test", "twin-ru-1")).status()).toBe(201);
     await openScreen(page, "org_admin");
     const old = page.getByTestId("earlier-invitations");
-    await expect(old).toContainText("Earlier invitations");
+    await expect(old).toContainText("Previous invitations");
     await expect(oldRow(page, "inv-ru@example.test")).toHaveCount(1);
     await page.getByTestId("nav-more").click();
     await page.getByLabel("Language").selectOption("ru");
@@ -377,7 +377,7 @@ test.describe("invitations (live)", () => {
     const partial = page.getByTestId("invite-partial");
     await expect(partial).toBeVisible();
     await expect(partial).toContainText("Sent 1 of 3");
-    await expect(page.getByTestId("invite-error")).toContainText("not enough places");
+    await expect(page.getByTestId("invite-error")).toContainText("too few seats left");
     await expect(page.getByTestId("invite-left")).toContainText("inv-second@example.test");
     await expect(page.getByTestId("invite-left")).toContainText("inv-third@example.test");
     await expect(page.getByTestId("invite-left")).not.toContainText("inv-first@example.test");
@@ -386,7 +386,7 @@ test.describe("invitations (live)", () => {
     await expect(row(page, "inv-second@example.test")).toHaveCount(0);
     // "Send the rest" meets the same full category and sends nothing more.
     await page.getByTestId("invite-retry").click();
-    await expect(page.getByTestId("invite-error")).toContainText("not enough places");
+    await expect(page.getByTestId("invite-error")).toContainText("too few seats left");
     expect(rows().free_places).toBe(0);
   });
 });

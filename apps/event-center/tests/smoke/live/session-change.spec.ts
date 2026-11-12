@@ -262,7 +262,7 @@ test.describe("move or cancel a session (live)", () => {
     await openSession(page, "org_admin", S_EMPTY);
     await page.getByTestId("session-move-open").click();
     await pickDay(page, "17.06.2090", "2090-06-17");
-    await expect(page.getByTestId("dry-run-summary")).toContainText("Nobody has bought");
+    await expect(page.getByTestId("dry-run-summary")).toContainText("No buyer has tickets");
     await expect(page.getByTestId("session-contact-form")).toHaveCount(0);
     await expect(page.getByTestId("session-change-message-box")).toHaveCount(0);
     await page.getByTestId("dry-run-confirm").click();
@@ -294,7 +294,7 @@ test.describe("move or cancel a session (live)", () => {
     const blocked = page.getByTestId("dry-run-blocked");
     await expect(blocked).toBeVisible();
     await expect(blocked).toContainText("partner site");
-    await expect(blocked).toContainText("Nothing was changed");
+    await expect(blocked).toContainText("We did not change the session");
     await expect(page.getByTestId("dry-run-confirm")).toHaveCount(0);
     await expect(page.getByTestId("session-contact-form")).toHaveCount(0);
     await page.getByTestId("session-change-close").click();

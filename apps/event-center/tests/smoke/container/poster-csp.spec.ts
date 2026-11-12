@@ -84,7 +84,7 @@ test("a chosen file is previewed and a created event shows its poster, with no p
   await day.getByTestId("date-quick-week").click();
   await page.getByTestId("wizard-date-0-time").fill("19:00");
   await page.getByTestId("wizard-cat-0-0-price").fill("18,90");
-  await expect(page.getByTestId("wizard-status")).toContainText("Everything you filled in is correct", { timeout: 25_000 });
+  await expect(page.getByTestId("wizard-status")).toContainText("All data you added is correct", { timeout: 25_000 });
 
   const png = await makePng(page, 480, 640, 200);
   await page.getByTestId("wizard-poster-picker-input").setInputFiles(png);

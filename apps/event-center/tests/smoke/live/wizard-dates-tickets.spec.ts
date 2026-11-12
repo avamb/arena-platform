@@ -43,7 +43,7 @@ async function counts(request: APIRequestContext): Promise<number[]> {
 }
 
 const status = (page: Page) => page.getByTestId("wizard-status");
-const correct = (page: Page) => expect(status(page)).toContainText("Everything you filled in is correct", { timeout: 25_000 });
+const correct = (page: Page) => expect(status(page)).toContainText("All data you added is correct", { timeout: 25_000 });
 
 test.describe("event wizard: dates and tickets", () => {
   test("two dates with different categories pass the check, which asks again only about the date that changed", async ({ page, request }) => {
@@ -111,7 +111,7 @@ test.describe("event wizard: dates and tickets", () => {
 
     // A step that ends by neither a day nor a number is refused at once.
     await page.getByTestId("wizard-cat-0-1-limit").fill("");
-    await expect(page.getByTestId("wizard-cat-0-1-until-error")).toContainText("Choose the last day of this step, or type a number of tickets.");
+    await expect(page.getByTestId("wizard-cat-0-1-until-error")).toContainText("Select the last day of this step, or type a number of tickets.");
     await noA11yViolations(page);
   });
 

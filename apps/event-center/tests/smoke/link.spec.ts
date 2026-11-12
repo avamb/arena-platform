@@ -15,7 +15,7 @@ test.describe("sign-in with a link from the bot", () => {
     const req = await exchange;
     expect(req.postDataJSON()).toEqual({ code: "good-link-code" });
     expect(req.url()).not.toContain("good-link-code");
-    await expect(page.getByRole("heading", { name: "Choose an organization" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Select an organization" })).toBeVisible();
     expect(page.url()).not.toContain("good-link-code");
     // The code left the address before the first request of the page.
     expect(state.requests[0]).toBe("POST /v1/auth/web/link");

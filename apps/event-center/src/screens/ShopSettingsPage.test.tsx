@@ -135,7 +135,7 @@ describe("the settings screen", () => {
     const el = await mount(settings());
     await typeInto(byId(el, "shop-settings-fee"), "30.00");
     await press(el, "shop-settings-save");
-    expect(byId(el, "shop-settings-error").textContent).toContain("Someone saved these settings while you were editing.");
+    expect(byId(el, "shop-settings-error").textContent).toContain("A different person saved these settings when you edited them.");
     expect(byId(el, "shop-settings-fee").value).toBe("30.00");
     expect(fetchShopSettings).not.toHaveBeenCalled();
     await press(el, "shop-settings-reload");
@@ -160,7 +160,7 @@ describe("the settings screen", () => {
     expect(byId(el, "shop-settings-reload")).toBeNull();
     vi.mocked(saveShopSettings).mockRejectedValue(new ApiError(409, "shop.currency_locked", "no"));
     await press(el, "shop-settings-save");
-    expect(byId(el, "shop-settings-error").textContent).toContain("The currency cannot be changed now.");
+    expect(byId(el, "shop-settings-error").textContent).toContain("You cannot change the currency at this time.");
   });
 
   it("asks before the page is left with unsaved settings, and not otherwise", async () => {
@@ -180,13 +180,13 @@ describe("the settings screen", () => {
       await sleep(50);
     });
     expect(router.state.location.pathname).toBe("/");
-    expect(byId(el, "unsaved-dialog").textContent).toContain("There are unsaved changes. Leave?");
+    expect(byId(el, "unsaved-dialog").textContent).toContain("You have changes that are not saved. Close the page?");
   });
 
   it("warns that the money goes to the first suitable channel when none is chosen (SA-23)", async () => {
     const el = await mount(settings({ sales_channel_id: null }));
     await settle();
-    expect(byId(el, "shop-settings-channel-warning").textContent).toContain("No sales channel is chosen");
+    expect(byId(el, "shop-settings-channel-warning").textContent).toContain("No sales channel is selected");
     const select = byId(el, "shop-settings-channel") as unknown as HTMLSelectElement;
     await act(async () => {
       select.value = "c1";
@@ -200,7 +200,7 @@ describe("the settings screen", () => {
     vi.mocked(listSalesChannels).mockResolvedValue({ channels: [] } as never);
     const el = await mount(settings({ sales_channel_id: null }));
     await settle();
-    expect(byId(el, "shop-settings-channel-warning").textContent).toContain("no sales channel yet");
+    expect(byId(el, "shop-settings-channel-warning").textContent).toContain("has no sales channel, and buyers cannot pay");
   });
 });
 
@@ -211,7 +211,7 @@ describe("a helper list that fails to load (SB-13)", () => {
     await settle();
     const box = byId(el, "shop-settings-products-error");
     expect(box).not.toBeNull();
-    expect(box.textContent).toContain("It stays as it is");
+    expect(box.textContent).toContain("The currency stays the same");
     expect(byId(el, "shop-settings-currency-locked")).toBeNull();
     // The rest of the form is not blocked.
     expect(byId(el, "shop-settings-save")).not.toBeNull();

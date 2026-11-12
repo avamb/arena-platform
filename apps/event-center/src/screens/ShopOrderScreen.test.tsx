@@ -93,7 +93,7 @@ describe("the badge and the payment block after a refund (M-10, M-12)", () => {
   it("keeps 'paid' for an order with no refund, in every language", async () => {
     const paid = order({ status: "paid", total: 25000, payment });
     expect(await renderInRouter(<ShopOrderCard order={paid} orgId="org1" country="IL" />, "ru")).toContain("Состояние: оплачена<");
-    expect(await renderInRouter(<ShopOrderCard order={paid} orgId="org1" country="IL" />, "en")).toContain("State: paid<");
+    expect(await renderInRouter(<ShopOrderCard order={paid} orgId="org1" country="IL" />, "en")).toContain("Status: paid<");
     expect(await renderInRouter(<ShopOrderCard order={paid} orgId="org1" country="IL" />, "es")).toContain("Estado: pagado<");
   });
 });
@@ -110,10 +110,10 @@ describe("the text for an address that does not exist (E-01)", () => {
 
   it("names the reason an order waits for a check, in three languages (task: review_reason)", async () => {
     const o = order({ status: "manual_review", review_reason: "late_payment_no_stock" });
-    expect(await renderInRouter(<ShopOrderCard order={o} orgId="org1" />, "en")).toContain("Reason: Paid, checking availability");
+    expect(await renderInRouter(<ShopOrderCard order={o} orgId="org1" />, "en")).toContain("Cause: Paid, we examine the stock");
     expect(await renderInRouter(<ShopOrderCard order={o} orgId="org1" />, "ru")).toContain("Причина: Оплачен, уточняем наличие");
     const unconfirmed = order({ status: "manual_review", review_reason: "payment_unconfirmed" });
-    expect(await renderInRouter(<ShopOrderCard order={unconfirmed} orgId="org1" />, "en")).toContain("Reason: Payment is being verified");
+    expect(await renderInRouter(<ShopOrderCard order={unconfirmed} orgId="org1" />, "en")).toContain("Cause: We verify the payment");
     expect(await renderInRouter(<ShopOrderCard order={unconfirmed} orgId="org1" />, "es")).toContain("Motivo: Pago en verificación");
   });
 

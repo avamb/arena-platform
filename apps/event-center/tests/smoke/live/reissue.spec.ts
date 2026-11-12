@@ -140,7 +140,7 @@ test.describe("replace tickets on the three roles (live)", () => {
 
       // 0. "From the order's address" leads into the resend: same barcodes, nothing replaced.
       await page.getByTestId("reissue-open").click();
-      await expect(page.getByTestId("reissue-case")).toContainText("Which address is the buyer writing from?");
+      await expect(page.getByTestId("reissue-case")).toContainText("From which address does the buyer write?");
       await noA11yViolations(page);
       await page.getByTestId("reissue-from-order").click();
       await expect(page.getByTestId("reissue-dialog")).toHaveCount(0);
@@ -155,7 +155,7 @@ test.describe("replace tickets on the three roles (live)", () => {
       await expect(page.getByTestId("reissue-compare")).toContainText("+34600111222");
       await page.getByTestId("reissue-email").fill("not-an-email");
       await page.getByTestId("reissue-continue").click();
-      await expect(page.getByTestId("reissue-email-note")).toContainText("does not look like an e-mail address");
+      await expect(page.getByTestId("reissue-email-note")).toContainText("This is not an e-mail address");
       await page.getByTestId("reissue-email").fill(RIGHT_EMAIL);
       await page.getByTestId("reissue-continue").click();
       // O-4: the typo reason is chosen at the start, and the person may change it.
@@ -180,7 +180,7 @@ test.describe("replace tickets on the three roles (live)", () => {
 
       // 5. The word: the tickets are replaced.
       await typeWord(page, "REISSUE TICKETS");
-      await expect(page.getByTestId("reissue-done")).toContainText("The tickets are replaced");
+      await expect(page.getByTestId("reissue-done")).toContainText("We replaced the tickets");
       const pairs = page.getByTestId("reissue-done-pairs");
       for (const tk of order.tickets) await expect(pairs).toContainText(`№${tk.number} →`);
       expect(calls.filter((c) => c === `POST ${postPath}`).length).toBe(1);
@@ -240,10 +240,10 @@ test.describe("replace tickets on the three roles (live)", () => {
     await walkToCheck(page, RIGHT_EMAIL);
     await page.getByTestId("reissue-go").click();
     await typeWord(page, "REISSUE TICKETS");
-    await expect(page.getByTestId("reissue-unknown")).toContainText("may already be replaced");
+    await expect(page.getByTestId("reissue-unknown")).toContainText("The tickets can be replaced");
     await page.getByTestId("reissue-check-again").click();
     await expect(page.getByTestId("reissue-done")).toBeVisible();
-    await expect(page.getByTestId("reissue-replayed")).toContainText("made earlier");
+    await expect(page.getByTestId("reissue-replayed")).toContainText("We made this replacement before");
     expect(keys).toHaveLength(2);
     expect(keys[0]).toMatch(/^web-/);
     expect(keys[1]).toBe(keys[0]);
@@ -282,7 +282,7 @@ test.describe("replace tickets on the three roles (live)", () => {
     await noA11yViolations(page);
     await page.getByTestId("reissue-go").click();
     await typeWord(page, "REISSUE TICKETS");
-    await expect(page.getByTestId("reissue-done")).toContainText("The invitation is replaced");
+    await expect(page.getByTestId("reissue-done")).toContainText("We replaced the invitation");
     await page.getByTestId("reissue-close").click();
     const after = seed<{ reissues: string[]; tickets: { number: number; status: string }[] }>([
       "--reissue-op",
@@ -300,7 +300,7 @@ test.describe("replace tickets on the three roles (live)", () => {
     const calls = trackCalls(page);
     await openCard(page, "org_admin", SITE_ORDER);
     await page.getByTestId("reissue-open").click();
-    await expect(page.getByTestId("reissue-site")).toContainText("sold through the seller's own site");
+    await expect(page.getByTestId("reissue-site")).toContainText("sold through the site of the seller");
     await expect(page.getByTestId("reissue-from-other")).toHaveCount(0);
     await noA11yViolations(page);
     await page.getByTestId("reissue-close").click();

@@ -12,7 +12,7 @@ async function signIn(page: Page) {
   await page.getByLabel("E-mail").fill("manager@example.test");
   await page.getByLabel("Password").fill("right-password");
   await page.getByTestId("login-submit").click();
-  await expect(page.getByRole("heading", { name: "Choose an organization" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Select an organization" })).toBeVisible();
 }
 
 const cases = [
@@ -59,7 +59,7 @@ test.describe("event screen: Edit, sales switch, Save changes (mock)", () => {
     await page.goto(`/o/${ORG_A}/events/${EVENT}`);
     // Open while nothing is set by hand: nothing to do, and it says so instead of failing silently.
     await page.getByTestId("sales-state-set-open").click();
-    await expect(page.getByTestId("sales-state-done")).toContainText("Nothing to open");
+    await expect(page.getByTestId("sales-state-done")).toContainText("there is nothing to open");
     expect(state.salesStateWrites).toEqual([]);
     await page.getByTestId("sales-state-set-sold_out").click();
     await expect(page.getByTestId("sales-state-confirm")).toBeVisible();

@@ -112,7 +112,7 @@ describe("the sales funnel block", () => {
     expect(steps.map((s) => s.querySelector('[data-testid="funnel-count"]')?.textContent)).toEqual(["200", "100", "40", "20", "15", "10"]);
     // The second step: half of the first, half dropped.
     expect(steps[1].textContent).toContain("50%");
-    expect(steps[1].textContent).toContain("50% dropped off");
+    expect(steps[1].textContent).toContain("50% did not continue");
     // Bots are named apart.
     expect(steps[0].textContent).toContain("12 more look like bots");
     expect(byId(el, "funnel-revenue").textContent).toContain("540");
@@ -121,7 +121,7 @@ describe("the sales funnel block", () => {
   it("says the counts are a guide, not proof", async () => {
     vi.mocked(fetchEventFunnel).mockResolvedValue(funnel());
     const el = await mount();
-    expect(byId(el, "sales-funnel").textContent).toContain("A guide, not proof for an advertising account");
+    expect(byId(el, "sales-funnel").textContent).toContain("This is a guide, not proof for an advertising account");
   });
 
   it("lists the sources with the no-campaign visits last, and the sales links", async () => {
@@ -147,9 +147,9 @@ describe("the sales funnel block", () => {
     expect(gw).not.toBeNull();
     const names = [...gw.querySelectorAll('[data-testid="funnel-step"]')].map((s) => s.getAttribute("data-step"));
     expect(names).toEqual(["seats_chosen", "checkout_start", "paid"]);
-    expect(gw.textContent).toContain("starts at the chosen seats");
+    expect(gw.textContent).toContain("starts at the selected seats");
     // Not "nothing happened": the event has carts from the sites.
-    expect(el.textContent).not.toContain("Nothing was counted");
+    expect(el.textContent).not.toContain("We counted no data");
   });
 
   it("says so when nothing was counted", async () => {
@@ -157,7 +157,7 @@ describe("the sales funnel block", () => {
       funnel({ steps: ["view", "session_open", "seats_chosen", "checkout_start", "payment_open", "paid"].map((s) => step(s, 0)), sources: [], sales_links: [], revenue: [] }),
     );
     const el = await mount();
-    expect(el.textContent).toContain("Nothing was counted for this window yet");
+    expect(el.textContent).toContain("We counted no data for this period");
     expect(byId(el, "funnel-main")).toBeNull();
   });
 
@@ -180,7 +180,7 @@ describe("the sales funnel block", () => {
     expect(fetchEventFunnel).toHaveBeenLastCalledWith(ORG, EVENT, { from: "", to: "", sessionId: SESSION });
     const first = el.querySelector('[data-testid="funnel-main"] [data-testid="funnel-count"]');
     expect(first?.textContent).toBe("—");
-    expect(el.textContent).toContain("A page view belongs to the whole event");
+    expect(el.textContent).toContain("A page view is for the event and not for one session");
   });
 
   it("names each date on the clock of its own venue", async () => {

@@ -113,8 +113,8 @@ test.describe("resend tickets on the three roles (live)", () => {
       await expect(page.getByTestId("resend-same-codes")).toHaveCount(0);
       expect(calls.includes(`POST ${resendPath}`), "nothing sent before the confirmation").toBe(false);
       await page.getByTestId("resend-send").click();
-      await expect(page.getByTestId("resend-done")).toContainText("on their way");
-      await expect(page.getByTestId("resend-done")).not.toContainText("We used this address once");
+      await expect(page.getByTestId("resend-done")).toContainText("We sent the tickets of order");
+      await expect(page.getByTestId("resend-done")).not.toContainText("We used this address one time");
       await page.getByTestId("resend-close").click();
       await expect(dialog).toHaveCount(0);
       // The card read the order again and shows the letter in the queue.
@@ -126,16 +126,16 @@ test.describe("resend tickets on the three roles (live)", () => {
       await page.getByTestId("resend-other").click();
       await page.getByTestId("resend-email").fill("not-an-email");
       await page.getByTestId("resend-continue").click();
-      await expect(page.getByTestId("resend-email-note")).toContainText("does not look like an e-mail address");
+      await expect(page.getByTestId("resend-email-note")).toContainText("This is not an e-mail address");
       await page.getByTestId("resend-email").fill(OTHER_EMAIL);
       await page.getByTestId("resend-continue").click();
       await expect(page.getByTestId("resend-confirm-text")).toContainText(OTHER_EMAIL);
-      await expect(page.getByTestId("resend-confirm-text")).toContainText("One-time address");
+      await expect(page.getByTestId("resend-confirm-text")).toContainText("This address is for one time");
       // O-8: the same barcodes go out, so the replacement is offered beside the warning.
       await expect(page.getByTestId("resend-same-codes")).toContainText("same barcodes");
       await expect(page.getByTestId("resend-use-reissue")).toBeVisible();
       await page.getByTestId("resend-send").click();
-      await expect(page.getByTestId("resend-done")).toContainText("We used this address once");
+      await expect(page.getByTestId("resend-done")).toContainText("We used this address one time");
       await page.getByTestId("resend-close").click();
       // The typed address lives on the delivery job only: the order keeps its own.
       expect(await deliveryRecipients(request, ORDER)).toEqual([OTHER_EMAIL]);
@@ -151,8 +151,8 @@ test.describe("resend tickets on the three roles (live)", () => {
       await page.getByTestId("resend-open").click();
       await page.getByTestId("resend-same").click();
       await page.getByTestId("resend-send").click();
-      await expect(page.getByTestId("resend-refused-site")).toContainText("sold through the seller's own site");
-      await expect(page.getByTestId("resend-refused-site")).toContainText("Nothing was queued");
+      await expect(page.getByTestId("resend-refused-site")).toContainText("The site of the seller sold this order");
+      await expect(page.getByTestId("resend-refused-site")).toContainText("We queued no e-mail");
       await noA11yViolations(page);
       await page.getByTestId("resend-close").click();
       // The site order's letter state is as it was: sent, nothing in the queue.

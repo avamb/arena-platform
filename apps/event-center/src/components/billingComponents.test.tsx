@@ -89,7 +89,7 @@ describe("BillingPacks", () => {
     expect(html).toContain('data-testid="billing-packs-EUR"');
     expect(html.indexOf("€16.50")).toBeLessThan(html.indexOf("€52.00"));
     expect(html).toContain("payment system fee of €1.90");
-    expect(html).toContain("Card payment is not set up yet");
+    expect(html).toContain("Card payment is not connected");
     expect(html).toContain('data-testid="billing-pack-buy"');
   });
 
@@ -131,10 +131,10 @@ describe("BillingInvoiceCard", () => {
   it("an issued bank invoice shows the reference, the instruction and no card button", () => {
     const html = render(<BillingInvoiceCard orgId="o-1" invoice={invoice({})} canPay />);
     expect(html).toContain("Invoice INV-2026-0001");
-    expect(html).toContain("Waiting for payment");
+    expect(html).toContain("Not paid");
     expect(html).toContain("ARN-ABCD-EFGH");
     expect(html).toContain("Write the payment reference in the transfer");
-    expect(html).toContain("Credits appear only after the payment is confirmed");
+    expect(html).toContain("We add the credits to your balance only after we make sure the payment is complete.");
     expect(html).not.toContain('data-testid="billing-invoice-pay"');
   });
 
@@ -149,7 +149,7 @@ describe("BillingInvoiceCard", () => {
     const html = render(<BillingInvoiceCard orgId="o-1" invoice={paid} canPay />);
     expect(html).toContain("Paid");
     expect(html).not.toContain('data-testid="billing-invoice-pay"');
-    expect(html).not.toContain("Waiting for");
+    expect(html).not.toContain("We wait for your");
   });
 
   it("the open card lists the lines and the totals in the invoice's own currency", () => {
@@ -166,7 +166,7 @@ describe("BillingInvoiceCard", () => {
 
   it("a draft without a number says it is not issued", () => {
     const html = render(<BillingInvoiceCard orgId="o-1" invoice={invoice({ state: "draft", number: null })} canPay />);
-    expect(html).toContain("Invoice not issued yet");
+    expect(html).toContain("Invoice not issued");
   });
 });
 

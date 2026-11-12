@@ -64,7 +64,7 @@ test.describe("event wizard: Event and Venue", () => {
   test("the owner fills an existing venue and the check says everything is correct; nothing is written", async ({ page, request }) => {
     const before = await counts(request);
     await openWizard(page, "org_admin");
-    await expect(status(page)).toContainText("Fill in the sections");
+    await expect(status(page)).toContainText("Add the data to the sections");
 
     await page.getByTestId("wizard-name").fill(EVENT_NAME);
     await richText(page, "wizard-description").fill("A twin test event.");
@@ -78,7 +78,7 @@ test.describe("event wizard: Event and Venue", () => {
     await page.getByTestId("wizard-currency").fill("EUR");
     await fillFirstDate(page);
 
-    await expect(status(page)).toContainText("Everything you filled in is correct", { timeout: 20_000 });
+    await expect(status(page)).toContainText("All data you added is correct", { timeout: 20_000 });
     await noA11yViolations(page);
 
     expect(await counts(request), "the check wrote nothing").toEqual(before);
@@ -91,7 +91,7 @@ test.describe("event wizard: Event and Venue", () => {
     await page.getByTestId("wizard-currency").fill("EUR");
     await fillFirstDate(page);
     await page.getByTestId("wizard-name").fill("A name");
-    await expect(status(page)).toContainText("Everything you filled in is correct", { timeout: 20_000 });
+    await expect(status(page)).toContainText("All data you added is correct", { timeout: 20_000 });
 
     await page.getByTestId("wizard-name").fill("");
     // The code import.action_name_required, in words, under the name.
@@ -125,13 +125,13 @@ test.describe("event wizard: Event and Venue", () => {
     await page.getByTestId("wizard-venue-capacity").fill("1 200");
     await fillFirstDate(page);
 
-    await expect(status(page)).toContainText("Everything you filled in is correct", { timeout: 20_000 });
+    await expect(status(page)).toContainText("All data you added is correct", { timeout: 20_000 });
 
     // A country with ONE zone fills the zone in without a question.
     await page.getByTestId("wizard-venue-country").selectOption("CZ");
     await expect(page.getByTestId("wizard-tz-single")).toContainText("Europe/Prague", { timeout: 15_000 });
     await expect(page.getByTestId("wizard-currency")).toHaveValue("CZK", { timeout: 15_000 });
-    await expect(status(page)).toContainText("Everything you filled in is correct", { timeout: 20_000 });
+    await expect(status(page)).toContainText("All data you added is correct", { timeout: 20_000 });
 
     // No country: the currency that came from the country goes with it (a typed one would stay).
     await page.getByTestId("wizard-venue-country").selectOption("");
@@ -154,7 +154,7 @@ test.describe("event wizard: Event and Venue", () => {
     await page.getByTestId("wizard-venue-capacity").fill("50");
     await page.getByTestId("wizard-venue-timezone").focus();
     await page.getByTestId("wizard-venue-timezone").blur();
-    await expect(page.getByTestId("wizard-venue-timezone-error")).toHaveText("Choose the time zone of the venue.", { timeout: 20_000 });
+    await expect(page.getByTestId("wizard-venue-timezone-error")).toHaveText("Select the time zone of the venue.", { timeout: 20_000 });
   });
 
   test("the check is rate limited while a person types", async ({ page }) => {
@@ -167,7 +167,7 @@ test.describe("event wizard: Event and Venue", () => {
 
     const stamps = trackChecks(page);
     await page.getByTestId("wizard-name").pressSequentially("Typing at a steady pace now", { delay: 80 });
-    await expect(status(page)).toContainText("Everything you filled in is correct", { timeout: 20_000 });
+    await expect(status(page)).toContainText("All data you added is correct", { timeout: 20_000 });
     // 27 keystrokes in about two seconds: one check after the pause, not 27.
     expect(stamps.length, `checks sent: ${stamps.length}`).toBeLessThanOrEqual(2);
     expect(stamps.length).toBeGreaterThanOrEqual(1);
@@ -195,7 +195,7 @@ test.describe("event wizard: Event and Venue", () => {
     await page.getByTestId("wizard-venue-pick").selectOption({ label: "E2E Hall" });
     await page.getByTestId("wizard-currency").fill("EUR");
     await fillFirstDate(page);
-    await expect(status(page)).toContainText("Everything you filled in is correct", { timeout: 20_000 });
+    await expect(status(page)).toContainText("All data you added is correct", { timeout: 20_000 });
     expect(stamps.length).toBeGreaterThanOrEqual(1);
   });
 

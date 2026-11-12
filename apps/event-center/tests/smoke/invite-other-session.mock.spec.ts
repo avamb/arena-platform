@@ -23,7 +23,7 @@ test("the invitation link signs out the open session after the password is saved
   await page.goto("/accept-invite?token=tok-1&email=anna%40example.test");
   await expect(page.getByTestId("password-other-session")).toContainText("sign in as anna@example.test");
   await page.getByLabel("New password").fill("a long phrase");
-  await page.getByLabel("Repeat the password").fill("a long phrase");
+  await page.getByLabel("Type the password again").fill("a long phrase");
   await page.getByTestId("password-submit").click();
   await expect(page.getByTestId("password-done")).toBeVisible();
   expect(state.requests).toContain("POST /v1/auth/logout");

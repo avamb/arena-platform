@@ -14,7 +14,7 @@ async function signIn(page: Page) {
   await page.getByLabel("E-mail").fill("manager@example.test");
   await page.getByLabel("Password").fill("right-password");
   await page.getByTestId("login-submit").click();
-  await expect(page.getByRole("heading", { name: "Choose an organization" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Select an organization" })).toBeVisible();
 }
 
 async function noA11yViolations(page: Page) {
@@ -38,14 +38,14 @@ test.describe("4-3 promo codes (mock)", () => {
     const rows = page.getByTestId("promo-row");
     await expect(rows.first()).toContainText("SPRING");
     await expect(rows.first()).toContainText("10% off");
-    await expect(rows.first()).toContainText("several currencies");
+    await expect(rows.first()).toContainText("different currencies");
     await expect(rows.nth(1)).toContainText("EURFIVE");
     await noHorizontalScroll(page);
     await noA11yViolations(page);
 
     await page.getByTestId("promo-code").first().click();
     await expect(page.getByTestId("promo-card-code")).toHaveText("SPRING");
-    await expect(page.getByTestId("promo-usage")).toContainText("several currencies");
+    await expect(page.getByTestId("promo-usage")).toContainText("different currencies");
     await expect(page.getByTestId("promo-usage-row")).toHaveCount(2);
     await expect(page.getByTestId("promo-usage-table")).toContainText("Alice Mock");
     // The buyer's NAME is shown, never the e-mail.
@@ -65,7 +65,7 @@ test.describe("4-3 promo codes (mock)", () => {
     await page.getByTestId("promo-f-code").fill("spring");
     await page.getByTestId("promo-f-value").fill("15");
     await page.getByTestId("promo-review").click();
-    await expect(page.getByRole("alert")).toContainText("already have a code with this name");
+    await expect(page.getByRole("alert")).toContainText("You have a code with this name");
     expect(state.writes).toEqual([]);
 
     await page.getByTestId("promo-f-code").fill("club15");
@@ -91,7 +91,7 @@ test.describe("4-3 promo codes (mock)", () => {
     await page.getByTestId("promo-f-value").fill("5,50");
     await page.getByTestId("promo-f-scope-pick").check();
     await page.getByTestId("promo-review").click();
-    await expect(page.getByRole("alert")).toContainText("Choose at least one session");
+    await expect(page.getByRole("alert")).toContainText("Select one session or more");
     await page.getByTestId("promo-pick-event").selectOption({ index: 1 });
     await page.getByTestId("promo-pick-session").first().check();
     await page.getByTestId("promo-review").click();
@@ -129,7 +129,7 @@ test.describe("4-3 promo codes (mock)", () => {
     expect(state.writes.some((w) => w.startsWith("DELETE"))).toBe(false);
     await page.getByRole("textbox").fill("delete");
     await page.getByRole("button", { name: "Delete the code" }).last().click();
-    await expect(page.getByTestId("promo-notice")).toContainText("EURFIVE is deleted");
+    await expect(page.getByTestId("promo-notice")).toContainText("We deleted code EURFIVE");
     expect(state.writes.some((w) => w.startsWith("DELETE"))).toBe(true);
     await expect(page.getByTestId("promo-count")).toHaveText("Codes: 1");
   });

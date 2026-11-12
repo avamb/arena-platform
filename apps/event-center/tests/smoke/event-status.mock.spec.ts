@@ -14,7 +14,7 @@ async function signIn(page: Page) {
   await page.getByLabel("E-mail").fill("manager@example.test");
   await page.getByLabel("Password").fill("right-password");
   await page.getByTestId("login-submit").click();
-  await expect(page.getByRole("heading", { name: "Choose an organization" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Select an organization" })).toBeVisible();
 }
 
 async function noA11yViolations(page: Page) {
@@ -39,7 +39,7 @@ test.describe("5-1 event status (mock)", () => {
     await noA11yViolations(page);
 
     await page.getByTestId("event-status-off").click();
-    await expect(page.getByTestId("event-off-dialog")).toContainText("Tickets already sold stay valid");
+    await expect(page.getByTestId("event-off-dialog")).toContainText("The tickets sold stay valid");
     expect(state.writes).toEqual([]);
     await page.getByTestId("event-off-dialog-cancel").click();
     expect(state.writes).toEqual([]);
@@ -60,12 +60,12 @@ test.describe("5-1 event status (mock)", () => {
     await open(page);
     state.failNext = { status: 422, code: "event.publish_requires_priced_tier" };
     await page.getByTestId("event-status-publish").click();
-    await expect(page.getByTestId("event-status-error")).toContainText("priced category");
+    await expect(page.getByTestId("event-status-error")).toContainText("category with a price");
     await page.getByTestId("event-status-publish").click();
     await expect(page.getByTestId("event-status-current")).toContainText("Published");
 
     await page.getByTestId("event-status-archive").click();
-    await expect(page.getByTestId("event-archive-dialog")).toContainText("This is final");
+    await expect(page.getByTestId("event-archive-dialog")).toContainText("This step is permanent");
     await page.getByTestId("event-archive-dialog-submit").click();
     await expect(page.getByTestId("event-status-current")).toContainText("Archived");
     await expect(page.getByTestId("event-status-publish")).toHaveCount(0);
@@ -77,12 +77,12 @@ test.describe("5-1 event status (mock)", () => {
     const state = await mockStatus(page);
     await open(page);
     await page.getByTestId("event-status-delete").click();
-    await expect(page.getByTestId("dry-run-result")).toContainText("Nothing was sold");
+    await expect(page.getByTestId("dry-run-result")).toContainText("We sold no tickets");
     await page.getByTestId("dry-run-confirm").click();
     await expect(page.getByRole("alertdialog")).toBeVisible();
     await page.getByRole("textbox").fill("nope");
     await page.getByRole("button", { name: "Delete the event" }).click();
-    await expect(page.getByRole("alertdialog")).toContainText("nothing was changed");
+    await expect(page.getByRole("alertdialog")).toContainText("we made no change");
     expect(state.writes).toEqual([]);
     await page.getByRole("textbox").fill("delete");
     await page.getByRole("button", { name: "Delete the event" }).click();

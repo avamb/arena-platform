@@ -13,7 +13,7 @@ func TestPageStatsText(t *testing.T) {
 		t.Errorf("no visits must show no line, got %q", got)
 	}
 	got := b.pageStatsText("en", openapi.PageStatsCounts{Hits: 10, SuspectHits: 2})
-	if !strings.Contains(got, "Page views: 12 in 30 days") || !strings.Contains(got, "2 of them look like bots") {
+	if !strings.Contains(got, "Page views: 12 in 30 days") || !strings.Contains(got, "2 of them are probably bots") {
 		t.Errorf("en = %q", got)
 	}
 	// Without suspicious visits the parenthesis is left out.

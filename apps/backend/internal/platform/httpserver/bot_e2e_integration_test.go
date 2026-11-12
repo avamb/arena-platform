@@ -742,9 +742,9 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 
 	// 4. Language switch is remembered.
 	tg.push(e2eCallback("lang:en"))
-	tg.waitFor(t, "What would you like to do?")
+	tg.waitFor(t, "How can I help?")
 	tg.push(e2eMessage("/events"))
-	tg.waitFor(t, "No events yet")
+	tg.waitFor(t, "You have no events")
 	if link, err := gen.New(pool).GetBotTelegramLink(ctx, 777); err != nil || link.Locale != "en" {
 		t.Fatalf("locale not stored: %+v %v", link, err)
 	}

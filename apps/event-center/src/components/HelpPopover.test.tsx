@@ -59,7 +59,7 @@ describe("HelpPopover", () => {
     press(q("h1-button"));
     expect(q("h1-button").getAttribute("aria-expanded")).toBe("true");
     expect(shown("h1-text")).toBe(true);
-    expect(q("h1-text").textContent).toContain("Counted from the orders");
+    expect(q("h1-text").textContent).toContain("We count from the orders");
     press(q("h1-button"));
     expect(shown("h1-text")).toBe(false);
   });

@@ -181,7 +181,7 @@ test.describe("the hall of a seated date (live, three roles)", () => {
 
     await page.getByTestId("seat-apply").click();
     await expect(page.getByTestId("seat-note")).toContainText("Applied. 13 seats changed");
-    await expect(trayCount(page)).toContainText("No changes yet");
+    await expect(trayCount(page)).toContainText("No changes.");
 
     const after = hall();
     expect(after.batches).toBe(1);

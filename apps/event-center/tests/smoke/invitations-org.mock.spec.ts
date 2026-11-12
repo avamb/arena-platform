@@ -13,7 +13,7 @@ async function signIn(page: Page) {
   await page.getByLabel("E-mail").fill("manager@example.test");
   await page.getByLabel("Password").fill("right-password");
   await page.getByTestId("login-submit").click();
-  await expect(page.getByRole("heading", { name: "Choose an organization" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Select an organization" })).toBeVisible();
 }
 
 const url = `/o/${ORG_A}/invitations`;
@@ -168,7 +168,7 @@ test.describe("organization invitations (mock)", () => {
     await page.getByTestId("invite-review").click();
     state.refuseNextIssue = true;
     await page.getByTestId("invite-send").click();
-    await expect(page.getByTestId("invite-error")).toContainText("not enough places");
+    await expect(page.getByTestId("invite-error")).toContainText("too few seats left");
     await page.getByTestId("invite-retry").click();
     await expect(page.getByTestId("invite-done")).toBeVisible();
     const refused = state.issued.at(-2) as { request_id: string };
@@ -185,7 +185,7 @@ test.describe("organization invitations (mock)", () => {
     const dialog = page.getByTestId("inv-cancel-dialog");
     await expect(dialog).toBeVisible();
     await expect(page.getByTestId("inv-cancel-notify")).toBeChecked();
-    await expect(dialog).toContainText("go back on sale");
+    await expect(dialog).toContainText("go on sale again");
     await dialog.getByTestId("inv-cancel-dialog-submit").click();
     await expect(page.getByTestId("org-inv-cancelled")).toContainText("canceled");
     expect(state.cancelled).toHaveLength(1);
@@ -193,7 +193,7 @@ test.describe("organization invitations (mock)", () => {
     // The ticket left the row, the other place stays and is now the last one: no per-place cancel.
     await expect(two.getByTestId("org-inv-place")).toHaveCount(1);
     await expect(two.getByTestId("org-inv-cancel-place")).toHaveCount(0);
-    await expect(two.getByTestId("org-inv-state")).toContainText("Partly canceled");
+    await expect(two.getByTestId("org-inv-state")).toContainText("Canceled in part");
 
     // Guest 01, the whole invitation, the guest not told.
     await row(page, "Guest 01").getByTestId("org-inv-cancel").click();
@@ -210,7 +210,7 @@ test.describe("organization invitations (mock)", () => {
   test("earlier invitations stay visible with their old annul, and the section hides when there are none", async ({ page }) => {
     const state = await start(page);
     const section = page.getByTestId("earlier-invitations");
-    await expect(section).toContainText("Earlier invitations");
+    await expect(section).toContainText("Previous invitations");
     const old = section.getByTestId("invitation-row");
     await expect(old).toHaveCount(1);
     await expect(old).toContainText("Old Guest");
