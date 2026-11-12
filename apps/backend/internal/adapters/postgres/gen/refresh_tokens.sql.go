@@ -25,18 +25,28 @@ func (q *Queries) InsertRefreshToken(ctx context.Context, token string, userID u
 }
 
 const getRefreshToken = `-- name: GetRefreshToken :one
-SELECT token, user_id, expires_at, revoked_at, created_at
+SELECT token, user_id, expires_at, revoked_at, created_at, revoke_reason
 FROM refresh_tokens
 WHERE token = $1
 `
 
+// Revoke reasons of a refresh token (migration 0214, refresh_tokens.revoke_reason).
+const (
+	RefreshTokenRevokeReasonRotated    = "rotated"
+	RefreshTokenRevokeReasonSignedOut  = "signed_out"
+	RefreshTokenRevokeReasonRevokedAll = "revoked_all"
+)
+
 // GetRefreshTokenRow is the result type for GetRefreshToken.
+// RevokeReason is nil on an active token and on a token revoked before
+// migration 0214.
 type GetRefreshTokenRow struct {
-	Token     string     `json:"token"`
-	UserID    uuid.UUID  `json:"user_id"`
-	ExpiresAt time.Time  `json:"expires_at"`
-	RevokedAt *time.Time `json:"revoked_at"`
-	CreatedAt time.Time  `json:"created_at"`
+	Token        string     `json:"token"`
+	UserID       uuid.UUID  `json:"user_id"`
+	ExpiresAt    time.Time  `json:"expires_at"`
+	RevokedAt    *time.Time `json:"revoked_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+	RevokeReason *string    `json:"revoke_reason"`
 }
 
 // GetRefreshToken fetches a refresh token row by token string.
@@ -50,25 +60,47 @@ func (q *Queries) GetRefreshToken(ctx context.Context, token string) (GetRefresh
 		&i.ExpiresAt,
 		&i.RevokedAt,
 		&i.CreatedAt,
+		&i.RevokeReason,
 	)
 	return i, err
 }
 
 const revokeRefreshToken = `-- name: RevokeRefreshToken :exec
 UPDATE refresh_tokens
-SET revoked_at = now()
-WHERE token = $1
+SET revoked_at = now(), revoke_reason = 'signed_out'
+WHERE token = $1 AND revoked_at IS NULL
 `
 
-// RevokeRefreshToken soft-revokes a refresh token by setting revoked_at = now().
+// RevokeRefreshToken soft-revokes a refresh token on a sign-out or a session
+// eviction: revoked_at = now(), revoke_reason = 'signed_out'. token is the
+// stored hash (users.TokenHash), not the raw value. A token that is already
+// revoked keeps its first time and reason.
 func (q *Queries) RevokeRefreshToken(ctx context.Context, token string) error {
 	_, err := q.db.Exec(ctx, revokeRefreshToken, token)
 	return err
 }
 
+const rotateRefreshToken = `-- name: RotateRefreshToken :execrows
+UPDATE refresh_tokens
+SET revoked_at = now(), revoke_reason = 'rotated'
+WHERE token = $1 AND revoked_at IS NULL
+`
+
+// RotateRefreshToken revokes a live refresh token replaced by a newer one on
+// refresh: revoked_at = now(), revoke_reason = 'rotated'. It returns the
+// number of rows changed: 0 means the token was already revoked (another
+// refresh, a sign-out or a sweep came first) and no successor may be issued.
+func (q *Queries) RotateRefreshToken(ctx context.Context, token string) (int64, error) {
+	tag, err := q.db.Exec(ctx, rotateRefreshToken, token)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 const revokeAllUserRefreshTokens = `-- name: RevokeAllUserRefreshTokens :exec
 UPDATE refresh_tokens
-SET revoked_at = now()
+SET revoked_at = now(), revoke_reason = 'revoked_all'
 WHERE user_id = $1 AND revoked_at IS NULL
 `
 

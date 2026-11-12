@@ -7,7 +7,7 @@
 //  4. Verify the token belongs to the authenticated actor (prevents cross-user
 //     revocation via token-theft).
 //  5. If the token is already revoked → return 204 (idempotent logout).
-//  6. Revoke the token in the database (sets revoked_at = now()).
+//  6. Revoke the token in the database (revoked_at = now(), revoke_reason = 'signed_out').
 //  7. If a session store is wired, call RevokeSession to:
 //     a. Write "arena:revoked:{token}" in Redis with TTL = remaining lifetime.
 //     b. Remove the token from "arena:sessions:{userID}" sorted set.

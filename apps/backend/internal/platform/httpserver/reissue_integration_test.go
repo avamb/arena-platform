@@ -66,6 +66,78 @@ func (f *ecOrdersFixture) reissueDo(method, path, token, key, body string) (int,
 	return resp.StatusCode, out
 }
 
+// reissueBurst fires n identical POSTs at once (released together by a
+// barrier) and checks, in the test goroutine, that all answer 200 with one
+// reissue_id and exactly one replayed:false. It returns the first answer.
+func (f *ecOrdersFixture) reissueBurst(t *testing.T, path, token, key, body string, n int) map[string]any {
+	t.Helper()
+	type answer struct {
+		code int
+		body map[string]any
+		err  error
+	}
+	answers := make([]answer, n)
+	start := make(chan struct{})
+	var ready, done sync.WaitGroup
+	ready.Add(n)
+	done.Add(n)
+	for i := range answers {
+		go func(i int) {
+			defer done.Done()
+			req, err := http.NewRequest(http.MethodPost, f.ts.URL+path, strings.NewReader(body))
+			if err != nil {
+				answers[i].err = err
+				ready.Done()
+				return
+			}
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Idempotency-Key", key)
+			req.Header.Set("Content-Type", "application/json")
+			ready.Done()
+			<-start
+			resp, err := f.ts.Client().Do(req)
+			if err != nil {
+				answers[i].err = err
+				return
+			}
+			defer resp.Body.Close()
+			raw, _ := io.ReadAll(resp.Body)
+			answers[i].code = resp.StatusCode
+			answers[i].body = map[string]any{}
+			if err := json.Unmarshal(raw, &answers[i].body); err != nil {
+				answers[i].err = err
+			}
+		}(i)
+	}
+	ready.Wait()
+	close(start)
+	done.Wait()
+	fresh := 0
+	var id any
+	var first map[string]any
+	for i, a := range answers {
+		if a.err != nil {
+			t.Fatalf("burst request %d: %v", i, a.err)
+		}
+		if a.code != 200 {
+			t.Fatalf("burst request %d: %d %v, want 200", i, a.code, a.body)
+		}
+		if a.body["replayed"] == false {
+			fresh++
+			first = a.body
+		}
+		if i == 0 {
+			id = a.body["reissue_id"]
+		} else if a.body["reissue_id"] != id {
+			t.Fatalf("burst request %d: reissue_id %v, want %v", i, a.body["reissue_id"], id)
+		}
+	}
+	if fresh != 1 {
+		t.Fatalf("%d answers with replayed=false, want 1", fresh)
+	}
+	return first
+}
+
 func reissuePath(org, order uuid.UUID, tail string) string {
 	return "/v1/organizations/" + org.String() + "/orders/" + order.String() + "/" + tail
 }
@@ -572,6 +644,17 @@ func TestReissue_Integration(t *testing.T) {
 			t.Fatalf("switched-off site: %d %v, want 200", code, b)
 		}
 	})
+
+	t.Run("concurrent_identical_requests", func(t *testing.T) {
+		o, _ := f.resendSeedOrder(f.channelA, "public_feed", "burst-"+suffix+"@example.test")
+		target := "burst2-" + suffix + "@example.org"
+		f.reissueCleanup([]uuid.UUID{o}, []string{target})
+		f.reissueBurst(t, reissuePath(f.orgA, o, "reissue-tickets"), f.managerTok, "burst-"+suffix,
+			`{"email":"`+target+`","reason":"other"}`, 4)
+		if n := f.count(`SELECT count(*) FROM ticket_reissues WHERE order_id = $1`, o); n != 1 {
+			t.Fatalf("%d journal rows after identical concurrent requests, want 1", n)
+		}
+	})
 }
 
 // TestReissue_InvitationWithoutOrder: an invitation issued before spec 46 has
@@ -650,10 +733,14 @@ func TestReissue_InvitationWithoutOrder(t *testing.T) {
 		`{"email":"`+newEmail+`","reason":"other"}`); code != 403 {
 		t.Fatalf("agent: %d, want 403", code)
 	}
-	code, b := f.reissueDo(http.MethodPost, base+"reissue-tickets", f.managerTok, "inv-"+suffix,
-		`{"email":"`+newEmail+`","reason":"sent_to_wrong_address"}`)
-	if code != 200 || b["state"] != ticketreissue.StatePending {
-		t.Fatalf("reissue: %d %v", code, b)
+	// Identical requests at once: one operation, the rest replay it.
+	b := f.reissueBurst(t, base+"reissue-tickets", f.managerTok, "inv-"+suffix,
+		`{"email":"`+newEmail+`","reason":"sent_to_wrong_address"}`, 4)
+	if b["state"] != ticketreissue.StatePending {
+		t.Fatalf("reissue: %v", b)
+	}
+	if n := f.count(`SELECT count(*) FROM ticket_reissues WHERE complimentary_issuance_id = $1`, issuance); n != 1 {
+		t.Fatalf("%d journal rows after identical concurrent requests, want 1", n)
 	}
 	ts, _ := b["tickets"].([]any)
 	if len(ts) != 1 {

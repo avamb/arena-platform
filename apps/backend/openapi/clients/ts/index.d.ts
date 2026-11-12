@@ -40498,7 +40498,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Rate limit exceeded — too many login attempts for this IP+email */
+            /** @description Rate limit exceeded — too many login attempts for this IP+email (`auth.rate_limited`, with `Retry-After` in seconds). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -40549,7 +40549,12 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Refresh token invalid, expired, or revoked */
+            /**
+             * @description Refresh token invalid, expired, or revoked (`auth.invalid_refresh_token`,
+             *     `auth.refresh_token_expired`). A token that was already exchanged for a
+             *     new one ends every session of the account (`auth.session_compromised`);
+             *     a token ended by sign-out or by such a sweep is only refused.
+             */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -40698,7 +40703,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Too many wrong passwords (`auth.rate_limited`). */
+            /** @description Too many wrong passwords (`auth.rate_limited`, with `Retry-After` in seconds). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -40758,7 +40763,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Too many attempts from this address (`auth.rate_limited`). */
+            /** @description Too many attempts from this address (`auth.rate_limited`, with `Retry-After` in seconds). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -40827,7 +40832,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Too many attempts from this address (`auth.rate_limited`). */
+            /** @description Too many attempts from this address (`auth.rate_limited`, with `Retry-After` in seconds). */
             429: {
                 headers: {
                     [name: string]: unknown;
@@ -64127,7 +64132,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Streaming response carrying the stored bytes, or the resized copy when `w` asked for one (then `Content-Type` and `Content-Length` are the copy's). */
+            /** @description Streaming response carrying the stored bytes, or the resized copy when `w` asked for one (then `Content-Type` and `Content-Length` are the copy's). Every answer carries `X-Content-Type-Options` nosniff and a sandbox `Content-Security-Policy`; any type other than a PNG, JPEG, GIF, WebP, AVIF or SVG picture also carries `Content-Disposition` attachment. */
             200: {
                 headers: {
                     [name: string]: unknown;

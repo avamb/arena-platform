@@ -133,6 +133,10 @@ func reissueInvitationTx(ctx context.Context, db Beginner, in Input, fp string) 
 	if err != nil {
 		return Result{}, err
 	}
+	// A request that waited on the lock sees the winner's committed row now.
+	if res, found, err := replay(ctx, tx, in, fp); found || err != nil {
+		return res, err
+	}
 	if inv.Status != "issued" {
 		return Result{}, ErrInvitationNotIssued
 	}
