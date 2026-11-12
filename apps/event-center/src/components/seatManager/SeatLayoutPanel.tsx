@@ -22,21 +22,31 @@ import {
   initialValues,
   prefillFromTiers,
   majorText,
+  NEW_CATEGORY,
+  checkDrafts,
+  draftOfSlot,
   mappingComplete,
+  mappingWithNew,
+  overTierLimit,
   parseIntList,
   parseMajor,
   parseMoneyList,
+  previewTable,
   proposalToStrokes,
+  resolveNewSlots,
   sliderBounds,
   suggestMapping,
+  type DraftCheck,
   type FormValues,
+  type NewTierDraft,
+  type NewTierValue,
 } from "@/lib/seatManager/layout";
 import { slotColor } from "@/lib/seatManager/colors";
-import type { Merged, SeatState, Stroke } from "@/lib/seatManager/pending";
+import type { Merged, PendingTier, SeatState, Stroke } from "@/lib/seatManager/pending";
 import type { Point } from "@/lib/seatManager/model";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { Loading } from "@/components/ui";
-import type { TierView } from "@/components/seatManager/SeatPanels";
+import { NewTierFields, type TierView } from "@/components/seatManager/SeatPanels";
 
 /** What the map paints over the seats while a proposal is shown. */
 export interface LayoutPreview {
@@ -49,14 +59,23 @@ export interface LayoutPreview {
 interface Props {
   orgId: string;
   sessionId: string;
+  /** The categories the server has (not the ones of the tray). */
   tiers: readonly TierView[];
+  /** Categories of the tray that are not created yet. */
+  pending: readonly PendingTier[];
+  /** Names a new category may not take: every category of the date and of the tray. */
+  takenNames: readonly string[];
+  /** How many categories the date has now (all kinds). */
+  liveTierCount: number;
+  /** May the person create categories (the right `tier.create`). */
+  canCreateTiers: boolean;
   base: ReadonlyMap<string, SeatState>;
   merged: Merged;
   nextStrokeId: number;
   stage: Point | null;
   onPointStage: () => void;
   onPreview: (p: LayoutPreview | null) => void;
-  onTransfer: (strokes: Stroke[], note: { changed: number; leftOut: number }) => void;
+  onTransfer: (strokes: Stroke[], note: { changed: number; leftOut: number }, created: PendingTier[]) => void;
 }
 
 const DEBOUNCE_MS = 450;
@@ -116,6 +135,10 @@ function LayoutForm({
   orgId,
   sessionId,
   tiers,
+  pending,
+  takenNames,
+  liveTierCount,
+  canCreateTiers,
   base,
   merged,
   nextStrokeId,
@@ -125,13 +148,14 @@ function LayoutForm({
   onTransfer,
 }: Props & { alg: SeatLayoutAlgorithm; currency: string; tx: (k: string) => string; locale: string }) {
   const { t } = useI18n();
-  const [values, setValues] = useState<FormValues>(() => prefillFromTiers(alg, initialValues(alg), tiers.map((x) => x.price)));
+  const [values, setValues] = useState<FormValues>(() => prefillFromTiers(alg, initialValues(alg), tiers.map((x) => x.price), canCreateTiers));
   const [raw, setRaw] = useState<Record<string, string>>({});
   const [bad, setBad] = useState<Record<string, boolean>>({});
   const [result, setResult] = useState<SeatLayoutSuggestResponse | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const [mapping, setMapping] = useState<Map<string, string | null>>(new Map());
+  const [drafts, setDrafts] = useState<Map<string, NewTierDraft>>(new Map());
   const [moved, setMoved] = useState<{ changed: number; leftOut: number } | null>(null);
   const ticket = useRef(0);
 
@@ -160,7 +184,13 @@ function LayoutForm({
           setResult(res);
           setError(null);
           setMoved(null);
-          setMapping(suggestMapping(res.layout.slots, tiers));
+          setMapping(canCreateTiers ? mappingWithNew(res.layout.slots, tiers) : suggestMapping(res.layout.slots, tiers));
+          // Every slot starts with what the proposal says: its name (or "Category N"), its price, its colour.
+          setDrafts(
+            new Map(
+              res.layout.slots.map((s, i) => [s.key, draftOfSlot(s, currency, t("seats.layout.slot", { n: i + 1 }), slotColor(i))] as const),
+            ),
+          );
         })
         .catch((err: unknown) => {
           if (ticket.current !== mine) return;
@@ -200,10 +230,27 @@ function LayoutForm({
   const set = (name: string, v: FormValues[string]) => setValues((prev) => ({ ...prev, [name]: v }));
   const setBadFlag = (name: string, flag: boolean) => setBad((prev) => (prev[name] === flag ? prev : { ...prev, [name]: flag }));
 
+  // The slots that become a new category, with what the person typed, judged the way the server will judge it.
+  const newSlots = useMemo(() => {
+    const m = new Map<string, NewTierDraft>();
+    if (result === null) return m;
+    for (const s of result.layout.slots) {
+      const d = drafts.get(s.key);
+      if (mapping.get(s.key) === NEW_CATEGORY && d !== undefined) m.set(s.key, d);
+    }
+    return m;
+  }, [result, mapping, drafts]);
+  const checks = useMemo(() => checkDrafts(newSlots, currency, takenNames), [newSlots, currency, takenNames]);
+  const draftsBad = [...checks.values()].some((c) => !c.ok);
+  const overLimit = overTierLimit(liveTierCount, pending.length, newSlots.size);
+
   const transfer = () => {
-    if (result === null) return;
-    const res = proposalToStrokes(result.layout, mapping, base, merged, nextStrokeId);
-    onTransfer(res.strokes, { changed: res.changed, leftOut: res.leftOut });
+    if (result === null || draftsBad || overLimit) return;
+    const values = new Map<string, NewTierValue>();
+    for (const [slot, c] of checks) if (c.ok) values.set(slot, c.value);
+    const resolved = resolveNewSlots(result.layout, mapping, values, pending);
+    const res = proposalToStrokes(result.layout, resolved.mapping, base, merged, nextStrokeId);
+    onTransfer(res.strokes, { changed: res.changed, leftOut: res.leftOut }, resolved.created);
     setMoved({ changed: res.changed, leftOut: res.leftOut });
     setResult(null);
   };
@@ -251,7 +298,12 @@ function LayoutForm({
           locale={locale}
           tiers={tiers}
           mapping={mapping}
+          canCreateTiers={canCreateTiers}
+          drafts={drafts}
+          checks={checks}
+          overLimit={overLimit}
           onMap={(slot, tier) => setMapping((prev) => new Map(prev).set(slot, tier))}
+          onDraft={(slot, d) => setDrafts((prev) => new Map(prev).set(slot, d))}
           onTransfer={transfer}
         />
       )}
@@ -273,7 +325,12 @@ function Proposal({
   locale,
   tiers,
   mapping,
+  canCreateTiers,
+  drafts,
+  checks,
+  overLimit,
   onMap,
+  onDraft,
   onTransfer,
 }: {
   result: SeatLayoutSuggestResponse;
@@ -281,15 +338,23 @@ function Proposal({
   locale: string;
   tiers: readonly TierView[];
   mapping: ReadonlyMap<string, string | null>;
+  canCreateTiers: boolean;
+  drafts: ReadonlyMap<string, NewTierDraft>;
+  checks: ReadonlyMap<string, DraftCheck>;
+  overLimit: boolean;
   onMap: (slot: string, tier: string | null) => void;
+  onDraft: (slot: string, draft: NewTierDraft) => void;
   onTransfer: () => void;
 }) {
   const { t } = useI18n();
   const m = result.metrics;
   const slots = result.layout.slots;
   const complete = mappingComplete(slots, mapping);
-  const used = new Set([...mapping.values()].filter((x): x is string => x !== null));
-  const anyMapped = used.size > 0;
+  const used = new Set([...mapping.values()].filter((x): x is string => x !== null && x !== NEW_CATEGORY));
+  const anyMapped = [...mapping.values()].some((x) => x !== null);
+  const draftsBad = [...checks.values()].some((c) => !c.ok);
+  const slotName = (s: (typeof slots)[number], i: number) => s.name ?? t("seats.layout.slot", { n: i + 1 });
+  const table = previewTable(slots, m.by_slot, slotName);
   return (
     <div data-testid="layout-proposal">
       <h3>{t("seats.layout.revenue")}</h3>
@@ -305,6 +370,42 @@ function Proposal({
       </ul>
       <p className="muted">{t("seats.layout.revenue.note")}</p>
 
+      <div className="sm-table-wrap">
+        <table className="sm-table" data-testid="layout-table">
+          <caption>{t("seats.layout.table.caption")}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{t("seats.layout.table.category")}</th>
+              <th scope="col" className="sm-num">{t("seats.layout.table.seats")}</th>
+              <th scope="col" className="sm-num">{t("seats.layout.table.price")}</th>
+              <th scope="col" className="sm-num">{t("seats.layout.table.full")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {table.rows.map((r) => (
+              <tr key={r.slotKey} data-testid="layout-table-row">
+                <th scope="row">{r.name}</th>
+                <td className="sm-num">{formatNumber(r.seats, locale)}</td>
+                <td className="sm-num">{formatMoney(r.price, currency, locale)}</td>
+                <td className="sm-num">{formatMoney(r.revenue, currency, locale)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr data-testid="layout-table-total">
+              <th scope="row">{t("seats.layout.table.total")}</th>
+              <td className="sm-num">{formatNumber(table.totalSeats, locale)}</td>
+              <td className="sm-num" aria-hidden="true" />
+              <td className="sm-num">{formatMoney(table.totalRevenue, currency, locale)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p data-testid="layout-realistic">
+        <strong>{t("seats.layout.realistic", { amount: formatMoney(m.realistic_revenue_minor, currency, locale) })}</strong>
+      </p>
+      <p className="muted">{t("seats.layout.realistic.note")}</p>
+
       <h3>{t("seats.layout.slots")}</h3>
       <ul className="sm-slots">
         {slots.map((s, i) => {
@@ -319,7 +420,7 @@ function Proposal({
                 aria-hidden="true"
               />
               <div className="sm-slot-text">
-                <strong>{s.name ?? t("seats.layout.slot", { n: i + 1 })}</strong>
+                <strong>{slotName(s, i)}</strong>
                 <span className="muted">
                   {formatMoney(s.price_amount, currency, locale)}
                   {sm !== undefined && ` · ${t("seats.layout.slot.seats", { count: formatNumber(sm.seats, locale), share: Math.round(sm.share * 100) })}`}
@@ -332,20 +433,42 @@ function Proposal({
                   onChange={(e) => onMap(s.key, e.target.value === "" ? null : e.target.value)}
                   data-testid="layout-map"
                 >
-                  <option value="">{t("seats.layout.mapNone")}</option>
+                  {canCreateTiers && <option value={NEW_CATEGORY}>{t("seats.layout.mapNew")}</option>}
                   {tiers.map((tier) => (
                     <option key={tier.id} value={tier.id} disabled={used.has(tier.id) && mapping.get(s.key) !== tier.id}>
                       {tier.name} · {formatMoney(tier.price, tier.currency, locale)}
                     </option>
                   ))}
+                  <option value="">{t("seats.layout.mapNone")}</option>
                 </select>
               </label>
+              {mapping.get(s.key) === NEW_CATEGORY && drafts.get(s.key) !== undefined && (
+                <div className="sm-newtier" role="group" aria-label={t("seats.layout.newTier", { n: i + 1 })} data-testid="layout-new-tier">
+                  <NewTierFields
+                    draft={drafts.get(s.key)!}
+                    errors={(() => {
+                      const c = checks.get(s.key);
+                      return c !== undefined && !c.ok ? c.errors : null;
+                    })()}
+                    currency={currency}
+                    testPrefix="layout-new"
+                    onChange={(d) => onDraft(s.key, d)}
+                  />
+                </div>
+              )}
             </li>
           );
         })}
       </ul>
+      {!canCreateTiers && <p className="muted" data-testid="layout-no-create">{t("seats.layout.noCreate")}</p>}
       {!complete && <p className="notice notice-warn">{t("seats.layout.mapIncomplete")}</p>}
-      <button type="button" className="btn btn-primary" onClick={onTransfer} disabled={!anyMapped} data-testid="layout-transfer">
+      {overLimit && (
+        <p className="notice notice-bad" role="alert" data-testid="layout-too-many">
+          {t("seats.newTier.tooMany")}
+        </p>
+      )}
+      {[...mapping.values()].some((x) => x === NEW_CATEGORY) && <p className="muted">{t("seats.layout.newTier.hint")}</p>}
+      <button type="button" className="btn btn-primary" onClick={onTransfer} disabled={!anyMapped || draftsBad || overLimit} data-testid="layout-transfer">
         {t("seats.layout.transfer")}
       </button>
       <p className="muted">{t("seats.layout.transfer.hint")}</p>

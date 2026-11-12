@@ -205,6 +205,9 @@ export type ApiErrorStem =
   | "seatTierGone"
   | "seatStageNeeded"
   | "seatNoPlan"
+  | "seatTierNameTaken"
+  | "seatTooManyTiers"
+  | "seatNewTierInvalid"
   // The shop (spec 47)
   | "shopStockChanged"
   | "shopDuplicateSlug"
@@ -273,6 +276,7 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "emailNoteEmpty", "emailNoteRateLimited", "textRefused",
   // S2b/S2c
   "seatNothingToRevert", "seatTooMany", "seatTierGone", "seatStageNeeded", "seatNoPlan",
+  "seatTierNameTaken", "seatTooManyTiers", "seatNewTierInvalid",
   // Spec 46: invitations on chosen seats
   "invitationSeatsTaken", "invitationNotEnough", "invitationRequestReused", "invitationSessionCancelled", "invitationNotIssued", "invitationTicketScanned", "invitationEmailNeeded", "invitationMyEmail", "invitationEmpty",
   "invitationUnknownSeat", "invitationTooManyPlaces", "invitationGuestName", "invitationGuestEmail", "invitationNoteLong", "invitationCategory",
@@ -336,6 +340,13 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "seat_batch.nothing_to_revert": "seatNothingToRevert",
   "seat_batch.too_many_changes": "seatTooMany",
   "seat_batch.tier_not_in_session": "seatTierGone",
+  "seat_batch.tier_name_taken": "seatTierNameTaken",
+  "seat_batch.duplicate_new_tier_name": "seatTierNameTaken",
+  "seat_batch.too_many_tiers": "seatTooManyTiers",
+  "seat_batch.invalid_new_tier_name": "seatNewTierInvalid",
+  "seat_batch.invalid_new_tier_price": "seatNewTierInvalid",
+  "seat_batch.invalid_new_tier_color": "seatNewTierInvalid",
+  "seat_batch.unused_new_tier": "seatNewTierInvalid",
   "seat_layout.annotation_required": "seatStageNeeded",
   "seat_layout.no_seating_plan": "seatNoPlan",
   // 4-7

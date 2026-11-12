@@ -22,6 +22,7 @@ import {
   createSeatBatch,
   fetchSessionSchemaAdmin,
   fetchSessionSeatsAdmin,
+  listLayoutAlgorithms,
   listSeatBatches,
   listTiers,
   revertSeatBatch,
@@ -33,22 +34,30 @@ import { seatCardModel, type SeatCardInput, type SeatCardModel } from "@seatmap/
 import { useI18n } from "@/lib/i18n";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { Loading } from "@/components/ui";
-import { STATUS_COLORS, tierColors, orderTiers } from "@/lib/seatManager/colors";
+import { STATUS_COLORS, TIER_PALETTE, tierColors, orderTiers } from "@/lib/seatManager/colors";
+import { overTierLimit, type NewTierValue } from "@/lib/seatManager/layout";
+import type { SeatTab } from "@/lib/seatManager/embed";
 import { buildHallIndex, rowRange, seatsOfRow, seatsOfSection, type Point } from "@/lib/seatManager/model";
 import {
   MAX_BATCH_CHANGES,
-  batchKind,
+  addPendingTiers,
+  buildBatchRequest,
   clearTray,
   countByTier,
   effectiveState,
   isFrozen,
   makeStroke,
   mergeStrokes,
+  nextPendingKey,
+  pendingTierId,
   pushStroke,
+  removePendingTier,
+  settleApplied,
   trayChanges,
   trayTotals,
   undoStroke,
   type Brush,
+  type PendingTier,
   type SeatState,
   type SeatStatus,
   type Stroke,
@@ -85,6 +94,10 @@ export interface SeatManagerProps {
   sessionId: string;
   /** Inside the Telegram mini app: no page header, no way "back" of our own. */
   embed?: boolean;
+  /** The tab the panel opens on (?tab=layout); the brush by default. */
+  initialTab?: SeatTab;
+  /** The right `tier.create`: a batch with new categories needs it. Without it categories cannot be made here. */
+  canCreateTiers?: boolean;
 }
 
 const STAGE_KEY = "arena.seats.stage.";
@@ -113,7 +126,7 @@ function saveStage(sessionId: string, p: Point | null): void {
   }
 }
 
-export function SeatManager({ orgId, eventId, sessionId, embed = false }: SeatManagerProps) {
+export function SeatManager({ orgId, eventId, sessionId, embed = false, initialTab, canCreateTiers = true }: SeatManagerProps) {
   const { t, locale } = useI18n();
   const qc = useQueryClient();
   const mapRef = useRef<SeatMapHandle>(null);
@@ -157,7 +170,6 @@ export function SeatManager({ orgId, eventId, sessionId, embed = false }: SeatMa
       (tiersQ.data?.tiers ?? []).filter((x) => !((x.ga_unit_count ?? 0) > 0 && (x.seat_count ?? 0) === 0)),
     [tiersQ.data],
   );
-  const colors = useMemo(() => tierColors(seatTiers), [seatTiers]);
 
   // ── state ───────────────────────────────────────────────────────────────
   const [tray, setTrayState] = useState<Tray>(() => loadTray(sessionId));
@@ -168,11 +180,15 @@ export function SeatManager({ orgId, eventId, sessionId, embed = false }: SeatMa
     },
     [sessionId],
   );
+  const colors = useMemo(() => {
+    const m = tierColors(seatTiers);
+    for (const p of tray.pendingTiers) m.set(pendingTierId(p.key), p.color);
+    return m;
+  }, [seatTiers, tray.pendingTiers]);
   const [mode, setMode] = useState<PanelMode>("categories");
   const [brush, setBrush] = useState<Brush | null>(null);
   const [tool, setTool] = useState<MapTool>("seat");
-  const [tab, setTab] = useState<Tab>("brush");
-  const [note, setNote] = useState<Note | null>(null);
+  const [tab, setTab] = useState<Tab>(initialTab ?? "brush");  const [note, setNote] = useState<Note | null>(null);
   const [preview, setPreview] = useState<LayoutPreview | null>(null);
   const [stage, setStageState] = useState<Point | null>(() => loadStage(sessionId));
   const [collapsed, setCollapsed] = useState(false);
@@ -181,6 +197,8 @@ export function SeatManager({ orgId, eventId, sessionId, embed = false }: SeatMa
   // request is on its way must stay in the tray after the answer.
   const trayRef = useRef(tray);
   trayRef.current = tray;
+  const brushRef = useRef(brush);
+  brushRef.current = brush;
   const sentStrokes = useRef<ReadonlySet<number>>(new Set());
 
   const merged = useMemo(() => mergeStrokes(tray.strokes), [tray.strokes]);
@@ -206,7 +224,16 @@ export function SeatManager({ orgId, eventId, sessionId, embed = false }: SeatMa
   // ── counters ────────────────────────────────────────────────────────────
   const seatKeys = useMemo(() => index?.seats.map((s) => s.key) ?? [], [index]);
   const counts = useMemo(() => countByTier(base, merged, seatKeys), [base, merged, seatKeys]);
-  const tierViews: TierView[] = useMemo(
+  // The currency of a category made here: the date's (a date with no category yet asks the layout's schema).
+  const allTiers = tiersQ.data?.tiers;
+  const currencyQ = useQuery({
+    queryKey: ["seat-algorithms", orgId, sessionId],
+    queryFn: () => listLayoutAlgorithms(orgId, sessionId),
+    staleTime: 5 * 60_000,
+    enabled: allTiers !== undefined && allTiers.length === 0,
+  });
+  const currency = allTiers?.[0]?.currency ?? currencyQ.data?.currency ?? "EUR";
+  const realViews: TierView[] = useMemo(
     () =>
       orderTiers(seatTiers).map((x) => ({
         id: x.id,
@@ -219,6 +246,24 @@ export function SeatManager({ orgId, eventId, sessionId, embed = false }: SeatMa
       })),
     [seatTiers, colors, counts],
   );
+  const tierViews: TierView[] = useMemo(
+    () => [
+      ...realViews,
+      ...tray.pendingTiers.map((p) => ({
+        id: pendingTierId(p.key),
+        name: p.name,
+        price: p.price,
+        currency,
+        color: p.color,
+        open: true,
+        counts: counts.get(pendingTierId(p.key)),
+        pending: true,
+      })),
+    ],
+    [realViews, tray.pendingTiers, counts, currency],
+  );
+  const takenNames = useMemo(() => [...(allTiers ?? []).map((x) => x.name), ...tray.pendingTiers.map((p) => p.name)], [allTiers, tray.pendingTiers]);
+  const liveTierCount = allTiers?.length ?? 0;
   const overall = useMemo(() => {
     let sold = 0;
     let held = 0;
@@ -350,15 +395,19 @@ export function SeatManager({ orgId, eventId, sessionId, embed = false }: SeatMa
   };
 
   const apply = useMutation({
-    mutationFn: () =>
-      createSeatBatch(orgId, sessionId, {
-        kind: batchKind(changes),
-        changes: changes.map((c) => ({ seat_key: c.seat_key, tier_id: c.tier_id, status: c.status })),
-      }),
+    // ONE request: the seat changes and the new categories they name travel together.
+    mutationFn: () => createSeatBatch(orgId, sessionId, buildBatchRequest(changes, tray.pendingTiers).body),
     onSuccess: (batch: SeatBatch) => {
       const sent = sentStrokes.current;
       const now = trayRef.current;
-      setTray({ strokes: now.strokes.filter((x) => !sent.has(x.id)), nextId: now.nextId });
+      const created = batch.created_tiers ?? [];
+      // The categories of the answer replace the ones of the tray; a stroke made meanwhile follows them.
+      setTray(settleApplied(now, sent, created));
+      const brushNow = brushRef.current;
+      if (brushNow?.kind === "tier") {
+        const real = created.find((c) => pendingTierId(c.key) === brushNow.tierId);
+        if (real !== undefined) setBrush({ kind: "tier", tierId: real.tier_id });
+      }
       setNote({ kind: "applied", changed: batch.changes.length, skipped: batch.skipped.length, unchanged: batch.unchanged_seat_keys?.length ?? 0 });
       refreshAll();
     },
@@ -375,8 +424,32 @@ export function SeatManager({ orgId, eventId, sessionId, embed = false }: SeatMa
 
   const tooMany = changes.length > MAX_BATCH_CHANGES;
 
-  const onTransfer = (strokes: Stroke[], n: { changed: number; leftOut: number }) => {
-    let next = tray;
+  // A category made by hand ("+ category"): it joins the tray and becomes the brush.
+  const onAddTier = (v: NewTierValue) => {
+    const key = nextPendingKey(tray.pendingTiers);
+    const p: PendingTier = { key, name: v.name, price: v.price, color: v.color };
+    setTray(addPendingTiers(tray, [p]));
+    setBrush({ kind: "tier", tierId: pendingTierId(key) });
+  };
+  const onRemovePending = (tierId: string) => {
+    const key = tray.pendingTiers.find((p) => pendingTierId(p.key) === tierId)?.key;
+    if (key === undefined) return;
+    setTray(removePendingTier(tray, key));
+    if (brush?.kind === "tier" && brush.tierId === tierId) setBrush(null);
+  };
+  const addOptions =
+    canCreateTiers
+      ? {
+          currency,
+          takenNames,
+          defaultColor: TIER_PALETTE.find((c) => !tierViews.some((x) => x.color === c)) ?? TIER_PALETTE[0]!,
+          full: overTierLimit(liveTierCount, tray.pendingTiers.length, 1),
+          onAdd: onAddTier,
+        }
+      : undefined;
+
+  const onTransfer = (strokes: Stroke[], n: { changed: number; leftOut: number }, created: PendingTier[]) => {
+    let next = addPendingTiers(tray, created);
     for (const s of strokes) next = pushStroke(next, s);
     setTray(next);
     setPreview(null);
@@ -502,12 +575,12 @@ export function SeatManager({ orgId, eventId, sessionId, embed = false }: SeatMa
             {tab === "brush" && (
               <>
                 <ModeSwitch mode={mode} onMode={switchMode} />
-                <BrushPalette mode={mode} tiers={tierViews} brush={brush} onBrush={setBrush} />
+                <BrushPalette mode={mode} tiers={tierViews} brush={brush} onBrush={setBrush} add={mode === "categories" ? addOptions : undefined} onRemovePending={onRemovePending} />
                 <ToolBar tool={tool} onTool={setTool} />
                 {seatTiers.length === 0 && mode === "categories" && <p className="notice notice-warn">{t("seats.noTiers")}</p>}
               </>
             )}
-            {tab === "changes" && <ChangesPanel changes={changes} totals={totals} base={base} tiers={tierViews} />}
+            {tab === "changes" && <ChangesPanel changes={changes} totals={totals} base={base} tiers={tierViews} onRemovePending={onRemovePending} />}
             {tab === "rows" && (
               <RowsPanel
                 index={index}
@@ -531,7 +604,11 @@ export function SeatManager({ orgId, eventId, sessionId, embed = false }: SeatMa
               <SeatLayoutPanel
                 orgId={orgId}
                 sessionId={sessionId}
-                tiers={tierViews}
+                tiers={realViews}
+                pending={tray.pendingTiers}
+                takenNames={takenNames}
+                liveTierCount={liveTierCount}
+                canCreateTiers={canCreateTiers}
                 base={base}
                 merged={merged}
                 nextStrokeId={tray.nextId}
@@ -555,6 +632,7 @@ export function SeatManager({ orgId, eventId, sessionId, embed = false }: SeatMa
           <ApplyBar
             totals={totals}
             strokes={tray.strokes.length}
+            canReset={tray.strokes.length > 0 || tray.pendingTiers.length > 0}
             busy={apply.isPending || revert.isPending}
             onApply={() => {
               if (tooMany) return;
