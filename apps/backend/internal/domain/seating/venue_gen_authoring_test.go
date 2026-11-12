@@ -40,12 +40,31 @@ func venueGenFixtureDir() string {
 
 func TestImportSVG_VenueGeneratorAuthoringExport(t *testing.T) {
 	t.Parallel()
+	checkVenueGenFixture(t, "synthetic_authoring")
+}
+
+// The v2 exporter (arena_export.exporter_v2): decor (stage, row labels, section
+// titles, grey squares for unavailable seats) must neither warn nor become seats.
+// The quarantine case omits seats without an identity and marks the root.
+func TestImportSVG_VenueGeneratorAuthoringExportV2(t *testing.T) {
+	t.Parallel()
+	for _, name := range []string{"v2_render", "v2_quarantine"} {
+		name := name
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			checkVenueGenFixture(t, name)
+		})
+	}
+}
+
+func checkVenueGenFixture(t *testing.T, name string) {
+	t.Helper()
 	dir := venueGenFixtureDir()
-	raw, err := os.ReadFile(filepath.Join(dir, "synthetic_authoring.svg"))
+	raw, err := os.ReadFile(filepath.Join(dir, name+".svg"))
 	if err != nil {
 		t.Fatalf("read generated SVG: %v", err)
 	}
-	expRaw, err := os.ReadFile(filepath.Join(dir, "synthetic_authoring.expected.json"))
+	expRaw, err := os.ReadFile(filepath.Join(dir, name+".expected.json"))
 	if err != nil {
 		t.Fatalf("read expectation: %v", err)
 	}
@@ -63,6 +82,10 @@ func TestImportSVG_VenueGeneratorAuthoringExport(t *testing.T) {
 	}
 	if len(warnings) != 0 {
 		t.Fatalf("ImportSVG warnings: %+v", warnings)
+	}
+
+	if verrs := ValidateForPlanType(geo, "assigned_seats"); len(verrs) != 0 {
+		t.Fatalf("ValidateForPlanType(assigned_seats) errors: %+v", verrs)
 	}
 
 	if geo.Canvas.Width != exp.Canvas.Width || geo.Canvas.Height != exp.Canvas.Height {
