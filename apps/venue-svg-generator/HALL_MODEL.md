@@ -126,6 +126,13 @@ derived ones again and writes `validation`. Every service route runs it before i
 
 A seat is sellable when: `status` is `available`, `number` is not null, its row has a label, its
 identity is unique, and `number_status` and the row `label_status` are not `observed`.
+An empty string is a schema error; a label or number of spaces only counts as null. Identity is
+(section label or `Main`, row label, number) with the spaces at the ends removed, so a section without a
+label and a section `Main` are one section for identity.
+
+Additions made during the build: a section may carry `placement: {band, order}` (schematic lane), the top
+level may carry `geometry_edited`, `coordinate_space` may carry `page_offsets` (PDF pages are stacked
+vertically), and a seat `evidence` carries `source_bbox`, `page` and `quarantine_reasons` from the adapter.
 
 ## 4. Authoring SVG and preview PNG
 
@@ -255,9 +262,20 @@ Every error is `{"error": {"code", "message", ...}}`.
 | `decor_labels` | optional JSON `{"stage": "Сцена"}` |
 
 Answer: `{"job_id", "status": "queued", "status_url": "/jobs/<id>"}`. Errors: 400 `request.invalid`,
-`kinds.invalid`, `profile.unknown`, `raster_profile.invalid`, `target_profile.invalid`; 413 `file.too_large`;
+`kinds.invalid`, `profile.unknown`, `raster_profile.invalid`, `target_profile.invalid`; 413 `file.too_large`
+(one file, or the whole body: the body is counted while it is read, also without `Content-Length`);
 503 `queue.full`. A file whose content is not what `kinds` says is NOT an error: the adapter is picked by
-content and the file report says `detected_kind`.
+content and the file report says `detected_kind`. A file declared `other` never goes to an adapter.
+
+File report `outcome` and `reason`:
+
+| `outcome` | `reason` |
+|---|---|
+| `used`, `candidate` | null |
+| `no_adapter` | `unsupported_content`, `no_seat_candidates` (XLSX or PDF without a seat), `raster_profile_required` |
+| `failed` | `adapter_error`, `conversion_error`, `unpacked_too_large` (zip bomb guard) |
+
+A failed file never fails the job.
 
 `GET /jobs/{id}` when `status` is `done`:
 
@@ -280,8 +298,23 @@ content and the file report says `detected_kind`.
 The model comes from ONE file: the candidate with status PASS, then the most sellable seats, then the most
 seats, then the lowest index. Files are not merged. `status: "failed"` carries `error {code, message}` as
 before (`timeout`, `memory_limit`, `worker_crashed`, `internal_error`). Job limits as before: one job at a
-time, queue 20, 120 s, 2048 MB per job, results kept for 1 hour.
-`GET /jobs/{id}/svg` (409 `job.no_svg` when null), `GET /jobs/{id}/preview.png`.
+time, queue 20, 120 s, 2048 MB per job, results kept for 1 hour, at most `VENUE_GEN_MAX_KEPT_JOBS` (50)
+finished jobs. `svg_url` and `preview_png_url` are null when there is no such file. `generator_version` is
+in the answer for every job status.
+`GET /jobs/{id}/svg` (409 `job.no_svg` when null), `GET /jobs/{id}/preview.png` (409 `job.no_preview`).
+Other job errors: 404 `job.not_found`, 409 `job.not_ready`, 409 `job.failed`.
+Removed from the G2a service: the field `file`, the key `report`, `GET /jobs/{id}/diagnostic.svg`, the codes
+`file.not_xlsx`, `file.too_large_unpacked`, `job.quarantined`. A quarantined model now has an SVG.
+
+### Rules for every JSON route
+
+- The body is counted while it is read: more than `VENUE_GEN_MAX_MODEL_MB` (8) gives 413 `body.too_large`.
+- `NaN`, `Infinity`, a number that overflows, nesting deeper than 64 and a wrong field type give 400
+  `request.invalid`.
+- At most `VENUE_GEN_SYNC_CONCURRENCY` (2) requests run at once. A request that waits longer than
+  `VENUE_GEN_SYNC_WAIT_S` (10) gets 503 `busy`: try again.
+- 422 `model.not_renderable`: the model is valid but the exporter cannot draw it.
+- 500 `internal_error` has no exception text.
 
 ### POST /render (JSON) → 200
 
@@ -304,4 +337,7 @@ Answer as `/render` plus `"diff"` and `"applied": true`. With `dry_run: true` th
 `diff`, `applied: false` and `generator_version` (this is what "I understood it like this" shows).
 Errors: 400 `model.invalid`; 422 `operation.invalid` with `op_index` and `reason` (the `OperationError`
 code); 409 `operation.confirmation_required` with `diff` when the change touches more than half of the
-seats and `confirm_large_change` is not true. At most 200 operations in one request.
+seats and `confirm_large_change` is not true. At most 200 operations in one request (more gives 422
+`operation.invalid` with `op_index` 200).
+When at least one operation is applied the answer model has `confirmed: false` and
+`diff.totals.confirmation_reset` says if it was true before: a changed hall must be confirmed again.

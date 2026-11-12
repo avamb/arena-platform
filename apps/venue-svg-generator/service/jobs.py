@@ -7,7 +7,6 @@ process so a runaway workbook can be killed at the timeout (a thread cannot be k
 
 from __future__ import annotations
 
-import hashlib
 import json
 import multiprocessing
 import os
@@ -22,7 +21,7 @@ from typing import Any, Callable
 
 from .pipeline import PipelineError, run_pipeline
 
-Runner = Callable[[str, str, "dict[str, Any] | None", str, int], "dict[str, Any]"]
+Runner = Callable[["list[str]", "list[str]", "dict[str, Any]"], "dict[str, Any]"]
 
 QUEUED, RUNNING, DONE, FAILED = "queued", "running", "done", "failed"
 
@@ -61,7 +60,7 @@ def _child_main(conn, runner: Runner, args: tuple, memory_limit_mb: int = 0) -> 
     try:
         payload = {"ok": True, "result": runner(*args)}
     except MemoryError:
-        payload = {"ok": False, "error": {"code": "memory_limit", "message": "The XLSX file needs more memory than a job can use."}}
+        payload = {"ok": False, "error": {"code": "memory_limit", "message": "The files need more memory than a job can use."}}
     except PipelineError as exc:
         payload = {"ok": False, "error": {"code": exc.code, "message": exc.message}}
     except Exception as exc:  # never forward the exception text: it may name host paths
@@ -79,7 +78,9 @@ class JobManager:
         max_pending: int = 20,
         memory_limit_mb: int = 2048,
         runner: Runner = run_pipeline,
+        max_kept_jobs: int = 50,
     ) -> None:
+        self._max_kept = max(0, max_kept_jobs)
         self._memory_limit_mb = memory_limit_mb
         self._ttl = ttl_seconds
         self._timeout = timeout_seconds
@@ -98,13 +99,19 @@ class JobManager:
         now = time.monotonic()
         for job_id in [j.id for j in self._jobs.values() if j.finished_at is not None and now - j.finished_at > self._ttl]:
             del self._jobs[job_id]
+        # Keep at most `max_kept_jobs` finished jobs: the oldest finished are dropped first.
+        finished = sorted((j for j in self._jobs.values() if j.finished_at is not None), key=lambda j: j.finished_at)
+        for job in finished[:max(0, len(finished) - self._max_kept)]:
+            del self._jobs[job.id]
 
     def get(self, job_id: str) -> Job | None:
         with self._lock:
             self._purge_locked()
             return self._jobs.get(job_id)
 
-    def submit(self, data: bytes, profile_id: str, target_profile: dict[str, Any] | None) -> str:
+    def submit(self, files: list[bytes], kinds: list[str], options: dict[str, Any]) -> str:
+        """`files` and `kinds` have the same length; `options` holds profile, raster_profile,
+        target_profile and decor_labels (all optional, already validated by the HTTP layer)."""
         with self._lock:
             self._purge_locked()
             pending = sum(1 for j in self._jobs.values() if j.status in (QUEUED, RUNNING))
@@ -112,8 +119,7 @@ class JobManager:
                 raise QueueFull()
             job = Job(id=uuid.uuid4().hex)
             self._jobs[job.id] = job
-        sha = hashlib.sha256(data).hexdigest()
-        self._pool.submit(self._run, job, data, profile_id, target_profile, sha, len(data))
+        self._pool.submit(self._run, job, files, kinds, options)
         return job.id
 
     # -- execution -----------------------------------------------------
@@ -122,18 +128,22 @@ class JobManager:
             job.result, job.error = result, error
             job.status = DONE if result is not None else FAILED
             job.finished_at = time.monotonic()
+            self._purge_locked()
 
-    def _run(self, job: Job, data: bytes, profile_id: str, target_profile, sha: str, size: int) -> None:
+    def _run(self, job: Job, files: list[bytes], kinds: list[str], options: dict[str, Any]) -> None:
         with self._lock:
             job.status = RUNNING
         tmp_dir = tempfile.mkdtemp(prefix="venue-gen-")
         try:
-            # A generated name: the client's file name is never used or kept.
-            xlsx = Path(tmp_dir) / "upload.xlsx"
-            xlsx.write_bytes(data)
+            # Generated names: the client's file names are never used, logged or kept.
+            paths = []
+            for index, data in enumerate(files):
+                path = Path(tmp_dir) / f"upload-{index}.bin"
+                path.write_bytes(data)
+                paths.append(str(path))
             ctx = multiprocessing.get_context("spawn")
             parent, child = ctx.Pipe(duplex=False)
-            proc = ctx.Process(target=_child_main, args=(child, self._runner, (str(xlsx), profile_id, target_profile, sha, size), self._memory_limit_mb), daemon=True)
+            proc = ctx.Process(target=_child_main, args=(child, self._runner, (paths, kinds, options), self._memory_limit_mb), daemon=True)
             proc.start()
             child.close()  # so a child that dies without answering shows up as EOF
             try:

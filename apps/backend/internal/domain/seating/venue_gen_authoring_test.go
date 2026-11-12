@@ -48,7 +48,7 @@ func TestImportSVG_VenueGeneratorAuthoringExport(t *testing.T) {
 // The quarantine case omits seats without an identity and marks the root.
 func TestImportSVG_VenueGeneratorAuthoringExportV2(t *testing.T) {
 	t.Parallel()
-	for _, name := range []string{"v2_render", "v2_quarantine"} {
+	for _, name := range []string{"v2_render", "v2_quarantine", "v2_schematic", "v2_service_render"} {
 		name := name
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

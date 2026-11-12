@@ -228,6 +228,17 @@ Windows host, Docker Desktop, bash allowlist, lint and format tooling, git hygie
 * A python script that writes a file in text mode (o…
 * The admin console's nginx takes its security headers from ONE file included in every location
 
+### [Venue SVG generator](docs/agents/venue-generator.md)
+
+The Python generator service: hall model, HTTP contract, token, fixtures of the Go contract test.
+
+* The service contract and the hall model live in ONE file, HALL_MODEL.md
+* The service refuses to start without VENUE_GEN_TOKEN
+* Run the generator tests from the app folder, not with a path argument
+* The Go contract test reads committed fixtures
+* A seat without a full identity never becomes a seat in the authoring SVG
+* No client file and no profile bound to a client file's SHA-256 goes into the service
+
 ### [Testing and integration-test fixtures](docs/agents/testing-integration.md)
 
 Integration-test traps: fixtures, shared databases, outbox draining, worker jobs, load tests, CI-only failures.
