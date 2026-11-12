@@ -177,6 +177,18 @@ logs in and reads, and sends no POST or PATCH other than the login. Each run
 writes one report to `<lib>/load-reports/`: `venues-dry-run.json`,
 `venues-apply.json`, `plans-dry-run.json` or `plans-apply.json`.
 
+Only a platform superadmin holds `venue.curate`. With another account the
+venues mode says so in one line and loads the venues unverified. Later
+`loader.py verify-venues --api <base URL> [--apply]`, signed in as a
+superadmin, marks the venues of `<lib>/load/venues-log.json` and of
+`load-reports/venues-apply.json` verified and creates nothing (report:
+`venues-verify.json`).
+
+Every request carries a fixed `User-Agent`: the CDN in front of the API
+refuses the default one of urllib (403, code 1010). The plan-version route
+takes at most 1 MiB; the converter marks a larger `house.svg`
+`needs_review`.
+
 Plans: `loader.py plans --api <base URL> --org <uuid> [--dry-run]` (the bare
 form without `plans` works the same) takes every plan with `convert.json`
 status `ok`, finds or creates the venue under the organization and uploads

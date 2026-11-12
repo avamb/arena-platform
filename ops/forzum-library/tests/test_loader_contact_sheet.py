@@ -32,6 +32,7 @@ class FakeArena:
         self.plans = []
         self.versions = []
         self.reasons = []  # (path, X-Admin-Reason) of every PATCH
+        self.permissions = ["venue.curate"]  # what GET /v1/me reports
         self.cities = [
             {"id": CZ_CITY, "country_id": "x1", "country_iso2": "CZ", "slug": "karlovy-vary", "name": "Karlovy Vary", "timezone": "Europe/Prague"},
             {"id": DE_CITY, "country_id": "x2", "country_iso2": "DE", "slug": "berlin", "name": "Berlin", "timezone": "Europe/Berlin"},
@@ -79,8 +80,12 @@ class FakeArena:
                         return self._send(200, {"access_token": TOKEN, "refresh_token": REFRESH, "token_type": "Bearer",
                                                 "expires_at": "2030-01-01T00:00:00Z", "user_id": str(uuid.uuid4())})
                     return self._send(401, {"error": {"code": "auth.invalid_credentials", "message": "bad"}})
+                if (self.headers.get("User-Agent") or "").startswith("Python-urllib"):
+                    return self._send(403, {"error": {"code": "1010", "message": "browser signature banned"}})
                 if bare == "/v1/me":
-                    return self._send(200, {"organization_memberships": [{"org_id": ORG, "org_slug": "abhteam"}]})
+                    # The real answer has no slug key: org_id and org_name only.
+                    return self._send(200, {"permissions": list(fake.permissions),
+                                            "organization_memberships": [{"org_id": ORG, "org_name": "ABH TEAM OU"}]})
                 if bare == "/v1/geo/countries":
                     return self._send(200, {"countries": [
                         {"id": "x1", "iso2": "CZ", "iso3": "CZE", "slug": "czechia", "name": "Czechia"},
@@ -193,6 +198,14 @@ class LoaderTests(unittest.TestCase):
             text = f.read_text(encoding="utf-8")
             self.assertNotIn(PASSWORD, text)
             self.assertNotIn(TOKEN, text)
+
+    def test_forzum_country_spelling_is_understood_in_plans_mode(self):
+        # Forzum writes "Czech Republic"; the server's list says "Czechia".
+        make_plan(self.lib, 1001, country="Czech Republic")
+        code, _ = run(self.base + ["--apply"], self.lib)
+        self.assertEqual(code, 0)
+        report = json.loads((self.lib / "load-reports" / "plans-apply.json").read_text(encoding="utf-8"))
+        self.assertEqual([p["status"] for p in report["plans"]], ["loaded"])
 
     def test_excluded_venue_is_left_out(self):
         make_plan(self.lib, 1001)
@@ -453,6 +466,38 @@ class VenuesTests(unittest.TestCase):
             reason.encode("ascii")
         self.go("--mark-verified")
         self.assertEqual(len([r for r in self.fake.requests if r[0] == "PATCH"]), 2)
+
+    def test_no_curate_permission_loads_unverified_then_verify_venues(self):
+        make_inventory(self.lib, [V(1, "Fresh Hall", 1, 10), V(2, "Second Hall", 1, 10)])
+        self.fake.permissions = []  # an organization account
+        code, text = self.go()
+        self.assertEqual(code, 0)
+        self.assertEqual(text.count("no venue.curate permission"), 1)
+        self.assertEqual([r for r in self.fake.requests if r[0] == "PATCH"], [])
+        self.assertEqual(len(self.venue_posts()), 2)
+        verify = ["verify-venues", "--api", self.api, "--production"]
+        code, _ = run(verify + ["--apply"], self.lib)  # still not a superadmin
+        self.assertEqual(code, 1)
+        self.assertEqual([r for r in self.fake.requests if r[0] == "PATCH"], [])
+        self.fake.permissions = ["venue.curate"]
+        code, _ = run(verify, self.lib)  # dry run by default
+        self.assertEqual(code, 0)
+        self.assertEqual([r for r in self.fake.requests if r[0] == "PATCH"], [])
+        code, _ = run(verify + ["--apply"], self.lib)
+        self.assertEqual(code, 0)
+        self.assertEqual(len([r for r in self.fake.requests if r[0] == "PATCH"]), 2)
+        self.assertEqual({r for _, r in self.fake.reasons}, {loader.VERIFY_REASON})
+        code, text = run(verify + ["--apply"], self.lib)
+        self.assertEqual(code, 0)
+        self.assertIn("Nothing to verify", text)
+        self.assertEqual(len([r for r in self.fake.requests if r[0] == "PATCH"]), 2)
+        self.assertEqual(len(self.venue_posts()), 2)
+
+    def test_unknown_organization_slug_is_an_error_not_a_crash(self):
+        make_inventory(self.lib, [V(1, "Fresh Hall", 1, 10)])
+        code, _ = run(["venues", "--api", self.api, "--org", "nosuchorg", "--production", "--apply"], self.lib)
+        self.assertEqual(code, 1)
+        self.assertEqual(self.fake.writes(), [])
 
     def test_rerun_is_idempotent(self):
         make_inventory(self.lib, [V(1, "Cheb A", 1, 11), V(2, "Fresh Hall", 1, 10)])

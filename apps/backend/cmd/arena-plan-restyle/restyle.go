@@ -21,8 +21,10 @@ import (
 const (
 	StatusOK          = "ok"
 	StatusNeedsReview = "needs_review"
-	StatusFailed      = "failed"
-	StatusSkipped     = "skipped"
+	// MaxUploadBodyBytes is the request body limit of the arena API (1 MiB).
+	MaxUploadBodyBytes = 1 << 20
+	StatusFailed       = "failed"
+	StatusSkipped      = "skipped"
 )
 
 var sbtSectRE = regexp.MustCompile(`\ssbt:sect\s*=`)
@@ -252,6 +254,14 @@ func Restyle(source, schemaRaw []byte) ([]byte, Report) {
 					rep.SourceSeats, total))
 			}
 		}
+	}
+
+	// The plan-version route takes the SVG inside a JSON body of at most
+	// MaxUploadBodyBytes. A larger plan cannot be loaded, so it is not "ok".
+	if body, err := json.Marshal(map[string]string{"svg": string(house)}); err == nil && len(body) > MaxUploadBodyBytes {
+		review = append(review, fmt.Sprintf(
+			"too large for the upload route: %d bytes, the limit is %d (an embedded picture in the source backdrop?)",
+			len(body), MaxUploadBodyBytes))
 	}
 
 	rep.Reasons = append(rep.Reasons, failed...)

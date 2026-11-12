@@ -80,6 +80,9 @@ def host_is_staging(api: str) -> bool:
     return "staging" in host.lower()
 
 
+USER_AGENT = "arena-forzum-loader/1.0"
+
+
 class Client:
     def __init__(self, base: str, timeout: float = 60.0):
         self.base = base.rstrip("/")
@@ -91,6 +94,8 @@ class Client:
         data = None if body is None else json.dumps(body).encode("utf-8")
         req = urllib.request.Request(self.base + path, data=data, method=method)
         req.add_header("Accept", "application/json")
+        # The default urllib agent is refused by the CDN in front of the API (403, code 1010).
+        req.add_header("User-Agent", USER_AGENT)
         for k, v in (headers or {}).items():
             req.add_header(k, v)
         if data is not None:
@@ -229,7 +234,8 @@ class Loader:
         return "ambiguous", None, cands
 
     def _city_key(self, plan):
-        iso = self.countries.get(norm(plan.get("countryName")))
+        # The Forzum spelling first ("Bulgary"), through the same table the venues mode uses.
+        iso = country_iso2(plan.get("countryName")) or self.countries.get(norm(plan.get("countryName")))
         if not iso:
             return None
         return (iso, norm(plan.get("cityName")))
@@ -363,7 +369,9 @@ def resolve_org(client, org):
             if isinstance(n, list):
                 stack.extend(n)
             elif isinstance(n, dict):
-                if slug in (n.get("slug"), n.get("org_slug"), n.get("organization_slug")):
+                names = [n.get("org_name"), n.get("organization_name")] if ("org_id" in n or "organization_id" in n) else []
+                by_name = any(v and norm(v).replace(" ", "").startswith(slug.replace("-", "")) for v in names)
+                if by_name or slug in (n.get("slug"), n.get("org_slug"), n.get("organization_slug")):
                     oid = n.get("org_id") or n.get("organization_id") or n.get("id")
                     try:
                         found.add(str(uuid.UUID(str(oid))))
@@ -373,8 +381,18 @@ def resolve_org(client, org):
         if found:
             break
     if len(found) != 1:
-        raise ApiError(f"organization slug {slug!r}: {len(found)} match(es) on the server")
+        raise ApiError(0, f"organization {slug!r}: {len(found)} match(es) on the server, give the UUID in --org")
     return found.pop()
+
+
+def can_curate(client) -> bool:
+    """True when the signed-in account holds venue.curate (a platform superadmin)."""
+    try:
+        me = client.request("GET", "/v1/me")
+    except ApiError:
+        return False
+    perms = me.get("permissions") if isinstance(me, dict) else None
+    return isinstance(perms, list) and "venue.curate" in perms
 
 
 def write_run_report(lib, name, data):
@@ -786,6 +804,10 @@ def run_venues(args, input_fn, getpass_fn, out) -> int:
         return 1
     try:
         org = resolve_org(client, org)
+        if args.mark_verified and not can_curate(client):
+            args.mark_verified = False
+            print("This account has no venue.curate permission: venues are loaded UNVERIFIED. "
+                  "Run `loader.py verify-venues` later with a platform superadmin sign-in.", file=out)
         ld = VenueLoader(client, org, lib, args.dry_run, zones, out, args.pause_ms, args.mark_verified)
         ld.load_reference()
     except ApiError as e:
@@ -861,10 +883,75 @@ def run_venues(args, input_fn, getpass_fn, out) -> int:
     return 0
 
 
+def run_verify_venues(argv, input_fn, getpass_fn, out) -> int:
+    """Mark venues that an earlier run loaded as verified. Creates nothing."""
+    p = argparse.ArgumentParser(prog="loader.py verify-venues",
+                                description="Set review_status=verified on venues already loaded (platform superadmin).")
+    p.add_argument("--api", required=True)
+    p.add_argument("--lib", default=os.environ.get("FORZUM_LIBRARY_DIR", DEFAULT_LIB))
+    p.add_argument("--apply", action="store_true", help="send the PATCH; without it the run only lists the venues")
+    p.add_argument("--pause-ms", type=int, default=200)
+    p.add_argument("--production", action="store_true")
+    args = p.parse_args(argv)
+    if not api_is_safe(args.api):
+        print("Refused: --api must be https (plain http only for localhost or 127.0.0.1).", file=sys.stderr)
+        return 2
+    if not host_is_staging(args.api) and not args.production:
+        print("Refused: the host has no 'staging' in its name. Add --production to run anyway.", file=sys.stderr)
+        return 2
+    lib = Path(args.lib)
+    log_path = lib / "load" / "venues-log.json"
+    log = read_json(log_path, {"venues": {}})
+    if not isinstance(log, dict) or not isinstance(log.get("venues"), dict):
+        log = {"venues": {}}
+    # The apply report is the second source: it also holds the venue UUIDs.
+    report = read_json(lib / "load-reports" / "venues-apply.json", {})
+    for rec in (report.get("venues") or []) if isinstance(report, dict) else []:
+        if isinstance(rec, dict) and rec.get("venueUuid") and str(rec.get("venueId")) not in log["venues"]:
+            log["venues"][str(rec["venueId"])] = dict(rec)
+    todo = [(vid, rec) for vid, rec in sorted(log["venues"].items())
+            if rec.get("status") in ("created", "matched") and rec.get("venueUuid") and not rec.get("verified")]
+    if not todo:
+        print("Nothing to verify: no loaded venue is waiting.", file=out)
+        return 0
+    args.dry_run = not args.apply
+    client = login_client(args, input_fn, getpass_fn)
+    if client is None:
+        return 1
+    if not can_curate(client):
+        print("Refused: this account has no venue.curate permission (a platform superadmin is needed). Nothing was sent.",
+              file=sys.stderr)
+        return 1
+    done, failed = [], []
+    for vid, rec in todo:
+        if args.dry_run:
+            print(f"venue {vid}: would verify {rec.get('name', '')}", file=out)
+            continue
+        if args.pause_ms:
+            time.sleep(args.pause_ms / 1000.0)
+        try:
+            client.request("PATCH", f"/v1/admin/venues/{rec['venueUuid']}/review",
+                           {"review_status": "verified"}, headers={"X-Admin-Reason": VERIFY_REASON})
+            rec["verified"] = True
+            rec.pop("verifyError", None)
+            done.append(vid)
+        except ApiError as e:
+            rec["verifyError"] = str(e)
+            failed.append({"venueId": vid, "error": str(e)})
+        write_json(log_path, log)
+    write_run_report(lib, "venues-verify-dry-run.json" if args.dry_run else "venues-verify.json",
+                     {"api": args.api, "dryRun": args.dry_run, "waiting": [v for v, _ in todo],
+                      "verified": done, "failed": failed})
+    print(f"done: waiting={len(todo)} verified={len(done)} failed={len(failed)}", file=out)
+    return 0
+
+
 def main(argv=None, input_fn=input, getpass_fn=getpass.getpass, out=None) -> int:
     out = out or sys.stdout
     argv = list(argv if argv is not None else sys.argv[1:])
     mode = "plans"
+    if argv and argv[0] == "verify-venues":
+        return run_verify_venues(argv[1:], input_fn, getpass_fn, out)
     if argv and argv[0] in ("plans", "venues", "venues-report"):
         mode, argv = argv[0], argv[1:]
     if mode == "venues-report":

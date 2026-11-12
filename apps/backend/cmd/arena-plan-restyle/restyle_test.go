@@ -427,6 +427,29 @@ func TestRestyle_ScreenIsAStage(t *testing.T) {
 	}
 }
 
+// A backdrop with a large embedded picture makes the plan bigger than the
+// API takes in one request: it must not be reported "ok".
+func TestRestyle_TooLargeForUploadNeedsReview(t *testing.T) {
+	picture := `<image x="0" y="0" width="10" height="10" href="data:image/png;base64,` +
+		strings.Repeat("A", MaxUploadBodyBytes) + `"/>`
+	house, rep := Restyle(inlineSBT("2", `<text x="10" y="10">STAGE</text>`+picture), nil)
+	if rep.Status != StatusNeedsReview || house == nil {
+		t.Fatalf("status %q, house nil: %v", rep.Status, house == nil)
+	}
+	found := false
+	for _, r := range rep.Reasons {
+		if strings.HasPrefix(r, "too large for the upload route") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("reasons: %v", rep.Reasons)
+	}
+	if _, small := Restyle(inlineSBT("2", `<text x="10" y="10">STAGE</text>`), nil); small.Status != StatusOK {
+		t.Fatalf("small plan: %q %v", small.Status, small.Reasons)
+	}
+}
+
 func TestConvertPlan_SkipsNotDownloaded(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "source.svg"), inlineSBT("1", ""), 0o644); err != nil {
