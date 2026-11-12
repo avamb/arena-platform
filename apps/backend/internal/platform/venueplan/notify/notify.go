@@ -39,18 +39,22 @@ const jobAttempts = 5
 // Kind is what happened.
 type Kind string
 
-// The four events of spec 64 section 3.2.
+// The four events of spec 64 section 3.2, and a country added to the arena
+// reference (spec 64 section 2.1.1).
 const (
 	KindVenueCreated    Kind = "venue_created"
 	KindIntakeCreated   Kind = "intake_created"
 	KindIntakeEscalated Kind = "intake_escalated"
 	KindPlanApproved    Kind = "plan_approved"
+	// KindCountryCreated: a venue or an approved organizer application
+	// created a country row from the world table (internal/platform/worldgeo).
+	KindCountryCreated Kind = "country_created"
 )
 
 // Valid reports whether k is a known kind.
 func (k Kind) Valid() bool {
 	switch k {
-	case KindVenueCreated, KindIntakeCreated, KindIntakeEscalated, KindPlanApproved:
+	case KindVenueCreated, KindIntakeCreated, KindIntakeEscalated, KindPlanApproved, KindCountryCreated:
 		return true
 	}
 	return false
@@ -58,12 +62,19 @@ func (k Kind) Valid() bool {
 
 // Payload is the payload of a venue_plan.notify job. Nonce is made when the
 // job is enqueued; kind + nonce is the dedup key of the message.
+//
+// country_created carries CountryID (the subject of the dedup row),
+// CountryIso2, and VenueID when a venue created the country or OrgID when an
+// approved organizer application did.
 type Payload struct {
-	Kind     Kind   `json:"kind"`
-	IntakeID string `json:"intake_id,omitempty"`
-	VenueID  string `json:"venue_id,omitempty"`
-	Reason   string `json:"reason,omitempty"`
-	Nonce    string `json:"nonce"`
+	Kind        Kind   `json:"kind"`
+	IntakeID    string `json:"intake_id,omitempty"`
+	VenueID     string `json:"venue_id,omitempty"`
+	Reason      string `json:"reason,omitempty"`
+	CountryID   string `json:"country_id,omitempty"`
+	CountryIso2 string `json:"country_iso2,omitempty"`
+	OrgID       string `json:"org_id,omitempty"`
+	Nonce       string `json:"nonce"`
 }
 
 // Enqueue writes one venue_plan.notify job on db (a transaction, or a pool for
@@ -88,6 +99,22 @@ func EnqueueVenueCreated(ctx context.Context, db interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }, venueID uuid.UUID) error {
 	return Enqueue(ctx, db, Payload{Kind: KindVenueCreated, VenueID: venueID.String()})
+}
+
+// EnqueueCountryCreatedByVenue queues the notification of a country a venue
+// created; call it on the transaction that created both.
+func EnqueueCountryCreatedByVenue(ctx context.Context, db interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}, countryID uuid.UUID, iso2 string, venueID uuid.UUID) error {
+	return Enqueue(ctx, db, Payload{Kind: KindCountryCreated, CountryID: countryID.String(), CountryIso2: iso2, VenueID: venueID.String()})
+}
+
+// EnqueueCountryCreatedByOrganization queues the notification of a country an
+// approved organizer application created; call it on the approval transaction.
+func EnqueueCountryCreatedByOrganization(ctx context.Context, db interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}, countryID uuid.UUID, iso2 string, orgID uuid.UUID) error {
+	return Enqueue(ctx, db, Payload{Kind: KindCountryCreated, CountryID: countryID.String(), CountryIso2: iso2, OrgID: orgID.String()})
 }
 
 // Notifier is the venueplan.Notifier of arena-api: each call enqueues one job
@@ -156,6 +183,7 @@ var reasonWords = map[string]string{
 const (
 	whatToDoIntake   = "Что делать: откройте заявку, нажмите «Взять» и постройте схему."
 	whatToDoApproved = "Что делать: откройте схему, сравните её с исходниками и верифицируйте."
+	whatToDoCountry  = "Что проверить: приём платежей, схему налогового номера и часовые пояса страны."
 	maxTextRunes     = 1000
 )
 
@@ -222,8 +250,11 @@ func (p Payload) subject() (uuid.UUID, error) {
 		return uuid.Nil, errors.New("venueplan notify: payload has no nonce")
 	}
 	raw := p.IntakeID
-	if p.Kind == KindVenueCreated {
+	switch p.Kind {
+	case KindVenueCreated:
 		raw = p.VenueID
+	case KindCountryCreated:
+		raw = p.CountryID
 	}
 	id, err := uuid.Parse(raw)
 	if err != nil {
@@ -233,6 +264,9 @@ func (p Payload) subject() (uuid.UUID, error) {
 }
 
 func buildMessage(ctx context.Context, tx pgx.Tx, p Payload, subject uuid.UUID, base string) (adminnotify.Message, bool, error) {
+	if p.Kind == KindCountryCreated {
+		return countryMessage(ctx, tx, p, subject, base)
+	}
 	if p.Kind == KindVenueCreated {
 		var org, venue, city string
 		err := tx.QueryRow(ctx, `

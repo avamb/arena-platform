@@ -1364,7 +1364,10 @@ export interface paths {
          *     it may fill the zone in without asking: Spain (Europe/Madrid,
          *     Atlantic/Canary, Africa/Ceuta) and Portugal (Europe/Lisbon,
          *     Atlantic/Madeira, Atlantic/Azores) have several, the Czech Republic
-         *     one. No authentication required.
+         *     one. Works for every country of `GET /v1/geo/world-countries`, also
+         *     one the platform reference does not have yet; a territory without a
+         *     city in the data (Antarctica, Tokelau, ...) answers a short fixed
+         *     list. No authentication required.
          */
         get: operations["getV1GeoCountryTimezones"];
         put?: never;
@@ -1386,9 +1389,40 @@ export interface paths {
          * Get the currency of a country
          * @description Returns the ISO 4217 currency stored on the platform's country row
          *     (the base of the session currency chain). A country the platform has
-         *     no row for is 404. No authentication required.
+         *     no row for yet answers the currency of the embedded world table (the
+         *     one its row gets when a venue adds the country); a code the world
+         *     table does not know either is 404. No authentication required.
          */
         get: operations["getV1GeoCountryCurrency"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geo/world-countries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every ISO 3166-1 country with its region
+         * @description Returns the whole ISO 3166-1 list embedded in the server, each
+         *     country in exactly one of seven regions (Armenia, Georgia, Cyprus and
+         *     Russia are `europe`, Kazakhstan `asia`, Turkey and Israel
+         *     `middle_east`), sorted by `name`. `in_reference` tells whether the
+         *     platform reference (`GET /v1/geo/countries`) has the country, and
+         *     `has_organizers` whether an organization is registered in it: a
+         *     client puts those countries on top as a quick pick. A country outside
+         *     the reference is added by `POST /v1/organizations/{org_id}/venues`
+         *     with `country_iso2` and `city_name`, or by the approval of an
+         *     organizer application. No authentication required.
+         */
+        get: operations["getV1GeoWorldCountries"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3204,6 +3238,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/venue-directory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Venues the organization may use, by country and city
+         * @description The venue picker of spec 64 section 2.1.1. The scope is the
+         *     organization's own venues that are not archived plus the verified
+         *     active venues of other organizations; contacts are never returned.
+         *     `countries` lists every country with a venue in scope (a venue's
+         *     country is its city's country, else its address country) and is never
+         *     filtered. `cities` lists the cities of `country` that have venues in
+         *     scope (empty without `country`). `venues` is filtered by `country`,
+         *     `city_id` and `q`, own venues first, then by name; without any of the
+         *     three filters it is empty and `total` is 0. Requires JWT or an
+         *     organization API key with "venue.read" in the path organization, the
+         *     same check as shared-venues.
+         */
+        get: operations["getV1OrganizationsOrgIdVenueDirectory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/venues/{id}/review": {
         parameters: {
             query?: never;
@@ -3246,6 +3310,18 @@ export interface paths {
          *     owning organization. Requires JWT authentication and the
          *     "venue.create" permission. Returns 409 if a venue with the same
          *     name already exists (active) inside the org.
+         *
+         *     The city is named EITHER by `city_id` OR by `country_iso2` with
+         *     `city_name` (spec 64 section 2.1.1). With the second group the city
+         *     is found or created, a country the platform reference does not have
+         *     is created from the embedded world table, the venue is inserted and
+         *     the administrators' notifications ("venue created" and, for a new
+         *     country, "new country") are queued, all in one transaction: a
+         *     refused venue leaves no country or city behind. The answer then also
+         *     carries `city` and, when a country row was created,
+         *     `created_country`. Take the `timezone` choices from
+         *     `GET /v1/geo/countries/{iso2}/timezones` and the currency default
+         *     from `GET /v1/geo/world-countries`.
          */
         post: operations["postV1OrganizationsOrgIdVenues"];
         delete?: never;
@@ -22469,10 +22545,36 @@ export interface components {
             name: string;
             /**
              * Format: uuid
-             * @description Optional UUID of a row in the geo.cities reference table.
+             * @description Optional UUID of a row in the geo.cities reference table. Send
+             *     either `city_id` or `country_iso2` with `city_name`; both groups
+             *     together are 400 `venue.city_conflict`.
              * @example 01929d0e-0e47-7000-8000-000000000101
              */
             city_id?: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code of the country of the venue's city, sent
+             *     with `city_name` instead of `city_id`. Any country of
+             *     `GET /v1/geo/world-countries`: a country the platform reference
+             *     does not have is created from the world table (iso3, slug,
+             *     currency, region, English and Russian names) in the venue's
+             *     transaction, and the platform administrators are told. An
+             *     organization API key may use a reference country but never
+             *     creates one (403 `venue.country_create_forbidden`), and never
+             *     creates a city by name (403 `venue.city_create_forbidden`). A code the
+             *     world table does not know is 400 `venue.unknown_country`. When
+             *     `country` is not sent, the venue's `country` takes this code.
+             * @example MY
+             */
+            country_iso2?: string;
+            /**
+             * @description Name of the venue's city inside `country_iso2`, sent with it
+             *     instead of `city_id`. The city is found by name (any locale, case
+             *     and spacing ignored) or created, with the rules of
+             *     `POST /v1/organizations/{org_id}/cities`, in the venue's
+             *     transaction.
+             * @example Kuala Lumpur
+             */
+            city_name?: string;
             /**
              * @description Optional free-form street address. Deprecated in favour
              *     of the structured address fields below — accepted for
@@ -22551,6 +22653,202 @@ export interface components {
              * @example 1200
              */
             capacity_default?: number | null;
+        };
+        /** @description The city of a venue created with `country_iso2` and `city_name`. */
+        VenueCreatedCity: {
+            /**
+             * Format: uuid
+             * @description UUID of the city, found by name or created.
+             */
+            id: string;
+            /**
+             * @description Name of the city in the request language, else English.
+             * @example Kuala Lumpur
+             */
+            name: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code of the city's country.
+             * @example MY
+             */
+            country_iso2: string;
+        };
+        /** @description A country row the venue request created from the embedded world table. */
+        VenueCreatedCountry: {
+            /**
+             * Format: uuid
+             * @description UUID of the new reference country.
+             */
+            id: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code.
+             * @example MY
+             */
+            iso2: string;
+            /**
+             * @description Name in the request language, Russian for `ru` and English for any other.
+             * @example Malaysia
+             */
+            name: string;
+            /**
+             * @description ISO 4217 currency stored on the new row.
+             * @example MYR
+             */
+            currency: string;
+            /**
+             * @description Region of the new row, one of europe, middle_east, asia, africa, north_america, latin_america, oceania.
+             * @example asia
+             */
+            region: string;
+        };
+        /** @description A country with venues in the organization's scope. */
+        VenueDirectoryCountry: {
+            /**
+             * @description ISO 3166-1 alpha-2 code.
+             * @example ES
+             */
+            iso2: string;
+            /**
+             * Format: uuid
+             * @description UUID of the reference country, null when only a venue's address names it.
+             */
+            country_id: string | null;
+            /**
+             * @description Name in the request language, else English, else the code.
+             * @example Испания
+             */
+            name: string;
+            /**
+             * @description One of europe, middle_east, asia, africa, north_america, latin_america, oceania, or other for a country the world table does not know.
+             * @example europe
+             */
+            region: string;
+            /**
+             * Format: int64
+             * @description Venues in scope in this country.
+             * @example 14
+             */
+            venues: number;
+            /**
+             * Format: int64
+             * @description Of those, the organization's own venues.
+             * @example 3
+             */
+            own_venues: number;
+        };
+        /** @description A city of the requested country with venues in the organization's scope. */
+        VenueDirectoryCity: {
+            /**
+             * Format: uuid
+             * @description UUID of the city.
+             */
+            id: string;
+            /**
+             * @description Name in the request language, else English, else the slug.
+             * @example Мадрид
+             */
+            name: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code of the city's country.
+             * @example ES
+             */
+            country_iso2: string;
+            /**
+             * Format: int64
+             * @description Venues in scope in this city.
+             * @example 5
+             */
+            venues: number;
+            /**
+             * Format: int64
+             * @description Of those, the organization's own venues.
+             * @example 1
+             */
+            own_venues: number;
+        };
+        /** @description A venue of the directory. It never carries the venue's contacts. */
+        VenueDirectoryVenue: {
+            /**
+             * Format: uuid
+             * @description UUID of the venue.
+             */
+            id: string;
+            /**
+             * @description Name of the venue.
+             * @example Teatro Real
+             */
+            name: string;
+            /**
+             * Format: uuid
+             * @description UUID of the venue's city, null when it has none.
+             */
+            city_id: string | null;
+            /**
+             * @description Name of the venue's city in the request language, null without a city.
+             * @example Мадрид
+             */
+            city_name: string | null;
+            /**
+             * @description Country of the venue (its city's country, else its address country), null when unknown.
+             * @example ES
+             */
+            country_iso2: string | null;
+            /** @description Free-form address of the venue, null when unset. */
+            address: string | null;
+            /**
+             * @description Street address line 1, null when unset.
+             * @example Plaza de Isabel II
+             */
+            address_line1: string | null;
+            /**
+             * Format: double
+             * @description WGS-84 latitude, null when unknown.
+             * @example 40.4184
+             */
+            geo_lat: number | null;
+            /**
+             * Format: double
+             * @description WGS-84 longitude, null when unknown.
+             * @example -3.7109
+             */
+            geo_lng: number | null;
+            /**
+             * @description IANA time zone of the venue.
+             * @example Europe/Madrid
+             */
+            timezone: string | null;
+            /**
+             * @description Default capacity, null when unset.
+             * @example 1700
+             */
+            capacity_default: number | null;
+            /** @description True when the venue belongs to the path organization. */
+            own: boolean;
+            /**
+             * @description verified or unverified (migration 0182). Another organization's venue is always verified here.
+             * @example verified
+             */
+            review_status: string;
+            /** @description True when `has_own_plan` is true or the venue has a verified seating plan template the organization may copy (GET .../venues/{venue_id}/plan-templates). */
+            has_plan: boolean;
+            /** @description True when the organization has an active seating plan with a current version at the venue. */
+            has_own_plan: boolean;
+        };
+        /** @description Response of GET /v1/organizations/{org_id}/venue-directory. */
+        VenueDirectoryResponse: {
+            /** @description Up to 8 ISO codes, no duplicates: the countries of the organization's own venues (most venues first), the organization's own country, then reference countries where organizers work. */
+            quick_pick: string[];
+            /** @description Every country with at least one venue in scope, never filtered. */
+            countries: components["schemas"]["VenueDirectoryCountry"][];
+            /** @description The cities of `country` with venues in scope; empty without `country`. */
+            cities: components["schemas"]["VenueDirectoryCity"][];
+            /** @description The filtered venues, own first, then by name; empty without a filter. */
+            venues: components["schemas"]["VenueDirectoryVenue"][];
+            /**
+             * Format: int64
+             * @description Count of the filtered venues before `limit`; 0 without a filter.
+             * @example 5
+             */
+            total: number;
         };
         /**
          * @description Request body for PATCH /v1/organizations/{org_id}/venues/{id}.
@@ -23035,10 +23333,59 @@ export interface components {
         /** @description Response of GET /v1/geo/countries/{iso2}/currency. */
         GeoCountryCurrencyResponse: {
             /**
-             * @description ISO 4217 currency of the country, as stored on the platform's country row.
+             * @description ISO 4217 currency of the country, as stored on the platform's country row, else the one of the embedded world table.
              * @example EUR
              */
             currency: string;
+        };
+        /** @description One ISO 3166-1 country of the embedded world table. */
+        GeoWorldCountryItem: {
+            /**
+             * @description ISO 3166-1 alpha-2 code.
+             * @example MY
+             */
+            iso2: string;
+            /**
+             * @description ISO 3166-1 alpha-3 code.
+             * @example MYS
+             */
+            iso3: string;
+            /**
+             * @description Name in the request language, Russian for `ru` and English for any other.
+             * @example Малайзия
+             */
+            name: string;
+            /**
+             * @description English name, whatever the request language.
+             * @example Malaysia
+             */
+            name_en: string;
+            /**
+             * @description ISO 4217 national currency, the currency a reference row of this country gets.
+             * @example MYR
+             */
+            currency: string;
+            /**
+             * @description One of europe, middle_east, asia, africa, north_america, latin_america, oceania.
+             * @example asia
+             */
+            region: string;
+            /** @description True when the platform reference (`GET /v1/geo/countries`) has the country. */
+            in_reference: boolean;
+            /**
+             * Format: uuid
+             * @description UUID of the reference country when `in_reference` is true, else null.
+             */
+            country_id: string | null;
+            /** @description True when at least one organization is registered in this country. The quick pick of a form is the countries with organizers. */
+            has_organizers: boolean;
+        };
+        /** @description Response of GET /v1/geo/world-countries. */
+        GeoWorldCountriesResponse: {
+            /** @description The seven regions in display order: europe, middle_east, asia, africa, north_america, latin_america, oceania. The client names them with its own texts. */
+            regions: string[];
+            /** @description Every ISO 3166-1 country, sorted by `name`. */
+            countries: components["schemas"]["GeoWorldCountryItem"][];
         };
         GeoCountryResponse: {
             /**
@@ -23775,13 +24122,23 @@ export interface components {
             /** @description Name of the linked promoter; null when the organization itself is the promoter. */
             promoter_name: string | null;
         };
-        /** @description Body of POST /v1/organizations/{org_id}/cities. */
+        /** @description Body of POST /v1/organizations/{org_id}/cities. Name the country by `country_id` or by `country_iso2`. */
         CreateOrgCityRequest: {
             /**
              * Format: uuid
-             * @description The existing country the city belongs to.
+             * @description The existing country the city belongs to. Wins over `country_iso2` when both are sent.
              */
-            country_id: string;
+            country_id?: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code of the country, instead of `country_id`.
+             *     The country must already be in the platform reference: a country
+             *     outside it is 409 `city.country_not_in_reference`, because a new
+             *     country comes only with a venue (POST
+             *     /v1/organizations/{org_id}/venues with `country_iso2` and
+             *     `city_name`).
+             * @example ES
+             */
+            country_iso2?: string;
             /**
              * @description Display name of the city, in `locale`.
              * @example Guardamar del Segura
@@ -42895,8 +43252,57 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The platform has no such country (`geo.country_not_found`). */
+            /** @description Neither the platform nor the world table has such a country (`geo.country_not_found`). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Geo queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1GeoWorldCountries: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Language of `name`. `ru` gives Russian names, any other language English ones. Overrides Accept-Language.
+                 * @example ru
+                 */
+                lang?: string;
+                /**
+                 * @description Alias of `lang`, read only when `lang` is absent.
+                 * @example ru
+                 */
+                locale?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The world countries and the region order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoWorldCountriesResponse"];
+                };
+            };
+            /** @description The platform reference could not be read (`geo.list_countries_failed`). */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -49754,6 +50160,96 @@ export interface operations {
             };
         };
     };
+    getV1OrganizationsOrgIdVenueDirectory: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Two-letter ISO 3166-1 code; narrows `venues` and fills `cities`.
+                 * @example ES
+                 */
+                country?: string;
+                /** @description Only venues in this city (UUID from `cities` or GET /v1/geo/cities). */
+                city_id?: string;
+                /**
+                 * @description A part of the venue name, any letter case, at most 100 characters.
+                 * @example teatro
+                 */
+                q?: string;
+                /** @description Most venues to return, 1 to 200 (default 100). `total` is the count before the limit. */
+                limit?: number;
+                /**
+                 * @description Language of country and city names. Overrides Accept-Language.
+                 * @example ru
+                 */
+                lang?: string;
+                /** @description Alias of `lang`, read only when `lang` is absent. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization that looks for a venue */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The directory */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenueDirectoryResponse"];
+                };
+            };
+            /** @description A parameter is not valid: org_id, `venue.invalid_country`, `venue.invalid_city_id`, `venue.invalid_query` or `venue.invalid_limit` */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller is not a member of the organization or lacks venue.read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     patchV1AdminVenuesIdReview: {
         parameters: {
             query?: never;
@@ -49942,7 +50438,12 @@ export interface operations {
     };
     postV1OrganizationsOrgIdVenues: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Language of the `city.name` and `created_country.name` in the answer, and of the name of a new city. Overrides Accept-Language. */
+                lang?: string;
+                /** @description Alias of `lang`, read only when `lang` is absent. */
+                locale?: string;
+            };
             header?: never;
             path: {
                 /** @description UUIDv7 of the owning organization */
@@ -49963,11 +50464,23 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** @description The created venue. */
                         venue: components["schemas"]["VenueItem"];
+                        /** @description The venue's city, present only when the request named it by `country_iso2` and `city_name`. */
+                        city?: components["schemas"]["VenueCreatedCity"];
+                        /** @description The country row this request created from the world table, present only when one was created. */
+                        created_country?: components["schemas"]["VenueCreatedCountry"];
                     };
                 };
             };
-            /** @description Body missing/invalid, name empty, or city_id malformed */
+            /**
+             * @description Body missing/invalid, name empty, or city_id malformed. Also
+             *     `venue.city_conflict` (both `city_id` and `country_iso2` /
+             *     `city_name`), `venue.country_required` (`city_name` without
+             *     `country_iso2`), `venue.city_name_required` (`country_iso2`
+             *     without `city_name`) and `venue.unknown_country` (a code the world
+             *     table does not know).
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -49985,7 +50498,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold the required permission (venue.create) */
+            /** @description Actor does not hold the required permission (venue.create), or an organization API key would create a country (`venue.country_create_forbidden`) or a city (`venue.city_create_forbidden`) */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -57268,7 +57781,7 @@ export interface operations {
                     "application/json": components["schemas"]["OrgCityResponse"];
                 };
             };
-            /** @description Invalid body, country_id or blank name. */
+            /** @description Invalid body, no country, a malformed country_id or country_iso2, or a blank name. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -57288,6 +57801,15 @@ export interface operations {
             };
             /** @description Caller lacks `city.create` or is not a member of the organization. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The `country_iso2` country is not in the platform reference yet (`city.country_not_in_reference`). Add the venue with `country_iso2` and `city_name` instead. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

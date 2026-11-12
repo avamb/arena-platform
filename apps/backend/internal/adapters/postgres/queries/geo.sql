@@ -20,6 +20,15 @@ LEFT JOIN i18n_text t_en ON t_en.namespace = 'geo.countries'
     AND t_en.locale = 'en'
 ORDER BY c.iso2;
 
+-- name: ListOrganizerCountries :many
+-- ListOrganizerCountries returns the codes of the countries at least one live
+-- organization is registered in.
+SELECT DISTINCT upper(btrim(country)) AS iso2
+FROM   organizations
+WHERE  deleted_at IS NULL
+  AND  btrim(country) <> ''
+ORDER  BY 1;
+
 -- name: ListCities :many
 -- ListCities returns cities, optionally filtered by country_id.
 -- Pass NULL to return all cities.  Localized names are resolved from

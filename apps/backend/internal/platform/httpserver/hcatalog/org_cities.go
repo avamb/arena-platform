@@ -48,8 +48,13 @@ type OrgCityResponse struct {
 
 type createOrgCityRequest struct {
 	CountryID string `json:"country_id"`
-	Name      string `json:"name"`
-	Locale    string `json:"locale"`
+	// CountryIso2 names the country by code when CountryID is empty; the
+	// country must already be in the arena reference (409
+	// city.country_not_in_reference otherwise: a country comes only with a
+	// venue, see venue_geo.go).
+	CountryIso2 string `json:"country_iso2"`
+	Name        string `json:"name"`
+	Locale      string `json:"locale"`
 }
 
 // normalizeCityLocale reduces a locale tag to the form i18n_text rows are
@@ -117,13 +122,21 @@ func (h *Handler) HandleCreateOrgCity(w http.ResponseWriter, r *http.Request) {
 	if !readJSONBody(w, r, "city", &req) {
 		return
 	}
-	countryID, err := uuid.Parse(strings.TrimSpace(req.CountryID))
-	if err != nil {
+	if strings.TrimSpace(req.CountryID) == "" && strings.TrimSpace(req.CountryIso2) == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"city.invalid_country_id", "country_id must be a valid UUID", r,
 			map[string]any{"field": "country_id"},
 		))
 		return
+	}
+	if strings.TrimSpace(req.CountryID) != "" {
+		if _, err := uuid.Parse(strings.TrimSpace(req.CountryID)); err != nil {
+			httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
+				"city.invalid_country_id", "country_id must be a valid UUID", r,
+				map[string]any{"field": "country_id"},
+			))
+			return
+		}
 	}
 	name := NormalizePromoterName(req.Name) // same trim + collapse rule
 	if name == "" {
@@ -142,19 +155,11 @@ func (h *Handler) HandleCreateOrgCity(w http.ResponseWriter, r *http.Request) {
 	defer func() { _ = tx.Rollback(ctx) }()
 	qtx := h.venueQueries.WithTx(tx)
 
-	country, err := qtx.GetCountryByID(ctx, countryID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			httputil.WriteJSON(w, http.StatusUnprocessableEntity, httputil.ErrorEnvelopeWithDetails(
-				"city.country_not_found", "the specified country does not exist", r,
-				map[string]any{"field": "country_id"},
-			))
-			return
-		}
-		h.logger.Error("city: country lookup failed", slog.String("error", err.Error()))
-		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("city.create_failed", "failed to create city", r))
+	country, ok := h.countryForCity(ctx, w, r, qtx, req.CountryID, req.CountryIso2)
+	if !ok {
 		return
 	}
+	countryID := country.ID
 
 	cityID, created, err := createOrFindOrgCity(ctx, qtx, country, name, locale)
 	if err != nil {

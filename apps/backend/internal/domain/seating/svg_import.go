@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -280,7 +281,7 @@ func parsePoints(s string) ([]Point, bool) {
 	for i := 0; i < len(fields); i += 2 {
 		x, errX := strconv.ParseFloat(fields[i], 64)
 		y, errY := strconv.ParseFloat(fields[i+1], 64)
-		if errX != nil || errY != nil {
+		if errX != nil || errY != nil || !sane(x) || !sane(y) {
 			return nil, false
 		}
 		pts = append(pts, Point{X: x, Y: y})
@@ -303,10 +304,10 @@ func parseCanvas(root *xmlNode) (Canvas, *ValidationError) {
 	if vb := attr(root, "viewBox"); vb != "" {
 		parts := strings.Fields(vb)
 		if len(parts) == 4 {
-			if wv, err := strconv.ParseFloat(parts[2], 64); err == nil {
+			if wv, err := strconv.ParseFloat(parts[2], 64); err == nil && sane(wv) {
 				w = wv
 			}
-			if hv, err := strconv.ParseFloat(parts[3], 64); err == nil {
+			if hv, err := strconv.ParseFloat(parts[3], 64); err == nil && sane(hv) {
 				h = hv
 			}
 		}
@@ -353,10 +354,18 @@ func parseDimAttr(s string) float64 {
 		i--
 	}
 	v, err := strconv.ParseFloat(s[:i], 64)
-	if err != nil {
+	if err != nil || !sane(v) {
 		return 0
 	}
 	return v
+}
+
+// maxCoordinate bounds every coordinate an uploaded SVG may carry.
+const maxCoordinate = 1e7
+
+// sane reports whether v is finite and within maxCoordinate.
+func sane(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0) && math.Abs(v) <= maxCoordinate
 }
 
 // parseCategories walks the PriceCategory group's direct <circle>

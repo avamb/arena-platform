@@ -54,6 +54,8 @@ type stubTelegram struct {
 	calls map[string]int
 	// poster is what getFile/the download path serve for any file id.
 	poster []byte
+	// files are the files staged by id (stageFile); they win over poster.
+	files map[string][]byte
 	// docs holds the bytes of every document the bot sent, by file name (the
 	// last one of a name wins).
 	docs map[string][]byte
@@ -206,7 +208,24 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
 	case "getFile":
-		// Any file id resolves to the poster the test staged; the library
+		// A file id the test staged with stageFile is served as that file.
+		var gf struct {
+			FileID string `json:"file_id"`
+		}
+		if len(body) > 0 {
+			_ = json.Unmarshal(body, &gf)
+		}
+		if gf.FileID == "" {
+			gf.FileID = field("file_id")
+		}
+		s.mu.Lock()
+		_, staged := s.files[gf.FileID]
+		s.mu.Unlock()
+		if staged {
+			_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"file_id":%q,"file_unique_id":"u-%s","file_size":1,"file_path":"documents/%s"}}`, gf.FileID, gf.FileID, gf.FileID)
+			return
+		}
+		// Any other file id resolves to the poster the test staged; the library
 		// then downloads it from /file/bot<token>/<file_path> below.
 		_, _ = w.Write([]byte(`{"ok":true,"result":{"file_id":"poster-file","file_unique_id":"poster-u","file_size":1,"file_path":"documents/poster.png"}}`))
 	case "poster.png":
@@ -258,12 +277,37 @@ func (s *stubTelegram) handle(w http.ResponseWriter, r *http.Request) {
 		s.msgSeq++
 		seq := s.msgSeq
 		s.stamp(seq)
+		if rm := field("reply_markup"); rm != "" {
+			// A document or photo that carries buttons is a live screen: a
+			// press is delivered on it like on a text message.
+			s.remember(seq, stubSent{ChatID: json.Number(field("chat_id")), Text: caption, ReplyMarkup: json.RawMessage(rm)})
+		}
 		date := s.dates[seq]
 		s.mu.Unlock()
 		_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"message_id":%d,"date":%d,"chat":{"id":777,"type":"private"},"caption":%q}}`, seq, date, caption)
 	default:
+		s.mu.Lock()
+		staged, ok := s.files[method]
+		s.mu.Unlock()
+		if ok {
+			// The download of a staged file (see getFile).
+			w.Header().Set("Content-Type", "application/octet-stream")
+			_, _ = w.Write(staged)
+			return
+		}
 		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
 	}
+}
+
+// stageFile makes the stub serve data for the Telegram file id (getFile and
+// the download), so a test can send several different files.
+func (s *stubTelegram) stageFile(id string, data []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.files == nil {
+		s.files = map[string][]byte{}
+	}
+	s.files[id] = data
 }
 
 // stubSent is what the bot passed to sendMessage / editMessageText /

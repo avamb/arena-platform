@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/worldgeo"
 )
 
 func TestReasonWordsCoverEveryReason(t *testing.T) {
@@ -32,6 +33,8 @@ func TestPayloadSubject(t *testing.T) {
 		{"no nonce", Payload{Kind: KindPlanApproved, IntakeID: id}, false},
 		{"unknown kind", Payload{Kind: "other", IntakeID: id, Nonce: "n"}, false},
 		{"bad id", Payload{Kind: KindIntakeEscalated, IntakeID: "x", Nonce: "n"}, false},
+		{"country kind with country id", Payload{Kind: KindCountryCreated, CountryID: id, CountryIso2: "MN", VenueID: id, Nonce: "n"}, true},
+		{"country kind with only a venue id", Payload{Kind: KindCountryCreated, VenueID: id, Nonce: "n"}, false},
 	}
 	for _, c := range cases {
 		if _, err := c.p.subject(); (err == nil) != c.ok {
@@ -45,6 +48,14 @@ func TestHandlerRefusesABrokenPayload(t *testing.T) {
 	for _, raw := range []string{`not json`, `{"kind":"venue_created","nonce":"n"}`, `{"kind":"x","nonce":"n"}`} {
 		if err := h(context.Background(), []byte(raw)); err == nil {
 			t.Errorf("payload %s was accepted", raw)
+		}
+	}
+}
+
+func TestRegionWordsCoverEveryRegion(t *testing.T) {
+	for _, r := range worldgeo.Regions() {
+		if strings.TrimSpace(regionWords[r]) == "" {
+			t.Errorf("region %q has no words for the administrator", r)
 		}
 	}
 }

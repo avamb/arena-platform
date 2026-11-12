@@ -249,6 +249,12 @@ type createVenueRequest struct {
 	WebsiteUrl      string   `json:"website_url"`
 	Status          string   `json:"status"`
 	CapacityDefault *int32   `json:"capacity_default"`
+	// CountryIso2 + CityName name the city instead of CityID (spec 64
+	// section 2.1.1): the city is found or created in that country, and a
+	// country the reference does not have is created from the world table,
+	// all in the venue's transaction (venue_geo.go).
+	CountryIso2 string `json:"country_iso2"`
+	CityName    string `json:"city_name"`
 }
 
 func (h *Handler) HandleCreateVenue(w http.ResponseWriter, r *http.Request) {
@@ -297,12 +303,19 @@ func (h *Handler) HandleCreateVenue(w http.ResponseWriter, r *http.Request) {
 	req.ContactEmail = strings.TrimSpace(req.ContactEmail)
 	req.WebsiteUrl = strings.TrimSpace(req.WebsiteUrl)
 	req.Status = strings.TrimSpace(req.Status)
+	req.CountryIso2 = strings.ToUpper(strings.TrimSpace(req.CountryIso2))
+	req.CityName = NormalizePromoterName(req.CityName) // same trim + collapse rule as the org city route
 
 	if req.Name == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"venue.invalid_name", "Enter the venue name.", r,
 			map[string]any{"field": "name"},
 		))
+		return
+	}
+
+	byName := req.CountryIso2 != "" || req.CityName != ""
+	if byName && !validateCityByName(w, r, req.CityID, req.CountryIso2, req.CityName) {
 		return
 	}
 
@@ -421,6 +434,21 @@ func (h *Handler) HandleCreateVenue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		status = req.Status
+	}
+
+	if byName {
+		if country == nil {
+			// The venue's address country follows the city's country unless
+			// the caller sent one of its own.
+			c := req.CountryIso2
+			country = &c
+		}
+		h.createVenueWithCityByName(w, r, orgID, req, venueInsert{
+			address: address, addressLine1: addressLine1, addressLine2: addressLine2,
+			postalCode: postalCode, country: country, timezone: timezone,
+			contactPhone: contactPhone, contactEmail: contactEmail, websiteURL: websiteURL, status: status,
+		})
+		return
 	}
 
 	v, err := h.venueQueries.InsertVenue(
