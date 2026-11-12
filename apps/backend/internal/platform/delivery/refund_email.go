@@ -337,7 +337,7 @@ func (h *refundEmail) buildMessage(ctx context.Context, orderID, orgID uuid.UUID
 	data := templates.Data{
 		RecipientEmail: recipient.Email,
 		HolderName:     first.HolderName,
-		EventName:      defaultStr(first.EventName, "Arena Event"),
+		EventName:      defaultStr(first.EventName, "ArenaSoldOut.com Event"),
 		SessionStart:   formatSessionForEmail(first.SessionStart, first.SessionTZ),
 		VenueName:      joinNonEmpty(", ", first.VenueName, first.VenueCity),
 		Branding:       branding,

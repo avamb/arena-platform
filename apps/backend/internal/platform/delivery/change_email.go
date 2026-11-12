@@ -365,7 +365,7 @@ func (h *changeEmail) buildMessage(
 		TicketID:       strings.Join(numbers, ", "),
 		RecipientEmail: recipient.Email,
 		HolderName:     first.HolderName,
-		EventName:      defaultStr(first.EventName, "Arena Event"),
+		EventName:      defaultStr(first.EventName, "ArenaSoldOut.com Event"),
 		SessionStart:   formatSessionForEmail(first.SessionStart, first.SessionTZ),
 		DoorsOpen:      formatClockForEmail(first.DoorsOpenAt, first.SessionTZ),
 		VenueName:      joinNonEmpty(", ", first.VenueName, first.VenueCity),

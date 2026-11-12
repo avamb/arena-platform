@@ -188,7 +188,7 @@ func (h *invitationCancelEmail) buildMessage(
 		TicketID:       strings.Join(numbers, ", "),
 		RecipientEmail: to,
 		HolderName:     first.HolderName,
-		EventName:      defaultStr(first.EventName, "Arena Event"),
+		EventName:      defaultStr(first.EventName, "ArenaSoldOut.com Event"),
 		SessionStart:   formatSessionForEmail(first.SessionStart, first.SessionTZ),
 		VenueName:      joinNonEmpty(", ", first.VenueName, first.VenueCity),
 		Branding:       branding,

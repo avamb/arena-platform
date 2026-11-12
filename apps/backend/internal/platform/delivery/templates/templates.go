@@ -336,7 +336,7 @@ type Data struct {
 	// it stays false for invitations and for any other seller.
 	WithdrawalNotice bool
 
-	// WhiteLabel hides the "Arena Platform" line of a buyer letter: the
+	// WhiteLabel hides the "ArenaSoldOut.com" line of a buyer letter: the
 	// brand of the event (its promoter, else the organization) or of the shop
 	// has white label today (spec 08_architecture/53). The letters to the
 	// organizer (alerts) never read it.
@@ -783,14 +783,14 @@ func fillSellerFooter(b *Branding, locale string) {
 // NULL, etc.). The templates themselves never substitute these
 // values — the renderer prints exactly what it is given.
 const (
-	PlatformOrgName = "Arena Platform"
+	PlatformOrgName = "ArenaSoldOut.com"
 	// PlatformLogoURL is empty on purpose: there is no hosted platform logo,
 	// and a placeholder address (it used to be assets.arena.example.com)
 	// made Gmail show a broken picture on every e-mail of an organization
 	// without a logo. Empty makes the {{with .Branding.LogoURL}} guards drop
 	// the <img>, and the header shows the coloured band instead.
 	PlatformLogoURL   = ""
-	PlatformLegalName = "Arena Platform"
+	PlatformLegalName = "ArenaSoldOut.com"
 	// PlatformContactEmail is a placeholder address for test fixtures only.
 	// No code path substitutes it for an organization without a contact.
 	PlatformContactEmail = "support@arena.example.com"

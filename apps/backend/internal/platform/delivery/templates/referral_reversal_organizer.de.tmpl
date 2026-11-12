@@ -13,7 +13,7 @@
   <p style="margin:0 0 12px 0;">{{if eq .Referral.Reversal "disputed"}}Ein Freund, der den Code <strong>{{.Referral.Code}}</strong> verwendet hat, hat zu Bestellung Nr. {{.Referral.Order}} eine Streitigkeit eröffnet. Das Cashback von {{.Referral.Amount}} wurde bereits an die einladende Person ausgezahlt und kann nicht zurückgeholt werden.{{else}}Ein Freund, der den Code <strong>{{.Referral.Code}}</strong> verwendet hat, hat das Geld für Bestellung Nr. {{.Referral.Order}} zurückerhalten. Das Cashback von {{.Referral.Amount}} wurde bereits an die einladende Person ausgezahlt und kann nicht zurückgeholt werden.{{end}}</p>
   {{if .Referral.CodePaused}}<p style="margin:0 0 12px 0;">Der Code <strong>{{.Referral.Code}}</strong> ist gestoppt: Er gibt keine neuen Rabatte mehr. Bereits ausgezahlte Beträge bleiben bestehen.</p>{{end}}
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — automatische Nachricht</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">ArenaSoldOut.com — automatische Nachricht</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -27,5 +27,5 @@
 {{if .Referral.CodePaused}}
 Der Code {{.Referral.Code}} ist gestoppt: Er gibt keine neuen Rabatte mehr. Bereits ausgezahlte Beträge bleiben bestehen.
 {{end}}
-Arena Platform — automatische Nachricht
+ArenaSoldOut.com — automatische Nachricht
 {{end}}

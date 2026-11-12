@@ -27,7 +27,7 @@
     {{with .Branding.SellerIDs}}<br>{{.}}{{end}}
     {{with .Branding.ContactEmail}}<br>Contact: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Contact: <a href="{{.}}" style="color:#666">Write to the organizer</a>{{end}}{{end}}
   </p>
-  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}Arena Platform — automated message{{end}}</p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}ArenaSoldOut.com — automated message{{end}}</p>
   <p style="font-size:11px;color:#999;line-height:1.5">If you click “Unsubscribe”, the letters with your tickets and the important letters about your order will no longer reach you. We do not send marketing mailings without your consent.</p>
   </td></tr>
 </table>
@@ -61,7 +61,7 @@ Under the service terms, please contact the organizer.
 {{end}}{{with .Branding.ContactEmail}}Contact: {{.}}
 {{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Contact: {{.}}
 {{end}}{{end}}
-{{if not .WhiteLabel}}Arena Platform — automated message{{end}}
+{{if not .WhiteLabel}}ArenaSoldOut.com — automated message{{end}}
 
 If you click “Unsubscribe”, the letters with your tickets and the important letters about your order will no longer reach you. We do not send marketing mailings without your consent.
 {{end}}

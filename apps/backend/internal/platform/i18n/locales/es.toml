@@ -3658,7 +3658,7 @@ other = "⚠️ Un campo obligatorio está vacío, así que los datos del vended
 other = "Mensaje de un comprador: {{.Name}}"
 
 ["contact.email.intro"]
-other = "Un comprador te escribió con el formulario de contacto de tu página de venta de Arena."
+other = "Un comprador te escribió con el formulario de contacto de tu página de venta de ArenaSoldOut.com."
 
 ["contact.email.from"]
 other = "De"
@@ -3667,10 +3667,10 @@ other = "De"
 other = "Página de venta"
 
 ["contact.email.reply"]
-other = "Para contestar al comprador, responde a este correo. Arena no ve tu respuesta."
+other = "Para contestar al comprador, responde a este correo. ArenaSoldOut.com no ve tu respuesta."
 
 ["contact.email.footer"]
-other = "Arena Sold Out envió este mensaje porque el formulario de contacto de tu página de venta está activo."
+other = "ArenaSoldOut.com envió este mensaje porque el formulario de contacto de tu página de venta está activo."
 
 ["bot.web.btn"]
 other = "🌐 Abrir en el navegador"

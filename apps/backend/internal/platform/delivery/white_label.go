@@ -1,7 +1,7 @@
 package delivery
 
 // white_label.go - buyer letters of a brand with white label (spec
-// 08_architecture/53): no "Arena Platform" line (templates.Data.WhiteLabel)
+// 08_architecture/53): no "ArenaSoldOut.com" line (templates.Data.WhiteLabel)
 // and the brand's name on the sender instead of the platform's. Every lookup
 // is best effort: a failure logs and the letter goes out naming the
 // platform, never fails.

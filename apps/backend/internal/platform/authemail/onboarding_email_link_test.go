@@ -40,8 +40,8 @@ func TestApprovedEmail_ButtonFollowsTheRecipient(t *testing.T) {
 		{"organizer en", true, testEventCenter, "en", testEventCenter, "Open the event center", testConsole},
 		{"organizer ru", true, testEventCenter, "ru", testEventCenter, "Открыть ивент-центр", testConsole},
 		{"organizer es", true, testEventCenter, "es", testEventCenter, "Abrir el centro de eventos", testConsole},
-		{"staff keeps the console", false, testEventCenter, "en", testConsole, "Sign in to Arena", testEventCenter},
-		{"organizer without event center", true, "", "en", testConsole, "Sign in to Arena", "events.arena"},
+		{"staff keeps the console", false, testEventCenter, "en", testConsole, "Sign in to ArenaSoldOut.com", testEventCenter},
+		{"organizer without event center", true, "", "en", testConsole, "Sign in to ArenaSoldOut.com", "events.arena"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

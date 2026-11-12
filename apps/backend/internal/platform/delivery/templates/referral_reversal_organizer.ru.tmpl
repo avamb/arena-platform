@@ -13,7 +13,7 @@
   <p style="margin:0 0 12px 0;">{{if eq .Referral.Reversal "disputed"}}Друг по коду <strong>{{.Referral.Code}}</strong> открыл спор по заказу №{{.Referral.Order}}. Кэшбэк {{.Referral.Amount}} уже выплачен приводящему, вернуть его нельзя.{{else}}Друг по коду <strong>{{.Referral.Code}}</strong> вернул деньги за заказ №{{.Referral.Order}}. Кэшбэк {{.Referral.Amount}} уже выплачен приводящему, вернуть его нельзя.{{end}}</p>
   {{if .Referral.CodePaused}}<p style="margin:0 0 12px 0;">Код <strong>{{.Referral.Code}}</strong> остановлен: новых скидок по нему не будет. Начисления, которые уже выплачены, остаются.</p>{{end}}
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — автоматическое сообщение</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">ArenaSoldOut.com — автоматическое сообщение</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -27,5 +27,5 @@
 {{if .Referral.CodePaused}}
 Код {{.Referral.Code}} остановлен: новых скидок по нему не будет. Начисления, которые уже выплачены, остаются.
 {{end}}
-Arena Platform — автоматическое сообщение
+ArenaSoldOut.com — автоматическое сообщение
 {{end}}
