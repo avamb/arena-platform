@@ -120,7 +120,7 @@
      on. The second is deliberately quieter — it restates the row above and
      must not compete with the thing the buyer is meant to press. */
   .mini-cart-cta { display: block; }
-  .mini-cart-sub { display: block; font-size: 0.8125rem; font-weight: 500; opacity: 0.75; }
+  .mini-cart-sub { display: block; font-size: 0.8125rem; font-weight: 500; opacity: 0.9; }
   .mini-cart-total { font-weight: 500; }
   .mini-cart-countdown { font-size: 0.875rem; opacity: 0.9; }
 </style>
