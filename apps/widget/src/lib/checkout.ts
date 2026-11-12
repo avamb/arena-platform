@@ -450,21 +450,33 @@ export function suggestEmailFix(email: string): string | null {
 
 // ─── Email format validation ─────────────────────────────────────────────────
 
+/** One domain label: letters (any script), digits and inner hyphens. */
+const DOMAIN_LABEL = /^[\p{L}\p{N}](?:[\p{L}\p{N}-]{0,61}[\p{L}\p{N}])?$/u;
+/** The top-level domain: letters only (two or more), or an IDN one as xn--. */
+const TLD = /^(?:\p{L}{2,}|xn--[a-z0-9-]+)$/iu;
+/** Characters an address never carries: spaces, brackets, quotes, separators. */
+const FORBIDDEN = /[\s<>()[\]\\,;:"]/u;
+
 /**
- * Lightweight email format check — no DNS lookups.
- *
- * Accepts the vast majority of valid email addresses without being overly
- * strict; the backend performs authoritative validation.
+ * E-mail format check — no DNS lookups. Mirrors the backend's rules
+ * (internal/platform/emailaddr) so the buyer fixes a typo on the form instead
+ * of after the seats were held (F-BR-03): one "@", a local part of up to 64
+ * characters, no spaces, a domain of dot-separated labels and a top-level
+ * domain of letters only ("comRUN1109-FC" is refused). Surrounding spaces
+ * are ignored; the checkout sends the trimmed address.
  */
 export function isValidEmail(email: string): boolean {
   const trimmed = email.trim();
-  if (!trimmed) return false;
+  if (!trimmed || trimmed.length > 254 || FORBIDDEN.test(trimmed)) return false;
   const at = trimmed.lastIndexOf('@');
-  if (at < 1) return false;                   // at least one char before @
-  const domain = trimmed.slice(at + 1);
-  if (domain.length < 3) return false;         // e.g. "a.b"
-  if (!domain.includes('.')) return false;     // must have a dot
-  return true;
+  if (at < 1 || at > 64) return false; // at least one char before @
+  if (trimmed.indexOf('@') !== at) return false; // exactly one @
+  const local = trimmed.slice(0, at);
+  if (local.startsWith('.') || local.endsWith('.') || local.includes('..')) return false;
+  const labels = trimmed.slice(at + 1).split('.');
+  if (labels.length < 2) return false; // must have a dot
+  if (!labels.every((l) => DOMAIN_LABEL.test(l))) return false;
+  return TLD.test(labels[labels.length - 1] ?? '');
 }
 
 // ─── Buyer form validation ───────────────────────────────────────────────────

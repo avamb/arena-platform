@@ -68,6 +68,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/conversions"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/customers"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/delivery/templates"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/emailaddr"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/hcheckout"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/priceresolve"
@@ -317,11 +318,19 @@ func (h *Handler) publicFeedCheckoutStart(w http.ResponseWriter, r *http.Request
 	buyerLocale := normalizeBuyerLocale(req.Locale)
 
 	// ── 4b. Validate holder_email ─────────────────────────────────────────────
+	req.HolderEmail = strings.TrimSpace(req.HolderEmail)
 	if req.HolderEmail == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"checkout.missing_holder_email", "Enter the e-mail address for the tickets (holder_email).", r,
 			map[string]any{"field": "holder_email"},
 		))
+		return
+	}
+	// A malformed address is refused HERE, before any hold or order exists:
+	// the payment provider refuses it too, but only after the seats are held
+	// (F-BR-03).
+	if !emailaddr.Valid(req.HolderEmail) {
+		writeInvalidEmail(w, r)
 		return
 	}
 

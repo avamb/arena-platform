@@ -45,6 +45,11 @@ import (
 // BuyerCancelReason is the order_events.cancelled reason of a buyer's cancel.
 const BuyerCancelReason = "buyer_cancelled"
 
+// PaymentStartRefusedReason is the order_events.cancelled reason when the
+// payment provider refused for good to open the payment page right after
+// the hold was taken (F-BR-03): the places go back at once.
+const PaymentStartRefusedReason = "payment_start_refused"
+
 // BuyerCancelOutcome is what CancelUnpaidCheckout did.
 type BuyerCancelOutcome string
 
@@ -68,6 +73,10 @@ type BuyerCancelInput struct {
 	// ActorLabel goes to the audit metadata (never actor_id, which is a
 	// uuid column): e.g. "buyer:checkout_token".
 	ActorLabel string
+	// Reason is the order_events.cancelled reason; empty means
+	// BuyerCancelReason. The checkout start uses PaymentStartRefusedReason
+	// when the provider refused to open the payment page.
+	Reason string
 	// Via is the client channel, for the audit trail.
 	Via string
 	IP  string
@@ -175,10 +184,14 @@ func cancelUnpaidCheckoutTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, au
 	if _, err := txq.AbandonCheckoutSession(ctx, in.CheckoutSessionID); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return BuyerCancelResult{}, false, fmt.Errorf("hcheckout: abandon checkout: %w", err)
 	}
+	reason := in.Reason
+	if reason == "" {
+		reason = BuyerCancelReason
+	}
 	if ord != nil {
 		if _, err := ordering.Cancel(ctx, txq, ordering.CancelInput{
 			OrderID: ord.ID, OrgID: ord.OrgID, Actor: ordering.ActorSystem,
-			Reason: BuyerCancelReason, Now: in.Now,
+			Reason: reason, Now: in.Now,
 		}); err != nil {
 			return BuyerCancelResult{}, false, fmt.Errorf("hcheckout: cancel order: %w", err)
 		}
@@ -189,6 +202,7 @@ func cancelUnpaidCheckoutTx(ctx context.Context, tx pgx.Tx, txq *gen.Queries, au
 			"reservation_id":      reservationID.String(),
 			"hold_released":       released,
 			"actor_label":         in.ActorLabel,
+			"reason":              reason,
 			"via":                 in.Via,
 			"org_id":              orgID.String(),
 		}

@@ -139,6 +139,29 @@ type HostedCheckoutProvider interface {
 	CreateCheckoutSession(ctx context.Context, req CreateHostedCheckoutRequest) (*CreateHostedCheckoutResponse, error)
 }
 
+// HostedCheckoutRefusalInvalidEmail is HostedCheckoutRefusedError.Reason
+// when the provider refused the buyer's e-mail address (Stripe email_invalid).
+const HostedCheckoutRefusalInvalidEmail = "invalid_email"
+
+// HostedCheckoutRefusedError is returned (wrapped) by CreateCheckoutSession
+// when the provider ANSWERED and refused for good: no page was created and
+// repeating the same request cannot change that (Stripe: a 4xx with its own
+// error object, not 409, 429 or an idempotency error). Any other error is an
+// unknown outcome: the provider may have created the page.
+type HostedCheckoutRefusedError struct {
+	// Reason is the provider-neutral cause arena acts on
+	// (HostedCheckoutRefusalInvalidEmail), or "" for any other refusal.
+	Reason string
+	// Code is the provider's own machine-readable reason ("email_invalid").
+	Code string
+	// Message is the provider's human text, for the operator.
+	Message string
+}
+
+func (e *HostedCheckoutRefusedError) Error() string {
+	return "payments: the provider refused the hosted checkout: " + e.Code + ": " + e.Message
+}
+
 // HostedCheckoutExpirer is implemented by providers that can close a hosted
 // page before its own expiry, so a buyer who still has it open can no longer
 // pay (Stripe: POST /v1/checkout/sessions/{id}/expire). Callers type-assert
