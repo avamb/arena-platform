@@ -206,7 +206,7 @@ var _ venueplan.Renderer = (*Client)(nil)
 
 // Generate sends the files and waits for the job. A 404 of the job (the
 // generator restarted and lost it) sends the files again, once.
-func (c *Client) Generate(ctx context.Context, files []File) (Result, error) {
+func (c *Client) Generate(ctx context.Context, files []File, opts ...SubmitOption) (Result, error) {
 	if len(files) == 0 || len(files) > MaxFiles {
 		return Result{}, &Error{Code: "request.invalid", Msg: fmt.Sprintf("send 1..%d files, got %d", MaxFiles, len(files))}
 	}
@@ -221,7 +221,7 @@ func (c *Client) Generate(ctx context.Context, files []File) (Result, error) {
 
 	resent := false
 	for {
-		jobID, err := c.Submit(ctx, files)
+		jobID, err := c.Submit(ctx, files, opts...)
 		if err != nil {
 			return Result{}, err
 		}
@@ -245,15 +245,48 @@ func IsJobLost(err error) bool {
 // not know.
 const CodeJobNotFound = "job.not_found"
 
+// SubmitOption changes one POST /generate.
+type SubmitOption func(*submitOpts)
+
+type submitOpts struct{ categoryName string }
+
+// WithCategoryName sends the multipart field target_profile: the generator's
+// default authoring profile (arena-authoring-v1) with only category.name
+// replaced, so the draft carries a human category name instead of the
+// profile's PLACEHOLDER. An empty name sends no profile.
+func WithCategoryName(name string) SubmitOption {
+	return func(o *submitOpts) { o.categoryName = strings.TrimSpace(name) }
+}
+
+// TargetProfile is the JSON of the target_profile field for a category name:
+// the default profile of apps/venue-svg-generator/arena_export/profiles/
+// arena-authoring-v1.json with category.name replaced.
+func TargetProfile(categoryName string) []byte {
+	p := map[string]any{
+		"profile_id":      "arena-authoring-v1",
+		"target":          "arena-go-importsvg",
+		"commercial_data": false,
+		"category":        map[string]any{"name": categoryName, "color": "#00aaff", "index": 1},
+		"stroke_width_px": 3,
+		"legend":          []string{"Sold", "None", "Reserved", "MyTickets"},
+	}
+	raw, _ := json.Marshal(p)
+	return raw
+}
+
 // Submit sends the files (POST /generate) and returns the generator's job id.
-func (c *Client) Submit(ctx context.Context, files []File) (string, error) {
+func (c *Client) Submit(ctx context.Context, files []File, opts ...SubmitOption) (string, error) {
 	if len(files) == 0 || len(files) > MaxFiles {
 		return "", &Error{Code: "request.invalid", Msg: fmt.Sprintf("send 1..%d files, got %d", MaxFiles, len(files))}
 	}
-	return c.submit(ctx, files)
+	return c.submit(ctx, files, opts)
 }
 
-func (c *Client) submit(ctx context.Context, files []File) (string, error) {
+func (c *Client) submit(ctx context.Context, files []File, opts []SubmitOption) (string, error) {
+	var so submitOpts
+	for _, o := range opts {
+		o(&so)
+	}
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
 	kinds := make([]Kind, 0, len(files))
@@ -277,6 +310,11 @@ func (c *Client) submit(ctx context.Context, files []File) (string, error) {
 	rawKinds, _ := json.Marshal(kinds)
 	if err := mw.WriteField("kinds", string(rawKinds)); err != nil {
 		return "", &Error{Code: "request.invalid", Msg: err.Error()}
+	}
+	if so.categoryName != "" {
+		if err := mw.WriteField("target_profile", string(TargetProfile(so.categoryName))); err != nil {
+			return "", &Error{Code: "request.invalid", Msg: err.Error()}
+		}
 	}
 	if err := mw.Close(); err != nil {
 		return "", &Error{Code: "request.invalid", Msg: err.Error()}

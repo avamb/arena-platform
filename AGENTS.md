@@ -767,3 +767,4 @@ Spec 64: intake states, private plan sources, approve, superadmin verification a
 * The admin queue /venue-plans finds plans with no verification state by subtraction
 * A draft SVG of an intake is read by seating.ImportAnySVG (authoring or sbt); the plan version route takes authoring only
 * Only an ACTIVE plan is seen by the queue and by the bot; the library loader activates a plan after its version upload
+* A generated draft names its category through the worker's target_profile, never the generator's PLACEHOLDER
