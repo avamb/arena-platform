@@ -363,6 +363,7 @@ defaults to `true` (dev tokens accepted by the api). Each binary then logs a
 | `METRICS_BEARER_TOKEN` | ● | ● | ● | — |
 | `EMAIL_MODE` (`smtp`), `SMTP_HOST`, `SMTP_FROM` | — | ✅ | — | — |
 | `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS` | — | ● | — | — |
+| `TICKET_EMAIL_FROM`, `EMAIL_FROM_NAME` | — | ● | — | — |
 | `OUTBOX_MODE` (`webhook`/`disabled`) | — | ✅ | — | — |
 | `OUTBOX_WEBHOOK_URL`, `OUTBOX_SIGNING_SECRET` | — | ✅ with `OUTBOX_MODE=webhook` | — | — |
 | `OUTBOX_POLL_INTERVAL`, `WORKER_POLL_INTERVAL`, `WORKER_METRICS_ADDR`, `SENDER_VERIFICATION_POLL_INTERVAL` | — | ● | — | — |

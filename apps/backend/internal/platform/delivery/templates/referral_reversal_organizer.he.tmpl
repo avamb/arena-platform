@@ -13,7 +13,7 @@
   <p style="margin:0 0 12px 0;">{{if eq .Referral.Reversal "disputed"}}חבר שהשתמש בקוד <strong>{{.Referral.Code}}</strong> פתח מחלוקת על הזמנה {{.Referral.Order}}. הקאשבק בסך {{.Referral.Amount}} כבר שולם למי שהביא אותו ואי אפשר להחזיר אותו.{{else}}חבר שהשתמש בקוד <strong>{{.Referral.Code}}</strong> קיבל כסף בחזרה על הזמנה {{.Referral.Order}}. הקאשבק בסך {{.Referral.Amount}} כבר שולם למי שהביא אותו ואי אפשר להחזיר אותו.{{end}}</p>
   {{if .Referral.CodePaused}}<p style="margin:0 0 12px 0;">הקוד <strong>{{.Referral.Code}}</strong> נעצר: לא יינתנו בעזרתו הנחות חדשות. תשלומים שכבר שולמו נשארים.</p>{{end}}
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — הודעה אוטומטית</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">ArenaSoldOut.com — הודעה אוטומטית</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -27,5 +27,5 @@
 {{if .Referral.CodePaused}}
 הקוד {{.Referral.Code}} נעצר: לא יינתנו בעזרתו הנחות חדשות. תשלומים שכבר שולמו נשארים.
 {{end}}
-Arena Platform — הודעה אוטומטית
+ArenaSoldOut.com — הודעה אוטומטית
 {{end}}

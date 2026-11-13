@@ -15,7 +15,7 @@ const platformLine = "Ticket processing by arenasoldout.com"
 
 // legacyPlatformLine is what the shop and the "Refer a friend" letters still
 // end with: they must not speak of tickets, so the ticket line does not fit.
-const legacyPlatformLine = "Arena Platform —"
+const legacyPlatformLine = "ArenaSoldOut.com —"
 
 // platformLineFor is the platform line of a buyer letter kind.
 func platformLineFor(kind string) string {

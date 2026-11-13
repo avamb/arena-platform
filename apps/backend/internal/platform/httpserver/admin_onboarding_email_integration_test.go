@@ -225,7 +225,7 @@ func TestAdminOnboardingEmailIntegration_AdminCreatedUser(t *testing.T) {
 	if strings.Contains(msg.Body, "api.should-not-appear.test") {
 		t.Error("email link was derived from the request host instead of APP_PUBLIC_URL")
 	}
-	if !strings.Contains(unfoldQP(msg.Body), "Set up your Arena Platform account") {
+	if !strings.Contains(unfoldQP(msg.Body), "Set up your ArenaSoldOut.com account") {
 		t.Errorf("email is not the account-setup variant; body:\n%s", msg.Body)
 	}
 	redeemSetupLink(t, srv, pool, msg, em)

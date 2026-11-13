@@ -3830,7 +3830,7 @@ other = "⚠️ The seller data does not show on sales pages because a required 
 other = "Message from a buyer: {{.Name}}"
 
 ["contact.email.intro"]
-other = "A buyer wrote to you through the contact form of your Arena sales page."
+other = "A buyer wrote to you through the contact form of your ArenaSoldOut.com sales page."
 
 ["contact.email.from"]
 other = "From"
@@ -3839,10 +3839,10 @@ other = "From"
 other = "Sales page"
 
 ["contact.email.reply"]
-other = "To answer the buyer, reply to this e-mail. Arena does not see your answer."
+other = "To answer the buyer, reply to this e-mail. ArenaSoldOut.com does not see your answer."
 
 ["contact.email.footer"]
-other = "Arena Sold Out sent this message because the contact form of your sales page is on."
+other = "ArenaSoldOut.com sent this message because the contact form of your sales page is on."
 
 ["bot.web.btn"]
 other = "🌐 Open in browser"

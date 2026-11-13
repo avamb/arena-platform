@@ -37,7 +37,7 @@
     {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
     {{with .Branding.ContactEmail}}<br>Kontakt: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Kontakt: <a href="{{.}}" style="color:#666">Napsat pořadateli</a>{{end}}{{end}}
   </p>
-  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}Arena Platform — automatická zpráva{{end}}</p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}ArenaSoldOut.com — automatická zpráva{{end}}</p>
   <p style="font-size:11px;color:#999;line-height:1.5">Pokud kliknete na „Odhlásit odběr“, přestanou vám chodit e-maily o vašich objednávkách. Reklamní e-maily bez vašeho souhlasu neposíláme.</p>
   </td></tr>
 </table>
@@ -90,7 +90,7 @@ Vaše objednávka:
 {{end}}{{with .Branding.ContactEmail}}Kontakt: {{.}}
 {{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Kontakt: {{.}}
 {{end}}{{end}}
-{{if not .WhiteLabel}}Arena Platform — automatická zpráva{{end}}
+{{if not .WhiteLabel}}ArenaSoldOut.com — automatická zpráva{{end}}
 
 Pokud kliknete na „Odhlásit odběr“, přestanou vám chodit e-maily o vašich objednávkách. Reklamní e-maily bez vašeho souhlasu neposíláme.
 {{end}}

@@ -122,7 +122,7 @@ type Payload struct {
 	// keeps control.
 	//
 	// Historical note: no production enqueuer has ever set any of these,
-	// which is why every live ticket PDF printed "Arena Event" with blank
+	// which is why every live ticket PDF printed "ArenaSoldOut.com Event" with blank
 	// Venue / Category / Holder rows and a UTC session time until the
 	// render-time resolution landed (2026-09-20).
 	EventName    string    `json:"event_name,omitempty"`
@@ -280,8 +280,12 @@ type HandlerOptions struct {
 	// to StatusSent without a real SMTP acceptance.
 	Sender email.Sender
 	// FromAddress is the envelope and header From address for outgoing emails.
-	// Example: "Arena Platform <tickets@arena.example.com>"
+	// Example: "ArenaSoldOut.com <tickets@arena.example.com>"
 	FromAddress string
+	// TicketFromAddress is the dedicated bare address ticket and invitation
+	// letters go out from (TICKET_EMAIL_FROM). Empty keeps the SMTP default.
+	// An organization's verified own sender still wins over it.
+	TicketFromAddress string
 	// Templates renders the localized email bodies (feature #289, T-2).
 	// When nil, NewHandler lazy-constructs a default Renderer from the
 	// embedded templates so callers that haven't migrated still work.
@@ -623,7 +627,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 				TicketID:       ticketNumber,
 				RecipientEmail: recipientEmail,
 				HolderName:     p.HolderName,
-				EventName:      defaultStr(p.EventName, "Arena Event"),
+				EventName:      defaultStr(p.EventName, "ArenaSoldOut.com Event"),
 				SessionStart:   formatSessionForEmail(p.SessionStart, p.SessionTZ),
 				DoorsOpen:      formatClockForEmail(p.DoorsOpenAt, p.SessionTZ),
 				VenueName:      joinNonEmpty(", ", p.VenueName, p.VenueCity),
@@ -652,16 +656,17 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 			case TemplateInvitation:
 				htmlBody = renderInvitationEmailHTML(ticketNumber, recipientEmail)
 				textBody = renderInvitationEmailText(ticketNumber, recipientEmail)
-				subject = "You're invited — Arena Platform"
+				subject = "You're invited — ArenaSoldOut.com"
 			default:
 				htmlBody = renderTicketEmailHTML(ticketNumber, recipientEmail)
 				textBody = renderTicketEmailText(ticketNumber, recipientEmail)
-				subject = "Your ticket — Arena Platform"
+				subject = "Your ticket — ArenaSoldOut.com"
 			}
 		}
 
 		msg := ticketEmailMessage(p, recipientEmail, subject, htmlBody, textBody)
-		applyWhiteLabelSender(&msg, whiteLabel, brandSenderName(p))
+		applyTicketFromAddress(&msg, opts.TicketFromAddress)
+		applyBrandSender(&msg, brandSenderName(p))
 		attachmentBytes := 0
 		for _, m := range members {
 			if len(m.pdf) == 0 {
@@ -803,6 +808,15 @@ func ticketEmailMessage(p Payload, recipientEmail, subject, htmlBody, textBody s
 	}
 }
 
+// applyTicketFromAddress sends a ticket or invitation letter from the
+// dedicated ticket address when one is configured. An organization's verified
+// own sender (already in msg.From) wins; other letters never call this.
+func applyTicketFromAddress(msg *email.Message, ticketFrom string) {
+	if msg.From == "" {
+		msg.From = strings.TrimSpace(ticketFrom)
+	}
+}
+
 // isTerminalStatus reports whether status is a final, non-retryable state.
 func isTerminalStatus(status string) bool {
 	switch status {
@@ -835,7 +849,7 @@ func renderTicketEmailHTML(ticketNumber, recipientEmail string) string {
   <p style="font-size:12px;color:#666">Ticket ID: %s</p>
   <p style="font-size:12px;color:#666">Delivered to: %s</p>
   <hr>
-  <p style="font-size:11px;color:#999">Arena Platform — automated delivery</p>
+  <p style="font-size:11px;color:#999">ArenaSoldOut.com — automated delivery</p>
 </body>
 </html>`, ticketNumber, recipientEmail)
 }
@@ -847,7 +861,7 @@ func renderTicketEmailText(ticketNumber, recipientEmail string) string {
 			"Your ticket has been issued. Please find the PDF attached to this email.\n\n"+
 			"Ticket ID: %s\n"+
 			"Delivered to: %s\n\n"+
-			"Arena Platform — automated delivery\n",
+			"ArenaSoldOut.com — automated delivery\n",
 		ticketNumber, recipientEmail,
 	)
 }
@@ -866,7 +880,7 @@ func renderInvitationEmailHTML(ticketNumber, recipientEmail string) string {
   <p style="font-size:12px;color:#666">Ticket ID: %s</p>
   <p style="font-size:12px;color:#666">Delivered to: %s</p>
   <hr>
-  <p style="font-size:11px;color:#999">Arena Platform — automated invitation delivery</p>
+  <p style="font-size:11px;color:#999">ArenaSoldOut.com — automated invitation delivery</p>
 </body>
 </html>`, ticketNumber, recipientEmail)
 }
@@ -882,7 +896,7 @@ func renderInvitationEmailText(ticketNumber, recipientEmail string) string {
 			"no payment is required.\n\n"+
 			"Ticket ID: %s\n"+
 			"Delivered to: %s\n\n"+
-			"Arena Platform — automated invitation delivery\n",
+			"ArenaSoldOut.com — automated invitation delivery\n",
 		ticketNumber, recipientEmail,
 	)
 }
@@ -925,7 +939,7 @@ func buildPDFTicket(ticketID uuid.UUID, p Payload, branding templates.Branding, 
 		TicketNumber:           p.TicketNumber,
 		OrderNumber:            p.OrderNumber,
 		Locale:                 p.Locale,
-		EventName:              defaultStr(p.EventName, "Arena Event"),
+		EventName:              defaultStr(p.EventName, "ArenaSoldOut.com Event"),
 		SessionStart:           defaultTime(p.SessionStart),
 		SessionTZ:              p.SessionTZ,
 		DoorsOpenAt:            p.DoorsOpenAt,
@@ -1125,7 +1139,7 @@ func joinNonEmpty(sep string, parts ...string) string {
 // on-the-fly without a DB write.
 func renderMinimalPDF(ticketNumber string, issuedAt time.Time) []byte {
 	cs := fmt.Sprintf(
-		"BT\n/F1 14 Tf\n72 720 Td\n(Arena Platform Ticket) Tj\n"+
+		"BT\n/F1 14 Tf\n72 720 Td\n(ArenaSoldOut.com Ticket) Tj\n"+
 			"/F1 10 Tf\n0 -30 Td\n(Ticket ID: %s) Tj\n"+
 			"0 -20 Td\n(Issued: %s) Tj\nET",
 		ticketNumber,

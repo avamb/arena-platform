@@ -22,7 +22,7 @@ func renderAdminNewApplication(p OnboardingEmailPayload, link string) (subject, 
 	}
 
 	var b strings.Builder
-	b.WriteString(`<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><title>Arena</title></head>`)
+	b.WriteString(`<!DOCTYPE html><html lang="ru"><head><meta charset="UTF-8"><title>ArenaSoldOut.com</title></head>`)
 	b.WriteString(`<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">`)
 	b.WriteString(`<h1 style="color:#1a1a2e;font-size:20px">` + html.EscapeString(title) + `</h1><p style="line-height:1.5">`)
 	for i, d := range p.Details {
@@ -36,7 +36,7 @@ func renderAdminNewApplication(p OnboardingEmailPayload, link string) (subject, 
 		b.WriteString(`<p style="margin:24px 0"><a href="` + html.EscapeString(link) + `" style="background:#4f46e5;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;font-weight:bold;display:inline-block">Открыть заявку</a></p>`)
 		b.WriteString(`<p style="font-size:12px;color:#666;word-break:break-all">` + html.EscapeString(link) + `</p>`)
 	}
-	b.WriteString(`<hr><p style="font-size:11px;color:#999">Arena Platform</p></body></html>`)
+	b.WriteString(`<hr><p style="font-size:11px;color:#999">ArenaSoldOut.com</p></body></html>`)
 
 	text := []string{title, ""}
 	text = append(text, p.Details...)
@@ -44,6 +44,6 @@ func renderAdminNewApplication(p OnboardingEmailPayload, link string) (subject, 
 	if link != "" {
 		text = append(text, "", "Открыть заявку: "+link)
 	}
-	text = append(text, "", "Arena Platform")
+	text = append(text, "", "ArenaSoldOut.com")
 	return subject, b.String(), strings.Join(text, "\n"), true
 }

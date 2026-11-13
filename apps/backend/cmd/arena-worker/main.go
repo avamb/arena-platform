@@ -1099,6 +1099,7 @@ func buildDeliveryHandlerOptions(cfg *config.Config, queries *gen.Queries, media
 		CredentialQueries:  queries,
 		Sender:             buildEmailSender(cfg, logger),
 		FromAddress:        coalesce(getEmailFrom(cfg), "tickets@arena.example.com"),
+		TicketFromAddress:  cfg.TicketEmailFrom,
 		Media:              media,
 		TicketsBaseURL:     cfg.PublicTicketsBaseURL,
 		ContactFormEnabled: cfg.ContactFormReady(),
@@ -1160,6 +1161,9 @@ func buildEmailSender(cfg *config.Config, logger *slog.Logger) email.Sender {
 			Password: cfg.SMTPPassword,
 			From:     coalesce(cfg.SMTPFrom, "tickets@arena.example.com"),
 			UseTLS:   cfg.SMTPUseTLS,
+
+			FromName:      cfg.EmailFromName,
+			PlatformFroms: []string{cfg.TicketEmailFrom},
 		})
 	}
 	logger.Info("email: EMAIL_MODE is not 'smtp'; using LogSender (emails logged, not sent)",

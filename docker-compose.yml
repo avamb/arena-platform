@@ -254,6 +254,10 @@ services:
       SMTP_USERNAME: ""
       SMTP_PASSWORD: ""
       SMTP_FROM: ""
+      # Optional dedicated sender of ticket and invitation letters (empty = SMTP_FROM).
+      TICKET_EMAIL_FROM: "${TICKET_EMAIL_FROM:-}"
+      # Display name for letters sent from a platform address with no sender name.
+      EMAIL_FROM_NAME: "${EMAIL_FROM_NAME:-ArenaSoldOut}"
       SMTP_USE_TLS: "true"
       BREVO_API_KEY: "${BREVO_API_KEY:-}"
       BREVO_API_BASE_URL: "${BREVO_API_BASE_URL:-https://api.brevo.com}"

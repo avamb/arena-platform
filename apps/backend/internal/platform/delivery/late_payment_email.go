@@ -137,7 +137,7 @@ func NewLatePaymentEmailHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 		}
 		msg := email.Message{To: to, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}
 		style.applySender(&msg)
-		applyWhiteLabelSender(&msg, whiteLabel, brand)
+		applyBrandSender(&msg, brand)
 		withReplyTo(&msg, contact)
 
 		claimed, err := q.MarkLatePaymentNotified(ctx, piID)

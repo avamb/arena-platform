@@ -261,7 +261,7 @@ func (h *referralCashbackEmail) buildMessage(ctx context.Context, rw gen.Referra
 		return email.Message{}, emailstatus.NewLetter{}, fmt.Errorf("delivery: render referral cashback e-mail: %w", err)
 	}
 	msg := ticketEmailMessage(first, to.Email, out.Subject, out.HTMLBody, out.TextBody)
-	applyWhiteLabelSender(&msg, whiteLabel, brandSenderName(first))
+	applyBrandSender(&msg, brandSenderName(first))
 
 	lkind := emailstatus.KindReferralCashback
 	if kind == referral.LetterUnavailable {

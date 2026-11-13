@@ -10,10 +10,10 @@
   <tr><td style="background:{{.Accent}};height:3px;font-size:1px;">&nbsp;</td></tr>
   <tr><td style="padding:24px 32px 8px 32px;color:#46555f;font-size:14px;line-height:1.6;">
   <h1 style="margin:0 0 12px 0;font-size:20px;line-height:1.3;color:#22333D;">{{if eq .Referral.Notice "balance"}}ההחזר ממתין ליתרת Stripe{{else if eq .Referral.Notice "pending"}}Stripe מעכבת את ההחזר{{else}}ההחזר לא שולם{{end}}</h1>
-  {{if eq .Referral.Notice "balance"}}<p style="margin:0 0 12px 0;">כדי לשלם את ההחזר ל-{{.Referral.Count}} קונים, ביתרת Stripe שלכם צריכים להיות זמינים {{.Referral.Amount}}. Arena בודקת את היתרה כל כמה שעות ומשלמת ברגע שהכסף שם. אם הוא לא יהיה שם תוך 30 יום, ההחזר לא ישולם ונבקש מהקונים לפנות אליכם.</p>{{else if eq .Referral.Notice "pending"}}<p style="margin:0 0 12px 0;">Stripe קיבלה את החזר הכסף ל-{{.Referral.Count}} קונים, {{.Referral.Amount}} בסך הכול, אך עדיין לא שילמה אותו. בדרך כלל זה אומר שאין מספיק כסף ביתרת Stripe. הטעינו אותה: Stripe מבטלת החזר ללא כיסוי אחרי 45 יום.</p>{{else}}<p style="margin:0 0 12px 0;">{{if .Referral.BalanceTimeout}}ההחזר של {{.Referral.Amount}} על הזמנת החבר {{.Referral.Order}} (קוד <strong>{{.Referral.Code}}</strong>) לא שולם: במשך 30 יום יתרת Stripe שלכם לא כיסתה אותו.{{else}}ההחזר של {{.Referral.Amount}} על הזמנת החבר {{.Referral.Order}} (קוד <strong>{{.Referral.Code}}</strong>) לא שולם: ספק התשלומים סירב להחזר.{{end}}</p>
+  {{if eq .Referral.Notice "balance"}}<p style="margin:0 0 12px 0;">כדי לשלם את ההחזר ל-{{.Referral.Count}} קונים, ביתרת Stripe שלכם צריכים להיות זמינים {{.Referral.Amount}}. ArenaSoldOut.com בודקת את היתרה כל כמה שעות ומשלמת ברגע שהכסף שם. אם הוא לא יהיה שם תוך 30 יום, ההחזר לא ישולם ונבקש מהקונים לפנות אליכם.</p>{{else if eq .Referral.Notice "pending"}}<p style="margin:0 0 12px 0;">Stripe קיבלה את החזר הכסף ל-{{.Referral.Count}} קונים, {{.Referral.Amount}} בסך הכול, אך עדיין לא שילמה אותו. בדרך כלל זה אומר שאין מספיק כסף ביתרת Stripe. הטעינו אותה: Stripe מבטלת החזר ללא כיסוי אחרי 45 יום.</p>{{else}}<p style="margin:0 0 12px 0;">{{if .Referral.BalanceTimeout}}ההחזר של {{.Referral.Amount}} על הזמנת החבר {{.Referral.Order}} (קוד <strong>{{.Referral.Code}}</strong>) לא שולם: במשך 30 יום יתרת Stripe שלכם לא כיסתה אותו.{{else}}ההחזר של {{.Referral.Amount}} על הזמנת החבר {{.Referral.Order}} (קוד <strong>{{.Referral.Code}}</strong>) לא שולם: ספק התשלומים סירב להחזר.{{end}}</p>
   <p style="margin:0 0 12px 0;">ביקשנו מהקונה שהביא את החבר לפנות אליכם. הסדירו איתו בעצמכם, למשל בקוד הנחה.</p>{{end}}
   </td></tr>
-  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">Arena Platform — הודעה אוטומטית</td></tr>
+  <tr><td style="padding:16px 32px 28px 32px;color:#93a0a8;font-size:11px;line-height:1.6;border-top:1px solid #eceff1;">ArenaSoldOut.com — הודעה אוטומטית</td></tr>
 </table>
 </td></tr></table>
 </body>
@@ -23,9 +23,9 @@
 
 {{if eq .Referral.Notice "balance"}}ההחזר ממתין ליתרת Stripe{{else if eq .Referral.Notice "pending"}}Stripe מעכבת את ההחזר{{else}}ההחזר לא שולם{{end}}
 
-{{if eq .Referral.Notice "balance"}}כדי לשלם את ההחזר ל-{{.Referral.Count}} קונים, ביתרת Stripe שלכם צריכים להיות זמינים {{.Referral.Amount}}. Arena בודקת את היתרה כל כמה שעות ומשלמת ברגע שהכסף שם. אם הוא לא יהיה שם תוך 30 יום, ההחזר לא ישולם ונבקש מהקונים לפנות אליכם.{{else if eq .Referral.Notice "pending"}}Stripe קיבלה את החזר הכסף ל-{{.Referral.Count}} קונים, {{.Referral.Amount}} בסך הכול, אך עדיין לא שילמה אותו. בדרך כלל זה אומר שאין מספיק כסף ביתרת Stripe. הטעינו אותה: Stripe מבטלת החזר ללא כיסוי אחרי 45 יום.{{else}}{{if .Referral.BalanceTimeout}}ההחזר של {{.Referral.Amount}} על הזמנת החבר {{.Referral.Order}} (קוד {{.Referral.Code}}) לא שולם: במשך 30 יום יתרת Stripe שלכם לא כיסתה אותו.{{else}}ההחזר של {{.Referral.Amount}} על הזמנת החבר {{.Referral.Order}} (קוד {{.Referral.Code}}) לא שולם: ספק התשלומים סירב להחזר.{{end}}
+{{if eq .Referral.Notice "balance"}}כדי לשלם את ההחזר ל-{{.Referral.Count}} קונים, ביתרת Stripe שלכם צריכים להיות זמינים {{.Referral.Amount}}. ArenaSoldOut.com בודקת את היתרה כל כמה שעות ומשלמת ברגע שהכסף שם. אם הוא לא יהיה שם תוך 30 יום, ההחזר לא ישולם ונבקש מהקונים לפנות אליכם.{{else if eq .Referral.Notice "pending"}}Stripe קיבלה את החזר הכסף ל-{{.Referral.Count}} קונים, {{.Referral.Amount}} בסך הכול, אך עדיין לא שילמה אותו. בדרך כלל זה אומר שאין מספיק כסף ביתרת Stripe. הטעינו אותה: Stripe מבטלת החזר ללא כיסוי אחרי 45 יום.{{else}}{{if .Referral.BalanceTimeout}}ההחזר של {{.Referral.Amount}} על הזמנת החבר {{.Referral.Order}} (קוד {{.Referral.Code}}) לא שולם: במשך 30 יום יתרת Stripe שלכם לא כיסתה אותו.{{else}}ההחזר של {{.Referral.Amount}} על הזמנת החבר {{.Referral.Order}} (קוד {{.Referral.Code}}) לא שולם: ספק התשלומים סירב להחזר.{{end}}
 
 ביקשנו מהקונה שהביא את החבר לפנות אליכם. הסדירו איתו בעצמכם, למשל בקוד הנחה.{{end}}
 
-Arena Platform — הודעה אוטומטית
+ArenaSoldOut.com — הודעה אוטומטית
 {{end}}

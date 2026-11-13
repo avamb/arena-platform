@@ -92,7 +92,7 @@ func TestHandleBotInvitationEmail_DefaultsToEnglish(t *testing.T) {
 	if err := h.HandleBotInvitationEmail(context.Background(), payload); err != nil {
 		t.Fatalf("HandleBotInvitationEmail: %v", err)
 	}
-	if !strings.Contains(sender.message.Subject, "invitation to the Arena events bot") {
+	if !strings.Contains(sender.message.Subject, "invitation to the ArenaSoldOut.com events bot") {
 		t.Errorf("unknown locale should fall back to English: %q", sender.message.Subject)
 	}
 	if !strings.Contains(sender.message.TextBody, "role: manager") {

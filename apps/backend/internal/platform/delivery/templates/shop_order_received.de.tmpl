@@ -37,7 +37,7 @@
     {{with .Branding.SellerIDs}}<br>{{.}}{{end}}{{with .Branding.PaymentLine}}<br>{{.}}{{end}}
     {{with .Branding.ContactEmail}}<br>Kontakt: <a href="mailto:{{.}}" style="color:#666">{{.}}</a>{{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}<br>Kontakt: <a href="{{.}}" style="color:#666">Dem Veranstalter schreiben</a>{{end}}{{end}}
   </p>
-  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}Arena Platform — automatische Nachricht{{end}}</p>
+  <p style="font-size:11px;color:#999">{{if not .WhiteLabel}}ArenaSoldOut.com — automatische Nachricht{{end}}</p>
   <p style="font-size:11px;color:#999;line-height:1.5">Wenn Sie auf „Abbestellen“ klicken, erhalten Sie keine E-Mails zu Ihren Bestellungen mehr. Werbe-Mailings senden wir nicht ohne Ihre Einwilligung.</p>
   </td></tr>
 </table>
@@ -90,7 +90,7 @@ Ihre Bestellung:
 {{end}}{{with .Branding.ContactEmail}}Kontakt: {{.}}
 {{end}}{{if not .Branding.ContactEmail}}{{with .Branding.ContactFormURL}}Kontakt: {{.}}
 {{end}}{{end}}
-{{if not .WhiteLabel}}Arena Platform — automatische Nachricht{{end}}
+{{if not .WhiteLabel}}ArenaSoldOut.com — automatische Nachricht{{end}}
 
 Wenn Sie auf „Abbestellen“ klicken, erhalten Sie keine E-Mails zu Ihren Bestellungen mehr. Werbe-Mailings senden wir nicht ohne Ihre Einwilligung.
 {{end}}

@@ -172,7 +172,7 @@ func NewCartReminderHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 		}
 		msg := email.Message{To: o.BuyerEmail, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}
 		style.applySender(&msg)
-		applyWhiteLabelSender(&msg, whiteLabel, brand)
+		applyBrandSender(&msg, brand)
 		withReplyTo(&msg, contact)
 		// The reminder is taken before it is sent, so a retry or a second
 		// claim of this job never sends it twice (the letter says it is the
@@ -282,7 +282,7 @@ func NewMarketingConfirmHandler(opts GrowthLetterOptions) worker.HandlerFunc {
 		}
 		msg := email.Message{To: addr, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}
 		style.applySender(&msg)
-		applyWhiteLabelSender(&msg, whiteLabel, orgName)
+		applyBrandSender(&msg, orgName)
 		withReplyTo(&msg, contact)
 		return opts.Sender.Send(ctx, msg)
 	}

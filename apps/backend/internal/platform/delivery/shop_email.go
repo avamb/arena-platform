@@ -471,6 +471,6 @@ func (h *shopEmail) buildMessage(ctx context.Context, o gen.ShopOrderRow, kind s
 		return email.Message{}, fmt.Errorf("delivery: render shop e-mail: %w", err)
 	}
 	msg := ticketEmailMessage(p, o.BuyerEmail, out.Subject, out.HTMLBody, out.TextBody)
-	applyWhiteLabelSender(&msg, data.WhiteLabel, p.OrgName)
+	applyBrandSender(&msg, p.OrgName)
 	return msg, nil
 }

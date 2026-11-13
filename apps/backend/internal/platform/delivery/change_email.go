@@ -365,7 +365,7 @@ func (h *changeEmail) buildMessage(
 		TicketID:       strings.Join(numbers, ", "),
 		RecipientEmail: recipient.Email,
 		HolderName:     first.HolderName,
-		EventName:      defaultStr(first.EventName, "Arena Event"),
+		EventName:      defaultStr(first.EventName, "ArenaSoldOut.com Event"),
 		SessionStart:   formatSessionForEmail(first.SessionStart, first.SessionTZ),
 		DoorsOpen:      formatClockForEmail(first.DoorsOpenAt, first.SessionTZ),
 		VenueName:      joinNonEmpty(", ", first.VenueName, first.VenueCity),
@@ -408,7 +408,7 @@ func (h *changeEmail) buildMessage(
 	// or the organization's verified one, still originates it.
 	first.OrgContactEmail, first.ContactFormURL = contactEmail, contactForm
 	msg := ticketEmailMessage(first, recipient.Email, out.Subject, out.HTMLBody, out.TextBody)
-	applyWhiteLabelSender(&msg, data.WhiteLabel, brandSenderName(first))
+	applyBrandSender(&msg, brandSenderName(first))
 	if moves {
 		for i, t := range tickets {
 			if len(t.PDF) == 0 {
