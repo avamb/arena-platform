@@ -226,7 +226,7 @@ func TestGenerate_Deadline(t *testing.T) {
 
 func TestGenerate_CallTimeout(t *testing.T) {
 	block := make(chan struct{})
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	ts := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		<-block
 	}))
 	t.Cleanup(func() { close(block); ts.Close() })
@@ -349,7 +349,7 @@ func TestSubmitAndPoll(t *testing.T) {
 
 func TestPoll_Timeout(t *testing.T) {
 	block := make(chan struct{})
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-block }))
+	ts := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-block }))
 	t.Cleanup(func() { close(block); ts.Close() })
 	start := time.Now()
 	_, done, err := New(ts.URL, testToken, WithPollTimeout(50*time.Millisecond)).Poll(context.Background(), "j")
