@@ -69,8 +69,9 @@ func whiteLabelResult(logger *slog.Logger, key, id string, on bool, err error) b
 	return on
 }
 
-// brandSenderName is the name a white label letter is sent under: the
-// event's promoter, else the organization.
+// brandSenderName is the name a buyer letter about an event is sent under
+// (owner decision 2026-11-13, for every organization, not only white label):
+// the event's promoter when it has one, else the organization.
 func brandSenderName(p Payload) string {
 	if n := strings.TrimSpace(p.PromoterName); n != "" {
 		return n
@@ -78,10 +79,14 @@ func brandSenderName(p Payload) string {
 	return strings.TrimSpace(p.OrgName)
 }
 
-// applyWhiteLabelSender names the sender of msg after the brand when the
-// brand has white label; otherwise msg is left as it is.
-func applyWhiteLabelSender(msg *email.Message, whiteLabel bool, name string) {
-	if whiteLabel && strings.TrimSpace(name) != "" {
+// applyBrandSender names the sender of msg after the brand (owner decision
+// 2026-11-13: every buyer letter carries the promoter's name, else the
+// organization's, whether or not the brand has white label). A letter that
+// already has its FromName (a shop letter with its own shop name) keeps it; an
+// empty name leaves msg as it is.
+func applyBrandSender(msg *email.Message, name string) {
+	name = strings.TrimSpace(name)
+	if name != "" && strings.TrimSpace(msg.FromName) == "" {
 		msg.FromName = name
 	}
 }

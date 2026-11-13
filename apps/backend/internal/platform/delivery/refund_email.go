@@ -356,6 +356,6 @@ func (h *refundEmail) buildMessage(ctx context.Context, orderID, orgID uuid.UUID
 		return email.Message{}, fmt.Errorf("delivery: render refund e-mail: %w", err)
 	}
 	msg := ticketEmailMessage(first, recipient.Email, out.Subject, out.HTMLBody, out.TextBody)
-	applyWhiteLabelSender(&msg, data.WhiteLabel, brandSenderName(first))
+	applyBrandSender(&msg, brandSenderName(first))
 	return msg, nil
 }

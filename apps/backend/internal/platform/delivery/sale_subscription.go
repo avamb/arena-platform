@@ -121,7 +121,7 @@ func sendSaleLetter(ctx context.Context, opts SaleLetterOptions, r *templates.Re
 		return err
 	}
 	msg := email.Message{To: s.email, Subject: out.Subject, HTMLBody: out.HTMLBody, TextBody: out.TextBody}
-	applyWhiteLabelSender(&msg, whiteLabel, brand)
+	applyBrandSender(&msg, brand)
 	withReplyTo(&msg, contact)
 	return opts.Sender.Send(ctx, msg)
 }

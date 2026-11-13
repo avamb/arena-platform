@@ -666,7 +666,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 
 		msg := ticketEmailMessage(p, recipientEmail, subject, htmlBody, textBody)
 		applyTicketFromAddress(&msg, opts.TicketFromAddress)
-		applyWhiteLabelSender(&msg, whiteLabel, brandSenderName(p))
+		applyBrandSender(&msg, brandSenderName(p))
 		attachmentBytes := 0
 		for _, m := range members {
 			if len(m.pdf) == 0 {

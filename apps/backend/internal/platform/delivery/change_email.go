@@ -408,7 +408,7 @@ func (h *changeEmail) buildMessage(
 	// or the organization's verified one, still originates it.
 	first.OrgContactEmail, first.ContactFormURL = contactEmail, contactForm
 	msg := ticketEmailMessage(first, recipient.Email, out.Subject, out.HTMLBody, out.TextBody)
-	applyWhiteLabelSender(&msg, data.WhiteLabel, brandSenderName(first))
+	applyBrandSender(&msg, brandSenderName(first))
 	if moves {
 		for i, t := range tickets {
 			if len(t.PDF) == 0 {

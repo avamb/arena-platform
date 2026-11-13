@@ -211,6 +211,6 @@ func (h *invitationCancelEmail) buildMessage(
 	}
 	first.OrgContactEmail, first.ContactFormURL = contactEmail, contactForm
 	msg := ticketEmailMessage(first, to, out.Subject, out.HTMLBody, out.TextBody)
-	applyWhiteLabelSender(&msg, data.WhiteLabel, brandSenderName(first))
+	applyBrandSender(&msg, brandSenderName(first))
 	return msg, nil
 }
