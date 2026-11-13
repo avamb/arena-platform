@@ -4,6 +4,9 @@
 // colour of its category, the outline of a general admission area, and the row
 // names. It is pure Go (standard library and the basic bitmap font of
 // golang.org/x/image) and reads nothing but the geometry it is given.
+//
+// The picture is cropped to its content: the frame is the box of the seats,
+// the areas and the stage plus a border, whatever the canvas of the plan is.
 package planpreview
 
 import (
@@ -28,20 +31,23 @@ import (
 const (
 	MinSide = 64
 	MaxSide = 2000
-	// margin is the empty border around the plan, in pixels.
-	// It leaves room for a row name left of the first seat and a sector name
-	// above the first row, so the labels stay inside the picture.
-	margin = 40
-	// longRow is the seat count from which a row name is also put at its right end.
-	longRow = 12
+	// padShare is the empty border around the content as a share of the longest side.
+	padShare = 0.07
 	// Size of a label of the basic 7x13 font, in pixels.
 	labelHeight = 13
 	labelAscent = 11
 	// defaultSeatRadius is the seat radius in canvas units for a seat without one.
 	defaultSeatRadius = 4.0
-	// minSeatPx and maxSeatPx bound the drawn seat radius, in pixels.
-	minSeatPx = 2
-	maxSeatPx = 10
+	// minSeatPx and maxSeatPx bound the drawn seat radius, in pixels. A hall of
+	// very many seats may go down to denseSeatPx so that it stays readable as a whole.
+	minSeatPx   = 3
+	denseSeatPx = 2
+	maxSeatPx   = 12
+	denseSeats  = 3000
+	// bigFontSide is the side from which labels are drawn twice as big.
+	bigFontSide = 900
+	// minShare is the shortest side of the picture as a share of the longest one.
+	minShare = 1.0 / 3
 )
 
 // ErrEmpty is returned for a geometry with no seat and no area to draw.
@@ -53,35 +59,51 @@ var (
 	labelInk   = color.RGBA{R: 60, G: 60, B: 60, A: 255}
 )
 
+type dot struct {
+	x, y, r int
+	col     color.RGBA
+}
+
+type placedLabel struct {
+	text string
+	x, y int // top left corner of the text box, in pixels
+	kind string
+}
+
+// frame is the layout of the picture: its size and the mapping of canvas units to pixels.
+type frame struct {
+	w, h       int
+	scale      float64
+	minX, minY float64
+	offX, offY float64
+	padX, padY int
+	font       int // label magnification, 1 or 2
+	seatMin    int
+	hasStage   bool
+	stage      stageRect
+}
+
+func (f frame) px(x, y float64) (int, int) {
+	return clampPx(f.offX+math.Round((x-f.minX)*f.scale), f.w), clampPx(f.offY+math.Round((y-f.minY)*f.scale), f.h)
+}
+
+// plan is everything Render draws.
+type plan struct {
+	f      frame
+	dots   []dot
+	labels []placedLabel
+}
+
 // Render draws the geometry as a PNG whose longest side is at most maxSide
 // pixels (the value is kept between MinSide and MaxSide).
 func Render(g seating.Geometry, maxSide int) ([]byte, error) {
-	maxSide = min(max(maxSide, MinSide), MaxSide)
-	st, hasStage := findStage(g.DecorSVG)
-	b, ok := boundsOf(g)
-	if ok && hasStage {
-		b.add(st.x, st.y)
-		b.add(st.x+st.w, st.y+st.h)
+	p, err := build(g, maxSide)
+	if err != nil {
+		return nil, err
 	}
-	if !ok {
-		return nil, ErrEmpty
-	}
-	inner := float64(maxSide - 2*margin)
-	scale := inner / math.Max(b.maxX-b.minX, b.maxY-b.minY)
-	if math.IsInf(scale, 0) || math.IsNaN(scale) || scale <= 0 {
-		scale = 1
-	}
-	w := int(math.Ceil((b.maxX-b.minX)*scale)) + 2*margin
-	h := int(math.Ceil((b.maxY-b.minY)*scale)) + 2*margin
-	w, h = min(max(w, 2*margin+1), maxSide), min(max(h, 2*margin+1), maxSide)
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	f := p.f
+	img := image.NewRGBA(image.Rect(0, 0, f.w, f.h))
 	draw.Draw(img, img.Bounds(), &image.Uniform{C: background}, image.Point{}, draw.Src)
-
-	// px maps a canvas point to pixels, clamped to the image so that no
-	// drawing loop can run longer than the image is wide.
-	px := func(x, y float64) (int, int) {
-		return clampPx(margin+math.Round((x-b.minX)*scale), w), clampPx(margin+math.Round((y-b.minY)*scale), h)
-	}
 	colors := map[int]color.RGBA{}
 	for _, c := range g.Categories {
 		colors[c.Index] = parseColor(c.Color)
@@ -97,12 +119,90 @@ func Render(g seating.Geometry, maxSide int) ([]byte, error) {
 			if !usable(c.Polygon[i].X, c.Polygon[i].Y) || !usable(next.X, next.Y) {
 				continue
 			}
-			x0, y0 := px(c.Polygon[i].X, c.Polygon[i].Y)
-			x1, y1 := px(next.X, next.Y)
+			x0, y0 := f.px(c.Polygon[i].X, c.Polygon[i].Y)
+			x1, y1 := f.px(next.X, next.Y)
 			line(img, x0, y0, x1, y1, col)
 		}
 	}
-	// occupied marks every pixel a seat or a drawn label covers, so a label
+	if f.hasStage {
+		drawStage(img, f.stage, f.px, f.font)
+	}
+	for _, d := range p.dots {
+		disc(img, d.x, d.y, d.r, d.col)
+	}
+	for _, l := range p.labels {
+		label(img, l.text, l.x, l.y, f.font)
+	}
+	var out bytes.Buffer
+	if err := png.Encode(&out, img); err != nil {
+		return nil, err
+	}
+	return out.Bytes(), nil
+}
+
+// build lays the picture out: the frame fitted to the content, the seats and
+// the labels that have room. It draws nothing.
+func build(g seating.Geometry, maxSide int) (*plan, error) {
+	maxSide = min(max(maxSide, MinSide), MaxSide)
+	st, hasStage := findStage(g.DecorSVG)
+	b, seatCount, ok := contentBounds(g)
+	if !ok {
+		return nil, ErrEmpty
+	}
+	if hasStage && usable(st.x, st.y) && usable(st.x+st.w, st.y+st.h) {
+		b.add(st.x, st.y)
+		b.add(st.x+st.w, st.y+st.h)
+	} else {
+		hasStage = false
+	}
+	spanX, spanY := b.maxX-b.minX, b.maxY-b.minY
+	if spanX <= 0 {
+		spanX = 1
+	}
+	if spanY <= 0 {
+		spanY = 1
+	}
+	f := frame{font: 1, seatMin: minSeatPx, minX: b.minX, minY: b.minY, hasStage: hasStage, stage: st}
+	if maxSide >= bigFontSide {
+		f.font = 2
+	}
+	if seatCount > denseSeats {
+		f.seatMin = denseSeatPx
+	}
+	// The room a label needs: the widest drawable row name beside a seat, and
+	// a section name above the first row.
+	rowRoom := 0
+	for _, sec := range g.Sections {
+		for _, row := range sec.Rows {
+			if n := strings.TrimSpace(row.Name); rowLabelOK(n) {
+				rowRoom = max(rowRoom, labelWidth(n)*f.font)
+			}
+		}
+	}
+	if rowRoom > 0 {
+		rowRoom += maxSeatPx + 6
+	}
+	share := int(math.Round(padShare * float64(maxSide)))
+	limit := maxSide / 4
+	f.padX = max(min(max(share, rowRoom), limit), 1)
+	f.padY = max(min(max(share, labelHeight*f.font+maxSeatPx+8), limit), 1)
+	f.scale = math.Min(float64(maxSide-2*f.padX)/spanX, float64(maxSide-2*f.padY)/spanY)
+	if math.IsInf(f.scale, 0) || math.IsNaN(f.scale) || f.scale <= 0 {
+		f.scale = 1
+	}
+	cw, ch := spanX*f.scale, spanY*f.scale
+	minDim := int(float64(maxSide) * minShare)
+	f.w = min(max(int(math.Ceil(cw))+2*f.padX, minDim), maxSide)
+	f.h = min(max(int(math.Ceil(ch))+2*f.padY, minDim), maxSide)
+	f.offX, f.offY = (float64(f.w)-cw)/2, (float64(f.h)-ch)/2
+	p := &plan{f: f}
+
+	colors := map[int]color.RGBA{}
+	for _, c := range g.Categories {
+		colors[c.Index] = parseColor(c.Color)
+	}
+	w, h := f.w, f.h
+	// occupied marks every pixel a seat or a placed label covers, so a label
 	// is never put over a seat or over another label.
 	occupied := make([]bool, w*h)
 	mark := func(x0, y0, x1, y1 int) {
@@ -125,12 +225,6 @@ func Render(g seating.Geometry, maxSide int) ([]byte, error) {
 		}
 		return true
 	}
-	// Seats are collected first (they fill the occupancy map), the stage is
-	// drawn under them, then the seats, then the names.
-	type dot struct {
-		x, y, r int
-		col     color.RGBA
-	}
 	type rowInfo struct {
 		name                         string
 		leftX, leftY, rightX, rightY float64
@@ -144,7 +238,6 @@ func Render(g seating.Geometry, maxSide int) ([]byte, error) {
 		topR int
 		set  bool
 	}
-	var dots []dot
 	var rows []rowInfo
 	var secs []secInfo
 	for _, sec := range g.Sections {
@@ -163,9 +256,9 @@ func Render(g seating.Geometry, maxSide int) ([]byte, error) {
 				if !usable(r, 0) || r <= 0 {
 					r = defaultSeatRadius
 				}
-				rp := min(max(int(math.Round(r*scale)), minSeatPx), maxSeatPx)
-				x, y := px(s.X, s.Y)
-				dots = append(dots, dot{x, y, rp, col})
+				rp := min(max(int(math.Round(r*f.scale)), f.seatMin), maxSeatPx)
+				x, y := f.px(s.X, s.Y)
+				p.dots = append(p.dots, dot{x, y, rp, col})
 				mark(x-rp, y-rp, x+rp+1, y+rp+1)
 				ri.seats++
 				if s.X < ri.leftX {
@@ -190,51 +283,43 @@ func Render(g seating.Geometry, maxSide int) ([]byte, error) {
 			secs = append(secs, si)
 		}
 	}
-	if hasStage {
-		drawStage(img, st, px)
+	lh := labelHeight * f.font
+	put := func(text string, x0, y0 int, kind string) {
+		p.labels = append(p.labels, placedLabel{text: text, x: x0, y: y0, kind: kind})
+		mark(x0, y0, x0+labelWidth(text)*f.font, y0+lh)
 	}
-	for _, d := range dots {
-		disc(img, d.x, d.y, d.r, d.col)
-	}
-	// Names the basic font cannot draw are skipped (labelOK): it has the
-	// printable ASCII range only, so a name like "Партер" is not drawn.
+	// Names the basic font cannot draw are skipped: it has the printable ASCII
+	// range only, so a name like "Партер" is not drawn.
 	for _, si := range secs {
 		if !sectionLabelOK(si.name) {
 			continue
 		}
-		x, y := px(si.minX, si.minY)
-		tw := labelWidth(si.name)
-		x0, y0 := x-si.topR, y-si.topR-4-labelHeight
-		if free(x0, y0, x0+tw, y0+labelHeight) {
-			label(img, si.name, x0, y0+labelAscent)
-			mark(x0, y0, x0+tw, y0+labelHeight)
+		x, y := f.px(si.minX, si.minY)
+		tw := labelWidth(si.name) * f.font
+		x0 := x - si.topR
+		for try := 0; try < 4; try++ {
+			y0 := y - si.topR - 4 - lh - try*(lh+2)
+			if free(x0, y0, x0+tw, y0+lh) {
+				put(si.name, x0, y0, "section")
+				break
+			}
 		}
 	}
 	for _, ri := range rows {
 		if !rowLabelOK(ri.name) {
 			continue
 		}
-		tw := labelWidth(ri.name)
-		x, y := px(ri.leftX, ri.leftY)
-		x0, y0 := x-ri.leftR-3-tw, y-labelHeight/2
-		if free(x0, y0, x0+tw, y0+labelHeight) {
-			label(img, ri.name, x0, y0+labelAscent)
-			mark(x0, y0, x0+tw, y0+labelHeight)
+		tw := labelWidth(ri.name) * f.font
+		x, y := f.px(ri.leftX, ri.leftY)
+		if x0, y0 := x-ri.leftR-3-tw, y-lh/2; free(x0, y0, x0+tw, y0+lh) {
+			put(ri.name, x0, y0, "row-left")
 		}
-		if ri.seats >= longRow {
-			x, y = px(ri.rightX, ri.rightY)
-			x0, y0 = x+ri.rightR+3, y-labelHeight/2
-			if free(x0, y0, x0+tw, y0+labelHeight) {
-				label(img, ri.name, x0, y0+labelAscent)
-				mark(x0, y0, x0+tw, y0+labelHeight)
-			}
+		x, y = f.px(ri.rightX, ri.rightY)
+		if x0, y0 := x+ri.rightR+3, y-lh/2; free(x0, y0, x0+tw, y0+lh) {
+			put(ri.name, x0, y0, "row-right")
 		}
 	}
-	var out bytes.Buffer
-	if err := png.Encode(&out, img); err != nil {
-		return nil, err
-	}
-	return out.Bytes(), nil
+	return p, nil
 }
 
 type bounds struct{ minX, minY, maxX, maxY float64 }
@@ -253,30 +338,30 @@ func usable(x, y float64) bool {
 		!math.IsNaN(y) && !math.IsInf(y, 0) && math.Abs(y) <= maxCoord
 }
 
-// clampPx turns a pixel value into an int between -margin and side+margin.
+// clampPx turns a pixel value into an int between -40 and side+40.
 func clampPx(v float64, side int) int {
 	if math.IsNaN(v) {
 		return 0
 	}
-	return int(math.Min(math.Max(v, -margin), float64(side+margin)))
+	return int(math.Min(math.Max(v, -40), float64(side+40)))
 }
 
-// boundsOf is the box the picture shows: the seats and the areas, widened by
-// the seat radius and the room a row name needs on the left. The canvas of the
-// plan is used when it is bigger than that box, so the picture keeps the
-// proportions of the plan.
-func boundsOf(g seating.Geometry) (bounds, bool) {
+// contentBounds is the box of the seats and the areas (not the canvas of the
+// plan: a plan whose canvas is far bigger than its content is shown by its
+// content), and the number of usable seats.
+func contentBounds(g seating.Geometry) (bounds, int, bool) {
 	b := bounds{minX: math.Inf(1), minY: math.Inf(1), maxX: math.Inf(-1), maxY: math.Inf(-1)}
-	add := b.add
 	found := false
+	seats := 0
 	for _, sec := range g.Sections {
 		for _, row := range sec.Rows {
 			for _, s := range row.Seats {
 				if !usable(s.X, s.Y) {
 					continue
 				}
-				add(s.X, s.Y)
+				b.add(s.X, s.Y)
 				found = true
+				seats++
 			}
 		}
 	}
@@ -285,24 +370,11 @@ func boundsOf(g seating.Geometry) (bounds, bool) {
 			if !usable(p.X, p.Y) {
 				continue
 			}
-			add(p.X, p.Y)
+			b.add(p.X, p.Y)
 			found = true
 		}
 	}
-	if !found {
-		return bounds{}, false
-	}
-	if usable(g.Canvas.Width, g.Canvas.Height) && g.Canvas.Width > 0 && g.Canvas.Height > 0 {
-		add(0, 0)
-		add(g.Canvas.Width, g.Canvas.Height)
-	}
-	if b.maxX-b.minX <= 0 {
-		b.maxX = b.minX + 1
-	}
-	if b.maxY-b.minY <= 0 {
-		b.maxY = b.minY + 1
-	}
-	return b, true
+	return b, seats, found
 }
 
 // parseColor reads #rrggbb (or #rgb); anything else is grey.
@@ -399,7 +471,7 @@ var (
 // the word is ASCII and the stage is wider than tall (the basic font cannot
 // be rotated). The word may be taller than a thin bar; it is then written
 // over the bar's middle, on the white around it.
-func drawStage(img *image.RGBA, st stageRect, px func(x, y float64) (int, int)) {
+func drawStage(img *image.RGBA, st stageRect, px func(x, y float64) (int, int), fs int) {
 	x0, y0 := px(st.x, st.y)
 	x1, y1 := px(st.x+st.w, st.y+st.h)
 	if x1 <= x0 {
@@ -421,21 +493,36 @@ func drawStage(img *image.RGBA, st stageRect, px func(x, y float64) (int, int)) 
 	if word == "" || !printable(word) || len(word) > 24 || st.w < st.h {
 		return
 	}
-	tw := labelWidth(word)
+	tw := labelWidth(word) * fs
 	if tw > x1-x0 {
 		return
 	}
-	label(img, word, (x0+x1-tw)/2, (y0+y1)/2+labelAscent/2-1)
+	label(img, word, (x0+x1-tw)/2, (y0+y1)/2-labelHeight*fs/2, fs)
 }
 
 func labelWidth(s string) int { return len(s) * basicfont.Face7x13.Advance }
 
-func label(img *image.RGBA, s string, x, y int) {
+// label draws s with its text box starting at (x, y), magnified fs times.
+func label(img *image.RGBA, s string, x, y, fs int) {
+	tw := labelWidth(s)
+	small := image.NewRGBA(image.Rect(0, 0, tw, labelHeight))
 	d := font.Drawer{
-		Dst:  img,
+		Dst:  small,
 		Src:  image.NewUniform(labelInk),
 		Face: basicfont.Face7x13,
-		Dot:  fixed.P(x, y),
+		Dot:  fixed.P(0, labelAscent),
 	}
 	d.DrawString(s)
+	for sy := 0; sy < labelHeight; sy++ {
+		for sx := 0; sx < tw; sx++ {
+			if small.RGBAAt(sx, sy).A == 0 {
+				continue
+			}
+			for dy := 0; dy < fs; dy++ {
+				for dx := 0; dx < fs; dx++ {
+					set(img, x+sx*fs+dx, y+sy*fs+dy, labelInk)
+				}
+			}
+		}
+	}
 }

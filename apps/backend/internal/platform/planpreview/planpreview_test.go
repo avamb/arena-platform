@@ -7,6 +7,9 @@ import (
 	"image/draw"
 	"image/png"
 	"math"
+	"os"
+	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -55,10 +58,14 @@ func TestRender_SeatPixelHasItsCategoryColour(t *testing.T) {
 		t.Fatal(err)
 	}
 	img, _ := png.Decode(bytes.NewReader(out))
-	// Same mapping as Render: the box is the canvas (0..400 x 0..200).
-	scale := float64(800-2*margin) / 400
+	// Same mapping as Render: the frame is fitted to the content.
+	p, err := build(g, 800)
+	if err != nil {
+		t.Fatal(err)
+	}
 	at := func(x, y float64) color.Color {
-		return img.At(margin+int(x*scale+0.5), margin+int(y*scale+0.5))
+		px, py := p.f.px(x, y)
+		return img.At(px, py)
 	}
 	if r, gg, bb, _ := at(100, 100).RGBA(); r>>8 != 255 || gg != 0 || bb != 0 {
 		t.Fatalf("parterre seat is %v %v %v", r>>8, gg>>8, bb>>8)
@@ -160,24 +167,158 @@ func TestRender_RowNamesAreDrawn(t *testing.T) {
 	}
 }
 
-func TestRender_LongRowGetsRightLabelToo(t *testing.T) {
-	mk := func(seats int) seating.Geometry {
-		g := sample()
-		g.Sections[0].Rows = []seating.Row{{Key: "1", Name: "A"}}
-		for i := 0; i < seats; i++ {
-			g.Sections[0].Rows[0].Seats = append(g.Sections[0].Rows[0].Seats,
-				seating.Seat{Key: "k", Number: "1", X: 20 + float64(i)*20, Y: 100, Radius: 5, CategoryIndex: 1})
+func labelsOf(p *plan, kind string) []placedLabel {
+	var out []placedLabel
+	for _, l := range p.labels {
+		if l.kind == kind {
+			out = append(out, l)
 		}
-		return g
 	}
-	long, noName := mk(15), mk(15)
-	noName.Sections[0].Rows[0].Name = ""
-	short, shortNoName := mk(4), mk(4)
-	shortNoName.Sections[0].Rows[0].Name = ""
-	nLong := diffPixels(t, decode(t, long, 800), decode(t, noName, 800))
-	nShort := diffPixels(t, decode(t, short, 800), decode(t, shortNoName, 800))
-	if nLong <= nShort {
-		t.Fatalf("long row diff %d is not bigger than short row diff %d", nLong, nShort)
+	return out
+}
+
+func TestBuild_EveryRowHasLeftAndRightLabel(t *testing.T) {
+	g := sample()
+	p, err := build(g, 800)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"A", "B"} {
+		var left, right bool
+		for _, l := range p.labels {
+			if l.text == want && l.kind == "row-left" {
+				left = true
+			}
+			if l.text == want && l.kind == "row-right" {
+				right = true
+			}
+		}
+		if !left || !right {
+			t.Fatalf("row %s: left=%v right=%v", want, left, right)
+		}
+	}
+	if len(labelsOf(p, "section")) != 1 {
+		t.Fatalf("section labels = %d", len(labelsOf(p, "section")))
+	}
+}
+
+func loadSVG(t *testing.T, name string) seating.Geometry {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "venue-svg-generator", "arena_export", "testdata", name))
+	if err != nil {
+		t.Skipf("no sample %s: %v", name, err)
+	}
+	g, _, verrs := seating.ImportAnySVG(raw)
+	if len(verrs) > 0 {
+		t.Fatalf("import %s: %v", name, verrs)
+	}
+	return g
+}
+
+func seatBox(p *plan) (x0, y0, x1, y1 int) {
+	x0, y0, x1, y1 = math.MaxInt, math.MaxInt, math.MinInt, math.MinInt
+	for _, d := range p.dots {
+		x0, y0, x1, y1 = min(x0, d.x), min(y0, d.y), max(x1, d.x), max(y1, d.y)
+	}
+	return
+}
+
+func TestBuild_SyntheticAuthoringFillsTheFrame(t *testing.T) {
+	g := loadSVG(t, "synthetic_authoring.svg")
+	for _, side := range []int{600, 1280} {
+		p, err := build(g, side)
+		if err != nil {
+			t.Fatal(err)
+		}
+		x0, y0, x1, y1 := seatBox(p)
+		fw, fh := float64(x1-x0)/float64(p.f.w), float64(y1-y0)/float64(p.f.h)
+		if fw < 0.6 && fh < 0.6 {
+			t.Fatalf("side %d: seats take %.2f x %.2f of the frame", side, fw, fh)
+		}
+		pad := min(p.f.padX, p.f.padY)
+		for _, d := range p.dots {
+			if d.x < pad || d.y < pad || d.x > p.f.w-pad || d.y > p.f.h-pad {
+				t.Fatalf("side %d: seat centre (%d,%d) is closer than %d to the edge of %dx%d", side, d.x, d.y, pad, p.f.w, p.f.h)
+			}
+			if d.r < minSeatPx {
+				t.Fatalf("seat radius %d", d.r)
+			}
+		}
+		if len(labelsOf(p, "row-left")) == 0 || len(labelsOf(p, "row-right")) == 0 {
+			t.Fatal("no row labels")
+		}
+	}
+}
+
+func TestBuild_HugeCanvasGivesTheSameFrame(t *testing.T) {
+	small := sample()
+	big := sample()
+	big.Canvas = seating.Canvas{Width: 100000, Height: 80000}
+	a, err := build(small, 800)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := build(big, 800)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.f != b.f || len(a.dots) != len(b.dots) || len(a.labels) != len(b.labels) {
+		t.Fatalf("frames differ: %+v vs %+v", a.f, b.f)
+	}
+}
+
+func TestRender_EmptyGeometryDoesNotPanic(t *testing.T) {
+	if _, err := Render(seating.Geometry{Canvas: seating.Canvas{Width: 100, Height: 100}}, 600); err != ErrEmpty {
+		t.Fatalf("err = %v", err)
+	}
+	g := seating.Geometry{Sections: []seating.Section{{Key: "s", Rows: []seating.Row{{Key: "r"}}}}}
+	if _, err := Render(g, 600); err != ErrEmpty {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestRender_SinglePointDoesNotFail(t *testing.T) {
+	g := seating.Geometry{Sections: []seating.Section{{Key: "s", Name: "S", Rows: []seating.Row{
+		{Key: "r", Name: "1", Seats: []seating.Seat{{Key: "k", Number: "1", X: 5, Y: 5}}}}}}}
+	if _, err := Render(g, 600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRender_ManySeatsStayWithinTheSide(t *testing.T) {
+	g := sample()
+	g.Sections[0].Rows = nil
+	for r := 0; r < 60; r++ {
+		row := seating.Row{Key: strconv.Itoa(r), Name: strconv.Itoa(r + 1)}
+		for s := 0; s < 100; s++ {
+			row.Seats = append(row.Seats, seating.Seat{Key: "k", Number: "1", X: float64(s) * 10, Y: float64(r) * 12, Radius: 4, CategoryIndex: 1})
+		}
+		g.Sections[0].Rows = append(g.Sections[0].Rows, row)
+	}
+	img := decode(t, g, MaxSide)
+	if img.Bounds().Dx() > MaxSide || img.Bounds().Dy() > MaxSide {
+		t.Fatalf("size = %v", img.Bounds())
+	}
+}
+
+// TestSavePreviews writes the pictures of the sample plans for a look by eye
+// when ARENA_PLANPREVIEW_OUT names a folder.
+func TestSavePreviews(t *testing.T) {
+	dir := os.Getenv("ARENA_PLANPREVIEW_OUT")
+	if dir == "" {
+		t.Skip("ARENA_PLANPREVIEW_OUT is not set")
+	}
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"synthetic_authoring", "v2_render"} {
+		out, err := Render(loadSVG(t, name+".svg"), 1280)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name+".png"), out, 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -188,11 +329,17 @@ func TestRender_LabelNeverCoversASeat(t *testing.T) {
 		{Key: "1", Name: "ABCDE", Seats: []seating.Seat{{Key: "a", Number: "1", X: 100, Y: 100, Radius: 8, CategoryIndex: 1}}},
 		{Key: "2", Name: "", Seats: []seating.Seat{{Key: "b", Number: "1", X: 80, Y: 100, Radius: 8, CategoryIndex: 2}}},
 	}
-	noLabel := sample()
-	noLabel.Sections[0].Rows = []seating.Row{g.Sections[0].Rows[0], g.Sections[0].Rows[1]}
-	noLabel.Sections[0].Rows[0].Name = ""
-	if n := diffPixels(t, decode(t, g, 800), decode(t, noLabel, 800)); n != 0 {
-		t.Fatalf("label drawn over a seat: %d bytes differ", n)
+	p, err := build(g, 800)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range p.labels {
+		x1, y1 := l.x+labelWidth(l.text)*p.f.font, l.y+labelHeight*p.f.font
+		for _, d := range p.dots {
+			if d.x+d.r >= l.x && d.x-d.r < x1 && d.y+d.r >= l.y && d.y-d.r < y1 {
+				t.Fatalf("label %q (%s) covers a seat at (%d,%d)", l.text, l.kind, d.x, d.y)
+			}
+		}
 	}
 }
 
@@ -223,11 +370,12 @@ func TestRender_StageIsDrawn(t *testing.T) {
 	with := sample()
 	with.DecorSVG = stageDecor
 	img := decode(t, with, 800)
-	if n := diffPixels(t, img, decode(t, sample(), 800)); n == 0 {
-		t.Fatal("stage changed nothing")
+	p, err := build(with, 800)
+	if err != nil {
+		t.Fatal(err)
 	}
-	scale := float64(800-2*margin) / 400
-	c := img.RGBAAt(margin+int(150*scale), margin+int(12*scale))
+	sx, sy := p.f.px(150, 20)
+	c := img.RGBAAt(sx, sy)
 	if c != stageFill {
 		t.Fatalf("stage fill pixel = %v", c)
 	}
