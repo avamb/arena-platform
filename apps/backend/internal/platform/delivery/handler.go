@@ -282,6 +282,10 @@ type HandlerOptions struct {
 	// FromAddress is the envelope and header From address for outgoing emails.
 	// Example: "ArenaSoldOut.com <tickets@arena.example.com>"
 	FromAddress string
+	// TicketFromAddress is the dedicated bare address ticket and invitation
+	// letters go out from (TICKET_EMAIL_FROM). Empty keeps the SMTP default.
+	// An organization's verified own sender still wins over it.
+	TicketFromAddress string
 	// Templates renders the localized email bodies (feature #289, T-2).
 	// When nil, NewHandler lazy-constructs a default Renderer from the
 	// embedded templates so callers that haven't migrated still work.
@@ -661,6 +665,7 @@ func NewHandler(opts HandlerOptions) worker.HandlerFunc {
 		}
 
 		msg := ticketEmailMessage(p, recipientEmail, subject, htmlBody, textBody)
+		applyTicketFromAddress(&msg, opts.TicketFromAddress)
 		applyWhiteLabelSender(&msg, whiteLabel, brandSenderName(p))
 		attachmentBytes := 0
 		for _, m := range members {
@@ -800,6 +805,15 @@ func ticketEmailMessage(p Payload, recipientEmail, subject, htmlBody, textBody s
 		ReplyTo:  strings.TrimSpace(p.OrgContactEmail),
 		HTMLBody: htmlBody,
 		TextBody: textBody,
+	}
+}
+
+// applyTicketFromAddress sends a ticket or invitation letter from the
+// dedicated ticket address when one is configured. An organization's verified
+// own sender (already in msg.From) wins; other letters never call this.
+func applyTicketFromAddress(msg *email.Message, ticketFrom string) {
+	if msg.From == "" {
+		msg.From = strings.TrimSpace(ticketFrom)
 	}
 }
 

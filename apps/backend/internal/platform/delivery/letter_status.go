@@ -40,13 +40,17 @@ func sendRecorded(ctx context.Context, sender email.Sender, db emailstatus.DB, l
 	l emailstatus.NewLetter, msg email.Message, jobIDs []uuid.UUID) error {
 	l.Subject = msg.Subject
 	l.FromAddress = msg.From
-	if l.FromAddress == "" {
-		if d, ok := sender.(interface{ DefaultFrom() string }); ok {
-			l.FromAddress = d.DefaultFrom()
+	if h, ok := sender.(interface{ HeaderFromFor(email.Message) string }); ok {
+		l.FromAddress = h.HeaderFromFor(msg) // exactly the header the buyer saw
+	} else {
+		if l.FromAddress == "" {
+			if d, ok := sender.(interface{ DefaultFrom() string }); ok {
+				l.FromAddress = d.DefaultFrom()
+			}
 		}
-	}
-	if l.FromAddress != "" && msg.FromName != "" {
-		l.FromAddress = email.HeaderFrom(l.FromAddress, msg.FromName) // what the buyer saw
+		if l.FromAddress != "" && msg.FromName != "" {
+			l.FromAddress = email.HeaderFrom(l.FromAddress, msg.FromName) // what the buyer saw
+		}
 	}
 	l.ReplyTo = msg.ReplyTo
 	l.BodySHA256 = emailstatus.BodyDigest(msg.HTMLBody, msg.TextBody)

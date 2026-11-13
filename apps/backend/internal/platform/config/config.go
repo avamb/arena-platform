@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/mail"
 	"net/url"
 	"os"
 	"strconv"
@@ -401,6 +402,12 @@ type Config struct {
 	SMTPPassword string    `env:"SMTP_PASSWORD" required:"false" default:""`
 	SMTPFrom     string    `env:"SMTP_FROM"     required:"false" default:""`
 	SMTPUseTLS   bool      `env:"SMTP_USE_TLS"  required:"false" default:"true"`
+	// TicketEmailFrom is the optional dedicated bare address ticket and
+	// invitation letters go out from. Empty keeps SMTP_FROM.
+	TicketEmailFrom string `env:"TICKET_EMAIL_FROM" required:"false" default:""`
+	// EmailFromName is the display name of a letter sent from a platform
+	// address (SMTP_FROM or TICKET_EMAIL_FROM) that names no sender itself.
+	EmailFromName string `env:"EMAIL_FROM_NAME" required:"false" default:"ArenaSoldOut"`
 	// BrevoAPIKey is used only to query domain verification state; it is never
 	// an organizer credential and must be stored as a platform secret.
 	BrevoAPIKey     string `env:"BREVO_API_KEY" required:"false" default:""`
@@ -864,12 +871,15 @@ func LoadFor(role Role) (*Config, error) {
 		OutboxSigningSecret: getenv("OUTBOX_SIGNING_SECRET", ""),
 		OutboxMode:          OutboxMode(getenv("OUTBOX_MODE", "")),
 
-		EmailMode:       EmailMode(getenv("EMAIL_MODE", "")),
-		SMTPHost:        getenv("SMTP_HOST", ""),
-		SMTPPort:        getenv("SMTP_PORT", "587"),
-		SMTPUsername:    getenv("SMTP_USERNAME", ""),
-		SMTPPassword:    getenv("SMTP_PASSWORD", ""),
-		SMTPFrom:        getenv("SMTP_FROM", ""),
+		EmailMode:    EmailMode(getenv("EMAIL_MODE", "")),
+		SMTPHost:     getenv("SMTP_HOST", ""),
+		SMTPPort:     getenv("SMTP_PORT", "587"),
+		SMTPUsername: getenv("SMTP_USERNAME", ""),
+		SMTPPassword: getenv("SMTP_PASSWORD", ""),
+		SMTPFrom:     getenv("SMTP_FROM", ""),
+
+		TicketEmailFrom: strings.TrimSpace(getenv("TICKET_EMAIL_FROM", "")),
+		EmailFromName:   strings.TrimSpace(getenv("EMAIL_FROM_NAME", "ArenaSoldOut")),
 		BrevoAPIKey:     getenv("BREVO_API_KEY", ""),
 		BrevoAPIBaseURL: getenv("BREVO_API_BASE_URL", DefaultBrevoAPIBaseURL),
 
@@ -1623,6 +1633,13 @@ func (c *Config) validateEmail() []error {
 		if strings.TrimSpace(c.SMTPFrom) == "" {
 			errs = append(errs, errors.New(
 				"SMTP_FROM is required when EMAIL_MODE=smtp",
+			))
+		}
+	}
+	if v := strings.TrimSpace(c.TicketEmailFrom); v != "" {
+		if a, err := mail.ParseAddress(v); err != nil || a.Address != v {
+			errs = append(errs, errors.New(
+				"TICKET_EMAIL_FROM must be a bare e-mail address (no display name)",
 			))
 		}
 	}
