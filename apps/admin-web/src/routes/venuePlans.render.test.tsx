@@ -7,8 +7,9 @@ import { describe, expect, it } from "vitest";
 import { createElement, type ReactNode } from "react";
 import { IntakeQueueTable, PlansTabs, QueueFilters, availableTabs, claimedByText, waitingFor } from "@/routes/venuePlans";
 import { IntakeCardBody, validateDraftFile, validateRejectReason } from "@/routes/venuePlanDetail";
-import { PlanPreviewBox, VerificationTable, validateNeedsFixNote } from "@/routes/venuePlanVerification";
-import type { VenuePlanIntake, VenuePlanIntakeListItem, VerificationRow } from "@/lib/api/venuePlans";
+import { PlanPreviewBox, VerificationFilters, VerificationTable, validateNeedsFixNote } from "@/routes/venuePlanVerification";
+import { Pager } from "@/routes/onboarding";
+import { INITIAL_PLAN_FILTER, type VenuePlanIntake, type VenuePlanIntakeListItem, type VerificationRow } from "@/lib/api/venuePlans";
 
 const NOW = Date.parse("2026-11-12T12:00:00Z");
 const I1 = "11111111-1111-7111-8111-111111111111";
@@ -237,7 +238,10 @@ describe("verification tab", () => {
     orgName: "Acme Events",
     venueName: "Grand Theatre",
     venueId: "v1",
+    cityName: "Prague",
+    countryIso2: "CZ",
     seats: 1200,
+    standing: 0,
     createdAt: "2026-11-01T10:00:00Z",
     state: "unverified",
     note: null,
@@ -253,6 +257,7 @@ describe("verification tab", () => {
     expect(html).toContain("Acme Events");
     expect(html).toContain("Grand Theatre");
     expect(html).toContain("1,200");
+    expect(html).toContain("Prague, CZ");
     expect(html).toContain("2026-11-01 10:00Z");
     expect(html).toContain("Not verified");
     expect(html).toMatch(/<button[^>]*data-testid="venue-plans-verify-p1"/);
@@ -272,9 +277,57 @@ describe("verification tab", () => {
         forceLayout="desktop"
       />,
     );
-    expect(html).toContain("No status (imported)");
+    expect(html).toContain("No status");
     expect(html).toContain("Row 4 is wrong");
     expect(html).toContain("—");
+  });
+
+  it("shows standing places next to the seats and an empty text", () => {
+    const html = renderToStaticMarkup(
+      <VerificationTable rows={[row({ standing: 300 })]} selectedId={null} busyId={null} onPreview={() => undefined} onVerify={() => undefined} onNeedsFix={() => undefined} forceLayout="desktop" />,
+    );
+    expect(html).toContain("1,200 + 300 standing");
+    const empty = renderToStaticMarkup(
+      <VerificationTable rows={[]} selectedId={null} busyId={null} onPreview={() => undefined} onVerify={() => undefined} onNeedsFix={() => undefined} forceLayout="desktop" />,
+    );
+    expect(empty).toContain("No seating plan matches these filters.");
+  });
+
+  it("renders the filters with the counts, the city off without a country, and the paging line", () => {
+    const noop = () => undefined;
+    const props = {
+      filter: INITIAL_PLAN_FILTER,
+      search: "",
+      counts: { none: 50, unverified: 3, needs_fix: 2, verified: 7 },
+      organizations: [{ id: "o1", name: "Acme Events" }],
+      countries: [{ value: "CZ", label: "Czechia (CZ)" }],
+      cities: [],
+      onState: noop,
+      onOrg: noop,
+      onCountry: noop,
+      onCity: noop,
+      onSearch: noop,
+      onReload: noop,
+    };
+    const html = renderToStaticMarkup(<VerificationFilters {...props} />);
+    expect(html).toContain("All (62)");
+    expect(html).toContain("No status (50)");
+    expect(html).toContain("Not verified (3)");
+    expect(html).toContain("Correction necessary (2)");
+    expect(html).toContain("Verified (7)");
+    expect(html).toContain("All organizations");
+    expect(html).toMatch(/disabled=""[^>]*data-testid="venue-plans-verify-city"|data-testid="venue-plans-verify-city"[^>]*disabled=""/);
+    expect(html).toMatch(/maxLength="100"|maxlength="100"/);
+    const openHtml = renderToStaticMarkup(<VerificationFilters {...props} />);
+    expect(openHtml).toMatch(/<option value="all" selected="">All \(62\)<\/option>/);
+    expect(openHtml).not.toMatch(/<option value="unverified" selected="">/);
+    const enabled = renderToStaticMarkup(<VerificationFilters {...props} filter={{ ...INITIAL_PLAN_FILTER, country: "CZ" }} />);
+    expect(enabled).not.toMatch(/disabled=""[^>]*data-testid="venue-plans-verify-city"|data-testid="venue-plans-verify-city"[^>]*disabled=""/);
+
+    const pager = renderToStaticMarkup(<Pager testIdPrefix="venue-plans-verify" total={123} offset={0} shown={50} limit={50} onPrev={noop} onNext={noop} />);
+    expect(pager).toContain("1–50 of 123");
+    expect(pager).toMatch(/disabled=""[^>]*data-testid="venue-plans-verify-prev"/);
+    expect(pager).not.toMatch(/disabled=""[^>]*data-testid="venue-plans-verify-next"/);
   });
 
   it("turns Verify off for a verified plan and while a request runs", () => {

@@ -152,8 +152,14 @@ func TestResolveSeatCategories_SyntheticCategoryTakesItsTierColour(t *testing.T)
 		t.Fatalf("schema extra_categories = %v", extra)
 	}
 	cats, _ := buildCategoryOverlay(f.geom, res, map[uuid.UUID]priceresolve.Effective{})
-	if cats[0]["color"] != "#ff0000" {
-		t.Fatalf("plan category 1 colour = %v, want the plan's #ff0000", cats[0]["color"])
+	if cats[0]["color"] != "#123456" {
+		t.Fatalf("plan category 1 colour = %v, want its home tier's #123456", cats[0]["color"])
+	}
+	if cats[1]["color"] != "#00aa00" {
+		t.Fatalf("plan category 2 colour = %v, home tier has none, want the plan's #00aa00", cats[1]["color"])
+	}
+	if got := res.Categories(f.geom)[0].Color; got != "#123456" {
+		t.Fatalf("Categories()[0] colour = %q, want #123456", got)
 	}
 	if got := plain.withTierColors(nil).Extra[0].Color; got != syntheticCategoryPalette[0] {
 		t.Fatalf("no tier colours: extra colour = %q, want the palette", got)

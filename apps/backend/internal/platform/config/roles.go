@@ -50,11 +50,14 @@ const (
 	capPublicURL
 	// capEventsBot: EVENTS_TELEGRAM_BOT_TOKEN.
 	capEventsBot
+	// capVenueGen: VENUE_GEN_URL / VENUE_GEN_TOKEN (only the worker calls the
+	// venue SVG generator).
+	capVenueGen
 )
 
 var roleCapabilities = map[Role][]capability{
 	RoleAPI:     {capJWT, capEdge, capMedia, capPublicURL},
-	RoleWorker:  {capMail, capOutbox, capMedia, capPublicURL},
+	RoleWorker:  {capMail, capOutbox, capMedia, capPublicURL, capVenueGen},
 	RoleBot:     {capJWT, capEventsBot},
 	RoleMigrate: nil,
 }
@@ -140,6 +143,9 @@ var roleSecrets = []roleSecret{
 	// the api, not secrets): the model key stays on arena-api only.
 	{"POSTER_LLM_API_KEY", []Role{RoleAPI}, func(c *Config) string { return c.PosterLLMAPIKey }},
 	{"GEMINI_API_KEY", []Role{RoleAPI}, func(c *Config) string { return c.GeminiAPIKey }},
+	// Only arena-worker calls the venue SVG generator (job venue_plan.generate,
+	// spec 64 wave 2); arena-api never does.
+	{"VENUE_GEN_TOKEN", []Role{RoleWorker}, func(c *Config) string { return c.VenueGenToken }},
 }
 
 // unusedSecretWarnings names every secret that is set although the role

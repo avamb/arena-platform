@@ -210,6 +210,7 @@ const (
 const (
 	BotVenuePlanNoticeKindApproved   BotVenuePlanNoticeKind = "approved"
 	BotVenuePlanNoticeKindDraftReady BotVenuePlanNoticeKind = "draft_ready"
+	BotVenuePlanNoticeKindEscalated  BotVenuePlanNoticeKind = "escalated"
 	BotVenuePlanNoticeKindRejected   BotVenuePlanNoticeKind = "rejected"
 	BotVenuePlanNoticeKindReturned   BotVenuePlanNoticeKind = "returned"
 )
@@ -5515,7 +5516,7 @@ type BotVenuePlanNotice struct {
 	// IntakeId Id of the intake the notice is about.
 	IntakeId openapi_types.UUID `json:"intake_id"`
 
-	// Kind What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan) or `approved` (an administrator saved the plan).
+	// Kind What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan), `approved` (an administrator saved the plan) or `escalated` (arena could not build a draft, an administrator builds the plan now).
 	Kind BotVenuePlanNoticeKind `json:"kind"`
 
 	// Note The administrator's note or reason for the organizer, or null when there is none.
@@ -5534,7 +5535,7 @@ type BotVenuePlanNotice struct {
 	VenueName string `json:"venue_name"`
 }
 
-// BotVenuePlanNoticeKind What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan) or `approved` (an administrator saved the plan).
+// BotVenuePlanNoticeKind What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan), `approved` (an administrator saved the plan) or `escalated` (arena could not build a draft, an administrator builds the plan now).
 type BotVenuePlanNoticeKind string
 
 // BotVenuePlanNoticesResponse Answer of POST /v1/bot/venue-plan-notices/claim.
@@ -25127,11 +25128,35 @@ type PatchAdminSalesChatParams struct {
 
 // ListV1AdminSeatingPlansParams defines parameters for ListV1AdminSeatingPlans.
 type ListV1AdminSeatingPlansParams struct {
-	// VerificationState unverified (default), verified or needs_fix
+	// VerificationState none (never sent for verification), unverified, verified or
+	// needs_fix. Without it the list holds every state.
 	VerificationState *string `form:"verification_state,omitempty" json:"verification_state,omitempty"`
 
-	// Limit Page size, 1 to 200 (default 100)
+	// OrgId Only the plans of this organization. Without it the list holds every organization.
+	OrgId *openapi_types.UUID `form:"org_id,omitempty" json:"org_id,omitempty"`
+
+	// Country Only the plans at venues in this country, a 2-letter ISO 3166-1
+	// code. The country of a venue is the country of its city, else the
+	// country of its address.
+	Country *string `form:"country,omitempty" json:"country,omitempty"`
+
+	// CityId Only the plans at venues in this city
+	CityId *openapi_types.UUID `form:"city_id,omitempty" json:"city_id,omitempty"`
+
+	// Q A part of the venue name, any letter case, at most 100 characters
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Lang Language of the city names, for example en or ru. locale is the same. Else Accept-Language, else English.
+	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+
+	// Locale The same as lang
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+
+	// Limit Page size, 1 to 200 (default 50)
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of plans to skip, 0 to 1000000 (default 0)
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // PostV1AdminSeatingPlansPlanIdNeedsFixJSONBody defines parameters for PostV1AdminSeatingPlansPlanIdNeedsFix.

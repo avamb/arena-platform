@@ -17,7 +17,6 @@ package hcatalog
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -27,6 +26,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/citymatch"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/geoslug"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 )
@@ -161,7 +161,7 @@ func (h *Handler) HandleCreateOrgCity(w http.ResponseWriter, r *http.Request) {
 	}
 	countryID := country.ID
 
-	cityID, created, err := createOrFindOrgCity(ctx, qtx, country, name, locale)
+	cityID, created, err := createOrFindOrgCity(ctx, tx, qtx, country, name, locale)
 	if err != nil {
 		h.logger.Error("city: create failed", slog.String("error", err.Error()))
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope("city.create_failed", "failed to create city", r))
@@ -209,16 +209,18 @@ func (h *Handler) HandleCreateOrgCity(w http.ResponseWriter, r *http.Request) {
 // createOrFindOrgCity returns the id of the country's city called name,
 // creating it when there is none. Runs inside the caller's transaction and
 // takes the per-country advisory lock first.
-func createOrFindOrgCity(ctx context.Context, q *gen.Queries, country gen.CountryRow, name, locale string) (uuid.UUID, bool, error) {
+func createOrFindOrgCity(ctx context.Context, db citymatch.DB, q *gen.Queries, country gen.CountryRow, name, locale string) (uuid.UUID, bool, error) {
 	if err := q.LockCountryCities(ctx, country.ID); err != nil {
 		return uuid.Nil, false, err
 	}
-	id, err := q.FindCityInCountryByName(ctx, country.ID, geoslug.NormalizeName(name), geoslug.Slugify(name))
-	switch {
-	case err == nil:
-		return id, false, nil
-	case !errors.Is(err, pgx.ErrNoRows):
+	// One shared matcher: slug, any stored name in any locale (accents folded)
+	// and the same place of the geo data ("Praha" finds "Prague").
+	found, ok, err := citymatch.FindInCountry(ctx, db, country.ID, country.Iso2, name)
+	if err != nil {
 		return uuid.Nil, false, err
+	}
+	if ok {
+		return found.ID, false, nil
 	}
 
 	slug := ""

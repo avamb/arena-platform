@@ -315,7 +315,7 @@ class GenerateTests(unittest.TestCase):
         svg = body["authoring_svg"]
         self.assertIn("#Temp", svg)
         self.assertIn("fill:#112233", svg)
-        self.assertIn('r="0.4"', svg)
+        self.assertIn('r="9.6"', svg)  # 0.4 of a step of 24 user units
 
     def test_request_errors(self):
         good = [("a.xlsx", workbook_bytes())]

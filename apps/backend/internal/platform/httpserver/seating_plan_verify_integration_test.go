@@ -245,7 +245,7 @@ func TestSeatingPlanVerify_TemplateFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	found := false
-	for _, it := range e.call(t, http.StatusOK, "", "GET", "/v1/admin/seating-plans", e.super, "", "")["seating_plans"].([]any) {
+	for _, it := range e.call(t, http.StatusOK, "", "GET", "/v1/admin/seating-plans?verification_state=unverified&org_id="+e.orgA.String(), e.super, "", "")["seating_plans"].([]any) {
 		row := it.(map[string]any)
 		if row["plan_id"] == private.String() {
 			found = true
@@ -285,7 +285,7 @@ func TestSeatingPlanVerify_TemplateFlow(t *testing.T) {
 	e.call(t, http.StatusOK, "", "GET", "/v1/seating-plans/"+forkID.String(), e.adminB, "", "")
 	e.call(t, http.StatusCreated, "", "POST", "/v1/seating-plans/"+forkID.String()+"/versions", e.adminB, "", `{"svg":`+string(svg4)+`}`)
 	found = false
-	for _, it := range e.call(t, http.StatusOK, "", "GET", "/v1/admin/seating-plans?verification_state=needs_fix", e.super, "", "")["seating_plans"].([]any) {
+	for _, it := range e.call(t, http.StatusOK, "", "GET", "/v1/admin/seating-plans?verification_state=needs_fix&org_id="+e.orgA.String(), e.super, "", "")["seating_plans"].([]any) {
 		if it.(map[string]any)["plan_id"] == template.String() {
 			found = true
 		}

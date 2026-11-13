@@ -28,16 +28,16 @@ func TestBotE2E_PlanIntake_BackThenSendAFileAgain(t *testing.T) {
 
 	o.press("wz:plan:upload", "Пришлите файлы схемы")
 	e.doc("pi-back-pdf", "hall.pdf", vpiPDF(), "Файл 1 получен")
-	o.press("pi:done", "Файл получен. Схему зала построит администратор")
+	o.press("pi:done", "Файл получен. Мы строим схему зала")
 	id, state := e.intake()
-	if state != "operator" {
-		t.Fatalf("intake state = %s, want operator", state)
+	if state != "received" {
+		t.Fatalf("intake state = %s, want received (waiting for the generator job)", state)
 	}
 
 	// Back and "Send a file" again: the request is still open, so the person
 	// sees the waiting screen, and a file sent now is answered in one line.
 	o.press("wz:back", "нет схемы зала")
-	text := o.press("wz:plan:upload", "Ваши файлы у администратора")
+	text := o.press("wz:plan:upload", "Мы строим схему зала. Я напишу")
 	if strings.Contains(text, "Пришлите файлы схемы") {
 		t.Fatalf("a waiting draft asks for files again:\n%s", text)
 	}
@@ -82,7 +82,7 @@ func TestBotE2E_PlanIntake_RefusedFileKeepsTheFiles(t *testing.T) {
 
 	// The person removes the refused file; the other two stay and go out.
 	o.press("pi:rm:2", "Файлов сейчас: 2")
-	o.press("pi:done", "Файл получен. Схему зала построит администратор")
+	o.press("pi:done", "Файл получен. Мы строим схему зала")
 	id, _ := e.intake()
 	if n := e.count(`SELECT count(*) FROM venue_plan_intake_sources WHERE intake_id = $1`, id); n != 2 {
 		t.Fatalf("sources = %d, want 2", n)
@@ -100,10 +100,10 @@ func (e *piEnv) wizardWaitingOnAnIntake(name string) string {
 	o := e.owner
 	o.press("wz:plan:upload", "Пришлите файлы схемы")
 	e.doc("pi-w-pdf-"+e.suffix, "hall.pdf", vpiPDF(), "Файл 1 получен")
-	o.press("pi:done", "Файл получен. Схему зала построит администратор")
+	o.press("pi:done", "Файл получен. Мы строим схему зала")
 	id, state := e.intake()
-	if state != "operator" {
-		e.t.Fatalf("intake state = %s, want operator", state)
+	if state != "received" {
+		e.t.Fatalf("intake state = %s, want received (waiting for the generator job)", state)
 	}
 	return id
 }
@@ -136,8 +136,8 @@ func TestBotE2E_PlanIntake_SkipKeepingTheRequest(t *testing.T) {
 
 	o.press("wz:plan:skip", "Отменить заявку на схему зала?")
 	o.press("pi:skn:"+id, "нет загруженной схемы")
-	if _, state := e.intake(); state != "operator" {
-		t.Fatalf("state = %s, want the request kept (operator)", state)
+	if _, state := e.intake(); state != "received" {
+		t.Fatalf("state = %s, want the request kept (received)", state)
 	}
 	if step, paused, intake := e.draftState(); step != "s_capacity" || paused || intake != "" {
 		t.Fatalf("draft = %s paused=%v intake=%q, want s_capacity", step, paused, intake)

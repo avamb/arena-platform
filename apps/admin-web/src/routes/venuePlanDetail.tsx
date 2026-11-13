@@ -781,7 +781,7 @@ export function DraftSection({
             <img
               src={imageUrl}
               alt={`Draft ${shownDraft ?? ""} of the seating plan`}
-              style={{ maxWidth: "100%", maxHeight: 640, display: "block", border: "1px solid #e2e8f0", background: "#ffffff" }}
+              style={{ width: "100%", maxHeight: 640, objectFit: "contain", display: "block", border: "1px solid #e2e8f0", background: "#ffffff" }}
               data-testid="venue-plan-draft-image"
             />
           ) : null}

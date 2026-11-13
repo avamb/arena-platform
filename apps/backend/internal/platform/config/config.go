@@ -677,6 +677,16 @@ type Config struct {
 	// OpsWatchdogHeartbeatHourUTC is the UTC hour (0-23) at which the
 	// ops.watchdog job sends its once-daily "still alive" digest.
 	OpsWatchdogHeartbeatHourUTC int `env:"OPS_WATCHDOG_HEARTBEAT_HOUR_UTC" required:"false" default:"7"`
+	// VenueGenURL is the origin of the venue SVG generator
+	// (apps/venue-svg-generator, HALL_MODEL.md section 7), e.g.
+	// http://venue-gen:8090 on the internal network. Only arena-worker reads it:
+	// the job venue_plan.generate sends an intake's files there (spec 64 wave
+	// 2). Empty, or VENUE_GEN_TOKEN empty, switches the generator off: every
+	// intake without a clean source SVG goes to an administrator with the
+	// reason no_generator.
+	VenueGenURL string `env:"VENUE_GEN_URL" required:"false" default:""`
+	// VenueGenToken is the generator's bearer token (secret, arena-worker only).
+	VenueGenToken string `env:"VENUE_GEN_TOKEN" required:"false" default:""`
 
 	// -------------------------------------------------------------------------
 	// Metrics endpoint authentication
@@ -923,6 +933,8 @@ func LoadFor(role Role) (*Config, error) {
 		PosterGeminiModel:           strings.TrimSpace(getenv("POSTER_GEMINI_MODEL", DefaultPosterGeminiModel)),
 		PosterGeminiBaseURL:         getenv("POSTER_GEMINI_BASE_URL", DefaultPosterGeminiBaseURL),
 		TextFormatLLMModel:          strings.TrimSpace(getenv("TEXT_FORMAT_LLM_MODEL", "claude-haiku-5-5")),
+		VenueGenURL:                 strings.TrimRight(strings.TrimSpace(getenv("VENUE_GEN_URL", "")), "/"),
+		VenueGenToken:               strings.TrimSpace(getenv("VENUE_GEN_TOKEN", "")),
 
 		MetricsBearerToken: getenv("METRICS_BEARER_TOKEN", ""),
 	}
@@ -1547,6 +1559,16 @@ func (c *Config) Validate() error {
 		errs = append(errs, c.validateMediaSigning()...)
 	}
 
+	// --- Venue SVG generator (worker) ---------------------------------------
+	if c.uses(capVenueGen) && c.VenueGenURL != "" {
+		u, err := url.Parse(c.VenueGenURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			errs = append(errs, fmt.Errorf(
+				"VENUE_GEN_URL must be an http or https origin such as http://venue-gen:8090 (got %q)", c.VenueGenURL,
+			))
+		}
+	}
+
 	// --- Ops watchdog -----------------------------------------------------
 	if c.OpsWatchdogHeartbeatHourUTC < 0 || c.OpsWatchdogHeartbeatHourUTC > 23 {
 		errs = append(errs, fmt.Errorf(
@@ -2118,9 +2140,30 @@ func (c *Config) Warnings() []string {
 		))
 	}
 
+	if c.uses(capVenueGen) {
+		if msg := c.VenueGenHalfConfigured(); msg != "" {
+			w = append(w, msg)
+		}
+	}
+
 	w = append(w, c.unusedSecretWarnings()...)
 
 	return w
+}
+
+// VenueGenHalfConfigured returns a warning text when exactly one of
+// VENUE_GEN_URL and VENUE_GEN_TOKEN is set (the hall plan generator is then
+// silently off), and "" when both or neither is set. It names the missing
+// variable and never the token. It is not a start error: an operator may set
+// the pair in two steps.
+func (c *Config) VenueGenHalfConfigured() string {
+	switch {
+	case c.VenueGenURL != "" && c.VenueGenToken == "":
+		return "VENUE_GEN_TOKEN is not set while VENUE_GEN_URL is: the hall plan generator is OFF, every plan intake goes to an administrator"
+	case c.VenueGenURL == "" && c.VenueGenToken != "":
+		return "VENUE_GEN_URL is not set while VENUE_GEN_TOKEN is: the hall plan generator is OFF, every plan intake goes to an administrator"
+	}
+	return ""
 }
 
 // isKnownDevSecret returns true when s matches a well-known development

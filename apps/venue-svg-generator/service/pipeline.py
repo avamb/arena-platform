@@ -178,7 +178,10 @@ def run_pipeline(paths: list[str], declared_kinds: list[str], options: dict[str,
         svg, info = None, {"reason": "export_failed"}
     png = render_preview_png(model, decor)
     return {
-        "result": "ok", "validation_status": model["validation"]["status"], "files": files, "model": model,
+        # An export that fails the visual guard (info.export_issue) is never PASS.
+        "result": "ok",
+        "validation_status": "QUARANTINE" if info.get("export_issue") else model["validation"]["status"],
+        "files": files, "model": model,
         "authoring_svg": svg, "svg_info": info,
         "preview_png_base64": base64.b64encode(png).decode("ascii"),
     }

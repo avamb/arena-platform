@@ -239,6 +239,8 @@ The Python generator service: hall model, HTTP contract, token, fixtures of the 
 * A seat without a full identity never becomes a seat in the authoring SVG
 * No client file and no profile bound to a client file's SHA-256 goes into the service
 * On the staging stand the generator is a standalone container (lead-parser, 1024 MB, /healthz)
+* What the generator really reads today: XLSX yes, vector PDF without row labels, images need a colour profile
+* The authoring SVG is in pixel-like units (seats 24 apart, outline 1); a guard quarantines an export with blots, tiny or overlapping seats
 
 ### [Testing and integration-test fixtures](docs/agents/testing-integration.md)
 
@@ -476,6 +478,7 @@ Places, categories, hold and quota lock order, plan geometry, seat layouts, venu
 * A seat batch creates price categories in its own transaction (new_tiers, needs tier.create)
 * A seat shows ONE card to the buyer and to the organizer (seat-card.ts)
 * A section or row key is NOT always normalizeKey(name): hash suffix where names collide on a seat
+* A category has ONE colour for the organizer and the buyer: tier colour, else the home plan category's, else the palette
 
 ### [Events, sessions, promoters and sales channels](docs/agents/catalog-sessions-channels.md)
 
@@ -496,6 +499,7 @@ Session lifecycle and times, event status and sales state, promoters, sales chan
 * Publishing through POST .../events/{id}/status bin…
 * The hold gate refuses a cancelled session, and the…
 * A VERIFIED venue is open to every organization (mi…
+* A city is found before it is created: citymatch.FindInCountry (any name, any language, slug, alias of its own country)
 
 ### [Telegram bot: core, wizard and screens](docs/agents/bot-core-wizard.md)
 
@@ -756,13 +760,20 @@ Spec 64: intake states, private plan sources, approve, superadmin verification a
 * Four events tell every platform administrator through the job venue_plan.notify
 * The notify handler sends nothing twice and tells no person
 * The bot claims organizer notices with POST /v1/bot/venue-plan-notices/claim
-* Seams for the later waves are nil in wave 1
+* The answers loop is still an administrator's work: venue_plan.render and the question table have no writer
+* Since wave 2 create leaves the intake received and queues venue_plan.generate; only the worker knows the generator
+* generate.Decide maps a generator answer to review or to an administrator with the exact reason
+* generate.SendKind and Select choose the files; the generator is called outside any transaction
+* An attempt is a chain of short steps (submit, poll every 3 s, 4-minute deadline), one HTTP call per worker job
+* A repeated step does nothing: rows carry seq, a higher seq for the intake means the step was done
+* The sweep venue_plan.generate_sweep sends an intake with no step for 30 minutes to an administrator
 * The bot sends the files of a plan as ONE intake and never builds a plan itself (pi: callbacks, paused draft, notice loop)
 * The world country table is worldgeo, and only a venue or an approved application creates a reference country (never an API key)
 * The venue directory is GET .../venue-directory, own plus verified venues, the access of shared-venues
 * The web reads world-countries and venue-directory only through directoryApi.ts; a new country comes only with the venue create
 * The venue chooser is ONE component for the screen Venues and the wizard
 * The web intake refuses a file before any request and keeps one Idempotency-Key per attempt
-* The admin queue /venue-plans finds plans with no verification state by subtraction
+* The admin queue of plans to verify is ONE request; no state parameter means every state, none means NULL
 * A draft SVG of an intake is read by seating.ImportAnySVG (authoring or sbt); the plan version route takes authoring only
 * Only an ACTIVE plan is seen by the queue and by the bot; the library loader activates a plan after its version upload
+* The generator's answer is limited in the client before parsing (SVG 3 MB, preview 10 MB); half-set VENUE_GEN_* is a warning; the test fixture is a copy

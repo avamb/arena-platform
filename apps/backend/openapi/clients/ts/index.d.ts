@@ -3528,13 +3528,18 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Admin - list seating plans by verification state
-         * @description The platform superadmin's verification queue (spec 64 section 3.4):
-         *     live seating plans in one verification state, oldest first, with the
-         *     names of their organization and venue and the capacity of their
-         *     current version. Plans never sent for verification (state null) are
-         *     not listed. Requires JWT, the seating_plan.verify permission and a
-         *     platform superadmin.
+         * Admin - list seating plans with filters and counts
+         * @description The platform superadmin's list of seating plans (spec 64 section
+         *     3.4) in one request: one page of plans, newest first, the total and
+         *     the count per verification state. Each plan has the names of its
+         *     organization, venue, city and country and the capacity of its
+         *     current version. Without verification_state the list holds plans of
+         *     every state, also plans that were never sent for verification
+         *     (state null, filter value none). Archived and deleted plans and the
+         *     plans of archived or deleted venues are never listed or counted.
+         *     Draft plans are listed. Requires JWT, the seating_plan.verify
+         *     permission and a platform superadmin. org_id is a filter, it gives
+         *     no access.
          */
         get: operations["listV1AdminSeatingPlans"];
         put?: never;
@@ -16549,10 +16554,10 @@ export interface components {
              */
             id: string;
             /**
-             * @description What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan) or `approved` (an administrator saved the plan).
+             * @description What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan), `approved` (an administrator saved the plan) or `escalated` (arena could not build a draft, an administrator builds the plan now).
              * @enum {string}
              */
-            kind: "draft_ready" | "returned" | "rejected" | "approved";
+            kind: "draft_ready" | "returned" | "rejected" | "approved" | "escalated";
             /**
              * Format: uuid
              * @description Id of the intake the notice is about.
@@ -51453,10 +51458,31 @@ export interface operations {
     listV1AdminSeatingPlans: {
         parameters: {
             query?: {
-                /** @description unverified (default), verified or needs_fix */
+                /**
+                 * @description none (never sent for verification), unverified, verified or
+                 *     needs_fix. Without it the list holds every state.
+                 */
                 verification_state?: string;
-                /** @description Page size, 1 to 200 (default 100) */
+                /** @description Only the plans of this organization. Without it the list holds every organization. */
+                org_id?: string;
+                /**
+                 * @description Only the plans at venues in this country, a 2-letter ISO 3166-1
+                 *     code. The country of a venue is the country of its city, else the
+                 *     country of its address.
+                 */
+                country?: string;
+                /** @description Only the plans at venues in this city */
+                city_id?: string;
+                /** @description A part of the venue name, any letter case, at most 100 characters */
+                q?: string;
+                /** @description Language of the city names, for example en or ru. locale is the same. Else Accept-Language, else English. */
+                lang?: string;
+                /** @description The same as lang */
+                locale?: string;
+                /** @description Page size, 1 to 200 (default 50) */
                 limit?: number;
+                /** @description Number of plans to skip, 0 to 1000000 (default 0) */
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -51464,14 +51490,49 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Plans in the asked state */
+            /** @description One page of plans, the total and the counts */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": {
-                        /** @description Plans in the asked verification state, oldest first */
+                        /**
+                         * Format: int64
+                         * @description Number of plans that match all filters
+                         */
+                        total: number;
+                        /** @description Page size of this answer */
+                        limit: number;
+                        /** @description Number of plans skipped before this page */
+                        offset: number;
+                        /**
+                         * @description Number of plans in each verification state. The counts
+                         *     use all filters except verification_state.
+                         */
+                        counts: {
+                            /**
+                             * Format: int64
+                             * @description Plans that were never sent for verification
+                             */
+                            none: number;
+                            /**
+                             * Format: int64
+                             * @description Plans that wait for verification
+                             */
+                            unverified: number;
+                            /**
+                             * Format: int64
+                             * @description Plans sent back with a note
+                             */
+                            needs_fix: number;
+                            /**
+                             * Format: int64
+                             * @description Verified plans
+                             */
+                            verified: number;
+                        };
+                        /** @description One page of plans, newest first */
                         seating_plans: {
                             /**
                              * Format: uuid
@@ -51506,20 +51567,34 @@ export interface operations {
                             venue_name: string;
                             /**
                              * Format: uuid
+                             * @description City of the venue, null when the venue has none
+                             */
+                            city_id?: string | null;
+                            /** @description Name of the city in the language of the request, else in English */
+                            city_name?: string | null;
+                            /** @description Country of the venue, a 2-letter ISO 3166-1 code. It is the country of the city, else the country of the address. */
+                            country_iso2?: string | null;
+                            /**
+                             * Format: uuid
                              * @description Current version, null when the plan has none
                              */
                             current_version_id?: string | null;
-                            /** @description Number of the current version */
+                            /** @description Number of the current version, null when the plan has none */
                             version_number?: number | null;
-                            /** @description Seats of the current version */
-                            capacity_seated?: number | null;
-                            /** @description Standing places of the current version */
-                            capacity_standing?: number | null;
+                            /** @description Seats of the current version, 0 when the plan has no version */
+                            capacity_seated: number;
+                            /** @description Standing places of the current version, 0 when the plan has no version */
+                            capacity_standing: number;
                             /**
                              * Format: date-time
                              * @description When the plan was created
                              */
                             created_at: string;
+                            /**
+                             * Format: date-time
+                             * @description When the plan was last changed
+                             */
+                            updated_at: string;
                             /**
                              * Format: date-time
                              * @description When the plan was verified, null unless verified
@@ -51529,7 +51604,12 @@ export interface operations {
                     };
                 };
             };
-            /** @description seating_plan.invalid_verification_state or seating_plan.invalid_limit */
+            /**
+             * @description seating_plan.invalid_verification_state, seating_plan.invalid_org_id,
+             *     seating_plan.invalid_country, seating_plan.invalid_city_id,
+             *     seating_plan.invalid_query, seating_plan.invalid_limit or
+             *     seating_plan.invalid_offset
+             */
             400: {
                 headers: {
                     [name: string]: unknown;

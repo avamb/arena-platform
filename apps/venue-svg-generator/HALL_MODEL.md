@@ -82,7 +82,8 @@ Rules:
   one by one), `unknown`. `from_center`: the numbers grow from the centre outwards, odd numbers go
   to the left, even numbers to the right; with an even seat count the left centre seat is `start`.
 - Seats of a row are stored left to right as the viewer looks at the drawing. `position` is in
-  seat-pitch units and is directly the coordinate of the authoring SVG.
+  seat-pitch units. The authoring SVG is NOT in these units: it is in pixel-like user units (section 4),
+  `svg = position * info.scale + info.offset`.
 - `gaps[].after_seat_key` names the seat on the left of the aisle. `width` is in seats.
 - Limits (the schema and the validator enforce them): 60 sections, 400 rows, 600 seats in a row,
   20000 seats, 2000 issues, 20 sources.
@@ -148,8 +149,23 @@ vertically), and a seat `evidence` carries `source_bbox`, `page` and `quarantine
   without a label) and listed in `info.unavailable_seats`.
 - Decor: a stage bar on `stage.side` when it is known, row labels on both ends of every row, section
   titles. Decor never uses an `inkscape:label` that starts with `#`.
-- For a v2 model converted from a PASS XLSX v1 model the seat coordinates, radius, category and canvas
-  are equal to what `build_authoring_svg` (v1) writes.
+- The authoring SVG is in pixel-like user units: `viewBox="0 0 W H"` equals the declared `width` and
+  `height` (1 user unit = 1 px). The step of the hall is the median of every seat's nearest-neighbour
+  distance and becomes `AUTHORING_GRID_STEP` = 24 units, so
+  `svg x = model x * info.scale + info.offset.x` (same for y; a hall wider than 2000 is scaled down
+  as a whole). The seat radius is 0.32 of a step (7.68), at most 0.4. The outline is the profile
+  `stroke_width_px` in user units (default 1), at most a quarter of the radius; fonts of decor are
+  fractions of a step. There is at least one step of room around the seats.
+- For a v2 model converted from a PASS XLSX v1 model the seat coordinates (after the same scale and
+  offset), radius and category are equal to what `build_authoring_svg` (v1) writes. The canvas of v2 can
+  be wider (room for the row labels).
+- Visual guard (`arena_export.outline_guard`, run inside `build_authoring_svg_v2`): a failing export is
+  marked QUARANTINE in the SVG, `info.export_issue` holds the first reason code and `info.export_issues`
+  all of them, and the service answers `validation_status` QUARANTINE. Codes:
+  `export_outline_too_heavy` (the outline covers over 20 % or the seats over 60 % of the box of the
+  seats), `export_seats_too_small` (the seat radius is under 5 user units, `MIN_SEAT_RADIUS`),
+  `export_seats_overlap` (over 1 % of the seats are closer to their nearest neighbour than
+  2 * r + outline).
 - `hall_preview.render_preview_png(model, decor_labels=None, max_px=1600)` returns PNG bytes
   (Pillow only): available seats with numbers, seats without identity in orange with `?`, unavailable
   in grey, row labels on both sides, section titles, stage, a banner `QUARANTINE` or `SCHEMATIC`.

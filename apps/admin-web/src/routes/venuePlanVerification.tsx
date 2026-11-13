@@ -4,35 +4,43 @@
  *   GET  /v1/admin/seating-plans?verification_state=unverified|needs_fix|verified
  *   POST /v1/admin/seating-plans/{id}/verify | needs-fix
  *
- * The filter "No state (imported)" lists plans that the server never lists in one call
- * (see lib/api/venuePlans.ts, "No state"): the operator picks an organization, and the
- * page reads the plans of the organization's venues a few at a time.
+ * One request gives a page of plans, the total and the count of each status. The
+ * filters (status, organization, country, city, venue name) go to the server.
  *
  * Mock data: NONE. Everything here comes from the live backend.
  */
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { ResponsiveTable, type ResponsiveTableColumn } from "@/components/layout";
 import { ApiError, authedFetch } from "@/lib/api/client";
 import {
-  NO_STATE_FILTER,
-  VERIFICATION_STATES,
+  FILTER_OPTIONS,
+  INITIAL_PLAN_FILTER,
+  PLANS_PAGE_SIZE,
+  PLANS_SEARCH_MAX,
+  applyFilterChange,
+  applyPage,
+  cityChoices,
+  countryChoices,
   fetchPlanPreviewUrl,
-  listPlansByVerification,
-  loadStatedPlanIds,
+  filterOptionLabel,
+  listAdminSeatingPlans,
+  placeLabel,
   planNeedsFix,
   rowFromAdminPlan,
-  rowFromNoState,
-  scanNoStatePlans,
+  seatsLabel,
   verificationLabel,
   verifyErrorMessage,
   verifyPlan,
-  type VenueRef,
+  type AdminSeatingPlanPage,
+  type GeoCity,
+  type GeoCountry,
+  type PlanListFilter,
   type VerificationFilter,
   type VerificationRow,
 } from "@/lib/api/venuePlans";
-import type { BatchProgress } from "@/lib/admin/batch";
 import { formatDateTime } from "@/lib/admin/supportConsole";
+import { Pager } from "./onboarding";
 import {
   Dialog,
   Pill,
@@ -49,7 +57,6 @@ import {
   primaryButtonStyle,
   sectionStyle,
   sectionTitleStyle,
-  warningStyle,
 } from "./onboardingUi";
 
 // ---------------------------------------------------------------------------
@@ -78,8 +85,6 @@ export function verificationTone(state: string | null): "good" | "warn" | "bad" 
       return "muted";
   }
 }
-
-export const FILTER_OPTIONS: readonly VerificationFilter[] = [...VERIFICATION_STATES, NO_STATE_FILTER];
 
 // ---------------------------------------------------------------------------
 // Table (presentational)
@@ -117,13 +122,14 @@ export function VerificationTable({
         </div>
       ),
     },
-    { id: "organization", header: "Organization", renderCell: (r) => r.orgName },
     { id: "venue", header: "Venue", renderCell: (r) => r.venueName },
+    { id: "place", header: "City and country", renderCell: (r) => placeLabel(r.cityName, r.countryIso2) },
+    { id: "organization", header: "Organization", renderCell: (r) => r.orgName },
     {
       id: "seats",
       header: "Seats",
       align: "right",
-      renderCell: (r) => (r.seats === null ? "—" : r.seats.toLocaleString("en-US")),
+      renderCell: (r) => seatsLabel(r.seats, r.standing),
     },
     { id: "created", header: "Created", renderCell: (r) => formatDateTime(r.createdAt) },
     {
@@ -174,7 +180,7 @@ export function VerificationTable({
       rows={rows}
       rowKey={(r) => r.planId}
       forceLayout={forceLayout}
-      empty="No plans with this status."
+      empty={<span data-testid="venue-plans-verify-empty">No seating plan matches these filters.</span>}
     />
   );
 }
@@ -282,7 +288,7 @@ function NeedsFixDialog({
 }
 
 // ---------------------------------------------------------------------------
-// Panel (stateful)
+// Filters (presentational)
 // ---------------------------------------------------------------------------
 
 interface OrganizationItem {
@@ -290,9 +296,120 @@ interface OrganizationItem {
   readonly name: string;
 }
 
+const fieldLabelStyle = { fontSize: 12, fontWeight: 600, color: "#334155" } as const;
+const fieldCaptionStyle = { display: "block", marginBottom: 4 } as const;
+
+export interface VerificationFiltersProps {
+  readonly filter: PlanListFilter;
+  readonly search: string;
+  readonly counts: AdminSeatingPlanPage["counts"] | undefined;
+  readonly organizations: readonly OrganizationItem[];
+  readonly countries: readonly { readonly value: string; readonly label: string }[];
+  readonly cities: readonly { readonly value: string; readonly label: string }[];
+  readonly onState: (s: VerificationFilter) => void;
+  readonly onOrg: (id: string) => void;
+  readonly onCountry: (iso2: string) => void;
+  readonly onCity: (id: string) => void;
+  readonly onSearch: (text: string) => void;
+  readonly onReload: () => void;
+}
+
+export function VerificationFilters(p: VerificationFiltersProps): JSX.Element {
+  return (
+    <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 12 }}>
+      <label style={fieldLabelStyle}>
+        <span style={fieldCaptionStyle}>Status of the plan</span>
+        <select
+          value={p.filter.state}
+          onChange={(e) => p.onState(e.target.value as VerificationFilter)}
+          style={{ ...inputStyle, width: 240 }}
+          data-testid="venue-plans-verify-filter"
+        >
+          {FILTER_OPTIONS.map((f) => (
+            <option key={f} value={f}>
+              {filterOptionLabel(f, p.counts)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label style={fieldLabelStyle}>
+        <span style={fieldCaptionStyle}>Organization</span>
+        <select
+          value={p.filter.orgId}
+          onChange={(e) => p.onOrg(e.target.value)}
+          style={{ ...inputStyle, width: 240 }}
+          data-testid="venue-plans-verify-org"
+        >
+          <option value="">All organizations</option>
+          {p.organizations.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label style={fieldLabelStyle}>
+        <span style={fieldCaptionStyle}>Country</span>
+        <select
+          value={p.filter.country}
+          onChange={(e) => p.onCountry(e.target.value)}
+          style={{ ...inputStyle, width: 200 }}
+          data-testid="venue-plans-verify-country"
+        >
+          <option value="">All countries</option>
+          {p.countries.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label style={fieldLabelStyle}>
+        <span style={fieldCaptionStyle}>City</span>
+        <select
+          value={p.filter.cityId}
+          onChange={(e) => p.onCity(e.target.value)}
+          disabled={p.filter.country === ""}
+          style={{ ...inputStyle, width: 200 }}
+          data-testid="venue-plans-verify-city"
+        >
+          <option value="">All cities</option>
+          {p.cities.map((c) => (
+            <option key={c.value} value={c.value}>
+              {c.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label style={fieldLabelStyle}>
+        <span style={fieldCaptionStyle}>Venue name</span>
+        <input
+          type="search"
+          value={p.search}
+          maxLength={PLANS_SEARCH_MAX}
+          onChange={(e) => p.onSearch(e.target.value)}
+          placeholder="Part of the venue name"
+          style={{ ...inputStyle, width: 220 }}
+          data-testid="venue-plans-verify-search"
+        />
+      </label>
+      <button type="button" style={buttonStyle} onClick={p.onReload} data-testid="venue-plans-verify-reload">
+        Reload
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Panel (stateful)
+// ---------------------------------------------------------------------------
+
+const SEARCH_DEBOUNCE_MS = 300;
+
 export function VerificationPanel(): JSX.Element {
   const queryClient = useQueryClient();
-  const [filter, setFilter] = useState<VerificationFilter>("unverified");
+  const [filter, setFilter] = useState<PlanListFilter>(INITIAL_PLAN_FILTER);
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<VerificationRow | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -300,25 +417,18 @@ export function VerificationPanel(): JSX.Element {
   const [needsFixRow, setNeedsFixRow] = useState<VerificationRow | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
 
-  // "No state (imported)"
-  const [orgId, setOrgId] = useState("");
-  const [noStateRows, setNoStateRows] = useState<readonly VerificationRow[]>([]);
-  const [scanProgress, setScanProgress] = useState<BatchProgress | null>(null);
-  const [scanning, setScanning] = useState(false);
-  const [scanNotes, setScanNotes] = useState<readonly string[]>([]);
-  const [scanError, setScanError] = useState<string | null>(null);
-  const stopRef = useRef(false);
+  // The search text reaches the filter 300 ms after the last key; that returns to page one.
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setFilter((prev) => (prev.q === search.trim() ? prev : applyFilterChange(prev, { q: search.trim() })));
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(t);
+  }, [search]);
 
-  const isNone = filter === NO_STATE_FILTER;
-
-  const listQuery = useQuery<readonly VerificationRow[], ApiError>({
+  const listQuery = useQuery<AdminSeatingPlanPage, ApiError>({
     queryKey: ["admin", "venue-plans", "verification", filter],
-    queryFn: async () => {
-      if (filter === NO_STATE_FILTER) return [];
-      const rows = await listPlansByVerification(filter);
-      return rows.map(rowFromAdminPlan);
-    },
-    enabled: !isNone,
+    queryFn: () => listAdminSeatingPlans(filter),
+    placeholderData: keepPreviousData,
     refetchOnWindowFocus: false,
     retry: false,
   });
@@ -329,10 +439,28 @@ export function VerificationPanel(): JSX.Element {
       const res = await authedFetch<{ organizations: OrganizationItem[] }>({ method: "GET", path: "/v1/organizations" });
       return [...res.organizations].sort((a, b) => a.name.localeCompare(b.name));
     },
-    enabled: isNone,
     refetchOnWindowFocus: false,
     retry: false,
   });
+
+  // The same geo registry the Venues screen reads (GET /v1/geo/cities has the same query key there).
+  const countriesQuery = useQuery<{ countries: readonly GeoCountry[] }, ApiError>({
+    queryKey: ["geo", "countries", "venue-picker"],
+    queryFn: () => authedFetch<{ countries: readonly GeoCountry[] }>({ method: "GET", path: "/v1/geo/countries" }),
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const citiesQuery = useQuery<{ cities: readonly GeoCity[] }, ApiError>({
+    queryKey: ["geo", "cities", "venue-picker"],
+    queryFn: () => authedFetch<{ cities: readonly GeoCity[] }>({ method: "GET", path: "/v1/geo/cities" }),
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const countries = useMemo(() => countryChoices(countriesQuery.data?.countries ?? []), [countriesQuery.data]);
+  const cities = useMemo(
+    () => cityChoices(citiesQuery.data?.cities ?? [], filter.country),
+    [citiesQuery.data, filter.country],
+  );
 
   const previewQuery = useQuery<string | null, ApiError>({
     queryKey: ["admin", "venue-plans", "preview", selected?.planId ?? "", selected?.currentVersionId ?? ""],
@@ -343,12 +471,17 @@ export function VerificationPanel(): JSX.Element {
     staleTime: 5 * 60 * 1000,
   });
 
-  const rows: readonly VerificationRow[] = isNone ? noStateRows : (listQuery.data ?? []);
+  const page = listQuery.data;
+  const rows: readonly VerificationRow[] = useMemo(() => (page?.seating_plans ?? []).map(rowFromAdminPlan), [page]);
+
+  const change = (patch: Parameters<typeof applyFilterChange>[1]): void => {
+    setFilter((prev) => applyFilterChange(prev, patch));
+    setSelected(null);
+    setMessage(null);
+    setActionError(null);
+  };
 
   const afterChange = async (row: VerificationRow): Promise<void> => {
-    if (isNone) {
-      setNoStateRows((prev) => prev.filter((r) => r.planId !== row.planId));
-    }
     if (selected?.planId === row.planId) setSelected(null);
     await queryClient.invalidateQueries({ queryKey: ["admin", "venue-plans", "verification"] });
   };
@@ -387,131 +520,22 @@ export function VerificationPanel(): JSX.Element {
     }
   };
 
-  const onScan = async (): Promise<void> => {
-    if (orgId === "") return;
-    stopRef.current = false;
-    setScanning(true);
-    setScanError(null);
-    setScanNotes([]);
-    setNoStateRows([]);
-    setScanProgress(null);
-    try {
-      const [venuesRes, stated] = await Promise.all([
-        authedFetch<{ venues: VenueRef[] }>({ method: "GET", path: "/v1/venues" }),
-        loadStatedPlanIds(),
-      ]);
-      const orgName = orgsQuery.data?.find((o) => o.id === orgId)?.name ?? orgId.slice(0, 8);
-      const result = await scanNoStatePlans({
-        orgId,
-        venues: venuesRes.venues,
-        stated: stated.ids,
-        concurrency: 3,
-        onProgress: setScanProgress,
-        shouldStop: () => stopRef.current,
-      });
-      setNoStateRows(result.plans.map((p) => rowFromNoState(p, orgName)));
-      const notes: string[] = [];
-      if (stated.truncated) {
-        notes.push("One of the lists of plans with a status has more than 200 plans. The list shows 200 plans. A plan with a status can show here too. Verify works on it too.");
-      }
-      if (result.failedVenues.length > 0) {
-        notes.push(`We cannot read the plans of:${result.failedVenues.map((v) => v.name).join(", ")}.`);
-      }
-      if (result.stopped) notes.push("You stopped the scan. The list is not complete.");
-      setScanNotes(notes);
-    } catch (err) {
-      setScanError(err instanceof ApiError ? err.message : String(err));
-    } finally {
-      setScanning(false);
-    }
-  };
-
   return (
     <div data-testid="venue-plans-verification">
-      <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 12 }}>
-        <label style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>
-          <span style={{ display: "block", marginBottom: 4 }}>Status of the plan</span>
-          <select
-            value={filter}
-            onChange={(e) => {
-              setFilter(e.target.value as VerificationFilter);
-              setSelected(null);
-              setMessage(null);
-              setActionError(null);
-            }}
-            style={{ ...inputStyle, width: 240 }}
-            data-testid="venue-plans-verify-filter"
-          >
-            {FILTER_OPTIONS.map((f) => (
-              <option key={f} value={f}>
-                {verificationLabel(f === NO_STATE_FILTER ? null : f)}
-              </option>
-            ))}
-          </select>
-        </label>
-        {isNone ? (
-          <>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "#334155" }}>
-              <span style={{ display: "block", marginBottom: 4 }}>Organization</span>
-              <select
-                value={orgId}
-                onChange={(e) => setOrgId(e.target.value)}
-                style={{ ...inputStyle, width: 280 }}
-                data-testid="venue-plans-verify-org"
-              >
-                <option value="">Select an organization</option>
-                {(orgsQuery.data ?? []).map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
-              {orgsQuery.isError ? (
-                <span role="alert" style={{ display: "block", marginTop: 4 }} data-testid="venue-plans-verify-org-error">
-                  The list of organizations did not load. Reload the page.
-                </span>
-              ) : null}
-            </label>
-            <button
-              type="button"
-              style={orgId === "" || scanning ? { ...primaryButtonStyle, ...disabledButtonStyle } : primaryButtonStyle}
-              disabled={orgId === "" || scanning}
-              onClick={() => void onScan()}
-              data-testid="venue-plans-scan"
-            >
-              {scanning ? "Reading…" : "Find plans"}
-            </button>
-            {scanning ? (
-              <button type="button" style={buttonStyle} onClick={() => { stopRef.current = true; }} data-testid="venue-plans-scan-stop">
-                Stop
-              </button>
-            ) : null}
-          </>
-        ) : (
-          <button type="button" style={buttonStyle} onClick={() => void listQuery.refetch()} data-testid="venue-plans-verify-reload">
-            Reload
-          </button>
-        )}
-      </div>
-
-      {isNone ? (
-        <p style={hintStyle}>
-          The server list does not show plans with no status (imported plans). Select
-          an organization. Then the page reads the plans of its venues. Verify works on these plans too.
-        </p>
-      ) : null}
-      {isNone && scanProgress !== null ? (
-        <p style={mutedStyle} data-testid="venue-plans-scan-progress">
-          Read {scanProgress.completed} of {scanProgress.total} venues
-          {scanProgress.failed > 0 ? `, ${scanProgress.failed} failed` : ""}.
-        </p>
-      ) : null}
-      {scanError !== null ? <div style={errorStyle}>We did not read the plans: {scanError}</div> : null}
-      {scanNotes.map((n) => (
-        <div key={n} style={{ ...warningStyle, marginBottom: 8 }}>
-          {n}
-        </div>
-      ))}
+      <VerificationFilters
+        filter={filter}
+        search={search}
+        counts={page?.counts}
+        organizations={orgsQuery.data ?? []}
+        countries={countries}
+        cities={cities}
+        onState={(s) => change({ state: s })}
+        onOrg={(id) => change({ orgId: id })}
+        onCountry={(iso2) => change({ country: iso2 })}
+        onCity={(id) => change({ cityId: id })}
+        onSearch={setSearch}
+        onReload={() => void listQuery.refetch()}
+      />
 
       {message !== null ? (
         <div style={noticeStyle} data-testid="venue-plans-verify-notice">
@@ -523,36 +547,54 @@ export function VerificationPanel(): JSX.Element {
           {actionError}
         </div>
       ) : null}
-      {!isNone && listQuery.isLoading ? <p style={mutedStyle}>Loading…</p> : null}
-      {!isNone && listQuery.error ? (
+      {listQuery.isLoading ? (
+        <p style={mutedStyle} data-testid="venue-plans-verify-loading">
+          Loading…
+        </p>
+      ) : null}
+      {listQuery.isError ? (
         <div style={errorStyle} data-testid="venue-plans-verify-load-error">
-          We did not load the plans: {listQuery.error.message}
+          We did not load the seating plans. {listQuery.error.message}{" "}
+          <button type="button" style={buttonStyle} onClick={() => void listQuery.refetch()} data-testid="venue-plans-verify-retry">
+            Try again
+          </button>
         </div>
       ) : null}
 
-      {isNone && noStateRows.length === 0 && scanProgress === null ? null : (
-        <div style={{ display: "grid", gridTemplateColumns: selected !== null ? "minmax(0, 3fr) minmax(0, 2fr)" : "minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
-          <VerificationTable
-            rows={rows}
-            selectedId={selected?.planId ?? null}
-            busyId={busyId}
-            onPreview={(r) => setSelected(r)}
-            onVerify={(r) => void onVerify(r)}
-            onNeedsFix={(r) => {
-              setDialogError(null);
-              setNeedsFixRow(r);
-            }}
-          />
-          {selected !== null ? (
-            <PlanPreviewBox
-              row={selected}
-              url={previewQuery.data}
-              loading={previewQuery.isLoading}
-              error={previewQuery.error ?? null}
+      {page !== undefined ? (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: selected !== null ? "minmax(0, 3fr) minmax(0, 2fr)" : "minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
+            <VerificationTable
+              rows={rows}
+              selectedId={selected?.planId ?? null}
+              busyId={busyId}
+              onPreview={(r) => setSelected(r)}
+              onVerify={(r) => void onVerify(r)}
+              onNeedsFix={(r) => {
+                setDialogError(null);
+                setNeedsFixRow(r);
+              }}
             />
-          ) : null}
-        </div>
-      )}
+            {selected !== null ? (
+              <PlanPreviewBox
+                row={selected}
+                url={previewQuery.data}
+                loading={previewQuery.isLoading}
+                error={previewQuery.error ?? null}
+              />
+            ) : null}
+          </div>
+          <Pager
+            testIdPrefix="venue-plans-verify"
+            total={page.total}
+            offset={page.offset}
+            shown={rows.length}
+            limit={PLANS_PAGE_SIZE}
+            onPrev={() => setFilter((prev) => applyPage(prev, prev.offset - PLANS_PAGE_SIZE))}
+            onNext={() => setFilter((prev) => applyPage(prev, prev.offset + PLANS_PAGE_SIZE))}
+          />
+        </>
+      ) : null}
 
       {needsFixRow !== null ? (
         <NeedsFixDialog
@@ -566,3 +608,4 @@ export function VerificationPanel(): JSX.Element {
     </div>
   );
 }
+

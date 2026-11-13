@@ -298,6 +298,30 @@ func TestPlanNoticeSayTheThreeKinds(t *testing.T) {
 	}
 }
 
+// The escalated notice says arena could not build the plan, names the venue
+// and, for another organization, the organization.
+func TestPlanNoticeSayEscalated(t *testing.T) {
+	b, sent := planNoticeBot(t, notFoundArena(t).URL)
+	here, there := uuid.New(), uuid.New()
+	id := identityIn(here, Membership{OrgID: here, OrgName: "Acme"}, Membership{OrgID: there, OrgName: "Beta Events"})
+	ctx := context.Background()
+	link := gen.BotTelegramLinkRow{}
+	b.planNoticeSay(ctx, 42, "en", link, id, "jwt", noticeOf("escalated", here, ""))
+	b.planNoticeSay(ctx, 42, "en", link, id, "jwt", noticeOf("escalated", there, ""))
+	got := sent()
+	if len(got) != 2 {
+		t.Fatalf("messages = %+v", got)
+	}
+	for _, m := range got {
+		if !strings.Contains(m.Text, "could not build the seating plan") || !strings.Contains(m.Text, "Hall &lt;1&gt;") || !strings.Contains(m.Text, "one working day") {
+			t.Errorf("escalated = %q", m.Text)
+		}
+	}
+	if strings.Contains(got[0].Text, "Beta Events") || !strings.Contains(got[1].Text, "Beta Events") {
+		t.Errorf("organization line: %q / %q", got[0].Text, got[1].Text)
+	}
+}
+
 // A notice of another organization names it, and its review button says where
 // the request lives instead of "not found".
 func TestPlanNoticeOfAnotherOrganizationNamesItAndItsButtonExplains(t *testing.T) {

@@ -27,7 +27,7 @@ import (
 const (
 	maxPlanName = 200
 	// maxDraftSVG is the biggest draft SVG (the SVG limit of spec 2.1).
-	maxDraftSVG = 3 * mb
+	maxDraftSVG = venueplan.MaxDraftSVGBytes
 	// ownerSeatingPlanSVG is the media owner type of a plan version's SVG.
 	ownerSeatingPlanSVG = "seating_plan_svg"
 )

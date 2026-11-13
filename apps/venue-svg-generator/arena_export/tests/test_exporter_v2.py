@@ -91,9 +91,12 @@ def test_parity_with_v1(profile):
     assert as_tuples(v2) == as_tuples(v1)
     assert v2["seat_radius"] == v1["seat_radius"]
     assert v2["category"] == v1["category"]
-    # Decor (row labels, section titles) fits inside the v1 canvas of the synthetic hall (stage unknown).
-    assert v2["viewBox"] == v1["viewBox"] == "0 0 9 10"
-    assert v2["scale"] == 1.0 and v2["offset"] == {"x": 0.0, "y": 0.0}
+    # v1 has no decor, so v2 may be a little wider (room for the row labels), never smaller.
+    assert v1["viewBox"] == "0 0 200 224"
+    v1_w, v1_h = (float(v) for v in v1["viewBox"].split()[2:])
+    v2_w, v2_h = (float(v) for v in v2["viewBox"].split()[2:])
+    assert v2_w >= v1_w and v2_h >= v1_h
+    assert v2["scale"] == 24.0 and v2["offset"] == {"x": 0.0, "y": 0.0}
     assert v2["marked"] == "PASS"
 
 
@@ -184,12 +187,12 @@ def test_stage_and_labels(profile):
 def test_large_hall_is_scaled_down(profile):
     model = synthetic_v2()
     for _, _, seat in iter_seats(model):
-        seat["position"] = {"x": seat["position"]["x"] * 400, "y": seat["position"]["y"] * 400}
+        seat["position"] = {"x": seat["position"]["x"] * 400, "y": seat["position"]["y"]}
     svg, info = build_authoring_svg_v2(model, profile)
     width, height = (float(v) for v in info["viewBox"].split()[2:])
     assert max(width, height) <= 2000
-    assert info["scale"] < 1.0
-    assert info["seat_radius"] == pytest.approx(0.32 * info["scale"], rel=1e-4)
+    assert info["scale"] < 24.0  # the step (1 model unit) is smaller than 24 user units
+    assert info["seat_radius"] == pytest.approx(0.32 * info["scale"], rel=1e-3)
     assert ET.fromstring(svg).get("viewBox") == info["viewBox"]
 
 

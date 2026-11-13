@@ -128,13 +128,11 @@ func (Notifier) IntakeCreated(ctx context.Context, tx pgx.Tx, intakeID uuid.UUID
 	return enqueueIntake(ctx, tx, KindIntakeCreated, intakeID, "")
 }
 
-// IntakeEscalated queues intake_escalated. Reason no_generator queues nothing:
-// in wave 1 every new intake without a source SVG goes to an administrator and
-// intake_created already says so.
+// IntakeEscalated queues intake_escalated, for every reason. Since wave 2 a
+// new intake without a source SVG stays received and queues nothing at
+// create: the administrators hear of it only here, when the generator job
+// sends it to them (no_generator included).
 func (Notifier) IntakeEscalated(ctx context.Context, tx pgx.Tx, intakeID uuid.UUID, reason venueplan.EscalationReason) error {
-	if reason == venueplan.EscalationNoGenerator {
-		return nil
-	}
 	return enqueueIntake(ctx, tx, KindIntakeEscalated, intakeID, string(reason))
 }
 
@@ -170,10 +168,10 @@ type Options struct {
 
 // reasonWords says a reason in words for the administrator.
 var reasonWords = map[string]string{
-	string(venueplan.EscalationNoGenerator):       "для этого формата нет программы чтения",
-	string(venueplan.EscalationGeneratorFailed):   "программа чтения не справилась с файлом",
-	string(venueplan.EscalationDraftInvalid):      "черновик не прошёл проверку",
-	string(venueplan.EscalationTooManyQuestions):  "к схеме слишком много вопросов",
+	string(venueplan.EscalationNoGenerator):       "генератор схем не подключён",
+	string(venueplan.EscalationGeneratorFailed):   "генератор схем не справился с файлами",
+	string(venueplan.EscalationDraftInvalid):      "черновик генератора не прошёл проверку",
+	string(venueplan.EscalationTooManyQuestions):  "генератор не смог построить полную схему, к ней слишком много вопросов",
 	string(venueplan.EscalationOrganizerRequest):  "организатор позвал администратора",
 	string(venueplan.EscalationOrganizerText):     "правку текстом не удалось применить",
 	string(venueplan.EscalationAnswers):           "ответы организатора не удалось применить",

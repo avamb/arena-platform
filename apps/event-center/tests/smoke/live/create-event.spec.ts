@@ -179,7 +179,7 @@ test.describe("create a draft GA event", () => {
     const writes = countCreates(page);
     const venueWrites: string[] = [];
     page.on("request", (r) => {
-      if (r.method() === "POST" && /\/organizations\/[^/]+\/venues$/.test(r.url())) venueWrites.push(r.url());
+      if (r.method() === "POST" && /\/organizations\/[^/]+\/venues(\?.*)?$/.test(r.url())) venueWrites.push(r.url());
     });
     await openFromList(page);
     await skipPoster(page);

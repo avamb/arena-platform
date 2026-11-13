@@ -257,23 +257,39 @@ func TestVenuePlanNotify_VenueCreated(t *testing.T) {
 	}
 }
 
-// (b) intake_created: a PDF has no reader, so it goes to an administrator at
-// once; the message says so and no second (escalated) message is queued.
-func TestVenuePlanNotify_IntakeCreated(t *testing.T) {
+// (b) A PDF waits for the generator job: the create tells nobody. A worker
+// without a generator sends it to an administrator (no_generator), and only
+// then the administrators hear of it, once.
+func TestVenuePlanNotify_IntakeWithoutGeneratorEscalates(t *testing.T) {
 	e := newVPNEnv(t)
 	res := e.create(t, e.orgA, e.venueA, e.organizerToken, nil, vpiFile{"plan.pdf", vpiPDF()})
 	if res.status != http.StatusAccepted {
 		t.Fatalf("create: %d %s", res.status, res.body)
 	}
 	id := res.intake(t)["id"].(string)
+	e.noJob(t, "intake_created", "intake_id", id)
+	e.noJob(t, "intake_escalated", "intake_id", id)
+	e.toOperator(t, id)
+	e.noJob(t, "intake_created", "intake_id", id)
+	payload := e.job(t, "intake_escalated", "intake_id", id)
+
+	e.run(t, payload, "Заявка на схему зала ждёт администратора",
+		"Площадка: VPI Hall A", "Файлов: 1 (pdf)", "генератор схем не подключён", vpnAppURL+"/venue-plans/"+id)
+}
+
+// (b2) intake_created: a clean SVG is draft 1 at once; the message says the
+// organizer checks it.
+func TestVenuePlanNotify_IntakeCreated(t *testing.T) {
+	e := newVPNEnv(t)
+	res := e.create(t, e.orgA, e.venueA, e.organizerToken, nil, vpiFile{"plan.svg", vpiPlanSVG(t)})
+	if res.status != http.StatusAccepted {
+		t.Fatalf("create: %d %s", res.status, res.body)
+	}
+	id := res.intake(t)["id"].(string)
 	e.noJob(t, "intake_escalated", "intake_id", id)
 	payload := e.job(t, "intake_created", "intake_id", id)
-
-	details, _ := e.run(t, payload, "Новая заявка на схему зала",
-		"Площадка: VPI Hall A", "Файлов: 1 (pdf)", "для этого формата нет программы чтения", vpnAppURL+"/venue-plans/"+id)
-	if !strings.Contains(details, "ушла администратору") {
-		t.Errorf("the message does not say the intake went to an administrator:\n%s", details)
-	}
+	e.run(t, payload, "Новая заявка на схему зала",
+		"Площадка: VPI Hall A", "Файлов: 1 (svg)", "Организатор проверяет черновик сам", vpnAppURL+"/venue-plans/"+id)
 }
 
 // (c) intake_escalated: the organizer calls an administrator, with a text.
@@ -351,6 +367,7 @@ func TestVenuePlanNotify_BotClaimsOrganizerNotices(t *testing.T) {
 		}
 		id := res.intake(t)["id"].(string)
 		ids[label] = id
+		e.toOperator(t, id)
 		adm := "/v1/admin/plan-intakes/" + id
 		if r := e.jsonDo(t, http.MethodPost, adm+"/claim", e.super, "taking it", ""); r.status != http.StatusOK {
 			t.Fatalf("claim: %d %s", r.status, r.body)
@@ -376,13 +393,23 @@ func TestVenuePlanNotify_BotClaimsOrganizerNotices(t *testing.T) {
 		t.Fatalf("claim: %d %s", r.status, r.body)
 	}
 	mine := map[string]map[string]any{}
+	escalated := 0
 	for _, raw := range r.json(t)["notices"].([]any) {
 		n := raw.(map[string]any)
 		for label, id := range ids {
-			if n["intake_id"] == id {
-				mine[label] = n
+			if n["intake_id"] != id {
+				continue
 			}
+			// The worker without a generator left an escalated notice first.
+			if n["kind"] == "escalated" {
+				escalated++
+				continue
+			}
+			mine[label] = n
 		}
+	}
+	if escalated != 2 {
+		t.Errorf("escalated notices claimed: %d, want 2", escalated)
 	}
 	if len(mine) != 2 {
 		t.Fatalf("claimed notices of the test: %v in %s", mine, r.body)
@@ -416,8 +443,8 @@ func TestVenuePlanNotify_BotClaimsOrganizerNotices(t *testing.T) {
 			}
 		}
 	}
-	if n := e.count(t, `SELECT count(*) FROM venue_plan_notices WHERE intake_id = ANY($1) AND claimed_at IS NOT NULL`, []uuid.UUID{uuid.MustParse(ids["linked"]), uuid.MustParse(ids["unlinked"])}); n != 2 {
-		t.Errorf("claimed notices in the table = %d, want 2", n)
+	if n := e.count(t, `SELECT count(*) FROM venue_plan_notices WHERE intake_id = ANY($1) AND claimed_at IS NOT NULL`, []uuid.UUID{uuid.MustParse(ids["linked"]), uuid.MustParse(ids["unlinked"])}); n != 4 {
+		t.Errorf("claimed notices in the table = %d, want 4 (escalated and returned of each)", n)
 	}
 }
 
