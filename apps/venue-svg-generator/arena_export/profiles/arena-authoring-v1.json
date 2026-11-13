@@ -7,6 +7,6 @@
     "color": "#00aaff",
     "index": 1
   },
-  "stroke_width_px": 3,
+  "stroke_width_px": 1,
   "legend": ["Sold", "None", "Reserved", "MyTickets"]
 }

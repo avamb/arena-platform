@@ -228,6 +228,20 @@ Windows host, Docker Desktop, bash allowlist, lint and format tooling, git hygie
 * A python script that writes a file in text mode (o…
 * The admin console's nginx takes its security headers from ONE file included in every location
 
+### [Venue SVG generator](docs/agents/venue-generator.md)
+
+The Python generator service: hall model, HTTP contract, token, fixtures of the Go contract test.
+
+* The service contract and the hall model live in ONE file, HALL_MODEL.md
+* The service refuses to start without VENUE_GEN_TOKEN
+* Run the generator tests from the app folder, not with a path argument
+* The Go contract test reads committed fixtures
+* A seat without a full identity never becomes a seat in the authoring SVG
+* No client file and no profile bound to a client file's SHA-256 goes into the service
+* On the staging stand the generator is a standalone container (lead-parser, 1024 MB, /healthz)
+* What the generator really reads today: XLSX yes, vector PDF without row labels, images need a colour profile
+* The authoring SVG is in pixel-like units (seats 24 apart, outline 1); a guard quarantines an export with blots, tiny or overlapping seats
+
 ### [Testing and integration-test fixtures](docs/agents/testing-integration.md)
 
 Integration-test traps: fixtures, shared databases, outbox draining, worker jobs, load tests, CI-only failures.
@@ -253,6 +267,7 @@ Integration-test traps: fixtures, shared databases, outbox draining, worker jobs
 * Server load test 2026-09-22 (docs/loadtest/2026-09…
 * A "writes nothing" test must count rows it can att…
 * runWorkerJob (auth_email_integration_test.go) clos…
+* The httpserver package takes 6 to 10 minutes under the race detector: the CI Unit job runs go test with -timeout=20m
 
 ### [Database, schema and transactions](docs/agents/db-schema-transactions.md)
 
@@ -461,6 +476,11 @@ Places, categories, hold and quota lock order, plan geometry, seat layouts, venu
 * Saved seat layouts, the colour of a category and p…
 * An event sold by an existing hall plan: extra pric…
 * An add-on category (migration 0197, ticket_tiers.i…
+* A seat batch creates price categories in its own transaction (new_tiers, needs tier.create)
+* A seat shows ONE card to the buyer and to the organizer (seat-card.ts)
+* A section or row key is NOT always normalizeKey(name): hash suffix where names collide on a seat
+* A category has ONE colour for the organizer and the buyer: tier colour, else the home plan category's, else the palette
+* The bot's "Split seats by price" fills an EMPTY open category of the same price before creating a new one (loEmptyOpen)
 
 ### [Events, sessions, promoters and sales channels](docs/agents/catalog-sessions-channels.md)
 
@@ -481,6 +501,7 @@ Session lifecycle and times, event status and sales state, promoters, sales chan
 * Publishing through POST .../events/{id}/status bin…
 * The hold gate refuses a cancelled session, and the…
 * A VERIFIED venue is open to every organization (mi…
+* A city is found before it is created: citymatch.FindInCountry (any name, any language, slug, alias of its own country)
 
 ### [Telegram bot: core, wizard and screens](docs/agents/bot-core-wizard.md)
 
@@ -511,6 +532,10 @@ The event-center bot process, dialogs, feed, menu, wizard state machine, edit ca
 * A Telegram file link carries the bot token, and so…
 * DialogStore.Load reports an expired dialog exactly…
 * The bot wizard takes a hall plan as an SVG FILE (e…
+* Venue choice by country, city and venue, and the shared country screen (directory and world list, a new country only with a venue)…
+* The main menu is nine buttons plus sections (callback prefix mn:), and a "First steps" block from the getting-started route…
+* The event card has FIVE buttons and four group screens (ec:g, ec:lk), a first-button rule, and the word "brand" replaces "promoter" in organizer texts…
+* "❓ What is here?" is the help of ONE screen: one item list builds both the keyboard and the help (screenItems, hp: prefix), /menu forces the "☰ Menu" keyboard, a superadmin keeps Venues and Messages…
 
 ### [Orders, invitations and door scans](docs/agents/orders-invitations-scans.md)
 
@@ -576,6 +601,9 @@ Per-screen rules of apps/event-center: Team, Organization data, session change, 
 * The web event poster (7-1, apps/event-center, twin…
 * The session-change and refund cards are KEYED by o…
 * "Connect Telegram" (F-007, migration 0213) and the…
+* The event card is five collapsible sections from one model (eventActions.ts); only the first by the event's state is open, and specs open a section before they use its block
+* The web menu has the sections of the bot's menu: one model (navMenu.ts), five-item bar, Menu sheet, /entrance, /help, FirstSteps, no A2HS on a wide screen
+* "What is here?" is the help of ONE screen, built from navMenu/eventActions models (screenHelp.ts), never a text per screen
 
 ### [Organizer applications (onboarding)](docs/agents/onboarding.md)
 
@@ -719,3 +747,38 @@ Manual sales state of a session, sold-out and site alerts, notify-me-when-sales-
 
 * A session has ONE sales state for every channel (m…
 * "Notify me when sales open" (package salesubscribe…
+
+### [Hall plan intake and plan verification](docs/agents/venue-plan-intake.md)
+
+Spec 64: intake states, private plan sources, approve, superadmin verification and templates, administrator notifications, bot notices, later-wave seams.
+
+* An intake has seven states and each is moved by one actor
+* Intake sources are private media of owner type venue_plan_source, with their own body limit
+* A draft SVG is validated before anyone sees it
+* Approve is ONE transaction and the billing fact sits behind a SAVEPOINT
+* operator_verified is set ONLY by the verify route
+* Fork rules: a private plan of another organization is not copied
+* A new version on ANY write path resets a verified template, only a superadmin's with X-Admin-Reason does not
+* Four events tell every platform administrator through the job venue_plan.notify
+* The notify handler sends nothing twice and tells no person
+* The bot claims organizer notices with POST /v1/bot/venue-plan-notices/claim
+* The answers loop is still an administrator's work: venue_plan.render and the question table have no writer
+* Since wave 2 create leaves the intake received and queues venue_plan.generate; only the worker knows the generator
+* generate.Decide maps a generator answer to review or to an administrator with the exact reason
+* generate.SendKind and Select choose the files; the generator is called outside any transaction
+* An attempt is a chain of short steps (submit, poll every 3 s, 4-minute deadline), one HTTP call per worker job
+* A repeated step does nothing: rows carry seq, a higher seq for the intake means the step was done
+* The sweep venue_plan.generate_sweep sends an intake with no step for 30 minutes to an administrator
+* The bot sends the files of a plan as ONE intake and never builds a plan itself (pi: callbacks, paused draft, notice loop)
+* The world country table is worldgeo, and only a venue or an approved application creates a reference country (never an API key)
+* The venue directory is GET .../venue-directory, own plus verified venues, the access of shared-venues
+* The web reads world-countries and venue-directory only through directoryApi.ts; a new country comes only with the venue create
+* The venue chooser is ONE component for the screen Venues and the wizard
+* The web intake refuses a file before any request and keeps one Idempotency-Key per attempt
+* The admin queue of plans to verify is ONE request; no state parameter means every state, none means NULL
+* A draft SVG of an intake is read by seating.ImportAnySVG (authoring or sbt); the plan version route takes authoring only
+* Only an ACTIVE plan is seen by the queue and by the bot; the library loader activates a plan after its version upload
+* The generator's answer is limited in the client before parsing (SVG 3 MB, preview 10 MB); half-set VENUE_GEN_* is a warning; the test fixture is a copy
+* A returned notice carries draft_changed; the bot says "corrected" only when it is true, else "examined"
+* A generated draft names its category through the worker's target_profile, never the generator's PLACEHOLDER
+* The live twin harness runs no worker: a PDF intake stays received there; re-run live specs after merging a change of states

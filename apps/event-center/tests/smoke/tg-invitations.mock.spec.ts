@@ -266,7 +266,7 @@ test.describe("the invitations mini app at 360 x 740", () => {
     await page.goto(LINK);
     const err = page.getByTestId("tg-inv-error");
     await expect(err).toContainText("This link does not work", { timeout: 20_000 });
-    await expect(err).toContainText("invitations button");
+    await expect(err).toContainText("Free tickets");
     await expect(page.getByTestId("inv-hall")).toHaveCount(0);
     await noHorizontalScroll(page);
   });

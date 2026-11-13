@@ -68,6 +68,12 @@ export interface VenueSection {
   /** The time zone of the chosen venue, read from the list. */
   existingTimezone: string;
   existingCapacity: number | null;
+  /**
+   * The country of the chosen venue (ISO 3166-1 alpha-2), "" when unknown. It decides the currency, and
+   * a shared verified venue is not in the organization's list, so it is kept here. A stored draft without
+   * it reads as "", so no version bump.
+   */
+  existingCountry: string;
   /** A new venue (mode "new"). Kept when the person switches mode and back. */
   newName: string;
   /** ISO 3166-1 alpha-2, upper case; "" = not chosen. */
@@ -147,6 +153,7 @@ export function emptyVenue(): VenueSection {
     existingName: "",
     existingTimezone: "",
     existingCapacity: null,
+    existingCountry: "",
     newName: "",
     countryIso2: "",
     cityName: "",
@@ -227,7 +234,7 @@ function apply(d: WizardDraft, a: DraftAction): WizardDraft {
       if (a.venue === null) {
         return {
           ...d,
-          venue: { ...d.venue, existingId: "", existingName: "", existingTimezone: "", existingCapacity: null },
+          venue: { ...d.venue, existingId: "", existingName: "", existingTimezone: "", existingCapacity: null, existingCountry: "" },
           seating: emptySeating(),
         };
       }
@@ -242,6 +249,7 @@ function apply(d: WizardDraft, a: DraftAction): WizardDraft {
           existingName: a.venue.name,
           existingTimezone: a.venue.timezone ?? "",
           existingCapacity: a.venue.capacity,
+          existingCountry: a.venue.country ?? "",
         },
       };
     }
@@ -257,6 +265,7 @@ function apply(d: WizardDraft, a: DraftAction): WizardDraft {
           existingName: a.venue.name,
           existingTimezone: a.venue.timezone ?? "",
           existingCapacity: a.venue.capacity,
+          existingCountry: a.venue.country ?? "",
         },
       };
     case "country": {
@@ -490,6 +499,8 @@ export function parseDraft(raw: unknown): WizardDraft | null {
   const timezone = str(v.timezone);
   const capacity = str(v.capacity);
   const existingCapacity = v.existingCapacity;
+  // Read leniently: a draft stored before this field has none.
+  const existingCountry = typeof v.existingCountry === "string" ? v.existingCountry : "";
   if (
     existingId === null ||
     existingName === null ||
@@ -535,6 +546,7 @@ export function parseDraft(raw: unknown): WizardDraft | null {
       existingName,
       existingTimezone,
       existingCapacity,
+      existingCountry,
       newName,
       countryIso2,
       cityName,

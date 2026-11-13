@@ -205,6 +205,9 @@ export type ApiErrorStem =
   | "seatTierGone"
   | "seatStageNeeded"
   | "seatNoPlan"
+  | "seatTierNameTaken"
+  | "seatTooManyTiers"
+  | "seatNewTierInvalid"
   // The shop (spec 47)
   | "shopStockChanged"
   | "shopDuplicateSlug"
@@ -239,7 +242,23 @@ export type ApiErrorStem =
   | "referralProvider"
   | "referralNoProgram"
   | "growthCodeNotFound"
-  | "growthCodeOnePerBuyer";
+  | "growthCodeOnePerBuyer"
+  // Spec 64: the seating plan intake
+  | "planFormat"
+  | "planTooBig"
+  | "planNoFiles"
+  | "planWrongState"
+  | "planDraftStale"
+  | "planKeyReused"
+  | "planDraftInvalid"
+  | "planTextInvalid"
+  | "planForkOwn"
+  | "planIntakeGone"
+  | "planNoteInvalid"
+  | "planNoDraft"
+  | "planChannelInvalid"
+  | "planSourceGone"
+  | "planCopyGone";
 
 /** Every stem, for the catalog test. */
 export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
@@ -273,6 +292,7 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   "emailNoteEmpty", "emailNoteRateLimited", "textRefused",
   // S2b/S2c
   "seatNothingToRevert", "seatTooMany", "seatTierGone", "seatStageNeeded", "seatNoPlan",
+  "seatTierNameTaken", "seatTooManyTiers", "seatNewTierInvalid",
   // Spec 46: invitations on chosen seats
   "invitationSeatsTaken", "invitationNotEnough", "invitationRequestReused", "invitationSessionCancelled", "invitationNotIssued", "invitationTicketScanned", "invitationEmailNeeded", "invitationMyEmail", "invitationEmpty",
   "invitationUnknownSeat", "invitationTooManyPlaces", "invitationGuestName", "invitationGuestEmail", "invitationNoteLong", "invitationCategory",
@@ -294,6 +314,9 @@ export const API_ERROR_ALL_STEMS: readonly ApiErrorStem[] = [
   // Spec 63: replace the tickets of an order
   "orderNotPaid", "reissueNothing", "reissueTicketHeld", "reissueSessionClosed", "reissueInProgress", "reissueKeyReused",
   "reissueApplied", "reissueEmail", "reissueInvalid", "reissueInvitationNotIssued",
+  // Spec 64: the seating plan intake
+  "planFormat", "planTooBig", "planNoFiles", "planWrongState", "planDraftStale", "planKeyReused", "planDraftInvalid", "planTextInvalid", "planForkOwn",
+  "planIntakeGone", "planNoteInvalid", "planNoDraft", "planChannelInvalid", "planSourceGone", "planCopyGone",
 ];
 
 /**
@@ -336,6 +359,13 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "seat_batch.nothing_to_revert": "seatNothingToRevert",
   "seat_batch.too_many_changes": "seatTooMany",
   "seat_batch.tier_not_in_session": "seatTierGone",
+  "seat_batch.tier_name_taken": "seatTierNameTaken",
+  "seat_batch.duplicate_new_tier_name": "seatTierNameTaken",
+  "seat_batch.too_many_tiers": "seatTooManyTiers",
+  "seat_batch.invalid_new_tier_name": "seatNewTierInvalid",
+  "seat_batch.invalid_new_tier_price": "seatNewTierInvalid",
+  "seat_batch.invalid_new_tier_color": "seatNewTierInvalid",
+  "seat_batch.unused_new_tier": "seatNewTierInvalid",
   "seat_layout.annotation_required": "seatStageNeeded",
   "seat_layout.no_seating_plan": "seatNoPlan",
   // 4-7
@@ -544,6 +574,40 @@ export const API_ERROR_STEMS: Record<string, ApiErrorStem> = {
   "reissue.invalid_body": "reissueInvalid",
   "reissue.api_key_forbidden": "apiKeyForbidden",
   "reissue.invitation_not_issued": "reissueInvitationNotIssued",
+  // Spec 64: the seating plan intake (the files, the draft, the copy of a verified plan)
+  "venue_plan_intake.unsupported_format": "planFormat",
+  "venue_plan_intake.invalid_format": "planFormat",
+  "venue_plan_intake.unreadable_picture": "planFormat",
+  "venue_plan_intake.invalid_multipart": "planFormat",
+  "venue_plan_intake.file_too_large": "planTooBig",
+  "venue_plan_intake.total_too_large": "planTooBig",
+  "venue_plan_intake.unpacked_too_large": "planTooBig",
+  "venue_plan_intake.too_many_files": "planTooBig",
+  "venue_plan_intake.too_many_pages": "planTooBig",
+  "venue_plan_intake.too_many_pixels": "planTooBig",
+  "venue_plan_intake.no_files": "planNoFiles",
+  "venue_plan_intake.empty_file": "planNoFiles",
+  "venue_plan_intake.file_missing": "planNoFiles",
+  "venue_plan_intake.wrong_state": "planWrongState",
+  "venue_plan_intake.draft_stale": "planDraftStale",
+  "venue_plan_intake.idempotency_key_reused": "planKeyReused",
+  "venue_plan_intake.invalid_idempotency_key": "planKeyReused",
+  "venue_plan_intake.draft_validation_failed": "planDraftInvalid",
+  "venue_plan_intake.capacity_overflow": "planDraftInvalid",
+  "venue_plan_intake.invalid_name": "planDraftInvalid",
+  "venue_plan_intake.invalid_text": "planTextInvalid",
+  "venue_plan_intake.invalid_body": "invalid",
+  "venue_plan_intake.invalid_draft": "planDraftStale",
+  "venue_plan_intake.draft_not_found": "planDraftStale",
+  "venue_plan_intake.api_key_forbidden": "apiKeyForbidden",
+  "venue_plan_intake.failed": "server",
+  "seating_plan.fork_own_plan": "planForkOwn",
+  "venue_plan_intake.not_found": "planIntakeGone",
+  "venue_plan_intake.invalid_note": "planNoteInvalid",
+  "venue_plan_intake.no_draft": "planNoDraft",
+  "venue_plan_intake.invalid_channel": "planChannelInvalid",
+  "venue_plan_intake.source_not_found": "planSourceGone",
+  "venue_plan_intake.png_copy_not_found": "planCopyGone",
   "auth.step_up_required": "stepUpRequired",
   "auth.step_up_wrong_password": "stepUpWrong",
   "permissions.denied": "forbidden",

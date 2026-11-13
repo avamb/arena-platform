@@ -294,6 +294,11 @@ func (h *Handler) upsertSeatingPlanVersion(
 			return uuid.Nil, fmt.Errorf("insert seating plan: %w", insErr)
 		}
 		planID = row.ID
+	} else if _, err := q.LockSeatingPlanForNewVersion(ctx, planID, false); err != nil {
+		// A verified template never changes without a new verification: a
+		// new imported version sends it back to private and unverified in
+		// the import transaction (the same rule as the versions route).
+		return uuid.Nil, fmt.Errorf("lock seating plan for a new version: %w", err)
 	}
 
 	// Reuse an identical version of the same plan when one exists: a second

@@ -261,6 +261,12 @@ func (h *Handler) GetMedia(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	// A hall plan source has no link of its own: it is read only through
+	// the plan intake routes (spec 64 section 2.1).
+	if obj.OwnerType == mediastore.OwnerVenuePlanSource {
+		writeMediaNotFound(w, r)
+		return
+	}
 	if !h.mediaOrgAllowed(w, r, obj.OrgID, false) {
 		return
 	}
@@ -316,6 +322,14 @@ func (h *Handler) DeleteMedia(w http.ResponseWriter, r *http.Request) {
 		// 2): the organization is a party to the dispute, so it never deletes it.
 		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
 			"media.receipt_not_deletable", "an archived payment receipt cannot be deleted", r,
+		))
+		return
+	}
+	if obj.OwnerType == mediastore.OwnerVenuePlanSource {
+		// A file of a hall plan intake stays while its plan lives (spec 64
+		// section 4.3): the generator may rebuild the plan from it.
+		httputil.WriteJSON(w, http.StatusConflict, httputil.ErrorEnvelope(
+			"media.venue_plan_source_not_deletable", "a file of a hall plan intake cannot be deleted here", r,
 		))
 		return
 	}
@@ -383,6 +397,11 @@ func (h *Handler) DownloadMedia(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteJSON(w, http.StatusInternalServerError, httputil.ErrorEnvelope(
 			"media.get_failed", "failed to fetch media object", r,
 		))
+		return
+	}
+	// A hall plan source is never served by a signed link, even a valid one.
+	if obj.OwnerType == mediastore.OwnerVenuePlanSource {
+		writeMediaNotFound(w, r)
 		return
 	}
 

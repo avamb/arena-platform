@@ -68,6 +68,8 @@ export const API = {
   // The organization switch for the team guest list (24 h and 3 h before every session).
   guestListSettings: { method: "GET", path: "/v1/organizations/{org_id}/guest-list-settings" },
   guestListSettingsSet: { method: "PUT", path: "/v1/organizations/{org_id}/guest-list-settings" },
+  // The "First steps" card of the events list: which first steps the caller may do and which are done.
+  gettingStarted: { method: "GET", path: "/v1/organizations/{org_id}/getting-started" },
   guestListSubscription: { method: "GET", path: "/v1/organizations/{org_id}/guest-list-subscription" },
   guestListSubscriptionSet: { method: "PUT", path: "/v1/organizations/{org_id}/guest-list-subscription" },
   // The search travels in the body, never in the URL: a buyer's e-mail or
@@ -247,6 +249,19 @@ export const API = {
   // answers the organization's own and the shared ones.
   venueSeatingPlans: { method: "GET", path: "/v1/venues/{venue_id}/seating-plans" },
   seatingPlanVersions: { method: "GET", path: "/v1/seating-plans/{id}/versions" },
+  // Spec 64: the seating plan intake of the organization (seating_plan.read / seating_plan.create),
+  // the verified templates of a venue and the copy of one.
+  planIntakeCreate: { method: "POST", path: "/v1/organizations/{org_id}/venues/{venue_id}/plan-intakes" },
+  planIntakeList: { method: "GET", path: "/v1/organizations/{org_id}/plan-intakes" },
+  planIntakeGet: { method: "GET", path: "/v1/organizations/{org_id}/plan-intakes/{intake_id}" },
+  planIntakeSource: { method: "GET", path: "/v1/organizations/{org_id}/plan-intakes/{intake_id}/sources/{source_id}" },
+  planIntakeDraftSvg: { method: "GET", path: "/v1/organizations/{org_id}/plan-intakes/{intake_id}/drafts/{n}/svg" },
+  planIntakeCorrection: { method: "POST", path: "/v1/organizations/{org_id}/plan-intakes/{intake_id}/corrections-text" },
+  planIntakeEscalate: { method: "POST", path: "/v1/organizations/{org_id}/plan-intakes/{intake_id}/escalate" },
+  planIntakeCancel: { method: "POST", path: "/v1/organizations/{org_id}/plan-intakes/{intake_id}/cancel" },
+  planIntakeApprove: { method: "POST", path: "/v1/organizations/{org_id}/plan-intakes/{intake_id}/approve" },
+  planTemplates: { method: "GET", path: "/v1/organizations/{org_id}/venues/{venue_id}/plan-templates" },
+  seatingPlanFork: { method: "POST", path: "/v1/seating-plans/{id}/fork" },
   // Sales page materials of an event: gallery, videos, other sellers, the map
   // point and the photo report (reads event.read, writes event.update), and the
   // venue's own postal address (venue.update).
@@ -276,6 +291,10 @@ export const API = {
   reportDelete: { method: "DELETE", path: "/v1/organizations/{org_id}/events/{event_id}/photo-report/{photo_id}" },
   geoCountries: { method: "GET", path: "/v1/geo/countries" },
   geoCities: { method: "GET", path: "/v1/geo/cities" },
+  // Spec 64 section 2.1.1: every country of the world with its region, public.
+  geoWorldCountries: { method: "GET", path: "/v1/geo/world-countries" },
+  // Countries, cities and venues of the organization's scope with counters (`venue.read`).
+  venueDirectory: { method: "GET", path: "/v1/organizations/{org_id}/venue-directory" },
   geoTimezones: { method: "GET", path: "/v1/geo/countries/{iso2}/timezones" },
   geoCurrency: { method: "GET", path: "/v1/geo/countries/{iso2}/currency" },
   // 5-2: move or cancel a session. The dry run first, then ONE PATCH of the

@@ -30,6 +30,8 @@ func (s *Server) mountGeoRoutes(r chi.Router) {
 		r.Get("/geo/cities", s.handleListCities)
 		r.Get("/geo/countries/{iso2}/timezones", s.handleCountryTimezones)
 		r.Get("/geo/countries/{iso2}/currency", s.handleCountryCurrency)
+		// Spec 64 section 2.1.1: the whole ISO list a client picks a country from.
+		r.Get("/geo/world-countries", s.handleListWorldCountries)
 	}
 	if s.authEnabled() && s.geoQueries != nil && s.pool != nil {
 		r.Route("/admin/geo", func(ar chi.Router) {
@@ -198,6 +200,10 @@ func (s *Server) mountVenueRoutes(r chi.Router) {
 			// Migration 0172: venues the operator verified, open to every organization.
 			pr.Get("/organizations/{org_id}/shared-venues", func(w http.ResponseWriter, r *http.Request) {
 				s.catalogHandler().HandleListSharedVenues(w, r)
+			})
+			// Spec 64 section 2.1.1: own and verified venues by country and city.
+			pr.Get("/organizations/{org_id}/venue-directory", func(w http.ResponseWriter, r *http.Request) {
+				s.catalogHandler().HandleVenueDirectory(w, r)
 			})
 		})
 	}

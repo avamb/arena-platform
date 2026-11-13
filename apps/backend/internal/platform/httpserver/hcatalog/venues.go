@@ -48,6 +48,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/orgread"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
+	venueplannotify "github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/notify"
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -248,6 +249,12 @@ type createVenueRequest struct {
 	WebsiteUrl      string   `json:"website_url"`
 	Status          string   `json:"status"`
 	CapacityDefault *int32   `json:"capacity_default"`
+	// CountryIso2 + CityName name the city instead of CityID (spec 64
+	// section 2.1.1): the city is found or created in that country, and a
+	// country the reference does not have is created from the world table,
+	// all in the venue's transaction (venue_geo.go).
+	CountryIso2 string `json:"country_iso2"`
+	CityName    string `json:"city_name"`
 }
 
 func (h *Handler) HandleCreateVenue(w http.ResponseWriter, r *http.Request) {
@@ -296,12 +303,19 @@ func (h *Handler) HandleCreateVenue(w http.ResponseWriter, r *http.Request) {
 	req.ContactEmail = strings.TrimSpace(req.ContactEmail)
 	req.WebsiteUrl = strings.TrimSpace(req.WebsiteUrl)
 	req.Status = strings.TrimSpace(req.Status)
+	req.CountryIso2 = strings.ToUpper(strings.TrimSpace(req.CountryIso2))
+	req.CityName = NormalizePromoterName(req.CityName) // same trim + collapse rule as the org city route
 
 	if req.Name == "" {
 		httputil.WriteJSON(w, http.StatusBadRequest, httputil.ErrorEnvelopeWithDetails(
 			"venue.invalid_name", "Enter the venue name.", r,
 			map[string]any{"field": "name"},
 		))
+		return
+	}
+
+	byName := req.CountryIso2 != "" || req.CityName != ""
+	if byName && !validateCityByName(w, r, req.CityID, req.CountryIso2, req.CityName) {
 		return
 	}
 
@@ -422,6 +436,21 @@ func (h *Handler) HandleCreateVenue(w http.ResponseWriter, r *http.Request) {
 		status = req.Status
 	}
 
+	if byName {
+		if country == nil {
+			// The venue's address country follows the city's country unless
+			// the caller sent one of its own.
+			c := req.CountryIso2
+			country = &c
+		}
+		h.createVenueWithCityByName(w, r, orgID, req, venueInsert{
+			address: address, addressLine1: addressLine1, addressLine2: addressLine2,
+			postalCode: postalCode, country: country, timezone: timezone,
+			contactPhone: contactPhone, contactEmail: contactEmail, websiteURL: websiteURL, status: status,
+		})
+		return
+	}
+
 	v, err := h.venueQueries.InsertVenue(
 		ctx, orgID, cityID, req.Name, address, req.CapacityDefault,
 		addressLine1, addressLine2, postalCode, country,
@@ -444,10 +473,31 @@ func (h *Handler) HandleCreateVenue(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
+	h.notifyVenueCreated(ctx, v.ID)
 
 	httputil.WriteJSON(w, http.StatusCreated, map[string]any{
 		"venue": venueFromRow(v),
 	})
+}
+
+// notifyVenueCreated queues the notification of the platform administrators
+// (spec 64 section 3.2). The venue is already saved and there is no
+// transaction around it, so a failure only logs: the organizer must not lose a
+// venue because a message could not be queued.
+func (h *Handler) notifyVenueCreated(ctx context.Context, venueID uuid.UUID) {
+	tx, err := h.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil || tx == nil {
+		h.logger.Warn("venue: notification of administrators skipped", slog.String("venue_id", venueID.String()), slog.Any("error", err))
+		return
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+	if err := venueplannotify.EnqueueVenueCreated(ctx, tx, venueID); err != nil {
+		h.logger.Warn("venue: notification of administrators failed", slog.String("venue_id", venueID.String()), slog.String("error", err.Error()))
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		h.logger.Warn("venue: notification of administrators not saved", slog.String("venue_id", venueID.String()), slog.String("error", err.Error()))
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

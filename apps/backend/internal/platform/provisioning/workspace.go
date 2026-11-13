@@ -29,6 +29,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sellerinfo"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/users"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/worldgeo"
 )
 
 // OwnerRole is the membership role of the person who runs the organization.
@@ -93,6 +94,11 @@ type Workspace struct {
 	ChannelID    uuid.UUID
 	OwnerID      uuid.UUID
 	OwnerCreated bool
+	// CreatedCountry is set when the organization's country was not in the
+	// arena reference and CreateWorkspace added it from the world table
+	// (worldgeo.Ensure). The caller queues the "new country" notification of
+	// the platform administrators on the same transaction.
+	CreatedCountry *worldgeo.Reference
 }
 
 // CreateWorkspace creates the workspace on tx. The caller commits.
@@ -127,6 +133,21 @@ func CreateWorkspace(ctx context.Context, tx pgx.Tx, in WorkspaceInput) (Workspa
 		return ws, fmt.Errorf("provisioning: insert organization: %w", err)
 	}
 	ws.OrgID, ws.Slug = org.ID, org.Slug
+
+	// A country outside the arena reference comes in with its organization
+	// (spec 64 section 2.1.1). A code the world table does not know either is
+	// left as it is: the application form refuses one, so only an old answer
+	// can carry it, and approval must not fail on it.
+	if strings.TrimSpace(in.Country) != "" {
+		ref, created, err := worldgeo.Ensure(ctx, tx, in.Country)
+		switch {
+		case errors.Is(err, worldgeo.ErrUnknownCountry):
+		case err != nil:
+			return ws, fmt.Errorf("provisioning: country: %w", err)
+		case created:
+			ws.CreatedCountry = &ref
+		}
+	}
 
 	taxScheme, taxNumber := OrgTax(in.TaxIDScheme, in.Country, in.TaxID)
 	if _, err := tx.Exec(ctx, `

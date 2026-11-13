@@ -58,6 +58,8 @@ func (s *Server) mountBotRoutes(r chi.Router) {
 		// linked person, and the sign-ins the bot reports back.
 		pr.Post("/bot/web-login-codes", s.handleCreateWebLoginCode)
 		pr.Post("/bot/web-login-notices/claim", s.handleClaimWebLoginNotices)
+		// Spec 64: what the bot tells the creator of a hall plan intake.
+		pr.Post("/bot/venue-plan-notices/claim", s.handleClaimVenuePlanNotices)
 		// F-007: the confirmation screen of a "Connect Telegram" link and the
 		// press that links the account.
 		pr.Post("/bot/telegram-connect/preview", s.handlePreviewTelegramConnect)

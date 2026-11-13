@@ -13,6 +13,7 @@ import { Badge, Empty, ErrorBox, Loading } from "@/components/ui";
 import { fetchShopSettings, listShopProducts } from "@/lib/api/shopApi";
 import { formatMoney, formatNumber } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
+import { ScreenHelp } from "@/components/ScreenHelp";
 import {
   PRODUCT_SORTS,
   PRODUCT_STATUSES,
@@ -131,7 +132,10 @@ export function ShopProductsScreen() {
   const list = filterAndSortProducts(all, query, sort, locale);
   return (
     <section className="shop-page" aria-labelledby="shop-title">
-      <h1 id="shop-title">{t("shop.products.title")}</h1>
+      <div className="screen-head">
+        <h1 id="shop-title">{t("shop.products.title")}</h1>
+        <ScreenHelp screenId="shop" />
+      </div>
       <ShopNav orgId={orgId} />
       {search.deleted !== undefined && (
         <p className="notice notice-ok" role="status" data-testid="shop-products-notice">

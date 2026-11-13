@@ -117,7 +117,7 @@ func TestBotE2E_SuperadminWorksInEveryOrganization(t *testing.T) {
 	tg.waitSince(t, m, "Мероприятий пока нет")
 	m = tg.mark()
 	tg.push(e2eCallbackAs(saTG, "team"))
-	team := tg.waitSince(t, m, "Сотрудники: ")
+	team := tg.waitSince(t, m, "Команда: ")
 	if !strings.Contains(team, foreign.Name) {
 		t.Fatalf("team screen should be the foreign organization's:\n%s", team)
 	}

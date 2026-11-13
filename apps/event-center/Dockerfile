@@ -61,7 +61,7 @@ RUN npm --prefix /rich-editor run build
 # consent.ts, marketing.ts and their i18n files come along). The seat manager
 # imports it through the @seatmap alias, which from /app is /widget/src.
 COPY apps/widget/src/types.ts /widget/src/types.ts
-COPY apps/widget/src/lib/pan-zoom.ts apps/widget/src/lib/svg-sanitize.ts apps/widget/src/lib/consent.ts apps/widget/src/lib/consentI18n.ts apps/widget/src/lib/marketing.ts apps/widget/src/lib/marketingI18n.ts /widget/src/lib/
+COPY apps/widget/src/lib/pan-zoom.ts apps/widget/src/lib/svg-sanitize.ts apps/widget/src/lib/consent.ts apps/widget/src/lib/consentI18n.ts apps/widget/src/lib/marketing.ts apps/widget/src/lib/marketingI18n.ts apps/widget/src/lib/seat-card.ts apps/widget/src/lib/seat-card.css /widget/src/lib/
 
 # The shared analytics tracker (spec 50, 4.1): one TypeScript source, imported through the @arena-track alias,
 # which from /app is /packages/arena-track/src.

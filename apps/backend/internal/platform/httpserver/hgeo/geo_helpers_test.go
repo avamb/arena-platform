@@ -121,6 +121,25 @@ func TestCountryCurrency(t *testing.T) {
 	}
 }
 
+// A country only the world table has answers its currency and its zones.
+func TestCountryHelpers_WorldTableOnly(t *testing.T) {
+	h := New(nil, nil, nil)
+	h.currencyLookup = func(context.Context, string) (string, error) { return "", pgx.ErrNoRows }
+	rt := helperRouter(h)
+	code, body := getJSON(t, rt, "/v1/geo/countries/MN/currency")
+	if code != http.StatusOK || body["currency"] != "MNT" {
+		t.Errorf("MN currency: %d %v, want 200 MNT", code, body)
+	}
+	code, body = getJSON(t, rt, "/v1/geo/countries/TK/timezones")
+	if code != http.StatusOK || body["single"] != true {
+		t.Errorf("TK zones: %d %v, want one zone", code, body)
+	}
+	code, body = getJSON(t, rt, "/v1/geo/countries/AQ/timezones")
+	if code != http.StatusOK || body["single"] != false {
+		t.Errorf("AQ zones: %d %v, want several", code, body)
+	}
+}
+
 func TestCountryCurrency_NoDatabase(t *testing.T) {
 	code, _ := getJSON(t, helperRouter(New(nil, nil, nil)), "/v1/geo/countries/ES/currency")
 	if code != http.StatusServiceUnavailable {

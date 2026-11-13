@@ -98,6 +98,7 @@ func TestValidateScopes(t *testing.T) {
 		{"superadmin-prefix", []string{"superadmin.read"}, apikeys.ErrForbiddenScope},
 		{"seating-plan-verify", []string{"seating_plan.verify"}, apikeys.ErrForbiddenScope},
 		{"legal-manage", []string{"legal.manage"}, apikeys.ErrForbiddenScope},
+		{"venue-plan-intake-curate", []string{"seating_plan.read", "venue_plan_intake.curate"}, apikeys.ErrForbiddenScope},
 		{"ok-set", []string{
 			"event.create", "event.read", "event.update", "event.publish",
 			"session.create", "session.read", "session.update", "tier.create",

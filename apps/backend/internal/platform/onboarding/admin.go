@@ -16,6 +16,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/opsalert"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/provisioning"
+	venueplannotify "github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/notify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
@@ -274,6 +275,13 @@ func (s *Service) Approve(ctx context.Context, id uuid.UUID, actor Actor, review
 	})
 	if err != nil {
 		return nil, err
+	}
+	// A country the approval added to the arena reference is told to the
+	// platform administrators, in this transaction (spec 64 section 2.1.1).
+	if c := ws.CreatedCountry; c != nil {
+		if err := venueplannotify.EnqueueCountryCreatedByOrganization(ctx, tx, c.ID, c.Iso2, ws.OrgID); err != nil {
+			return nil, err
+		}
 	}
 	var reviewerPtr *uuid.UUID
 	if reviewer != uuid.Nil {

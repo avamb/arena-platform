@@ -96,11 +96,12 @@ function withProgress(f: SaveFailure, progress: SaveProgress): SaveFailure {
 }
 
 /** The body of the new venue, as the bot sends it (`ArenaClient.CreateVenue`). */
-export function newVenueBody(draft: WizardDraft, cityId: string): CreateVenueRequest {
+export function newVenueBody(draft: WizardDraft, city: string | CityByName): CreateVenueRequest {
   const v = draft.venue;
   const body: CreateVenueRequest = {
     name: v.newName.trim(),
-    city_id: cityId,
+    // The city is EITHER an id (`city_id`) OR a name in a country (`country_iso2` + `city_name`), never both.
+    ...(typeof city === "string" ? { city_id: city } : { country_iso2: city.countryIso2, city_name: city.cityName }),
     country: v.countryIso2.toUpperCase(),
     timezone: v.timezone.trim(),
     status: "active",
@@ -110,6 +111,25 @@ export function newVenueBody(draft: WizardDraft, cityId: string): CreateVenueReq
   const capacity = parseCapacity(v.capacity);
   if (capacity !== null && capacity > 0) body.capacity_default = capacity;
   return body;
+}
+
+/** A city named inside a country: the venue create makes (or finds) it in its own transaction. */
+export interface CityByName {
+  countryIso2: string;
+  cityName: string;
+}
+
+/**
+ * The ONE place that decides the city of a new venue. A country of the
+ * reference has a platform id: the city is found or made under it (an id is
+ * answered). A country outside the reference is made ONLY by the venue create
+ * (`POST .../cities` answers 409 `city.country_not_in_reference` for it), so
+ * the city call is skipped and the name travels with the venue.
+ */
+export async function ensureCity(api: VenueApi, orgId: string, iso2: string, name: string): Promise<string | CityByName> {
+  const countryId = await api.countryId(iso2);
+  if (countryId !== null) return api.createCity(orgId, countryId, name);
+  return { countryIso2: iso2.trim().toUpperCase(), cityName: name };
 }
 
 /**
@@ -132,13 +152,9 @@ async function ensureVenue(
   try {
     const own = (await api.listVenues(orgId)).find((x) => sameName(x.name, v.newName));
     if (own !== undefined) return adopt(own);
-    const countryId = await api.countryId(v.countryIso2);
-    if (countryId === null) {
-      return fail({ kind: "rejected", status: 422, code: "wizard.venue_country_unknown", message: "" });
-    }
-    const cityId = await api.createCity(orgId, countryId, v.cityName.trim());
+    const city = await ensureCity(api, orgId, v.countryIso2, v.cityName.trim());
     try {
-      return adopt(await api.createVenue(orgId, newVenueBody(draft, cityId)));
+      return adopt(await api.createVenue(orgId, newVenueBody(draft, city)));
     } catch (err) {
       // Another tab (or an earlier lost answer) made it meanwhile: use that one.
       if (err instanceof ApiError && err.status === 409) {

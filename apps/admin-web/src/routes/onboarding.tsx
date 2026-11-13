@@ -409,7 +409,9 @@ export function Pager({
   limit,
   onPrev,
   onNext,
+  testIdPrefix = "onboarding",
 }: {
+  readonly testIdPrefix?: string;
   readonly total: number;
   readonly offset: number;
   readonly shown: number;
@@ -422,17 +424,17 @@ export function Pager({
   const hasPrev = offset > 0;
   const hasNext = offset + limit < total;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }} data-testid="onboarding-pager">
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }} data-testid={`${testIdPrefix}-pager`}>
       <button
         type="button"
         style={hasPrev ? buttonStyle : { ...buttonStyle, ...disabledButtonStyle }}
         disabled={!hasPrev}
         onClick={onPrev}
-        data-testid="onboarding-prev"
+        data-testid={`${testIdPrefix}-prev`}
       >
         Previous
       </button>
-      <span style={{ fontSize: 12, color: "#475569" }} data-testid="onboarding-range">
+      <span style={{ fontSize: 12, color: "#475569" }} data-testid={`${testIdPrefix}-range`}>
         {from}–{to} of {total}
       </span>
       <button
@@ -440,7 +442,7 @@ export function Pager({
         style={hasNext ? buttonStyle : { ...buttonStyle, ...disabledButtonStyle }}
         disabled={!hasNext}
         onClick={onNext}
-        data-testid="onboarding-next"
+        data-testid={`${testIdPrefix}-next`}
       >
         Next
       </button>

@@ -148,6 +148,19 @@ const REASON_REQUIRED_REGEX: readonly RegExp[] = [
 const REASON_REQUIRED_ADMIN_MUTATION_REGEX: readonly RegExp[] = [
   /^\/v1\/admin\/onboarding\/applications\/[^/]+\/(?:approve|reject|request-info|extend|resend|purge)$/,
   /^\/v1\/admin\/onboarding\/settings$/,
+  // Hall plan intakes (spec 64): every administrator write but a read needs the reason.
+  /^\/v1\/admin\/plan-intakes\/[^/]+\/(?:claim|drafts|return|approve|reject)$/,
+  // Verifying a plan, or sending it back for a fix (seating_plan.verify).
+  /^\/v1\/admin\/seating-plans\/[^/]+\/(?:verify|needs-fix)$/,
+];
+
+/**
+ * Admin paths that need X-Admin-Reason on EVERY method, a GET too: the download
+ * of a hall plan intake file (the server writes an audit event with the reason
+ * before it sends a byte). Always asked, whatever the organization scope is.
+ */
+const REASON_REQUIRED_ADMIN_ALL_METHODS_REGEX: readonly RegExp[] = [
+  /^\/v1\/admin\/plan-intakes\/[^/]+\/sources\/[^/]+$/,
 ];
 
 /** HTTP methods treated as mutations for the SAUI-09 gate. */
@@ -198,6 +211,11 @@ export function requiresAdminReason(path: string, method?: string): boolean {
   const bare = stripQuery(path);
   for (const prefix of REASON_REQUIRED_PREFIXES) {
     if (matchesPrefix(bare, prefix)) {
+      return true;
+    }
+  }
+  for (const re of REASON_REQUIRED_ADMIN_ALL_METHODS_REGEX) {
+    if (re.test(bare)) {
       return true;
     }
   }

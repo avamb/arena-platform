@@ -486,8 +486,8 @@ label {
 }
 
 /*
- * The bar of five items (spec 62 section 12.1): Events, Orders, Refunds,
- * Summary, More. Fixed to the bottom of a phone screen, above the home
+ * The bar of five items (spec 62 section 12.1): Events, Orders, Promotion,
+ * Entrance, Menu. Fixed to the bottom of a phone screen, above the home
  * indicator; on a wide screen it sits under the header, in the same column.
  */
 .tabbar {
@@ -621,6 +621,24 @@ label {
 
 .more-head h2 {
   margin: 0;
+}
+
+/* One section of the Menu sheet: a heading and its items. */
+.more-group {
+  margin-block-start: 1rem;
+}
+
+.more-group + .more-group {
+  margin-block-start: 0.75rem;
+}
+
+.more-group-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .more-list {
@@ -893,6 +911,66 @@ label {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-block: 1rem;
+}
+
+/* Event card: five collapsible sections (link for buyers, sales and orders, edit, promotion, more). */
+.event-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-block: 0.75rem;
+}
+
+.event-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  min-width: 0;
+}
+
+.event-section-head {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.event-section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0.5rem 1rem;
+  border: 0;
+  border-radius: var(--radius-tile);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.event-section-panel {
+  padding: 0 1rem 0.75rem;
+  min-width: 0;
+}
+
+.event-section-panel .actions {
+  margin-block: 0.25rem 0.75rem;
+}
+
+.event-section-panel[hidden] {
+  display: none;
+}
+
+.event-action {
+  display: contents;
+}
+
+.event-section-hint {
+  margin-block: 0.25rem 0.75rem;
 }
 
 .download {
@@ -1549,17 +1627,22 @@ fieldset legend {
 .sm-panel-collapsed .sm-notes {
   display: none;
 }
+/* The tabs wrap onto further lines: no sideways scroll, every label whole at 320 px. */
 .sm-tabs {
   display: flex;
-  overflow-x: auto;
+  flex-wrap: wrap;
+  min-width: 0;
   border-bottom: 1px solid var(--border);
 }
 .sm-tablist {
   display: flex;
-  flex: none;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 .sm-tab {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   min-height: 44px;
   padding: 0 0.75rem;
   border: 0;
@@ -1567,8 +1650,20 @@ fieldset legend {
   background: transparent;
   color: var(--text);
   font: inherit;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   cursor: pointer;
+}
+/* A hint sits UNDER its field at full width. */
+.sm-panel .field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.25rem;
+}
+.sm-panel .field > small {
+  display: block;
+  width: 100%;
 }
 .sm-tab[aria-selected="true"] {
   border-bottom-color: var(--accent);
@@ -1761,6 +1856,85 @@ fieldset legend {
 }
 .sm-slot-map select {
   max-width: 11rem;
+}
+.sm-slots li {
+  flex-wrap: wrap;
+}
+.sm-newtier {
+  flex-basis: 100%;
+  padding: 0.25rem 0 0.5rem;
+}
+.sm-newtier-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.5rem;
+}
+.sm-newtier-fields input[type="color"] {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.15rem;
+}
+.sm-addtier {
+  margin: 0.5rem 0;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.sm-brush-pending {
+  display: flex;
+  gap: 0.25rem;
+}
+.sm-brush-pending .sm-brush {
+  flex: 1;
+  min-width: 0;
+}
+.sm-brush-remove {
+  flex: none;
+  width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.sm-pending-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.sm-table-wrap {
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+.sm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.sm-table caption {
+  text-align: start;
+  padding-bottom: 0.25rem;
+  color: var(--muted, inherit);
+}
+.sm-table th,
+.sm-table td {
+  padding: 0.35rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  font-weight: normal;
+}
+.sm-table thead th,
+.sm-table tfoot th,
+.sm-table tfoot td {
+  font-weight: 600;
+}
+.sm-table .sm-num {
+  text-align: end;
+  white-space: nowrap;
 }
 .sm-stage {
   display: flex;
@@ -3100,6 +3274,49 @@ fieldset legend {
   display: none;
 }
 
+/* "What is here?" (ScreenHelp): the heading and the link share a row, the text takes the full width under them. */
+.screen-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0.75rem;
+  min-inline-size: 0;
+}
+.screen-head > h1 {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.screen-help {
+  display: contents;
+}
+.screen-help-btn {
+  min-inline-size: 0;
+}
+.screen-help-panel {
+  flex: 1 1 100%;
+  min-inline-size: 0;
+  padding: 0.6rem 0.75rem;
+  margin-block: 0.25rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.screen-help-title {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 0.9375rem;
+  color: var(--muted);
+}
+.screen-help-list {
+  margin: 0;
+  padding-inline-start: 1.1rem;
+}
+.screen-help-back {
+  margin: 0.5rem 0 0;
+  font-weight: 600;
+}
+
 /* The three-way sales switch (SessionSalesState): the state in force is filled, the other two stay quiet. */
 .seg {
   display: flex;
@@ -3142,4 +3359,209 @@ fieldset legend {
 .seg-sold_out.is-on {
   background: var(--bad-text);
   color: var(--bad-bg);
+}
+
+/* Venue chooser (spec 64 section 2.1.1) */
+.venue-chooser {
+  display: grid;
+  gap: 0.5rem;
+}
+.chooser-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.chooser-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.chooser-sub {
+  margin: 0.5rem 0 0;
+}
+.chooser-chips,
+.chooser-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.chooser-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.chooser-chip {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.chooser-list {
+  display: grid;
+  gap: 0.4rem;
+}
+.chooser-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  background: var(--surface, transparent);
+  border: 1px solid var(--border, currentColor);
+  border-radius: 8px;
+}
+.chooser-row[aria-current="true"] {
+  border-width: 2px;
+}
+.chooser-row:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.chooser-row-name {
+  font-weight: 600;
+}
+.chooser-marks {
+  display: inline-flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+/* Spec 64: the seating plan intake (upload, waiting, review). */
+.plan-upload-list {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.plan-upload-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: center;
+}
+.plan-upload-file {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.plan-zoom {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: min(70vh, 560px);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--ec-on-primary);
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+.plan-zoom.plan-zoom-dragging {
+  cursor: grabbing;
+}
+.plan-zoom:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+.plan-zoom-content {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+.plan-zoom-content > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+.plan-zoom-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.5rem 0;
+}
+.plan-compare {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 900px) {
+  .plan-compare {
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  }
+}
+.plan-sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+.plan-source-img {
+  display: block;
+  max-width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--ec-on-primary);
+}
+.plan-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  margin: 0.5rem 0;
+}
+.plan-stats dt {
+  color: var(--muted);
+}
+.plan-stats dd {
+  margin: 0;
+  font-weight: 600;
+}
+.plan-previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+}
+.plan-preview {
+  display: block;
+  width: 140px;
+  height: 90px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--ec-on-primary);
+}
+.plan-preview-dot {
+  fill: var(--ec-ink);
+}
+
+/* "First steps" card at the top of the events list. */
+.first-steps {
+  margin-block-end: 0.75rem;
+}
+.first-steps h2 {
+  margin: 0;
+}
+.first-steps-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+.first-steps-list a,
+.first-steps-list li > span {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  overflow-wrap: anywhere;
 }

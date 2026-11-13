@@ -12,3 +12,9 @@ independent_evaluation
 **/*.xlsx
 **/*.pdf
 **/tests
+**/testdata
+**/*.md
+**/.gitignore
+conftest.py
+pytest.ini
+requirements-dev.txt

@@ -1,4 +1,5 @@
 import { HelpPopover } from "@/components/HelpPopover";
+import { ScreenHelp } from "@/components/ScreenHelp";
 import { useMemo } from "react";
 import { Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQueries, useQuery } from "@tanstack/react-query";
@@ -12,6 +13,7 @@ import type { Tone } from "@/lib/orders";
 import { Badge, Empty, ErrorBox, Loading } from "@/components/ui";
 import { SalesFigures } from "@/components/SalesFigures";
 import { ConnectTelegram } from "@/components/ConnectTelegram";
+import { FirstSteps } from "@/components/FirstSteps";
 import { useOrg } from "@/screens/OrgLayout";
 
 export const EVENTS_PAGE_SIZE = 10;
@@ -98,12 +100,16 @@ export function EventsScreen() {
 
   return (
     <section aria-labelledby="events-title">
+      <FirstSteps orgId={orgId} access={access} />
       {/* The one "create" entry of the event center: the header carries none (owner, 2026-11-08). */}
       <div className="events-head">
-        <h1 id="events-title">
-          {t("events.title")}
-          <HelpPopover textKey="help.eventsStatus" testId="help-events" />
-        </h1>
+        <div className="screen-head">
+          <h1 id="events-title">
+            {t("events.title")}
+            <HelpPopover textKey="help.eventsStatus" testId="help-events" />
+          </h1>
+          <ScreenHelp screenId="events" />
+        </div>
         {/* 6-1c: same gate as the wizard screen: the build flag and the import permission. */}
         {wizardGate(access.can) === "ok" && (
           <Link to="/o/$orgId/events/new" params={{ orgId }} className="btn btn-primary" data-testid="events-create">

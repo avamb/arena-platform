@@ -34,6 +34,8 @@ import { Route as CustomerImportsRoute } from "@/routes/customerImports";
 import { Route as PromoCodesRoute } from "@/routes/promoCodes";
 import { Route as OnboardingRoute } from "@/routes/onboarding";
 import { Route as OnboardingDetailRoute } from "@/routes/onboardingDetail";
+import { Route as VenuePlansRoute } from "@/routes/venuePlans";
+import { Route as VenuePlanDetailRoute } from "@/routes/venuePlanDetail";
 import { Route as BillingPricesRoute } from "@/routes/billingPrices";
 import { Route as BillingInvoicesRoute } from "@/routes/billingInvoices";
 import { Route as BillingPaymentFeesRoute } from "@/routes/billingPaymentFees";
@@ -88,6 +90,8 @@ export const routeTree = RootRoute.addChildren([
   PromoCodesRoute,
   OnboardingRoute,
   OnboardingDetailRoute,
+  VenuePlansRoute,
+  VenuePlanDetailRoute,
   BillingPricesRoute,
   BillingInvoicesRoute,
   BillingPaymentFeesRoute,

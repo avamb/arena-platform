@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { checkEventBundle, createEventFromBundle } from "@/lib/api/endpoints";
 import { posterApi } from "@/components/EventPoster";
 import { usePosterPicker } from "@/components/PosterPicker";
@@ -27,7 +27,8 @@ import { wizardGate } from "@/lib/features";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
 import { buildBundle, buildBundles, isSeatedDraft } from "@/lib/wizard/bundle";
-import { seatingClientErrors, type SeatingErrorKey } from "@/lib/wizard/seating";
+import { needsSplitByPrice, seatingClientErrors, type SeatingErrorKey } from "@/lib/wizard/seating";
+import { splitSeatsByPricePath } from "@/lib/seatManager/embed";
 import { createCheckRunner, type MultiAnswer } from "@/lib/wizard/checkRunner";
 import { clientErrors } from "@/lib/wizard/clientErrors";
 import { dateClientErrors, dateFieldKey, mapDateErrors, type DateErrors } from "@/lib/wizard/dateErrors";
@@ -159,6 +160,7 @@ function Wizard() {
   const { t, locale } = useI18n();
   const { orgId, access } = useOrg();
   const navigate = useNavigate();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const localeRef = useRef(locale);
   localeRef.current = locale;
@@ -372,6 +374,11 @@ function Wizard() {
       setSaveView({ phase: "saved" });
       clearDraftIfSaved(orgId, sent.id);
       await queryClient.invalidateQueries({ queryKey: ["events", orgId] });
+      if (isSeatedDraft(sent) && savedSession !== "" && needsSplitByPrice(sent.seating)) {
+        // A plan of ONE category: every seat has one price. The next step is "Split seats by price" (spec 64 section 2.4).
+        router.history.push(splitSeatsByPricePath(orgId, result.eventId, savedSession));
+        return;
+      }
       if (isSeatedDraft(sent) && savedSession !== "") {
         // The seats still carry the plan's categories: the next step is painting them.
         void navigate({

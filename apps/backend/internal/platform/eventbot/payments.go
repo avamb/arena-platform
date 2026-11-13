@@ -29,18 +29,3 @@ func (c *ArenaClient) PaymentsConnected(ctx context.Context, jwt string, orgID u
 	}
 	return false, true
 }
-
-// paymentsNote is the line an owner sees under the menu title while the
-// organization cannot take money yet. A new organization starts that way: the
-// operator connects its payment provider after the application is approved.
-// Empty for everyone else, and whenever the state is not known.
-func (b *Bot) paymentsNote(ctx context.Context, id *Identity, jwt string) string {
-	if !isOwner(id) || jwt == "" {
-		return ""
-	}
-	connected, known := b.arena.PaymentsConnected(ctx, jwt, id.Current.OrgID)
-	if !known || connected {
-		return ""
-	}
-	return "\n\n" + b.texts.T(id.Locale(), "bot.pay.not_connected", nil)
-}

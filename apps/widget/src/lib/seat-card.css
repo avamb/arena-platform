@@ -1,0 +1,71 @@
+/* The seat card: one design for the buyer's widget and the organizer's seat manager (see seat-card.ts). */
+.arena-seat-card {
+  position: absolute;
+  z-index: 5;
+  box-sizing: border-box;
+  max-width: min(18rem, calc(100% - 8px));
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  background: #111827;
+  color: #ffffff;
+  font: 500 0.8125rem/1.35 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  box-shadow: 0 4px 14px rgba(17, 24, 39, 0.3);
+  /* It only informs: a press goes through to the map. */
+  pointer-events: none;
+  overflow-wrap: anywhere;
+}
+.arena-seat-card[hidden] {
+  display: none;
+}
+.arena-seat-card.has-action {
+  pointer-events: auto;
+}
+.arena-seat-card__line--place {
+  font-weight: 700;
+}
+.arena-seat-card__line--category {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.arena-seat-card__swatch {
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+}
+.arena-seat-card__line--price {
+  color: #e5e7eb;
+}
+.arena-seat-card__line--state,
+.arena-seat-card__line--pending {
+  margin-top: 0.25rem;
+  font-weight: 700;
+}
+.arena-seat-card__line[data-tone='sold'] {
+  color: #fca5a5;
+}
+.arena-seat-card__line[data-tone='held'] {
+  color: #fcd34d;
+}
+.arena-seat-card__line[data-tone='closed'] {
+  color: #d1d5db;
+}
+.arena-seat-card__line[data-tone='selected'] {
+  color: #a5b4fc;
+}
+.arena-seat-card__line[data-tone='changed'] {
+  color: #fde68a;
+}
+.arena-seat-card__action {
+  margin-top: 0.4rem;
+  min-height: 44px;
+  padding: 0 0.8rem;
+  border: 1px solid #ffffff;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}

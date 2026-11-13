@@ -269,6 +269,11 @@ services:
       # Step buttons on the delivery group's order card (spec 61 section 7b).
       # Off = plain text message. Turn on only with arena-bot receiving presses.
       SHOP_DELIVERY_BUTTONS_ENABLED: "${SHOP_DELIVERY_BUTTONS_ENABLED:-false}"
+      # Venue SVG generator (spec 64 wave 2). Both empty = no generator: a
+      # seating plan intake goes to an administrator. With the venue-gen
+      # profile set VENUE_GEN_URL=http://venue_gen:8090 and the same token.
+      VENUE_GEN_URL: "${VENUE_GEN_URL:-}"
+      VENUE_GEN_TOKEN: "${VENUE_GEN_TOKEN:-}"
       HEALTH_ADDR: "http://localhost:9091"
 
       DEFAULT_LOCALE: "en"
@@ -416,10 +421,11 @@ services:
   # venue_gen : venue SVG generator (apps/venue-svg-generator, Python).
   #   - Opt-in: docker compose --profile venue-gen build venue_gen
   #     (a plain `docker compose up -d` does not start it).
-  #   - NO host port on purpose: only arena-api talks to it, over the
-  #     compose network (http://venue_gen:8090, G2a HTTP service:
-  #     POST /generate, GET /jobs/{id}, GET /healthz). No authentication,
-  #     so it must never get a published port.
+  #   - NO host port on purpose: only arena-worker talks to it, over the
+  #     compose network (http://venue_gen:8090, contract in
+  #     apps/venue-svg-generator/HALL_MODEL.md section 7).
+  #   - Needs VENUE_GEN_TOKEN (Bearer token); the container refuses to
+  #     start when it is empty.
   # ------------------------------------------------------------------
   venue_gen:
     build:
@@ -428,6 +434,8 @@ services:
     container_name: arena_venue_gen
     profiles: ["venue-gen"]
     restart: unless-stopped
+    environment:
+      VENUE_GEN_TOKEN: ${VENUE_GEN_TOKEN:-}
     # Second line of defence behind VENUE_GEN_JOB_MEMORY_MB (a per-job cap inside the container).
     mem_limit: 3g
     healthcheck:

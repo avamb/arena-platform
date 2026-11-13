@@ -60,6 +60,21 @@ import {
   singleColumnFormStyle,
 } from "@/components/layout";
 import { VenueSeatingPlansDrawer } from "./venueSeatingPlans";
+import { VenueBulkVerifyDialog } from "./VenueBulkVerifyDialog";
+import type { BatchProgress } from "@/lib/admin/batch";
+import {
+  NO_GEO_FILTER,
+  cityOptions,
+  countryOptions,
+  filterVenuesByGeo,
+  pruneSelection,
+  selectableIds,
+  toggleAll,
+  toggleId,
+  verifyVenuesBatch,
+  type GeoFilter,
+  type VenueVerifyResult,
+} from "@/lib/admin/venueBulk";
 
 export const Route = createRoute({
   getParentRoute: () => RootRoute,
@@ -561,6 +576,7 @@ type FormMode =
 function VenuesModule() {
   const { permissions } = useAuth();
   const { activeScope } = useScope();
+  const queryClient = useQueryClient();
   const canCreate = permissions.has("venue.create");
   const canUpdate = permissions.has("venue.update");
   const canDelete = permissions.has("venue.delete");
@@ -621,15 +637,73 @@ function VenuesModule() {
     refetchOnWindowFocus: false,
   });
 
+  // City names for the city filter; best effort, the short id stays without them.
+  const cityNamesQuery = useQuery<CityListEnvelope, ApiError>({
+    queryKey: ["geo", "cities", "venue-picker"],
+    queryFn: () =>
+      authedFetch<CityListEnvelope>({ method: "GET", path: "/v1/geo/cities" }),
+    enabled: canCurate,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const cityNames = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const c of cityNamesQuery.data?.cities ?? []) {
+      out.set(c.id, c.name);
+    }
+    return out;
+  }, [cityNamesQuery.data]);
+
+  const [geo, setGeo] = useState<GeoFilter>(NO_GEO_FILTER);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(new Set());
+  const [bulkProgress, setBulkProgress] = useState<BatchProgress | null>(null);
+  const [bulkResult, setBulkResult] = useState<VenueVerifyResult | null>(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+
   const rows = query.data?.venues ?? [];
   const counts = useMemo(() => countVenuesByReview(rows), [rows]);
   const sorted = useMemo(
     () =>
-      [...filterVenuesByReview(rows, reviewFilter)].sort((a, b) =>
+      [...filterVenuesByGeo(filterVenuesByReview(rows, reviewFilter), geo)].sort((a, b) =>
         a.name.localeCompare(b.name),
       ),
-    [rows, reviewFilter],
+    [rows, reviewFilter, geo],
   );
+  const countries = useMemo(() => countryOptions(rows), [rows]);
+  const cities = useMemo(
+    () => cityOptions(rows, cityNames, geo.country),
+    [rows, cityNames, geo.country],
+  );
+  // Only the rows on screen can stay selected.
+  const effectiveSelected = useMemo(
+    () => pruneSelection(selectedIds, sorted),
+    [selectedIds, sorted],
+  );
+
+  const onBulkVerify = async (reason: string): Promise<void> => {
+    const chosen = sorted.filter((v) => effectiveSelected.has(v.id));
+    setBulkDialogOpen(false);
+    if (chosen.length === 0) return;
+    setBulkError(null);
+    setBulkResult(null);
+    setBulkProgress(null);
+    setBulkRunning(true);
+    try {
+      const result = await verifyVenuesBatch({
+        venues: chosen,
+        reason,
+        concurrency: 4,
+        onProgress: setBulkProgress,
+      });
+      setBulkResult(result);
+      setSelectedIds(new Set(result.failed.map((f) => f.id)));
+      await queryClient.invalidateQueries({ queryKey: ["venues"] });
+    } finally {
+      setBulkRunning(false);
+    }
+  };
 
   return (
     <section aria-labelledby="venues-heading" style={pageStyle}>
@@ -660,6 +734,38 @@ function VenuesModule() {
               <option value="verified">Verified ({counts.verified})</option>
             </select>
           </label>
+          <label style={filterLabelStyle}>
+            <span>Country</span>
+            <select
+              value={geo.country}
+              onChange={(e) => setGeo({ country: e.target.value, cityId: "" })}
+              style={filterSelectStyle}
+              data-testid="venues-country-filter"
+            >
+              <option value="">All countries</option>
+              {countries.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={filterLabelStyle}>
+            <span>City</span>
+            <select
+              value={geo.cityId}
+              onChange={(e) => setGeo({ ...geo, cityId: e.target.value })}
+              style={filterSelectStyle}
+              data-testid="venues-city-filter"
+            >
+              <option value="">All cities</option>
+              {cities.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             type="button"
             onClick={() => query.refetch()}
@@ -686,9 +792,71 @@ function VenuesModule() {
         </div>
       </header>
 
+      {canCurate ? (
+        <div style={statusBoxStyle} data-testid="venues-bulk-bar">
+          <button
+            type="button"
+            style={primaryButtonStyle}
+            disabled={effectiveSelected.size === 0 || bulkRunning}
+            onClick={() => setBulkDialogOpen(true)}
+            data-testid="venues-bulk-verify"
+          >
+            {bulkRunning
+              ? "Verifying…"
+              : `Mark selected as verified (${effectiveSelected.size})`}
+          </button>{" "}
+          <span style={mutedHintStyle}>
+            Select venues that are not verified. You confirm and write one audit reason for all of them. A verification stays after this step.
+          </span>
+          {bulkProgress !== null && bulkRunning ? (
+            <div role="status" data-testid="venues-bulk-progress">
+              Done {bulkProgress.completed} of {bulkProgress.total}
+              {bulkProgress.failed > 0 ? `, ${bulkProgress.failed} failed` : ""}.
+            </div>
+          ) : null}
+          {bulkError !== null ? (
+            <div role="alert" data-testid="venues-bulk-error">
+              {bulkError}
+            </div>
+          ) : null}
+          {bulkResult !== null ? (
+            <div role="status" data-testid="venues-bulk-result">
+              Verified {bulkResult.verified.length} venues.
+              {bulkResult.skipped.length > 0
+                ? ` Skipped ${bulkResult.skipped.length} that are verified.`
+                : ""}
+              {bulkResult.failed.length > 0 ? (
+                <>
+                  {" "}
+                  {bulkResult.failed.length} failed. They stay selected. Correct the cause, then try again.
+                  <ul>
+                    {bulkResult.failed.map((f) => (
+                      <li key={f.id} data-testid={`venues-bulk-failure-${f.id}`}>
+                        {f.name}: {f.message}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <VenuesBody
         query={query}
         rows={sorted}
+        cityNames={cityNames}
+        selection={
+          canCurate
+            ? {
+                selected: effectiveSelected,
+                onToggle: (id) => setSelectedIds(toggleId(effectiveSelected, id)),
+                onToggleAll: () => setSelectedIds(toggleAll(effectiveSelected, sorted)),
+                selectableCount: selectableIds(sorted).length,
+              }
+            : null
+        }
         canUpdate={canUpdate}
         canDelete={canDelete}
         canCurate={canCurate}
@@ -698,6 +866,14 @@ function VenuesModule() {
         onOpenPlans={(venue) => setPlansVenue(venue)}
         onReview={(venue) => setReviewVenue(venue)}
       />
+
+      {bulkDialogOpen ? (
+        <VenueBulkVerifyDialog
+          count={effectiveSelected.size}
+          onCancel={() => setBulkDialogOpen(false)}
+          onConfirm={(reason) => void onBulkVerify(reason)}
+        />
+      ) : null}
 
       {reviewVenue !== null ? (
         <VenueReviewDialog
@@ -737,9 +913,18 @@ function VenuesModule() {
 // Table body and states
 // ---------------------------------------------------------------------------
 
+interface BodySelection {
+  readonly selected: ReadonlySet<string>;
+  readonly onToggle: (id: string) => void;
+  readonly onToggleAll: () => void;
+  readonly selectableCount: number;
+}
+
 interface BodyProps {
   query: ReturnType<typeof useQuery<VenueListEnvelope, ApiError>>;
   rows: readonly Venue[];
+  selection: BodySelection | null;
+  cityNames: ReadonlyMap<string, string>;
   canUpdate: boolean;
   canDelete: boolean;
   canCurate: boolean;
@@ -753,6 +938,8 @@ interface BodyProps {
 function VenuesBody({
   query,
   rows,
+  selection,
+  cityNames,
   canUpdate,
   canDelete,
   canCurate,
@@ -781,6 +968,37 @@ function VenuesBody({
     );
   }
   const columns: ResponsiveTableColumn<Venue>[] = [
+    ...(selection !== null
+      ? [
+          {
+            id: "select",
+            header: (
+              <input
+                type="checkbox"
+                aria-label="Select all venues that are not verified"
+                checked={
+                  selection.selectableCount > 0 &&
+                  selection.selected.size === selection.selectableCount
+                }
+                disabled={selection.selectableCount === 0}
+                onChange={selection.onToggleAll}
+                data-testid="venues-select-all"
+              />
+            ),
+            hideOnMobile: true,
+            renderCell: (v: Venue) =>
+              reviewStatusOf(v) === "verified" ? null : (
+                <input
+                  type="checkbox"
+                  aria-label={`Select ${v.name}`}
+                  checked={selection.selected.has(v.id)}
+                  onChange={() => selection.onToggle(v.id)}
+                  data-testid={`venues-select-${v.id}`}
+                />
+              ),
+          } satisfies ResponsiveTableColumn<Venue>,
+        ]
+      : []),
     {
       id: "name",
       header: "Name",
@@ -801,7 +1019,9 @@ function VenuesBody({
       header: "City",
       renderCell: (v) => (
         <span title={v.city_id ?? ""}>
-          {v.city_id !== null ? shortenUUID(v.city_id) : "—"}
+          {v.city_id !== null
+            ? (cityNames.get(v.city_id) ?? shortenUUID(v.city_id))
+            : "—"}
         </span>
       ),
     },

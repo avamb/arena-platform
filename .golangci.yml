@@ -50,6 +50,12 @@ linters:
           - gosec
           - unused
         path: _test\.go$
+      # arena-plan-restyle is an operator's command-line tool: the file paths
+      # and the SVG files it reads are the operator's own arguments.
+      - linters:
+          - gosec
+        path: cmd/arena-plan-restyle/
+        text: "G703|G709"
       - linters:
           - govet
           - revive

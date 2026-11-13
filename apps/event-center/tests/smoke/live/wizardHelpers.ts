@@ -51,8 +51,7 @@ export async function skipPoster(page: Page) {
 export async function fillEventAndVenue(page: Page, name: string, opts: { poster?: "skip" | "leave" } = {}) {
   if ((opts.poster ?? "skip") === "skip" && (await page.getByTestId("wizard-poster-skip").count()) > 0) await skipPoster(page);
   await page.getByTestId("wizard-name").fill(name);
-  await page.getByTestId("wizard-venue-mode-existing").check();
-  await page.getByTestId("wizard-venue-pick").selectOption({ label: "E2E Hall" });
+  await pickWizardVenue(page, "E2E Hall");
   // The hall has no country, so no currency comes from it: type one.
   await page.getByTestId("wizard-currency").fill("EUR");
 }
@@ -62,4 +61,52 @@ export async function fillFirstDate(page: Page) {
   await pickDay(page, "wizard-date-0-day", "week");
   await page.getByTestId("wizard-date-0-time").fill("19:00");
   await page.getByTestId("wizard-cat-0-0-price").fill("18,90");
+}
+
+/** The chooser may open on the organization's country: go back to its first step, so a search covers every venue. */
+async function toChooserStart(page: Page) {
+  const back = page.getByTestId("venue-chooser-back");
+  await expect(page.getByTestId("venue-chooser-search")).toBeVisible();
+  while (await back.isVisible()) await back.click();
+}
+
+/** The rows of the venue chooser whose name contains `name`, found with the search field. */
+export async function searchVenueRows(page: Page, name: string) {
+  await toChooserStart(page);
+  await page.getByTestId("venue-chooser-search").fill(name);
+  return page.locator('[data-testid^="venue-chooser-venue-"]', { hasText: name });
+}
+
+/** Chooses an existing venue in the wizard through the chooser: mode "existing", search by name, click the row. */
+export async function pickWizardVenue(page: Page, name: string) {
+  await page.getByTestId("wizard-venue-mode-existing").check();
+  const rows = await searchVenueRows(page, name);
+  await rows.first().click();
+  await expect(page.getByTestId("wizard-venue-chosen")).toContainText(name);
+}
+
+/**
+ * Chooses the country of a NEW venue through the quick row. A country the quick row does not list
+ * (a source with regions lists only countries with venues) is found with the search field.
+ */
+export async function pickWizardCountry(page: Page, iso2: string) {
+  const change = page.getByTestId("wizard-venue-country-change");
+  if ((await change.count()) > 0) await change.click();
+  const chooser = page.getByTestId("wizard-venue-country-chooser");
+  const quick = chooser.getByTestId(`venue-chooser-quick-${iso2}`);
+  await expect(chooser.getByTestId("venue-chooser-search")).toBeVisible();
+  await expect(quick.or(chooser.getByTestId("venue-chooser-regions")).or(chooser.getByTestId("venue-chooser-quick")).first()).toBeVisible();
+  if ((await quick.count()) > 0) {
+    await quick.click();
+  } else {
+    await chooser.getByTestId("venue-chooser-search").fill(iso2);
+    await chooser.getByTestId(`venue-chooser-country-${iso2}`).click();
+  }
+  await expect(page.getByTestId("wizard-venue-country")).toBeVisible();
+}
+
+/** Takes the country of a new venue back: the chooser opens again. */
+export async function clearWizardCountry(page: Page) {
+  await page.getByTestId("wizard-venue-country-change").click();
+  await expect(page.getByTestId("wizard-venue-country-chooser")).toBeVisible();
 }

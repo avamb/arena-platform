@@ -1226,6 +1226,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/getting-started": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return which first steps of an organization are done
+         * @description Returns the four first steps of an organization and whether each is
+         *     done, in a fixed order: `org_data`, `payments`, `event`,
+         *     `sales_link`. A step is listed only when the caller holds its
+         *     permission IN this organization, by the same per-organization
+         *     checker the route gates use: `org_data` needs `org.update`,
+         *     `payments` needs `payment_config.read`, `event` needs
+         *     `import.bil24_session` (the event wizard's import), `sales_link`
+         *     needs `sales_link.manage`.
+         *
+         *     The server decides every flag from the organization's data:
+         *     `org_data` is done when the seller data is complete (the rule of
+         *     GET .../seller-profile: no organization field is missing and every
+         *     sales page is shown or hidden by the operator); `payments` when an
+         *     active payment configuration was accepted by the provider; `event`
+         *     when the organization has an event (a draft counts); `sales_link`
+         *     when it has a sales link. `complete` is true when every listed step
+         *     is done, also when no step is listed. Read-only.
+         *
+         *     Who may call it: a user with an active membership in the
+         *     organization, an organization API key of that organization, and a
+         *     platform superadmin. Anyone else gets 403 `org.access_denied`.
+         */
+        get: operations["getV1OrganizationsOrgIdGettingStarted"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/password-reset/request": {
         parameters: {
             query?: never;
@@ -1364,7 +1404,10 @@ export interface paths {
          *     it may fill the zone in without asking: Spain (Europe/Madrid,
          *     Atlantic/Canary, Africa/Ceuta) and Portugal (Europe/Lisbon,
          *     Atlantic/Madeira, Atlantic/Azores) have several, the Czech Republic
-         *     one. No authentication required.
+         *     one. Works for every country of `GET /v1/geo/world-countries`, also
+         *     one the platform reference does not have yet; a territory without a
+         *     city in the data (Antarctica, Tokelau, ...) answers a short fixed
+         *     list. No authentication required.
          */
         get: operations["getV1GeoCountryTimezones"];
         put?: never;
@@ -1386,9 +1429,40 @@ export interface paths {
          * Get the currency of a country
          * @description Returns the ISO 4217 currency stored on the platform's country row
          *     (the base of the session currency chain). A country the platform has
-         *     no row for is 404. No authentication required.
+         *     no row for yet answers the currency of the embedded world table (the
+         *     one its row gets when a venue adds the country); a code the world
+         *     table does not know either is 404. No authentication required.
          */
         get: operations["getV1GeoCountryCurrency"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/geo/world-countries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List every ISO 3166-1 country with its region
+         * @description Returns the whole ISO 3166-1 list embedded in the server, each
+         *     country in exactly one of seven regions (Armenia, Georgia, Cyprus and
+         *     Russia are `europe`, Kazakhstan `asia`, Turkey and Israel
+         *     `middle_east`), sorted by `name`. `in_reference` tells whether the
+         *     platform reference (`GET /v1/geo/countries`) has the country, and
+         *     `has_organizers` whether an organization is registered in it: a
+         *     client puts those countries on top as a quick pick. A country outside
+         *     the reference is added by `POST /v1/organizations/{org_id}/venues`
+         *     with `country_iso2` and `city_name`, or by the approval of an
+         *     organizer application. No authentication required.
+         */
+        get: operations["getV1GeoWorldCountries"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2040,6 +2114,31 @@ export interface paths {
          *     once. The bot tells the person and offers "Sign out everywhere".
          */
         post: operations["claimBotWebLoginNotices"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/bot/venue-plan-notices/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Messages about hall plan intakes that the bot must send
+         * @description Called by the bot PROCESS under `BOT_SERVICE_TOKEN`. Returns up to 50
+         *     notices (draft ready, returned, rejected, approved; spec 64) that were
+         *     not told yet, oldest first, and marks them claimed, so each one is
+         *     handed out once. Each notice carries the live Telegram chats of the
+         *     person who sent the intake. A notice whose person has no live bot link
+         *     is still claimed and comes with an empty list of chats.
+         */
+        post: operations["claimBotVenuePlanNotices"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3179,6 +3278,36 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/organizations/{org_id}/venue-directory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Venues the organization may use, by country and city
+         * @description The venue picker of spec 64 section 2.1.1. The scope is the
+         *     organization's own venues that are not archived plus the verified
+         *     active venues of other organizations; contacts are never returned.
+         *     `countries` lists every country with a venue in scope (a venue's
+         *     country is its city's country, else its address country) and is never
+         *     filtered. `cities` lists the cities of `country` that have venues in
+         *     scope (empty without `country`). `venues` is filtered by `country`,
+         *     `city_id` and `q`, own venues first, then by name; without any of the
+         *     three filters it is empty and `total` is 0. Requires JWT or an
+         *     organization API key with "venue.read" in the path organization, the
+         *     same check as shared-venues.
+         */
+        get: operations["getV1OrganizationsOrgIdVenueDirectory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/venues/{id}/review": {
         parameters: {
             query?: never;
@@ -3221,6 +3350,18 @@ export interface paths {
          *     owning organization. Requires JWT authentication and the
          *     "venue.create" permission. Returns 409 if a venue with the same
          *     name already exists (active) inside the org.
+         *
+         *     The city is named EITHER by `city_id` OR by `country_iso2` with
+         *     `city_name` (spec 64 section 2.1.1). With the second group the city
+         *     is found or created, a country the platform reference does not have
+         *     is created from the embedded world table, the venue is inserted and
+         *     the administrators' notifications ("venue created" and, for a new
+         *     country, "new country") are queued, all in one transaction: a
+         *     refused venue leaves no country or city behind. The answer then also
+         *     carries `city` and, when a country row was created,
+         *     `created_country`. Take the `timezone` choices from
+         *     `GET /v1/geo/countries/{iso2}/timezones` and the currency default
+         *     from `GET /v1/geo/world-countries`.
          */
         post: operations["postV1OrganizationsOrgIdVenues"];
         delete?: never;
@@ -3328,13 +3469,135 @@ export interface paths {
         put?: never;
         /**
          * Fork a seating plan into a different owning organization
-         * @description Guardrail #13. Forks a shared / public seating plan into a target
-         *     owner_org_id. The current version geometry (if any) is duplicated
-         *     into the new plan as version 1 in the same transaction. Forking a
-         *     plan the target org already owns returns 409 seating_plan.fork_own_plan.
+         * @description Guardrail #13. Copies a seating plan of another organization into a
+         *     target owner_org_id. The source must be active and open for copying:
+         *     a venue template that a platform superadmin verified
+         *     (operator_verified with verification_state verified) or a plan its
+         *     owner opened (public_template). Any other source (private,
+         *     shared_read, draft, archived, operator_verified without a verified
+         *     state) answers 404 seating_plan.not_found. A venue_id in the body
+         *     must be the target organization's own venue or a verified venue,
+         *     otherwise 404 venue.not_found. The current version geometry (if any) is
+         *     duplicated into the new plan as version 1 in the same transaction, so
+         *     later versions, category names and annotations of the copy never
+         *     change the source. The copy is private and never sent for
+         *     verification; a copy of a verified template with a current version
+         *     is created active, any other copy as a draft. Forking a plan the
+         *     target org already owns returns 409 seating_plan.fork_own_plan.
          *     Requires JWT authentication and the seating_plan.fork permission.
          */
         post: operations["forkSeatingPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/venues/{venue_id}/plan-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the verified seating plan templates of a venue
+         * @description Returns the venue templates an organization may copy with
+         *     POST /v1/seating-plans/{id}/fork: the active seating plans of the venue
+         *     that a platform superadmin verified (visibility operator_verified and
+         *     verification_state verified) and that have a current version. The venue must be the organization's own
+         *     or a venue of another organization that the platform verified
+         *     (migration 0182); any other venue answers 404 venue.not_found.
+         *     Requires JWT, the seating_plan.read permission and membership of the
+         *     path organization.
+         */
+        get: operations["listV1OrganizationsOrgIdVenuesVenueIdPlanTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/seating-plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - list seating plans with filters and counts
+         * @description The platform superadmin's list of seating plans (spec 64 section
+         *     3.4) in one request: one page of plans, newest first, the total and
+         *     the count per verification state. Each plan has the names of its
+         *     organization, venue, city and country and the capacity of its
+         *     current version. Without verification_state the list holds plans of
+         *     every state, also plans that were never sent for verification
+         *     (state null, filter value none). Archived and deleted plans and the
+         *     plans of archived or deleted venues are never listed or counted.
+         *     Draft plans are listed. Requires JWT, the seating_plan.verify
+         *     permission and a platform superadmin. org_id is a filter, it gives
+         *     no access.
+         */
+        get: operations["listV1AdminSeatingPlans"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/seating-plans/{plan_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - verify a seating plan and make it the template of its venue
+         * @description Verifies an active seating plan whose current version passes the
+         *     geometry rules of its plan type. In one transaction the plan gets
+         *     verification_state verified and visibility operator_verified (the
+         *     template of its venue, which other organizations may copy), its venue
+         *     gets review_status verified if it has not yet, and an audit row
+         *     v1.seating_plan.verify is written. A plan never sent for verification
+         *     (state null) is verified the same way. Verifying a verified template
+         *     again changes nothing and answers 200 with changed false. Requires
+         *     JWT, the seating_plan.verify permission, a platform superadmin and
+         *     X-Admin-Reason. No request body.
+         */
+        post: operations["postV1AdminSeatingPlansPlanIdVerify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/seating-plans/{plan_id}/needs-fix": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - send a seating plan back for a fix
+         * @description Sets verification_state needs_fix and stores the note. A plan that
+         *     was a venue template (operator_verified) becomes private, so no
+         *     organization can copy it any more; copies made before keep working.
+         *     The venue keeps its review_status. Writes an audit row
+         *     v1.seating_plan.needs_fix. Requires JWT, the seating_plan.verify
+         *     permission, a platform superadmin and X-Admin-Reason.
+         */
+        post: operations["postV1AdminSeatingPlansPlanIdNeedsFix"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3366,7 +3629,14 @@ export interface paths {
          *     including per-element details. The plan's current_version_id is
          *     atomically bumped to the newly-created version in the same
          *     transaction. Requires JWT authentication and the
-         *     seating_plan.update.own permission.
+         *     seating_plan.update.own permission. A plan that a platform
+         *     superadmin verified (`visibility` `operator_verified`) is a template
+         *     and must not change without a new verification: when the OWNER
+         *     organization posts a version to it, the plan goes back to
+         *     `visibility` `private` and `verification_state` `unverified` in the
+         *     same transaction. A platform superadmin who posts the version with
+         *     `X-Admin-Reason` keeps the template verified (the superadmin's fix
+         *     comes out as a new version).
          */
         post: operations["createSeatingPlanVersion"];
         delete?: never;
@@ -6973,6 +7243,410 @@ export interface paths {
          *     `apps/backend/internal/platform/httpserver/publications.go`.
          */
         delete: operations["unpublishEvent"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/venues/{venue_id}/plan-intakes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send the files of a hall plan (spec 64)
+         * @description Starts a hall plan intake for a venue of the organization, or for a
+         *     verified venue of another organization. The files are checked by
+         *     their content: PDF (20 MB, 20 pages), XLSX (10 MB, 200 MB unpacked),
+         *     old XLS (10 MB), CSV (5 MB), JPEG, PNG, WEBP, HEIC, TIFF, BMP, GIF
+         *     (20 MB, 40 megapixels) and SVG (3 MB); 1 to 10 files, 80 MB together.
+         *     A JPEG is stored without its EXIF and XMP metadata (the orientation is
+         *     kept). WEBP, TIFF, BMP and GIF also get a PNG copy; HEIC and XLS are
+         *     stored with needs_conversion. A source SVG that imports cleanly
+         *     becomes draft 1 and the intake starts in review; any other intake
+         *     goes to a platform administrator at once (state operator, reason
+         *     no_generator). A repeated Idempotency-Key of the organization
+         *     answers 200 with the same intake and stores nothing. Requires JWT,
+         *     seating_plan.create and membership; an API key is refused.
+         */
+        post: operations["createVenuePlanIntake"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the hall plan intakes of an organization
+         * @description The organization's intakes, newest first, filtered by state and venue. Requires JWT, seating_plan.read and membership; an API key is refused.
+         */
+        get: operations["listVenuePlanIntakes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes/{intake_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a hall plan intake
+         * @description The intake card with its files, current draft, questions and draft history. Another organization's intake is 404. Requires JWT, seating_plan.read and membership; an API key is refused.
+         */
+        get: operations["getVenuePlanIntake"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes/{intake_id}/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a file of a hall plan intake
+         * @description Streams the file as an attachment with Content-Security-Policy sandbox, nosniff and no caching. format=png streams the PNG copy of a WEBP, TIFF, BMP or GIF picture. Requires JWT, seating_plan.read and membership; an API key is refused.
+         */
+        get: operations["downloadVenuePlanIntakeSource"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes/{intake_id}/drafts/{n}/svg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the SVG of a draft
+         * @description Streams the SVG of draft n with Content-Security-Policy sandbox, nosniff and no caching. Requires JWT, seating_plan.read and membership; an API key is refused.
+         */
+        get: operations["getVenuePlanIntakeDraftSvg"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes/{intake_id}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer the questions of a draft
+         * @description Stores the answers to questions of the current draft and sends the intake to an administrator (state operator, reason answers) while no renderer is connected. The intake must be in review. Requires JWT, seating_plan.create and membership; an API key is refused.
+         */
+        post: operations["answerVenuePlanIntake"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes/{intake_id}/corrections-text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Tell in words what to fix in a draft
+         * @description Stores the text (1 to 2000 characters) as a pending correction of the current draft and sends the intake to an administrator (state operator, reason organizer_text) while no text interpreter is connected. The intake must be in review. Requires JWT, seating_plan.create and membership; an API key is refused.
+         */
+        post: operations["correctVenuePlanIntakeText"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes/{intake_id}/escalate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Call a platform administrator
+         * @description Sends the intake to an administrator (state operator, reason organizer_request) with an optional text of up to 1000 characters. Requires JWT, seating_plan.create and membership; an API key is refused.
+         */
+        post: operations["escalateVenuePlanIntake"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes/{intake_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a hall plan intake
+         * @description Closes an open intake as cancelled. Requires JWT, seating_plan.create and membership; an API key is refused.
+         */
+        post: operations["cancelVenuePlanIntake"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/organizations/{org_id}/plan-intakes/{intake_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve the current draft as the hall plan
+         * @description The intake must be in review and draft must be the current one. The
+         *     stored SVG is imported again; in one transaction a seating plan is
+         *     made (status active, visibility private, verification_state
+         *     unverified, named after the venue unless name is given) with
+         *     version 1, and the intake is approved. Requires JWT,
+         *     seating_plan.create (the owner and the manager; an agent does not
+         *     hold it) and membership; an API key is refused.
+         */
+        post: operations["approveVenuePlanIntake"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - the hall plan intake queue
+         * @description Every organization's intakes, newest first, with the organization, the venue and its city. Requires JWT, venue_plan_intake.curate and a platform superadmin.
+         */
+        get: operations["listAdminVenuePlanIntakes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes/{intake_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - read a hall plan intake
+         * @description The intake card with the organization's name, the operator and the organizer's corrections. Requires JWT, venue_plan_intake.curate and a platform superadmin.
+         */
+        get: operations["getAdminVenuePlanIntake"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes/{intake_id}/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - download a file of a hall plan intake
+         * @description Streams the file as an attachment with Content-Security-Policy sandbox, nosniff and no caching; format=png streams the PNG copy. Every download writes the audit event v1.venue_plan_intake.source_download with the reason, the file id and its sha256. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
+         */
+        get: operations["downloadAdminVenuePlanIntakeSource"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes/{intake_id}/drafts/{n}/svg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Admin - read the SVG of a draft
+         * @description Streams the SVG of draft n with Content-Security-Policy sandbox, nosniff and no caching. Requires JWT, venue_plan_intake.curate and a platform superadmin.
+         */
+        get: operations["getAdminVenuePlanIntakeDraftSvg"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes/{intake_id}/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - take a hall plan intake
+         * @description Makes the caller the operator of an open intake. Another administrator's intake answers 409 unless force is true. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
+         */
+        post: operations["claimAdminVenuePlanIntake"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes/{intake_id}/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - upload a hand-drawn SVG draft
+         * @description The SVG (up to 3 MB) is imported and validated for the plan type its
+         *     geometry fits BEFORE anything is stored; a refused SVG answers 422
+         *     with the list of errors. The draft (author operator_svg) becomes the
+         *     current draft; the intake stays with the administrator until return.
+         *     The intake must be in operator and taken by the caller with claim.
+         *     Requires JWT, venue_plan_intake.curate, a platform superadmin and
+         *     X-Admin-Reason.
+         */
+        post: operations["createAdminVenuePlanIntakeDraft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes/{intake_id}/return": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - return the draft to the organizer
+         * @description Moves the intake from operator to review with an optional note (up to 2000 characters) and leaves a notice for the organizer. The intake needs a current draft and must be taken by the caller with claim. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
+         */
+        post: operations["returnAdminVenuePlanIntake"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes/{intake_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - approve the current draft as the hall plan
+         * @description Same as the organization's approve, from review or operator, and leaves an approved notice for the organizer. The intake must be taken by the caller with claim. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
+         */
+        post: operations["approveAdminVenuePlanIntake"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/plan-intakes/{intake_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Admin - close an intake the plan cannot be built from
+         * @description Moves the intake from operator to rejected with the reason (1 to 1000 characters) the organizer will read, and leaves a rejected notice. The intake must be taken by the caller with claim. Requires JWT, venue_plan_intake.curate, a platform superadmin and X-Admin-Reason.
+         */
+        post: operations["rejectAdminVenuePlanIntake"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -11587,11 +12261,23 @@ export interface paths {
          *     and reverted. A sold or held seat is frozen: it is listed in
          *     `skipped` with a reason and the batch still applies the rest. A
          *     General Admission place opens and closes but never changes category
-         *     (`ga_unit`). `new_tiers` (creating a category inside the batch) is not
-         *     supported yet and answers 422 `seat_batch.new_tiers_unsupported`.
+         *     (`ga_unit`).
+         *
+         *     `new_tiers` creates price categories in the same transaction, right
+         *     after the session row lock and before the seats are locked; changes
+         *     name them by `new_tier_key`. If anything in the batch fails, no
+         *     category is left behind. A sold or held seat named with a new
+         *     category keeps its own and is listed in `skipped`. The answer lists
+         *     the categories in `created_tiers`. Reverting such a batch puts the
+         *     seats back and KEEPS the created categories, which may then hold no
+         *     seat.
+         *
          *     Requires the `session.seats.manage` permission in the
-         *     organization. Audited as `v1.session.seat_batch.apply` with
-         *     `batch_id`.
+         *     organization; a batch with `new_tiers` also requires `tier.create`
+         *     there (the permission of the create-category route; an organization
+         *     API key needs both scopes). Audited as
+         *     `v1.session.seat_batch.apply` with `batch_id` and
+         *     `created_tier_ids`.
          */
         post: operations["postV1OrganizationsOrgIdSessionsSessionIdSeatBatches"];
         delete?: never;
@@ -11641,7 +12327,9 @@ export interface paths {
          *     `reverted_at` and `reverted_by_batch_id`. A batch is reverted at most
          *     once and a revert is never reverted. A revert that would put back no
          *     seat at all is refused with 409 `seat_batch.nothing_to_revert` and
-         *     writes nothing. Requires the
+         *     writes nothing. Categories the original batch created (`new_tiers`)
+         *     are kept: the revert puts the seats back only, so such a category
+         *     may be left without seats. Requires the
          *     `session.seats.manage` permission in the organization.
          *     Audited as `v1.session.seat_batch.revert` with `batch_id`.
          */
@@ -14194,6 +14882,288 @@ export interface components {
                 };
             };
         };
+        /** @description What a draft of a hall plan holds, read from its SVG when the draft was made. */
+        VenuePlanDraftSummary: {
+            /** @description Number of seats of the draft. */
+            seats: number;
+            /** @description Number of rows over every section. */
+            rows: number;
+            /** @description Number of sections. */
+            sections: number;
+            /** @description The plan type the geometry fits (assigned_seats, general_admission or mixed). */
+            plan_type: string;
+            /** @description Codes of the importer's warnings (for example legend_missing). */
+            warnings: string[];
+        };
+        /** @description A question of a draft to the organizer (written by the generator, wave 2). */
+        VenuePlanQuestion: {
+            /**
+             * Format: uuid
+             * @description Id of the question; the answers route names it as question_id.
+             */
+            id: string;
+            /** @description Type of the question (numbering, row_count, unavailable_seats, sections, stage, row_label). */
+            kind: string;
+            /** @description What the question is about (section, row, seat keys). */
+            target: {
+                [key: string]: unknown;
+            };
+            /** @description The part of the picture to show with the question, null when none. */
+            region: {
+                [key: string]: unknown;
+            } | null;
+            /** @description The answers offered. */
+            options: unknown[];
+            /** @description The organizer's answer, null while the question is open. */
+            answer: unknown;
+            /**
+             * Format: date-time
+             * @description When the question was answered, null while it is open.
+             */
+            answered_at: string | null;
+        };
+        /** @description The current draft of a hall plan intake. */
+        VenuePlanDraft: {
+            /** @description Number of the draft inside the intake (1, 2, ...). */
+            n: number;
+            /** @description Who made the draft (generator, organizer_answers, organizer_text, operator, operator_svg, source_svg). */
+            author: string;
+            /** @description The administrator's note on the draft, null when none. */
+            note: string | null;
+            /** @description What the draft holds. */
+            summary: components["schemas"]["VenuePlanDraftSummary"];
+            /** @description Path of the route that streams the draft SVG (needs the same authorization as the card). */
+            svg_path: string;
+            /** @description The questions of this draft. */
+            questions: components["schemas"]["VenuePlanQuestion"][];
+            /**
+             * Format: date-time
+             * @description When the draft was made.
+             */
+            created_at: string;
+        };
+        /** @description One draft in the history of an intake. */
+        VenuePlanDraftHistoryItem: {
+            /** @description Number of the draft. */
+            n: number;
+            /** @description Who made the draft. */
+            author: string;
+            /**
+             * Format: date-time
+             * @description When the draft was made.
+             */
+            created_at: string;
+        };
+        /** @description A file sent with a hall plan intake. It has no public link; it is downloaded through the intake routes only. */
+        VenuePlanIntakeSource: {
+            /**
+             * Format: uuid
+             * @description Id of the file.
+             */
+            id: string;
+            /** @description Format decided from the content (pdf, xlsx, xls, csv, jpeg, png, webp, heic, tiff, bmp, gif, svg). */
+            kind: string;
+            /** @description The file name as sent, without folders. */
+            file_name: string;
+            /**
+             * Format: int64
+             * @description Size of the stored file in bytes (a JPEG without its metadata).
+             */
+            byte_size: number;
+            /** @description Number of pages of a PDF when it could be counted, else null. */
+            pages: number | null;
+            /** @description Width of a picture in pixels, else null. */
+            width: number | null;
+            /** @description Height of a picture in pixels, else null. */
+            height: number | null;
+            /** @description True for HEIC and old Excel files, which are converted later. */
+            needs_conversion: boolean;
+            /** @description Path of the route that downloads the file as an attachment. */
+            download_path: string;
+            /** @description Path of the PNG copy of a WEBP, TIFF, BMP or GIF picture, else null. */
+            png_copy_path: string | null;
+        };
+        /** @description An answer set or a text correction of the organizer (administrators' card only). */
+        VenuePlanCorrection: {
+            /**
+             * Format: uuid
+             * @description Id of the correction.
+             */
+            id: string;
+            /** @description organizer_text, operator_edit or answer. */
+            kind: string;
+            /** @description Number of the draft it was made on. */
+            draft: number | null;
+            /** @description The organizer's text, null for answers. */
+            text: string | null;
+            /** @description pending, applied or rejected. */
+            status: string;
+            /**
+             * Format: date-time
+             * @description When it was sent.
+             */
+            created_at: string;
+        };
+        /**
+         * @description A hall plan intake (spec 64): the files an organization sent for a
+         *     venue, its state and its current draft. The administrators' card also
+         *     carries org_name, operator_id, operator_claimed_at and corrections.
+         */
+        VenuePlanIntake: {
+            /**
+             * Format: uuid
+             * @description Id of the intake.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Organization that sent the intake.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Venue the plan is for.
+             */
+            venue_id: string;
+            /** @description Name of the venue. */
+            venue_name: string;
+            /** @description received, generating, review, operator, approved, rejected or cancelled. */
+            state: string;
+            /** @description Where the intake was sent from (telegram_bot or event_center_web). */
+            channel: string;
+            /** @description Why the intake went to an administrator, null when it did not. */
+            escalation_reason: string | null;
+            /** @description The organizer's text when they called an administrator. */
+            escalation_text: string | null;
+            /** @description The administrator's note when the draft was returned to the organizer. */
+            return_note: string | null;
+            /** @description Why the administrator could not build the plan. */
+            reject_reason: string | null;
+            /** @description True while an administrator works on the intake. */
+            operator_claimed: boolean;
+            /** @description Number of the current draft, null before the first draft. */
+            current_draft: number | null;
+            /**
+             * Format: uuid
+             * @description The seating plan made from the approved draft.
+             */
+            plan_id: string | null;
+            /** @description Version number of that plan (1). */
+            plan_version: number | null;
+            /**
+             * Format: date-time
+             * @description When the intake was sent.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When the intake last changed.
+             */
+            updated_at: string;
+            /**
+             * Format: date-time
+             * @description When the intake reached a final state.
+             */
+            closed_at: string | null;
+            /** @description The files of the intake, in the order they were sent. */
+            sources: components["schemas"]["VenuePlanIntakeSource"][];
+            /** @description The current draft, null before the first draft. */
+            draft: components["schemas"]["VenuePlanDraft"] | null;
+            /** @description Every draft, oldest first. */
+            drafts: components["schemas"]["VenuePlanDraftHistoryItem"][];
+            /** @description Number of drafts made so far. */
+            review_rounds: number;
+            /** @description Name of the organization (administrators' card only). */
+            org_name?: string;
+            /**
+             * Format: uuid
+             * @description The administrator who took the intake (administrators' card only).
+             */
+            operator_id?: string | null;
+            /**
+             * Format: date-time
+             * @description When the administrator took it (administrators' card only).
+             */
+            operator_claimed_at?: string | null;
+            /** @description The organizer's answers and text corrections (administrators' card only). */
+            corrections?: components["schemas"]["VenuePlanCorrection"][];
+        };
+        /** @description A hall plan intake in a list. The administrators' list adds org_name, venue_city, operator_id and operator_claimed_at. */
+        VenuePlanIntakeListItem: {
+            /**
+             * Format: uuid
+             * @description Id of the intake.
+             */
+            id: string;
+            /**
+             * Format: uuid
+             * @description Organization that sent it.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Venue the plan is for.
+             */
+            venue_id: string;
+            /** @description Name of the venue. */
+            venue_name: string;
+            /** @description State of the intake. */
+            state: string;
+            /** @description Where it was sent from. */
+            channel: string;
+            /** @description Why it went to an administrator. */
+            escalation_reason: string | null;
+            /** @description True while an administrator works on it. */
+            operator_claimed: boolean;
+            /** @description Number of the current draft. */
+            current_draft: number | null;
+            /**
+             * Format: uuid
+             * @description The plan made from it, once approved.
+             */
+            plan_id: string | null;
+            /**
+             * Format: date-time
+             * @description When it was sent.
+             */
+            created_at: string;
+            /**
+             * Format: date-time
+             * @description When it last changed.
+             */
+            updated_at: string;
+            /** @description Name of the organization (administrators' list only). */
+            org_name?: string;
+            /** @description City of the venue (administrators' list only). */
+            venue_city?: string | null;
+            /**
+             * Format: uuid
+             * @description The administrator who took it (administrators' list only).
+             */
+            operator_id?: string | null;
+            /**
+             * Format: date-time
+             * @description When the administrator took it (administrators' list only).
+             */
+            operator_claimed_at?: string | null;
+        };
+        /** @description One hall plan intake card. */
+        VenuePlanIntakeEnvelope: {
+            /** @description The intake card. */
+            intake: components["schemas"]["VenuePlanIntake"];
+        };
+        /** @description Approve a draft of a hall plan intake. */
+        VenuePlanApproveRequest: {
+            /** @description Number of the draft to approve; it must be the current draft. */
+            draft: number;
+            /** @description Name of the new seating plan, 1 to 200 characters (default the venue name). */
+            name?: string;
+        };
+        /** @description A list of hall plan intakes, newest first. */
+        VenuePlanIntakeList: {
+            /** @description The intakes. */
+            intakes: components["schemas"]["VenuePlanIntakeListItem"][];
+        };
         /** @description One ticket price printed on a poster. */
         PosterFactsCategory: {
             /** @description Category name as printed (for example "Stalls"); empty when the poster gives only a price. */
@@ -14906,6 +15876,37 @@ export interface components {
              */
             platform_staff?: boolean;
         };
+        /** @description The answer of GET /v1/organizations/{org_id}/getting-started. */
+        GettingStartedResponse: {
+            /** @description The first steps of the organization the caller may do. */
+            getting_started: components["schemas"]["GettingStarted"];
+        };
+        /**
+         * @description The first steps of an organization that the caller may do, and
+         *     whether all of them are done.
+         */
+        GettingStarted: {
+            /** @description True when every listed step is done. An empty list is complete. */
+            complete: boolean;
+            /**
+             * @description The steps the caller holds the permission for in this
+             *     organization, always in the order org_data, payments, event,
+             *     sales_link. Never null.
+             */
+            steps: components["schemas"]["GettingStartedStep"][];
+        };
+        /** @description One first step of an organization. */
+        GettingStartedStep: {
+            /**
+             * @description The step: `org_data` (seller data complete), `payments` (a
+             *     payment provider connected and accepted), `event` (an event
+             *     created, a draft counts), `sales_link` (a sales link created).
+             * @enum {string}
+             */
+            key: "org_data" | "payments" | "event" | "sales_link";
+            /** @description True when the organization's data shows the step is done. */
+            done: boolean;
+        };
         /**
          * @description The caller's access inside one organization, returned by
          *     GET /v1/organizations/{org_id}/me. Every list is sorted and never null.
@@ -15544,6 +16545,57 @@ export interface components {
         BotWebLoginNoticesResponse: {
             /** @description Sign-ins not reported yet; each is handed out once. */
             notices: components["schemas"]["BotWebLoginNotice"][];
+        };
+        /** @description A message about a hall plan intake that the bot must send to the person who sent the intake. */
+        BotVenuePlanNotice: {
+            /**
+             * Format: uuid
+             * @description Id of the notice.
+             */
+            id: string;
+            /**
+             * @description What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan), `approved` (an administrator saved the plan) or `escalated` (arena could not build a draft, an administrator builds the plan now).
+             * @enum {string}
+             */
+            kind: "draft_ready" | "returned" | "rejected" | "approved" | "escalated";
+            /**
+             * Format: uuid
+             * @description Id of the intake the notice is about.
+             */
+            intake_id: string;
+            /**
+             * Format: uuid
+             * @description Id of the organization that owns the intake.
+             */
+            org_id: string;
+            /**
+             * Format: uuid
+             * @description Id of the venue the intake is for.
+             */
+            venue_id: string;
+            /** @description Name of the venue, for the text of the message. */
+            venue_name: string;
+            /**
+             * Format: int32
+             * @description Number of the current draft, or null when the intake has no draft.
+             */
+            current_draft: number | null;
+            /** @description True for a `returned` notice when the current draft was uploaded by an administrator (author `operator` or `operator_svg`) at or after the moment the administrator took the intake; false when the administrator returned the intake without a new draft and for every other kind of notice. */
+            draft_changed: boolean;
+            /** @description The administrator's note or reason for the organizer, or null when there is none. */
+            note: string | null;
+            /** @description Live Telegram chats of the person who sent the intake. The list is empty when that person has no live bot link; the notice is then claimed and never comes again. */
+            telegram_user_ids: number[];
+            /**
+             * Format: date-time
+             * @description When the notice was made.
+             */
+            created_at: string;
+        };
+        /** @description Answer of POST /v1/bot/venue-plan-notices/claim. */
+        BotVenuePlanNoticesResponse: {
+            /** @description Notices not told yet, oldest first; each is handed out once. */
+            notices: components["schemas"]["BotVenuePlanNotice"][];
         };
         /** @description A staff invitation issued from Telegram whose PDF the bot must send into the issuer's chat. It carries no e-mail or phone of the guest. */
         BotInvitationPdfNotice: {
@@ -17314,8 +18366,10 @@ export interface components {
              */
             plan_type: "assigned_seats" | "general_admission" | "tables" | "mixed";
             /**
-             * @description Share scope. Defaults to private on create; move to shared_read
-             *     or public_template to enable cross-org read / fork.
+             * @description Share scope. Defaults to private on create. shared_read lets other
+             *     organizations read the plan; public_template also lets them fork
+             *     it. operator_verified marks a venue template and is set only by
+             *     POST /v1/admin/seating-plans/{plan_id}/verify.
              * @enum {string}
              */
             visibility: "private" | "shared_read" | "public_template" | "operator_verified";
@@ -17358,6 +18412,44 @@ export interface components {
              * @description RFC 3339 UTC timestamp of last mutation.
              */
             updated_at: string;
+        };
+        /**
+         * @description A seating plan after POST /v1/admin/seating-plans/{plan_id}/verify or
+         *     /needs-fix (spec 64 section 3.4, migration 0216).
+         */
+        SeatingPlanVerification: {
+            /**
+             * Format: uuid
+             * @description Id of the plan
+             */
+            plan_id: string;
+            /**
+             * Format: uuid
+             * @description Venue of the plan
+             */
+            venue_id: string;
+            /**
+             * Format: uuid
+             * @description Organization that owns the plan
+             */
+            owner_org_id: string;
+            /** @description draft, active or archived */
+            status: string;
+            /** @description operator_verified after verify; private after needs-fix of a template */
+            visibility: string;
+            /** @description verified or needs_fix */
+            verification_state: string;
+            /** @description The superadmin's note of needs-fix, null after verify */
+            verification_note: string | null;
+            /**
+             * Format: date-time
+             * @description When the plan was verified, null unless verified
+             */
+            verified_at: string | null;
+            /** @description review_status of the venue, verified once a plan of it is verified */
+            venue_review_status: string;
+            /** @description False when a repeated verify found the plan already verified and changed nothing */
+            changed: boolean;
         };
         /**
          * @description Immutable-once-bound snapshot of a seating plan's canonical geometry.
@@ -18417,18 +19509,65 @@ export interface components {
             kind: string;
             /** @description The seats to change, at most 10 000. A seat_key may appear twice only with the same target. */
             changes: components["schemas"]["SeatBatchChangeRequest"][];
-            /** @description Categories to create inside the batch. Not supported yet; a non-empty list answers 422 `seat_batch.new_tiers_unsupported`. */
-            new_tiers?: Record<string, never>[];
+            /**
+             * @description Categories to create inside the batch, in the same transaction as
+             *     the seat changes (kinds `paint` and `apply_layout` only, else 400
+             *     `seat_batch.new_tiers_not_allowed`). A change names one by its
+             *     `key` in `new_tier_key`; every new tier must be named by at least
+             *     one change. Live plus new categories may not exceed 15. Needs the
+             *     `tier.create` permission in the organization as well.
+             */
+            new_tiers?: components["schemas"]["SeatBatchNewTier"][];
         };
-        /** @description What one seat should become; at least one of tier_id and status. */
+        /** @description A category the batch creates, in the session's currency; pricing mode `free` for price 0, `fixed` otherwise. */
+        SeatBatchNewTier: {
+            /** @description The client's id of the category, `[A-Za-z0-9_-]{1,40}`, unique in the request (`seat_batch.invalid_new_tier`, `seat_batch.duplicate_new_tier_key`). */
+            key: string;
+            /** @description Name of the category, 1 to 100 characters after trimming (`seat_batch.invalid_new_tier_name`); must differ, ignoring case, from the other new tiers (`seat_batch.duplicate_new_tier_name`) and from every live category of the session (409 `seat_batch.tier_name_taken`). */
+            name: string;
+            /**
+             * Format: int64
+             * @description Price in minor units, 0 to 1 000 000 000 (`seat_batch.invalid_new_tier_price`).
+             */
+            price_amount: number;
+            /** @description Colour of the category, `#rrggbb` (`seat_batch.invalid_new_tier_color`); null or empty for none. */
+            color?: string | null;
+            /**
+             * Format: int32
+             * @description Display order of the category; absent places it after the live categories, in request order.
+             */
+            sort_order?: number;
+        };
+        /** @description A category the batch created. */
+        SeatBatchCreatedTier: {
+            /** @description The key the request gave the category. */
+            key: string;
+            /**
+             * Format: uuid
+             * @description UUID of the created category.
+             */
+            tier_id: string;
+            /** @description Name of the category, trimmed. */
+            name: string;
+            /**
+             * Format: int64
+             * @description Price in minor units.
+             */
+            price_amount: number;
+            /** @description Colour of the category, lower-case `#rrggbb`, null for none. */
+            color: string | null;
+        };
+        /** @description What one seat should become; at least one of tier_id, new_tier_key and status. */
         SeatBatchChangeRequest: {
             /** @description The seat's key. */
             seat_key: string;
             /**
              * Format: uuid
-             * @description The category to put the seat in, a live category of this session.
+             * @description The category to put the seat in, a live category of this session. Not together with new_tier_key.
              */
             tier_id?: string;
+            /** @description The `key` of an entry of `new_tiers` to put the seat in, instead of tier_id (both set is 400 `seat_batch.invalid_change`; an unknown key is 400 `seat_batch.unknown_new_tier_key`). */
+            new_tier_key?: string;
             /** @description `available` or `unavailable`. */
             status?: string;
         };
@@ -18512,6 +19651,8 @@ export interface components {
             skipped: components["schemas"]["SeatBatchSkipped"][];
             /** @description Seats that already were in the requested state. Only in the answer of an apply or a revert. */
             unchanged_seat_keys?: string[];
+            /** @description The categories the batch created from `new_tiers`, in request order; an empty array when it created none. Only in the answer of an apply or a revert (a revert creates none); the stored batch does not keep it, the audit event carries `created_tier_ids`. */
+            created_tiers?: components["schemas"]["SeatBatchCreatedTier"][];
         };
         /** @description One row of the batch list; the per-seat arrays are only in SeatBatch. */
         SeatBatchSummary: {
@@ -19998,6 +21139,16 @@ export interface components {
              * @description Sold plus held plus remaining.
              */
             revenue_estimate_minor: number;
+            /**
+             * Format: int64
+             * @description The estimate if not every seat sells: sold seats in full at their
+             *     price, every open free seat at its slot's price times the slot's
+             *     sell-through rate, a held seat at its price times the rate of the
+             *     slot price level nearest to it. Slots are ranked among the distinct
+             *     price levels: the dearest sells 0.90, the cheapest 0.60, linear by
+             *     rank between; a single price level sells 0.75. Rounded half up.
+             */
+            realistic_revenue_minor: number;
             /** @description The estimate per proposed category. */
             by_slot: components["schemas"]["SeatLayoutSlotMetrics"][];
         };
@@ -21472,10 +22623,36 @@ export interface components {
             name: string;
             /**
              * Format: uuid
-             * @description Optional UUID of a row in the geo.cities reference table.
+             * @description Optional UUID of a row in the geo.cities reference table. Send
+             *     either `city_id` or `country_iso2` with `city_name`; both groups
+             *     together are 400 `venue.city_conflict`.
              * @example 01929d0e-0e47-7000-8000-000000000101
              */
             city_id?: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code of the country of the venue's city, sent
+             *     with `city_name` instead of `city_id`. Any country of
+             *     `GET /v1/geo/world-countries`: a country the platform reference
+             *     does not have is created from the world table (iso3, slug,
+             *     currency, region, English and Russian names) in the venue's
+             *     transaction, and the platform administrators are told. An
+             *     organization API key may use a reference country but never
+             *     creates one (403 `venue.country_create_forbidden`), and never
+             *     creates a city by name (403 `venue.city_create_forbidden`). A code the
+             *     world table does not know is 400 `venue.unknown_country`. When
+             *     `country` is not sent, the venue's `country` takes this code.
+             * @example MY
+             */
+            country_iso2?: string;
+            /**
+             * @description Name of the venue's city inside `country_iso2`, sent with it
+             *     instead of `city_id`. The city is found by name (any locale, case
+             *     and spacing ignored) or created, with the rules of
+             *     `POST /v1/organizations/{org_id}/cities`, in the venue's
+             *     transaction.
+             * @example Kuala Lumpur
+             */
+            city_name?: string;
             /**
              * @description Optional free-form street address. Deprecated in favour
              *     of the structured address fields below — accepted for
@@ -21554,6 +22731,202 @@ export interface components {
              * @example 1200
              */
             capacity_default?: number | null;
+        };
+        /** @description The city of a venue created with `country_iso2` and `city_name`. */
+        VenueCreatedCity: {
+            /**
+             * Format: uuid
+             * @description UUID of the city, found by name or created.
+             */
+            id: string;
+            /**
+             * @description Name of the city in the request language, else English.
+             * @example Kuala Lumpur
+             */
+            name: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code of the city's country.
+             * @example MY
+             */
+            country_iso2: string;
+        };
+        /** @description A country row the venue request created from the embedded world table. */
+        VenueCreatedCountry: {
+            /**
+             * Format: uuid
+             * @description UUID of the new reference country.
+             */
+            id: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code.
+             * @example MY
+             */
+            iso2: string;
+            /**
+             * @description Name in the request language, Russian for `ru` and English for any other.
+             * @example Malaysia
+             */
+            name: string;
+            /**
+             * @description ISO 4217 currency stored on the new row.
+             * @example MYR
+             */
+            currency: string;
+            /**
+             * @description Region of the new row, one of europe, middle_east, asia, africa, north_america, latin_america, oceania.
+             * @example asia
+             */
+            region: string;
+        };
+        /** @description A country with venues in the organization's scope. */
+        VenueDirectoryCountry: {
+            /**
+             * @description ISO 3166-1 alpha-2 code.
+             * @example ES
+             */
+            iso2: string;
+            /**
+             * Format: uuid
+             * @description UUID of the reference country, null when only a venue's address names it.
+             */
+            country_id: string | null;
+            /**
+             * @description Name in the request language, else English, else the code.
+             * @example Испания
+             */
+            name: string;
+            /**
+             * @description One of europe, middle_east, asia, africa, north_america, latin_america, oceania, or other for a country the world table does not know.
+             * @example europe
+             */
+            region: string;
+            /**
+             * Format: int64
+             * @description Venues in scope in this country.
+             * @example 14
+             */
+            venues: number;
+            /**
+             * Format: int64
+             * @description Of those, the organization's own venues.
+             * @example 3
+             */
+            own_venues: number;
+        };
+        /** @description A city of the requested country with venues in the organization's scope. */
+        VenueDirectoryCity: {
+            /**
+             * Format: uuid
+             * @description UUID of the city.
+             */
+            id: string;
+            /**
+             * @description Name in the request language, else English, else the slug.
+             * @example Мадрид
+             */
+            name: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code of the city's country.
+             * @example ES
+             */
+            country_iso2: string;
+            /**
+             * Format: int64
+             * @description Venues in scope in this city.
+             * @example 5
+             */
+            venues: number;
+            /**
+             * Format: int64
+             * @description Of those, the organization's own venues.
+             * @example 1
+             */
+            own_venues: number;
+        };
+        /** @description A venue of the directory. It never carries the venue's contacts. */
+        VenueDirectoryVenue: {
+            /**
+             * Format: uuid
+             * @description UUID of the venue.
+             */
+            id: string;
+            /**
+             * @description Name of the venue.
+             * @example Teatro Real
+             */
+            name: string;
+            /**
+             * Format: uuid
+             * @description UUID of the venue's city, null when it has none.
+             */
+            city_id: string | null;
+            /**
+             * @description Name of the venue's city in the request language, null without a city.
+             * @example Мадрид
+             */
+            city_name: string | null;
+            /**
+             * @description Country of the venue (its city's country, else its address country), null when unknown.
+             * @example ES
+             */
+            country_iso2: string | null;
+            /** @description Free-form address of the venue, null when unset. */
+            address: string | null;
+            /**
+             * @description Street address line 1, null when unset.
+             * @example Plaza de Isabel II
+             */
+            address_line1: string | null;
+            /**
+             * Format: double
+             * @description WGS-84 latitude, null when unknown.
+             * @example 40.4184
+             */
+            geo_lat: number | null;
+            /**
+             * Format: double
+             * @description WGS-84 longitude, null when unknown.
+             * @example -3.7109
+             */
+            geo_lng: number | null;
+            /**
+             * @description IANA time zone of the venue.
+             * @example Europe/Madrid
+             */
+            timezone: string | null;
+            /**
+             * @description Default capacity, null when unset.
+             * @example 1700
+             */
+            capacity_default: number | null;
+            /** @description True when the venue belongs to the path organization. */
+            own: boolean;
+            /**
+             * @description verified or unverified (migration 0182). Another organization's venue is always verified here.
+             * @example verified
+             */
+            review_status: string;
+            /** @description True when `has_own_plan` is true or the venue has a verified seating plan template the organization may copy (GET .../venues/{venue_id}/plan-templates). */
+            has_plan: boolean;
+            /** @description True when the organization has an active seating plan with a current version at the venue. */
+            has_own_plan: boolean;
+        };
+        /** @description Response of GET /v1/organizations/{org_id}/venue-directory. */
+        VenueDirectoryResponse: {
+            /** @description Up to 8 ISO codes, no duplicates: the countries of the organization's own venues (most venues first), the organization's own country, then reference countries where organizers work. */
+            quick_pick: string[];
+            /** @description Every country with at least one venue in scope, never filtered. */
+            countries: components["schemas"]["VenueDirectoryCountry"][];
+            /** @description The cities of `country` with venues in scope; empty without `country`. */
+            cities: components["schemas"]["VenueDirectoryCity"][];
+            /** @description The filtered venues, own first, then by name; empty without a filter. */
+            venues: components["schemas"]["VenueDirectoryVenue"][];
+            /**
+             * Format: int64
+             * @description Count of the filtered venues before `limit`; 0 without a filter.
+             * @example 5
+             */
+            total: number;
         };
         /**
          * @description Request body for PATCH /v1/organizations/{org_id}/venues/{id}.
@@ -22038,10 +23411,59 @@ export interface components {
         /** @description Response of GET /v1/geo/countries/{iso2}/currency. */
         GeoCountryCurrencyResponse: {
             /**
-             * @description ISO 4217 currency of the country, as stored on the platform's country row.
+             * @description ISO 4217 currency of the country, as stored on the platform's country row, else the one of the embedded world table.
              * @example EUR
              */
             currency: string;
+        };
+        /** @description One ISO 3166-1 country of the embedded world table. */
+        GeoWorldCountryItem: {
+            /**
+             * @description ISO 3166-1 alpha-2 code.
+             * @example MY
+             */
+            iso2: string;
+            /**
+             * @description ISO 3166-1 alpha-3 code.
+             * @example MYS
+             */
+            iso3: string;
+            /**
+             * @description Name in the request language, Russian for `ru` and English for any other.
+             * @example Малайзия
+             */
+            name: string;
+            /**
+             * @description English name, whatever the request language.
+             * @example Malaysia
+             */
+            name_en: string;
+            /**
+             * @description ISO 4217 national currency, the currency a reference row of this country gets.
+             * @example MYR
+             */
+            currency: string;
+            /**
+             * @description One of europe, middle_east, asia, africa, north_america, latin_america, oceania.
+             * @example asia
+             */
+            region: string;
+            /** @description True when the platform reference (`GET /v1/geo/countries`) has the country. */
+            in_reference: boolean;
+            /**
+             * Format: uuid
+             * @description UUID of the reference country when `in_reference` is true, else null.
+             */
+            country_id: string | null;
+            /** @description True when at least one organization is registered in this country. The quick pick of a form is the countries with organizers. */
+            has_organizers: boolean;
+        };
+        /** @description Response of GET /v1/geo/world-countries. */
+        GeoWorldCountriesResponse: {
+            /** @description The seven regions in display order: europe, middle_east, asia, africa, north_america, latin_america, oceania. The client names them with its own texts. */
+            regions: string[];
+            /** @description Every ISO 3166-1 country, sorted by `name`. */
+            countries: components["schemas"]["GeoWorldCountryItem"][];
         };
         GeoCountryResponse: {
             /**
@@ -22778,13 +24200,23 @@ export interface components {
             /** @description Name of the linked promoter; null when the organization itself is the promoter. */
             promoter_name: string | null;
         };
-        /** @description Body of POST /v1/organizations/{org_id}/cities. */
+        /** @description Body of POST /v1/organizations/{org_id}/cities. Name the country by `country_id` or by `country_iso2`. */
         CreateOrgCityRequest: {
             /**
              * Format: uuid
-             * @description The existing country the city belongs to.
+             * @description The existing country the city belongs to. Wins over `country_iso2` when both are sent.
              */
-            country_id: string;
+            country_id?: string;
+            /**
+             * @description ISO 3166-1 alpha-2 code of the country, instead of `country_id`.
+             *     The country must already be in the platform reference: a country
+             *     outside it is 409 `city.country_not_in_reference`, because a new
+             *     country comes only with a venue (POST
+             *     /v1/organizations/{org_id}/venues with `country_iso2` and
+             *     `city_name`).
+             * @example ES
+             */
+            country_iso2?: string;
             /**
              * @description Display name of the city, in `locale`.
              * @example Guardamar del Segura
@@ -41569,6 +43001,90 @@ export interface operations {
             };
         };
     };
+    getV1OrganizationsOrgIdGettingStarted: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID of the organization the caller asks about. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The first steps of the organization the caller may do. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GettingStartedResponse"];
+                };
+            };
+            /** @description org_id is not a valid UUID. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Missing or invalid bearer token. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The caller is not a member of this organization, or the API key
+             *     belongs to another organization (`org.access_denied`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The organization does not exist or was archived (`org.not_found`). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description The membership or permission lookup failed
+             *     (`org.membership_check_failed`), or the organization's data could
+             *     not be read (`getting_started.lookup_failed`).
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The permission checker is not wired (`dependency.org_access_unavailable`). */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     postV1AuthPasswordResetRequest: {
         parameters: {
             query?: never;
@@ -41898,8 +43414,57 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description The platform has no such country (`geo.country_not_found`). */
+            /** @description Neither the platform nor the world table has such a country (`geo.country_not_found`). */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Geo queries not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getV1GeoWorldCountries: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Language of `name`. `ru` gives Russian names, any other language English ones. Overrides Accept-Language.
+                 * @example ru
+                 */
+                lang?: string;
+                /**
+                 * @description Alias of `lang`, read only when `lang` is absent.
+                 * @example ru
+                 */
+                locale?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The world countries and the region order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeoWorldCountriesResponse"];
+                };
+            };
+            /** @description The platform reference could not be read (`geo.list_countries_failed`). */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -44170,6 +45735,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BotWebLoginNoticesResponse"];
+                };
+            };
+            /** @description Missing or wrong service token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Service token not configured or database not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    claimBotVenuePlanNotices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The notices to send */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BotVenuePlanNoticesResponse"];
                 };
             };
             /** @description Missing or wrong service token */
@@ -48719,6 +50322,96 @@ export interface operations {
             };
         };
     };
+    getV1OrganizationsOrgIdVenueDirectory: {
+        parameters: {
+            query?: {
+                /**
+                 * @description Two-letter ISO 3166-1 code; narrows `venues` and fills `cities`.
+                 * @example ES
+                 */
+                country?: string;
+                /** @description Only venues in this city (UUID from `cities` or GET /v1/geo/cities). */
+                city_id?: string;
+                /**
+                 * @description A part of the venue name, any letter case, at most 100 characters.
+                 * @example teatro
+                 */
+                q?: string;
+                /** @description Most venues to return, 1 to 200 (default 100). `total` is the count before the limit. */
+                limit?: number;
+                /**
+                 * @description Language of country and city names. Overrides Accept-Language.
+                 * @example ru
+                 */
+                lang?: string;
+                /** @description Alias of `lang`, read only when `lang` is absent. */
+                locale?: string;
+            };
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization that looks for a venue */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The directory */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenueDirectoryResponse"];
+                };
+            };
+            /** @description A parameter is not valid: org_id, `venue.invalid_country`, `venue.invalid_city_id`, `venue.invalid_query` or `venue.invalid_limit` */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller is not a member of the organization or lacks venue.read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
     patchV1AdminVenuesIdReview: {
         parameters: {
             query?: never;
@@ -48907,7 +50600,12 @@ export interface operations {
     };
     postV1OrganizationsOrgIdVenues: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Language of the `city.name` and `created_country.name` in the answer, and of the name of a new city. Overrides Accept-Language. */
+                lang?: string;
+                /** @description Alias of `lang`, read only when `lang` is absent. */
+                locale?: string;
+            };
             header?: never;
             path: {
                 /** @description UUIDv7 of the owning organization */
@@ -48928,11 +50626,23 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        /** @description The created venue. */
                         venue: components["schemas"]["VenueItem"];
+                        /** @description The venue's city, present only when the request named it by `country_iso2` and `city_name`. */
+                        city?: components["schemas"]["VenueCreatedCity"];
+                        /** @description The country row this request created from the world table, present only when one was created. */
+                        created_country?: components["schemas"]["VenueCreatedCountry"];
                     };
                 };
             };
-            /** @description Body missing/invalid, name empty, or city_id malformed */
+            /**
+             * @description Body missing/invalid, name empty, or city_id malformed. Also
+             *     `venue.city_conflict` (both `city_id` and `country_iso2` /
+             *     `city_name`), `venue.country_required` (`city_name` without
+             *     `country_iso2`), `venue.city_name_required` (`country_iso2`
+             *     without `city_name`) and `venue.unknown_country` (a code the world
+             *     table does not know).
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -48950,7 +50660,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold the required permission (venue.create) */
+            /** @description Actor does not hold the required permission (venue.create), or an organization API key would create a country (`venue.country_create_forbidden`) or a city (`venue.city_create_forbidden`) */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -49319,7 +51029,12 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold the required permission (seating_plan.create) */
+            /**
+             * @description Actor does not hold the required permission (seating_plan.create),
+             *     owner_org_id is not an organization of the caller, or
+             *     seating_plan.verify_required: visibility operator_verified is set
+             *     only by POST /v1/admin/seating-plans/{plan_id}/verify
+             */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -49475,7 +51190,11 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold the required permission (seating_plan.update.own) */
+            /**
+             * @description Actor does not hold the required permission (seating_plan.update.own),
+             *     or seating_plan.verify_required: visibility operator_verified is set
+             *     only by POST /v1/admin/seating-plans/{plan_id}/verify
+             */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -49486,6 +51205,19 @@ export interface operations {
             };
             /** @description Seating plan not found or belongs to another org */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /**
+             * @description seating_plan.template_visibility_locked: a verified venue template
+             *     (operator_verified) changes its visibility only back to private,
+             *     which also sets its verification_state to unverified
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -49567,7 +51299,12 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Source seating plan not found */
+            /**
+             * @description seating_plan.not_found: the source plan does not exist, or it
+             *     belongs to another organization and is not an active verified
+             *     template or public_template plan. venue.not_found: venue_id is
+             *     neither the target organization's own venue nor a verified venue
+             */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -49595,6 +51332,507 @@ export interface operations {
                 };
             };
             /** @description Database pool or seating queries unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listV1OrganizationsOrgIdVenuesVenueIdPlanTemplates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUIDv7 of the organization that looks for a template */
+                org_id: string;
+                /** @description UUIDv7 of the venue whose templates are listed */
+                venue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Verified templates of the venue, by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @description Zero or more verified templates of the venue */
+                        plan_templates: {
+                            /**
+                             * Format: uuid
+                             * @description Id of the template plan; the id to fork
+                             */
+                            plan_id: string;
+                            /** @description Name of the plan */
+                            name: string;
+                            /** @description assigned_seats, general_admission, tables or mixed */
+                            plan_type: string;
+                            /**
+                             * Format: uuid
+                             * @description Venue of the plan
+                             */
+                            venue_id: string;
+                            /**
+                             * Format: uuid
+                             * @description Current version of the plan; a fork copies it
+                             */
+                            current_version_id: string;
+                            /** @description Number of the current version */
+                            version_number?: number | null;
+                            /** @description Seats of the current version */
+                            capacity_seated?: number | null;
+                            /** @description Standing places of the current version */
+                            capacity_standing?: number | null;
+                            /**
+                             * Format: date-time
+                             * @description When a platform superadmin verified the plan
+                             */
+                            verified_at?: string | null;
+                            /** @description True when the path organization owns the plan (it need not fork it) */
+                            own: boolean;
+                        }[];
+                    };
+                };
+            };
+            /** @description org_id or venue_id is not a valid UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Authorization header missing or JWT verification failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller is not a member of the organization or lacks seating_plan.read */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description venue.not_found - no such venue, or a venue of another organization that is not verified */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listV1AdminSeatingPlans: {
+        parameters: {
+            query?: {
+                /**
+                 * @description none (never sent for verification), unverified, verified or
+                 *     needs_fix. Without it the list holds every state.
+                 */
+                verification_state?: string;
+                /** @description Only the plans of this organization. Without it the list holds every organization. */
+                org_id?: string;
+                /**
+                 * @description Only the plans at venues in this country, a 2-letter ISO 3166-1
+                 *     code. The country of a venue is the country of its city, else the
+                 *     country of its address.
+                 */
+                country?: string;
+                /** @description Only the plans at venues in this city */
+                city_id?: string;
+                /** @description A part of the venue name, any letter case, at most 100 characters */
+                q?: string;
+                /** @description Language of the city names, for example en or ru. locale is the same. Else Accept-Language, else English. */
+                lang?: string;
+                /** @description The same as lang */
+                locale?: string;
+                /** @description Page size, 1 to 200 (default 50) */
+                limit?: number;
+                /** @description Number of plans to skip, 0 to 1000000 (default 0) */
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of plans, the total and the counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /**
+                         * Format: int64
+                         * @description Number of plans that match all filters
+                         */
+                        total: number;
+                        /** @description Page size of this answer */
+                        limit: number;
+                        /** @description Number of plans skipped before this page */
+                        offset: number;
+                        /**
+                         * @description Number of plans in each verification state. The counts
+                         *     use all filters except verification_state.
+                         */
+                        counts: {
+                            /**
+                             * Format: int64
+                             * @description Plans that were never sent for verification
+                             */
+                            none: number;
+                            /**
+                             * Format: int64
+                             * @description Plans that wait for verification
+                             */
+                            unverified: number;
+                            /**
+                             * Format: int64
+                             * @description Plans sent back with a note
+                             */
+                            needs_fix: number;
+                            /**
+                             * Format: int64
+                             * @description Verified plans
+                             */
+                            verified: number;
+                        };
+                        /** @description One page of plans, newest first */
+                        seating_plans: {
+                            /**
+                             * Format: uuid
+                             * @description Id of the plan
+                             */
+                            plan_id: string;
+                            /** @description Name of the plan */
+                            name: string;
+                            /** @description assigned_seats, general_admission, tables or mixed */
+                            plan_type: string;
+                            /** @description private, shared_read, public_template or operator_verified */
+                            visibility: string;
+                            /** @description draft, active or archived */
+                            status: string;
+                            /** @description unverified, verified or needs_fix */
+                            verification_state?: string | null;
+                            /** @description The superadmin's note of needs_fix */
+                            verification_note?: string | null;
+                            /**
+                             * Format: uuid
+                             * @description Organization that owns the plan
+                             */
+                            owner_org_id: string;
+                            /** @description Name of that organization */
+                            owner_org_name: string;
+                            /**
+                             * Format: uuid
+                             * @description Venue of the plan
+                             */
+                            venue_id: string;
+                            /** @description Name of the venue */
+                            venue_name: string;
+                            /**
+                             * Format: uuid
+                             * @description City of the venue, null when the venue has none
+                             */
+                            city_id?: string | null;
+                            /** @description Name of the city in the language of the request, else in English */
+                            city_name?: string | null;
+                            /** @description Country of the venue, a 2-letter ISO 3166-1 code. It is the country of the city, else the country of the address. */
+                            country_iso2?: string | null;
+                            /**
+                             * Format: uuid
+                             * @description Current version, null when the plan has none
+                             */
+                            current_version_id?: string | null;
+                            /** @description Number of the current version, null when the plan has none */
+                            version_number?: number | null;
+                            /** @description Seats of the current version, 0 when the plan has no version */
+                            capacity_seated: number;
+                            /** @description Standing places of the current version, 0 when the plan has no version */
+                            capacity_standing: number;
+                            /**
+                             * Format: date-time
+                             * @description When the plan was created
+                             */
+                            created_at: string;
+                            /**
+                             * Format: date-time
+                             * @description When the plan was last changed
+                             */
+                            updated_at: string;
+                            /**
+                             * Format: date-time
+                             * @description When the plan was verified, null unless verified
+                             */
+                            verified_at?: string | null;
+                        }[];
+                    };
+                };
+            };
+            /**
+             * @description seating_plan.invalid_verification_state, seating_plan.invalid_org_id,
+             *     seating_plan.invalid_country, seating_plan.invalid_city_id,
+             *     seating_plan.invalid_query, seating_plan.invalid_limit or
+             *     seating_plan.invalid_offset
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.verify or is not a platform superadmin (seating_plan.verify_superadmin_only) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminSeatingPlansPlanIdVerify: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the seating plan */
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The plan after verification */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatingPlanVerification"];
+                };
+            };
+            /** @description Missing X-Admin-Reason (superadmin.missing_reason) or plan_id is not a UUID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.verify or is not a platform superadmin (seating_plan.verify_superadmin_only) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description seating_plan.not_found - no such plan, or it is deleted */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description seating_plan.not_active (the plan is a draft or archived) or seating_plan.no_current_version */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description seating_plan.geometry_invalid - the current version fails the geometry rules of the plan type; details.errors lists them */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    postV1AdminSeatingPlansPlanIdNeedsFix: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the seating plan */
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description What must be fixed, 1 to 1000 characters after trimming */
+                    note: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The plan after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeatingPlanVerification"];
+                };
+            };
+            /** @description Missing X-Admin-Reason (superadmin.missing_reason), seating_plan.invalid_body or seating_plan.invalid_note */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.verify or is not a platform superadmin (seating_plan.verify_superadmin_only) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description seating_plan.not_found - no such plan, or it is deleted */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database not wired */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -55780,7 +58018,7 @@ export interface operations {
                     "application/json": components["schemas"]["OrgCityResponse"];
                 };
             };
-            /** @description Invalid body, country_id or blank name. */
+            /** @description Invalid body, no country, a malformed country_id or country_iso2, or a blank name. */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -55800,6 +58038,15 @@ export interface operations {
             };
             /** @description Caller lacks `city.create` or is not a member of the organization. */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The `country_iso2` country is not in the platform reference yet (`city.country_not_in_reference`). Add the venue with `country_iso2` and `city_name` instead. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -63597,6 +65844,1813 @@ export interface operations {
              *     (`publication.internal`).
              */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional key (up to 200 characters); the same key in the same organization returns the same intake. */
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the venue (the organization's own, or a verified shared venue). */
+                venue_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /** @description The files of the plan, 1 to 10, 80 MB together. */
+                    files: string[];
+                    /** @description Where the intake is sent from, telegram_bot or event_center_web (default). */
+                    channel?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The intake made earlier with the same Idempotency-Key. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description The intake was created. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description Not multipart, no files, more than 10 files, an empty file, a bad channel or Idempotency-Key. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.create or is not a member, or is an API key (venue_plan_intake.api_key_forbidden). */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The venue is unknown, or another organization's venue that is not verified (venue.not_found). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The Idempotency-Key was used for another venue (venue_plan_intake.idempotency_key_reused). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A file is over the limit of its format, the files are over 80 MB together, or an XLSX unpacks to more than 200 MB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A file is none of the accepted formats (venue_plan_intake.unsupported_format). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description A PDF with more than 20 pages, a picture over 40 megapixels, or a picture that cannot be read. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listVenuePlanIntakes: {
+        parameters: {
+            query?: {
+                /** @description Only intakes in this state. */
+                state?: string;
+                /** @description Only intakes of this venue. */
+                venue_id?: string;
+                /** @description At most this many intakes, 1 to 200 (default 50). */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The intakes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeList"];
+                };
+            };
+            /** @description A filter is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.read or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The intake card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.read or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found in this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    downloadVenuePlanIntakeSource: {
+        parameters: {
+            query?: {
+                /** @description png for the PNG copy; leave out for the file as sent. */
+                format?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the intake. */
+                intake_id: string;
+                /** @description Id of the file. */
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description format is not png. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.read or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake, file or PNG copy not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getVenuePlanIntakeDraftSvg: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the intake. */
+                intake_id: string;
+                /** @description Number of the draft. */
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft SVG. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/svg+xml": string;
+                };
+            };
+            /** @description n is not a draft number. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.read or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake or draft not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    answerVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Number of the draft the answers are for; it must be the current draft. */
+                    draft: number;
+                    /** @description 1 to 50 answers. */
+                    answers: {
+                        /**
+                         * Format: uuid
+                         * @description Id of a question of that draft.
+                         */
+                        question_id: string;
+                        /** @description The answer, one of the question's options or a value. */
+                        answer: unknown;
+                    }[];
+                };
+            };
+        };
+        responses: {
+            /** @description The intake after the answers. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description The body is not valid JSON of this shape. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.create or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found in this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is not in review (venue_plan_intake.wrong_state) or draft is not the current one (venue_plan_intake.draft_stale). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description No answers, too many, or a question that is not of this draft. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    correctVenuePlanIntakeText: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Number of the draft the text is about; it must be the current draft. */
+                    draft: number;
+                    /** @description What to fix, 1 to 2000 characters. */
+                    text: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The intake after the correction. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description The body is not valid JSON of this shape. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.create or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found in this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is not in review, or draft is not the current one. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The text is empty or longer than 2000 characters. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    escalateVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description What the administrator should know, up to 1000 characters. */
+                    text?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The intake, now with an administrator. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description The body is not valid JSON of this shape. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.create or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found in this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is already with an administrator or closed (venue_plan_intake.wrong_state). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The text is longer than 1000 characters. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    cancelVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cancelled intake. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description The body is not empty and not a JSON object. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.create or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found in this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is already closed (venue_plan_intake.wrong_state). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    approveVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the organization. */
+                org_id: string;
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VenuePlanApproveRequest"];
+            };
+        };
+        responses: {
+            /** @description The approved intake with plan_id and plan_version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description The body is not valid JSON of this shape. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks seating_plan.create or is not a member, or is an API key. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found in this organization. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is not in review, or draft is not the current one. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The name is not valid, or the stored SVG fails geometry validation (venue_plan_intake.draft_validation_failed, details.errors). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    listAdminVenuePlanIntakes: {
+        parameters: {
+            query?: {
+                /** @description Only intakes in this state. */
+                state?: string;
+                /** @description Only intakes of this organization. */
+                org_id?: string;
+                /** @description true for the intakes no administrator has taken. */
+                unclaimed?: boolean;
+                /** @description At most this many intakes, 1 to 200 (default 50). */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The intakes. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeList"];
+                };
+            };
+            /** @description A filter is not valid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getAdminVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The intake card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    downloadAdminVenuePlanIntakeSource: {
+        parameters: {
+            query?: {
+                /** @description png for the PNG copy; leave out for the file as sent. */
+                format?: string;
+            };
+            header: {
+                /** @description Human-readable business reason for reading the file. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the intake. */
+                intake_id: string;
+                /** @description Id of the file. */
+                source_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Missing X-Admin-Reason, or format is not png. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake, file or PNG copy not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    getAdminVenuePlanIntakeDraftSvg: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Id of the intake. */
+                intake_id: string;
+                /** @description Number of the draft. */
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The draft SVG. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/svg+xml": string;
+                };
+            };
+            /** @description n is not a draft number. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake or draft not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    claimAdminVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description true takes the intake over from another administrator. */
+                    force?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description The intake, now taken by the caller. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is closed, or another administrator holds it (venue_plan_intake.claimed_by_other). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    createAdminVenuePlanIntakeDraft: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    /**
+                     * Format: binary
+                     * @description The SVG file.
+                     */
+                    svg: string;
+                    /** @description A note on the draft, up to 2000 characters. */
+                    note?: string;
+                };
+                "application/json": {
+                    /** @description The SVG document as text. */
+                    svg: string;
+                    /** @description A note on the draft, up to 2000 characters. */
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The intake with the new current draft. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or no svg in the body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is not in operator, nobody has taken it (venue_plan_intake.not_claimed), or another administrator holds it (venue_plan_intake.claimed_by_other). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The SVG is larger than 3 MB. */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The file is not an SVG document. */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The SVG fails geometry validation (venue_plan_intake.draft_validation_failed, details.errors with code, element and detail), or the note is too long. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    returnAdminVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description What the organizer should know, up to 2000 characters. */
+                    note?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The intake, now in review. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is not in operator, has no draft, nobody has taken it (venue_plan_intake.not_claimed), or another administrator holds it (venue_plan_intake.claimed_by_other). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The note is longer than 2000 characters. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    approveAdminVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VenuePlanApproveRequest"];
+            };
+        };
+        responses: {
+            /** @description The approved intake with plan_id and plan_version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of this shape. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is not in review or operator, draft is not the current one, nobody has taken it (venue_plan_intake.not_claimed), or another administrator holds it (venue_plan_intake.claimed_by_other). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The name is not valid, or the stored SVG fails geometry validation. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    rejectAdminVenuePlanIntake: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Human-readable business reason for this change. It is stored in the audit log. */
+                "X-Admin-Reason": string;
+            };
+            path: {
+                /** @description Id of the intake. */
+                intake_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description Why the plan cannot be built, shown to the organizer, 1 to 1000 characters. */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The rejected intake. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VenuePlanIntakeEnvelope"];
+                };
+            };
+            /** @description Missing X-Admin-Reason, or the body is not valid JSON of this shape. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Unauthenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The caller lacks venue_plan_intake.curate or is not a platform superadmin. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Intake not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The intake is not in operator, nobody has taken it (venue_plan_intake.not_claimed), or another administrator holds it (venue_plan_intake.claimed_by_other). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The reason is empty or longer than 1000 characters. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Internal server error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Database or media storage not wired. */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -77859,7 +81913,7 @@ export interface operations {
                     "application/json": components["schemas"]["SeatBatch"];
                 };
             };
-            /** @description Invalid path parameter or body (`seat_batch.invalid_body` — the decoder's text is in `details.reason`, the body is capped at 1 MiB; `seat_batch.invalid_kind`, `seat_batch.no_changes`, `seat_batch.invalid_change`, `seat_batch.duplicate_seat_key`). */
+            /** @description Invalid path parameter or body (`seat_batch.invalid_body` — the decoder's text is in `details.reason`, the body is capped at 1 MiB; `seat_batch.invalid_kind`, `seat_batch.no_changes`, `seat_batch.invalid_change`, `seat_batch.duplicate_seat_key`, `seat_batch.new_tiers_not_allowed`, `seat_batch.invalid_new_tier`, `seat_batch.duplicate_new_tier_key`, `seat_batch.invalid_new_tier_name`, `seat_batch.duplicate_new_tier_name`, `seat_batch.invalid_new_tier_price`, `seat_batch.invalid_new_tier_color`, `seat_batch.unknown_new_tier_key`, `seat_batch.unused_new_tier`). */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -77877,7 +81931,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it. */
+            /** @description Actor does not hold `session.seats.manage` in the organization or is not a member of it, or the batch has `new_tiers` and the actor does not hold `tier.create` there (`permissions.denied`, `details.permission`). */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -77895,7 +81949,16 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
-            /** @description More than 10 000 changes (`seat_batch.too_many_changes`), a category that is not a live category of this session (`seat_batch.tier_not_in_session`), or `new_tiers` (`seat_batch.new_tiers_unsupported`). */
+            /** @description A new tier has the name of a live category of the session (`seat_batch.tier_name_taken`). Nothing was written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description More than 10 000 changes (`seat_batch.too_many_changes`), a category that is not a live category of this session (`seat_batch.tier_not_in_session`), or live plus new categories above 15 (`seat_batch.too_many_tiers`). Nothing was written. */
             422: {
                 headers: {
                     [name: string]: unknown;

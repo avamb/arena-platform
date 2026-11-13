@@ -45,6 +45,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/email"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/storage"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/adminnotify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/authemail"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/barcodes/backfill"
@@ -93,6 +94,9 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesubscribe"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/tierchain"
+	venueplangenerate "github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/generate"
+	venueplangenerator "github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/generator"
+	venueplannotify "github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/notify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
 
@@ -305,6 +309,7 @@ func run() error {
 	registerReferralHandlers(registry, pool.Pool, cfg, metrics, salesNotifier, logger)
 	registerDisputeHandlers(registry, pool.Pool, cfg, salesNotifier, opsNotifier, buildEmailSender(cfg, logger), logger)
 	registerPaymentReceiptHandler(registry, pool.Pool, cfg, mediaRepo, logger)
+	registerVenuePlanGenerateHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerTicketReissueHandler(registry, pool.Pool, cfg, logger)
 	registerPaymentRecoverHandler(registry, pool.Pool, cfg, logger)
 	registerBillingReconcileHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
@@ -388,6 +393,10 @@ func run() error {
 	if err := onboarding.ScheduleInitialSweep(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: reminders and expiry of onboarding drafts run a little later.
 		logger.Warn("could not schedule initial onboarding sweep job", "error", err.Error())
+	}
+	if err := venueplangenerate.ScheduleInitialSweep(rootCtx, pool.Pool); err != nil {
+		// Non-fatal: a stalled hall plan intake reaches an administrator later.
+		logger.Warn("could not schedule initial venue plan generate sweep job", "error", err.Error())
 	}
 	if err := contactform.ScheduleInitialPurge(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: old contact-form messages are deleted a little later.
@@ -892,14 +901,56 @@ func registerOnboardingHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *c
 	reg.Register(onboarding.JobTypeNotify, svc.HandleNotify)
 	// A new application reaches every platform admin personally through the
 	// event-center bot (arena-bot polls its token, the worker only sends).
-	var adminSender onboarding.AdminTelegramSender
+	var adminSender adminnotify.TelegramSender
 	if cfg.EventsTelegramBotToken != "" {
 		adminSender = salesnotify.NewTelegramSender(cfg.EventsTelegramBotToken, "")
 	} else {
 		logger.Warn("EVENTS_TELEGRAM_BOT_TOKEN is not set on arena-worker: platform admins get new applications by e-mail only")
 	}
-	reg.Register(onboarding.JobTypeAdminTelegram, onboarding.NewAdminTelegramHandler(adminSender, logger))
+	tgHandler := adminnotify.NewTelegramHandler(adminSender, logger)
+	reg.Register(adminnotify.JobTypeTelegram, tgHandler)
+	// Legacy type: rows queued before the move to adminnotify have the same payload.
+	reg.Register(onboarding.JobTypeAdminTelegram, tgHandler)
+	reg.Register(adminnotify.JobTypeEmail, adminnotify.NewEmailHandler(buildEmailSender(cfg, logger), logger))
 	reg.Register(onboarding.JobTypeSweep, onboarding.NewSweepHandler(svc, pool, logger))
+	// Hall plan intake events (spec 64 section 3.2) reach the same administrators
+	// through the same admin_notify jobs.
+	reg.Register(venueplannotify.JobType, venueplannotify.NewHandler(venueplannotify.Options{
+		Pool: pool, AppURL: cfg.AppPublicURL, Telegram: cfg.EventsTelegramBotToken != "", Logger: logger,
+	}))
+}
+
+// registerVenuePlanGenerateHandler registers venue_plan.generate (spec 64 wave
+// 2): the files of a hall plan intake go to the venue SVG generator. It always
+// registers: without VENUE_GEN_URL / VENUE_GEN_TOKEN or without a media store
+// the job sends the intake to an administrator with the reason no_generator,
+// so an intake never waits in received.
+func registerVenuePlanGenerateHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, mediaRepo *mediastore.Repo, logger *slog.Logger) {
+	g := buildVenueGenerator(cfg, logger)
+	opts := venueplangenerate.Options{
+		Pool: pool, Media: mediaRepo, Generator: g, Notifier: venueplannotify.Notifier{},
+		Audit: audit.WithServiceActor(audit.NewPGWriter(pool)), Logger: logger,
+	}
+	reg.Register(venueplangenerate.JobType, venueplangenerate.NewHandler(opts))
+	// The sweep sends an intake no step moved for 30 minutes to an administrator.
+	reg.Register(venueplangenerate.JobTypeSweep, venueplangenerate.NewSweepHandler(opts))
+	logger.Info("venue_plan.generate handler registered",
+		"generator_configured", g != nil, "media_configured", mediaRepo != nil)
+}
+
+// buildVenueGenerator returns the generator client, or nil (generator off).
+// Exactly one of VENUE_GEN_URL / VENUE_GEN_TOKEN set is logged as a WARN that
+// names the missing variable (never the token); both empty is an info line.
+func buildVenueGenerator(cfg *config.Config, logger *slog.Logger) venueplangenerate.Generator {
+	if cfg.VenueGenURL != "" && cfg.VenueGenToken != "" {
+		return venueplangenerator.New(cfg.VenueGenURL, cfg.VenueGenToken)
+	}
+	if msg := cfg.VenueGenHalfConfigured(); msg != "" {
+		logger.Warn("arena-worker: " + msg)
+	} else {
+		logger.Info("venue generator is off: VENUE_GEN_URL and VENUE_GEN_TOKEN are not set")
+	}
+	return nil
 }
 
 func registerOpsWatchdogHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier opsalert.Notifier, logger *slog.Logger) {

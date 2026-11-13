@@ -34,9 +34,14 @@ import { BillingInvoicesScreen } from "@/screens/BillingInvoicesScreen";
 import { BillingScreen } from "@/screens/BillingScreen";
 import { InvitationsScreen } from "@/screens/InvitationsScreen";
 import { PromotersScreen } from "@/screens/PromotersScreen";
+import { VenuesScreen } from "@/screens/VenuesScreen";
+import { VenuePlanIntakeScreen } from "@/screens/VenuePlanIntakeScreen";
+import { parseIntakeSearch } from "@/lib/venuePlan/intakeState";
 import { PromoterScreen } from "@/screens/PromoterScreen";
 import { NotFoundScreen } from "@/screens/NotFoundScreen";
 import { OrgDataScreen } from "@/screens/OrgDataScreen";
+import { EntranceScreen } from "@/screens/EntranceScreen";
+import { HelpScreen } from "@/screens/HelpScreen";
 import { parseEventsSearch, parseLoginSearch, parseOrdersSearch, parsePromotersSearch } from "@/lib/search";
 import { parseBalanceSearch } from "@/lib/billingPacks";
 import { PromoListScreen } from "@/screens/PromoListScreen";
@@ -217,6 +222,20 @@ const summaryRoute = createRoute({
   component: SummaryScreen,
 });
 
+// The «Entrance» item of the bar: the scanner app and where the guest list is.
+const entranceRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/entrance",
+  component: EntranceScreen,
+});
+
+// What each section of the menu is for.
+const helpRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/help",
+  component: HelpScreen,
+});
+
 const notificationsRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/notifications",
@@ -272,6 +291,17 @@ const promoterRoute = createRoute({
   getParentRoute: () => orgRoute,
   path: "/promoters/$promoterId",
   component: PromoterScreen,
+});
+
+// Spec 64 section 2.1.1: the venue chooser and the venue card.
+const venuesRoute = createRoute({ getParentRoute: () => orgRoute, path: "/venues", component: VenuesScreen });
+const venueRoute = createRoute({ getParentRoute: () => orgRoute, path: "/venues/$venueId", component: VenuesScreen });
+// Spec 64: one seating plan upload. ?event=<id>&session=<id> sends the next step back to that date.
+const venuePlanIntakeRoute = createRoute({
+  getParentRoute: () => orgRoute,
+  path: "/venues/$venueId/plan-intakes/$intakeId",
+  validateSearch: parseIntakeSearch,
+  component: VenuePlanIntakeScreen,
 });
 
 // 4-3: promo codes. "new" is listed before "$codeId" so it is never read as an id.
@@ -415,6 +445,8 @@ export const routeTree = rootRoute.addChildren([
     orderRoute,
     refundQueueRoute,
     summaryRoute,
+    entranceRoute,
+    helpRoute,
     notificationsRoute,
     growthRoute,
     invitationsRoute,
@@ -423,6 +455,9 @@ export const routeTree = rootRoute.addChildren([
     billingInvoicesRoute,
     promotersRoute,
     promoterRoute,
+    venuesRoute,
+    venueRoute,
+    venuePlanIntakeRoute,
     promoRoute,
     promoNewRoute,
     promoCodeRoute,

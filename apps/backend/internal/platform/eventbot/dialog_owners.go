@@ -47,7 +47,12 @@ func dataHasPrefix(p string) func(string) bool {
 // and is never ended by a press.
 var dialogOwners = map[string]dialogOwner{
 	eventsDialogKind: {
-		owns:  func(data string) bool { head, _, _ := strings.Cut(data, ":"); return isEventsCallback(head) },
+		// The help of the list, of a card and of its groups keeps the list's state:
+		// « Back shows the same filter, search and page (screen_help.go).
+		owns: func(data string) bool {
+			head, _, _ := strings.Cut(data, ":")
+			return isEventsCallback(head) || isEventsHelp(data)
+		},
 		leave: (*Bot).leaveEvents,
 	},
 	ordersDialogKind: {
@@ -82,6 +87,7 @@ var dialogOwners = map[string]dialogOwner{
 	salesLinkDialogKind:     {owns: prefixIs("ql"), leave: (*Bot).leaveSalesLink},
 	salesLinkListDialogKind: {owns: prefixIs("ql"), leave: (*Bot).leaveSalesLinkList},
 	tfDialogKind:            {owns: prefixIs("tf"), leave: (*Bot).clearTextFmtDialog},
+	planIntakeDialogKind:    {owns: prefixIs("pi"), leave: (*Bot).leavePlanIntake},
 	// The typed word of a dispute answer: any other dp press ends it, so the
 	// word typed after going back answers nothing.
 	disputeDialogKind: {owns: prefixIs("dp"), leave: (*Bot).leaveDispute, narrow: (*Bot).narrowDispute},
@@ -112,6 +118,7 @@ var dialogTexts = map[string]dialogTextHandler{
 	salesLinkDialogKind:     (*Bot).salesLinkText,
 	salesLinkListDialogKind: (*Bot).salesLinkListText,
 	tfDialogKind:            (*Bot).tfText,
+	planIntakeDialogKind:    (*Bot).planIntakeText,
 	disputeDialogKind:       (*Bot).disputeText,
 }
 
@@ -158,7 +165,7 @@ var dialogOwnerOrder = []string{
 	resendDialogKind, reissueDialogKind, evsDialogKind, inviteDialogKind, promoDialogKind,
 	promoterDialogKind, referralDialogKind, categoryDialogKind, seatLayoutDialogKind, orgDataDialogKind, sesDialogKind,
 	materialsDialogKind, teamDialogKind, salesLinkDialogKind, salesLinkListDialogKind, tfDialogKind,
-	disputeDialogKind,
+	disputeDialogKind, planIntakeDialogKind,
 }
 
 // leaveSessions ends the "Sessions" dialog (move, cancel, contact question).

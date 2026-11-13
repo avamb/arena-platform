@@ -206,6 +206,15 @@ const (
 	Owner   BotInvitationCreateRequestRole = "owner"
 )
 
+// Defines values for BotVenuePlanNoticeKind.
+const (
+	BotVenuePlanNoticeKindApproved   BotVenuePlanNoticeKind = "approved"
+	BotVenuePlanNoticeKindDraftReady BotVenuePlanNoticeKind = "draft_ready"
+	BotVenuePlanNoticeKindEscalated  BotVenuePlanNoticeKind = "escalated"
+	BotVenuePlanNoticeKindRejected   BotVenuePlanNoticeKind = "rejected"
+	BotVenuePlanNoticeKindReturned   BotVenuePlanNoticeKind = "returned"
+)
+
 // Defines values for CancelTicketRequestRefundMode.
 const (
 	Automatic CancelTicketRequestRefundMode = "automatic"
@@ -449,6 +458,14 @@ const (
 	EventItemVisibilityPrivate  EventItemVisibility = "private"
 	EventItemVisibilityPublic   EventItemVisibility = "public"
 	EventItemVisibilityUnlisted EventItemVisibility = "unlisted"
+)
+
+// Defines values for GettingStartedStepKey.
+const (
+	GettingStartedStepKeyEvent     GettingStartedStepKey = "event"
+	GettingStartedStepKeyOrgData   GettingStartedStepKey = "org_data"
+	GettingStartedStepKeyPayments  GettingStartedStepKey = "payments"
+	GettingStartedStepKeySalesLink GettingStartedStepKey = "sales_link"
 )
 
 // Defines values for GrantMembershipRequestRole.
@@ -967,10 +984,10 @@ const (
 
 // Defines values for GetV1AdminCustomerImportsIdRowsParamsAction.
 const (
-	GetV1AdminCustomerImportsIdRowsParamsActionCreated        GetV1AdminCustomerImportsIdRowsParamsAction = "created"
-	GetV1AdminCustomerImportsIdRowsParamsActionMatched        GetV1AdminCustomerImportsIdRowsParamsAction = "matched"
-	GetV1AdminCustomerImportsIdRowsParamsActionMergeCandidate GetV1AdminCustomerImportsIdRowsParamsAction = "merge_candidate"
-	GetV1AdminCustomerImportsIdRowsParamsActionSkipped        GetV1AdminCustomerImportsIdRowsParamsAction = "skipped"
+	Created        GetV1AdminCustomerImportsIdRowsParamsAction = "created"
+	Matched        GetV1AdminCustomerImportsIdRowsParamsAction = "matched"
+	MergeCandidate GetV1AdminCustomerImportsIdRowsParamsAction = "merge_candidate"
+	Skipped        GetV1AdminCustomerImportsIdRowsParamsAction = "skipped"
 )
 
 // Defines values for ListEventsParamsVisibility.
@@ -5485,6 +5502,51 @@ type BotTelegramConnectRequest struct {
 	TelegramUsername *string `json:"telegram_username,omitempty"`
 }
 
+// BotVenuePlanNotice A message about a hall plan intake that the bot must send to the person who sent the intake.
+type BotVenuePlanNotice struct {
+	// CreatedAt When the notice was made.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CurrentDraft Number of the current draft, or null when the intake has no draft.
+	CurrentDraft *int32 `json:"current_draft"`
+
+	// DraftChanged True for a `returned` notice when the current draft was uploaded by an administrator (author `operator` or `operator_svg`) at or after the moment the administrator took the intake; false when the administrator returned the intake without a new draft and for every other kind of notice.
+	DraftChanged bool `json:"draft_changed"`
+
+	// Id Id of the notice.
+	Id openapi_types.UUID `json:"id"`
+
+	// IntakeId Id of the intake the notice is about.
+	IntakeId openapi_types.UUID `json:"intake_id"`
+
+	// Kind What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan), `approved` (an administrator saved the plan) or `escalated` (arena could not build a draft, an administrator builds the plan now).
+	Kind BotVenuePlanNoticeKind `json:"kind"`
+
+	// Note The administrator's note or reason for the organizer, or null when there is none.
+	Note *string `json:"note"`
+
+	// OrgId Id of the organization that owns the intake.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// TelegramUserIds Live Telegram chats of the person who sent the intake. The list is empty when that person has no live bot link; the notice is then claimed and never comes again.
+	TelegramUserIds []int64 `json:"telegram_user_ids"`
+
+	// VenueId Id of the venue the intake is for.
+	VenueId openapi_types.UUID `json:"venue_id"`
+
+	// VenueName Name of the venue, for the text of the message.
+	VenueName string `json:"venue_name"`
+}
+
+// BotVenuePlanNoticeKind What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan), `approved` (an administrator saved the plan) or `escalated` (arena could not build a draft, an administrator builds the plan now).
+type BotVenuePlanNoticeKind string
+
+// BotVenuePlanNoticesResponse Answer of POST /v1/bot/venue-plan-notices/claim.
+type BotVenuePlanNoticesResponse struct {
+	// Notices Notices not told yet, oldest first; each is handed out once.
+	Notices []BotVenuePlanNotice `json:"notices"`
+}
+
 // BotWebLoginCodeRequest Body of POST /v1/bot/web-login-codes.
 type BotWebLoginCodeRequest struct {
 	// EventId The event whose text (or whose session) the mini app opens. Required, and only used, for `purpose: miniapp`.
@@ -6928,10 +6990,18 @@ type CreateOrderRefundsResponse struct {
 	Replayed bool `json:"replayed"`
 }
 
-// CreateOrgCityRequest Body of POST /v1/organizations/{org_id}/cities.
+// CreateOrgCityRequest Body of POST /v1/organizations/{org_id}/cities. Name the country by `country_id` or by `country_iso2`.
 type CreateOrgCityRequest struct {
-	// CountryId The existing country the city belongs to.
-	CountryId openapi_types.UUID `json:"country_id"`
+	// CountryId The existing country the city belongs to. Wins over `country_iso2` when both are sent.
+	CountryId *openapi_types.UUID `json:"country_id,omitempty"`
+
+	// CountryIso2 ISO 3166-1 alpha-2 code of the country, instead of `country_id`.
+	// The country must already be in the platform reference: a country
+	// outside it is 409 `city.country_not_in_reference`, because a new
+	// country comes only with a venue (POST
+	// /v1/organizations/{org_id}/venues with `country_iso2` and
+	// `city_name`).
+	CountryIso2 *string `json:"country_iso2,omitempty"`
 
 	// Locale Language of `name` (e.g. "cs", "ru", "en"; a region subtag is
 	// dropped). Defaults to "en". A non-English name is also stored as
@@ -7472,8 +7542,17 @@ type CreateVenueRequest struct {
 	// CapacityDefault Optional default capacity (positive integer).
 	CapacityDefault *int `json:"capacity_default"`
 
-	// CityId Optional UUID of a row in the geo.cities reference table.
+	// CityId Optional UUID of a row in the geo.cities reference table. Send
+	// either `city_id` or `country_iso2` with `city_name`; both groups
+	// together are 400 `venue.city_conflict`.
 	CityId *openapi_types.UUID `json:"city_id,omitempty"`
+
+	// CityName Name of the venue's city inside `country_iso2`, sent with it
+	// instead of `city_id`. The city is found by name (any locale, case
+	// and spacing ignored) or created, with the rules of
+	// `POST /v1/organizations/{org_id}/cities`, in the venue's
+	// transaction.
+	CityName *string `json:"city_name,omitempty"`
 
 	// ContactEmail Public contact email (V-1 field).
 	ContactEmail *openapi_types.Email `json:"contact_email,omitempty"`
@@ -7485,6 +7564,19 @@ type CreateVenueRequest struct {
 	// When set, must equal the owning organization's country
 	// unless an explicit override flag is passed.
 	Country *string `json:"country,omitempty"`
+
+	// CountryIso2 ISO 3166-1 alpha-2 code of the country of the venue's city, sent
+	// with `city_name` instead of `city_id`. Any country of
+	// `GET /v1/geo/world-countries`: a country the platform reference
+	// does not have is created from the world table (iso3, slug,
+	// currency, region, English and Russian names) in the venue's
+	// transaction, and the platform administrators are told. An
+	// organization API key may use a reference country but never
+	// creates one (403 `venue.country_create_forbidden`), and never
+	// creates a city by name (403 `venue.city_create_forbidden`). A code the
+	// world table does not know is 400 `venue.unknown_country`. When
+	// `country` is not sent, the venue's `country` takes this code.
+	CountryIso2 *string `json:"country_iso2,omitempty"`
 
 	// GeoLat WGS-84 latitude in decimal degrees (V-1 field).
 	GeoLat *float64 `json:"geo_lat,omitempty"`
@@ -9650,7 +9742,7 @@ type GeoCountriesResponse struct {
 
 // GeoCountryCurrencyResponse Response of GET /v1/geo/countries/{iso2}/currency.
 type GeoCountryCurrencyResponse struct {
-	// Currency ISO 4217 currency of the country, as stored on the platform's country row.
+	// Currency ISO 4217 currency of the country, as stored on the platform's country row, else the one of the embedded world table.
 	Currency string `json:"currency"`
 }
 
@@ -9790,6 +9882,79 @@ type GeoUpdateCountryRequest struct {
 	// Slug Updated URL-safe slug
 	Slug *string `json:"slug,omitempty"`
 }
+
+// GeoWorldCountriesResponse Response of GET /v1/geo/world-countries.
+type GeoWorldCountriesResponse struct {
+	// Countries Every ISO 3166-1 country, sorted by `name`.
+	Countries []GeoWorldCountryItem `json:"countries"`
+
+	// Regions The seven regions in display order: europe, middle_east, asia, africa, north_america, latin_america, oceania. The client names them with its own texts.
+	Regions []string `json:"regions"`
+}
+
+// GeoWorldCountryItem One ISO 3166-1 country of the embedded world table.
+type GeoWorldCountryItem struct {
+	// CountryId UUID of the reference country when `in_reference` is true, else null.
+	CountryId *openapi_types.UUID `json:"country_id"`
+
+	// Currency ISO 4217 national currency, the currency a reference row of this country gets.
+	Currency string `json:"currency"`
+
+	// HasOrganizers True when at least one organization is registered in this country. The quick pick of a form is the countries with organizers.
+	HasOrganizers bool `json:"has_organizers"`
+
+	// InReference True when the platform reference (`GET /v1/geo/countries`) has the country.
+	InReference bool `json:"in_reference"`
+
+	// Iso2 ISO 3166-1 alpha-2 code.
+	Iso2 string `json:"iso2"`
+
+	// Iso3 ISO 3166-1 alpha-3 code.
+	Iso3 string `json:"iso3"`
+
+	// Name Name in the request language, Russian for `ru` and English for any other.
+	Name string `json:"name"`
+
+	// NameEn English name, whatever the request language.
+	NameEn string `json:"name_en"`
+
+	// Region One of europe, middle_east, asia, africa, north_america, latin_america, oceania.
+	Region string `json:"region"`
+}
+
+// GettingStarted The first steps of an organization that the caller may do, and
+// whether all of them are done.
+type GettingStarted struct {
+	// Complete True when every listed step is done. An empty list is complete.
+	Complete bool `json:"complete"`
+
+	// Steps The steps the caller holds the permission for in this
+	// organization, always in the order org_data, payments, event,
+	// sales_link. Never null.
+	Steps []GettingStartedStep `json:"steps"`
+}
+
+// GettingStartedResponse The answer of GET /v1/organizations/{org_id}/getting-started.
+type GettingStartedResponse struct {
+	// GettingStarted The first steps of the organization the caller may do.
+	GettingStarted GettingStarted `json:"getting_started"`
+}
+
+// GettingStartedStep One first step of an organization.
+type GettingStartedStep struct {
+	// Done True when the organization's data shows the step is done.
+	Done bool `json:"done"`
+
+	// Key The step: `org_data` (seller data complete), `payments` (a
+	// payment provider connected and accepted), `event` (an event
+	// created, a draft counts), `sales_link` (a sales link created).
+	Key GettingStartedStepKey `json:"key"`
+}
+
+// GettingStartedStepKey The step: `org_data` (seller data complete), `payments` (a
+// payment provider connected and accepted), `event` (an event
+// created, a draft counts), `sales_link` (a sales link created).
+type GettingStartedStepKey string
 
 // GrantMembershipRequest Request body for `POST /v1/organizations/{org_id}/members`
 // (feature #120). Binds an existing user to the organization in
@@ -18204,6 +18369,9 @@ type SeatBatch struct {
 	// Changes The seats the batch changed.
 	Changes []SeatBatchChange `json:"changes"`
 
+	// CreatedTiers The categories the batch created from `new_tiers`, in request order; an empty array when it created none. Only in the answer of an apply or a revert (a revert creates none); the stored batch does not keep it, the audit event carries `created_tier_ids`.
+	CreatedTiers *[]SeatBatchCreatedTier `json:"created_tiers,omitempty"`
+
 	// Id UUID of the batch.
 	Id openapi_types.UUID `json:"id"`
 
@@ -18244,16 +18412,37 @@ type SeatBatchChange struct {
 	To SeatBatchSeatState `json:"to"`
 }
 
-// SeatBatchChangeRequest What one seat should become; at least one of tier_id and status.
+// SeatBatchChangeRequest What one seat should become; at least one of tier_id, new_tier_key and status.
 type SeatBatchChangeRequest struct {
+	// NewTierKey The `key` of an entry of `new_tiers` to put the seat in, instead of tier_id (both set is 400 `seat_batch.invalid_change`; an unknown key is 400 `seat_batch.unknown_new_tier_key`).
+	NewTierKey *string `json:"new_tier_key,omitempty"`
+
 	// SeatKey The seat's key.
 	SeatKey string `json:"seat_key"`
 
 	// Status `available` or `unavailable`.
 	Status *string `json:"status,omitempty"`
 
-	// TierId The category to put the seat in, a live category of this session.
+	// TierId The category to put the seat in, a live category of this session. Not together with new_tier_key.
 	TierId *openapi_types.UUID `json:"tier_id,omitempty"`
+}
+
+// SeatBatchCreatedTier A category the batch created.
+type SeatBatchCreatedTier struct {
+	// Color Colour of the category, lower-case `#rrggbb`, null for none.
+	Color *string `json:"color"`
+
+	// Key The key the request gave the category.
+	Key string `json:"key"`
+
+	// Name Name of the category, trimmed.
+	Name string `json:"name"`
+
+	// PriceAmount Price in minor units.
+	PriceAmount int64 `json:"price_amount"`
+
+	// TierId UUID of the created category.
+	TierId openapi_types.UUID `json:"tier_id"`
 }
 
 // SeatBatchList One page of a session's batches.
@@ -18268,6 +18457,24 @@ type SeatBatchList struct {
 	Total int64 `json:"total"`
 }
 
+// SeatBatchNewTier A category the batch creates, in the session's currency; pricing mode `free` for price 0, `fixed` otherwise.
+type SeatBatchNewTier struct {
+	// Color Colour of the category, `#rrggbb` (`seat_batch.invalid_new_tier_color`); null or empty for none.
+	Color *string `json:"color"`
+
+	// Key The client's id of the category, `[A-Za-z0-9_-]{1,40}`, unique in the request (`seat_batch.invalid_new_tier`, `seat_batch.duplicate_new_tier_key`).
+	Key string `json:"key"`
+
+	// Name Name of the category, 1 to 100 characters after trimming (`seat_batch.invalid_new_tier_name`); must differ, ignoring case, from the other new tiers (`seat_batch.duplicate_new_tier_name`) and from every live category of the session (409 `seat_batch.tier_name_taken`).
+	Name string `json:"name"`
+
+	// PriceAmount Price in minor units, 0 to 1 000 000 000 (`seat_batch.invalid_new_tier_price`).
+	PriceAmount int64 `json:"price_amount"`
+
+	// SortOrder Display order of the category; absent places it after the live categories, in request order.
+	SortOrder *int32 `json:"sort_order,omitempty"`
+}
+
 // SeatBatchRequest One batch of seat changes (task S1c).
 type SeatBatchRequest struct {
 	// Changes The seats to change, at most 10 000. A seat_key may appear twice only with the same target.
@@ -18276,8 +18483,13 @@ type SeatBatchRequest struct {
 	// Kind `paint` (tier_id only), `close` (status unavailable only), `open` (status available only) or `apply_layout` (either or both).
 	Kind string `json:"kind"`
 
-	// NewTiers Categories to create inside the batch. Not supported yet; a non-empty list answers 422 `seat_batch.new_tiers_unsupported`.
-	NewTiers *[]map[string]interface{} `json:"new_tiers,omitempty"`
+	// NewTiers Categories to create inside the batch, in the same transaction as
+	// the seat changes (kinds `paint` and `apply_layout` only, else 400
+	// `seat_batch.new_tiers_not_allowed`). A change names one by its
+	// `key` in `new_tier_key`; every new tier must be named by at least
+	// one change. Live plus new categories may not exceed 15. Needs the
+	// `tier.create` permission in the organization as well.
+	NewTiers *[]SeatBatchNewTier `json:"new_tiers,omitempty"`
 }
 
 // SeatBatchSeatState A seat's category and status before or after a batch.
@@ -18572,6 +18784,14 @@ type SeatLayoutMetrics struct {
 
 	// HeldSeats Seats in a hold.
 	HeldSeats int `json:"held_seats"`
+
+	// RealisticRevenueMinor The estimate if not every seat sells: sold seats in full at their
+	// price, every open free seat at its slot's price times the slot's
+	// sell-through rate, a held seat at its price times the rate of the
+	// slot price level nearest to it. Slots are ranked among the distinct
+	// price levels: the dearest sells 0.90, the cheapest 0.60, linear by
+	// rank between; a single price level sells 0.75. Rounded half up.
+	RealisticRevenueMinor int64 `json:"realistic_revenue_minor"`
 
 	// RevenueEstimateMinor Sold plus held plus remaining.
 	RevenueEstimateMinor int64 `json:"revenue_estimate_minor"`
@@ -18953,8 +19173,10 @@ type SeatingPlan struct {
 	// VenueId UUIDv7 of the venue the plan is attached to.
 	VenueId openapi_types.UUID `json:"venue_id"`
 
-	// Visibility Share scope. Defaults to private on create; move to shared_read
-	// or public_template to enable cross-org read / fork.
+	// Visibility Share scope. Defaults to private on create. shared_read lets other
+	// organizations read the plan; public_template also lets them fork
+	// it. operator_verified marks a venue template and is set only by
+	// POST /v1/admin/seating-plans/{plan_id}/verify.
 	Visibility SeatingPlanVisibility `json:"visibility"`
 }
 
@@ -18967,8 +19189,10 @@ type SeatingPlanPlanType string
 // session bindings (existing bindings are unaffected).
 type SeatingPlanStatus string
 
-// SeatingPlanVisibility Share scope. Defaults to private on create; move to shared_read
-// or public_template to enable cross-org read / fork.
+// SeatingPlanVisibility Share scope. Defaults to private on create. shared_read lets other
+// organizations read the plan; public_template also lets them fork
+// it. operator_verified marks a venue template and is set only by
+// POST /v1/admin/seating-plans/{plan_id}/verify.
 type SeatingPlanVisibility string
 
 // SeatingPlanAnnotations The allocator annotations stored with a seating plan (task S1d). They
@@ -19015,6 +19239,40 @@ type SeatingPlanValidationIssue struct {
 
 	// Element Offending SVG element identifier (id, label, or synthetic descriptor).
 	Element *string `json:"element,omitempty"`
+}
+
+// SeatingPlanVerification A seating plan after POST /v1/admin/seating-plans/{plan_id}/verify or
+// /needs-fix (spec 64 section 3.4, migration 0216).
+type SeatingPlanVerification struct {
+	// Changed False when a repeated verify found the plan already verified and changed nothing
+	Changed bool `json:"changed"`
+
+	// OwnerOrgId Organization that owns the plan
+	OwnerOrgId openapi_types.UUID `json:"owner_org_id"`
+
+	// PlanId Id of the plan
+	PlanId openapi_types.UUID `json:"plan_id"`
+
+	// Status draft, active or archived
+	Status string `json:"status"`
+
+	// VenueId Venue of the plan
+	VenueId openapi_types.UUID `json:"venue_id"`
+
+	// VenueReviewStatus review_status of the venue, verified once a plan of it is verified
+	VenueReviewStatus string `json:"venue_review_status"`
+
+	// VerificationNote The superadmin's note of needs-fix, null after verify
+	VerificationNote *string `json:"verification_note"`
+
+	// VerificationState verified or needs_fix
+	VerificationState string `json:"verification_state"`
+
+	// VerifiedAt When the plan was verified, null unless verified
+	VerifiedAt *time.Time `json:"verified_at"`
+
+	// Visibility operator_verified after verify; private after needs-fix of a template
+	Visibility string `json:"visibility"`
 }
 
 // SeatingPlanVersion Immutable-once-bound snapshot of a seating plan's canonical geometry.
@@ -23627,6 +23885,141 @@ type ValidatePromoCodeResponse struct {
 // ValidatePromoCodeResponseValid Always `true` on a 200 response.
 type ValidatePromoCodeResponseValid bool
 
+// VenueCreatedCity The city of a venue created with `country_iso2` and `city_name`.
+type VenueCreatedCity struct {
+	// CountryIso2 ISO 3166-1 alpha-2 code of the city's country.
+	CountryIso2 string `json:"country_iso2"`
+
+	// Id UUID of the city, found by name or created.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the city in the request language, else English.
+	Name string `json:"name"`
+}
+
+// VenueCreatedCountry A country row the venue request created from the embedded world table.
+type VenueCreatedCountry struct {
+	// Currency ISO 4217 currency stored on the new row.
+	Currency string `json:"currency"`
+
+	// Id UUID of the new reference country.
+	Id openapi_types.UUID `json:"id"`
+
+	// Iso2 ISO 3166-1 alpha-2 code.
+	Iso2 string `json:"iso2"`
+
+	// Name Name in the request language, Russian for `ru` and English for any other.
+	Name string `json:"name"`
+
+	// Region Region of the new row, one of europe, middle_east, asia, africa, north_america, latin_america, oceania.
+	Region string `json:"region"`
+}
+
+// VenueDirectoryCity A city of the requested country with venues in the organization's scope.
+type VenueDirectoryCity struct {
+	// CountryIso2 ISO 3166-1 alpha-2 code of the city's country.
+	CountryIso2 string `json:"country_iso2"`
+
+	// Id UUID of the city.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name in the request language, else English, else the slug.
+	Name string `json:"name"`
+
+	// OwnVenues Of those, the organization's own venues.
+	OwnVenues int64 `json:"own_venues"`
+
+	// Venues Venues in scope in this city.
+	Venues int64 `json:"venues"`
+}
+
+// VenueDirectoryCountry A country with venues in the organization's scope.
+type VenueDirectoryCountry struct {
+	// CountryId UUID of the reference country, null when only a venue's address names it.
+	CountryId *openapi_types.UUID `json:"country_id"`
+
+	// Iso2 ISO 3166-1 alpha-2 code.
+	Iso2 string `json:"iso2"`
+
+	// Name Name in the request language, else English, else the code.
+	Name string `json:"name"`
+
+	// OwnVenues Of those, the organization's own venues.
+	OwnVenues int64 `json:"own_venues"`
+
+	// Region One of europe, middle_east, asia, africa, north_america, latin_america, oceania, or other for a country the world table does not know.
+	Region string `json:"region"`
+
+	// Venues Venues in scope in this country.
+	Venues int64 `json:"venues"`
+}
+
+// VenueDirectoryResponse Response of GET /v1/organizations/{org_id}/venue-directory.
+type VenueDirectoryResponse struct {
+	// Cities The cities of `country` with venues in scope; empty without `country`.
+	Cities []VenueDirectoryCity `json:"cities"`
+
+	// Countries Every country with at least one venue in scope, never filtered.
+	Countries []VenueDirectoryCountry `json:"countries"`
+
+	// QuickPick Up to 8 ISO codes, no duplicates: the countries of the organization's own venues (most venues first), the organization's own country, then reference countries where organizers work.
+	QuickPick []string `json:"quick_pick"`
+
+	// Total Count of the filtered venues before `limit`; 0 without a filter.
+	Total int64 `json:"total"`
+
+	// Venues The filtered venues, own first, then by name; empty without a filter.
+	Venues []VenueDirectoryVenue `json:"venues"`
+}
+
+// VenueDirectoryVenue A venue of the directory. It never carries the venue's contacts.
+type VenueDirectoryVenue struct {
+	// Address Free-form address of the venue, null when unset.
+	Address *string `json:"address"`
+
+	// AddressLine1 Street address line 1, null when unset.
+	AddressLine1 *string `json:"address_line1"`
+
+	// CapacityDefault Default capacity, null when unset.
+	CapacityDefault *int `json:"capacity_default"`
+
+	// CityId UUID of the venue's city, null when it has none.
+	CityId *openapi_types.UUID `json:"city_id"`
+
+	// CityName Name of the venue's city in the request language, null without a city.
+	CityName *string `json:"city_name"`
+
+	// CountryIso2 Country of the venue (its city's country, else its address country), null when unknown.
+	CountryIso2 *string `json:"country_iso2"`
+
+	// GeoLat WGS-84 latitude, null when unknown.
+	GeoLat *float64 `json:"geo_lat"`
+
+	// GeoLng WGS-84 longitude, null when unknown.
+	GeoLng *float64 `json:"geo_lng"`
+
+	// HasOwnPlan True when the organization has an active seating plan with a current version at the venue.
+	HasOwnPlan bool `json:"has_own_plan"`
+
+	// HasPlan True when `has_own_plan` is true or the venue has a verified seating plan template the organization may copy (GET .../venues/{venue_id}/plan-templates).
+	HasPlan bool `json:"has_plan"`
+
+	// Id UUID of the venue.
+	Id openapi_types.UUID `json:"id"`
+
+	// Name Name of the venue.
+	Name string `json:"name"`
+
+	// Own True when the venue belongs to the path organization.
+	Own bool `json:"own"`
+
+	// ReviewStatus verified or unverified (migration 0182). Another organization's venue is always verified here.
+	ReviewStatus string `json:"review_status"`
+
+	// Timezone IANA time zone of the venue.
+	Timezone *string `json:"timezone"`
+}
+
 // VenueItem A single active venue (physical event location owned by one organization).
 // Any authenticated org may read venue data, but only the owning org may
 // create, update, or soft-delete a venue.
@@ -23737,6 +24130,290 @@ type VenueItem struct {
 // retained for historical references (past events,
 // reports). Defaults to `active` when not set on create.
 type VenueItemStatus string
+
+// VenuePlanApproveRequest Approve a draft of a hall plan intake.
+type VenuePlanApproveRequest struct {
+	// Draft Number of the draft to approve; it must be the current draft.
+	Draft int `json:"draft"`
+
+	// Name Name of the new seating plan, 1 to 200 characters (default the venue name).
+	Name *string `json:"name,omitempty"`
+}
+
+// VenuePlanCorrection An answer set or a text correction of the organizer (administrators' card only).
+type VenuePlanCorrection struct {
+	// CreatedAt When it was sent.
+	CreatedAt time.Time `json:"created_at"`
+
+	// Draft Number of the draft it was made on.
+	Draft *int `json:"draft"`
+
+	// Id Id of the correction.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind organizer_text, operator_edit or answer.
+	Kind string `json:"kind"`
+
+	// Status pending, applied or rejected.
+	Status string `json:"status"`
+
+	// Text The organizer's text, null for answers.
+	Text *string `json:"text"`
+}
+
+// VenuePlanDraft The current draft of a hall plan intake.
+type VenuePlanDraft struct {
+	// Author Who made the draft (generator, organizer_answers, organizer_text, operator, operator_svg, source_svg).
+	Author string `json:"author"`
+
+	// CreatedAt When the draft was made.
+	CreatedAt time.Time `json:"created_at"`
+
+	// N Number of the draft inside the intake (1, 2, ...).
+	N int `json:"n"`
+
+	// Note The administrator's note on the draft, null when none.
+	Note *string `json:"note"`
+
+	// Questions The questions of this draft.
+	Questions []VenuePlanQuestion `json:"questions"`
+
+	// Summary What the draft holds.
+	Summary VenuePlanDraftSummary `json:"summary"`
+
+	// SvgPath Path of the route that streams the draft SVG (needs the same authorization as the card).
+	SvgPath string `json:"svg_path"`
+}
+
+// VenuePlanDraftHistoryItem One draft in the history of an intake.
+type VenuePlanDraftHistoryItem struct {
+	// Author Who made the draft.
+	Author string `json:"author"`
+
+	// CreatedAt When the draft was made.
+	CreatedAt time.Time `json:"created_at"`
+
+	// N Number of the draft.
+	N int `json:"n"`
+}
+
+// VenuePlanDraftSummary What a draft of a hall plan holds, read from its SVG when the draft was made.
+type VenuePlanDraftSummary struct {
+	// PlanType The plan type the geometry fits (assigned_seats, general_admission or mixed).
+	PlanType string `json:"plan_type"`
+
+	// Rows Number of rows over every section.
+	Rows int `json:"rows"`
+
+	// Seats Number of seats of the draft.
+	Seats int `json:"seats"`
+
+	// Sections Number of sections.
+	Sections int `json:"sections"`
+
+	// Warnings Codes of the importer's warnings (for example legend_missing).
+	Warnings []string `json:"warnings"`
+}
+
+// VenuePlanIntake A hall plan intake (spec 64): the files an organization sent for a
+// venue, its state and its current draft. The administrators' card also
+// carries org_name, operator_id, operator_claimed_at and corrections.
+type VenuePlanIntake struct {
+	// Channel Where the intake was sent from (telegram_bot or event_center_web).
+	Channel string `json:"channel"`
+
+	// ClosedAt When the intake reached a final state.
+	ClosedAt *time.Time `json:"closed_at"`
+
+	// Corrections The organizer's answers and text corrections (administrators' card only).
+	Corrections *[]VenuePlanCorrection `json:"corrections,omitempty"`
+
+	// CreatedAt When the intake was sent.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CurrentDraft Number of the current draft, null before the first draft.
+	CurrentDraft *int `json:"current_draft"`
+
+	// Draft The current draft, null before the first draft.
+	Draft *VenuePlanDraft `json:"draft"`
+
+	// Drafts Every draft, oldest first.
+	Drafts []VenuePlanDraftHistoryItem `json:"drafts"`
+
+	// EscalationReason Why the intake went to an administrator, null when it did not.
+	EscalationReason *string `json:"escalation_reason"`
+
+	// EscalationText The organizer's text when they called an administrator.
+	EscalationText *string `json:"escalation_text"`
+
+	// Id Id of the intake.
+	Id openapi_types.UUID `json:"id"`
+
+	// OperatorClaimed True while an administrator works on the intake.
+	OperatorClaimed bool `json:"operator_claimed"`
+
+	// OperatorClaimedAt When the administrator took it (administrators' card only).
+	OperatorClaimedAt *time.Time `json:"operator_claimed_at"`
+
+	// OperatorId The administrator who took the intake (administrators' card only).
+	OperatorId *openapi_types.UUID `json:"operator_id"`
+
+	// OrgId Organization that sent the intake.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Name of the organization (administrators' card only).
+	OrgName *string `json:"org_name,omitempty"`
+
+	// PlanId The seating plan made from the approved draft.
+	PlanId *openapi_types.UUID `json:"plan_id"`
+
+	// PlanVersion Version number of that plan (1).
+	PlanVersion *int `json:"plan_version"`
+
+	// RejectReason Why the administrator could not build the plan.
+	RejectReason *string `json:"reject_reason"`
+
+	// ReturnNote The administrator's note when the draft was returned to the organizer.
+	ReturnNote *string `json:"return_note"`
+
+	// ReviewRounds Number of drafts made so far.
+	ReviewRounds int `json:"review_rounds"`
+
+	// Sources The files of the intake, in the order they were sent.
+	Sources []VenuePlanIntakeSource `json:"sources"`
+
+	// State received, generating, review, operator, approved, rejected or cancelled.
+	State string `json:"state"`
+
+	// UpdatedAt When the intake last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// VenueId Venue the plan is for.
+	VenueId openapi_types.UUID `json:"venue_id"`
+
+	// VenueName Name of the venue.
+	VenueName string `json:"venue_name"`
+}
+
+// VenuePlanIntakeEnvelope One hall plan intake card.
+type VenuePlanIntakeEnvelope struct {
+	// Intake The intake card.
+	Intake VenuePlanIntake `json:"intake"`
+}
+
+// VenuePlanIntakeList A list of hall plan intakes, newest first.
+type VenuePlanIntakeList struct {
+	// Intakes The intakes.
+	Intakes []VenuePlanIntakeListItem `json:"intakes"`
+}
+
+// VenuePlanIntakeListItem A hall plan intake in a list. The administrators' list adds org_name, venue_city, operator_id and operator_claimed_at.
+type VenuePlanIntakeListItem struct {
+	// Channel Where it was sent from.
+	Channel string `json:"channel"`
+
+	// CreatedAt When it was sent.
+	CreatedAt time.Time `json:"created_at"`
+
+	// CurrentDraft Number of the current draft.
+	CurrentDraft *int `json:"current_draft"`
+
+	// EscalationReason Why it went to an administrator.
+	EscalationReason *string `json:"escalation_reason"`
+
+	// Id Id of the intake.
+	Id openapi_types.UUID `json:"id"`
+
+	// OperatorClaimed True while an administrator works on it.
+	OperatorClaimed bool `json:"operator_claimed"`
+
+	// OperatorClaimedAt When the administrator took it (administrators' list only).
+	OperatorClaimedAt *time.Time `json:"operator_claimed_at"`
+
+	// OperatorId The administrator who took it (administrators' list only).
+	OperatorId *openapi_types.UUID `json:"operator_id"`
+
+	// OrgId Organization that sent it.
+	OrgId openapi_types.UUID `json:"org_id"`
+
+	// OrgName Name of the organization (administrators' list only).
+	OrgName *string `json:"org_name,omitempty"`
+
+	// PlanId The plan made from it, once approved.
+	PlanId *openapi_types.UUID `json:"plan_id"`
+
+	// State State of the intake.
+	State string `json:"state"`
+
+	// UpdatedAt When it last changed.
+	UpdatedAt time.Time `json:"updated_at"`
+
+	// VenueCity City of the venue (administrators' list only).
+	VenueCity *string `json:"venue_city"`
+
+	// VenueId Venue the plan is for.
+	VenueId openapi_types.UUID `json:"venue_id"`
+
+	// VenueName Name of the venue.
+	VenueName string `json:"venue_name"`
+}
+
+// VenuePlanIntakeSource A file sent with a hall plan intake. It has no public link; it is downloaded through the intake routes only.
+type VenuePlanIntakeSource struct {
+	// ByteSize Size of the stored file in bytes (a JPEG without its metadata).
+	ByteSize int64 `json:"byte_size"`
+
+	// DownloadPath Path of the route that downloads the file as an attachment.
+	DownloadPath string `json:"download_path"`
+
+	// FileName The file name as sent, without folders.
+	FileName string `json:"file_name"`
+
+	// Height Height of a picture in pixels, else null.
+	Height *int `json:"height"`
+
+	// Id Id of the file.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Format decided from the content (pdf, xlsx, xls, csv, jpeg, png, webp, heic, tiff, bmp, gif, svg).
+	Kind string `json:"kind"`
+
+	// NeedsConversion True for HEIC and old Excel files, which are converted later.
+	NeedsConversion bool `json:"needs_conversion"`
+
+	// Pages Number of pages of a PDF when it could be counted, else null.
+	Pages *int `json:"pages"`
+
+	// PngCopyPath Path of the PNG copy of a WEBP, TIFF, BMP or GIF picture, else null.
+	PngCopyPath *string `json:"png_copy_path"`
+
+	// Width Width of a picture in pixels, else null.
+	Width *int `json:"width"`
+}
+
+// VenuePlanQuestion A question of a draft to the organizer (written by the generator, wave 2).
+type VenuePlanQuestion struct {
+	// Answer The organizer's answer, null while the question is open.
+	Answer interface{} `json:"answer"`
+
+	// AnsweredAt When the question was answered, null while it is open.
+	AnsweredAt *time.Time `json:"answered_at"`
+
+	// Id Id of the question; the answers route names it as question_id.
+	Id openapi_types.UUID `json:"id"`
+
+	// Kind Type of the question (numbering, row_count, unavailable_seats, sections, stage, row_label).
+	Kind string `json:"kind"`
+
+	// Options The answers offered.
+	Options []interface{} `json:"options"`
+
+	// Region The part of the picture to show with the question, null when none.
+	Region *map[string]interface{} `json:"region"`
+
+	// Target What the question is about (section, row, seat keys).
+	Target map[string]interface{} `json:"target"`
+}
 
 // WebhookSubscriberListResponse Non-paginated list envelope returned by
 // `GET /v1/webhooks/subscribers`. Backed by
@@ -24335,6 +25012,96 @@ type CreateAdminOrgSalesChatCodeParams struct {
 	XAdminReason string `json:"X-Admin-Reason"`
 }
 
+// ListAdminVenuePlanIntakesParams defines parameters for ListAdminVenuePlanIntakes.
+type ListAdminVenuePlanIntakesParams struct {
+	// State Only intakes in this state.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// OrgId Only intakes of this organization.
+	OrgId *openapi_types.UUID `form:"org_id,omitempty" json:"org_id,omitempty"`
+
+	// Unclaimed true for the intakes no administrator has taken.
+	Unclaimed *bool `form:"unclaimed,omitempty" json:"unclaimed,omitempty"`
+
+	// Limit At most this many intakes, 1 to 200 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ApproveAdminVenuePlanIntakeParams defines parameters for ApproveAdminVenuePlanIntake.
+type ApproveAdminVenuePlanIntakeParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// ClaimAdminVenuePlanIntakeJSONBody defines parameters for ClaimAdminVenuePlanIntake.
+type ClaimAdminVenuePlanIntakeJSONBody struct {
+	// Force true takes the intake over from another administrator.
+	Force *bool `json:"force,omitempty"`
+}
+
+// ClaimAdminVenuePlanIntakeParams defines parameters for ClaimAdminVenuePlanIntake.
+type ClaimAdminVenuePlanIntakeParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// CreateAdminVenuePlanIntakeDraftJSONBody defines parameters for CreateAdminVenuePlanIntakeDraft.
+type CreateAdminVenuePlanIntakeDraftJSONBody struct {
+	// Note A note on the draft, up to 2000 characters.
+	Note *string `json:"note,omitempty"`
+
+	// Svg The SVG document as text.
+	Svg string `json:"svg"`
+}
+
+// CreateAdminVenuePlanIntakeDraftMultipartBody defines parameters for CreateAdminVenuePlanIntakeDraft.
+type CreateAdminVenuePlanIntakeDraftMultipartBody struct {
+	// Note A note on the draft, up to 2000 characters.
+	Note *string `json:"note,omitempty"`
+
+	// Svg The SVG file.
+	Svg openapi_types.File `json:"svg"`
+}
+
+// CreateAdminVenuePlanIntakeDraftParams defines parameters for CreateAdminVenuePlanIntakeDraft.
+type CreateAdminVenuePlanIntakeDraftParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// RejectAdminVenuePlanIntakeJSONBody defines parameters for RejectAdminVenuePlanIntake.
+type RejectAdminVenuePlanIntakeJSONBody struct {
+	// Reason Why the plan cannot be built, shown to the organizer, 1 to 1000 characters.
+	Reason string `json:"reason"`
+}
+
+// RejectAdminVenuePlanIntakeParams defines parameters for RejectAdminVenuePlanIntake.
+type RejectAdminVenuePlanIntakeParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// ReturnAdminVenuePlanIntakeJSONBody defines parameters for ReturnAdminVenuePlanIntake.
+type ReturnAdminVenuePlanIntakeJSONBody struct {
+	// Note What the organizer should know, up to 2000 characters.
+	Note *string `json:"note,omitempty"`
+}
+
+// ReturnAdminVenuePlanIntakeParams defines parameters for ReturnAdminVenuePlanIntake.
+type ReturnAdminVenuePlanIntakeParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// DownloadAdminVenuePlanIntakeSourceParams defines parameters for DownloadAdminVenuePlanIntakeSource.
+type DownloadAdminVenuePlanIntakeSourceParams struct {
+	// Format png for the PNG copy; leave out for the file as sent.
+	Format *string `form:"format,omitempty" json:"format,omitempty"`
+
+	// XAdminReason Human-readable business reason for reading the file. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
 // SuperadminListRefundsParams defines parameters for SuperadminListRefunds.
 type SuperadminListRefundsParams struct {
 	// Limit Maximum number of rows to return.
@@ -24358,6 +25125,57 @@ type DeleteAdminSalesChatParams struct {
 
 // PatchAdminSalesChatParams defines parameters for PatchAdminSalesChat.
 type PatchAdminSalesChatParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// ListV1AdminSeatingPlansParams defines parameters for ListV1AdminSeatingPlans.
+type ListV1AdminSeatingPlansParams struct {
+	// VerificationState none (never sent for verification), unverified, verified or
+	// needs_fix. Without it the list holds every state.
+	VerificationState *string `form:"verification_state,omitempty" json:"verification_state,omitempty"`
+
+	// OrgId Only the plans of this organization. Without it the list holds every organization.
+	OrgId *openapi_types.UUID `form:"org_id,omitempty" json:"org_id,omitempty"`
+
+	// Country Only the plans at venues in this country, a 2-letter ISO 3166-1
+	// code. The country of a venue is the country of its city, else the
+	// country of its address.
+	Country *string `form:"country,omitempty" json:"country,omitempty"`
+
+	// CityId Only the plans at venues in this city
+	CityId *openapi_types.UUID `form:"city_id,omitempty" json:"city_id,omitempty"`
+
+	// Q A part of the venue name, any letter case, at most 100 characters
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Lang Language of the city names, for example en or ru. locale is the same. Else Accept-Language, else English.
+	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+
+	// Locale The same as lang
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+
+	// Limit Page size, 1 to 200 (default 50)
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Number of plans to skip, 0 to 1000000 (default 0)
+	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
+// PostV1AdminSeatingPlansPlanIdNeedsFixJSONBody defines parameters for PostV1AdminSeatingPlansPlanIdNeedsFix.
+type PostV1AdminSeatingPlansPlanIdNeedsFixJSONBody struct {
+	// Note What must be fixed, 1 to 1000 characters after trimming
+	Note string `json:"note"`
+}
+
+// PostV1AdminSeatingPlansPlanIdNeedsFixParams defines parameters for PostV1AdminSeatingPlansPlanIdNeedsFix.
+type PostV1AdminSeatingPlansPlanIdNeedsFixParams struct {
+	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
+	XAdminReason string `json:"X-Admin-Reason"`
+}
+
+// PostV1AdminSeatingPlansPlanIdVerifyParams defines parameters for PostV1AdminSeatingPlansPlanIdVerify.
+type PostV1AdminSeatingPlansPlanIdVerifyParams struct {
 	// XAdminReason Human-readable business reason for this change. It is stored in the audit log.
 	XAdminReason string `json:"X-Admin-Reason"`
 }
@@ -24632,6 +25450,15 @@ type GetV1GeoCitiesParams struct {
 type GetV1GeoCountriesParams struct {
 	// Lang Preferred language code (e.g. "en", "ru"). Overrides Accept-Language.
 	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+}
+
+// GetV1GeoWorldCountriesParams defines parameters for GetV1GeoWorldCountries.
+type GetV1GeoWorldCountriesParams struct {
+	// Lang Language of `name`. `ru` gives Russian names, any other language English ones. Overrides Accept-Language.
+	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+
+	// Locale Alias of `lang`, read only when `lang` is absent.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
 }
 
 // PostMACSScanEventsParams defines parameters for PostMACSScanEvents.
@@ -25255,6 +26082,54 @@ type PostV1OrganizationsOrgIdOrdersOrderIdReissueTicketsParams struct {
 	IdempotencyKey string `json:"Idempotency-Key"`
 }
 
+// ListVenuePlanIntakesParams defines parameters for ListVenuePlanIntakes.
+type ListVenuePlanIntakesParams struct {
+	// State Only intakes in this state.
+	State *string `form:"state,omitempty" json:"state,omitempty"`
+
+	// VenueId Only intakes of this venue.
+	VenueId *openapi_types.UUID `form:"venue_id,omitempty" json:"venue_id,omitempty"`
+
+	// Limit At most this many intakes, 1 to 200 (default 50).
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// AnswerVenuePlanIntakeJSONBody defines parameters for AnswerVenuePlanIntake.
+type AnswerVenuePlanIntakeJSONBody struct {
+	// Answers 1 to 50 answers.
+	Answers []struct {
+		// Answer The answer, one of the question's options or a value.
+		Answer interface{} `json:"answer"`
+
+		// QuestionId Id of a question of that draft.
+		QuestionId openapi_types.UUID `json:"question_id"`
+	} `json:"answers"`
+
+	// Draft Number of the draft the answers are for; it must be the current draft.
+	Draft int `json:"draft"`
+}
+
+// CorrectVenuePlanIntakeTextJSONBody defines parameters for CorrectVenuePlanIntakeText.
+type CorrectVenuePlanIntakeTextJSONBody struct {
+	// Draft Number of the draft the text is about; it must be the current draft.
+	Draft int `json:"draft"`
+
+	// Text What to fix, 1 to 2000 characters.
+	Text string `json:"text"`
+}
+
+// EscalateVenuePlanIntakeJSONBody defines parameters for EscalateVenuePlanIntake.
+type EscalateVenuePlanIntakeJSONBody struct {
+	// Text What the administrator should know, up to 1000 characters.
+	Text *string `json:"text,omitempty"`
+}
+
+// DownloadVenuePlanIntakeSourceParams defines parameters for DownloadVenuePlanIntakeSource.
+type DownloadVenuePlanIntakeSourceParams struct {
+	// Format png for the PNG copy; leave out for the file as sent.
+	Format *string `form:"format,omitempty" json:"format,omitempty"`
+}
+
 // ListOrgPromoCodeAttemptsParams defines parameters for ListOrgPromoCodeAttempts.
 type ListOrgPromoCodeAttemptsParams struct {
 	// PromoCodeId Narrow the journal to one promo code (UUID).
@@ -25586,6 +26461,51 @@ type PostV1OrganizationsOrgIdTicketsTicketIdScanRefundExceptionJSONBody struct {
 type PatchV1OrganizationsOrgIdTicketsTicketIdVipJSONBody struct {
 	// Vip True to mark the ticket as VIP, false to take the mark off.
 	Vip bool `json:"vip"`
+}
+
+// GetV1OrganizationsOrgIdVenueDirectoryParams defines parameters for GetV1OrganizationsOrgIdVenueDirectory.
+type GetV1OrganizationsOrgIdVenueDirectoryParams struct {
+	// Country Two-letter ISO 3166-1 code; narrows `venues` and fills `cities`.
+	Country *string `form:"country,omitempty" json:"country,omitempty"`
+
+	// CityId Only venues in this city (UUID from `cities` or GET /v1/geo/cities).
+	CityId *openapi_types.UUID `form:"city_id,omitempty" json:"city_id,omitempty"`
+
+	// Q A part of the venue name, any letter case, at most 100 characters.
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Limit Most venues to return, 1 to 200 (default 100). `total` is the count before the limit.
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Lang Language of country and city names. Overrides Accept-Language.
+	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+
+	// Locale Alias of `lang`, read only when `lang` is absent.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// PostV1OrganizationsOrgIdVenuesParams defines parameters for PostV1OrganizationsOrgIdVenues.
+type PostV1OrganizationsOrgIdVenuesParams struct {
+	// Lang Language of the `city.name` and `created_country.name` in the answer, and of the name of a new city. Overrides Accept-Language.
+	Lang *string `form:"lang,omitempty" json:"lang,omitempty"`
+
+	// Locale Alias of `lang`, read only when `lang` is absent.
+	Locale *string `form:"locale,omitempty" json:"locale,omitempty"`
+}
+
+// CreateVenuePlanIntakeMultipartBody defines parameters for CreateVenuePlanIntake.
+type CreateVenuePlanIntakeMultipartBody struct {
+	// Channel Where the intake is sent from, telegram_bot or event_center_web (default).
+	Channel *string `json:"channel,omitempty"`
+
+	// Files The files of the plan, 1 to 10, 80 MB together.
+	Files []openapi_types.File `json:"files"`
+}
+
+// CreateVenuePlanIntakeParams defines parameters for CreateVenuePlanIntake.
+type CreateVenuePlanIntakeParams struct {
+	// IdempotencyKey Optional key (up to 200 characters); the same key in the same organization returns the same intake.
+	IdempotencyKey *string `json:"Idempotency-Key,omitempty"`
 }
 
 // CreatePaymentIntentParams defines parameters for CreatePaymentIntent.
@@ -26022,11 +26942,32 @@ type PostV1AdminOrganizationModuleShopJSONRequestBody = ConnectShopModuleRequest
 // CreateAdminOrgSalesChatCodeJSONRequestBody defines body for CreateAdminOrgSalesChatCode for application/json ContentType.
 type CreateAdminOrgSalesChatCodeJSONRequestBody = SalesChatConnectCodeRequest
 
+// ApproveAdminVenuePlanIntakeJSONRequestBody defines body for ApproveAdminVenuePlanIntake for application/json ContentType.
+type ApproveAdminVenuePlanIntakeJSONRequestBody = VenuePlanApproveRequest
+
+// ClaimAdminVenuePlanIntakeJSONRequestBody defines body for ClaimAdminVenuePlanIntake for application/json ContentType.
+type ClaimAdminVenuePlanIntakeJSONRequestBody ClaimAdminVenuePlanIntakeJSONBody
+
+// CreateAdminVenuePlanIntakeDraftJSONRequestBody defines body for CreateAdminVenuePlanIntakeDraft for application/json ContentType.
+type CreateAdminVenuePlanIntakeDraftJSONRequestBody CreateAdminVenuePlanIntakeDraftJSONBody
+
+// CreateAdminVenuePlanIntakeDraftMultipartRequestBody defines body for CreateAdminVenuePlanIntakeDraft for multipart/form-data ContentType.
+type CreateAdminVenuePlanIntakeDraftMultipartRequestBody CreateAdminVenuePlanIntakeDraftMultipartBody
+
+// RejectAdminVenuePlanIntakeJSONRequestBody defines body for RejectAdminVenuePlanIntake for application/json ContentType.
+type RejectAdminVenuePlanIntakeJSONRequestBody RejectAdminVenuePlanIntakeJSONBody
+
+// ReturnAdminVenuePlanIntakeJSONRequestBody defines body for ReturnAdminVenuePlanIntake for application/json ContentType.
+type ReturnAdminVenuePlanIntakeJSONRequestBody ReturnAdminVenuePlanIntakeJSONBody
+
 // CreateAdminOperatorSalesChatCodeJSONRequestBody defines body for CreateAdminOperatorSalesChatCode for application/json ContentType.
 type CreateAdminOperatorSalesChatCodeJSONRequestBody = SalesChatConnectCodeRequest
 
 // PatchAdminSalesChatJSONRequestBody defines body for PatchAdminSalesChat for application/json ContentType.
 type PatchAdminSalesChatJSONRequestBody = SalesChatPatchRequest
+
+// PostV1AdminSeatingPlansPlanIdNeedsFixJSONRequestBody defines body for PostV1AdminSeatingPlansPlanIdNeedsFix for application/json ContentType.
+type PostV1AdminSeatingPlansPlanIdNeedsFixJSONRequestBody PostV1AdminSeatingPlansPlanIdNeedsFixJSONBody
 
 // PostV1AdminUsersJSONRequestBody defines body for PostV1AdminUsers for application/json ContentType.
 type PostV1AdminUsersJSONRequestBody = AdminCreateUserRequest
@@ -26433,6 +27374,18 @@ type CreatePaymentProviderConfigJSONRequestBody = CreatePaymentProviderConfigReq
 // UpdatePaymentProviderConfigJSONRequestBody defines body for UpdatePaymentProviderConfig for application/json ContentType.
 type UpdatePaymentProviderConfigJSONRequestBody = UpdatePaymentProviderConfigRequest
 
+// AnswerVenuePlanIntakeJSONRequestBody defines body for AnswerVenuePlanIntake for application/json ContentType.
+type AnswerVenuePlanIntakeJSONRequestBody AnswerVenuePlanIntakeJSONBody
+
+// ApproveVenuePlanIntakeJSONRequestBody defines body for ApproveVenuePlanIntake for application/json ContentType.
+type ApproveVenuePlanIntakeJSONRequestBody = VenuePlanApproveRequest
+
+// CorrectVenuePlanIntakeTextJSONRequestBody defines body for CorrectVenuePlanIntakeText for application/json ContentType.
+type CorrectVenuePlanIntakeTextJSONRequestBody CorrectVenuePlanIntakeTextJSONBody
+
+// EscalateVenuePlanIntakeJSONRequestBody defines body for EscalateVenuePlanIntake for application/json ContentType.
+type EscalateVenuePlanIntakeJSONRequestBody EscalateVenuePlanIntakeJSONBody
+
 // CreatePromoCodeJSONRequestBody defines body for CreatePromoCode for application/json ContentType.
 type CreatePromoCodeJSONRequestBody = CreatePromoCodeRequest
 
@@ -26552,6 +27505,9 @@ type PostV1OrganizationsOrgIdVenuesJSONRequestBody = CreateVenueRequest
 
 // PatchV1OrganizationsOrgIdVenuesIdJSONRequestBody defines body for PatchV1OrganizationsOrgIdVenuesId for application/json ContentType.
 type PatchV1OrganizationsOrgIdVenuesIdJSONRequestBody = UpdateVenueRequest
+
+// CreateVenuePlanIntakeMultipartRequestBody defines body for CreateVenuePlanIntake for multipart/form-data ContentType.
+type CreateVenuePlanIntakeMultipartRequestBody CreateVenuePlanIntakeMultipartBody
 
 // CreatePaymentIntentJSONRequestBody defines body for CreatePaymentIntent for application/json ContentType.
 type CreatePaymentIntentJSONRequestBody = CreatePaymentIntentRequest

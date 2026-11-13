@@ -25,6 +25,8 @@ export type EventSummarySession = S["EventSummarySession"];
 export type SessionSummary = S["SessionSummary"];
 export type GuestListSubscription = S["GuestListSubscription"];
 export type GuestListSettings = S["GuestListSettings"];
+export type GettingStarted = S["GettingStarted"];
+export type GettingStartedStep = S["GettingStartedStep"];
 export type SessionPlaceCounts = S["SessionPlaceCounts"];
 export type SummaryMoneyItem = S["SummaryMoneyItem"];
 export type OrgSummary = S["OrgSummary"];
@@ -137,6 +139,19 @@ export type PutTierPriceScheduleRequest = S["PutTierPriceScheduleRequest"];
 export type VenueItem = S["VenueItem"];
 export type SeatingPlan = S["SeatingPlan"];
 export type SeatingPlanVersion = S["SeatingPlanVersion"];
+// Spec 64: the seating plan intake.
+export type VenuePlanIntake = S["VenuePlanIntake"];
+export type VenuePlanIntakeEnvelope = S["VenuePlanIntakeEnvelope"];
+export type VenuePlanIntakeList = S["VenuePlanIntakeList"];
+export type VenuePlanIntakeListItem = S["VenuePlanIntakeListItem"];
+export type VenuePlanIntakeSource = S["VenuePlanIntakeSource"];
+export type VenuePlanDraft = S["VenuePlanDraft"];
+export type VenuePlanDraftSummary = S["VenuePlanDraftSummary"];
+export type VenuePlanApproveRequest = S["VenuePlanApproveRequest"];
+export type ForkSeatingPlanRequest = S["ForkSeatingPlanRequest"];
+export type PlanTemplatesResponse =
+  paths["/v1/organizations/{org_id}/venues/{venue_id}/plan-templates"]["get"]["responses"]["200"]["content"]["application/json"];
+export type PlanTemplate = PlanTemplatesResponse["plan_templates"][number];
 export type GeoCountryItem = S["GeoCountryItem"];
 // F-004: the wizard's new venue and its city.
 export type CreateVenueRequest = S["CreateVenueRequest"];
@@ -146,6 +161,9 @@ export type OrgCityResponse = S["OrgCityResponse"];
 export type TelegramConnectStatus = S["TelegramConnectStatus"];
 export type TelegramConnectCode = S["TelegramConnectCode"];
 export type GeoCountriesResponse = S["GeoCountriesResponse"];
+// Spec 64 section 2.1.1: the world list and the venue directory of the chooser.
+export type GeoWorldCountriesResponse = S["GeoWorldCountriesResponse"];
+export type VenueDirectoryResponse = S["VenueDirectoryResponse"];
 export type GeoCityItem = S["GeoCityItem"];
 export type GeoCitySuggestion = S["GeoCitySuggestion"];
 export type GeoCitiesResponse = S["GeoCitiesResponse"];

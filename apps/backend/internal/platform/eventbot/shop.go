@@ -257,7 +257,6 @@ const shopReviewFetch = 200
 func (b *Bot) renderShopHome(ctx context.Context, chatID int64, editMsgID *int, id *Identity, jwt, note string) {
 	loc := id.Locale()
 	orgID := id.Current.OrgID
-	mode := shopMode(id)
 
 	counts, err := b.arena.ShopOrderCounts(ctx, jwt, orgID)
 	if err != nil {
@@ -274,16 +273,14 @@ func (b *Bot) renderShopHome(ctx context.Context, chatID int64, editMsgID *int, 
 		reviewText += "+"
 	}
 
-	var settings *openapi.ShopSettings
+	settings, serr := b.shopHomeSettings(ctx, jwt, id)
+	if serr != nil {
+		b.shopError(ctx, chatID, editMsgID, id, serr, "home")
+		return
+	}
 	tz := ""
-	if mode == shopModeFull {
-		s, serr := b.arena.ShopSettings(ctx, jwt, orgID)
-		if serr != nil {
-			b.shopError(ctx, chatID, editMsgID, id, serr, "home")
-			return
-		}
-		settings = &s
-		tz = shopZone(s.CountryIso2)
+	if settings != nil {
+		tz = shopZone(settings.CountryIso2)
 	}
 
 	st := newShopDialog(orgID, tz)
@@ -304,22 +301,42 @@ func (b *Bot) renderShopHome(ctx context.Context, chatID int64, editMsgID *int, 
 	}
 	text += "\n" + b.texts.T(loc, "bot.sh.home_counts", vars)
 
-	rows := [][]models.InlineKeyboardButton{{btn(b.texts.T(loc, "bot.sh.orders_btn", nil), "sh:ol")}}
-	if settings != nil {
-		if settings.Enabled {
-			rows = append(rows, []models.InlineKeyboardButton{btn(b.texts.T(loc, "bot.sh.close_btn", nil), "sh:sf:c")})
-		} else {
-			rows = append(rows, []models.InlineKeyboardButton{btn(b.texts.T(loc, "bot.sh.open_btn", nil), "sh:sf:o")})
-		}
-		rows = append(rows, []models.InlineKeyboardButton{
-			btn(b.texts.T(loc, "bot.sh.settings_btn", nil), "sh:st"),
-			btn(b.texts.T(loc, "bot.web.btn", nil), "sh:w:h"),
-		})
-	} else {
-		rows = append(rows, []models.InlineKeyboardButton{btn(b.texts.T(loc, "bot.web.btn", nil), "sh:w:h")})
-	}
+	rows := b.shopHomeItems(loc, settings).rows()
+	rows = append(rows, b.helpRow(loc, hpShop, ""))
 	rows = append(rows, []models.InlineKeyboardButton{btn(b.texts.T(loc, "bot.btn_home", nil), "home")})
 	b.reply(ctx, chatID, editMsgID, clipMessage(text, maxMessageRunes), inline(rows...))
+}
+
+// shopHomeSettings reads the shop's settings for the home screen: nil while the
+// shop is "orders only" (no storefront settings).
+func (b *Bot) shopHomeSettings(ctx context.Context, jwt string, id *Identity) (*openapi.ShopSettings, error) {
+	if shopMode(id) != shopModeFull {
+		return nil, nil
+	}
+	s, err := b.arena.ShopSettings(ctx, jwt, id.Current.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// shopHomeItems is the list of the buttons of the shop home: the keyboard and
+// the help are both made from it.
+func (b *Bot) shopHomeItems(loc string, settings *openapi.ShopSettings) screenItems {
+	var items screenItems
+	items.add("sh.orders", []button{btn(b.texts.T(loc, "bot.sh.orders_btn", nil), "sh:ol")})
+	if settings != nil {
+		if settings.Enabled {
+			items.add("sh.close", []button{btn(b.texts.T(loc, "bot.sh.close_btn", nil), "sh:sf:c")})
+		} else {
+			items.add("sh.open", []button{btn(b.texts.T(loc, "bot.sh.open_btn", nil), "sh:sf:o")})
+		}
+		items.add("sh.settings", []button{btn(b.texts.T(loc, "bot.sh.settings_btn", nil), "sh:st")})
+		items.addJoined("sh.web", []button{btn(b.texts.T(loc, "bot.web.btn", nil), "sh:w:h")})
+	} else {
+		items.add("sh.web", []button{btn(b.texts.T(loc, "bot.web.btn", nil), "sh:w:h")})
+	}
+	return items
 }
 
 // shopStorefrontLine says whether the storefront is open, with its address

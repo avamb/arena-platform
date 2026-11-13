@@ -272,3 +272,12 @@ export function parseSeating(raw: unknown): SeatingSection {
   }
   return { versionId, planName, seats: o.seats, categories, extras };
 }
+
+/**
+ * A seated date whose plan has ONE category and no extra category: every seat has the same price.
+ * After the save the next step is "Split seats by price" (spec 64 section 2.4), so the wizard opens the
+ * layout tab of the seat manager and not its brush.
+ */
+export function needsSplitByPrice(s: SeatingSection): boolean {
+  return isSeated(s) && s.categories.length === 1 && s.extras.length === 0;
+}

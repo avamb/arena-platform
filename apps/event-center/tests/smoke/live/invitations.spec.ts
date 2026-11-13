@@ -314,10 +314,8 @@ test.describe("invitations (live)", () => {
     await signInAs(page, person(env, "agent"));
     await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
     await page.getByTestId("nav-more").click();
-    // Inside "More" only: the event "E2E Invitations Show" is a link too.
-    await expect(
-      page.getByRole("navigation", { name: "All sections" }).getByRole("link", { name: "Invitations", exact: true }),
-    ).toHaveCount(canRead ? 1 : 0);
+    // Inside the Menu sheet only: the event "E2E Invitations Show" is a link too.
+    await expect(page.getByTestId("more-sheet").getByTestId("nav-invitations")).toHaveCount(canRead ? 1 : 0);
     await page.goto(`/o/${env.org_id}/invitations`);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await expect(page.getByTestId("invite-form")).toHaveCount(canIssue ? 1 : 0);

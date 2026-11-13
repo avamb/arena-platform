@@ -149,6 +149,17 @@ type Draft struct {
 	// simply not reported. No schema bump: an unknown field is ignored on read
 	// and a missing one is zero.
 	StepSince int64 `json:"step_since,omitempty"`
+	// PlanIntakeID is the hall plan intake the draft waits for (plan_intake.go):
+	// the files were sent from the plan upload step and an administrator builds
+	// the plan. IntakePlans are the version ids of the plans that came from an
+	// intake in this draft: their dates get "Split seats by price" once the
+	// event is saved. Both live outside Scratch, which is reset between steps.
+	PlanIntakeID string `json:"plan_intake_id,omitempty"`
+	// PlanIntakeState is the state of that intake as the bot last read it
+	// (received, generating, review or operator): the waiting screen offers
+	// "Check the plan" in review.
+	PlanIntakeState string   `json:"plan_intake_state,omitempty"`
+	IntakePlans     []string `json:"intake_plans,omitempty"`
 
 	// rejected is the message key (without "bot.wz.") of the last answer the
 	// wizard refused in this Apply call, for analytics only (wizard_analytics.go).
@@ -264,6 +275,17 @@ type DraftScratch struct {
 	// CountryRegion is the region whose countries the country question shows;
 	// empty shows the region buttons.
 	CountryRegion string `json:"country_region,omitempty"`
+	// CountryPage is the page of that region's countries; CountryMatches the
+	// codes a typed country name matched (country_choice.go).
+	CountryPage    int      `json:"country_page,omitempty"`
+	CountryMatches []string `json:"country_matches,omitempty"`
+	// VenuePage and VenueQuery are the page of the venue list and the name the
+	// person searched inside the city (wizard_venue_choice.go).
+	VenuePage  int    `json:"venue_page,omitempty"`
+	VenueQuery string `json:"venue_query,omitempty"`
+	// TzZones are the zones the API named for a country the built-in data does
+	// not know; the zone question offers them as buttons.
+	TzZones []TzOption `json:"tz_zones,omitempty"`
 	// ReturnToSummary is set by the summary's "edit …" buttons: the section
 	// being re-entered ends at the summary instead of running on into the
 	// next one.
@@ -372,6 +394,11 @@ type VenueRef struct {
 	// Shared marks a venue of ANOTHER organization that the platform verified
 	// (migration 0182): the organization may hold dates there but not edit it.
 	Shared bool
+	// NewCity and NewCountry are what the create answer adds when the venue
+	// was made with a city name: the city that was found or made, and the
+	// country row that was made (nil when the reference already had it).
+	NewCity    *RefItem
+	NewCountry *RefItem
 }
 
 // VenueCreate is the "+ new venue" form.
@@ -379,10 +406,14 @@ type VenueCreate struct {
 	CountryID   string `json:"country_id"`
 	CountryISO2 string `json:"country_iso2"`
 	CityID      string `json:"city_id"`
-	Name        string `json:"name"`
-	Address     string `json:"address"`
-	Capacity    int    `json:"capacity"`
-	Timezone    string `json:"timezone"`
+	// CityName is a city that waits by name: with no CityID the venue is made
+	// with country_iso2 + city_name in one call. Lang names a new city.
+	CityName string `json:"city_name,omitempty"`
+	Lang     string `json:"lang,omitempty"`
+	Name     string `json:"name"`
+	Address  string `json:"address"`
+	Capacity int    `json:"capacity"`
+	Timezone string `json:"timezone"`
 }
 
 // Defaults are the remembered answers (bot_telegram_links.defaults).
@@ -413,6 +444,11 @@ type RefIO interface {
 	CreateCity(ctx context.Context, jwt string, orgID uuid.UUID, countryID, name, lang string) (RefItem, error)
 	CreateVenue(ctx context.Context, jwt string, orgID uuid.UUID, v VenueCreate) (VenueRef, error)
 	CreatePromoter(ctx context.Context, jwt string, orgID uuid.UUID, name, legalID string) (RefItem, error)
+	// WorldCountries is the full country list of the world (any country may be
+	// the country of a venue); VenueDirectory reads the venues the organization
+	// may use by country, city and name (wizard_venue_choice.go).
+	WorldCountries(ctx context.Context, jwt, lang string) (WorldList, error)
+	VenueDirectory(ctx context.Context, jwt string, orgID uuid.UUID, country, cityID, q, lang string) (VenueDir, error)
 }
 
 // WizSession is who is driving the wizard.
@@ -440,8 +476,8 @@ type WizInput struct {
 	// ART that already went through the server's filter. It answers the
 	// description question.
 	Art string
-	// Plan is a hall plan the bot stored from a file the person sent
-	// (wizard_plan_upload.go).
+	// Plan is a seating plan an approved intake made (plan_intake.go,
+	// wizard_plan_upload.go).
 	Plan *PlanUploaded
 	// PageRead says the bot read the organizer's event page into the
 	// draft's hints (wizard_page.go): the wizard goes back to the name.
@@ -1148,149 +1184,24 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		}
 
 	case stSCountry:
-		var chosen *RefItem
-		countries, err := w.refs.Countries(ctx, ws.JWT, loc)
-		if err != nil {
-			return "", err
-		}
-		if rg, ok := strings.CutPrefix(data, "region:"); ok {
-			// A region button opens that region's countries; an empty one is
-			// the way back to the region list.
-			d.Scratch.CountryRegion = ""
-			if validRegion(countries, rg) {
-				d.Scratch.CountryRegion = rg
-			}
-			return "", nil
-		}
-		id := strings.TrimPrefix(data, "country:")
-		if data == "keep" {
-			id = ws.Defaults.CountryID
-		}
-		for i := range countries {
-			if countries[i].ID == id {
-				chosen = &countries[i]
-			}
-		}
-		if chosen == nil {
-			return "", nil
-		}
-		s := d.session()
-		s.CountryID, s.CountryName, s.CountryISO2, s.Currency = chosen.ID, chosen.Name, chosen.ISO2, chosen.Currency
-		s.CityID, s.CityName, s.VenueID, s.VenueName, s.Timezone = "", "", "", "", ""
-		d.Scratch.CountryRegion = ""
-		d.goTo(stSCity)
+		return w.applyCountry(ctx, ws, d, text, data)
 
 	case stSCity:
-		s := d.session()
-		if data == "city:new" {
-			d.goTo(stCityName)
-			return "", nil
-		}
-		if idx, ok := strings.CutPrefix(data, "city:g:"); ok {
-			// One of the country's biggest cities, offered from the embedded
-			// data: it is found or added by name like a typed one.
-			n, err := strconv.Atoi(idx)
-			top := geotz.TopCities(s.CountryISO2)
-			if err != nil || n < 0 || n >= len(top) {
-				return "", nil
-			}
-			c, err := w.refs.CreateCity(ctx, ws.JWT, ws.OrgID, s.CountryID, top[n], loc)
-			if err != nil {
-				return "", err
-			}
-			s.CityID, s.CityName = c.ID, c.Name
-			s.VenueID, s.VenueName, s.Timezone = "", "", ""
-			d.goTo(stSVenue)
-			return "", nil
-		}
-		id := strings.TrimPrefix(data, "city:")
-		if data == "keep" {
-			id = ws.Defaults.CityID
-		}
-		cities, err := w.refs.Cities(ctx, ws.JWT, s.CountryID, loc)
-		if err != nil {
+		if err := w.applyCity(ctx, ws, d, text, data); err != nil {
 			return "", err
-		}
-		for _, c := range cities {
-			if c.ID == id {
-				s.CityID, s.CityName = c.ID, c.Name
-				s.VenueID, s.VenueName, s.Timezone = "", "", ""
-				d.goTo(stSVenue)
-				return "", nil
-			}
-		}
-		// A city typed straight onto the question: the list holds only the
-		// cities somebody already used, so most organizers' city is not in it.
-		// A name that matches a listed one picks it; any other is added (the
-		// API finds an existing city of that name before it creates one).
-		if name := strings.TrimSpace(text); name != "" && data == "" {
-			want := geotz.Normalize(name)
-			for _, c := range cities {
-				if geotz.Normalize(c.Name) == want {
-					s.CityID, s.CityName = c.ID, c.Name
-					s.VenueID, s.VenueName, s.Timezone = "", "", ""
-					d.goTo(stSVenue)
-					return "", nil
-				}
-			}
-			c, err := w.refs.CreateCity(ctx, ws.JWT, ws.OrgID, s.CountryID, name, loc)
-			if err != nil {
-				return "", err
-			}
-			s.CityID, s.CityName = c.ID, c.Name
-			s.VenueID, s.VenueName, s.Timezone = "", "", ""
-			d.goTo(stSVenue)
 		}
 
 	case stCityName:
 		if text == "" {
 			return d.reject("err_city_name", t("bot.wz.err_city_name", nil)), nil
 		}
-		s := d.session()
-		c, err := w.refs.CreateCity(ctx, ws.JWT, ws.OrgID, s.CountryID, text, loc)
-		if err != nil {
+		if err := w.cityByName(ctx, ws, d, text); err != nil {
 			return "", err
 		}
-		s.CityID, s.CityName = c.ID, c.Name
-		d.goTo(stSVenue)
 
 	case stSVenue:
-		s := d.session()
-		d.Scratch.DupVenueID, d.Scratch.DupVenueName = "", ""
-		if data == "venue:new" {
-			d.Scratch.NewVenue = VenueCreate{CountryID: s.CountryID, CountryISO2: s.CountryISO2, CityID: s.CityID}
-			d.goTo(stVName)
-			return "", nil
-		}
-		id := strings.TrimPrefix(data, "venue:")
-		if data == "keep" {
-			id = ws.Defaults.VenueID
-		}
-		venues, err := w.refs.Venues(ctx, ws.JWT, ws.OrgID)
-		if err != nil {
+		if err := w.applyVenue(ctx, ws, d, text, data); err != nil {
 			return "", err
-		}
-		venues = append(venues, w.sharedVenues(ctx, ws, s.CityID, "")...)
-		for _, v := range venues {
-			if v.ID == id {
-				s.VenueID, s.VenueName, s.Timezone = v.ID, v.Name, v.Timezone
-				if s.Capacity == 0 {
-					s.Capacity = v.Capacity
-				}
-				if s.seated() {
-					// Back to the venue question and a venue chosen again: the
-					// plan of the first one does not belong to this one.
-					s.PlanVersionID, s.PlanName, s.Tickets = "", "", nil
-				}
-				d.Scratch.PlanAfter = planAfterCapacity
-				d.Scratch.NoPlanVenueID = ""
-				if w.offerPlans(ctx, ws, d) {
-					return "", nil
-				}
-				d.Scratch.NoPlanVenueID = v.ID
-				d.goTo(stSCapacity)
-				return "", nil
-			}
 		}
 
 	case stVName:
@@ -1315,7 +1226,12 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		}
 		d.Scratch.NewVenue.Capacity = n
 		d.session().Capacity = n
-		if tz := w.guessTimezone(ctx, ws, d.Scratch.NewVenue.CountryISO2); tz != "" {
+		tz := w.guessTimezone(ctx, ws, d.Scratch.NewVenue.CountryISO2)
+		if tz == "" {
+			// A country the built-in data does not know: the API names its zones.
+			tz = w.apiZone(ctx, ws, d, d.Scratch.NewVenue.CountryISO2)
+		}
+		if tz != "" {
 			d.Scratch.NewVenue.Timezone = tz
 			return w.createVenue(ctx, ws, d)
 		}
@@ -1379,7 +1295,7 @@ func (w *Wizard) apply(ctx context.Context, ws WizSession, d *Draft, in WizInput
 		}
 
 	case stSPlan, stSPlanPrice, stSPlanExtra, stSPlanExtraName, stSPlanExtraPrice, stSPlanExtraColor:
-		if data == "plan:upload" {
+		if data == "plan:upload" || in.Plan != nil {
 			return w.applyPlanUpload(ctx, ws, d, in, data)
 		}
 		return w.applySeated(loc, d, text, data)
@@ -1844,6 +1760,14 @@ func (w *Wizard) createVenue(ctx context.Context, ws WizSession, d *Draft) (stri
 	s.VenueID, s.VenueName, s.Timezone = v.ID, v.Name, v.Timezone
 	if s.Capacity == 0 {
 		s.Capacity = v.Capacity
+	}
+	if v.NewCity != nil {
+		// The venue was made with a city name: the city (and, for a country
+		// outside the platform, the country) exists now.
+		s.CityID, s.CityName = v.NewCity.ID, v.NewCity.Name
+	}
+	if v.NewCountry != nil {
+		s.CountryID = v.NewCountry.ID
 	}
 	d.Scratch.NewVenue = VenueCreate{}
 	if w.canUploadPlans() {

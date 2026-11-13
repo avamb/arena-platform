@@ -1,7 +1,12 @@
 import { EventSalesSwitch } from "@/components/EventSalesSwitch";
 import { HelpPopover } from "@/components/HelpPopover";
-import { useEffect } from "react";
-import { Link, useParams } from "@tanstack/react-router";
+import { useEffect, useState, type ReactNode } from "react";
+import { ScreenHelp } from "@/components/ScreenHelp";
+import { EventSection, ScrollToAnchor, useSectionState } from "@/components/EventSection";
+import { eventCardLayout, isAction, sectionForAnchor, type ActionId, type ItemId, type ItemRights } from "@/lib/eventActions";
+import { SECTION_TITLE } from "@/lib/screenHelp";
+import { statusActions } from "@/lib/eventStatus";
+import { Link, useParams, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api/http";
 import { downloadCsv, downloadEventGuestListXlsx, downloadSampleTicket, fetchEventSummary, listSessions } from "@/lib/api/endpoints";
@@ -89,6 +94,11 @@ export function EventScreen() {
     if (canEdit) flow.mark("open");
   }, [flow, canEdit]);
   const events = useEventsList(orgId);
+  const hash = useRouterState({ select: (s) => s.location.hash });
+  const sectionState = useSectionState(hash);
+  // After a status move the "More" section stays for this visit (its notice must be seen) and the sections keep the
+  // order the card had when the person acted. Set once, from the state before the first move.
+  const [moved, setMoved] = useState<{ status: string; sales_state?: string | null } | null>(null);
   const summary = useQuery({
     queryKey: ["eventSummary", orgId, eventId],
     queryFn: () => fetchEventSummary(orgId, eventId),
@@ -124,6 +134,273 @@ export function EventScreen() {
   const sample = sampleSession(refs);
   const poster = posterCapabilities(access.can);
 
+  const canPublish = access.can("event.publish");
+  const canDelete = access.can("event.delete");
+  const hasStatus = statusActions(event.status, { canPublish, canDelete }).length > 0;
+  const rights: ItemRights = {
+    edit: access.can("event.update"),
+    sample: canSessions && sample !== undefined,
+    orders: canSales,
+    csv: canCsv,
+    guests: canCsv,
+    funnel: access.can("report.read"),
+    qr: access.can("sales_link.manage"),
+    promo: access.can("promo.read"),
+    invitations: access.can("complimentary.read"),
+    links: access.can("sales_link.read"),
+    totals: canSales,
+    pageStats: canPageStats,
+    // The poster and the materials blocks explain themselves to a person who may only look.
+    poster: true,
+    sessions: canSales || canSessions,
+    salesSwitch: canSessions,
+    materials: true,
+    emailNote: access.can("event.update"),
+    referral: canViewReferral(access.can),
+    status: hasStatus || moved !== null,
+  };
+  const layout = eventCardLayout(event, rights, moved ?? event);
+  const btn = (id: ActionId) => (layout.primary === id ? "btn btn-primary" : "btn");
+  const dl = (id: ActionId) => (layout.primary === id ? ("primary" as const) : undefined);
+
+  const buttons: Record<ActionId, ReactNode> = {
+    // The web editor: name and description.
+    edit: (
+      <Link to="/o/$orgId/events/$eventId/edit" params={{ orgId, eventId }} className={btn("edit")} data-testid="event-edit-link">
+        {t("event.edit")}
+      </Link>
+    ),
+    csv: (
+      <DownloadButton
+        label="event.csvSales"
+        testId="csv-event-sales"
+        variant={dl("csv")}
+        fetchFile={() => downloadCsv(orgId, "eventSales", eventId, locale)}
+      />
+    ),
+    guests: (
+      <DownloadButton
+        label="guestList.downloadEvent"
+        testId="xlsx-event-guest-list"
+        variant={dl("guests")}
+        fetchFile={() => downloadEventGuestListXlsx(orgId, eventId, locale)}
+      />
+    ),
+    sample: (
+      <DownloadButton
+        label="event.sample"
+        testId="sample-ticket"
+        variant={dl("sample")}
+        fetchFile={() => downloadSampleTicket(orgId, sample?.id ?? "", locale)}
+      />
+    ),
+    orders: (
+      <Link to="/o/$orgId/orders" params={{ orgId }} search={{ event: eventId }} className={btn("orders")} data-testid="event-orders-link">
+        {t("event.orders")}
+      </Link>
+    ),
+    // A7: how far buyers got, from the first look to the payment.
+    funnel: (
+      <Link to="/o/$orgId/events/$eventId/funnel" params={{ orgId, eventId }} className={btn("funnel")} data-testid="event-funnel-link">
+        {t("funnel.button")}
+      </Link>
+    ),
+    // QL-12: a short link and QR code that lead to this event.
+    qr: (
+      <Link to="/o/$orgId/links/new" params={{ orgId }} search={{ event: eventId }} className={btn("qr")} data-testid="event-qr-link">
+        {t("links.button")}
+      </Link>
+    ),
+    // Promotion: the lists of the organization. Only the links list can be narrowed to this event today.
+    promo: (
+      <Link to="/o/$orgId/promo" params={{ orgId }} search={{}} className={btn("promo")} data-testid="event-promo-link">
+        {t("nav.promo")}
+      </Link>
+    ),
+    invitations: (
+      <Link to="/o/$orgId/invitations" params={{ orgId }} className={btn("invitations")} data-testid="event-invitations-link">
+        {t("nav.invitations")}
+      </Link>
+    ),
+    links: (
+      <Link to="/o/$orgId/links" params={{ orgId }} search={{ event: eventId }} className={btn("links")} data-testid="event-links-link">
+        {t("nav.links")}
+      </Link>
+    ),
+  };
+
+  /** A block of the page by item id. A button is drawn from `buttons`. */
+  const block = (id: Exclude<ItemId, ActionId>): ReactNode => {
+    switch (id) {
+      case "totals":
+        return (
+          <section aria-labelledby="event-totals">
+            <h2 id="event-totals">
+              {t("event.totals")}
+              <HelpPopover textKey="help.eventSales" testId="help-event-sales" />
+            </h2>
+            {summary.isLoading && <Loading />}
+            {summary.error !== null && <ErrorBox error={summary.error} onRetry={() => void summary.refetch()} />}
+            {summary.data !== undefined && (
+              <>
+                <SalesFigures
+                  places={summary.data.places}
+                  money={summary.data.money}
+                  entered={summary.data.entered}
+                  invitations={summary.data.complimentary.tickets}
+                />
+                <TiersTable summary={summary.data} />
+              </>
+            )}
+          </section>
+        );
+      case "pageStats":
+        return <PageStats orgId={orgId} eventId={eventId} />;
+      case "poster":
+        return (
+          <EventPoster
+            key={`${orgId}:${eventId}`}
+            orgId={orgId}
+            eventId={eventId}
+            eventName={event.name}
+            posterMediaId={event.poster_media_id ?? null}
+            canView={poster.canView}
+            canChange={poster.canChange}
+            onSaved={() => flow.mark("poster_saved")}
+          />
+        );
+      case "sessions":
+        return (
+          <section aria-labelledby="event-sessions">
+            <h2 id="event-sessions">{t("event.sessions")}</h2>
+            <p className="field-hint event-section-hint" data-testid="event-sessions-hint">
+              {t("event.sessionsHint")}
+            </p>
+            {sessions.isLoading && <Loading />}
+            {refs.length === 0 && !summary.isLoading && !sessions.isLoading && <Empty>{t("events.noDate")}</Empty>}
+            <ul className="cards" data-testid="session-list">
+              {refs.map((s) => {
+                const fig = summary.data?.sessions.find((x) => x.id === s.id);
+                return (
+                  <li key={s.id} className="card" data-testid="session-row">
+                    <Link
+                      to="/o/$orgId/events/$eventId/sessions/$sessionId"
+                      params={{ orgId, eventId, sessionId: s.id }}
+                      className="card-link"
+                    >
+                      <span className="card-title">{formatDateTime(s.startAt, s.tz, locale)}</span>
+                      <span className="card-meta">
+                        {s.venue !== null && <span>{s.venue}</span>}
+                        {s.cancelled && <Badge tone="bad">{t("event.cancelled")}</Badge>}
+                      </span>
+                    </Link>
+                    {fig !== undefined && <SalesFigures places={fig.places} money={fig.money} compact />}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        );
+      case "salesSwitch":
+        // Sales state of the sessions: Open / Coming soon / Sold out.
+        return (
+          <EventSalesSwitch
+            orgId={orgId}
+            eventId={eventId}
+            canUpdate={access.can("session.update")}
+            sessions={refs.map((r) => ({ id: r.id, startAt: r.startAt, tz: r.tz, cancelled: r.cancelled }))}
+          />
+        );
+      case "materials":
+        return (
+          <MaterialsSection
+            key={`${orgId}:${eventId}`}
+            orgId={orgId}
+            eventId={eventId}
+            status={event.status}
+            publicUrl={event.public_url}
+            can={access.can}
+          />
+        );
+      case "emailNote":
+        // RT-11: the organizer's own text of the buyer e-mails. The events list is the route that carries it.
+        return (
+          <EmailNoteSection
+            key={`${orgId}:${eventId}`}
+            orgId={orgId}
+            eventId={eventId}
+            note={event.email_note}
+            noteFormat={event.email_note_format}
+            canEdit
+            onSaved={() => flow.mark("note_saved")}
+          />
+        );
+      case "referral":
+        // Spec 52: "Refer a friend". The route's own gate for looking is promo.read.
+        return (
+          <ReferralSection
+            key={`referral:${orgId}:${eventId}`}
+            orgId={orgId}
+            target={{ kind: "event", eventId }}
+            canManage={canManageReferral(access.can)}
+            timezone={refs.find((r) => r.tz !== null)?.tz ?? undefined}
+          />
+        );
+      case "status":
+        return (
+          <EventStatusBlock
+            orgId={orgId}
+            eventId={eventId}
+            eventName={event.name}
+            status={event.status}
+            canPublish={canPublish}
+            canDelete={canDelete}
+            onMoved={(action) => {
+              setMoved((prev) => prev ?? { status: event.status, sales_state: event.sales_state });
+              flow.mark(`status_${action}`);
+            }}
+          />
+        );
+    }
+  };
+
+  /** The items of a section in order: neighbouring buttons share one row, a block stands alone. */
+  const sectionBody = (items: ItemId[]): ReactNode[] => {
+    const out: ReactNode[] = [];
+    let row: ActionId[] = [];
+    const flush = () => {
+      if (row.length === 0) return;
+      const ids = row;
+      row = [];
+      out.push(
+        <div key={`row-${ids.join("-")}`} className="actions">
+          {ids.map((id) => (
+            <div key={id} className="event-action" data-item-id={id}>
+              {buttons[id]}
+            </div>
+          ))}
+        </div>,
+      );
+    };
+    for (const id of items) {
+      if (isAction(id)) {
+        row.push(id);
+        continue;
+      }
+      flush();
+      out.push(
+        <div key={id} id={`event-item-${id}`} data-item-id={id}>
+          {block(id)}
+        </div>,
+      );
+    }
+    flush();
+    return out;
+  };
+
+  const hashSection = sectionForAnchor(hash);
+  const hashOpen = hashSection !== null && layout.sections.some((s) => s.id === hashSection && sectionState.isOpen(s.id, s.defaultOpen));
+
   return (
     <article aria-labelledby="event-title">
       <p>
@@ -131,7 +408,10 @@ export function EventScreen() {
           {t("common.back")}
         </Link>
       </p>
-      <h1 id="event-title">{event.name}</h1>
+      <div className="screen-head">
+        <h1 id="event-title">{event.name}</h1>
+        <ScreenHelp screenId="event" card={{ event, rights, status: { canPublish, canDelete }, orderBy: moved ?? event }} />
+      </div>
       <p className="card-meta">
         <SalesStateBadge event={event} />
         {event.status === "draft" && <Badge tone="neutral">{t("events.draft")}</Badge>}
@@ -140,175 +420,28 @@ export function EventScreen() {
         )}
       </p>
 
-      {/* Sales state of the sessions: Open / Coming soon / Sold out, at the top like in the old event center. */}
-      {canSessions && (
-        <EventSalesSwitch
-          orgId={orgId}
-          eventId={eventId}
-          canUpdate={access.can("session.update")}
-          sessions={refs.map((r) => ({ id: r.id, startAt: r.startAt, tz: r.tz, cancelled: r.cancelled }))}
-        />
-      )}
-
-      <div className="actions">
-        {/* The web editor: name, description, poster and the text of the buyer letters. */}
-        {access.can("event.update") && (
-          <Link to="/o/$orgId/events/$eventId/edit" params={{ orgId, eventId }} className="btn btn-primary" data-testid="event-edit-link">
-            {t("event.edit")}
-          </Link>
-        )}
-        {canCsv && (
-          <DownloadButton
-            label="event.csvSales"
-            testId="csv-event-sales"
-            fetchFile={() => downloadCsv(orgId, "eventSales", eventId, locale)}
-          />
-        )}
-        {canCsv && (
-          <DownloadButton
-            label="guestList.downloadEvent"
-            testId="xlsx-event-guest-list"
-            fetchFile={() => downloadEventGuestListXlsx(orgId, eventId, locale)}
-          />
-        )}
-        {canSessions && sample !== undefined && (
-          <DownloadButton
-            label="event.sample"
-            testId="sample-ticket"
-            fetchFile={() => downloadSampleTicket(orgId, sample.id, locale)}
-          />
-        )}
-        {canSales && (
-          <Link to="/o/$orgId/orders" params={{ orgId }} search={{ event: eventId }} className="btn">
-            {t("event.orders")}
-          </Link>
-        )}
-        {/* A7: how far buyers got, from the first look to the payment. */}
-        {access.can("report.read") && (
-          <Link to="/o/$orgId/events/$eventId/funnel" params={{ orgId, eventId }} className="btn" data-testid="event-funnel-link">
-            {t("funnel.button")}
-          </Link>
-        )}
-        {/* QL-12: a short link and QR code that lead to this event. */}
-        {access.can("sales_link.manage") && (
-          <Link to="/o/$orgId/links/new" params={{ orgId }} search={{ event: eventId }} className="btn" data-testid="event-qr-link">
-            {t("links.button")}
-          </Link>
-        )}
-      </div>
-
-      <EventStatusBlock
-        orgId={orgId}
-        eventId={eventId}
-        eventName={event.name}
-        status={event.status}
-        canPublish={access.can("event.publish")}
-        canDelete={access.can("event.delete")}
-        onMoved={(action) => flow.mark(`status_${action}`)}
-      />
-
-      <EventPoster
-        key={`${orgId}:${eventId}`}
-        orgId={orgId}
-        eventId={eventId}
-        eventName={event.name}
-        posterMediaId={event.poster_media_id ?? null}
-        canView={poster.canView}
-        canChange={poster.canChange}
-        onSaved={() => flow.mark("poster_saved")}
-      />
-
-      {/* RT-11: the organizer's own text of the buyer letters. The events list is the route that carries it. */}
-      {access.can("event.update") && (
-        <EmailNoteSection
-          key={`${orgId}:${eventId}`}
-          orgId={orgId}
-          eventId={eventId}
-          note={event.email_note}
-          noteFormat={event.email_note_format}
-          canEdit
-          onSaved={() => flow.mark("note_saved")}
-        />
-      )}
-
-      {/* Spec 52: "Refer a friend". The route's own gate for looking is promo.read. */}
-      {canViewReferral(access.can) && (
-        <ReferralSection
-          // Its own key: the neighbouring sections share one, and two children with the same key are drawn twice.
-          key={`referral:${orgId}:${eventId}`}
-          orgId={orgId}
-          target={{ kind: "event", eventId }}
-          canManage={canManageReferral(access.can)}
-          timezone={refs.find((r) => r.tz !== null)?.tz ?? undefined}
-        />
-      )}
-
-      {canSales && (
-        <section aria-labelledby="event-totals">
-          <h2 id="event-totals">
-            {t("event.totals")}
-            <HelpPopover textKey="help.eventSales" testId="help-event-sales" />
-          </h2>
-          {summary.isLoading && <Loading />}
-          {summary.error !== null && <ErrorBox error={summary.error} onRetry={() => void summary.refetch()} />}
-          {summary.data !== undefined && (
-            <>
-              <SalesFigures
-                places={summary.data.places}
-                money={summary.data.money}
-                entered={summary.data.entered}
-                invitations={summary.data.complimentary.tickets}
-              />
-              <TiersTable summary={summary.data} />
-            </>
-          )}
-        </section>
-      )}
       {!canSales && (
         <p className="notice" data-testid="no-sales-note">
           {t(canSessions ? "event.noSales" : "event.noSessions", { org: orgName })}
         </p>
       )}
 
-      {canPageStats && <PageStats orgId={orgId} eventId={eventId} />}
-
-      {(canSales || canSessions) && (
-        <section aria-labelledby="event-sessions">
-          <h2 id="event-sessions">{t("event.sessions")}</h2>
-          {sessions.isLoading && <Loading />}
-          {refs.length === 0 && !summary.isLoading && !sessions.isLoading && <Empty>{t("events.noDate")}</Empty>}
-          <ul className="cards" data-testid="session-list">
-            {refs.map((s) => {
-              const fig = summary.data?.sessions.find((x) => x.id === s.id);
-              return (
-                <li key={s.id} className="card" data-testid="session-row">
-                  <Link
-                    to="/o/$orgId/events/$eventId/sessions/$sessionId"
-                    params={{ orgId, eventId, sessionId: s.id }}
-                    className="card-link"
-                  >
-                    <span className="card-title">{formatDateTime(s.startAt, s.tz, locale)}</span>
-                    <span className="card-meta">
-                      {s.venue !== null && <span>{s.venue}</span>}
-                      {s.cancelled && <Badge tone="bad">{t("event.cancelled")}</Badge>}
-                    </span>
-                  </Link>
-                  {fig !== undefined && <SalesFigures places={fig.places} money={fig.money} compact />}
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+      {layout.sections.length > 0 && (
+        <div className="event-sections" data-testid="event-sections" data-order={layout.sections.map((s) => s.id).join(" ")}>
+          {layout.sections.map((s) => (
+            <EventSection
+              key={s.id}
+              id={s.id}
+              title={t(SECTION_TITLE[s.id])}
+              open={sectionState.isOpen(s.id, s.defaultOpen)}
+              onToggle={() => sectionState.toggle(s.id, s.defaultOpen)}
+            >
+              {sectionBody(s.items)}
+            </EventSection>
+          ))}
+        </div>
       )}
-
-      <MaterialsSection
-        key={`${orgId}:${eventId}`}
-        orgId={orgId}
-        eventId={eventId}
-        status={event.status}
-        publicUrl={event.public_url}
-        can={access.can}
-      />
+      <ScrollToAnchor hash={hash} open={hashOpen} />
     </article>
   );
 }

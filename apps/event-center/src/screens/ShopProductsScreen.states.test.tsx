@@ -12,6 +12,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/screens/OrgLayout", () => ({
   useOrg: () => ({ orgId: "11111111-1111-4111-8111-111111111111", access: { can: () => true, data: { platform_superadmin: false } } }),
 }));
+// "What is here?" reads /v1/me, which this unit test has no client for. It has its own test.
+vi.mock("@/components/ScreenHelp", () => ({ ScreenHelp: () => null }));
 vi.mock("@/lib/api/shopApi", () => ({
   listShopProducts: vi.fn(),
   fetchShopSettings: vi.fn(),

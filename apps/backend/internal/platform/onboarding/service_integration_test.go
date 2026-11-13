@@ -181,7 +181,7 @@ func TestLifecycle_DraftToApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_, _ = pool.Exec(context.Background(), `DELETE FROM worker_jobs WHERE job_type IN ('onboarding.email', 'onboarding.admin_telegram') AND payload->>'application_id' = $1`, app.ID.String())
+		_, _ = pool.Exec(context.Background(), `DELETE FROM worker_jobs WHERE job_type IN ('onboarding.email', 'onboarding.admin_telegram', 'admin_notify.telegram') AND payload->>'application_id' = $1`, app.ID.String())
 	})
 	if admins > 0 {
 		if len(notifier.messages) != 0 {

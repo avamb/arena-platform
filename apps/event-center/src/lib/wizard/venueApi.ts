@@ -29,6 +29,8 @@ export function wizardVenueApi(locale: () => string): VenueApi {
     },
     createCity: async (orgId, countryId, name) =>
       (await createOrgCity(orgId, { country_id: countryId, name, locale: locale() })).city.id,
-    createVenue: async (orgId, body) => venueChoiceOf((await createVenue(orgId, body)).venue),
+    // A country outside the reference is made by the venue create itself (`country_iso2` + `city_name`),
+    // in the language the person types in; there is no city call for it.
+    createVenue: async (orgId, body) => venueChoiceOf((await createVenue(orgId, body, locale())).venue),
   };
 }

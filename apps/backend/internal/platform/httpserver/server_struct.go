@@ -33,6 +33,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/redissession"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesfunnel"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/textformat"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan"
 )
 
 // Server is the long-lived HTTP listener that hosts the arena-api.
@@ -201,6 +202,9 @@ type Server struct {
 	// Options.PosterReader stub, else the Anthropic reader built from
 	// POSTER_LLM_API_KEY, else nil (the route answers 503). See poster_facts_shims.go.
 	posterReader PosterReader
+	// venuePlanNotifier hears of hall plan intakes (nil = nobody); set with
+	// SetVenuePlanNotifier, see mount_venue_plan.go.
+	venuePlanNotifier venueplan.Notifier
 	// textFormatter formats texts for POST .../texts/format: the Anthropic client
 	// built from the poster key, else nil (the route answers the plain
 	// conversion). Set when the route is mounted, see text_format_shims.go.

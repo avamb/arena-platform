@@ -166,6 +166,20 @@ describe("prefill from the categories", () => {
     expect(out.categories).toBe(3);
   });
 
+  it("a date with ONE category and the right to create more: no pinned prices, 3 categories, price_max from the price", () => {
+    const start = { ...initialValues(alg), categories: 1 };
+    const out = prefillFromTiers(alg, start, [5000], true);
+    expect(out.prices).toBeUndefined();
+    expect(out.categories).toBe(3);
+    expect(out.price_max).toBe(5000);
+    // The algorithm's own count stays when it is above one; a free category gives no price_max.
+    expect(prefillFromTiers(alg, { categories: 4 }, [5000], true).categories).toBe(4);
+    expect(prefillFromTiers(alg, { categories: 4 }, [0], true).price_max).toBeUndefined();
+    // Without the right, or with two categories, today's behaviour.
+    expect(prefillFromTiers(alg, initialValues(alg), [5000]).prices).toEqual([5000]);
+    expect(prefillFromTiers(alg, initialValues(alg), [5000, 3000], true).prices).toEqual([5000, 3000]);
+  });
+
   it("leaves a list that is already set, a list that does not fit and other algorithms alone", () => {
     expect(prefillFromTiers(alg, { prices: [100] }, [5000, 3000]).prices).toEqual([100]);
     expect(prefillFromTiers(alg, {}, Array.from({ length: 16 }, () => 100)).prices).toBeUndefined();
