@@ -16509,6 +16509,8 @@ export interface components {
              * @description Number of the current draft, or null when the intake has no draft.
              */
             current_draft: number | null;
+            /** @description True for a `returned` notice when the current draft was uploaded by an administrator (author `operator` or `operator_svg`) at or after the moment the administrator took the intake; false when the administrator returned the intake without a new draft and for every other kind of notice. */
+            draft_changed: boolean;
             /** @description The administrator's note or reason for the organizer, or null when there is none. */
             note: string | null;
             /** @description Live Telegram chats of the person who sent the intake. The list is empty when that person has no live bot link; the notice is then claimed and never comes again. */

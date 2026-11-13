@@ -10,7 +10,7 @@
  * Mock data: NONE. Everything here comes from the live backend.
  */
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ResponsiveTable, type ResponsiveTableColumn } from "@/components/layout";
 import { ApiError, authedFetch } from "@/lib/api/client";
 import {
@@ -115,7 +115,11 @@ export function VerificationTable({
       header: "Plan",
       primary: true,
       renderCell: (r) => (
-        <div data-testid={`venue-plans-verify-row-${r.planId}`}>
+        <div
+          data-testid={`venue-plans-verify-row-${r.planId}`}
+          data-selected={r.planId === selectedId ? "true" : undefined}
+          style={r.planId === selectedId ? { background: "#e0f2fe", padding: 4, borderRadius: 4 } : undefined}
+        >
           <div style={{ fontWeight: 600 }}>{r.name}</div>
           <Pill tone={verificationTone(r.state)}>{verificationLabel(r.state)}</Pill>
           {r.note ? <div style={{ fontSize: 12, color: "#991b1b", marginTop: 2 }}>Note: {r.note}</div> : null}
@@ -406,8 +410,51 @@ export function VerificationFilters(p: VerificationFiltersProps): JSX.Element {
 
 const SEARCH_DEBOUNCE_MS = 300;
 
-export function VerificationPanel(): JSX.Element {
+/** The row of a plan in the list, or null. */
+export function findPlanRow(rows: readonly VerificationRow[], planId: string | undefined): VerificationRow | null {
+  if (planId === undefined) return null;
+  return rows.find((r) => r.planId === planId) ?? null;
+}
+
+export function PlanNotInListNote(): JSX.Element {
+  return (
+    <p style={hintStyle} data-testid="venue-plans-plan-missing">
+      This plan is not in this list. It is possibly verified already. Change the filter to find it.
+    </p>
+  );
+}
+
+/** What GET /v1/seating-plans/{id} gives of a plan that is not among the loaded rows. */
+interface LinkedPlan {
+  readonly id: string;
+  readonly name: string;
+  readonly venue_id: string;
+  readonly current_version_id?: string | null;
+  readonly created_at: string;
+}
+
+/** A row built from a plan read by id: only the name and the version are known. */
+export function rowFromLinkedPlan(p: LinkedPlan): VerificationRow {
+  return {
+    planId: p.id,
+    name: p.name,
+    orgName: "",
+    venueName: "",
+    venueId: p.venue_id,
+    cityName: null,
+    countryIso2: null,
+    seats: null,
+    standing: 0,
+    createdAt: p.created_at,
+    state: null,
+    note: null,
+    currentVersionId: p.current_version_id ?? null,
+  };
+}
+
+export function VerificationPanel({ planId }: { readonly planId?: string } = {}): JSX.Element {
   const queryClient = useQueryClient();
+  const appliedPlanRef = useRef<string | null>(null);
   const [filter, setFilter] = useState<PlanListFilter>(INITIAL_PLAN_FILTER);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<VerificationRow | null>(null);
@@ -480,6 +527,36 @@ export function VerificationPanel(): JSX.Element {
     setMessage(null);
     setActionError(null);
   };
+
+  // The plan of the address: its row when loaded, else the plan read by id (it may be on
+  // another page or filtered out). An unknown id leaves the screen as it is.
+  const linkedRow = findPlanRow(rows, planId);
+  const linkedQuery = useQuery<VerificationRow | null, ApiError>({
+    queryKey: ["admin", "venue-plans", "linked-plan", planId ?? ""],
+    queryFn: async () => {
+      const res = await authedFetch<{ seating_plan: LinkedPlan }>({
+        method: "GET",
+        path: `/v1/seating-plans/${encodeURIComponent(planId ?? "")}`,
+      });
+      return rowFromLinkedPlan(res.seating_plan);
+    },
+    enabled: planId !== undefined && page !== undefined && linkedRow === null,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const linkedFetched = linkedQuery.data ?? null;
+  useEffect(() => {
+    if (planId === undefined || appliedPlanRef.current === planId) return;
+    const target = linkedRow ?? linkedFetched;
+    if (target === null) return;
+    appliedPlanRef.current = planId;
+    setSelected(target);
+    document
+      .querySelector(`[data-testid="venue-plans-verify-row-${CSS.escape(planId)}"]`)
+      ?.scrollIntoView?.({ block: "center" });
+  }, [planId, linkedRow, linkedFetched]);
+  const showMissingNote =
+    planId !== undefined && page !== undefined && linkedRow === null && selected?.planId === planId;
 
   const afterChange = async (row: VerificationRow): Promise<void> => {
     if (selected?.planId === row.planId) setSelected(null);
@@ -560,6 +637,8 @@ export function VerificationPanel(): JSX.Element {
           </button>
         </div>
       ) : null}
+
+      {showMissingNote ? <PlanNotInListNote /> : null}
 
       {page !== undefined ? (
         <>

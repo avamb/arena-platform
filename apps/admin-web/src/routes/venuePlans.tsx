@@ -10,7 +10,7 @@
  *
  * Mock data: NONE. The page hits the live backend.
  */
-import { createRoute, Link } from "@tanstack/react-router";
+import { createRoute, Link, useNavigate, useSearch } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Route as RootRoute } from "./__root";
@@ -47,7 +47,20 @@ export const Route = createRoute({
   getParentRoute: () => RootRoute,
   path: "/venue-plans",
   component: VenuePlansRoute,
+  validateSearch: (raw: Record<string, unknown>): VenuePlansSearch => parseVenuePlansSearch(raw),
 });
+
+export interface VenuePlansSearch {
+  readonly tab?: VenuePlansTab;
+  readonly plan?: string;
+}
+
+/** Reads ?tab=queue|verification and ?plan=<plan id> from the address. */
+export function parseVenuePlansSearch(raw: Record<string, unknown>): VenuePlansSearch {
+  const tab = raw.tab === "queue" || raw.tab === "verification" ? raw.tab : undefined;
+  const plan = typeof raw.plan === "string" && raw.plan.length > 0 ? raw.plan : undefined;
+  return { tab, plan };
+}
 
 const VENUE_PLANS_NAV_ENTRY = NAV_BY_PATH["/venue-plans"];
 if (VENUE_PLANS_NAV_ENTRY === undefined) {
@@ -111,8 +124,12 @@ export function claimedByText(item: Pick<VenuePlanIntakeListItem, "operator_clai
 function VenuePlansPage(): JSX.Element {
   const { permissions } = useAuth();
   const tabs = availableTabs(permissions);
-  const [tab, setTab] = useState<VenuePlansTab | null>(null);
-  const active: VenuePlansTab | null = tab !== null && tabs.includes(tab) ? tab : (tabs[0] ?? null);
+  const search = useSearch({ from: "/venue-plans" }) as VenuePlansSearch;
+  const navigate = useNavigate({ from: "/venue-plans" });
+  const active: VenuePlansTab | null = search.tab !== undefined && tabs.includes(search.tab) ? search.tab : (tabs[0] ?? null);
+  const setTab = (t: VenuePlansTab): void => {
+    void navigate({ search: { tab: t } });
+  };
 
   return (
     <div style={pageStyle} data-testid="venue-plans-page">
@@ -129,7 +146,7 @@ function VenuePlansPage(): JSX.Element {
       <PlansTabs tabs={tabs} active={active} onSelect={setTab} />
 
       {active === "queue" ? <QueuePanel /> : null}
-      {active === "verification" ? <VerificationPanel /> : null}
+      {active === "verification" ? <VerificationPanel planId={search.plan} /> : null}
       {active === null ? <p style={mutedStyle}>Your account has no permission for a tab here. Tell a platform administrator to give you access.</p> : null}
     </div>
   );

@@ -50,6 +50,7 @@ func (h *Handler) HandleClaimVenuePlanNotices(w http.ResponseWriter, r *http.Req
 			"venue_id":          n.VenueID.String(),
 			"venue_name":        n.VenueName,
 			"current_draft":     n.CurrentDraft,
+			"draft_changed":     n.DraftChanged,
 			"note":              n.Note,
 			"telegram_user_ids": chats,
 			"created_at":        n.CreatedAt.UTC().Format(time.RFC3339),

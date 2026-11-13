@@ -59,8 +59,12 @@ func TestVenuePlanGenerateReal(t *testing.T) {
 			t.Fatalf("card %v", card)
 		}
 		svgPath := orgIntakePath(e.orgA, id) + "/drafts/1/svg"
-		if got := e.do(t, http.MethodGet, svgPath, e.ownerA, "", "", nil, nil); got.status != http.StatusOK || !strings.Contains(string(got.body), "<svg") {
+		got := e.do(t, http.MethodGet, svgPath, e.ownerA, "", "", nil, nil)
+		if got.status != http.StatusOK || !strings.Contains(string(got.body), "<svg") {
 			t.Errorf("draft svg %s: %d", svgPath, got.status)
+		}
+		if body := string(got.body); strings.Contains(body, "PLACEHOLDER") || !strings.Contains(body, "Standard") {
+			t.Errorf("draft svg: PLACEHOLDER present %v, Standard present %v", strings.Contains(body, "PLACEHOLDER"), strings.Contains(body, "Standard"))
 		}
 		if e.count(t, `SELECT count(*) FROM venue_plan_notices WHERE intake_id = $1 AND kind = 'draft_ready'`, id) != 1 {
 			t.Errorf("no draft_ready notice")
@@ -77,6 +81,16 @@ func TestVenuePlanGenerateReal(t *testing.T) {
 		}
 		if status != "active" || visibility != "private" || vstate != "unverified" {
 			t.Fatalf("plan %s/%s/%s, want active/private/unverified", status, visibility, vstate)
+		}
+		// The categories of the created plan (the stored geometry is what the
+		// wizard and the session take the category name from).
+		var geometry string
+		if err := e.srv.pgxPool.QueryRow(context.Background(),
+			`SELECT geometry::text FROM seating_plan_versions WHERE seating_plan_id = $1 AND version_number = 1`, planID).Scan(&geometry); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(geometry, "PLACEHOLDER") || !strings.Contains(geometry, "Standard") {
+			t.Errorf("plan geometry: PLACEHOLDER present %v, Standard present %v", strings.Contains(geometry, "PLACEHOLDER"), strings.Contains(geometry, "Standard"))
 		}
 		e.exec(t, `UPDATE venues SET review_status = 'verified', verified_at = now() WHERE id = $1`, e.venueA)
 		templates := "/v1/organizations/" + e.orgB.String() + "/venues/" + e.venueA.String() + "/plan-templates"

@@ -343,6 +343,7 @@ var wizardKeys = []string{
 	"bot.wz.plan_in_waiting",
 	"bot.wz.plan_in_ready",
 	"bot.wz.plan_in_returned",
+	"bot.wz.plan_in_examined",
 	"bot.wz.plan_in_check_btn",
 	"bot.wz.plan_in_summary",
 	"bot.wz.plan_in_warnings",

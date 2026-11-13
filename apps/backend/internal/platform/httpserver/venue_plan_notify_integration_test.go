@@ -466,3 +466,85 @@ func (e *vpnEnv) botDo(t *testing.T, base, token string) vpiResp {
 	raw, _ := io.ReadAll(resp.Body)
 	return vpiResp{status: resp.StatusCode, body: raw, header: resp.Header}
 }
+
+// (f) A returned notice tells whether the administrator uploaded a draft in this
+// round: draft_changed is true for a draft of the administrator made after the
+// claim, false for a draft that was there before it (here a generator draft and
+// an administrator draft older than the claim), and false for every other kind.
+func TestVenuePlanNotify_ReturnedNoticeSaysIfTheDraftChanged(t *testing.T) {
+	e := newVPNEnv(t)
+	const token = "vpn-bot-draft-changed-token"
+	botServer, _ := productionIntegrationServerCfg(t, func(c *config.Config) { c.BotServiceToken = token })
+	botSrv := httptest.NewServer(botServer.Router())
+	t.Cleanup(botSrv.Close)
+
+	ids := map[string]string{}
+	for _, label := range []string{"uploaded", "generator", "older"} {
+		_, tok := e.member(t, e.orgA, "org_admin")
+		res := e.create(t, e.orgA, e.venueA, tok, nil, vpiFile{"plan.pdf", vpiPDF()})
+		if res.status != http.StatusAccepted {
+			t.Fatalf("create %s: %d %s", label, res.status, res.body)
+		}
+		id := res.intake(t)["id"].(string)
+		ids[label] = id
+		e.toOperator(t, id)
+		adm := "/v1/admin/plan-intakes/" + id
+		if r := e.jsonDo(t, http.MethodPost, adm+"/claim", e.super, "taking it", ""); r.status != http.StatusOK {
+			t.Fatalf("claim: %d %s", r.status, r.body)
+		}
+		// The server refuses to return an intake that has no draft at all
+		// (venue_plan_intake.no_draft), so every case has one.
+		draft, _ := json.Marshal(map[string]any{"svg": string(vpiPlanSVG(t)), "note": "drawn"})
+		if r := e.jsonDo(t, http.MethodPost, adm+"/drafts", e.super, "drawn", string(draft)); r.status != http.StatusCreated {
+			t.Fatalf("draft: %d %s", r.status, r.body)
+		}
+		switch label {
+		case "generator":
+			if _, err := e.srv.pgxPool.Exec(context.Background(),
+				`UPDATE venue_plan_drafts SET author = 'generator' WHERE intake_id = $1`, id); err != nil {
+				t.Fatal(err)
+			}
+		case "older":
+			if _, err := e.srv.pgxPool.Exec(context.Background(),
+				`UPDATE venue_plan_drafts SET created_at = created_at - interval '1 hour' WHERE intake_id = $1`, id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if r := e.jsonDo(t, http.MethodPost, adm+"/return", e.super, "ready", `{"note":"Please look again"}`); r.status != http.StatusOK {
+			t.Fatalf("return: %d %s", r.status, r.body)
+		}
+	}
+
+	r := e.botDo(t, botSrv.URL, token)
+	if r.status != http.StatusOK {
+		t.Fatalf("claim: %d %s", r.status, r.body)
+	}
+	got := map[string]map[string]any{}
+	for _, raw := range r.json(t)["notices"].([]any) {
+		n := raw.(map[string]any)
+		changed, ok := n["draft_changed"].(bool)
+		if !ok {
+			t.Fatalf("draft_changed is missing or not a boolean: %v", n)
+		}
+		for label, id := range ids {
+			if n["intake_id"] != id {
+				continue
+			}
+			if n["kind"] == "returned" {
+				got[label] = n
+			} else if changed {
+				t.Errorf("a %v notice must have draft_changed=false: %v", n["kind"], n)
+			}
+		}
+	}
+	want := map[string]bool{"uploaded": true, "generator": false, "older": false}
+	for label, w := range want {
+		n, ok := got[label]
+		if !ok {
+			t.Fatalf("no returned notice for %s in %s", label, r.body)
+		}
+		if n["draft_changed"] != w {
+			t.Errorf("%s: draft_changed = %v, want %v", label, n["draft_changed"], w)
+		}
+	}
+}

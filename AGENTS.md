@@ -479,6 +479,7 @@ Places, categories, hold and quota lock order, plan geometry, seat layouts, venu
 * A seat shows ONE card to the buyer and to the organizer (seat-card.ts)
 * A section or row key is NOT always normalizeKey(name): hash suffix where names collide on a seat
 * A category has ONE colour for the organizer and the buyer: tier colour, else the home plan category's, else the palette
+* The bot's "Split seats by price" fills an EMPTY open category of the same price before creating a new one (loEmptyOpen)
 
 ### [Events, sessions, promoters and sales channels](docs/agents/catalog-sessions-channels.md)
 
@@ -771,3 +772,5 @@ Spec 64: intake states, private plan sources, approve, superadmin verification a
 * A draft SVG of an intake is read by seating.ImportAnySVG (authoring or sbt); the plan version route takes authoring only
 * Only an ACTIVE plan is seen by the queue and by the bot; the library loader activates a plan after its version upload
 * The generator's answer is limited in the client before parsing (SVG 3 MB, preview 10 MB); half-set VENUE_GEN_* is a warning; the test fixture is a copy
+* A returned notice carries draft_changed; the bot says "corrected" only when it is true, else "examined"
+* A generated draft names its category through the worker's target_profile, never the generator's PLACEHOLDER
