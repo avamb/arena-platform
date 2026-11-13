@@ -217,17 +217,19 @@ func planNoticeBot(t *testing.T, arenaURL string) (*Bot, func() []planSent) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Bot{
-			tg:     tg,
-			texts:  NewTexts(bundle),
-			logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-			feed:   newFeedMemory(),
-			arena:  NewArenaClient(arenaURL, "svc", nil),
-		}, func() []planSent {
-			mu.Lock()
-			defer mu.Unlock()
-			return append([]planSent(nil), got...)
-		}
+	bot := &Bot{
+		tg:     tg,
+		texts:  NewTexts(bundle),
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		feed:   newFeedMemory(),
+		arena:  NewArenaClient(arenaURL, "svc", nil),
+	}
+	sent := func() []planSent {
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]planSent(nil), got...)
+	}
+	return bot, sent
 }
 
 func noticeOf(kind string, org uuid.UUID, note string) openapi.BotVenuePlanNotice {
