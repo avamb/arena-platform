@@ -73,14 +73,31 @@ export function prefillFromTiers(
     }
     return next;
   }
+  // The price range of the date (dearest and cheapest category) is the default of the two range fields, so a person who
+  // clears the list and asks for more categories gets a proposal without typing the range. The server ignores the range
+  // while a price list is given.
+  const withRange = (v: FormValues): FormValues => {
+    const valid = tierPrices.filter((n) => Number.isInteger(n) && n >= 0);
+    if (valid.length === 0) return v;
+    const out: FormValues = { ...v };
+    const fill = (name: string, price: number) => {
+      const f = alg.params.find((x) => x.name === name && x.type === "integer" && x.unit === UNIT_MINOR);
+      if (f === undefined || out[f.name] !== undefined) return;
+      if ((typeof f.min === "number" && price < f.min) || (typeof f.max === "number" && price > f.max)) return;
+      out[f.name] = price;
+    };
+    fill("price_max", Math.max(...valid));
+    fill("price_min", Math.min(...valid));
+    return out;
+  };
   const p = alg.params.find((x) => x.name === "prices" && x.type === "integer_list" && x.unit === UNIT_MINOR);
-  if (p === undefined || values[p.name] !== undefined) return values;
+  if (p === undefined || values[p.name] !== undefined) return withRange(values);
   const list = [...tierPrices].filter((n) => Number.isInteger(n) && n >= 0).sort((a, b) => b - a);
   const min = p.min_items ?? 1;
   const max = p.max_items ?? Number.POSITIVE_INFINITY;
-  if (list.length < min || list.length > max) return values;
-  if (list.some((n) => (typeof p.min === "number" && n < p.min) || (typeof p.max === "number" && n > p.max))) return values;
-  const next: FormValues = { ...values, [p.name]: list };
+  if (list.length < min || list.length > max) return withRange(values);
+  if (list.some((n) => (typeof p.min === "number" && n < p.min) || (typeof p.max === "number" && n > p.max))) return withRange(values);
+  const next: FormValues = { ...withRange(values), [p.name]: list };
   // One price per category: the count of categories follows the list, or the server refuses the pair.
   const count = alg.params.find((x) => x.name === "categories" && x.type === "integer");
   if (count !== undefined && (typeof count.min !== "number" || list.length >= count.min) && (typeof count.max !== "number" || list.length <= count.max)) {
