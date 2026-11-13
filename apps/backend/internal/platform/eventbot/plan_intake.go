@@ -464,6 +464,15 @@ func (b *Bot) planStartCollect(ctx context.Context, chatID int64, msgID *int, fr
 	b.reply(ctx, chatID, msgID, text, b.planCollectKeyboard(loc, st))
 }
 
+// planWaitKey is the waiting text of a paused wizard draft: "we are building"
+// while arena's generator works, "with an administrator" otherwise.
+func planWaitKey(state string) string {
+	if state == "received" || state == "generating" {
+		return "bot.wz.plan_in_building"
+	}
+	return "bot.wz.plan_in_waiting"
+}
+
 func openPlanIntakeState(state string) bool {
 	switch state {
 	case "received", "generating", "review", "operator":
@@ -478,6 +487,9 @@ func (b *Bot) planShowOpen(ctx context.Context, chatID int64, msgID *int, id *Id
 	vars := map[string]any{"Venue": Esc(it.VenueName)}
 	var rows [][]models.InlineKeyboardButton
 	key := "bot.wz.plan_in_open_wait"
+	if it.State == "received" || it.State == "generating" {
+		key = "bot.wz.plan_in_open_building"
+	}
 	if it.State == "review" {
 		key = "bot.wz.plan_in_open_review"
 		rows = append(rows, []models.InlineKeyboardButton{piBtn(b.texts.T(loc, "bot.wz.plan_in_check_btn", nil), "rv", it.Id.String())})
@@ -647,7 +659,11 @@ func (b *Bot) planReview(ctx context.Context, chatID int64, msgID *int, from *mo
 		return
 	case "review":
 	default:
-		b.reply(ctx, chatID, msgID, prefix+b.texts.T(loc, "bot.wz.plan_in_open_wait", venue), inline(
+		waitKey := "bot.wz.plan_in_open_wait"
+		if in.State == "received" || in.State == "generating" {
+			waitKey = "bot.wz.plan_in_open_building"
+		}
+		b.reply(ctx, chatID, msgID, prefix+b.texts.T(loc, waitKey, venue), inline(
 			[]models.InlineKeyboardButton{piBtn(b.texts.T(loc, "bot.wz.plan_in_cancel_btn", nil), "cx", in.Id.String())},
 			[]models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"}}))
 		return
@@ -1082,6 +1098,10 @@ func (b *Bot) planNoticeSay(ctx context.Context, tg int64, locale string, link g
 			btn = piBtn(b.texts.T(loc, "bot.wz.plan_in_check_btn", nil), "ro", orgPrefix(n.OrgId), intake)
 		}
 		b.send(ctx, tg, orgLine+b.texts.T(loc, key, vars), inline([]models.InlineKeyboardButton{btn}))
+	case "escalated":
+		// Nothing to press: the draft of the wizard stays paused, the request
+		// is with an administrator now.
+		b.send(ctx, tg, orgLine+b.texts.T(loc, "bot.wz.plan_in_escalated", map[string]any{"Venue": venue}), b.backKeyboard(loc, "home"))
 	case "rejected":
 		if known && !current {
 			text := b.texts.T(loc, "bot.wz.plan_in_rejected_plain", map[string]any{"Venue": venue})

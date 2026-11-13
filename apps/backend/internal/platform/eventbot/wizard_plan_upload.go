@@ -132,7 +132,7 @@ func (w *Wizard) renderPlanUpload(loc string, d *Draft, header func(int, string)
 			}
 			buttons = append(buttons, skip)
 			return Screen{
-				Text: header(2, "bot.wz.title_when") + t("bot.wz.plan_in_waiting", nil),
+				Text: header(2, "bot.wz.title_when") + t(planWaitKey(d.PlanIntakeState), nil),
 				Buttons: nav(
 					buttons...,
 				),

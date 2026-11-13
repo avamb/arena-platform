@@ -231,6 +231,9 @@ const (
 	NoticeReturned   NoticeKind = "returned"
 	NoticeRejected   NoticeKind = "rejected"
 	NoticeApproved   NoticeKind = "approved"
+	// NoticeEscalated: the generator could not build a draft, an
+	// administrator builds the plan now (migration 0217).
+	NoticeEscalated NoticeKind = "escalated"
 )
 
 // VerificationState is seating_plans.verification_state. NULL (no value) is

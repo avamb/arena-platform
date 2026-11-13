@@ -210,6 +210,7 @@ const (
 const (
 	BotVenuePlanNoticeKindApproved   BotVenuePlanNoticeKind = "approved"
 	BotVenuePlanNoticeKindDraftReady BotVenuePlanNoticeKind = "draft_ready"
+	BotVenuePlanNoticeKindEscalated  BotVenuePlanNoticeKind = "escalated"
 	BotVenuePlanNoticeKindRejected   BotVenuePlanNoticeKind = "rejected"
 	BotVenuePlanNoticeKindReturned   BotVenuePlanNoticeKind = "returned"
 )
@@ -5507,7 +5508,7 @@ type BotVenuePlanNotice struct {
 	// IntakeId Id of the intake the notice is about.
 	IntakeId openapi_types.UUID `json:"intake_id"`
 
-	// Kind What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan) or `approved` (an administrator saved the plan).
+	// Kind What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan), `approved` (an administrator saved the plan) or `escalated` (arena could not build a draft, an administrator builds the plan now).
 	Kind BotVenuePlanNoticeKind `json:"kind"`
 
 	// Note The administrator's note or reason for the organizer, or null when there is none.
@@ -5526,7 +5527,7 @@ type BotVenuePlanNotice struct {
 	VenueName string `json:"venue_name"`
 }
 
-// BotVenuePlanNoticeKind What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan) or `approved` (an administrator saved the plan).
+// BotVenuePlanNoticeKind What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan), `approved` (an administrator saved the plan) or `escalated` (arena could not build a draft, an administrator builds the plan now).
 type BotVenuePlanNoticeKind string
 
 // BotVenuePlanNoticesResponse Answer of POST /v1/bot/venue-plan-notices/claim.

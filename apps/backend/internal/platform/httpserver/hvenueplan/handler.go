@@ -31,7 +31,6 @@ package hvenueplan
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -49,6 +48,7 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/logging"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/intake"
 )
 
 // maxJSONBody caps the JSON bodies of the action routes.
@@ -227,20 +227,9 @@ func (h *Handler) auditEvent(ctx context.Context, r *http.Request, action string
 	}
 }
 
-// moveState moves the locked intake from its state to `to`, checking the
-// state machine first. ok=false: the move is not allowed (the caller answers
-// 409 venue_plan_intake.wrong_state).
-func moveState(ctx context.Context, q *gen.Queries, in gen.VenuePlanIntakeRow, to venueplan.State, p gen.UpdateVenuePlanIntakeStateParams) (gen.VenuePlanIntakeRow, bool, error) {
-	if !venueplan.CanTransition(venueplan.State(in.State), to) {
-		return in, false, nil
-	}
-	p.ID, p.From, p.To = in.ID, in.State, string(to)
-	out, err := q.UpdateVenuePlanIntakeState(ctx, p)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return in, false, nil
-	}
-	return out, err == nil, err
-}
+// moveState is intake.MoveState, the one guarded state move shared with the
+// worker. ok=false: the caller answers 409 venue_plan_intake.wrong_state.
+var moveState = intake.MoveState
 
 func wrongState(w http.ResponseWriter, r *http.Request, state string) {
 	writeErrDetails(w, r, http.StatusConflict, "venue_plan_intake.wrong_state",

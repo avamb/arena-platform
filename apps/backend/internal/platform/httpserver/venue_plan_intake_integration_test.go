@@ -91,6 +91,8 @@ func newVPIEnv(t *testing.T) *vpiEnv {
 		pool := srv.pgxPool
 		for _, org := range []uuid.UUID{e.orgA, e.orgB} {
 			_, _ = pool.Exec(c, `DELETE FROM billable_events WHERE org_id = $1`, org)
+			_, _ = pool.Exec(c, `DELETE FROM worker_jobs WHERE job_type IN ('venue_plan.generate', 'venue_plan.notify')
+				AND payload->>'intake_id' IN (SELECT id::text FROM venue_plan_intakes WHERE org_id = $1)`, org)
 			_, _ = pool.Exec(c, `DELETE FROM venue_plan_intakes WHERE org_id = $1`, org)
 			_, _ = pool.Exec(c, `UPDATE seating_plans SET current_version_id = NULL WHERE owner_org_id = $1`, org)
 			_, _ = pool.Exec(c, `DELETE FROM seating_plan_versions WHERE seating_plan_id IN (SELECT id FROM seating_plans WHERE owner_org_id = $1)`, org)
@@ -315,9 +317,11 @@ func TestVenuePlanIntake_FilesToAdministratorAndApproval(t *testing.T) {
 	}
 	in := res.intake(t)
 	id := in["id"].(string)
-	if in["state"] != "operator" || in["escalation_reason"] != "no_generator" || in["venue_name"] != "VPI Hall A" {
+	// Wave 2: the intake waits for the generator job; this worker has none.
+	if in["state"] != "received" || in["escalation_reason"] != nil || in["venue_name"] != "VPI Hall A" {
 		t.Fatalf("new intake: %v", in)
 	}
+	e.toOperator(t, id)
 	jpg := sourceOf(t, in, "jpeg")
 	sourceOf(t, in, "pdf")
 
@@ -380,7 +384,7 @@ func TestVenuePlanIntake_FilesToAdministratorAndApproval(t *testing.T) {
 	if c := r.intake(t); c["state"] != "operator" || c["current_draft"] != float64(1) {
 		t.Fatalf("after draft: %v", c)
 	}
-	if e.count(t, `SELECT count(*) FROM venue_plan_notices WHERE intake_id = $1`, id) != 0 {
+	if e.count(t, `SELECT count(*) FROM venue_plan_notices WHERE intake_id = $1 AND kind <> 'escalated'`, id) != 0 {
 		t.Error("a draft upload wrote a notice")
 	}
 	r = e.jsonDo(t, http.MethodPost, adm+"/return", e.super, "ready", `{"note":"Please check the balcony"}`)
@@ -446,6 +450,7 @@ func TestVenuePlanIntake_FilesToAdministratorAndApproval(t *testing.T) {
 func TestVenuePlanIntake_BadAdminDraftStoresNothing(t *testing.T) {
 	e := newVPIEnv(t)
 	id := e.create(t, e.orgA, e.venueA, e.ownerA, nil, vpiFile{"plan.pdf", vpiPDF()}).intake(t)["id"].(string)
+	e.toOperator(t, id)
 	adm := "/v1/admin/plan-intakes/" + id
 	if r := e.jsonDo(t, http.MethodPost, adm+"/claim", e.super, "taking it", ""); r.status != http.StatusOK {
 		t.Fatalf("claim: %d %s", r.status, r.body)
@@ -641,6 +646,7 @@ func TestVenuePlanIntake_AdminGate(t *testing.T) {
 	e := newVPIEnv(t)
 	in := e.create(t, e.orgA, e.venueA, e.ownerA, nil, vpiFile{"plan.pdf", vpiPDF()}).intake(t)
 	id := in["id"].(string)
+	e.toOperator(t, id)
 	adm := "/v1/admin/plan-intakes/" + id
 	src := adm + "/sources/" + in["sources"].([]any)[0].(map[string]any)["id"].(string)
 	if r := e.do(t, http.MethodGet, "/v1/admin/plan-intakes", e.ownerA, "", "", nil, nil); r.status != http.StatusForbidden {
