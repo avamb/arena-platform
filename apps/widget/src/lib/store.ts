@@ -197,6 +197,45 @@ export function planlessGaTiers(
 }
 
 /**
+ * First GA tier a buyer can actually take now: open, inside its sale window,
+ * with at least one place left. Used to preselect quantity 1 so the sticky
+ * cart bar is visible at once. `available` null/undefined means the session
+ * reports no per-category places, so `capacity` (when 0) is the only bound.
+ */
+export function firstPurchasableGaTier(tiers: readonly Tier[], now: number = Date.now()): Tier | null {
+  for (const t of tiers) {
+    if (t.is_open === false) continue;
+    if (typeof t.available === 'number') {
+      if (t.available <= 0) continue;
+    } else if (t.capacity === 0) {
+      continue;
+    }
+    if (t.sale_window_start && Date.parse(t.sale_window_start) > now) continue;
+    if (t.sale_window_end && Date.parse(t.sale_window_end) <= now) continue;
+    return t;
+  }
+  return null;
+}
+
+/**
+ * Decides the one-time GA preselection. Returns the quantities map to apply,
+ * or null when nothing should change (nothing GA, a selection already exists,
+ * or no tier is purchasable).
+ */
+export function gaPreselection(
+  tiers: readonly Tier[],
+  currentGa: ReadonlyMap<string, number>,
+  seatCount: number,
+  now: number = Date.now(),
+): Map<string, number> | null {
+  if (seatCount > 0) return null;
+  for (const q of currentGa.values()) if (q > 0) return null;
+  const tier = firstPurchasableGaTier(tiers, now);
+  if (!tier) return null;
+  return new Map([[tier.id, 1]]);
+}
+
+/**
  * A GA area that renders as a clickable polygon on the seat map (AB-40D).
  *
  * The widget spec (08_architecture/16_ticket_widget_ux_and_technology_ru.md
