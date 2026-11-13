@@ -2,9 +2,11 @@
  * Twin test "Seating plan: upload and review" (spec 64 sections 2.1 to 2.5) on the
  * three roles of one organization, against a REAL arena-api.
  *
- * Wave 1 of the server has NO generator: a PDF, a picture or a spreadsheet goes
- * to a platform administrator at once (state `operator`), and a source SVG that
- * imports cleanly becomes draft 1 and waits for the organizer's check (state
+ * Since wave 2 the create route leaves a PDF, a picture or a spreadsheet in state
+ * `received` and the worker job venue_plan.generate moves it on. The harness
+ * starts arena-api only, no worker, so such an upload stays `received` (the page
+ * says "We make the seating plan"). A source SVG that imports cleanly becomes
+ * draft 1 inside the create route and waits for the organizer's check (state
  * `review`). The cases below use exactly those two paths.
  *
  * The spec makes its own venue (a fresh name per run) with the owner's token, so
@@ -122,7 +124,7 @@ async function uploadFromCard(page: Page, files: { name: string; mimeType: strin
 }
 
 test.describe("seating plan upload and review (live)", () => {
-  test("the owner uploads a PDF, sees that an administrator builds the plan, and cancels", async ({ page, request }) => {
+  test("the owner uploads a PDF, sees that the plan is being built (no worker in the harness), and cancels", async ({ page, request }) => {
     const hallId = await ensureHall(request);
     await signInAs(page, person(env, "org_admin"));
     await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
@@ -130,21 +132,22 @@ test.describe("seating plan upload and review (live)", () => {
     await expect(page.getByTestId("venue-plan-slot-none")).toBeVisible();
 
     await uploadFromCard(page, [{ name: "hall.pdf", mimeType: "application/pdf", buffer: TINY_PDF }]);
-    await expect(page.getByTestId("intake-waiting-operator")).toContainText("An administrator makes the seating plan");
-    await expect(page.getByTestId("intake-waiting-operator")).toContainText("one business day");
+    await expect(page.getByTestId("intake-waiting-generator")).toContainText("We make the seating plan");
+    await expect(page.getByTestId("intake-waiting-generator")).toContainText("up to 5 minutes");
     const id = /plan-intakes\/([^/?]+)/.exec(page.url())?.[1] ?? "";
     expect(id).not.toBe("");
 
-    // The platform's own view of it: it went to an administrator at once.
+    // The platform's own view of it: the create route leaves the intake `received`; only the worker
+    // job venue_plan.generate moves it on, and the harness starts no worker.
     const card = await intakeCard(request, id);
-    expect(card.state).toBe("operator");
-    expect(card.escalation_reason).toBe("no_generator");
+    expect(card.state).toBe("received");
+    expect(card.escalation_reason).toBeNull();
 
     // The venue card says the same and links to the page.
     await openCard(page, hallId);
-    await expect(page.getByTestId("venue-plan-slot-running")).toContainText("With an administrator");
+    await expect(page.getByTestId("venue-plan-slot-running")).toContainText("The upload has the status: File received.");
     await page.getByTestId("venue-plan-slot-open").click();
-    await expect(page.getByTestId("intake-waiting-operator")).toBeVisible();
+    await expect(page.getByTestId("intake-waiting-generator")).toBeVisible();
 
     // Cancel with one confirm press.
     await page.getByTestId("intake-cancel").click();

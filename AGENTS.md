@@ -774,3 +774,4 @@ Spec 64: intake states, private plan sources, approve, superadmin verification a
 * The generator's answer is limited in the client before parsing (SVG 3 MB, preview 10 MB); half-set VENUE_GEN_* is a warning; the test fixture is a copy
 * A returned notice carries draft_changed; the bot says "corrected" only when it is true, else "examined"
 * A generated draft names its category through the worker's target_profile, never the generator's PLACEHOLDER
+* The live twin harness runs no worker: a PDF intake stays received there; re-run live specs after merging a change of states
