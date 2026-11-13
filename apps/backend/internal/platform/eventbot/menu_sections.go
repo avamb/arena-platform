@@ -145,6 +145,7 @@ func (b *Bot) menuSectionCallback(ctx context.Context, chatID int64, msgID int, 
 	}
 	var text string
 	var rows [][]button
+	helpScreen := "" // the sections that have a help (screen_help.go)
 	switch data {
 	case "ord":
 		if !canViewSales(id) {
@@ -152,6 +153,7 @@ func (b *Bot) menuSectionCallback(ctx context.Context, chatID int64, msgID int, 
 			return
 		}
 		text, rows = b.texts.T(loc, "bot.mn.orders_title", nil), b.ordersSectionRows(ctx, loc, id, jwt)
+		helpScreen = hpOrders
 	case "pro":
 		rows = b.promoSectionRows(loc, id)
 		if len(rows) == 0 {
@@ -159,28 +161,21 @@ func (b *Bot) menuSectionCallback(ctx context.Context, chatID int64, msgID int, 
 			return
 		}
 		text = b.texts.T(loc, "bot.mn.promo_title", nil)
+		helpScreen = hpPromoSec
 	case "door":
 		text, rows = b.texts.T(loc, "bot.mn.door_title", nil), b.doorSectionRows(loc, id)
+		helpScreen = hpDoor
 	case "set":
 		text, rows = b.texts.T(loc, "bot.mn.settings_title", nil), b.settingsSectionRows(ctx, loc, id, jwt)
+		helpScreen = hpSettings
 	case "mail":
 		if !canViewSales(id) {
 			noRights()
 			return
 		}
-		text = b.texts.T(loc, "bot.mn.mail_text", nil)
-		if row := b.webMenuRow(loc, id); row != nil {
-			rows = append(rows, row)
-		}
+		text, rows = b.webSectionText(loc, id, "bot.mn.mail_text")
 	case "ven":
-		if id.Superadmin {
-			noRights()
-			return
-		}
-		text = b.texts.T(loc, "bot.mn.venues_text", nil)
-		if row := b.webMenuRow(loc, id); row != nil {
-			rows = append(rows, row)
-		}
+		text, rows = b.webSectionText(loc, id, "bot.mn.venues_text")
 	case "gl":
 		if !canViewSales(id) {
 			noRights()
@@ -196,21 +191,36 @@ func (b *Bot) menuSectionCallback(ctx context.Context, chatID int64, msgID int, 
 	default:
 		return
 	}
+	if helpScreen != "" {
+		rows = append(rows, b.helpRow(loc, helpScreen, ""))
+	}
 	rows = append(rows, b.mnHomeRow(loc))
 	b.reply(ctx, chatID, &msgID, text, &models.InlineKeyboardMarkup{InlineKeyboard: rows})
+}
+
+// webSectionText is a section whose work is done in the browser: its text and
+// the "Open in browser" button. A platform superadmin has no link (webMenuRow),
+// so he gets his own variant of the text (<key>_super), which does not send him
+// to the browser, and no button.
+func (b *Bot) webSectionText(loc string, id *Identity, textKey string) (string, [][]button) {
+	if row := b.webMenuRow(loc, id); row != nil {
+		return b.texts.T(loc, textKey, nil), [][]button{row}
+	}
+	return b.texts.T(loc, textKey+"_super", nil), nil
 }
 
 // ordersSectionRows: Orders, Refunds, and Payment disputes when the
 // organization has any.
 func (b *Bot) ordersSectionRows(ctx context.Context, loc string, id *Identity, jwt string) [][]button {
-	rows := [][]button{b.mnBtn(loc, "bot.ord.btn", "or:new")}
-	if row := b.queueMenuRow(loc, id); row != nil {
-		rows = append(rows, row)
-	}
-	if row := b.disputeSectionRow(ctx, loc, id, jwt); row != nil {
-		rows = append(rows, row)
-	}
-	return rows
+	return b.ordersSectionItems(ctx, loc, id, jwt).rows()
+}
+
+func (b *Bot) ordersSectionItems(ctx context.Context, loc string, id *Identity, jwt string) screenItems {
+	var items screenItems
+	items.add("so.orders", b.mnBtn(loc, "bot.ord.btn", "or:new"))
+	items.add("so.refunds", b.queueMenuRow(loc, id))
+	items.add("so.disputes", b.disputeSectionRow(ctx, loc, id, jwt))
+	return items
 }
 
 // disputeSectionRow is the disputes button: hidden while the organization has
@@ -237,62 +247,66 @@ func (b *Bot) disputeSectionRow(ctx context.Context, loc string, id *Identity, j
 // promoSectionRows are the rows of the Promotion section for this role; none
 // means the section is not shown.
 func (b *Bot) promoSectionRows(loc string, id *Identity) [][]button {
-	var rows [][]button
-	if row := b.promoMenuRow(loc, id); row != nil {
-		rows = append(rows, row)
-	}
+	return b.promoSectionItems(loc, id).rows()
+}
+
+func (b *Bot) promoSectionItems(loc string, id *Identity) screenItems {
+	var items screenItems
+	items.add("sp.promo", b.promoMenuRow(loc, id))
 	if canInvite(id) {
-		rows = append(rows, b.mnBtn(loc, "bot.inv.btn", "iv:new"))
+		items.add("sp.invite", b.mnBtn(loc, "bot.inv.btn", "iv:new"))
 	}
-	if row := b.salesLinkMenuRow(loc, id); row != nil {
-		rows = append(rows, row)
+	items.add("sp.link", b.salesLinkMenuRow(loc, id))
+	if canViewSales(id) { // a platform superadmin sees it too: its screen names the admin console
+		items.add("sp.mail", b.mnBtn(loc, "bot.mn.mail_btn", "mn:mail"))
 	}
-	if canViewSales(id) && b.webMenuRow(loc, id) != nil {
-		rows = append(rows, b.mnBtn(loc, "bot.mn.mail_btn", "mn:mail"))
-	}
-	return rows
+	return items
 }
 
 func (b *Bot) doorSectionRows(loc string, id *Identity) [][]button {
-	rows := [][]button{b.scannerRow(loc)}
+	return b.doorSectionItems(loc, id).rows()
+}
+
+func (b *Bot) doorSectionItems(loc string, id *Identity) screenItems {
+	var items screenItems
+	items.add("sd.scanner", b.scannerRow(loc))
 	if canViewSales(id) {
-		rows = append(rows, b.mnBtn(loc, "bot.mn.guests_btn", "mn:gl"))
+		items.add("sd.guests", b.mnBtn(loc, "bot.mn.guests_btn", "mn:gl"))
 	}
-	return rows
+	return items
 }
 
 // settingsSectionRows: the owner's own tools, the team, and the person's own
 // settings.
 func (b *Bot) settingsSectionRows(ctx context.Context, loc string, id *Identity, jwt string) [][]button {
-	var rows [][]button
-	if row := b.orgDataMenuRow(loc, id); row != nil {
-		rows = append(rows, row)
-	}
+	return b.settingsSectionItems(ctx, loc, id, jwt).rows()
+}
+
+func (b *Bot) settingsSectionItems(ctx context.Context, loc string, id *Identity, jwt string) screenItems {
+	var items screenItems
+	items.add("ss.org", b.orgDataMenuRow(loc, id))
 	if isOwner(id) || id.Superadmin {
-		rows = append(rows, b.mnBtn(loc, "bot.mn.pay_btn", "mn:pay"))
+		items.add("ss.pay", b.mnBtn(loc, "bot.mn.pay_btn", "mn:pay"))
 	}
 	if isOwner(id) {
 		// An owner who is still alone goes straight into the invite dialog: a
 		// Team screen would list only themselves.
 		if b.ownerIsAlone(ctx, id, jwt) {
-			rows = append(rows, b.mnBtn(loc, "bot.btn_team_add", "team:invite"))
+			items.add("ss.team_add", b.mnBtn(loc, "bot.btn_team_add", "team:invite"))
 		} else {
-			rows = append(rows, b.mnBtn(loc, "bot.btn_team", "team"))
+			items.add("ss.team", b.mnBtn(loc, "bot.btn_team", "team"))
 		}
 	} else if isTeamReader(id) { // the manager reads the team, never changes it (V-11)
-		rows = append(rows, b.mnBtn(loc, "bot.btn_team", "team"))
+		items.add("ss.team", b.mnBtn(loc, "bot.btn_team", "team"))
 	}
-	if row := b.promoterMenuRow(loc, id); row != nil {
-		rows = append(rows, row)
-	}
-	if b.webMenuRow(loc, id) != nil {
-		rows = append(rows, b.mnBtn(loc, "bot.mn.venues_btn", "mn:ven"))
-	}
-	rows = append(rows, b.mnBtn(loc, "bot.ec.notif_btn", "ec:nt"), b.mnBtn(loc, "bot.btn_lang", "lang"))
+	items.add("ss.promoter", b.promoterMenuRow(loc, id))
+	items.add("ss.venues", b.mnBtn(loc, "bot.mn.venues_btn", "mn:ven")) // every role: the screen says where it is done
+	items.add("ss.notif", b.mnBtn(loc, "bot.ec.notif_btn", "ec:nt"))
+	items.add("ss.lang", b.mnBtn(loc, "bot.btn_lang", "lang"))
 	if len(id.Memberships) > 1 {
-		rows = append(rows, b.mnBtn(loc, "bot.btn_org", "org"))
+		items.add("ss.switch", b.mnBtn(loc, "bot.btn_org", "org"))
 	}
-	return rows
+	return items
 }
 
 // paymentsSectionText says whether the organization can take money.

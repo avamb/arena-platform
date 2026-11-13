@@ -19,6 +19,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"sync"
 	"unicode/utf8"
 
 	tgbot "github.com/go-telegram/bot"
@@ -49,7 +50,47 @@ var cardGroupKeys = []string{
 	"bot.ec.g.link_btn", "bot.ec.g.sales_btn", "bot.ec.g.edit_btn", "bot.ec.g.promo_btn", "bot.ec.g.more_btn",
 	"bot.ec.g.cat_btn", "bot.ec.g.guests_btn", "bot.ec.g.link_more_btn", "bot.ec.g.screen",
 	"bot.ec.g.s_text", "bot.ec.g.e_text", "bot.ec.g.p_text", "bot.ec.g.m_text",
-	"bot.ec.g.link_text", "bot.ec.g.link_text_noqr", "bot.ec.g.link_none",
+	"bot.ec.g.link_text", "bot.ec.g.link_text_noqr", "bot.ec.g.link_text_nocode", "bot.ec.g.link_none", "bot.ec.g.ql_btn",
+}
+
+// maxSalesLinkPages bounds the walk through the links of one event.
+const maxSalesLinkPages = 100
+
+// keyedMutex is one mutex per key; the zero value is ready. An entry lives
+// only while somebody holds or waits for it.
+type keyedMutex struct {
+	mu sync.Mutex
+	m  map[uuid.UUID]*keyedMutexEntry
+}
+
+type keyedMutexEntry struct {
+	mu   sync.Mutex
+	refs int
+}
+
+// lock takes the mutex of key and returns the function that releases it.
+func (k *keyedMutex) lock(key uuid.UUID) func() {
+	k.mu.Lock()
+	if k.m == nil {
+		k.m = map[uuid.UUID]*keyedMutexEntry{}
+	}
+	e := k.m[key]
+	if e == nil {
+		e = &keyedMutexEntry{}
+		k.m[key] = e
+	}
+	e.refs++
+	k.mu.Unlock()
+	e.mu.Lock()
+	return func() {
+		e.mu.Unlock()
+		k.mu.Lock()
+		e.refs--
+		if e.refs == 0 {
+			delete(k.m, key)
+		}
+		k.mu.Unlock()
+	}
 }
 
 func init() { MessageKeys = append(MessageKeys, cardGroupKeys...) }
@@ -94,20 +135,28 @@ func cardCanPublish(id *Identity, f cardFacts) bool {
 // archived one with its sales. The rest follow in the same order, and a button
 // with nothing behind it is not shown.
 func (b *Bot) cardRows(loc string, id *Identity, eventID uuid.UUID, f cardFacts) [][]models.InlineKeyboardButton {
-	var rows [][]models.InlineKeyboardButton
+	return b.cardItems(loc, id, eventID, f).rows()
+}
+
+// cardItems is the list of the card's buttons: the keyboard and the help of the
+// card are both made from it.
+func (b *Bot) cardItems(loc string, id *Identity, eventID uuid.UUID, f cardFacts) screenItems {
+	var items screenItems
 	if cardCanPublish(id, f) {
-		rows = append(rows, b.mnBtn(loc, "bot.evs.publish_btn", "ec:ev:"+eventID.String()+":"+evsActPublish))
+		items.add("ec.publish", b.mnBtn(loc, "bot.evs.publish_btn", "ec:ev:"+eventID.String()+":"+evsActPublish))
 	}
 	order := []string{cardLinkKind, cardGroupSales, cardGroupEdit, cardGroupPromo, cardGroupMore}
 	if f.past() {
 		order = []string{cardGroupSales, cardLinkKind, cardGroupEdit, cardGroupPromo, cardGroupMore}
 	}
 	for _, kind := range order {
-		if row := b.cardTopButton(loc, id, eventID, kind, f); row != nil {
-			rows = append(rows, row)
+		itemID := "ec." + kind
+		if kind == cardLinkKind {
+			itemID = "ec.link"
 		}
+		items.add(itemID, b.cardTopButton(loc, id, eventID, kind, f))
 	}
-	return rows
+	return items
 }
 
 // cardTopButton is one of the five buttons, or nil when it has nothing to open.
@@ -118,7 +167,7 @@ func (b *Bot) cardTopButton(loc string, id *Identity, eventID uuid.UUID, kind st
 		}
 		return b.mnBtn(loc, "bot.ec.g.link_btn", "ec:"+cardLinkKind+":"+eventID.String())
 	}
-	if len(b.cardGroupRows(loc, id, eventID, kind, f)) == 0 {
+	if len(b.cardGroupItems(loc, id, eventID, kind, f)) == 0 {
 		return nil
 	}
 	return b.mnBtn(loc, cardGroupTitleKey(kind), cardGroupData(eventID, kind))
@@ -153,57 +202,67 @@ func cardGroupTextKey(group string) string {
 // cardGroupRows is the buttons inside one group, for this role and this event.
 // Each carries the callback it always had, so an old message keeps working.
 func (b *Bot) cardGroupRows(loc string, id *Identity, eventID uuid.UUID, group string, f cardFacts) [][]models.InlineKeyboardButton {
+	return b.cardGroupItems(loc, id, eventID, group, f).rows()
+}
+
+// statusItemIDs maps the status buttons of the More group to their help ids.
+var statusItemIDs = map[string]string{
+	evsActPublish: "gm.publish", evsActOff: "gm.off", evsActArchive: "gm.archive", evsActDelete: "gm.delete",
+}
+
+// cardGroupItems is the list of one group's buttons: the keyboard and the help
+// of the group are both made from it.
+func (b *Bot) cardGroupItems(loc string, id *Identity, eventID uuid.UUID, group string, f cardFacts) screenItems {
 	ev := eventID.String()
-	var rows [][]models.InlineKeyboardButton
-	add := func(row []models.InlineKeyboardButton) {
-		if row != nil {
-			rows = append(rows, row)
-		}
-	}
+	var items screenItems
 	switch group {
 	case cardGroupSales:
 		if !canViewSales(id) {
 			return nil
 		}
-		add(b.mnBtn(loc, "bot.ec.summary_btn", "ec:es:"+ev))
-		add(b.mnBtn(loc, "bot.ord.btn", "or:e:"+ev))
-		add(b.mnBtn(loc, "bot.ec.g.guests_btn", "ec:gl:"+ev))
-		add(b.mnBtn(loc, "bot.ec.csv_btn", "ec:ce:"+ev))
+		items.add("gs.summary", b.mnBtn(loc, "bot.ec.summary_btn", "ec:es:"+ev))
+		items.add("gs.orders", b.mnBtn(loc, "bot.ord.btn", "or:e:"+ev))
+		items.add("gs.guests", b.mnBtn(loc, "bot.ec.g.guests_btn", "ec:gl:"+ev))
+		items.add("gs.csv", b.mnBtn(loc, "bot.ec.csv_btn", "ec:ce:"+ev))
 		if f.Dates > 1 {
-			add([]models.InlineKeyboardButton{{
+			items.add("gs.dates", []models.InlineKeyboardButton{{
 				Text: b.texts.T(loc, "bot.ec.dates_btn", map[string]any{"N": f.Dates}), CallbackData: "ec:o:" + ev + ":1",
 			}})
 		}
 	case cardGroupEdit:
-		add(b.mnBtn(loc, "bot.wz.edit_btn", "wz:edit:"+ev))
-		add(b.mnBtn(loc, "bot.ses.open_btn", "ses:list:"+ev))
+		items.add("ge.edit", b.mnBtn(loc, "bot.wz.edit_btn", "wz:edit:"+ev))
+		items.add("ge.sessions", b.mnBtn(loc, "bot.ses.open_btn", "ses:list:"+ev))
 		if f.SingleLive { // the categories of an event with one live date (EC-15)
 			if row := b.categoryEventRow(loc, id, eventID); row != nil {
 				row[0].Text = b.texts.T(loc, "bot.ec.g.cat_btn", nil)
-				add(row)
+				items.add("ge.cat", row)
 			}
 		}
-		add(b.materialsEventRow(loc, eventID))
-		add(b.mnBtn(loc, "bot.sample_btn", "sample:"+ev))
+		items.add("ge.materials", b.materialsEventRow(loc, eventID))
+		items.add("ge.sample", b.mnBtn(loc, "bot.sample_btn", "sample:"+ev))
 		if canViewSales(id) { // the owner, the manager and the operator write the text of the e-mail (RT-06)
-			add(b.mnBtn(loc, "bot.tf.event_btn", "tf:n:"+ev))
+			items.add("ge.text", b.mnBtn(loc, "bot.tf.event_btn", "tf:n:"+ev))
 		}
-		add(b.promoterEventRow(loc, id, eventID))
+		items.add("ge.promoter", b.promoterEventRow(loc, id, eventID))
 	case cardGroupPromo:
-		add(b.promoEventRow(loc, id, eventID))
+		items.add("gp.promo", b.promoEventRow(loc, id, eventID))
 		if canInvite(id) {
-			add(b.mnBtn(loc, "bot.inv.btn", "iv:e:"+ev))
+			items.add("gp.invite", b.mnBtn(loc, "bot.inv.btn", "iv:e:"+ev))
 		}
-		add(b.referralEventRow(loc, id, eventID))
+		if canSalesLinks(id) { // the "QR / link" dialog also for an event that has no public link yet
+			items.add("gp.links", b.mnBtn(loc, "bot.ec.g.ql_btn", "ql:e:"+ev))
+		}
+		items.add("gp.referral", b.referralEventRow(loc, id, eventID))
 	case cardGroupMore:
-		add(b.mnBtn(loc, "bot.wz.copy_btn", "wz:copy:"+ev))
+		items.add("gm.copy", b.mnBtn(loc, "bot.wz.copy_btn", "wz:copy:"+ev))
 		for _, row := range b.eventStatusRows(loc, id, f.Status, eventID) {
 			for _, btn := range row {
-				rows = append(rows, []models.InlineKeyboardButton{btn})
+				act := strings.TrimPrefix(btn.CallbackData, "ec:ev:"+ev+":")
+				items.add(statusItemIDs[act], []models.InlineKeyboardButton{btn})
 			}
 		}
 	}
-	return rows
+	return items
 }
 
 // cardEvent finds one event in the organization's list.
@@ -272,6 +331,7 @@ func (b *Bot) showCardGroup(ctx context.Context, chatID int64, editMsgID *int, f
 	text := b.texts.T(loc, "bot.ec.g.screen", map[string]any{
 		"Name": Esc(event.Name), "Title": b.texts.T(loc, cardGroupTitleKey(group), nil), "Text": b.texts.T(loc, cardGroupTextKey(group), nil),
 	})
+	rows = append(rows, b.helpRow(loc, helpGroupScreen(group), eventID.String()))
 	rows = append(rows, b.cardBackRows(loc, eventID)...)
 	b.reply(ctx, chatID, editMsgID, text, &models.InlineKeyboardMarkup{InlineKeyboard: rows})
 }
@@ -302,8 +362,16 @@ func (b *Bot) sendBuyersLink(ctx context.Context, chatID int64, editMsgID *int, 
 		b.reply(ctx, chatID, editMsgID, b.texts.T(loc, "bot.ec.g.link_none", nil), b.cardKeyboard(loc, card))
 		return
 	}
+	// A new sales link is made only for a published event that is not over
+	// (on sale, sales not open yet, sold out): an organizer announces the link
+	// before sales open. A past event reuses a link it already has, or shows
+	// the page link only.
+	create := event.Status == openapi.EventItemStatusPublished && event.SalesState != salesStateArchived
 	textKey := "bot.ec.g.link_text"
-	if !b.sendEventQR(ctx, chatID, jwt, orgID, *event) {
+	switch sent, noCode := b.sendEventQR(ctx, chatID, jwt, orgID, *event, create); {
+	case noCode:
+		textKey = "bot.ec.g.link_text_nocode"
+	case !sent:
 		textKey = "bot.ec.g.link_text_noqr"
 	}
 	rows := [][]models.InlineKeyboardButton{b.mnBtn(loc, "bot.ec.g.link_more_btn", "ql:e:"+eventID.String())}
@@ -313,17 +381,21 @@ func (b *Bot) sendBuyersLink(ctx context.Context, chatID int64, editMsgID *int, 
 
 // sendEventQR sends the QR code of the event page as an image. The code rests
 // on one sales link of the event (placement "other"): the one that is already
-// there, or a new one. It reports whether the image went out.
-func (b *Bot) sendEventQR(ctx context.Context, chatID int64, jwt string, orgID uuid.UUID, ev openapi.EventItem) bool {
-	link, err := b.eventSalesLink(ctx, jwt, orgID, ev)
+// there, or a new one when create is true. It reports whether the image went
+// out, and noCode when there was no link and none was to be made.
+func (b *Bot) sendEventQR(ctx context.Context, chatID int64, jwt string, orgID uuid.UUID, ev openapi.EventItem, create bool) (sent, noCode bool) {
+	link, found, err := b.eventSalesLink(ctx, jwt, orgID, ev, create)
 	if err != nil {
 		b.logger.Warn("eventbot: event sales link failed", slog.String("event_id", ev.Id.String()), slog.String("error", err.Error()))
-		return false
+		return false, false
+	}
+	if !found {
+		return false, true
 	}
 	png, err := b.arena.SalesLinkQR(ctx, jwt, orgID, link.Id, "png", 1024)
 	if err != nil {
 		b.logger.Warn("eventbot: event qr failed", slog.String("link_id", link.Id.String()), slog.String("error", err.Error()))
-		return false
+		return false, false
 	}
 	if _, err := b.tg.SendPhoto(ctx, &tgbot.SendPhotoParams{
 		ChatID:    chatID,
@@ -332,23 +404,37 @@ func (b *Bot) sendEventQR(ctx context.Context, chatID int64, jwt string, orgID u
 		ParseMode: models.ParseModeHTML,
 	}); err != nil {
 		b.logger.Warn("eventbot: send event qr failed", slog.Int64("chat_id", chatID), slog.String("error", unwrapURLError(err).Error()))
-		return false
+		return false, false
 	}
-	return true
+	return true, false
 }
 
 // eventSalesLink returns the active link of the event with the placement
-// "other", or makes one named after the event.
-func (b *Bot) eventSalesLink(ctx context.Context, jwt string, orgID uuid.UUID, ev openapi.EventItem) (openapi.SalesLink, error) {
+// "other". Without one it makes a link named after the event when create is
+// true, else it reports found = false and creates nothing. The find-and-create
+// is serialized per event, and the search reads ALL pages of the event's active
+// links, so a double press makes one link.
+func (b *Bot) eventSalesLink(ctx context.Context, jwt string, orgID uuid.UUID, ev openapi.EventItem, create bool) (openapi.SalesLink, bool, error) {
 	eventID := ev.Id
-	list, err := b.arena.ListSalesLinks(ctx, jwt, orgID, SalesLinkQuery{EventID: &eventID, Status: slStatusActive, Limit: 50})
-	if err != nil {
-		return openapi.SalesLink{}, err
-	}
-	for _, l := range list.Items {
-		if l.Target.Kind == slKindEvent && l.Target.EventId != nil && *l.Target.EventId == eventID && l.PlacementKind == cardLinkPlacement {
-			return l, nil
+	defer b.linkLocks.lock(eventID)()
+	cursor := ""
+	for page := 0; page < maxSalesLinkPages; page++ {
+		list, listErr := b.arena.ListSalesLinks(ctx, jwt, orgID, SalesLinkQuery{EventID: &eventID, Status: slStatusActive, Limit: 50, Cursor: cursor})
+		if listErr != nil {
+			return openapi.SalesLink{}, false, listErr
 		}
+		for _, l := range list.Items {
+			if l.Target.Kind == slKindEvent && l.Target.EventId != nil && *l.Target.EventId == eventID && l.PlacementKind == cardLinkPlacement {
+				return l, true, nil
+			}
+		}
+		if list.NextCursor == "" || list.NextCursor == cursor {
+			break
+		}
+		cursor = list.NextCursor
+	}
+	if !create {
+		return openapi.SalesLink{}, false, nil
 	}
 	label := strings.Join(strings.Fields(ev.Name), " ")
 	if utf8.RuneCountInString(label) > maxLabelRunes {
@@ -357,9 +443,13 @@ func (b *Bot) eventSalesLink(ctx context.Context, jwt string, orgID uuid.UUID, e
 	if label == "" {
 		label = ev.Id.String()
 	}
-	return b.arena.CreateSalesLink(ctx, jwt, orgID, SalesLinkCreate{
+	created, err := b.arena.CreateSalesLink(ctx, jwt, orgID, SalesLinkCreate{
 		Target: openapi.SalesLinkTarget{Kind: slKindEvent, EventId: &eventID}, Label: label, PlacementKind: cardLinkPlacement,
 	})
+	if err != nil {
+		return openapi.SalesLink{}, false, err
+	}
+	return created, true, nil
 }
 
 // ─── the guest list ───────────────────────────────────────────────────────────

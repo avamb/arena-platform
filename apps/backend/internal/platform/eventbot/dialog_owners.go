@@ -47,7 +47,12 @@ func dataHasPrefix(p string) func(string) bool {
 // and is never ended by a press.
 var dialogOwners = map[string]dialogOwner{
 	eventsDialogKind: {
-		owns:  func(data string) bool { head, _, _ := strings.Cut(data, ":"); return isEventsCallback(head) },
+		// The help of the list, of a card and of its groups keeps the list's state:
+		// « Back shows the same filter, search and page (screen_help.go).
+		owns: func(data string) bool {
+			head, _, _ := strings.Cut(data, ":")
+			return isEventsCallback(head) || isEventsHelp(data)
+		},
 		leave: (*Bot).leaveEvents,
 	},
 	ordersDialogKind: {

@@ -7165,6 +7165,12 @@ other = "<b>Settings</b>\nYour organization, payments, team and your own setting
 ["bot.mn.mail_text"]
 other = "<b>Messages to buyers</b>\nArena can send a reminder to a buyer who did not pay for an order. Arena can also send your news to buyers who agreed to get it. You set this up in the browser."
 
+["bot.mn.mail_text_super"]
+other = "<b>Messages to buyers</b>\nArena can send a reminder to a buyer who did not pay for an order. Arena can also send your news to buyers who agreed to get it. The organizer sets this up in the web event center."
+
+["bot.mn.venues_text_super"]
+other = "<b>Venues</b>\nYou add a venue when you add an event: the bot asks for it. A superadmin sees all venues and their seating plans in the admin console."
+
 ["bot.mn.venues_text"]
 other = "<b>Venues</b>\nYou add a venue when you add an event: the bot asks for it. To see all venues and their seating plans, open the browser."
 
@@ -7228,6 +7234,9 @@ other = "🏷 Categories and prices"
 ["bot.ec.g.guests_btn"]
 other = "📋 Guest list"
 
+["bot.ec.g.ql_btn"]
+other = "🔗 Links and QR codes"
+
 ["bot.ec.g.link_more_btn"]
 other = "More links and QR codes"
 
@@ -7249,8 +7258,199 @@ other = "Copy the event, take it off sale, archive it or delete it."
 ["bot.ec.g.link_text"]
 other = "<b>{{.Name}}</b>\n\n🔗 Link for buyers:\n{{.URL}}\n\nThe QR code is in the image below."
 
+["bot.ec.g.link_text_nocode"]
+other = "<b>{{.Name}}</b>\n\n🔗 Link for buyers:\n{{.URL}}\n\nThis event is not on sale now. Arena did not make a QR code for it."
+
 ["bot.ec.g.link_text_noqr"]
 other = "<b>{{.Name}}</b>\n\n🔗 Link for buyers:\n{{.URL}}\n\nThe QR code did not load. Press «More links and QR codes»."
 
 ["bot.ec.g.link_none"]
 other = "This event has no link for buyers yet. Publish the event first."
+
+# --- "What is here?": the help of one screen (eventbot/screen_help.go) -------
+
+["bot.hp.btn"]
+other = "❓ What is here?"
+
+["bot.hp.title"]
+other = "<b>What is here: {{.Screen}}</b>"
+
+["bot.hp.path"]
+other = "To come back here: {{.Path}}."
+
+["bot.hp.path_sep"]
+other = ", then "
+
+["bot.hp.p_event"]
+other = "select the event"
+
+["bot.hp.l_search"]
+other = "Type a name"
+
+["bot.hp.l_event"]
+other = "Event buttons"
+
+["bot.hp.i.el.filters"]
+other = "Switch between the events on sale and the archive."
+
+["bot.hp.i.el.search"]
+other = "Type a part of a name to find an event."
+
+["bot.hp.i.el.event"]
+other = "Open the card of that event."
+
+["bot.hp.i.el.paging"]
+other = "Go to the next or the previous page."
+
+["bot.hp.i.el.clear"]
+other = "Show all events again."
+
+["bot.hp.i.ec.publish"]
+other = "Publish the event so that buyers can buy tickets."
+
+["bot.hp.i.ec.link"]
+other = "Get the link and the QR code for buyers."
+
+["bot.hp.i.ec.s"]
+other = "See the sales and the orders, and download the data."
+
+["bot.hp.i.ec.e"]
+other = "Change the name, the sessions, the prices and the event page."
+
+["bot.hp.i.ec.p"]
+other = "Sell more with promo codes, free tickets and referrals."
+
+["bot.hp.i.ec.m"]
+other = "Copy the event, take it off sale, archive it or delete it."
+
+["bot.hp.i.gs.summary"]
+other = "See the sold tickets and the money of this event."
+
+["bot.hp.i.gs.orders"]
+other = "See the orders of this event."
+
+["bot.hp.i.gs.guests"]
+other = "Get the guest list of this event."
+
+["bot.hp.i.gs.csv"]
+other = "Download the sales data as a CSV file."
+
+["bot.hp.i.gs.dates"]
+other = "Show each session of this event with its figures."
+
+["bot.hp.i.ge.edit"]
+other = "Change the name, the description and the poster."
+
+["bot.hp.i.ge.sessions"]
+other = "Move or cancel a session."
+
+["bot.hp.i.ge.cat"]
+other = "Change the categories and the prices."
+
+["bot.hp.i.ge.materials"]
+other = "Add images, videos and links to the event page."
+
+["bot.hp.i.ge.sample"]
+other = "Get a sample ticket of this event."
+
+["bot.hp.i.ge.text"]
+other = "Write the text that buyers read in their e-mail."
+
+["bot.hp.i.ge.promoter"]
+other = "Select the brand of this event."
+
+["bot.hp.i.gp.promo"]
+other = "Add and manage the promo codes of this event."
+
+["bot.hp.i.gp.invite"]
+other = "Send free tickets to guests."
+
+["bot.hp.i.gp.links"]
+other = "Make more links and QR codes for this event, and see their statistics."
+
+["bot.hp.i.gp.referral"]
+other = "Set the referral reward for this event."
+
+["bot.hp.i.gm.copy"]
+other = "Make a new event from this one."
+
+["bot.hp.i.gm.publish"]
+other = "Publish the event so that buyers can buy tickets."
+
+["bot.hp.i.gm.off"]
+other = "Stop the sale and keep the sold tickets valid."
+
+["bot.hp.i.gm.archive"]
+other = "Move the event to the archive."
+
+["bot.hp.i.gm.delete"]
+other = "Delete the event after you confirm."
+
+["bot.hp.i.so.orders"]
+other = "See the orders of your buyers."
+
+["bot.hp.i.so.refunds"]
+other = "See the refunds that wait for your action."
+
+["bot.hp.i.so.disputes"]
+other = "Answer the payment disputes of your buyers."
+
+["bot.hp.i.sp.promo"]
+other = "Add and manage promo codes."
+
+["bot.hp.i.sp.invite"]
+other = "Send free tickets to guests."
+
+["bot.hp.i.sp.link"]
+other = "Make sales links and QR codes, and see their statistics."
+
+["bot.hp.i.sp.mail"]
+other = "Read how the messages to buyers work."
+
+["bot.hp.i.sd.scanner"]
+other = "Get the app that scans tickets at the entrance."
+
+["bot.hp.i.sd.guests"]
+other = "Read how to open the guest list of a session."
+
+["bot.hp.i.ss.org"]
+other = "Change the data of your organization."
+
+["bot.hp.i.ss.pay"]
+other = "See if buyers can pay for tickets."
+
+["bot.hp.i.ss.team"]
+other = "See the people of your team."
+
+["bot.hp.i.ss.team_add"]
+other = "Invite the first member of your team."
+
+["bot.hp.i.ss.promoter"]
+other = "Add and change the brands of your events."
+
+["bot.hp.i.ss.venues"]
+other = "Read how to add and see venues."
+
+["bot.hp.i.ss.notif"]
+other = "Select the notifications that you get."
+
+["bot.hp.i.ss.lang"]
+other = "Change the language of the bot."
+
+["bot.hp.i.ss.switch"]
+other = "Go to a different organization."
+
+["bot.hp.i.sh.orders"]
+other = "See the orders of your shop and process them."
+
+["bot.hp.i.sh.close"]
+other = "Close the storefront so that buyers cannot order."
+
+["bot.hp.i.sh.open"]
+other = "Open the storefront so that buyers can order."
+
+["bot.hp.i.sh.settings"]
+other = "See the settings of your shop."
+
+["bot.hp.i.sh.web"]
+other = "Open the shop in the browser."

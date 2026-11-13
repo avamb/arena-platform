@@ -134,6 +134,7 @@ func (b *Bot) showEventCard(ctx context.Context, chatID int64, editMsgID *int, f
 	// (event_card_groups.go). The dates of an expanded card come after them.
 	rows := b.cardRows(loc, id, eventID, cardFactsOf(*event, url, sum))
 	rows = append(rows, dateRows...)
+	rows = append(rows, b.helpRow(loc, hpCard, eventID.String()))
 	rows = append(rows, []models.InlineKeyboardButton{
 		{Text: "« " + b.texts.T(loc, "bot.btn_back", nil), CallbackData: "el:b"},
 		{Text: b.texts.T(loc, "bot.btn_home", nil), CallbackData: "home"},

@@ -118,8 +118,15 @@ func TestBotE2E_EventCardGroups(t *testing.T) {
 	owner := ecDriver{t, tg, cgOwnerTG}
 	manager := ecDriver{t, tg, cgManagerTG}
 
-	draft, draftName, _ := seed.event("draft", "Draft", 1)
-	multi, multiName, _ := seed.event("published", "Multi", 3)
+	draft, draftName, draftSessions := seed.event("draft", "Draft", 1)
+	multi, multiName, multiSessions := seed.event("published", "Multi", 3)
+	// Free places make a published event "on sale": only such an event gets a NEW
+	// sales link behind its QR code (the sales state reads the free places).
+	for _, sid := range append(append([]uuid.UUID{}, draftSessions...), multiSessions...) {
+		seed.exec(`INSERT INTO session_seats (session_id, seat_key, sector_name, row_name, seat_number, tier_id, status, kind)
+		           SELECT $1, 'ga|t1|' || lpad(gs::text, 6, '0'), '', '', '', tt.id, 'available', 'ga_unit'
+		           FROM ticket_tiers tt, generate_series(1, 3) gs WHERE tt.session_id = $1`, sid)
+	}
 	// A past event: its only date ended a month ago.
 	past := uuid.New()
 	pastName := "EVS Past " + seed.suffix
@@ -140,7 +147,7 @@ func TestBotE2E_EventCardGroups(t *testing.T) {
 				t.Errorf("%s: the card shows %q, which belongs in «Ещё»: %v", label, bad, labels)
 			}
 		}
-		if len(labels) > 7 { // five buttons, Back, Menu
+		if len(labels) > 8 { // five buttons, «Что здесь?», Back, Menu
 			t.Errorf("%s: %d buttons: %v", label, len(labels), labels)
 		}
 	}
@@ -287,10 +294,36 @@ func TestBotE2E_EventCardGroups(t *testing.T) {
 	other := newBotInviteFixture(t, pool)
 	linkECBotUser(t, other, srv, cgOwnerTG+10, "owner")
 	out := ecDriver{t, tg, cgOwnerTG + 10}
-	for _, data := range []string{g(multi, "s"), g(multi, "m"), "ec:lk:" + multi.String(), "ec:gl:" + multi.String()} {
+	ownLinks, otherLinks := len(qlLinks(t, pool, f.orgID)), len(qlLinks(t, pool, other.orgID))
+	for _, data := range []string{
+		g(multi, "s"), g(multi, "m"), "ec:lk:" + multi.String(), "ec:gl:" + multi.String(),
+		"hp:ec:" + multi.String(), "hp:es:" + multi.String(), "hp:ee:" + multi.String(), "hp:ep:" + multi.String(), "hp:em:" + multi.String(),
+	} {
 		got := out.press(data, "Не найдено")
 		if strings.Contains(got, multiName) {
 			t.Errorf("%s leaked the other organization's event:\n%s", data, got)
 		}
 	}
+	if n := len(qlLinks(t, pool, f.orgID)); n != ownLinks {
+		t.Errorf("a foreign press changed the links of the event's organization: %d -> %d", ownLinks, n)
+	}
+	if n := len(qlLinks(t, pool, other.orgID)); n != otherLinks || n != 0 {
+		t.Errorf("a foreign press made a sales link in the other organization: %d -> %d", otherLinks, n)
+	}
+
+	// ── a past event never gets a NEW sales link, and says so ──────────────────
+	before := len(qlLinks(t, pool, f.orgID))
+	text, _ = cardShot(t, owner, "ССЫЛКА ПРОШЕДШЕГО МЕРОПРИЯТИЯ", "ec:lk:"+past.String(), "не в продаже")
+	if !strings.Contains(text, cgBase+"/") {
+		t.Errorf("a past event still shows the page address:\n%s", text)
+	}
+	if n := len(qlLinks(t, pool, f.orgID)); n != before {
+		t.Errorf("the press of a past event made a sales link: %d -> %d", before, n)
+	}
+	// The QR / link dialog is in Promotion for an event without a public link.
+	_, labels = cardShot(t, owner, "ГРУППА «Продвижение» (черновик)", g(noLink, "p"), "Привлекайте покупателей")
+	if !hasLabel(labels, "Ссылки и QR-коды") {
+		t.Errorf("Promotion lacks «Ссылки и QR-коды»: %v", labels)
+	}
+	owner.press("ql:e:"+noLink.String(), "Где вы разместите код")
 }

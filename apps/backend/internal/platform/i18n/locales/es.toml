@@ -6992,6 +6992,12 @@ other = "<b>Ajustes</b>\nTu organización, los pagos, el equipo y tus propios aj
 ["bot.mn.mail_text"]
 other = "<b>Mensajes a los compradores</b>\nArena puede enviar un recordatorio a un comprador que no pagó un pedido. Arena también puede enviar tus novedades a los compradores que aceptaron recibirlas. Lo configuras en el navegador."
 
+["bot.mn.mail_text_super"]
+other = "<b>Mensajes a los compradores</b>\nArena puede enviar un recordatorio a un comprador que no pagó un pedido. Arena también puede enviar tus novedades a los compradores que aceptaron recibirlas. El organizador lo configura en el centro web de eventos."
+
+["bot.mn.venues_text_super"]
+other = "<b>Recintos</b>\nAñades un recinto cuando añades un evento: el bot te lo pregunta. Un superadministrador ve todos los recintos y sus planos de asientos en la consola de administración."
+
 ["bot.mn.venues_text"]
 other = "<b>Recintos</b>\nAñades un recinto cuando añades un evento: el bot te lo pregunta. Para ver todos los recintos y sus planos de asientos, abre el navegador."
 
@@ -7055,6 +7061,9 @@ other = "🏷 Categorías y precios"
 ["bot.ec.g.guests_btn"]
 other = "📋 Lista de invitados"
 
+["bot.ec.g.ql_btn"]
+other = "🔗 Enlaces y códigos QR"
+
 ["bot.ec.g.link_more_btn"]
 other = "Más enlaces y códigos QR"
 
@@ -7076,8 +7085,199 @@ other = "Copia el evento, retíralo de la venta, archívalo o elimínalo."
 ["bot.ec.g.link_text"]
 other = "<b>{{.Name}}</b>\n\n🔗 Enlace para compradores:\n{{.URL}}\n\nEl código QR está en la imagen de abajo."
 
+["bot.ec.g.link_text_nocode"]
+other = "<b>{{.Name}}</b>\n\n🔗 Enlace para compradores:\n{{.URL}}\n\nEste evento no está a la venta ahora. Arena no ha creado un código QR para él."
+
 ["bot.ec.g.link_text_noqr"]
 other = "<b>{{.Name}}</b>\n\n🔗 Enlace para compradores:\n{{.URL}}\n\nEl código QR no se ha cargado. Pulsa «Más enlaces y códigos QR»."
 
 ["bot.ec.g.link_none"]
 other = "Este evento aún no tiene enlace para compradores. Publica primero el evento."
+
+# --- «¿Qué hay aquí?»: la ayuda de una pantalla (eventbot/screen_help.go) ---
+
+["bot.hp.btn"]
+other = "❓ ¿Qué hay aquí?"
+
+["bot.hp.title"]
+other = "<b>Qué hay aquí: {{.Screen}}</b>"
+
+["bot.hp.path"]
+other = "Para volver aquí: {{.Path}}."
+
+["bot.hp.path_sep"]
+other = ", luego "
+
+["bot.hp.p_event"]
+other = "elige el evento"
+
+["bot.hp.l_search"]
+other = "Escribe un nombre"
+
+["bot.hp.l_event"]
+other = "Botones de eventos"
+
+["bot.hp.i.el.filters"]
+other = "Cambia entre los eventos en venta y el archivo."
+
+["bot.hp.i.el.search"]
+other = "Escribe una parte del nombre para buscar un evento."
+
+["bot.hp.i.el.event"]
+other = "Abre la ficha de ese evento."
+
+["bot.hp.i.el.paging"]
+other = "Va a la página siguiente o a la anterior."
+
+["bot.hp.i.el.clear"]
+other = "Vuelve a mostrar todos los eventos."
+
+["bot.hp.i.ec.publish"]
+other = "Publica el evento para que los compradores puedan comprar entradas."
+
+["bot.hp.i.ec.link"]
+other = "Muestra el enlace y el código QR para los compradores."
+
+["bot.hp.i.ec.s"]
+other = "Muestra las ventas y los pedidos y permite descargar los datos."
+
+["bot.hp.i.ec.e"]
+other = "Cambia el nombre, las sesiones, los precios y la página del evento."
+
+["bot.hp.i.ec.p"]
+other = "Ayuda a vender más con códigos promocionales, entradas gratis y recomendaciones."
+
+["bot.hp.i.ec.m"]
+other = "Copia el evento, lo retira de la venta, lo archiva o lo elimina."
+
+["bot.hp.i.gs.summary"]
+other = "Muestra las entradas vendidas y el dinero de este evento."
+
+["bot.hp.i.gs.orders"]
+other = "Muestra los pedidos de este evento."
+
+["bot.hp.i.gs.guests"]
+other = "Envía la lista de invitados de este evento."
+
+["bot.hp.i.gs.csv"]
+other = "Descarga los datos de ventas en un archivo CSV."
+
+["bot.hp.i.gs.dates"]
+other = "Muestra cada sesión del evento con sus cifras."
+
+["bot.hp.i.ge.edit"]
+other = "Cambia el nombre, la descripción y el cartel."
+
+["bot.hp.i.ge.sessions"]
+other = "Cambia la fecha de una sesión o la cancela."
+
+["bot.hp.i.ge.cat"]
+other = "Cambia las categorías y los precios."
+
+["bot.hp.i.ge.materials"]
+other = "Añade imágenes, vídeos y enlaces a la página del evento."
+
+["bot.hp.i.ge.sample"]
+other = "Envía una entrada de muestra de este evento."
+
+["bot.hp.i.ge.text"]
+other = "Define el texto que los compradores leen en su e-mail."
+
+["bot.hp.i.ge.promoter"]
+other = "Elige la marca de este evento."
+
+["bot.hp.i.gp.promo"]
+other = "Añade y gestiona los códigos promocionales de este evento."
+
+["bot.hp.i.gp.invite"]
+other = "Envía entradas gratis a los invitados."
+
+["bot.hp.i.gp.links"]
+other = "Crea más enlaces y códigos QR para este evento y consulta sus estadísticas."
+
+["bot.hp.i.gp.referral"]
+other = "Configura la recompensa por recomendar este evento."
+
+["bot.hp.i.gm.copy"]
+other = "Crea un evento nuevo a partir de este."
+
+["bot.hp.i.gm.publish"]
+other = "Publica el evento para que los compradores puedan comprar entradas."
+
+["bot.hp.i.gm.off"]
+other = "Detiene la venta y las entradas vendidas siguen siendo válidas."
+
+["bot.hp.i.gm.archive"]
+other = "Mueve el evento al archivo."
+
+["bot.hp.i.gm.delete"]
+other = "Elimina el evento después de que lo confirmes."
+
+["bot.hp.i.so.orders"]
+other = "Muestra los pedidos de tus compradores."
+
+["bot.hp.i.so.refunds"]
+other = "Muestra las devoluciones que esperan tu acción."
+
+["bot.hp.i.so.disputes"]
+other = "Ayuda a responder a las disputas de pago de tus compradores."
+
+["bot.hp.i.sp.promo"]
+other = "Añade y gestiona códigos promocionales."
+
+["bot.hp.i.sp.invite"]
+other = "Envía entradas gratis a los invitados."
+
+["bot.hp.i.sp.link"]
+other = "Crea enlaces de venta y códigos QR y muestra sus estadísticas."
+
+["bot.hp.i.sp.mail"]
+other = "Explica cómo funcionan los mensajes a los compradores."
+
+["bot.hp.i.sd.scanner"]
+other = "Da la app que escanea las entradas en la puerta."
+
+["bot.hp.i.sd.guests"]
+other = "Explica cómo abrir la lista de invitados de una sesión."
+
+["bot.hp.i.ss.org"]
+other = "Cambia los datos de tu organización."
+
+["bot.hp.i.ss.pay"]
+other = "Muestra si los compradores pueden pagar las entradas."
+
+["bot.hp.i.ss.team"]
+other = "Muestra a las personas de tu equipo."
+
+["bot.hp.i.ss.team_add"]
+other = "Invita al primer miembro de tu equipo."
+
+["bot.hp.i.ss.promoter"]
+other = "Añade y cambia las marcas de tus eventos."
+
+["bot.hp.i.ss.venues"]
+other = "Explica cómo añadir y ver los recintos."
+
+["bot.hp.i.ss.notif"]
+other = "Elige las notificaciones que recibes."
+
+["bot.hp.i.ss.lang"]
+other = "Cambia el idioma del bot."
+
+["bot.hp.i.ss.switch"]
+other = "Cambia a otra organización."
+
+["bot.hp.i.sh.orders"]
+other = "Muestra los pedidos de tu tienda y ayuda a procesarlos."
+
+["bot.hp.i.sh.close"]
+other = "Cierra el escaparate para que los compradores no puedan pedir."
+
+["bot.hp.i.sh.open"]
+other = "Abre el escaparate para que los compradores puedan pedir."
+
+["bot.hp.i.sh.settings"]
+other = "Muestra los ajustes de tu tienda."
+
+["bot.hp.i.sh.web"]
+other = "Abre la tienda en el navegador."

@@ -121,6 +121,17 @@ func TestBotE2E_MenuSectionsAndFirstSteps(t *testing.T) {
 	if _, mdata, _ := menuScreen(t, tg, "владелец", ecOwnerTG, "экран mn:mail"); !containsData(mdata, "web:open") {
 		t.Errorf("the mail screen has no web button: %v", mdata)
 	}
+	// every section carries «❓ Что здесь?» and its help returns to the section
+	for _, section := range [][2]string{{"ord", "Заказы и возвраты"}, {"pro", "Продвижение"}, {"door", "Вход на мероприятие"}, {"set", "Настройки"}} {
+		owner.press("home", "Что будем делать?")
+		owner.press("mn:"+section[0], section[1])
+		if _, sdata, slabels := menuScreen(t, tg, "владелец", ecOwnerTG, "раздел mn:"+section[0]+" с кнопкой помощи"); !containsData(sdata, "hp:"+section[0]) || !hasLabel(slabels, "Что здесь?") {
+			t.Errorf("section %s has no help button: %v", section[0], sdata)
+		}
+		owner.press("hp:"+section[0], "Что здесь: ")
+		menuScreen(t, tg, "владелец", ecOwnerTG, "справка раздела mn:"+section[0])
+		owner.press("mn:"+section[0], section[1]) // « Back
+	}
 	walk(owner, "владелец", "mn:door", "Вход на мероприятие", [][2]string{{"scanner", "Сканер билетов"}, {"mn:gl", "Чтобы его открыть"}})
 	owner.press("mn:gl", "Чтобы его открыть")
 	gtext, gdata, glabels := menuScreen(t, tg, "владелец", ecOwnerTG, "экран mn:gl")

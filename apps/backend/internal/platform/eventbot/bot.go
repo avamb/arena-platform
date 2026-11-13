@@ -135,6 +135,9 @@ type Bot struct {
 	onb            *onbDialogs
 	onbForms       *onbFormCache
 
+	// linkLocks serializes "find or make the sales link of an event" per event
+	// (event_card_groups.go): a double press never makes two links.
+	linkLocks keyedMutex
 	// serial runs one account's updates one at a time, in order (serial.go).
 	serial *userSerial
 	// route handles one admitted update inside its sender's turn; tests
@@ -503,8 +506,10 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		}
 		if b.menuCommand(ctx, cmd, strings.TrimSpace(arg), from) {
 			// /menu and a plain /start leave every dialog themselves, and
-			// ask first when a refund waits for its confirmation.
-			b.openMenu(ctx, chatID, from, cmd == "/start")
+			// ask first when a refund waits for its confirmation. Both send the
+			// "☰ Menu" keyboard again (a deleted note, a client that lost it).
+			// The typed button itself never does.
+			b.openMenu(ctx, chatID, from, true)
 			return
 		}
 		// Every command ends every dialog (dialog_owners.go): a word typed
@@ -644,6 +649,8 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.salesLinkCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ql:"))
 	case menuSectionPrefix:
 		b.menuSectionCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, menuSectionPrefix+":"))
+	case helpPrefix:
+		b.helpCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, helpPrefix+":"))
 	case "home":
 		b.showHome(ctx, chatID, &msgID, from, "")
 	case menuCallback:
