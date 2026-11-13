@@ -384,3 +384,108 @@ func TestRender(t *testing.T) {
 	_, err = r.Render(context.Background(), venueplan.RenderInput{Model: json.RawMessage(`{}`)})
 	wantErr(t, err, "model.invalid", false)
 }
+
+// doneWith is a done job with the given SVG and preview (base64) strings.
+func doneWith(svg, previewB64 string) string {
+	return `{"job_id":"job-1","status":"done","result":"ok","validation_status":"PASS","generator_version":{},"files":[],` +
+		`"model":{"schema":"seating-json-v2"},"authoring_svg":"` + svg + `","preview_png_base64":"` + previewB64 + `"}`
+}
+
+func TestPoll_SVGOverTheLimitIsDroppedNotCopied(t *testing.T) {
+	big := strings.Repeat("a", MaxSVGBytes+1)
+	s := &stub{jobFn: func(string, int) (int, string) { return 200, doneWith(big, "iVBORw==") }}
+	res, done, err := newClient(t, s).Poll(context.Background(), "job-1")
+	if !done || err != nil {
+		t.Fatalf("done %v err %v", done, err)
+	}
+	if res.SVG != nil || res.SVGTooLarge != MaxSVGBytes+1 {
+		t.Errorf("SVG len %d, SVGTooLarge %d", len(res.SVG), res.SVGTooLarge)
+	}
+	if len(res.PreviewPNG) == 0 {
+		t.Error("a small preview was lost with the big SVG")
+	}
+	// Exactly at the limit is taken.
+	at := strings.Repeat("a", MaxSVGBytes)
+	s2 := &stub{jobFn: func(string, int) (int, string) { return 200, doneWith(at, "") }}
+	res, _, err = newClient(t, s2).Poll(context.Background(), "job-1")
+	if err != nil || len(res.SVG) != MaxSVGBytes || res.SVGTooLarge != 0 {
+		t.Errorf("at the limit: err %v len %d too large %d", err, len(res.SVG), res.SVGTooLarge)
+	}
+}
+
+func TestPoll_PreviewOverTheLimitKeepsTheSVG(t *testing.T) {
+	big := base64.StdEncoding.EncodeToString(make([]byte, MaxPreviewBytes+1))
+	s := &stub{jobFn: func(string, int) (int, string) { return 200, doneWith("<svg/>", big) }}
+	res, done, err := newClient(t, s).Poll(context.Background(), "job-1")
+	if !done || err != nil {
+		t.Fatalf("done %v err %v", done, err)
+	}
+	if string(res.SVG) != "<svg/>" || res.PreviewPNG != nil || res.PreviewTooLarge < MaxPreviewBytes {
+		t.Errorf("svg %q preview %d too large %d", res.SVG, len(res.PreviewPNG), res.PreviewTooLarge)
+	}
+	ok := base64.StdEncoding.EncodeToString(make([]byte, MaxPreviewBytes))
+	s2 := &stub{jobFn: func(string, int) (int, string) { return 200, doneWith("<svg/>", ok) }}
+	res, _, err = newClient(t, s2).Poll(context.Background(), "job-1")
+	if err != nil || len(res.PreviewPNG) != MaxPreviewBytes || res.PreviewTooLarge != 0 {
+		t.Errorf("at the limit: err %v len %d", err, len(res.PreviewPNG))
+	}
+}
+
+func TestRender_SVGOverTheLimitIsRefused(t *testing.T) {
+	big := strings.Repeat("a", MaxSVGBytes+1)
+	s := &stub{renderFn: func([]byte) (int, string) { return 200, doneWith(big, "") }}
+	_, err := newClient(t, s).Render(context.Background(), venueplan.RenderInput{Model: json.RawMessage(`{"a":1}`)})
+	wantErr(t, err, "bad_answer", false)
+}
+
+func TestCall_AnswerBodyCap(t *testing.T) {
+	if maxAnswerBytes >= 64<<20 || maxAnswerBytes < 2*MaxSVGBytes+MaxPreviewBytes*4/3 {
+		t.Fatalf("maxAnswerBytes %d does not fit its parts", maxAnswerBytes)
+	}
+	s := &stub{jobFn: func(string, int) (int, string) { return 200, strings.Repeat("x", maxAnswerBytes+1) }}
+	_, done, err := newClient(t, s).Poll(context.Background(), "job-1")
+	if !done {
+		t.Error("an oversized answer is final")
+	}
+	wantErr(t, err, "bad_answer", false)
+}
+
+func TestPoll_JobIDIsEscapedAndChecked(t *testing.T) {
+	var gotPath string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.EscapedPath()
+		w.WriteHeader(200)
+		_, _ = io.WriteString(w, `{"status":"running"}`)
+	}))
+	t.Cleanup(ts.Close)
+	c := New(ts.URL, testToken)
+	if _, done, err := c.Poll(context.Background(), "a/b c?x=1"); done || err != nil {
+		t.Fatalf("done %v err %v", done, err)
+	}
+	if gotPath != "/jobs/a%2Fb%20c%3Fx=1" {
+		t.Errorf("path %q", gotPath)
+	}
+	gotPath = ""
+	for _, id := range []string{"", strings.Repeat("j", 201)} {
+		_, done, err := c.Poll(context.Background(), id)
+		if !done {
+			t.Errorf("id of %d chars: not final", len(id))
+		}
+		wantErr(t, err, "bad_answer", false)
+	}
+	if gotPath != "" {
+		t.Errorf("a refused id reached the generator: %q", gotPath)
+	}
+	if _, done, err := c.Poll(context.Background(), strings.Repeat("j", 200)); done || err != nil {
+		t.Errorf("200 chars: done %v err %v", done, err)
+	}
+}
+
+func TestSubmit_RefusesAnUnusableJobID(t *testing.T) {
+	for _, id := range []string{"", strings.Repeat("j", 201)} {
+		body := `{"job_id":"` + id + `"}`
+		s := &stub{submitFn: func(int) (int, string) { return 202, body }}
+		_, err := newClient(t, s).Submit(context.Background(), files[:1])
+		wantErr(t, err, "bad_answer", true)
+	}
+}

@@ -2140,9 +2140,30 @@ func (c *Config) Warnings() []string {
 		))
 	}
 
+	if c.uses(capVenueGen) {
+		if msg := c.VenueGenHalfConfigured(); msg != "" {
+			w = append(w, msg)
+		}
+	}
+
 	w = append(w, c.unusedSecretWarnings()...)
 
 	return w
+}
+
+// VenueGenHalfConfigured returns a warning text when exactly one of
+// VENUE_GEN_URL and VENUE_GEN_TOKEN is set (the hall plan generator is then
+// silently off), and "" when both or neither is set. It names the missing
+// variable and never the token. It is not a start error: an operator may set
+// the pair in two steps.
+func (c *Config) VenueGenHalfConfigured() string {
+	switch {
+	case c.VenueGenURL != "" && c.VenueGenToken == "":
+		return "VENUE_GEN_TOKEN is not set while VENUE_GEN_URL is: the hall plan generator is OFF, every plan intake goes to an administrator"
+	case c.VenueGenURL == "" && c.VenueGenToken != "":
+		return "VENUE_GEN_URL is not set while VENUE_GEN_TOKEN is: the hall plan generator is OFF, every plan intake goes to an administrator"
+	}
+	return ""
 }
 
 // isKnownDevSecret returns true when s matches a well-known development

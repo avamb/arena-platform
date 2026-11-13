@@ -926,10 +926,7 @@ func registerOnboardingHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *c
 // the job sends the intake to an administrator with the reason no_generator,
 // so an intake never waits in received.
 func registerVenuePlanGenerateHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, mediaRepo *mediastore.Repo, logger *slog.Logger) {
-	var g venueplangenerate.Generator
-	if cfg.VenueGenURL != "" && cfg.VenueGenToken != "" {
-		g = venueplangenerator.New(cfg.VenueGenURL, cfg.VenueGenToken)
-	}
+	g := buildVenueGenerator(cfg, logger)
 	opts := venueplangenerate.Options{
 		Pool: pool, Media: mediaRepo, Generator: g, Notifier: venueplannotify.Notifier{},
 		Audit: audit.WithServiceActor(audit.NewPGWriter(pool)), Logger: logger,
@@ -939,6 +936,21 @@ func registerVenuePlanGenerateHandler(reg *worker.Registry, pool *pgxpool.Pool, 
 	reg.Register(venueplangenerate.JobTypeSweep, venueplangenerate.NewSweepHandler(opts))
 	logger.Info("venue_plan.generate handler registered",
 		"generator_configured", g != nil, "media_configured", mediaRepo != nil)
+}
+
+// buildVenueGenerator returns the generator client, or nil (generator off).
+// Exactly one of VENUE_GEN_URL / VENUE_GEN_TOKEN set is logged as a WARN that
+// names the missing variable (never the token); both empty is an info line.
+func buildVenueGenerator(cfg *config.Config, logger *slog.Logger) venueplangenerate.Generator {
+	if cfg.VenueGenURL != "" && cfg.VenueGenToken != "" {
+		return venueplangenerator.New(cfg.VenueGenURL, cfg.VenueGenToken)
+	}
+	if msg := cfg.VenueGenHalfConfigured(); msg != "" {
+		logger.Warn("arena-worker: " + msg)
+	} else {
+		logger.Info("venue generator is off: VENUE_GEN_URL and VENUE_GEN_TOKEN are not set")
+	}
+	return nil
 }
 
 func registerOpsWatchdogHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier opsalert.Notifier, logger *slog.Logger) {

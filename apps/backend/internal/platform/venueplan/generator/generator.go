@@ -29,6 +29,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"strings"
 	"time"
 
@@ -61,7 +62,24 @@ const (
 	DefaultPollTimeout  = 30 * time.Second
 	DefaultDeadline     = 4 * time.Minute
 	DefaultPollInterval = 2 * time.Second
-	maxAnswerBytes      = 64 << 20
+)
+
+// Limits of what the generator may answer with, checked before anything is
+// parsed or stored.
+const (
+	// MaxSVGBytes is the biggest authoring SVG taken: the limit the API
+	// applies to an uploaded draft SVG (venueplan.MaxDraftSVGBytes).
+	MaxSVGBytes = venueplan.MaxDraftSVGBytes
+	// MaxPreviewBytes is the biggest preview PNG taken. The intake has no
+	// limit of its own for a preview, so this is a stated one: a preview is a
+	// thumbnail of the plan and 10 MB is the generator's own upload limit.
+	MaxPreviewBytes = 10 << 20
+	// maxJobIDLen is the longest generator job id accepted.
+	maxJobIDLen = 200
+	// maxAnswerBytes caps the raw HTTP answer: the SVG (JSON escaping at most
+	// doubles it), the preview in base64, and 4 MB for the model, the file
+	// reports and the JSON around them (about 23 MB in all).
+	maxAnswerBytes = 2*MaxSVGBytes + (MaxPreviewBytes+2)/3*4 + 4<<20
 )
 
 // File is one file to send.
@@ -100,6 +118,12 @@ type Result struct {
 	SVG []byte
 	// PreviewPNG may be nil.
 	PreviewPNG []byte
+	// SVGTooLarge is the size in bytes of an authoring SVG over MaxSVGBytes
+	// (SVG is then nil); 0 when the SVG was within the limit.
+	SVGTooLarge int
+	// PreviewTooLarge is the size of a preview over MaxPreviewBytes, decoded
+	// (PreviewPNG is then nil); 0 when within the limit.
+	PreviewTooLarge int
 }
 
 // Result values.
@@ -291,11 +315,14 @@ func (c *Client) submit(ctx context.Context, files []File) (string, error) {
 	var out struct {
 		JobID string `json:"job_id"`
 	}
-	if err := json.Unmarshal(raw, &out); err != nil || out.JobID == "" {
-		return "", &Error{Status: status, Code: "bad_answer", Msg: "POST /generate answered without a job_id", Retry: true}
+	if err := json.Unmarshal(raw, &out); err != nil || !validJobID(out.JobID) {
+		return "", &Error{Status: status, Code: "bad_answer", Msg: "POST /generate answered without a usable job_id", Retry: true}
 	}
 	return out.JobID, nil
 }
+
+// validJobID: a job id the generator made up must be neither empty nor long.
+func validJobID(id string) bool { return id != "" && len(id) <= maxJobIDLen }
 
 type jobAnswer struct {
 	JobID            string          `json:"job_id"`
@@ -322,10 +349,15 @@ type jobAnswer struct {
 //     *Error of a failed job, a final HTTP answer, a bad answer, or a 404
 //     (Code CodeJobNotFound, the generator lost the job).
 func (c *Client) Poll(ctx context.Context, jobID string) (Result, bool, error) {
-	status, raw, err := c.call(ctx, c.pollTimeout, http.MethodGet, "/jobs/"+jobID, "", nil)
+	if !validJobID(jobID) {
+		return Result{}, true, &Error{Code: "bad_answer", Msg: "the job id is empty or too long"}
+	}
+	status, raw, err := c.call(ctx, c.pollTimeout, http.MethodGet, "/jobs/"+url.PathEscape(jobID), "", nil)
 	switch {
 	case err != nil:
-		return Result{}, false, err
+		// A final error (an answer over the size cap, a missing config) will
+		// not change on the next ask.
+		return Result{}, !Retryable(err), err
 	case status == http.StatusNotFound:
 		return Result{}, true, &Error{Status: status, Code: CodeJobNotFound, Msg: "the generator does not know the job " + jobID, Retry: true}
 	case status != http.StatusOK:
@@ -390,14 +422,29 @@ func (a jobAnswer) result(jobID string) (Result, error) {
 		r.Model = a.Model
 	}
 	if a.AuthoringSVG != nil && *a.AuthoringSVG != "" {
-		r.SVG = []byte(*a.AuthoringSVG)
+		if len(*a.AuthoringSVG) > MaxSVGBytes {
+			r.SVGTooLarge = len(*a.AuthoringSVG)
+		} else {
+			r.SVG = []byte(*a.AuthoringSVG)
+		}
 	}
 	if a.PreviewPNG != nil && *a.PreviewPNG != "" {
-		png, err := base64.StdEncoding.DecodeString(*a.PreviewPNG)
-		if err != nil {
-			return Result{}, &Error{Status: http.StatusOK, Code: "bad_answer", Msg: "preview_png_base64 is not base64", Retry: true}
+		if enc := *a.PreviewPNG; len(enc) > (MaxPreviewBytes+2)/3*4 {
+			// Not decoded: the decoded size is about three quarters of it.
+			r.PreviewTooLarge = len(enc) / 4 * 3
+		} else {
+			png, err := base64.StdEncoding.DecodeString(enc)
+			if err != nil {
+				return Result{}, &Error{Status: http.StatusOK, Code: "bad_answer", Msg: "preview_png_base64 is not base64", Retry: true}
+			}
+			if len(png) > MaxPreviewBytes {
+				// The encoded length is rounded up, so the exact size is
+				// known only after decoding (still bounded by the cap above).
+				r.PreviewTooLarge = len(png)
+			} else {
+				r.PreviewPNG = png
+			}
 		}
-		r.PreviewPNG = png
 	}
 	if r.Result != ResultOK && r.Result != ResultNoAdapter {
 		return Result{}, &Error{Status: http.StatusOK, Code: "bad_answer", Msg: fmt.Sprintf("unknown result %q", r.Result)}
@@ -431,6 +478,9 @@ func (c *Client) Render(ctx context.Context, in venueplan.RenderInput) (venuepla
 	r, err := a.result("")
 	if err != nil {
 		return venueplan.RenderOutput{}, err
+	}
+	if r.SVGTooLarge > 0 {
+		return venueplan.RenderOutput{}, &Error{Status: status, Code: "bad_answer", Msg: fmt.Sprintf("the SVG is too large (%d bytes)", r.SVGTooLarge)}
 	}
 	out := venueplan.RenderOutput{Model: r.Model, SVG: r.SVG, PreviewPNG: r.PreviewPNG, GeneratorVersion: r.GeneratorVersion}
 	if len(r.SVG) > 0 {

@@ -159,6 +159,11 @@ func (r EscalationReason) Valid() bool {
 // (spec 4.6), in characters.
 const MaxEscalationText = 1000
 
+// MaxDraftSVGBytes is the biggest draft SVG (the SVG limit of spec 2.1): the
+// admin draft routes and approve apply it, and so does the generator job to
+// an SVG the generator returns.
+const MaxDraftSVGBytes = 3 << 20
+
 // SourceKind is venue_plan_intake_sources.kind.
 type SourceKind string
 

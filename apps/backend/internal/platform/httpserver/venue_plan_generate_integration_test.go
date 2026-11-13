@@ -29,6 +29,7 @@ import (
 
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/audit"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/generate"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/generator"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/notify"
@@ -57,9 +58,12 @@ func vpgXLSX(t *testing.T) []byte {
 // vpgAuthoringSVG is a valid authoring SVG of the generator's own fixtures.
 func vpgAuthoringSVG(t *testing.T) string {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "venue-svg-generator", "arena_export", "testdata", "synthetic_authoring.svg"))
+	// A copy of the generator's fixture: a test that read apps/venue-svg-generator
+	// would not run in CI for a pull request that changes only that folder
+	// (see TestVenueGenFixtureCopyEqualsTheGeneratorsFile).
+	raw, err := os.ReadFile(filepath.Join("testdata", "venue_gen", "synthetic_authoring.svg"))
 	if err != nil {
-		t.Fatalf("read the generator's authoring SVG: %v", err)
+		t.Fatalf("read the authoring SVG copy: %v", err)
 	}
 	return string(raw)
 }
@@ -444,6 +448,45 @@ func TestVenuePlanGenerate_BadSVGStoresNothing(t *testing.T) {
 	if e.count(t, `SELECT count(*) FROM venue_plan_notices WHERE intake_id = $1 AND kind = 'escalated'`, id) != 1 ||
 		e.notifyJobs(t, id, "intake_escalated") != 1 {
 		t.Error("the escalation was not told")
+	}
+}
+
+// An SVG over the 3 MB draft limit is an invalid draft: nothing is parsed or
+// stored, the intake goes to an administrator with draft_invalid.
+func TestVenuePlanGenerate_OversizedSVGStoresNothing(t *testing.T) {
+	e := newVPIEnv(t)
+	id := e.createReceived(t, vpiFile{"hall.xlsx", vpgXLSX(t)})
+	mediaBefore := e.count(t, `SELECT count(*) FROM media_objects WHERE org_id = $1`, e.orgA)
+	svg := vpgAuthoringSVG(t)
+	big := strings.Replace(svg, "</svg>", "<!--"+strings.Repeat("x", venueplan.MaxDraftSVGBytes)+"--></svg>", 1)
+	s := &vpgStub{job: func(int) (int, string) { return 200, vpgDone("ok", sp("PASS"), &big, vpgUsedFile) }}
+	e.runGenerate(t, newVPGStub(t, s), id)
+	if st, reason := e.state(t, id); st != "operator" || reason != "draft_invalid" {
+		t.Fatalf("state %s %s, want operator draft_invalid", st, reason)
+	}
+	if e.count(t, `SELECT count(*) FROM venue_plan_drafts WHERE intake_id = $1`, id) != 0 ||
+		e.count(t, `SELECT count(*) FROM media_objects WHERE org_id = $1`, e.orgA) != mediaBefore {
+		t.Error("an oversized SVG left rows behind")
+	}
+}
+
+// A preview over its limit alone does not lose a valid SVG: the draft is kept
+// without the preview.
+func TestVenuePlanGenerate_OversizedPreviewKeepsTheDraft(t *testing.T) {
+	e := newVPIEnv(t)
+	id := e.createReceived(t, vpiFile{"hall.xlsx", vpgXLSX(t)})
+	svg := vpgAuthoringSVG(t)
+	body := strings.Replace(vpgDone("ok", sp("PASS"), &svg, vpgUsedFile), `"preview_png_base64":"`,
+		`"preview_png_base64":"`+base64.StdEncoding.EncodeToString(make([]byte, generator.MaxPreviewBytes+1))+`","x":"`, 1)
+	// vpgDone wrote the preview as a quoted value: the replacement above puts
+	// the oversized preview first and turns the small one into a spare field.
+	s := &vpgStub{job: func(int) (int, string) { return 200, body }}
+	e.runGenerate(t, newVPGStub(t, s), id)
+	if st, _ := e.state(t, id); st != "review" {
+		t.Fatalf("state %s, want review", st)
+	}
+	if e.count(t, `SELECT count(*) FROM venue_plan_drafts WHERE intake_id = $1 AND svg_media_id IS NOT NULL AND preview_media_id IS NULL`, id) != 1 {
+		t.Error("the draft was not kept without its preview")
 	}
 }
 

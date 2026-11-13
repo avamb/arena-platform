@@ -50,6 +50,10 @@ func Decide(res generator.Result, genErr error, svgValid bool, attempt int) Deci
 		}
 		return operator(venueplan.EscalationUnsupportedFormat, false)
 	case generator.ResultOK:
+		if res.SVGTooLarge > 0 {
+			// Over the draft limit: an invalid draft, never parsed or stored.
+			return operator(venueplan.EscalationDraftInvalid, false)
+		}
 		if len(res.SVG) == 0 {
 			// No seat has an identity (a vector PDF without row labels).
 			return operator(venueplan.EscalationTooManyQuestions, false)

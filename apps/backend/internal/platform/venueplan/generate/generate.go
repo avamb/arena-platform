@@ -275,6 +275,14 @@ func (h *handler) pollStep(ctx context.Context, id uuid.UUID, p intake.GenerateP
 func (h *handler) outcome(ctx context.Context, id uuid.UUID, p intake.GeneratePayload, res generator.Result, genErr error) error {
 	var report json.RawMessage
 	svgValid := false
+	if genErr == nil && (res.SVGTooLarge > 0 || res.PreviewTooLarge > 0) {
+		// Sizes only, never the content.
+		h.logger.Warn("venue plan generate: the generator's answer is over a limit",
+			slog.String("intake_id", id.String()), slog.Int("attempt", p.Attempt),
+			slog.Int("svg_bytes", res.SVGTooLarge), slog.Int("svg_limit", generator.MaxSVGBytes),
+			slog.Int("preview_bytes", res.PreviewTooLarge), slog.Int("preview_limit", generator.MaxPreviewBytes),
+			slog.Bool("draft_dropped", res.SVGTooLarge > 0))
+	}
 	if genErr == nil && res.Result == generator.ResultOK && len(res.SVG) > 0 {
 		g, warnings, planType, verrs := intake.CheckPlanSVG(res.SVG)
 		if len(verrs) == 0 {
