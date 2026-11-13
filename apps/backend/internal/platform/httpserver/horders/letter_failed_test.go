@@ -32,6 +32,13 @@ func TestAnyLetterFailed_SameRuleAsTheList(t *testing.T) {
 		{"another kind does not replace it", []emailstatus.LetterView{olderRefund, failedChange}, true},
 		{"stuck ticket letter", []emailstatus.LetterView{stuckTicket}, true},
 		{"failed ticket letter is never forgiven", []emailstatus.LetterView{failedTicket, stuckTicket}, true},
+		{"failed ticketless ticket letter replaced by a newer ticket letter", []emailstatus.LetterView{
+			{Kind: emailstatus.KindTicket, Status: emailstatus.StatusFailed, SentAt: at("2026-10-19T10:00:00Z")},
+			{Kind: emailstatus.KindTicket, Status: emailstatus.StatusDelivered, TicketIDs: []string{"a"}, SentAt: at("2026-10-20T10:00:00Z")},
+		}, false},
+		{"failed ticketless ticket letter alone", []emailstatus.LetterView{
+			{Kind: emailstatus.KindTicket, Status: emailstatus.StatusFailed, SentAt: at("2026-10-19T10:00:00Z")},
+		}, true},
 		{"all fine", []emailstatus.LetterView{newerChange, olderRefund}, false},
 	}
 	for _, c := range cases {
