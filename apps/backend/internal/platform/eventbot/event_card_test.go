@@ -93,10 +93,9 @@ func TestEventCard_Figures_En(t *testing.T) {
 	if strings.Contains(text, "Hall") {
 		t.Errorf("collapsed card must not list the dates:\n%s", text)
 	}
-	// Summary + CSV, then the dates toggle.
-	if len(rows) != 2 || rows[0][0].CallbackData != "ec:es:"+eventID.String() || rows[0][1].CallbackData != "ec:ce:"+eventID.String() ||
-		rows[1][0].CallbackData != "ec:o:"+eventID.String()+":1" {
-		t.Errorf("collapsed rows = %+v", rows)
+	// Summary, export and the dates toggle moved to the Sales group.
+	if len(rows) != 0 {
+		t.Errorf("a collapsed card has no date rows, got %+v", rows)
 	}
 	assertCallbacksFit(t, "collapsed", rows)
 }
@@ -111,9 +110,9 @@ func TestEventCard_ExpandedListsEveryDate(t *testing.T) {
 	if strings.Count(text, "Hall &lt;1&gt;") != 2 || !strings.Contains(text, "10.01.2099 20:00") || !strings.Contains(text, "11.01.2099 20:00") {
 		t.Errorf("expanded card must list both dates in the venue zone:\n%s", text)
 	}
-	// summary+csv, one row per date (summary, csv), hide.
-	if len(rows) != 4 || rows[1][0].Text != "📊 10.01 20:00" || !strings.HasPrefix(rows[1][0].CallbackData, "ec:ss:") ||
-		!strings.HasPrefix(rows[1][1].CallbackData, "ec:cs:") || rows[3][0].CallbackData != "ec:o:"+eventID.String()+":0" {
+	// One row per date (summary, csv), then hide.
+	if len(rows) != 3 || rows[0][0].Text != "📊 10.01 20:00" || !strings.HasPrefix(rows[0][0].CallbackData, "ec:ss:") ||
+		!strings.HasPrefix(rows[0][1].CallbackData, "ec:cs:") || rows[2][0].CallbackData != "ec:o:"+eventID.String()+":0" {
 		t.Errorf("expanded rows = %+v", rows)
 	}
 	assertCallbacksFit(t, "expanded", rows)
@@ -128,8 +127,8 @@ func TestEventCard_SingleDateNamesTheDateAndHasNoToggle(t *testing.T) {
 	if !strings.Contains(text, "<b>10.01.2099 20:00</b> Hall &lt;1&gt;") || strings.Contains(text, "All dates") {
 		t.Errorf("single-date card:\n%s", text)
 	}
-	if len(rows) != 1 {
-		t.Errorf("a single-date event needs only summary and CSV, got %+v", rows)
+	if len(rows) != 0 {
+		t.Errorf("a single-date event has no date rows and no toggle, got %+v", rows)
 	}
 }
 
@@ -138,7 +137,7 @@ func TestEventCard_NoSessions(t *testing.T) {
 	b := ecTestBot(t)
 	var sb strings.Builder
 	rows := b.writeCardFigures(&sb, "en", uuid.New(), ecEventSummary(t, 0), false)
-	if !strings.Contains(sb.String(), "This event has no dates.") || len(rows) != 1 {
+	if !strings.Contains(sb.String(), "This event has no dates.") || len(rows) != 0 {
 		t.Errorf("no-sessions card: %q rows=%d", sb.String(), len(rows))
 	}
 }

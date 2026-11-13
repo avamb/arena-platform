@@ -272,7 +272,7 @@ func (e *piEnv) wizardToVenue(eventName string) {
 	o := e.owner
 	o.press("wz:new", "Как называется")
 	o.say(eventName, "Возраст")
-	o.press("wz:age:16+", "От чьего имени")
+	o.press("wz:age:16+", "Под каким брендом")
 	o.press("wz:prom:org", "афишу")
 	o.press("wz:skip", "Дата сеанса 1")
 	o.say("15.12.2099", "Вы написали")

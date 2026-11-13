@@ -495,7 +495,7 @@ other = "Name"
 other = "Age"
 
 ["bot.wz.ack_promoter"]
-other = "Promoter"
+other = "Brand"
 
 ["bot.wz.ack_promoter_org"]
 other = "your organization"
@@ -627,25 +627,25 @@ other = "Please give the event a name, up to 200 characters."
 other = "Age restriction?"
 
 ["bot.wz.ask_promoter"]
-other = "Who is the promoter of the event? The promoter is the name that buyers see as the organizer: on the ticket, in the e-ticket PDF and on the ticket page of the promoter. Usually that is {{.Org}}. For a different theater or brand, select it or add a new one. For the next event you can select a different one."
+other = "Under which brand do you sell the event? The brand is the name that buyers see as the organizer: on the ticket, in the e-ticket PDF and on the ticket page of the brand. Usually that is {{.Org}}. For a different theater or name, select its brand or add a new one. For the next event you can select a different one."
 
 ["bot.wz.promoter_org"]
 other = "The organization"
 
 ["bot.wz.promoter_new"]
-other = "+ New promoter (brand)…"
+other = "+ New brand…"
 
 ["bot.wz.ask_promoter_name"]
-other = "The promoter's name. Buyers see it as the organizer on the ticket, in the e-ticket PDF and on the promoter's ticket page."
+other = "The name of the brand. Buyers see it as the organizer on the ticket, in the e-ticket PDF and on the ticket page of the brand."
 
 ["bot.wz.err_promoter_name"]
-other = "Please give the promoter's name."
+other = "Please give the name of the brand."
 
 ["bot.wz.err_promoter_dup"]
-other = "This promoter is in the list. Select it from the list."
+other = "This brand is in the list. Select it from the list."
 
 ["bot.wz.ask_promoter_legal"]
-other = "The tax or registration number of the promoter, if there is one. You can skip this step."
+other = "The tax or registration number of the brand, if there is one. You can skip this step."
 
 ["bot.wz.ask_poster"]
 other = "Send the poster as a file to keep the quality. An image sent as a photo also works, but Telegram compresses it.\n\n<b>On a phone:</b>\n1. Tap the paperclip 📎.\n2. Tap “File”.\n3. Select the image.\n\n<b>On a computer:</b>\n1. Click the paperclip 📎.\n2. Select the image.\n3. In the send window, select the check box “Send as a document”.\n\n<b>Requirements:</b>\n• PNG or JPG, 5 MB maximum.\n• Ratio 4:5 (1080×1350) or square.\n• Minimum width 1000 px.\n\nThe site cuts the top and the bottom of the poster in cards. Put the important parts in the center.\n\nThe event card does not open on the site if there is no poster. You can add the poster after this step."
@@ -906,7 +906,7 @@ other = "No, do not publish"
 other = "“{{.Name}}”, {{.Age}}{{.Promoter}}{{.Poster}}"
 
 ["bot.wz.summary_promoter"]
-other = ", promoter {{.Name}}"
+other = ", brand {{.Name}}"
 
 ["bot.wz.summary_no_poster"]
 other = ", no poster"
@@ -1006,7 +1006,7 @@ other = "You do not have the right to do this. Tell the owner of your organizati
 
 
 ["bot.wz.edit_btn"]
-other = "Edit"
+other = "📝 Name, description, poster"
 
 ["bot.wz.copy_btn"]
 other = "Copy as new"
@@ -1069,7 +1069,7 @@ other = "The list of changes there since you opened the edit:\n{{.List}}"
 other = "{{.What}}: changed"
 
 ["bot.wz.elsewhere_unknown"]
-other = "The name, description, poster, age and promoter are the same as when you opened them. A different part changed, for example the dates or prices."
+other = "The name, description, poster, age and brand are the same as when you opened them. A different part changed, for example the dates or prices."
 
 ["bot.wz.preview_conflict_footer"]
 other = "“Save anyway” replaces their changes with your version. To start from the new version, press “Cancel”, then “Delete the changes”, and open the event again."
@@ -1117,7 +1117,7 @@ other = "Poster"
 other = "Age"
 
 ["bot.wz.edit_field_promoter"]
-other = "Promoter"
+other = "Brand"
 
 ["bot.wz.edit_field_currency"]
 other = "Currency"
@@ -1135,7 +1135,7 @@ other = "Current: “{{.Value}}”.\nSend the new name in one message."
 other = "Current: {{.Value}}. Select the new age limit."
 
 ["bot.wz.edit_ask_promoter"]
-other = "Current: {{.Value}}. Select the promoter of the event."
+other = "Current: {{.Value}}. Select the brand of the event."
 
 ["bot.wz.edit_ask_poster"]
 other = "Current poster: {{.State}}.\nSend the new one as a <b>file</b>: paperclip 📎 → “File” (on a computer select “Send as a document”). PNG or JPG up to 5 MB, 4:5 (1080×1350) or square, width from 1000 px."
@@ -1177,7 +1177,7 @@ other = "Poster"
 other = "Age"
 
 ["bot.wz.edit_b_promoter"]
-other = "Promoter"
+other = "Brand"
 
 ["bot.wz.edit_b_currency"]
 other = "Currency"
@@ -2905,7 +2905,7 @@ other = "Something is missing in the code. Go back and examine the steps."
 other = "🎭 Brands (names on events)"
 
 ["bot.prom.list_title"]
-other = "🎭 <b>Brands</b> · {{.Org}} · {{.Total}} in all · page {{.Page}}/{{.Pages}}\nA brand is the name under which you sell an event. We called it a promoter before."
+other = "🎭 <b>Brands</b> · {{.Org}} · {{.Total}} in all · page {{.Page}}/{{.Pages}}\nA brand is the name under which you sell tickets."
 
 ["bot.prom.list_hint"]
 other = "Tap a brand to see and edit its data."
@@ -2917,13 +2917,13 @@ other = "There are no brands. A brand is the name under which you sell tickets. 
 other = "➕ Brand"
 
 ["bot.prom.new_ask"]
-other = "➕ <b>New promoter.</b> Type its name. Tickets show it as the organizer. Two active promoters cannot share a name."
+other = "➕ <b>New brand.</b> Type its name. Tickets show it as the organizer. Two active brands cannot have the same name."
 
 ["bot.prom.new_cancel_btn"]
 other = "‹ Back to the list"
 
 ["bot.prom.created"]
-other = "✅ Promoter added. Add the other data below if necessary."
+other = "✅ Brand added. Add the other data below if necessary."
 
 ["bot.prom.card"]
 other = "🎭 <b>{{.Name}}</b>"
@@ -2977,22 +2977,22 @@ other = "✏ Page link"
 other = "🗄 Archive"
 
 ["bot.prom.q_name"]
-other = "✏ <b>New name</b> of the promoter. Tickets show it as the organizer. Two active promoters cannot share a name."
+other = "✏ <b>New name</b> of the brand. Tickets show it as the organizer. Two active brands cannot have the same name."
 
 ["bot.prom.q_address"]
-other = "✏ <b>Address</b> of the promoter in one message, up to 300 characters."
+other = "✏ <b>Address</b> of the brand in one message, up to 300 characters."
 
 ["bot.prom.q_tax"]
-other = "✏ <b>Tax ID</b> as in the promoter's documents (IČO, INN, EIN…), up to 40 characters."
+other = "✏ <b>Tax ID</b> as in the documents of the brand (IČO, INN, EIN…), up to 40 characters."
 
 ["bot.prom.q_phone"]
 other = "✏ <b>Phone</b> with the country code, for example +420 123 456 789."
 
 ["bot.prom.q_email"]
-other = "✏ <b>E-mail</b> of the promoter."
+other = "✏ <b>E-mail</b> of the brand."
 
 ["bot.prom.email_note"]
-other = "When you move or cancel a date of the promoter's events, the e-mail tells buyers to write to this address. Make sure it works."
+other = "When you move or cancel a date of an event of the brand, the e-mail tells buyers to write to this address. Make sure it works."
 
 ["bot.prom.q_website"]
 other = "✏ <b>Site</b>, for example partner.example. If you do not type https://, I add it."
@@ -3022,7 +3022,7 @@ other = "⚠ The name cannot be empty. Type it again."
 other = "⚠ The name is too long (120 characters at most). Type a shorter one."
 
 ["bot.prom.err_name_taken"]
-other = "⚠ A different active promoter has this name. Type a different name."
+other = "⚠ A different active brand has this name. Type a different name."
 
 ["bot.prom.err_address_long"]
 other = "⚠ The address must be 1–300 characters. Type it again."
@@ -3043,7 +3043,7 @@ other = "⚠ A site address is, for example, partner.example or https://partner.
 other = "⚠ A page address is 2–64 characters: Latin letters a–z, digits and single hyphens, not at the start or the end. Type it again."
 
 ["bot.prom.err_slug_taken"]
-other = "⚠ A different promoter or organization uses this address. Type a different address."
+other = "⚠ A different brand or organization uses this address. Type a different address."
 
 ["bot.prom.slug_confirm"]
 other = "🔗 The page address will change:\n{{.Old}}\n→ {{.New}}\n\nLinks with the old address that you gave to other people will stop working. Save the new address?"
@@ -3052,7 +3052,7 @@ other = "🔗 The page address will change:\n{{.Old}}\n→ {{.New}}\n\nLinks wit
 other = "✔ Save the new address"
 
 ["bot.prom.archive_ask"]
-other = "🗄 <b>Archive {{.Name}}?</b>\n\nThe promoter goes from the list. You cannot select it for a new event. Its public page and the links of its events with that address stop opening. Events that name it keep the name. Tickets and e-mails show it as the organizer. We do not delete anything."
+other = "🗄 <b>Archive {{.Name}}?</b>\n\nThe brand goes from the list. You cannot select it for a new event. Its public page and the links of its events with that address stop opening. Events that name it keep the name. Tickets and e-mails show it as the organizer. We do not delete anything."
 
 ["bot.prom.archive_yes_btn"]
 other = "🗄 Yes, archive"
@@ -3061,22 +3061,22 @@ other = "🗄 Yes, archive"
 other = "🗄 {{.Name}} is archived."
 
 ["bot.prom.gone"]
-other = "This promoter is not in the list (archived or removed). Here is the list."
+other = "This brand is not in the list (archived or removed). Here is the list."
 
 ["bot.prom.event_line"]
-other = "🎭 Promoter: <b>{{.Name}}</b>"
+other = "🎭 Brand: <b>{{.Name}}</b>"
 
 ["bot.prom.event_line_org"]
-other = "🎭 Promoter: the organization"
+other = "🎭 Brand: the organization"
 
 ["bot.prom.event_btn"]
-other = "🎭 Promoter"
+other = "🎭 Brand"
 
 ["bot.prom.event_back_btn"]
 other = "‹ Event"
 
 ["bot.prom.event_org_note"]
-other = "«{{.Name}}» has no different promoter: the organization is the promoter. To select a different promoter, edit the event."
+other = "«{{.Name}}» has no different brand: the organization sells under its own name. To select a different brand, edit the event."
 ["bot.cat.btn"]
 other = "🎟 Categories"
 
@@ -4021,7 +4021,7 @@ other = "← Back to the card"
 other = "Arena closed the categories that are not in the new list. Tickets sold in them stay valid."
 
 ["bot.mt.btn"]
-other = "🖼 Materials"
+other = "🖼 Page materials"
 
 ["bot.mt.menu"]
 other = "🖼 <b>Materials</b> · {{.Event}}\n\nBuyers see these materials on the event page: photos, videos, a map and links to other sellers. Select a part."
@@ -4466,7 +4466,7 @@ other = "The event has no sales page. The code opens the general page (the addre
 other = "The session is not on sale (canceled or deleted). The code opens the event page (the address above). To send the code to a different session, press «Redirect»."
 
 ["bot.ql.card_why_promoter"]
-other = "The promoter is in the archive or has no page. The code opens the organization page (the address above). Restore the promoter or press «Redirect»."
+other = "The brand is in the archive or has no page. The code opens the organization page (the address above). Restore the brand or press «Redirect»."
 
 ["bot.ql.card_why_no_address"]
 other = "We found no sales page address: the platform or the organization has no sales page address set. A redirect will not help. Write to support."
@@ -4571,7 +4571,7 @@ other = "event “{{.Name}}”"
 other = "a date of the event “{{.Name}}”"
 
 ["bot.ql.w_promoter"]
-other = "promoter page"
+other = "brand page"
 
 ["bot.ql.w_org"]
 other = "organization page"
@@ -4657,7 +4657,7 @@ other = "The text has a hidden character. Type the text again or paste it as sim
 other = "This text did not fit. Check it and send it again."
 
 ["bot.tf.event_btn"]
-other = "✉ Text in the letter"
+other = "✉️ Text in the e-mail"
 
 ["bot.tf.note_title"]
 other = "<b>Text in the letter</b> · {{.Name}}"
@@ -7206,3 +7206,51 @@ other = "👉 Add the first event"
 
 ["bot.mn.step_sales_link_btn"]
 other = "👉 Get a sales link"
+
+["bot.ec.g.link_btn"]
+other = "🔗 Link for buyers"
+
+["bot.ec.g.sales_btn"]
+other = "📊 Sales and orders"
+
+["bot.ec.g.edit_btn"]
+other = "✏️ Edit"
+
+["bot.ec.g.promo_btn"]
+other = "📣 Promotion"
+
+["bot.ec.g.more_btn"]
+other = "⚙️ More"
+
+["bot.ec.g.cat_btn"]
+other = "🏷 Categories and prices"
+
+["bot.ec.g.guests_btn"]
+other = "📋 Guest list"
+
+["bot.ec.g.link_more_btn"]
+other = "More links and QR codes"
+
+["bot.ec.g.screen"]
+other = "<b>{{.Name}}</b>\n{{.Title}}\n\n{{.Text}}"
+
+["bot.ec.g.s_text"]
+other = "See the sales, the orders and the guests of this event. Download the data."
+
+["bot.ec.g.e_text"]
+other = "Change the name, the sessions, the prices and the page of this event."
+
+["bot.ec.g.p_text"]
+other = "Get more buyers with promo codes, free tickets and referrals."
+
+["bot.ec.g.m_text"]
+other = "Copy the event, take it off sale, archive it or delete it."
+
+["bot.ec.g.link_text"]
+other = "<b>{{.Name}}</b>\n\n🔗 Link for buyers:\n{{.URL}}\n\nThe QR code is in the image below."
+
+["bot.ec.g.link_text_noqr"]
+other = "<b>{{.Name}}</b>\n\n🔗 Link for buyers:\n{{.URL}}\n\nThe QR code did not load. Press «More links and QR codes»."
+
+["bot.ec.g.link_none"]
+other = "This event has no link for buyers yet. Publish the event first."

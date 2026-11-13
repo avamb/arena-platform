@@ -302,7 +302,7 @@ func TestBotE2E_PosterHintsComeFromTheAPI(t *testing.T) {
 	m := tg.mark()
 	tg.push(msg("Hints event"))
 	tg.waitSince(t, m, "Возраст")
-	press("wz:age:16+", "От чьего имени")
+	press("wz:age:16+", "Под каким брендом")
 	press("wz:prom:org", "афишу")
 
 	tg.mu.Lock()

@@ -257,9 +257,9 @@ func TestBotE2E_PromoterEdit(t *testing.T) {
 	}
 
 	// ── the event card carries the promoter line and opens the promoter ───────
-	text = owner.press("ec:o:"+eventID.String(), "Промоутер:")
+	text = owner.press("ec:o:"+eventID.String(), "Бренд:")
 	if !strings.Contains(text, renamed) {
-		t.Errorf("the event card must name the promoter:\n%s", text)
+		t.Errorf("the event card must name the brand:\n%s", text)
 	}
 	owner.press("pr:ev:"+eventID.String(), renamed)
 
@@ -279,9 +279,9 @@ func TestBotE2E_PromoterEdit(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT promoter_id FROM event_promoters WHERE event_id = $1`, eventID).Scan(&linked); err != nil || linked != idA {
 		t.Fatalf("the event keeps its promoter: %v %v", linked, err)
 	}
-	text = owner.press("ec:o:"+eventID.String(), "Промоутер:")
+	text = owner.press("ec:o:"+eventID.String(), "Бренд:")
 	if !strings.Contains(text, renamed) {
-		t.Errorf("an archived promoter still shows on its event:\n%s", text)
+		t.Errorf("an archived brand still shows on its event:\n%s", text)
 	}
 	// A stale confirm for an archive nobody asked about does nothing.
 	owner.press(data("ay", idB), nameB)

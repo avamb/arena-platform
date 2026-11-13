@@ -324,7 +324,7 @@ other = "Nombre"
 other = "Edad"
 
 ["bot.wz.ack_promoter"]
-other = "Promotor"
+other = "Marca"
 
 ["bot.wz.ack_promoter_org"]
 other = "tu organización"
@@ -456,25 +456,25 @@ other = "Ponle un nombre al evento, de hasta 200 caracteres."
 other = "¿Restricción de edad?"
 
 ["bot.wz.ask_promoter"]
-other = "¿A nombre de quién va el evento? El promotor es el nombre que los compradores ven como organizador: en la entrada, en el PDF y en la página propia del promotor. Normalmente es {{.Org}}. Para otro teatro o marca, elígelo o añade uno nuevo. Para el próximo evento puedes elegir otro."
+other = "¿Con qué marca vendes el evento? La marca es el nombre que los compradores ven como organizador: en la entrada, en el PDF y en la página propia de la marca. Normalmente es {{.Org}}. Para otro teatro u otro nombre, elige su marca o añade una nueva. Para el próximo evento puedes elegir otro."
 
 ["bot.wz.promoter_org"]
 other = "La propia organización"
 
 ["bot.wz.promoter_new"]
-other = "+ Nuevo promotor (marca)…"
+other = "+ Nueva marca…"
 
 ["bot.wz.ask_promoter_name"]
-other = "El nombre del promotor. Los compradores lo ven como organizador en la entrada, en el PDF y en la página del promotor."
+other = "El nombre de la marca. Los compradores lo ven como organizador en la entrada, en el PDF y en la página de la marca."
 
 ["bot.wz.err_promoter_name"]
-other = "Indica el nombre del promotor."
+other = "Indica el nombre de la marca."
 
 ["bot.wz.err_promoter_dup"]
-other = "Este promotor ya existe: elígelo de la lista."
+other = "Esta marca ya existe. Elígela de la lista."
 
 ["bot.wz.ask_promoter_legal"]
-other = "El identificador fiscal o de empresa del promotor, si lo hay. Puedes omitirlo."
+other = "El identificador fiscal o de empresa de la marca, si lo hay. Puedes omitirlo."
 
 ["bot.wz.ask_poster"]
 other = "Envía el cartel como archivo, para no perder calidad. Una foto normal también sirve, pero Telegram la comprime.\n\n<b>En el móvil:</b>\n1. Pulsa el clip 📎.\n2. Pulsa “Archivo”.\n3. Elige la imagen.\n\n<b>En el ordenador:</b>\n1. Pulsa el clip 📎.\n2. Elige la imagen.\n3. En la ventana de envío, marca “Enviar como documento”.\n\n<b>Requisitos:</b>\n• PNG o JPG, máximo 5 MB.\n• Formato 4:5 (1080×1350) o cuadrado.\n• Ancho mínimo: 1000 px.\n\nLa web recorta la parte de arriba y la de abajo del cartel en las tarjetas. Deja lo importante en el centro.\n\nSin cartel, la tarjeta del evento no se abre en la web. Puedes añadir el cartel más tarde."
@@ -735,7 +735,7 @@ other = "No, aún no publicar"
 other = "“{{.Name}}”, {{.Age}}{{.Promoter}}{{.Poster}}"
 
 ["bot.wz.summary_promoter"]
-other = ", promotor {{.Name}}"
+other = ", marca {{.Name}}"
 
 ["bot.wz.summary_no_poster"]
 other = ", sin cartel"
@@ -834,7 +834,7 @@ other = "El cartel no se guardó: añádelo más tarde."
 other = "No tienes permiso para esta acción: díselo al propietario de tu organización."
 
 ["bot.wz.edit_btn"]
-other = "Editar"
+other = "📝 Nombre, descripción y cartel"
 
 ["bot.wz.copy_btn"]
 other = "Repetir como nuevo"
@@ -897,7 +897,7 @@ other = "Qué se cambió allí desde que abriste la edición:\n{{.List}}"
 other = "{{.What}}: con cambios"
 
 ["bot.wz.elsewhere_unknown"]
-other = "El nombre, la descripción, el cartel, la edad y el promotor siguen como al abrirlos. Ha cambiado otra parte, por ejemplo las fechas o los precios."
+other = "El nombre, la descripción, el cartel, la edad y la marca siguen como al abrirlos. Ha cambiado otra parte, por ejemplo las fechas o los precios."
 
 ["bot.wz.preview_conflict_footer"]
 other = "«Guardar igualmente» escribe tu versión encima de sus cambios. Para empezar desde la nueva versión, pulsa «Cancelar», luego «Eliminar los cambios», y abre el evento de nuevo."
@@ -945,7 +945,7 @@ other = "Cartel"
 other = "Edad"
 
 ["bot.wz.edit_field_promoter"]
-other = "Promotor"
+other = "Marca"
 
 ["bot.wz.edit_field_currency"]
 other = "Moneda"
@@ -1005,7 +1005,7 @@ other = "Cartel"
 other = "Edad"
 
 ["bot.wz.edit_b_promoter"]
-other = "Promotor"
+other = "Marca"
 
 ["bot.wz.edit_b_currency"]
 other = "Moneda"
@@ -2733,7 +2733,7 @@ other = "Falta algo en el código. Vuelve y revisa los pasos."
 other = "🎭 Marcas (nombres en los eventos)"
 
 ["bot.prom.list_title"]
-other = "🎭 <b>Marcas</b> · {{.Org}} · {{.Total}} en total · pág. {{.Page}}/{{.Pages}}\nUna marca es el nombre con el que vendes un evento. Antes lo llamábamos promotor."
+other = "🎭 <b>Marcas</b> · {{.Org}} · {{.Total}} en total · pág. {{.Page}}/{{.Pages}}\nUna marca es el nombre con el que vendes las entradas."
 
 ["bot.prom.list_hint"]
 other = "Toca una marca para ver y cambiar sus datos."
@@ -2745,13 +2745,13 @@ other = "Aún no hay marcas. Una marca es el nombre con el que vendes las entrad
 other = "➕ Marca"
 
 ["bot.prom.new_ask"]
-other = "➕ <b>Nuevo promotor.</b> Escribe su nombre. Se imprime en las entradas como organizador. Dos promotores activos no pueden tener el mismo nombre."
+other = "➕ <b>Nueva marca.</b> Escribe su nombre. Se imprime en las entradas como organizador. Dos marcas activas no pueden tener el mismo nombre."
 
 ["bot.prom.new_cancel_btn"]
 other = "‹ Volver a la lista"
 
 ["bot.prom.created"]
-other = "✅ Promotor añadido. Puedes completar el resto de datos abajo."
+other = "✅ Marca añadida. Puedes completar el resto de datos abajo."
 
 ["bot.prom.card"]
 other = "🎭 <b>{{.Name}}</b>"
@@ -2805,22 +2805,22 @@ other = "✏ Enlace de la página"
 other = "🗄 Archivar"
 
 ["bot.prom.q_name"]
-other = "✏ <b>Nuevo nombre</b> del promotor. Se imprime en las entradas como organizador. Dos promotores activos no pueden tener el mismo nombre."
+other = "✏ <b>Nuevo nombre</b> de la marca. Se imprime en las entradas como organizador. Dos marcas activas no pueden tener el mismo nombre."
 
 ["bot.prom.q_address"]
-other = "✏ <b>Dirección</b> del promotor en un solo mensaje, hasta 300 caracteres."
+other = "✏ <b>Dirección</b> de la marca en un solo mensaje, hasta 300 caracteres."
 
 ["bot.prom.q_tax"]
-other = "✏ <b>Identificación fiscal</b> tal como figura en los documentos del promotor (NIF, IČO, EIN…), hasta 40 caracteres."
+other = "✏ <b>Identificación fiscal</b> tal como figura en los documentos de la marca (NIF, IČO, EIN…), hasta 40 caracteres."
 
 ["bot.prom.q_phone"]
 other = "✏ <b>Teléfono</b> con el prefijo del país, por ejemplo +420 123 456 789."
 
 ["bot.prom.q_email"]
-other = "✏ <b>E-mail</b> del promotor."
+other = "✏ <b>E-mail</b> de la marca."
 
 ["bot.prom.email_note"]
-other = "A esta dirección se invita a escribir a los compradores cuando se cambia o se cancela una fecha de los eventos del promotor, así que tiene que funcionar."
+other = "A esta dirección se invita a escribir a los compradores cuando se cambia o se cancela una fecha de los eventos de la marca, así que tiene que funcionar."
 
 ["bot.prom.q_website"]
 other = "✏ <b>Sitio web</b>, por ejemplo partner.example. Si no escribes https://, se añade solo."
@@ -2850,7 +2850,7 @@ other = "⚠ El nombre no puede estar vacío. Escríbelo de nuevo."
 other = "⚠ El nombre es demasiado largo (120 caracteres como máximo). Escribe uno más corto."
 
 ["bot.prom.err_name_taken"]
-other = "⚠ Otro promotor activo ya tiene ese nombre. Escribe otro."
+other = "⚠ Otra marca activa ya tiene ese nombre. Escribe otro."
 
 ["bot.prom.err_address_long"]
 other = "⚠ La dirección debe tener de 1 a 300 caracteres. Escríbela de nuevo."
@@ -2871,7 +2871,7 @@ other = "⚠ Un sitio web es una dirección como partner.example o https://partn
 other = "⚠ La dirección de la página tiene de 2 a 64 caracteres: letras latinas a–z, cifras y guiones sueltos, ni al principio ni al final. Escríbela de nuevo."
 
 ["bot.prom.err_slug_taken"]
-other = "⚠ Esa dirección ya la usa otro promotor u otra organización. Escribe otra."
+other = "⚠ Esa dirección ya la usa otra marca u otra organización. Escribe otra."
 
 ["bot.prom.slug_confirm"]
 other = "🔗 La dirección de la página va a cambiar:\n{{.Old}}\n→ {{.New}}\n\nLos enlaces que ya hayas repartido con la dirección antigua dejarán de abrirse. ¿Guardar la nueva dirección?"
@@ -2889,22 +2889,22 @@ other = "🗄 Sí, archivar"
 other = "🗄 {{.Name}} está archivado."
 
 ["bot.prom.gone"]
-other = "Este promotor ya no está en la lista (archivado o eliminado). Aquí tienes la lista tal como está ahora."
+other = "Esta marca ya no está en la lista (archivado o eliminado). Aquí tienes la lista tal como está ahora."
 
 ["bot.prom.event_line"]
-other = "🎭 Promotor: <b>{{.Name}}</b>"
+other = "🎭 Marca: <b>{{.Name}}</b>"
 
 ["bot.prom.event_line_org"]
-other = "🎭 Promotor: la propia organización"
+other = "🎭 Marca: la propia organización"
 
 ["bot.prom.event_btn"]
-other = "🎭 Promotor"
+other = "🎭 Marca"
 
 ["bot.prom.event_back_btn"]
 other = "‹ Al evento"
 
 ["bot.prom.event_org_note"]
-other = "«{{.Name}}» no tiene un promotor aparte: el promotor es la propia organización. Para elegir otro, edita el evento."
+other = "«{{.Name}}» no tiene una marca aparte: la organización vende con su propio nombre. Para elegir otra marca, edita el evento."
 ["bot.cat.btn"]
 other = "🎟 Categorías"
 
@@ -3849,7 +3849,7 @@ other = "← Volver a la ficha"
 other = "Las categorías que no están en la lista nueva quedaron cerradas. Las entradas vendidas siguen siendo válidas."
 
 ["bot.mt.btn"]
-other = "🖼 Materiales"
+other = "🖼 Materiales de la página"
 
 ["bot.mt.menu"]
 other = "🖼 <b>Materiales</b> · {{.Event}}\n\nEsto es lo que ven los compradores en la página del evento: fotos, vídeos, un mapa y enlaces a otros vendedores. Elige una parte."
@@ -4294,7 +4294,7 @@ other = "El evento todavía no tiene página de venta, por eso el código lleva 
 other = "La sesión está cancelada o eliminada, por eso el código lleva a la página del evento (la dirección de arriba). Para que el código lleve a otra sesión, pulsa «Redirigir»."
 
 ["bot.ql.card_why_promoter"]
-other = "El promotor está en el archivo o no tiene página, por eso el código lleva a la página de la organización (la dirección de arriba). Restaura el promotor o pulsa «Redirigir»."
+other = "La marca está en el archivo o no tiene página, por eso el código lleva a la página de la organización (la dirección de arriba). Restaura la marca o pulsa «Redirigir»."
 
 ["bot.ql.card_why_no_address"]
 other = "No se pudo construir la dirección de la página de venta: la plataforma o la organización no tiene configurada la dirección de las páginas de venta. Redirigir no ayudará. Escribe a soporte."
@@ -4399,7 +4399,7 @@ other = "evento «{{.Name}}»"
 other = "una sesión del evento «{{.Name}}»"
 
 ["bot.ql.w_promoter"]
-other = "página del promotor"
+other = "página de la marca"
 
 ["bot.ql.w_org"]
 other = "página de la organización"
@@ -4485,7 +4485,7 @@ other = "El texto tiene un carácter oculto. Escríbelo de nuevo o pégalo como 
 other = "Este texto no sirvió. Revísalo y envíalo otra vez."
 
 ["bot.tf.event_btn"]
-other = "✉ Texto en el correo"
+other = "✉️ Texto en el correo"
 
 ["bot.tf.note_title"]
 other = "<b>Texto en el correo</b> · {{.Name}}"
@@ -7033,3 +7033,51 @@ other = "👉 Añadir el primer evento"
 
 ["bot.mn.step_sales_link_btn"]
 other = "👉 Obtener un enlace de venta"
+
+["bot.ec.g.link_btn"]
+other = "🔗 Enlace para compradores"
+
+["bot.ec.g.sales_btn"]
+other = "📊 Ventas y pedidos"
+
+["bot.ec.g.edit_btn"]
+other = "✏️ Editar"
+
+["bot.ec.g.promo_btn"]
+other = "📣 Promoción"
+
+["bot.ec.g.more_btn"]
+other = "⚙️ Más"
+
+["bot.ec.g.cat_btn"]
+other = "🏷 Categorías y precios"
+
+["bot.ec.g.guests_btn"]
+other = "📋 Lista de invitados"
+
+["bot.ec.g.link_more_btn"]
+other = "Más enlaces y códigos QR"
+
+["bot.ec.g.screen"]
+other = "<b>{{.Name}}</b>\n{{.Title}}\n\n{{.Text}}"
+
+["bot.ec.g.s_text"]
+other = "Consulta las ventas, los pedidos y los invitados de este evento. Aquí también puedes descargar los datos."
+
+["bot.ec.g.e_text"]
+other = "Cambia el nombre, las sesiones, los precios y la página de este evento."
+
+["bot.ec.g.p_text"]
+other = "Consigue más compradores con códigos promocionales, entradas gratuitas e invitaciones a amigos."
+
+["bot.ec.g.m_text"]
+other = "Copia el evento, retíralo de la venta, archívalo o elimínalo."
+
+["bot.ec.g.link_text"]
+other = "<b>{{.Name}}</b>\n\n🔗 Enlace para compradores:\n{{.URL}}\n\nEl código QR está en la imagen de abajo."
+
+["bot.ec.g.link_text_noqr"]
+other = "<b>{{.Name}}</b>\n\n🔗 Enlace para compradores:\n{{.URL}}\n\nEl código QR no se ha cargado. Pulsa «Más enlaces y códigos QR»."
+
+["bot.ec.g.link_none"]
+other = "Este evento aún no tiene enlace para compradores. Publica primero el evento."

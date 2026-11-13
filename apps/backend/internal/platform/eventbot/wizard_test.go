@@ -277,7 +277,7 @@ func TestWizard_ScreensNameTheOrgVenueCapacityAndCurrency(t *testing.T) {
 	if !strings.Contains(fmt.Sprint(screen.Buttons), "Arena Test Promotions") {
 		t.Errorf("no button carries the organization's name: %v", screen.Buttons)
 	}
-	if note := r.press("prom:org", stEvPoster); !strings.Contains(note, "Промоутер: Arena Test Promotions") {
+	if note := r.press("prom:org", stEvPoster); !strings.Contains(note, "Бренд: Arena Test Promotions") {
 		t.Errorf("ack = %q, want the organization by name", note)
 	}
 	r.press("skip", stSDate)

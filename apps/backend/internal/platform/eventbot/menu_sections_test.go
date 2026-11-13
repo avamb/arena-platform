@@ -188,7 +188,7 @@ func TestFirstSteps_BlockAndButtons(t *testing.T) {
 		}
 		return `{"getting_started":{"complete":false,"steps":[` + strings.Join(parts, ",") + `]}}`
 	}
-	run := func(name string, s menuStub, id *Identity) (string, []string) {
+	run := func(_ string, s menuStub, id *Identity) (string, []string) {
 		b := menuTestBot(t, s)
 		gs := b.firstSteps(ctx, id, "jwt")
 		return b.firstStepsText("en", gs), rowData(b.homeKeyboardFor(id, gs).InlineKeyboard)
