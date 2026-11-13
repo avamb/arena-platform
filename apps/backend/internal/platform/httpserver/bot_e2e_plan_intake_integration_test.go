@@ -63,6 +63,7 @@ type piEnv struct {
 	pool      *pgxpool.Pool
 	f         *botInviteFixture
 	api       *httptest.Server
+	srv       *Server
 	tg        *stubTelegram
 	owner     ecDriver
 	ownerTG   int64
@@ -84,7 +85,7 @@ func newPIEnv(t *testing.T, ownerTG int64) *piEnv {
 	srv.cfg.AppPublicURL = api.URL
 	linkECBotUser(t, f, srv, ownerTG, "owner")
 	ctx := context.Background()
-	e := &piEnv{t: t, pool: pool, f: f, api: api, ownerTG: ownerTG, suffix: uuid.NewString()[:6]}
+	e := &piEnv{t: t, pool: pool, f: f, api: api, srv: srv, ownerTG: ownerTG, suffix: uuid.NewString()[:6]}
 
 	t.Cleanup(func() {
 		c := context.Background()
@@ -307,8 +308,8 @@ func TestBotE2E_PlanIntake_WizardWaitsForAnAdministrator(t *testing.T) {
 		t.Fatalf("%d intakes exist before \"Done\"", n)
 	}
 
-	text = o.press("pi:done", "Файл получен. Схему зала построит администратор")
-	if strings.Contains(text, "5 минут") || !strings.Contains(text, "Черновик мероприятия сохранён") {
+	text = o.press("pi:done", "Файл получен. Мы строим схему зала")
+	if !strings.Contains(text, "5 минут") || strings.Contains(text, "администратор") || !strings.Contains(text, "Черновик мероприятия сохранён") {
 		t.Fatalf("the received text:\n%s", text)
 	}
 	id, state := e.intake()
@@ -460,7 +461,7 @@ func TestBotE2E_PlanIntake_SVGReviewAndFix(t *testing.T) {
 	// A broken SVG is no error: the server keeps it as a source for an administrator.
 	o.press("pi:up:"+e.venue.String(), "Пришлите файлы схемы")
 	e.doc("pi-bad", "bad.svg", []byte(piBadSVG), "Файл 1 получен")
-	text = o.press("pi:done", "Файл получен. Схему зала построит администратор")
+	text = o.press("pi:done", "Файл получен. Мы строим схему зала")
 	if !strings.Contains(text, "Этот SVG не подходит для продажи мест") {
 		t.Fatalf("the SVG note is missing:\n%s", text)
 	}

@@ -4893,7 +4893,16 @@ other = "No he podido enviar los archivos. Pulsa «Listo» otra vez en un minuto
 other = "Aún no hay archivos. Primero envía un archivo."
 
 ["bot.wz.plan_in_received"]
-other = "Archivo recibido. Un administrador de la plataforma construirá el plano. Suele tardar hasta un día laborable. Te escribiré cuando el plano esté listo para revisar."
+other = "Hemos recibido tu archivo. Estamos construyendo el plano. Suele tardar hasta 5 minutos. Te escribiré cuando el plano esté listo para revisar."
+
+["bot.wz.plan_in_building"]
+other = "Estamos construyendo el plano. Te escribiré cuando esté listo para revisar."
+
+["bot.wz.plan_in_open_building"]
+other = "Ya hay una solicitud para «{{.Venue}}». Estamos construyendo el plano. Te escribiré cuando esté listo para revisar."
+
+["bot.wz.plan_in_escalated"]
+other = "No hemos podido construir automáticamente el plano de «{{.Venue}}». Lo construirá un administrador de la plataforma. Suele tardar hasta un día laborable. Te escribiré cuando el plano esté listo para revisar."
 
 ["bot.wz.plan_in_draft_saved"]
 other = "El borrador del evento está guardado. Seguiremos desde el mismo punto."

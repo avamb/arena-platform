@@ -5065,7 +5065,16 @@ other = "I could not send the files. Please press «Done» again in a minute."
 other = "There are no files yet. Please send a file first."
 
 ["bot.wz.plan_in_received"]
-other = "File received. A platform administrator will build the seating plan. This usually takes up to one working day. I will write to you when the plan is ready to check."
+other = "We have your file. We are building the seating plan. This usually takes up to 5 minutes. I will write to you when the plan is ready to check."
+
+["bot.wz.plan_in_building"]
+other = "We are building the seating plan. I will write to you when the plan is ready to check."
+
+["bot.wz.plan_in_open_building"]
+other = "There is already a request for «{{.Venue}}». We are building the seating plan. I will write to you when it is ready to check."
+
+["bot.wz.plan_in_escalated"]
+other = "We could not build the seating plan for «{{.Venue}}» automatically. A platform administrator will build it. This usually takes up to one working day. I will write to you when the plan is ready to check."
 
 ["bot.wz.plan_in_draft_saved"]
 other = "I saved your event draft. We will continue from the same place."
