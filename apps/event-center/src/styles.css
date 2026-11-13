@@ -1549,17 +1549,22 @@ fieldset legend {
 .sm-panel-collapsed .sm-notes {
   display: none;
 }
+/* The tabs wrap onto further lines: no sideways scroll, every label whole at 320 px. */
 .sm-tabs {
   display: flex;
-  overflow-x: auto;
+  flex-wrap: wrap;
+  min-width: 0;
   border-bottom: 1px solid var(--border);
 }
 .sm-tablist {
   display: flex;
-  flex: none;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 .sm-tab {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   min-height: 44px;
   padding: 0 0.75rem;
   border: 0;
@@ -1567,8 +1572,20 @@ fieldset legend {
   background: transparent;
   color: var(--text);
   font: inherit;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   cursor: pointer;
+}
+/* A hint sits UNDER its field at full width. */
+.sm-panel .field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.25rem;
+}
+.sm-panel .field > small {
+  display: block;
+  width: 100%;
 }
 .sm-tab[aria-selected="true"] {
   border-bottom-color: var(--accent);

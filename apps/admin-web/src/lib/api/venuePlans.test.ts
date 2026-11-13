@@ -89,10 +89,28 @@ describe("list of seating plans to verify", () => {
   const F = INITIAL_PLAN_FILTER;
 
   it("builds the path from the filters", () => {
-    expect(buildVerificationListPath(F)).toBe("/v1/admin/seating-plans?verification_state=unverified&lang=en&limit=50&offset=0");
+    expect(buildVerificationListPath(F)).toBe("/v1/admin/seating-plans?lang=en&limit=50&offset=0");
+    expect(buildVerificationListPath({ ...F, state: "unverified" })).toBe(
+      "/v1/admin/seating-plans?verification_state=unverified&lang=en&limit=50&offset=0",
+    );
     expect(
       buildVerificationListPath({ state: "none", orgId: "org-1", country: "cz", cityId: "city-1", q: "  Grand  ", offset: 100 }),
     ).toBe("/v1/admin/seating-plans?verification_state=none&org_id=org-1&country=CZ&city_id=city-1&q=Grand&lang=en&limit=50&offset=100");
+  });
+
+  it("opens on All: the first request carries no verification_state", async () => {
+    __TEST_ONLY_resetTokenStore();
+    setSession({ accessToken: "access-1", refreshToken: "refresh-1", expiresAt: new Date(Date.now() + 60_000).toISOString(), userId: ME });
+    expect(INITIAL_PLAN_FILTER.state).toBe("all");
+    try {
+      const { calls } = install(() => json({ seating_plans: [], total: 0, limit: 50, offset: 0, counts: { none: 51, unverified: 0, needs_fix: 0, verified: 0 } }));
+      await listAdminSeatingPlans(INITIAL_PLAN_FILTER);
+      expect(calls).toHaveLength(1);
+      expect(new URL(calls[0].url, "http://x").searchParams.has("verification_state")).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+      __TEST_ONLY_resetTokenStore();
+    }
   });
 
   it("sends no state for All and cuts the search to 100 characters", () => {

@@ -206,7 +206,7 @@ export interface PlanListFilter {
 }
 
 export const INITIAL_PLAN_FILTER: PlanListFilter = {
-  state: "unverified",
+  state: ALL_STATES_FILTER,
   orgId: "",
   country: "",
   cityId: "",

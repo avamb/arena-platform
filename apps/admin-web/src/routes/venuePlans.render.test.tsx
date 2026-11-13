@@ -318,6 +318,9 @@ describe("verification tab", () => {
     expect(html).toContain("All organizations");
     expect(html).toMatch(/disabled=""[^>]*data-testid="venue-plans-verify-city"|data-testid="venue-plans-verify-city"[^>]*disabled=""/);
     expect(html).toMatch(/maxLength="100"|maxlength="100"/);
+    const openHtml = renderToStaticMarkup(<VerificationFilters {...props} />);
+    expect(openHtml).toMatch(/<option value="all" selected="">All \(62\)<\/option>/);
+    expect(openHtml).not.toMatch(/<option value="unverified" selected="">/);
     const enabled = renderToStaticMarkup(<VerificationFilters {...props} filter={{ ...INITIAL_PLAN_FILTER, country: "CZ" }} />);
     expect(enabled).not.toMatch(/disabled=""[^>]*data-testid="venue-plans-verify-city"|data-testid="venue-plans-verify-city"[^>]*disabled=""/);
 

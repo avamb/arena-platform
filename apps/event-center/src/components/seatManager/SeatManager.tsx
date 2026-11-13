@@ -34,7 +34,7 @@ import { seatCardModel, type SeatCardInput, type SeatCardModel } from "@seatmap/
 import { useI18n } from "@/lib/i18n";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { Loading } from "@/components/ui";
-import { STATUS_COLORS, TIER_PALETTE, tierColors, orderTiers } from "@/lib/seatManager/colors";
+import { STATUS_COLORS, TIER_PALETTE, tierColors, orderTiers, planColorsByTier } from "@/lib/seatManager/colors";
 import { overTierLimit, type NewTierValue } from "@/lib/seatManager/layout";
 import type { SeatTab } from "@/lib/seatManager/embed";
 import { buildHallIndex, rowRange, seatsOfRow, seatsOfSection, type Point } from "@/lib/seatManager/model";
@@ -181,10 +181,10 @@ export function SeatManager({ orgId, eventId, sessionId, embed = false, initialT
     [sessionId],
   );
   const colors = useMemo(() => {
-    const m = tierColors(seatTiers);
+    const m = tierColors(seatTiers, planColorsByTier(schemaQ.data?.category_prices));
     for (const p of tray.pendingTiers) m.set(pendingTierId(p.key), p.color);
     return m;
-  }, [seatTiers, tray.pendingTiers]);
+  }, [seatTiers, tray.pendingTiers, schemaQ.data?.category_prices]);
   const [mode, setMode] = useState<PanelMode>("categories");
   const [brush, setBrush] = useState<Brush | null>(null);
   const [tool, setTool] = useState<MapTool>("seat");

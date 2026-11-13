@@ -477,6 +477,7 @@ Places, categories, hold and quota lock order, plan geometry, seat layouts, venu
 * A seat batch creates price categories in its own transaction (new_tiers, needs tier.create)
 * A seat shows ONE card to the buyer and to the organizer (seat-card.ts)
 * A section or row key is NOT always normalizeKey(name): hash suffix where names collide on a seat
+* A category has ONE colour for the organizer and the buyer: tier colour, else the home plan category's, else the palette
 
 ### [Events, sessions, promoters and sales channels](docs/agents/catalog-sessions-channels.md)
 
@@ -768,3 +769,4 @@ Spec 64: intake states, private plan sources, approve, superadmin verification a
 * The admin queue of plans to verify is ONE request; no state parameter means every state, none means NULL
 * A draft SVG of an intake is read by seating.ImportAnySVG (authoring or sbt); the plan version route takes authoring only
 * Only an ACTIVE plan is seen by the queue and by the bot; the library loader activates a plan after its version upload
+* The generator's answer is limited in the client before parsing (SVG 3 MB, preview 10 MB); half-set VENUE_GEN_* is a warning; the test fixture is a copy

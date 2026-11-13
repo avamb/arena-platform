@@ -47,11 +47,43 @@ export function orderTiers<T extends TierColorInput>(tiers: readonly T[]): T[] {
   );
 }
 
-/** Category id to colour. */
-export function tierColors(tiers: readonly TierColorInput[]): Map<string, string> {
+/** A plan category of the schema answer, as far as the colour goes. */
+export interface PlanCategoryInput {
+  readonly color?: string | null;
+  readonly tier_id?: string | null;
+}
+
+/**
+ * Tier id to the colour of the plan category it is home to (the colour a buyer
+ * sees). Only plan categories (`category_prices`) count, never the synthetic
+ * ones (`extra_categories`), whose colour is a palette swatch.
+ */
+export function planColorsByTier(categories: readonly PlanCategoryInput[] | undefined): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const c of categories ?? []) {
+    if (typeof c.tier_id === "string" && c.tier_id !== "" && isHexColor(c.color) && !out.has(c.tier_id)) {
+      out.set(c.tier_id, c.color.toLowerCase());
+    }
+  }
+  return out;
+}
+
+/**
+ * Category id to colour. The rule is the buyer widget's too: the tier's own
+ * colour (ticket_tiers.color), else the colour of the plan category it is home
+ * to, else the palette by order.
+ */
+export function tierColors(
+  tiers: readonly TierColorInput[],
+  planColors?: ReadonlyMap<string, string>,
+): Map<string, string> {
   const out = new Map<string, string>();
   orderTiers(tiers).forEach((t, i) => {
-    out.set(t.id, isHexColor(t.color) ? t.color.toLowerCase() : TIER_PALETTE[i % TIER_PALETTE.length]!);
+    const plan = planColors?.get(t.id);
+    out.set(
+      t.id,
+      isHexColor(t.color) ? t.color.toLowerCase() : isHexColor(plan) ? plan.toLowerCase() : TIER_PALETTE[i % TIER_PALETTE.length]!,
+    );
   });
   return out;
 }

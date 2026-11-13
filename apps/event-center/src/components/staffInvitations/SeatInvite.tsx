@@ -26,7 +26,7 @@ import { ApiError } from "@/lib/api/http";
 import type { StaffInvitationIssueResponse, TicketTierItem } from "@/lib/api/types";
 import { formatMoney, formatNumber } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
-import { orderTiers, tierColors } from "@/lib/seatManager/colors";
+import { orderTiers, planColorsByTier, tierColors } from "@/lib/seatManager/colors";
 import { inviteLook } from "@/lib/seatManager/inviteLook";
 import { buildHallIndex, seatsOfRow } from "@/lib/seatManager/model";
 import {
@@ -119,7 +119,10 @@ export function SeatInvite({ orgId, eventId, sessionId, canSeeHall, canRead, onI
   const allTiers = useMemo(() => tiersQ.data?.tiers ?? [], [tiersQ.data]);
   const seatTiers = useMemo(() => allTiers.filter((x) => !isGaTier(x)), [allTiers]);
   const gaTiers = useMemo(() => orderTiers(allTiers.filter(isGaTier)), [allTiers]);
-  const colors = useMemo(() => tierColors(seatTiers), [seatTiers]);
+  const colors = useMemo(
+    () => tierColors(seatTiers, planColorsByTier(schemaQ.data?.category_prices)),
+    [seatTiers, schemaQ.data?.category_prices],
+  );
   const tierById = useMemo(() => new Map(allTiers.map((x) => [x.id, x] as const)), [allTiers]);
 
   // ── state ───────────────────────────────────────────────────────────────
