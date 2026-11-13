@@ -386,3 +386,38 @@ func TestPlanNoticeSafelyGoesOnAfterAFailure(t *testing.T) {
 		t.Fatalf("calls = %d", calls)
 	}
 }
+
+// A returned notice says the administrator corrected the plan only when a new
+// draft came with it; otherwise the administrator only examined it.
+func TestPlanNoticeSayReturnedWithAndWithoutNewDraft(t *testing.T) {
+	b, sent := planNoticeBot(t, notFoundArena(t).URL)
+	org := uuid.New()
+	id := identityIn(org, Membership{OrgID: org, OrgName: "Acme"})
+	ctx := context.Background()
+	link := gen.BotTelegramLinkRow{}
+
+	changed := noticeOf("returned", org, "Row B has 12 seats")
+	changed.DraftChanged = true
+	b.planNoticeSay(ctx, 42, "en", link, id, "jwt", changed)
+	b.planNoticeSay(ctx, 42, "en", link, id, "jwt", noticeOf("returned", org, "Row B has 12 seats"))
+	b.planNoticeSay(ctx, 42, "en", link, id, "jwt", noticeOf("returned", org, ""))
+	b.planNoticeSay(ctx, 42, "ru", link, id, "jwt", noticeOf("returned", org, ""))
+
+	got := sent()
+	if len(got) != 4 {
+		t.Fatalf("messages = %+v", got)
+	}
+	if !strings.Contains(got[0].Text, "has corrected the seating plan") || !strings.Contains(got[0].Text, "Row B has 12 seats") {
+		t.Errorf("changed = %q", got[0].Text)
+	}
+	if !strings.Contains(got[1].Text, "examined the seating plan") || !strings.Contains(got[1].Text, "Row B has 12 seats") ||
+		strings.Contains(got[1].Text, "corrected") {
+		t.Errorf("examined with a note = %q", got[1].Text)
+	}
+	if !strings.HasSuffix(got[2].Text, "Please check it again.") || !strings.Contains(got[2].Text, "examined") {
+		t.Errorf("examined without a note = %q", got[2].Text)
+	}
+	if !strings.HasSuffix(got[3].Text, "Проверьте её ещё раз.") {
+		t.Errorf("ru = %q", got[3].Text)
+	}
+}

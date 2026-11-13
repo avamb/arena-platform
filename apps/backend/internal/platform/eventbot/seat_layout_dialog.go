@@ -249,6 +249,14 @@ func (b *Bot) seatLayoutShowStart(ctx context.Context, chatID int64, editMsgID *
 				"Name": Esc(t.Name), "Price": Esc(FormatMoney(t.Price, tierCurrency(tiers), loc)),
 			}))
 		}
+		if len(targets) == 1 {
+			// Empty open categories a split may fill instead of making new ones.
+			for _, t := range loEmptyOpen(tiers) {
+				sb.WriteString("\n" + b.texts.T(loc, "bot.sl.cat_line", map[string]any{
+					"Name": Esc(t.Name), "Price": Esc(FormatMoney(t.Price, tierCurrency(tiers), loc)),
+				}))
+			}
+		}
 		if closed > 0 {
 			sb.WriteString("\n\n" + b.texts.T(loc, "bot.sl.closed_note", map[string]any{"Count": closed}))
 		}
@@ -843,7 +851,7 @@ func (b *Bot) loPropose(ctx context.Context, chatID int64, msgID *int, id *Ident
 	}
 	var plan loPlan
 	if split {
-		plan, err = loBuildPlanNew(res, targets, loTierNames(tiers), func(n int) string {
+		plan, err = loBuildPlanNew(res, targets, loEmptyOpen(tiers), loTierNames(tiers), func(n int) string {
 			return b.texts.T(loc, "bot.sl.new_cat_name", map[string]any{"N": n})
 		})
 	} else {

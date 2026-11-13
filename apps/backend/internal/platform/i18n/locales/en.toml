@@ -5091,6 +5091,9 @@ other = "The seating plan of «{{.Venue}}» is ready. Please compare it with you
 ["bot.wz.plan_in_returned"]
 other = "An administrator has corrected the seating plan of «{{.Venue}}». Please check that everything is correct. {{.Note}}"
 
+["bot.wz.plan_in_examined"]
+other = "An administrator examined the seating plan of «{{.Venue}}». Please check it again. {{.Note}}"
+
 ["bot.wz.plan_in_check_btn"]
 other = "Check the plan"
 

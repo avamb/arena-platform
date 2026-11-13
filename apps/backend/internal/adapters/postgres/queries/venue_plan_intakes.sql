@@ -238,7 +238,12 @@ SELECT c.id, c.intake_id, c.kind, c.note, c.created_at,
        i.org_id, i.venue_id, v.name, i.current_draft,
        COALESCE((SELECT array_agg(l.telegram_user_id ORDER BY l.telegram_user_id)
                  FROM   bot_telegram_links l
-                 WHERE  l.user_id = i.created_by AND l.revoked_at IS NULL), '{}'::bigint[])
+                 WHERE  l.user_id = i.created_by AND l.revoked_at IS NULL), '{}'::bigint[]),
+       (c.kind = 'returned' AND i.operator_claimed_at IS NOT NULL AND EXISTS (
+            SELECT 1 FROM venue_plan_drafts d
+            WHERE  d.intake_id = i.id AND d.n = i.current_draft
+              AND  d.author IN ('operator', 'operator_svg')
+              AND  d.created_at >= i.operator_claimed_at)) AS draft_changed
 FROM   claimed c
 JOIN   venue_plan_intakes i ON i.id = c.intake_id
 JOIN   venues v             ON v.id = i.venue_id
