@@ -15,16 +15,11 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/intake"
 )
 
-type summaryJSON struct {
-	Seats    int      `json:"seats"`
-	Rows     int      `json:"rows"`
-	Sections int      `json:"sections"`
-	PlanType string   `json:"plan_type"`
-	Warnings []string `json:"warnings"`
-}
+// summaryJSON is the draft summary shared with the worker (intake.Summary).
+type summaryJSON = intake.Summary
 
 type sourceJSON struct {
 	ID              string  `json:"id"`
@@ -131,17 +126,8 @@ func basePath(in gen.VenuePlanIntakeRow, admin bool) string {
 	return "/v1/organizations/" + in.OrgID.String() + "/plan-intakes/" + in.ID.String()
 }
 
-// summaryOf builds a draft's summary from its geometry.
-func summaryOf(g seating.Geometry, planType string, warnings []seating.ValidationError) summaryJSON {
-	s := summaryJSON{Seats: g.SeatCount(), Sections: len(g.Sections), PlanType: planType, Warnings: []string{}}
-	for _, sec := range g.Sections {
-		s.Rows += len(sec.Rows)
-	}
-	for _, w := range warnings {
-		s.Warnings = append(s.Warnings, w.Code)
-	}
-	return s
-}
+// summaryOf is intake.SummaryOf, shared with the worker.
+var summaryOf = intake.SummaryOf
 
 // summaryFromReport reads the summary stored in a draft's report.
 func summaryFromReport(raw json.RawMessage) summaryJSON {

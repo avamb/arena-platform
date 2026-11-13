@@ -312,8 +312,8 @@ func TestBotE2E_PlanIntake_WizardWaitsForAnAdministrator(t *testing.T) {
 		t.Fatalf("the received text:\n%s", text)
 	}
 	id, state := e.intake()
-	if state != "operator" {
-		t.Fatalf("intake state = %s, want operator", state)
+	if state != "received" {
+		t.Fatalf("intake state = %s, want received (waiting for the generator job)", state)
 	}
 	if n := e.count(`SELECT count(*) FROM venue_plan_intake_sources WHERE intake_id = $1`, id); n != 2 {
 		t.Fatalf("sources = %d, want 2", n)
@@ -325,7 +325,12 @@ func TestBotE2E_PlanIntake_WizardWaitsForAnAdministrator(t *testing.T) {
 		t.Fatalf("draft = %s paused=%v intake=%s", step, paused, intake)
 	}
 
-	// The administrator builds a draft and returns it.
+	// A worker without a generator sends it to an administrator, who builds a
+	// draft and returns it.
+	runVenuePlanGenerateJobs(t, e.pool, nil, nil, id)
+	if _, state := e.intake(); state != "operator" {
+		t.Fatalf("after the generator job: state %s, want operator", state)
+	}
 	adm := "/v1/admin/plan-intakes/" + id
 	e.adminOK(http.MethodPost, adm+"/claim", "taking it", "")
 	body, _ := json.Marshal(map[string]any{"svg": planUpSVG, "note": "drawn by hand"})
@@ -460,8 +465,12 @@ func TestBotE2E_PlanIntake_SVGReviewAndFix(t *testing.T) {
 		t.Fatalf("the SVG note is missing:\n%s", text)
 	}
 	badID, state := e.intake()
-	if state != "operator" || badID == id {
+	if state != "received" || badID == id {
 		t.Fatalf("a broken SVG: state %s intake %s", state, badID)
+	}
+	runVenuePlanGenerateJobs(t, e.pool, nil, nil, badID)
+	if _, state := e.intake(); state != "operator" {
+		t.Fatalf("a broken SVG after the generator job: state %s, want operator", state)
 	}
 	if n := e.count(`SELECT count(*) FROM venue_plan_intake_sources WHERE intake_id = $1 AND kind = 'svg'`, badID); n != 1 {
 		t.Fatalf("svg sources = %d, want 1", n)

@@ -76,7 +76,13 @@ func TestFinalStates(t *testing.T) {
 // intake tables; every Go value list must match its CHECK constraints.
 func migration0216Up(t *testing.T) string {
 	t.Helper()
-	raw, err := migrations.FS.ReadFile(migrations.Dir + "/0216_venue_plan_intake.sql")
+	return migrationUp(t, "0216_venue_plan_intake.sql")
+}
+
+// migrationUp is the Up section of one migration file.
+func migrationUp(t *testing.T, name string) string {
+	t.Helper()
+	raw, err := migrations.FS.ReadFile(migrations.Dir + "/" + name)
 	if err != nil {
 		t.Fatalf("read migration: %v", err)
 	}
@@ -145,9 +151,24 @@ func TestValues_MatchMigrationChecks(t *testing.T) {
 	expect("venue_plan_corrections_status_check", []string{
 		string(CorrectionPending), string(CorrectionApplied), string(CorrectionRejected),
 	})
-	expect("venue_plan_notices_kind_check", []string{
+	// Migration 0217 widened the notice kinds by escalated.
+	up0217 := migrationUp(t, "0217_venue_plan_notice_escalated.sql")
+	if i := strings.Index(up0217, "ADD CONSTRAINT"); i >= 0 {
+		up0217 = up0217[i:] // past the DROP of the old CHECK
+	}
+	body := checkBody(t, up0217, "venue_plan_notices_kind_check")
+	notices := []string{
 		string(NoticeDraftReady), string(NoticeReturned), string(NoticeRejected), string(NoticeApproved),
-	})
+		string(NoticeEscalated),
+	}
+	for _, v := range notices {
+		if !strings.Contains(body, "'"+v+"'") {
+			t.Errorf("venue_plan_notices_kind_check (0217) does not allow %q", v)
+		}
+	}
+	if got := strings.Count(body, "'"); got != 2*len(notices) {
+		t.Errorf("venue_plan_notices_kind_check (0217) lists %d values, Go has %d", got/2, len(notices))
+	}
 	expect("seating_plans_verification_state_check", []string{
 		string(VerificationUnverified), string(VerificationVerified), string(VerificationNeedsFix),
 	})

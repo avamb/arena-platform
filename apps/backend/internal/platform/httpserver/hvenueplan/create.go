@@ -18,10 +18,10 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/abhteam/arena_new/apps/backend/internal/adapters/postgres/gen"
-	"github.com/abhteam/arena_new/apps/backend/internal/domain/seating"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/httpserver/httputil"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/mediastore"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan"
+	"github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/intake"
 )
 
 // CreateBodyLimit is the body cap of the create route: 80 MB of files plus the
@@ -400,16 +400,8 @@ func sourceSVGDraft(files []incoming) (int, json.RawMessage) {
 	return -1, nil
 }
 
-// checkPlanSVG imports an SVG and validates it for the plan type its geometry
-// fits, like the bot's plan upload.
-func checkPlanSVG(raw []byte) (seating.Geometry, []seating.ValidationError, string, seating.ValidationErrors) {
-	g, warnings, errs := seating.ImportAnySVG(raw)
-	planType := seating.PlanTypeOf(g)
-	if len(errs) == 0 {
-		errs = seating.ValidateForPlanType(g, planType)
-	}
-	return g, warnings, planType, errs
-}
+// checkPlanSVG is intake.CheckPlanSVG, shared with the worker.
+var checkPlanSVG = intake.CheckPlanSVG
 
 // createIntake writes the intake, its files and (for a clean source SVG) draft
 // 1 in one transaction. created=false: the Idempotency-Key was taken by a
@@ -474,9 +466,9 @@ func (h *Handler) createIntake(ctx context.Context, r *http.Request, orgID, venu
 	}
 
 	from := in.State
-	var reason venueplan.EscalationReason
 	meta := map[string]any{"files": fileMeta, "channel": string(channel)}
-	if i, report := sourceSVGDraft(files); i >= 0 {
+	i, report := sourceSVGDraft(files)
+	if i >= 0 {
 		d, err := q.InsertVenuePlanDraft(ctx, gen.InsertVenuePlanDraftParams{
 			IntakeID: in.ID, Author: string(venueplan.AuthorSourceSVG), AuthorUserID: user,
 			Report: report, SvgMediaID: mediaIDs[i],
@@ -493,24 +485,20 @@ func (h *Handler) createIntake(ctx context.Context, r *http.Request, orgID, venu
 			return in, false, errors.Join(err, errors.New("received -> review refused"))
 		}
 	} else {
-		reason = venueplan.EscalationNoGenerator
-		var moved bool
-		if in, moved, err = moveState(ctx, q, in, venueplan.StateOperator, gen.UpdateVenuePlanIntakeStateParams{
-			EscalationReason: reasonPtr(reason),
-		}); err != nil || !moved {
-			return in, false, errors.Join(err, errors.New("received -> operator refused"))
+		// No clean source SVG: the intake stays received and the worker job
+		// venue_plan.generate builds the draft (spec 64 wave 2). The
+		// administrators hear of it only when the generator cannot.
+		if err := intake.EnqueueGenerate(ctx, tx, in.ID, 1, 0); err != nil {
+			return in, false, err
 		}
+		meta["generate_job"] = true
 	}
 	meta["state_from"], meta["state_to"] = from, in.State
 	if err := h.writeAudit(ctx, tx, r, "v1.venue_plan_intake.create", in, meta); err != nil {
 		return in, false, err
 	}
-	n := h.notify()
-	if err := n.IntakeCreated(ctx, tx, in.ID); err != nil {
-		return in, false, err
-	}
-	if reason != "" {
-		if err := n.IntakeEscalated(ctx, tx, in.ID, reason); err != nil {
+	if i >= 0 {
+		if err := h.notify().IntakeCreated(ctx, tx, in.ID); err != nil {
 			return in, false, err
 		}
 	}

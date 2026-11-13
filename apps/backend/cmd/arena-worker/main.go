@@ -94,6 +94,8 @@ import (
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/salesubscribe"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/sessionchange"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/tierchain"
+	venueplangenerate "github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/generate"
+	venueplangenerator "github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/generator"
 	venueplannotify "github.com/abhteam/arena_new/apps/backend/internal/platform/venueplan/notify"
 	"github.com/abhteam/arena_new/apps/backend/internal/platform/worker"
 )
@@ -307,6 +309,7 @@ func run() error {
 	registerReferralHandlers(registry, pool.Pool, cfg, metrics, salesNotifier, logger)
 	registerDisputeHandlers(registry, pool.Pool, cfg, salesNotifier, opsNotifier, buildEmailSender(cfg, logger), logger)
 	registerPaymentReceiptHandler(registry, pool.Pool, cfg, mediaRepo, logger)
+	registerVenuePlanGenerateHandler(registry, pool.Pool, cfg, mediaRepo, logger)
 	registerTicketReissueHandler(registry, pool.Pool, cfg, logger)
 	registerPaymentRecoverHandler(registry, pool.Pool, cfg, logger)
 	registerBillingReconcileHandler(registry, pool.Pool, cfg, metrics, opsNotifier, logger)
@@ -911,6 +914,24 @@ func registerOnboardingHandlers(reg *worker.Registry, pool *pgxpool.Pool, cfg *c
 	reg.Register(venueplannotify.JobType, venueplannotify.NewHandler(venueplannotify.Options{
 		Pool: pool, AppURL: cfg.AppPublicURL, Telegram: cfg.EventsTelegramBotToken != "", Logger: logger,
 	}))
+}
+
+// registerVenuePlanGenerateHandler registers venue_plan.generate (spec 64 wave
+// 2): the files of a hall plan intake go to the venue SVG generator. It always
+// registers: without VENUE_GEN_URL / VENUE_GEN_TOKEN or without a media store
+// the job sends the intake to an administrator with the reason no_generator,
+// so an intake never waits in received.
+func registerVenuePlanGenerateHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, mediaRepo *mediastore.Repo, logger *slog.Logger) {
+	var g venueplangenerate.Generator
+	if cfg.VenueGenURL != "" && cfg.VenueGenToken != "" {
+		g = venueplangenerator.New(cfg.VenueGenURL, cfg.VenueGenToken)
+	}
+	reg.Register(venueplangenerate.JobType, venueplangenerate.NewHandler(venueplangenerate.Options{
+		Pool: pool, Media: mediaRepo, Generator: g, Notifier: venueplannotify.Notifier{},
+		Audit: audit.WithServiceActor(audit.NewPGWriter(pool)), Logger: logger,
+	}))
+	logger.Info("venue_plan.generate handler registered",
+		"generator_configured", g != nil, "media_configured", mediaRepo != nil)
 }
 
 func registerOpsWatchdogHandler(reg *worker.Registry, pool *pgxpool.Pool, cfg *config.Config, notifier opsalert.Notifier, logger *slog.Logger) {

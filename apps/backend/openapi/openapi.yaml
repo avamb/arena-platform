@@ -2100,8 +2100,8 @@ components:
           description: Id of the notice.
         kind:
           type: string
-          description: "What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan) or `approved` (an administrator saved the plan)."
-          enum: [draft_ready, returned, rejected, approved]
+          description: "What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan), `approved` (an administrator saved the plan) or `escalated` (arena could not build a draft, an administrator builds the plan now)."
+          enum: [draft_ready, returned, rejected, approved, escalated]
         intake_id:
           type: string
           format: uuid

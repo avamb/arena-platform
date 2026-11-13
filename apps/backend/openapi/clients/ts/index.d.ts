@@ -16478,10 +16478,10 @@ export interface components {
              */
             id: string;
             /**
-             * @description What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan) or `approved` (an administrator saved the plan).
+             * @description What happened: `draft_ready` (a draft waits for the organizer), `returned` (an administrator returned the intake), `rejected` (an administrator could not build the plan), `approved` (an administrator saved the plan) or `escalated` (arena could not build a draft, an administrator builds the plan now).
              * @enum {string}
              */
-            kind: "draft_ready" | "returned" | "rejected" | "approved";
+            kind: "draft_ready" | "returned" | "rejected" | "approved" | "escalated";
             /**
              * Format: uuid
              * @description Id of the intake the notice is about.
