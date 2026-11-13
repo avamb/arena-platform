@@ -43,7 +43,8 @@ import {
 import { getUserId } from "@/lib/api/tokenStore";
 import { formatDateTime } from "@/lib/admin/supportConsole";
 import { NAV_BY_PATH } from "@/lib/auth/navConfig";
-import { stateTone } from "./venuePlans";
+import { useAuth } from "@/lib/auth/useAuth";
+import { availableTabs, stateTone } from "./venuePlans";
 import {
   Dialog,
   Pill,
@@ -171,6 +172,7 @@ type DialogKind = "approve" | "reject" | "takeover" | null;
 
 export function IntakeCard({ intakeId }: { readonly intakeId: string }): JSX.Element {
   const queryClient = useQueryClient();
+  const { permissions } = useAuth();
   const detailKey = ["admin", "venue-plans", "intake", intakeId] as const;
   const query = useQuery<VenuePlanIntake, ApiError>({
     queryKey: detailKey,
@@ -297,6 +299,15 @@ export function IntakeCard({ intakeId }: { readonly intakeId: string }): JSX.Ele
           <IntakeCardBody
             intake={intake}
             callerId={getUserId()}
+            renderVerifyLink={
+              availableTabs(permissions).includes("verification")
+                ? (planId, children) => (
+                    <Link to="/venue-plans" search={{ tab: "verification", plan: planId }} data-testid="venue-plan-verify-open">
+                      {children}
+                    </Link>
+                  )
+                : undefined
+            }
             draftImageUrl={imageUrl}
             draftImageLoading={imageState.loading}
             draftImageError={imageState.error}
@@ -452,6 +463,8 @@ export interface IntakeCardBodyProps {
   readonly onReturn: (note: string) => void;
   readonly onAskApprove: () => void;
   readonly onAskReject: () => void;
+  /** Gives the link to the verification tab. The parent passes it only to a caller who may verify. */
+  readonly renderVerifyLink?: (planId: string, children: ReactNode) => ReactNode;
 }
 
 export function IntakeCardBody(p: IntakeCardBodyProps): JSX.Element {
@@ -480,7 +493,17 @@ export function IntakeCardBody(p: IntakeCardBodyProps): JSX.Element {
       {final ? (
         <div style={warningStyle} data-testid="venue-plan-final">
           The request is {intakeStateLabel(intake.state).toLowerCase()}. No change is possible.
-          {intake.plan_id ? ` The seating plan is ${intake.plan_id}, version ${intake.plan_version ?? 1}.` : ""}
+          {intake.plan_id ? (
+            <span style={{ fontSize: 11, color: "#64748b" }}>
+              {" "}
+              The seating plan is {intake.plan_id}, version {intake.plan_version ?? 1}.
+            </span>
+          ) : null}
+          {intake.plan_id && p.renderVerifyLink ? (
+            <div style={{ marginTop: 6 }} data-testid="venue-plan-verify-link">
+              {p.renderVerifyLink(intake.plan_id, "Open the plan to verify")}
+            </div>
+          ) : null}
         </div>
       ) : null}
 

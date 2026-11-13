@@ -5,9 +5,9 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { createElement, type ReactNode } from "react";
-import { IntakeQueueTable, PlansTabs, QueueFilters, availableTabs, claimedByText, waitingFor } from "@/routes/venuePlans";
+import { IntakeQueueTable, PlansTabs, QueueFilters, availableTabs, claimedByText, parseVenuePlansSearch, waitingFor } from "@/routes/venuePlans";
 import { IntakeCardBody, validateDraftFile, validateRejectReason } from "@/routes/venuePlanDetail";
-import { PlanPreviewBox, VerificationTable, validateNeedsFixNote } from "@/routes/venuePlanVerification";
+import { PlanNotInListNote, PlanPreviewBox, VerificationTable, findPlanRow, validateNeedsFixNote } from "@/routes/venuePlanVerification";
 import type { VenuePlanIntake, VenuePlanIntakeListItem, VerificationRow } from "@/lib/api/venuePlans";
 
 const NOW = Date.parse("2026-11-12T12:00:00Z");
@@ -220,6 +220,22 @@ describe("intake card", () => {
     }
   });
 
+  it("links an approved request to its plan only when the parent gives the link", () => {
+    const approved = intake({ state: "approved", plan_id: "p-1", plan_version: 1 });
+    const withLink = body(approved, ME, {
+      renderVerifyLink: (planId, children) => createElement("a", { href: `/venue-plans?tab=verification&plan=${planId}` }, children),
+    });
+    expect(withLink).toContain("Open the plan to verify");
+    expect(withLink).toContain('href="/venue-plans?tab=verification&amp;plan=p-1"');
+    const without = body(approved, ME);
+    expect(without).not.toContain("Open the plan to verify");
+    expect(without).toContain("p-1");
+    const noPlan = body(intake({ state: "rejected", plan_id: null }), ME, {
+      renderVerifyLink: (planId, children) => createElement("a", { href: planId }, children),
+    });
+    expect(noPlan).not.toContain("Open the plan to verify");
+  });
+
   it("validates the forms", () => {
     expect(validateRejectReason("  ")).toMatch(/Write the cause/);
     expect(validateRejectReason("Unreadable scan")).toBeNull();
@@ -297,6 +313,29 @@ describe("verification tab", () => {
     const html = renderToStaticMarkup(<PlanPreviewBox row={row()} url="https://cdn.example.test/a.svg" loading={false} error={null} />);
     expect(html).toContain('<img src="https://cdn.example.test/a.svg"');
     expect(renderToStaticMarkup(<PlanPreviewBox row={row()} url={null} loading={false} error={null} />)).toContain("no stored SVG");
+  });
+
+  it("reads tab and plan from the address and finds the row of the plan", () => {
+    expect(parseVenuePlansSearch({ tab: "verification", plan: "p1" })).toEqual({ tab: "verification", plan: "p1" });
+    expect(parseVenuePlansSearch({ tab: "other", plan: "" })).toEqual({ tab: undefined, plan: undefined });
+    expect(findPlanRow([row(), row({ planId: "p2" })], "p2")?.planId).toBe("p2");
+    expect(findPlanRow([row()], "zz")).toBeNull();
+    expect(findPlanRow([row()], undefined)).toBeNull();
+    // the tab opens only when the caller holds its permission
+    const tabs = availableTabs(new Set(["seating_plan.verify"]));
+    expect(tabs.includes("verification")).toBe(true);
+    expect(availableTabs(new Set(["venue_plan_intake.curate"])).includes("verification")).toBe(false);
+  });
+
+  it("marks the selected row and shows the note for a plan that is not in the list", () => {
+    const html = renderToStaticMarkup(
+      <VerificationTable rows={[row(), row({ planId: "p2" })]} selectedId="p2" busyId={null} onPreview={() => undefined} onVerify={() => undefined} onNeedsFix={() => undefined} forceLayout="desktop" />,
+    );
+    expect(html).toMatch(/data-testid="venue-plans-verify-row-p2"[^>]*data-selected="true"/);
+    expect(html).not.toMatch(/data-testid="venue-plans-verify-row-p1"[^>]*data-selected/);
+    expect(renderToStaticMarkup(<PlanNotInListNote />)).toContain(
+      "This plan is not in this list. It is possibly verified already. Change the filter to find it.",
+    );
   });
 
   it("asks for a note of Needs fix", () => {

@@ -11,7 +11,7 @@
  * Mock data: NONE. Everything here comes from the live backend.
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ResponsiveTable, type ResponsiveTableColumn } from "@/components/layout";
 import { ApiError, authedFetch } from "@/lib/api/client";
 import {
@@ -110,7 +110,11 @@ export function VerificationTable({
       header: "Plan",
       primary: true,
       renderCell: (r) => (
-        <div data-testid={`venue-plans-verify-row-${r.planId}`}>
+        <div
+          data-testid={`venue-plans-verify-row-${r.planId}`}
+          data-selected={r.planId === selectedId ? "true" : undefined}
+          style={r.planId === selectedId ? { background: "#e0f2fe", padding: 4, borderRadius: 4 } : undefined}
+        >
           <div style={{ fontWeight: 600 }}>{r.name}</div>
           <Pill tone={verificationTone(r.state)}>{verificationLabel(r.state)}</Pill>
           {r.note ? <div style={{ fontSize: 12, color: "#991b1b", marginTop: 2 }}>Note: {r.note}</div> : null}
@@ -290,8 +294,23 @@ interface OrganizationItem {
   readonly name: string;
 }
 
-export function VerificationPanel(): JSX.Element {
+/** The row of a plan in the list, or null. */
+export function findPlanRow(rows: readonly VerificationRow[], planId: string | undefined): VerificationRow | null {
+  if (planId === undefined) return null;
+  return rows.find((r) => r.planId === planId) ?? null;
+}
+
+export function PlanNotInListNote(): JSX.Element {
+  return (
+    <p style={hintStyle} data-testid="venue-plans-plan-missing">
+      This plan is not in this list. It is possibly verified already. Change the filter to find it.
+    </p>
+  );
+}
+
+export function VerificationPanel({ planId }: { readonly planId?: string } = {}): JSX.Element {
   const queryClient = useQueryClient();
+  const appliedPlanRef = useRef<string | null>(null);
   const [filter, setFilter] = useState<VerificationFilter>("unverified");
   const [selected, setSelected] = useState<VerificationRow | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -344,6 +363,18 @@ export function VerificationPanel(): JSX.Element {
   });
 
   const rows: readonly VerificationRow[] = isNone ? noStateRows : (listQuery.data ?? []);
+
+  // Select the plan from the address once its row is in the list, then scroll to it.
+  const linkedRow = findPlanRow(rows, planId);
+  useEffect(() => {
+    if (planId === undefined || linkedRow === null || appliedPlanRef.current === planId) return;
+    appliedPlanRef.current = planId;
+    setSelected(linkedRow);
+    document
+      .querySelector(`[data-testid="venue-plans-verify-row-${CSS.escape(planId)}"]`)
+      ?.scrollIntoView?.({ block: "center" });
+  }, [planId, linkedRow]);
+  const showMissingNote = planId !== undefined && !isNone && !listQuery.isLoading && listQuery.data !== undefined && linkedRow === null;
 
   const afterChange = async (row: VerificationRow): Promise<void> => {
     if (isNone) {
@@ -529,6 +560,8 @@ export function VerificationPanel(): JSX.Element {
           We did not load the plans: {listQuery.error.message}
         </div>
       ) : null}
+
+      {showMissingNote ? <PlanNotInListNote /> : null}
 
       {isNone && noStateRows.length === 0 && scanProgress === null ? null : (
         <div style={{ display: "grid", gridTemplateColumns: selected !== null ? "minmax(0, 3fr) minmax(0, 2fr)" : "minmax(0, 1fr)", gap: 16, alignItems: "start" }}>
