@@ -4,14 +4,15 @@
 // files of an intake with Generate, and Render is the venueplan.Renderer seam
 // for the answers loop of a later wave.
 //
-// Generate submits the files (POST /generate, multipart) and polls the job
-// (GET /jobs/{id}) until it is done or failed. One Client lets one Generate run
-// at a time: the generator itself runs one job at a time, and a worker process
-// must not pile its jobs into the generator's queue. Every HTTP call has its
-// own timeout (CallTimeout); the whole submit and poll has a deadline
-// (Deadline) that stays under the worker's stale-claim timeout (5 minutes).
+// The worker job uses two short calls: Submit sends the files (POST /generate,
+// multipart, timeout CallTimeout) and returns the generator's job id; Poll asks
+// once about the job (GET /jobs/{id}, timeout PollTimeout). The job keeps the
+// waiting between the calls in worker_jobs rows, so no call holds the worker
+// loop for long. Generate is Submit plus a polling loop in one call (tests and
+// tools): one Client lets one Generate run at a time, under Deadline.
 //
-// Errors are *Error: Retry tells the caller whether a later attempt may
+// Errors are *Error (Msg may carry the generator's own text: log Code only):
+// Retry tells the caller whether a later attempt may
 // succeed (network, 5xx, 503 queue.full or busy, a job failed by timeout or a
 // crash, the poll deadline) or not (401, 400, 413, a job failed by
 // memory_limit).
@@ -57,6 +58,7 @@ const (
 // Defaults of a Client.
 const (
 	DefaultCallTimeout  = 120 * time.Second
+	DefaultPollTimeout  = 30 * time.Second
 	DefaultDeadline     = 4 * time.Minute
 	DefaultPollInterval = 2 * time.Second
 	maxAnswerBytes      = 64 << 20
@@ -153,6 +155,7 @@ type Client struct {
 	token        string
 	http         *http.Client
 	callTimeout  time.Duration
+	pollTimeout  time.Duration
 	deadline     time.Duration
 	pollInterval time.Duration
 	sem          chan struct{}
@@ -164,8 +167,12 @@ type Option func(*Client)
 // WithHTTPClient sets the HTTP client (tests).
 func WithHTTPClient(h *http.Client) Option { return func(c *Client) { c.http = h } }
 
-// WithCallTimeout sets the timeout of one HTTP call.
+// WithCallTimeout sets the timeout of one HTTP call (POST /generate, POST
+// /render).
 func WithCallTimeout(d time.Duration) Option { return func(c *Client) { c.callTimeout = d } }
+
+// WithPollTimeout sets the timeout of one GET /jobs/{id}.
+func WithPollTimeout(d time.Duration) Option { return func(c *Client) { c.pollTimeout = d } }
 
 // WithDeadline sets the deadline of one Generate (waiting for the turn,
 // submit and poll).
@@ -181,6 +188,7 @@ func New(baseURL, token string, opts ...Option) *Client {
 		base:         strings.TrimRight(strings.TrimSpace(baseURL), "/"),
 		token:        strings.TrimSpace(token),
 		callTimeout:  DefaultCallTimeout,
+		pollTimeout:  DefaultPollTimeout,
 		deadline:     DefaultDeadline,
 		pollInterval: DefaultPollInterval,
 		sem:          make(chan struct{}, 1),
@@ -213,18 +221,36 @@ func (c *Client) Generate(ctx context.Context, files []File) (Result, error) {
 
 	resent := false
 	for {
-		jobID, err := c.submit(ctx, files)
+		jobID, err := c.Submit(ctx, files)
 		if err != nil {
 			return Result{}, err
 		}
-		res, err := c.poll(ctx, jobID)
-		var ge *Error
-		if errors.As(err, &ge) && ge.Code == "job.not_found" && !resent {
+		res, err := c.wait(ctx, jobID)
+		if IsJobLost(err) && !resent {
 			resent = true
 			continue
 		}
 		return res, err
 	}
+}
+
+// IsJobLost reports whether err is the generator's 404 of a job (it
+// restarted and lost the job).
+func IsJobLost(err error) bool {
+	var ge *Error
+	return errors.As(err, &ge) && ge.Code == CodeJobNotFound
+}
+
+// CodeJobNotFound is the code of Poll's error for a job the generator does
+// not know.
+const CodeJobNotFound = "job.not_found"
+
+// Submit sends the files (POST /generate) and returns the generator's job id.
+func (c *Client) Submit(ctx context.Context, files []File) (string, error) {
+	if len(files) == 0 || len(files) > MaxFiles {
+		return "", &Error{Code: "request.invalid", Msg: fmt.Sprintf("send 1..%d files, got %d", MaxFiles, len(files))}
+	}
+	return c.submit(ctx, files)
 }
 
 func (c *Client) submit(ctx context.Context, files []File) (string, error) {
@@ -255,7 +281,7 @@ func (c *Client) submit(ctx context.Context, files []File) (string, error) {
 	if err := mw.Close(); err != nil {
 		return "", &Error{Code: "request.invalid", Msg: err.Error()}
 	}
-	status, raw, err := c.call(ctx, http.MethodPost, "/generate", mw.FormDataContentType(), body.Bytes())
+	status, raw, err := c.call(ctx, c.callTimeout, http.MethodPost, "/generate", mw.FormDataContentType(), body.Bytes())
 	if err != nil {
 		return "", err
 	}
@@ -287,40 +313,54 @@ type jobAnswer struct {
 	} `json:"error"`
 }
 
-func (c *Client) poll(ctx context.Context, jobID string) (Result, error) {
+// Poll asks the generator once about the job (GET /jobs/{id}).
+//
+//   - done=false, err=nil: the job is still queued or running;
+//   - done=false, err!=nil: no answer worth acting on (a network error, a
+//     timeout, a 5xx or 429); asking again later may help;
+//   - done=true: the outcome. err=nil with the Result of a done job, or the
+//     *Error of a failed job, a final HTTP answer, a bad answer, or a 404
+//     (Code CodeJobNotFound, the generator lost the job).
+func (c *Client) Poll(ctx context.Context, jobID string) (Result, bool, error) {
+	status, raw, err := c.call(ctx, c.pollTimeout, http.MethodGet, "/jobs/"+jobID, "", nil)
+	switch {
+	case err != nil:
+		return Result{}, false, err
+	case status == http.StatusNotFound:
+		return Result{}, true, &Error{Status: status, Code: CodeJobNotFound, Msg: "the generator does not know the job " + jobID, Retry: true}
+	case status != http.StatusOK:
+		e := answerError(status, raw)
+		return Result{}, !e.Retry, e
+	}
+	var a jobAnswer
+	if err := json.Unmarshal(raw, &a); err != nil {
+		return Result{}, true, &Error{Status: status, Code: "bad_answer", Msg: "the job answer is not JSON", Retry: true}
+	}
+	switch a.Status {
+	case "done":
+		res, err := a.result(jobID)
+		return res, true, err
+	case "failed":
+		code, msg := "internal_error", "the job failed"
+		if a.Error != nil {
+			code, msg = a.Error.Code, a.Error.Message
+		}
+		// memory_limit will fail the same way again; a timeout or a crash
+		// may not.
+		return Result{}, true, &Error{Status: status, Code: code, Msg: msg, Retry: code != "memory_limit"}
+	}
+	return Result{}, false, nil
+}
+
+// wait polls the job until it is done or ctx ends (Generate).
+func (c *Client) wait(ctx context.Context, jobID string) (Result, error) {
 	var lastErr error
 	for {
-		status, raw, err := c.call(ctx, http.MethodGet, "/jobs/"+jobID, "", nil)
-		switch {
-		case err != nil:
-			lastErr = err
-		case status == http.StatusNotFound:
-			return Result{}, &Error{Status: status, Code: "job.not_found", Msg: "the generator does not know the job " + jobID, Retry: true}
-		case status != http.StatusOK:
-			e := answerError(status, raw)
-			if !e.Retry {
-				return Result{}, e
-			}
-			lastErr = e
-		default:
-			var a jobAnswer
-			if err := json.Unmarshal(raw, &a); err != nil {
-				return Result{}, &Error{Status: status, Code: "bad_answer", Msg: "the job answer is not JSON", Retry: true}
-			}
-			switch a.Status {
-			case "done":
-				return a.result(jobID)
-			case "failed":
-				code, msg := "internal_error", "the job failed"
-				if a.Error != nil {
-					code, msg = a.Error.Code, a.Error.Message
-				}
-				// memory_limit will fail the same way again; a timeout or a
-				// crash may not.
-				return Result{}, &Error{Status: status, Code: code, Msg: msg, Retry: code != "memory_limit"}
-			}
-			lastErr = nil
+		res, done, err := c.Poll(ctx, jobID)
+		if done {
+			return res, err
 		}
+		lastErr = err
 		t := time.NewTimer(c.pollInterval)
 		select {
 		case <-ctx.Done():
@@ -376,7 +416,7 @@ func (c *Client) Render(ctx context.Context, in venueplan.RenderInput) (venuepla
 	if err != nil {
 		return venueplan.RenderOutput{}, &Error{Code: "request.invalid", Msg: err.Error()}
 	}
-	status, raw, err := c.call(ctx, http.MethodPost, "/render", "application/json", body)
+	status, raw, err := c.call(ctx, c.callTimeout, http.MethodPost, "/render", "application/json", body)
 	if err != nil {
 		return venueplan.RenderOutput{}, err
 	}
@@ -404,13 +444,13 @@ func (c *Client) Render(ctx context.Context, in venueplan.RenderInput) (venuepla
 	return out, nil
 }
 
-// call runs one HTTP request under the call timeout. A network error or a
-// timeout is a retryable *Error.
-func (c *Client) call(ctx context.Context, method, path, contentType string, body []byte) (int, []byte, error) {
+// call runs one HTTP request under timeout. A network error or a timeout is
+// a retryable *Error.
+func (c *Client) call(ctx context.Context, timeout time.Duration, method, path, contentType string, body []byte) (int, []byte, error) {
 	if c.base == "" || c.token == "" {
 		return 0, nil, &Error{Code: "not_configured", Msg: "VENUE_GEN_URL or VENUE_GEN_TOKEN is empty"}
 	}
-	cctx, cancel := context.WithTimeout(ctx, c.callTimeout)
+	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var rd io.Reader
 	if body != nil {

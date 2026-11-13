@@ -24,10 +24,25 @@ const GenerateJobType = "venue_plan.generate"
 // are counted in Payload.Attempt.
 const GenerateJobAttempts = 5
 
-// GeneratePayload is the payload of a venue_plan.generate job.
+// GeneratePayload is the payload of a venue_plan.generate job. One row is one
+// short step of an attempt: without GenJobID it is the step "submit" (send
+// the files), with GenJobID the step "poll" (ask the generator once about
+// that job).
 type GeneratePayload struct {
 	IntakeID string `json:"intake_id"`
 	Attempt  int    `json:"attempt"`
+	// Seq numbers the rows of one intake's chain: every step enqueues the
+	// next row with Seq+1. A row whose intake already has a row with a
+	// higher Seq is a repeat of a step that was done, and does nothing.
+	Seq int `json:"seq,omitempty"`
+	// GenJobID is the generator's job id (the step poll).
+	GenJobID string `json:"gen_job_id,omitempty"`
+	// SubmittedAt is when the files were sent; the poll gives up after the
+	// deadline counted from it.
+	SubmittedAt *time.Time `json:"submitted_at,omitempty"`
+	// Resubmitted: the generator lost the job once and the files were sent
+	// again; a second loss is a failed attempt.
+	Resubmitted bool `json:"resubmitted,omitempty"`
 }
 
 // EnqueueGenerate writes one venue_plan.generate job on db (the caller's
@@ -35,10 +50,17 @@ type GeneratePayload struct {
 func EnqueueGenerate(ctx context.Context, db interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }, intakeID uuid.UUID, attempt int, delay time.Duration) error {
-	if attempt < 1 {
-		attempt = 1
+	return EnqueueGenerateStep(ctx, db, GeneratePayload{IntakeID: intakeID.String(), Attempt: attempt}, delay)
+}
+
+// EnqueueGenerateStep writes one venue_plan.generate row with payload p on db
+// (the caller's transaction), to run after delay.
+func EnqueueGenerateStep(ctx context.Context, db interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}, p GeneratePayload, delay time.Duration) error {
+	if p.Attempt < 1 {
+		p.Attempt = 1
 	}
-	p := GeneratePayload{IntakeID: intakeID.String(), Attempt: attempt}
 	if delay <= 0 {
 		if _, err := worker.EnqueueInTx(ctx, db, GenerateJobType, p, GenerateJobAttempts); err != nil {
 			return fmt.Errorf("venue plan generate job: %w", err)

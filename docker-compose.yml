@@ -269,6 +269,11 @@ services:
       # Step buttons on the delivery group's order card (spec 61 section 7b).
       # Off = plain text message. Turn on only with arena-bot receiving presses.
       SHOP_DELIVERY_BUTTONS_ENABLED: "${SHOP_DELIVERY_BUTTONS_ENABLED:-false}"
+      # Venue SVG generator (spec 64 wave 2). Both empty = no generator: a
+      # seating plan intake goes to an administrator. With the venue-gen
+      # profile set VENUE_GEN_URL=http://venue_gen:8090 and the same token.
+      VENUE_GEN_URL: "${VENUE_GEN_URL:-}"
+      VENUE_GEN_TOKEN: "${VENUE_GEN_TOKEN:-}"
       HEALTH_ADDR: "http://localhost:9091"
 
       DEFAULT_LOCALE: "en"

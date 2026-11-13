@@ -141,56 +141,132 @@ func sp(s string) *string { return &s }
 
 const vpgUsedFile = `[{"index":0,"declared_kind":"xlsx","detected_kind":"xlsx","sha256":"x","size_bytes":1,"adapter":"xlsx_seating_adapter","outcome":"used","reason":null,"seat_count":3,"validation_status":"PASS"}]`
 
-// runGenerate runs every pending venue_plan.generate job of the intake through
-// the real handler, oldest first, and marks it done. It returns the attempts run.
+// runGenerate runs one attempt of the intake through the real handler: the
+// oldest pending venue_plan.generate row now, then every step row that attempt
+// queues (submit, polls, a resubmit), each after its scheduled_at. It stops at
+// a row of the next attempt (a retry waits for the caller). It returns the
+// attempts run.
 func (e *vpiEnv) runGenerate(t *testing.T, g generate.Generator, id string) []int {
 	t.Helper()
 	return runVenuePlanGenerateJobs(t, e.srv.pgxPool, e.srv.media, g, id)
 }
 
+// vpgStubPollDelay is the poll delay of the handler against a stub.
+const vpgStubPollDelay = 5 * time.Millisecond
+
 // runVenuePlanGenerateJobs is runGenerate for any test of the package: media
 // nil or g nil is a worker without a generator (no_generator).
 func runVenuePlanGenerateJobs(t *testing.T, pool *pgxpool.Pool, media *mediastore.Repo, g generate.Generator, id string) []int {
 	t.Helper()
-	ctx := context.Background()
-	h := generate.NewHandler(generate.Options{
-		Pool: pool, Media: media, Generator: g, Notifier: notify.Notifier{},
-		Audit: audit.WithServiceActor(audit.NewPGWriter(pool)),
-	})
-	exec := func(sql string, args ...any) {
-		t.Helper()
-		if _, err := pool.Exec(ctx, sql, args...); err != nil {
-			t.Fatalf("%q: %v", sql, err)
-		}
+	return runVenuePlanGenerateJobsWith(t, pool, media, g, id, vpgStubPollDelay)
+}
+
+func vpgHandlerOptions(pool *pgxpool.Pool, media *mediastore.Repo, g generate.Generator, pollDelay time.Duration) generate.Options {
+	opts := generate.Options{
+		Pool: pool, Media: media, Notifier: notify.Notifier{},
+		Audit: audit.WithServiceActor(audit.NewPGWriter(pool)), PollDelay: pollDelay,
 	}
-	rows, err := pool.Query(ctx, `SELECT id::text, payload::text FROM worker_jobs
+	if g != nil {
+		opts.Generator = g
+	}
+	return opts
+}
+
+// vpgStep is one pending venue_plan.generate row.
+type vpgStep struct {
+	id, payload string
+	scheduledAt time.Time
+	attempt     int
+	seq         int
+	genJobID    string
+	resubmitted bool
+}
+
+// vpgPending lists the pending venue_plan.generate rows of the intake, oldest first.
+func vpgPending(t *testing.T, pool *pgxpool.Pool, id string) []vpgStep {
+	t.Helper()
+	rows, err := pool.Query(context.Background(), `SELECT id::text, payload::text, scheduled_at FROM worker_jobs
 		WHERE job_type = 'venue_plan.generate' AND status = 'pending' AND payload->>'intake_id' = $1
 		ORDER BY scheduled_at, created_at`, id)
 	if err != nil {
 		t.Fatal(err)
 	}
-	type job struct{ id, payload string }
-	var jobs []job
+	defer rows.Close()
+	var out []vpgStep
 	for rows.Next() {
-		var j job
-		if err := rows.Scan(&j.id, &j.payload); err != nil {
+		var s vpgStep
+		if err := rows.Scan(&s.id, &s.payload, &s.scheduledAt); err != nil {
 			t.Fatal(err)
 		}
-		jobs = append(jobs, j)
+		var p struct {
+			Attempt     int    `json:"attempt"`
+			Seq         int    `json:"seq"`
+			GenJobID    string `json:"gen_job_id"`
+			Resubmitted bool   `json:"resubmitted"`
+		}
+		if err := json.Unmarshal([]byte(s.payload), &p); err != nil {
+			t.Fatal(err)
+		}
+		s.attempt, s.seq, s.genJobID, s.resubmitted = p.Attempt, p.Seq, p.GenJobID, p.Resubmitted
+		out = append(out, s)
 	}
-	rows.Close()
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// vpgRunStep claims one row the way the worker does, runs the handler on it
+// and marks it done (or pending again when the handler failed).
+func vpgRunStep(ctx context.Context, t *testing.T, pool *pgxpool.Pool, h func(context.Context, []byte) error, s vpgStep) error {
+	t.Helper()
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(context.Background(), sql, args...); err != nil {
+			t.Fatalf("%q: %v", sql, err)
+		}
+	}
+	exec(`UPDATE worker_jobs SET status = 'claimed', claimed_at = now(), attempts = attempts + 1 WHERE id = $1`, s.id)
+	err := h(ctx, []byte(s.payload))
+	if err != nil {
+		exec(`UPDATE worker_jobs SET status = 'pending', claimed_at = NULL WHERE id = $1`, s.id)
+		return err
+	}
+	exec(`UPDATE worker_jobs SET status = 'done' WHERE id = $1`, s.id)
+	return nil
+}
+
+func runVenuePlanGenerateJobsWith(t *testing.T, pool *pgxpool.Pool, media *mediastore.Repo, g generate.Generator, id string, pollDelay time.Duration) []int {
+	t.Helper()
+	h := generate.NewHandler(vpgHandlerOptions(pool, media, g, pollDelay))
 	var attempts []int
-	for _, j := range jobs {
-		exec(`UPDATE worker_jobs SET status = 'claimed', claimed_at = now(), attempts = attempts + 1 WHERE id = $1`, j.id)
-		if err := h(ctx, []byte(j.payload)); err != nil {
+	for n := 0; ; n++ {
+		if n > 5000 {
+			t.Fatalf("the generate chain of %s did not end", id)
+		}
+		pending := vpgPending(t, pool, id)
+		if len(pending) == 0 {
+			break
+		}
+		s := pending[0]
+		if len(attempts) > 0 {
+			if s.attempt != attempts[len(attempts)-1] {
+				break
+			}
+			// A step of the same attempt runs when it is due.
+			if d := time.Until(s.scheduledAt); d > 0 {
+				if d > 5*time.Second {
+					d = 5 * time.Second
+				}
+				time.Sleep(d)
+			}
+		}
+		if err := vpgRunStep(context.Background(), t, pool, h, s); err != nil {
 			t.Fatalf("venue_plan.generate handler: %v", err)
 		}
-		exec(`UPDATE worker_jobs SET status = 'done' WHERE id = $1`, j.id)
-		var p struct {
-			Attempt int `json:"attempt"`
+		if len(attempts) == 0 || attempts[len(attempts)-1] != s.attempt {
+			attempts = append(attempts, s.attempt)
 		}
-		_ = json.Unmarshal([]byte(j.payload), &p)
-		attempts = append(attempts, p.Attempt)
 	}
 	return attempts
 }
@@ -541,5 +617,270 @@ func TestVenuePlanGenerate_ApprovedDraftNeedsVerificationBeforeAFork(t *testing.
 	}
 	if r := e.jsonDo(t, http.MethodPost, fork, e.ownerB, "", body); r.status != http.StatusCreated {
 		t.Fatalf("fork after verification: %d %s", r.status, r.body)
+	}
+}
+
+// ─── the steps of an attempt ────────────────────────────────────────────────
+
+// vpgSubmitted creates an intake, runs its submit step with g and returns the
+// handler and the one poll row it queued.
+func (e *vpiEnv) vpgSubmitted(t *testing.T, g generate.Generator) (string, func(context.Context, []byte) error, vpgStep) {
+	t.Helper()
+	id := e.createReceived(t, vpiFile{"hall.xlsx", vpgXLSX(t)})
+	h := generate.NewHandler(vpgHandlerOptions(e.srv.pgxPool, e.srv.media, g, vpgStubPollDelay))
+	first := vpgPending(t, e.srv.pgxPool, id)
+	if len(first) != 1 || first[0].genJobID != "" || first[0].seq != 0 {
+		t.Fatalf("rows at create: %+v", first)
+	}
+	if err := vpgRunStep(context.Background(), t, e.srv.pgxPool, h, first[0]); err != nil {
+		t.Fatalf("submit step: %v", err)
+	}
+	if st, _ := e.state(t, id); st != "generating" {
+		t.Fatalf("after submit: state %s, want generating", st)
+	}
+	next := vpgPending(t, e.srv.pgxPool, id)
+	if len(next) != 1 || next[0].genJobID != "job-1" || next[0].seq != 1 || next[0].attempt != 1 {
+		t.Fatalf("after submit: rows %+v, want one poll of job-1", next)
+	}
+	return id, h, next[0]
+}
+
+// vpgIntakeSnapshot is what a step must not change on a running intake.
+func (e *vpiEnv) vpgIntakeSnapshot(t *testing.T, id string) string {
+	t.Helper()
+	var s string
+	if err := e.srv.pgxPool.QueryRow(context.Background(), `SELECT concat_ws('|', state, escalation_reason, current_draft::text,
+		(SELECT count(*) FROM venue_plan_drafts WHERE intake_id = $1)::text,
+		(SELECT count(*) FROM venue_plan_notices WHERE intake_id = $1)::text,
+		(SELECT count(*) FROM audit_events WHERE resource_id = $1::text AND action <> 'v1.venue_plan_intake.generate_started')::text)
+		FROM venue_plan_intakes WHERE id = $1`, id).Scan(&s); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// (9) A job still running: the poll step queues exactly one next poll and
+// leaves the intake as it is; no step waits inside the call.
+func TestVenuePlanGenerate_PollStillRunningQueuesOneNextPoll(t *testing.T) {
+	e := newVPIEnv(t)
+	s := &vpgStub{job: func(int) (int, string) { return 200, `{"job_id":"job-1","status":"running"}` }}
+	id, h, poll := e.vpgSubmitted(t, newVPGStub(t, s))
+	before := e.vpgIntakeSnapshot(t, id)
+	start := time.Now()
+	if err := vpgRunStep(context.Background(), t, e.srv.pgxPool, h, poll); err != nil {
+		t.Fatalf("poll step: %v", err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("one poll step took %v", d)
+	}
+	next := vpgPending(t, e.srv.pgxPool, id)
+	if len(next) != 1 || next[0].genJobID != "job-1" || next[0].seq != 2 || next[0].attempt != 1 {
+		t.Fatalf("after a running poll: rows %+v, want one poll with seq 2", next)
+	}
+	if s.polls != 1 || s.submits != 1 {
+		t.Errorf("polls %d submits %d, want 1 and 1", s.polls, s.submits)
+	}
+	if after := e.vpgIntakeSnapshot(t, id); after != before {
+		t.Errorf("the intake changed: %s -> %s", before, after)
+	}
+}
+
+// (10) The job runs past the deadline: a failed attempt with the code
+// deadline, attempt 2 a minute later.
+func TestVenuePlanGenerate_PollDeadlineRetriesTheAttempt(t *testing.T) {
+	e := newVPIEnv(t)
+	s := &vpgStub{job: func(int) (int, string) { return 200, `{"job_id":"job-1","status":"running"}` }}
+	id, h, poll := e.vpgSubmitted(t, newVPGStub(t, s))
+	old := time.Now().Add(-generate.Deadline - time.Minute).UTC().Format(time.RFC3339Nano)
+	e.exec(t, `UPDATE worker_jobs SET payload = jsonb_set(payload, '{submitted_at}', to_jsonb($2::text)) WHERE id = $1`, poll.id, old)
+	poll = vpgPending(t, e.srv.pgxPool, id)[0]
+	if err := vpgRunStep(context.Background(), t, e.srv.pgxPool, h, poll); err != nil {
+		t.Fatalf("poll step: %v", err)
+	}
+	if st, _ := e.state(t, id); st != "generating" {
+		t.Fatalf("state %s, want generating", st)
+	}
+	next := vpgPending(t, e.srv.pgxPool, id)
+	if len(next) != 1 || next[0].attempt != 2 || next[0].genJobID != "" || next[0].seq != 2 ||
+		time.Until(next[0].scheduledAt) < 50*time.Second {
+		t.Fatalf("after the deadline: rows %+v, want attempt 2 a minute later", next)
+	}
+	if e.count(t, `SELECT count(*) FROM audit_events WHERE action = 'v1.venue_plan_intake.generate_failed' AND resource_id = $1
+		AND metadata->>'error_code' = 'deadline' AND (metadata->>'retry')::boolean`, id) != 1 {
+		t.Error("no generate_failed audit row with the code deadline")
+	}
+}
+
+// (11) The generator lost the job: the files go once more; a second loss is a
+// failed attempt.
+func TestVenuePlanGenerate_LostJobIsSentAgainOnce(t *testing.T) {
+	e := newVPIEnv(t)
+	svg := vpgAuthoringSVG(t)
+	lost := `{"error":{"code":"job.not_found","message":"gone"}}`
+	s := &vpgStub{}
+	g := newVPGStub(t, s)
+	s.job = func(poll int) (int, string) {
+		if poll == 1 {
+			return 404, lost
+		}
+		return 200, vpgDone("ok", sp("PASS"), &svg, vpgUsedFile)
+	}
+	id := e.createReceived(t, vpiFile{"hall.xlsx", vpgXLSX(t)})
+	if got := e.runGenerate(t, g, id); len(got) != 1 || got[0] != 1 {
+		t.Fatalf("attempts %v", got)
+	}
+	if st, _ := e.state(t, id); st != "review" || s.submits != 2 {
+		t.Fatalf("state %s, submits %d, want review and 2", st, s.submits)
+	}
+	if e.count(t, `SELECT count(*) FROM audit_events WHERE action = 'v1.venue_plan_intake.generate_started' AND resource_id = $1`, id) != 1 {
+		t.Error("a resubmit wrote a second generate_started")
+	}
+
+	s2 := &vpgStub{job: func(int) (int, string) { return 404, lost }}
+	id2 := e.createReceived(t, vpiFile{"hall.xlsx", vpgXLSX(t)})
+	if got := e.runGenerate(t, newVPGStub(t, s2), id2); len(got) != 1 || got[0] != 1 {
+		t.Fatalf("attempts %v", got)
+	}
+	if s2.submits != 2 {
+		t.Errorf("submits %d, want 2", s2.submits)
+	}
+	next := vpgPending(t, e.srv.pgxPool, id2)
+	if st, _ := e.state(t, id2); st != "generating" || len(next) != 1 || next[0].attempt != 2 {
+		t.Fatalf("after two losses: state %s rows %+v, want attempt 2 queued", st, next)
+	}
+	if e.count(t, `SELECT count(*) FROM audit_events WHERE action = 'v1.venue_plan_intake.generate_failed' AND resource_id = $1
+		AND metadata->>'error_code' = 'job.not_found'`, id2) != 1 {
+		t.Error("no generate_failed audit row with job.not_found")
+	}
+}
+
+// (12) The worker stops in the middle of a poll: an error for the worker, no
+// spent attempt, no new row; the same row then finishes the attempt.
+func TestVenuePlanGenerate_StoppedWorkerDoesNotSpendTheAttempt(t *testing.T) {
+	e := newVPIEnv(t)
+	svg := vpgAuthoringSVG(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	stop := true
+	s := &vpgStub{job: func(int) (int, string) {
+		if stop {
+			cancel()
+			time.Sleep(300 * time.Millisecond)
+			return 200, `{"job_id":"job-1","status":"running"}`
+		}
+		return 200, vpgDone("ok", sp("PASS"), &svg, vpgUsedFile)
+	}}
+	id, h, poll := e.vpgSubmitted(t, newVPGStub(t, s))
+	before := e.vpgIntakeSnapshot(t, id)
+	if err := vpgRunStep(ctx, t, e.srv.pgxPool, h, poll); err == nil {
+		t.Fatal("a stopped worker must get an error back")
+	}
+	rows := vpgPending(t, e.srv.pgxPool, id)
+	if len(rows) != 1 || rows[0].id != poll.id {
+		t.Fatalf("after the stop: rows %+v, want only the same poll row", rows)
+	}
+	if after := e.vpgIntakeSnapshot(t, id); after != before {
+		t.Errorf("the intake changed: %s -> %s", before, after)
+	}
+	if e.count(t, `SELECT count(*) FROM audit_events WHERE action = 'v1.venue_plan_intake.generate_failed' AND resource_id = $1`, id) != 0 {
+		t.Error("a stop was written as a failed attempt")
+	}
+	stop = false
+	if got := e.runGenerate(t, newVPGStub(t, s), id); len(got) != 1 || got[0] != 1 {
+		t.Fatalf("attempts %v, want attempt 1 again", got)
+	}
+	if st, _ := e.state(t, id); st != "review" {
+		t.Fatalf("state %s, want review", st)
+	}
+}
+
+// (13) A step run twice (the worker gave a stale claim back) queues one next
+// row, and a repeated submit does not send the files again.
+func TestVenuePlanGenerate_RepeatedStepQueuesOneNextRow(t *testing.T) {
+	e := newVPIEnv(t)
+	s := &vpgStub{job: func(int) (int, string) { return 200, `{"job_id":"job-1","status":"running"}` }}
+	id, h, poll := e.vpgSubmitted(t, newVPGStub(t, s))
+	ctx := context.Background()
+	for i := 0; i < 2; i++ {
+		if err := h(ctx, []byte(poll.payload)); err != nil {
+			t.Fatalf("poll run %d: %v", i+1, err)
+		}
+	}
+	if n := e.count(t, `SELECT count(*) FROM worker_jobs WHERE job_type = 'venue_plan.generate' AND payload->>'intake_id' = $1
+		AND (payload->>'seq')::int = 2`, id); n != 1 {
+		t.Fatalf("rows with seq 2: %d, want 1", n)
+	}
+	if s.polls != 1 {
+		t.Errorf("polls %d: the repeat asked the generator again", s.polls)
+	}
+	// The submit row once more.
+	submit := fmt.Sprintf(`{"intake_id":%q,"attempt":1}`, id)
+	if err := h(ctx, []byte(submit)); err != nil {
+		t.Fatal(err)
+	}
+	if s.submits != 1 || e.count(t, `SELECT count(*) FROM worker_jobs WHERE job_type = 'venue_plan.generate'
+		AND payload->>'intake_id' = $1 AND status = 'pending'`, id) != 2 {
+		t.Errorf("a repeated submit: submits %d", s.submits)
+	}
+	if e.count(t, `SELECT count(*) FROM audit_events WHERE action = 'v1.venue_plan_intake.generate_started' AND resource_id = $1`, id) != 1 {
+		t.Error("a repeated submit wrote a second generate_started")
+	}
+}
+
+// (14) The sweep sends an intake no step moved for 30 minutes to an
+// administrator, received or generating, and leaves fresh and closed ones.
+func TestVenuePlanGenerate_SweepSendsStalledIntakesToAnAdministrator(t *testing.T) {
+	e := newVPIEnv(t)
+	e.exec(t, `DELETE FROM worker_jobs WHERE job_type = $1`, generate.JobTypeSweep)
+	oldReceived := e.createReceived(t, vpiFile{"a.xlsx", vpgXLSX(t)})
+	oldGenerating := e.createReceived(t, vpiFile{"b.xlsx", vpgXLSX(t)})
+	freshGenerating := e.createReceived(t, vpiFile{"c.xlsx", vpgXLSX(t)})
+	oldCancelled := e.createReceived(t, vpiFile{"d.xlsx", vpgXLSX(t)})
+	e.exec(t, `UPDATE venue_plan_intakes SET state = 'generating' WHERE id::text = ANY($1::text[])`, []string{oldGenerating, freshGenerating})
+	if r := e.do(t, http.MethodPost, orgIntakePath(e.orgA, oldCancelled)+"/cancel", e.ownerA, "", "", nil, nil); r.status != http.StatusOK {
+		t.Fatalf("cancel: %d %s", r.status, r.body)
+	}
+	e.exec(t, `UPDATE venue_plan_intakes SET updated_at = now() - interval '31 minutes' WHERE id::text = ANY($1::text[])`,
+		[]string{oldReceived, oldGenerating, oldCancelled})
+	sweep := generate.NewSweepHandler(vpgHandlerOptions(e.srv.pgxPool, e.srv.media, nil, 0))
+	for i := 0; i < 2; i++ {
+		if err := sweep(context.Background(), []byte(`{}`)); err != nil {
+			t.Fatalf("sweep: %v", err)
+		}
+	}
+	for _, id := range []string{oldReceived, oldGenerating} {
+		if st, reason := e.state(t, id); st != "operator" || reason != "generator_failed" {
+			t.Errorf("stalled %s: state %s %s, want operator generator_failed", id, st, reason)
+		}
+		if e.count(t, `SELECT count(*) FROM venue_plan_notices WHERE intake_id = $1 AND kind = 'escalated'`, id) != 1 ||
+			e.notifyJobs(t, id, "intake_escalated") != 1 {
+			t.Errorf("stalled %s: the escalation was not told once", id)
+		}
+		if e.count(t, `SELECT count(*) FROM audit_events WHERE action = 'v1.venue_plan_intake.generate_failed' AND resource_id = $1
+			AND metadata->>'error_code' = 'stalled' AND metadata->>'reason' = 'generator_failed'`, id) != 1 {
+			t.Errorf("stalled %s: no audit row", id)
+		}
+	}
+	if st, _ := e.state(t, freshGenerating); st != "generating" {
+		t.Errorf("a fresh intake: state %s, want generating", st)
+	}
+	if st, _ := e.state(t, oldCancelled); st != "cancelled" {
+		t.Errorf("a closed intake: state %s, want cancelled", st)
+	}
+	if n := e.count(t, `SELECT count(*) FROM worker_jobs WHERE job_type = $1 AND status = 'pending'`, generate.JobTypeSweep); n != 1 {
+		t.Errorf("pending sweeps: %d, want 1", n)
+	}
+	// The stalled intake's own row now finds it closed and does nothing.
+	if got := e.runGenerate(t, nil, oldReceived); len(got) != 1 {
+		t.Fatalf("generate rows: %v", got)
+	}
+	if e.count(t, `SELECT count(*) FROM venue_plan_notices WHERE intake_id = $1`, oldReceived) != 1 {
+		t.Error("the old row wrote a second outcome")
+	}
+	if err := generate.ScheduleInitialSweep(context.Background(), e.srv.pgxPool); err != nil {
+		t.Fatal(err)
+	}
+	if n := e.count(t, `SELECT count(*) FROM worker_jobs WHERE job_type = $1 AND status = 'pending'`, generate.JobTypeSweep); n != 1 {
+		t.Errorf("pending sweeps after the initial schedule: %d, want 1", n)
 	}
 }

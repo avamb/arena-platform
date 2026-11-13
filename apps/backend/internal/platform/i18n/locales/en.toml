@@ -5065,7 +5065,7 @@ other = "I could not send the files. Please press «Done» again in a minute."
 other = "There are no files yet. Please send a file first."
 
 ["bot.wz.plan_in_received"]
-other = "We have your file. We are building the seating plan. This usually takes up to 5 minutes. I will write to you when the plan is ready to check."
+other = "We have your file. We are building the seating plan. This usually takes a few minutes. I will write to you when the plan is ready to check."
 
 ["bot.wz.plan_in_building"]
 other = "We are building the seating plan. I will write to you when the plan is ready to check."

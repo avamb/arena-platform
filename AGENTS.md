@@ -754,7 +754,10 @@ Spec 64: intake states, private plan sources, approve, superadmin verification a
 * The answers loop is still an administrator's work: venue_plan.render and the question table have no writer
 * Since wave 2 create leaves the intake received and queues venue_plan.generate; only the worker knows the generator
 * generate.Decide maps a generator answer to review or to an administrator with the exact reason
-* generate.SendKind and Select choose the files; one generator call at a time, outside any transaction
+* generate.SendKind and Select choose the files; the generator is called outside any transaction
+* An attempt is a chain of short steps (submit, poll every 3 s, 4-minute deadline), one HTTP call per worker job
+* A repeated step does nothing: rows carry seq, a higher seq for the intake means the step was done
+* The sweep venue_plan.generate_sweep sends an intake with no step for 30 minutes to an administrator
 * The bot sends the files of a plan as ONE intake and never builds a plan itself (pi: callbacks, paused draft, notice loop)
 * The world country table is worldgeo, and only a venue or an approved application creates a reference country (never an API key)
 * The venue directory is GET .../venue-directory, own plus verified venues, the access of shared-venues

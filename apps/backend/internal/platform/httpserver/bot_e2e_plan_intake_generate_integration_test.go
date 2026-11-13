@@ -24,7 +24,7 @@ func TestBotE2E_PlanIntake_GeneratorDraftIsCheckedAndApproved(t *testing.T) {
 	o.press("pi:up:"+e.venue.String(), "Пришлите файлы схемы")
 	e.doc("pi-gen-xlsx", "hall.xlsx", vpgXLSX(t), "Файл 1 получен")
 	text := o.press("pi:done", "Файл получен. Мы строим схему зала")
-	if !strings.Contains(text, "5 минут") || strings.Contains(text, "администратор") {
+	if !strings.Contains(text, "несколько минут") || strings.Contains(text, "администратор") {
 		t.Fatalf("the received text:\n%s", text)
 	}
 	id, state := e.intake()

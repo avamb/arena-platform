@@ -309,7 +309,7 @@ func TestBotE2E_PlanIntake_WizardWaitsForAnAdministrator(t *testing.T) {
 	}
 
 	text = o.press("pi:done", "Файл получен. Мы строим схему зала")
-	if !strings.Contains(text, "5 минут") || strings.Contains(text, "администратор") || !strings.Contains(text, "Черновик мероприятия сохранён") {
+	if !strings.Contains(text, "несколько минут") || strings.Contains(text, "администратор") || !strings.Contains(text, "Черновик мероприятия сохранён") {
 		t.Fatalf("the received text:\n%s", text)
 	}
 	id, state := e.intake()

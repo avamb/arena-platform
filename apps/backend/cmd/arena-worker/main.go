@@ -394,6 +394,10 @@ func run() error {
 		// Non-fatal: reminders and expiry of onboarding drafts run a little later.
 		logger.Warn("could not schedule initial onboarding sweep job", "error", err.Error())
 	}
+	if err := venueplangenerate.ScheduleInitialSweep(rootCtx, pool.Pool); err != nil {
+		// Non-fatal: a stalled hall plan intake reaches an administrator later.
+		logger.Warn("could not schedule initial venue plan generate sweep job", "error", err.Error())
+	}
 	if err := contactform.ScheduleInitialPurge(rootCtx, pool.Pool); err != nil {
 		// Non-fatal: old contact-form messages are deleted a little later.
 		logger.Warn("could not schedule initial contact form purge job", "error", err.Error())
@@ -926,10 +930,13 @@ func registerVenuePlanGenerateHandler(reg *worker.Registry, pool *pgxpool.Pool, 
 	if cfg.VenueGenURL != "" && cfg.VenueGenToken != "" {
 		g = venueplangenerator.New(cfg.VenueGenURL, cfg.VenueGenToken)
 	}
-	reg.Register(venueplangenerate.JobType, venueplangenerate.NewHandler(venueplangenerate.Options{
+	opts := venueplangenerate.Options{
 		Pool: pool, Media: mediaRepo, Generator: g, Notifier: venueplannotify.Notifier{},
 		Audit: audit.WithServiceActor(audit.NewPGWriter(pool)), Logger: logger,
-	}))
+	}
+	reg.Register(venueplangenerate.JobType, venueplangenerate.NewHandler(opts))
+	// The sweep sends an intake no step moved for 30 minutes to an administrator.
+	reg.Register(venueplangenerate.JobTypeSweep, venueplangenerate.NewSweepHandler(opts))
 	logger.Info("venue_plan.generate handler registered",
 		"generator_configured", g != nil, "media_configured", mediaRepo != nil)
 }

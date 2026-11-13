@@ -56,6 +56,23 @@ func TestDecide_Table(t *testing.T) {
 	}
 }
 
+// TestDecide_StepErrors: the errors the steps make themselves keep the table.
+func TestDecide_StepErrors(t *testing.T) {
+	deadline := &generator.Error{Code: CodeDeadline, Retry: true}
+	lost := &generator.Error{Status: 404, Code: generator.CodeJobNotFound, Retry: true}
+	for _, err := range []error{deadline, lost} {
+		if got := Decide(generator.Result{}, err, false, 1); !got.Retry {
+			t.Errorf("%v on attempt 1: %+v, want a retry", err, got)
+		}
+		if got := Decide(generator.Result{}, err, false, MaxAttempts); got.Retry || got.Reason != venueplan.EscalationGeneratorFailed {
+			t.Errorf("%v on the last attempt: %+v, want generator_failed", err, got)
+		}
+	}
+	if errCode(deadline) != "deadline" || errCode(errors.New("x")) != "internal" || errCode(nil) != "" {
+		t.Error("errCode")
+	}
+}
+
 func TestSendKind(t *testing.T) {
 	cases := []struct {
 		kind     venueplan.SourceKind

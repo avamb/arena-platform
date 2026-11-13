@@ -293,6 +293,75 @@ func TestGenerate_RefusesBadFileCount(t *testing.T) {
 	}
 }
 
+// TestSubmitAndPoll: the two short calls of the worker job.
+func TestSubmitAndPoll(t *testing.T) {
+	answers := map[string][2]any{
+		"job-run":    {200, `{"job_id":"job-run","status":"running"}`},
+		"job-busy":   {503, `{"error":{"code":"busy","message":"secret text"}}`},
+		"job-lost":   {404, `{"error":{"code":"job.not_found","message":"gone"}}`},
+		"job-failed": {200, `{"job_id":"job-failed","status":"failed","error":{"code":"memory_limit","message":"x"}}`},
+		"job-final":  {400, `{"error":{"code":"bad","message":"x"}}`},
+		"job-done":   {200, doneOK},
+	}
+	s := &stub{jobFn: func(id string, _ int) (int, string) {
+		a := answers[id]
+		return a[0].(int), a[1].(string)
+	}}
+	c := newClient(t, s)
+	id, err := c.Submit(context.Background(), files[:1])
+	if err != nil || id != "job-1" || s.submits != 1 || s.polls != 0 {
+		t.Fatalf("Submit: %q %v, submits %d polls %d", id, err, s.submits, s.polls)
+	}
+	if _, err := c.Submit(context.Background(), nil); err == nil || Retryable(err) {
+		t.Errorf("Submit without files: %v", err)
+	}
+
+	if _, done, err := c.Poll(context.Background(), "job-run"); done || err != nil {
+		t.Errorf("running: done %v err %v", done, err)
+	}
+	_, done, err := c.Poll(context.Background(), "job-busy")
+	if done {
+		t.Error("a 503 is not an outcome")
+	}
+	wantErr(t, err, "busy", true)
+	_, done, err = c.Poll(context.Background(), "job-lost")
+	if !done || !IsJobLost(err) {
+		t.Errorf("404: done %v err %v", done, err)
+	}
+	_, done, err = c.Poll(context.Background(), "job-failed")
+	if !done {
+		t.Error("a failed job is an outcome")
+	}
+	wantErr(t, err, "memory_limit", false)
+	_, done, err = c.Poll(context.Background(), "job-final")
+	if !done {
+		t.Error("a final 4xx is an outcome")
+	}
+	wantErr(t, err, "bad", false)
+	res, done, err := c.Poll(context.Background(), "job-done")
+	if !done || err != nil || res.Result != ResultOK || res.JobID != "job-done" {
+		t.Errorf("done: %v %v %+v", done, err, res)
+	}
+	if s.polls != 6 {
+		t.Errorf("polls %d, want one GET per Poll", s.polls)
+	}
+}
+
+func TestPoll_Timeout(t *testing.T) {
+	block := make(chan struct{})
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { <-block }))
+	t.Cleanup(func() { close(block); ts.Close() })
+	start := time.Now()
+	_, done, err := New(ts.URL, testToken, WithPollTimeout(50*time.Millisecond)).Poll(context.Background(), "j")
+	if done {
+		t.Error("a timeout is not an outcome")
+	}
+	wantErr(t, err, "timeout", true)
+	if time.Since(start) > 2*time.Second {
+		t.Errorf("the poll timeout was not kept: %v", time.Since(start))
+	}
+}
+
 func TestRender(t *testing.T) {
 	s := &stub{renderFn: func([]byte) (int, string) {
 		return 200, `{"model":{"m":2},"validation_status":"PASS","authoring_svg":"<svg/>","svg_info":{},"preview_png_base64":null,"generator_version":{"service":"g"}}`
