@@ -239,6 +239,7 @@ The Python generator service: hall model, HTTP contract, token, fixtures of the 
 * A seat without a full identity never becomes a seat in the authoring SVG
 * No client file and no profile bound to a client file's SHA-256 goes into the service
 * On the staging stand the generator is a standalone container (lead-parser, 1024 MB, /healthz)
+* What the generator really reads today: XLSX yes, vector PDF without row labels, images need a colour profile
 
 ### [Testing and integration-test fixtures](docs/agents/testing-integration.md)
 
@@ -750,7 +751,10 @@ Spec 64: intake states, private plan sources, approve, superadmin verification a
 * Four events tell every platform administrator through the job venue_plan.notify
 * The notify handler sends nothing twice and tells no person
 * The bot claims organizer notices with POST /v1/bot/venue-plan-notices/claim
-* Seams for the later waves are nil in wave 1
+* The answers loop is still an administrator's work: venue_plan.render and the question table have no writer
+* Since wave 2 create leaves the intake received and queues venue_plan.generate; only the worker knows the generator
+* generate.Decide maps a generator answer to review or to an administrator with the exact reason
+* generate.SendKind and Select choose the files; one generator call at a time, outside any transaction
 * The bot sends the files of a plan as ONE intake and never builds a plan itself (pi: callbacks, paused draft, notice loop)
 * The world country table is worldgeo, and only a venue or an approved application creates a reference country (never an API key)
 * The venue directory is GET .../venue-directory, own plus verified venues, the access of shared-venues
