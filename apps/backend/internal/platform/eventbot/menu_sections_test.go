@@ -142,7 +142,7 @@ func TestSections_RowsByRole(t *testing.T) {
 	}
 	// Promotion
 	check("owner promo", b.promoSectionRows("en", owner), []string{"pm:l", "iv:new", "ql:menu", "mn:mail"})
-	check("super promo", b.promoSectionRows("en", super), []string{"pm:l", "iv:new", "ql:menu", "mn:mail"}) // the operator keeps Messages: its screen names the admin console
+	check("super promo", b.promoSectionRows("en", super), []string{"pm:l", "iv:new", "ql:menu"}) // a superadmin gets no web link, so Messages to buyers is not offered
 	check("agent promo", b.promoSectionRows("en", menuIdentity("agent", false, 1)), nil)
 	// Entrance
 	check("owner door", b.doorSectionRows("en", owner), []string{"scanner", "mn:gl"})
@@ -153,7 +153,7 @@ func TestSections_RowsByRole(t *testing.T) {
 	check("manager settings", b.settingsSectionRows(ctx, "en", manager, "jwt"),
 		[]string{"team", "pr:l", "mn:ven", "ec:nt", "lang"})
 	check("super settings", b.settingsSectionRows(ctx, "en", super, "jwt"),
-		[]string{"og:h", "mn:pay", "pr:l", "mn:ven", "ec:nt", "lang"})
+		[]string{"og:h", "mn:pay", "pr:l", "ec:nt", "lang"}) // no Venues for a superadmin
 	// Orders: no dispute call without a token, so the plain button stays.
 	check("owner orders", b.ordersSectionRows(ctx, "en", owner, ""), []string{"or:new", "rq:l:" + queueDefaultFilter + ":1", "dp:l:open:1"})
 }
@@ -241,7 +241,7 @@ func TestDisputeButton_ByWhatTheOrganizationHas(t *testing.T) {
 		counter  string
 	}{
 		{"none", `{"disputes":[],"total":0,"open_count":0}`, true, ""},
-		{"some, none waiting", `{"disputes":[],"total":3,"open_count":0}`, false, ""},
+		{"some, none waiting", `{"disputes":[],"total":3,"open_count":0}`, false, "0"},
 		{"some waiting", `{"disputes":[],"total":3,"open_count":2}`, false, "2"},
 		{"error", ``, false, ""},
 	}

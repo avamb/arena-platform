@@ -121,6 +121,14 @@ func (f cardFacts) past() bool {
 	return f.SalesState == salesStateArchived || f.Status == evsStatusArchived
 }
 
+// mayCreateBuyersLink reports whether "Link for buyers" may make a NEW sales
+// link: only for a published event that is not over (on sale, sales not open
+// yet, sold out). A draft, a cancelled, an archived or a past event never gets
+// a new link from that press.
+func mayCreateBuyersLink(status, salesState string) bool {
+	return status == evsStatusPublish && salesState != salesStateArchived
+}
+
 func cardGroupData(eventID uuid.UUID, group string) string {
 	return "ec:g:" + eventID.String() + ":" + group
 }
@@ -366,7 +374,7 @@ func (b *Bot) sendBuyersLink(ctx context.Context, chatID int64, editMsgID *int, 
 	// (on sale, sales not open yet, sold out): an organizer announces the link
 	// before sales open. A past event reuses a link it already has, or shows
 	// the page link only.
-	create := event.Status == openapi.EventItemStatusPublished && event.SalesState != salesStateArchived
+	create := mayCreateBuyersLink(string(event.Status), string(event.SalesState))
 	textKey := "bot.ec.g.link_text"
 	switch sent, noCode := b.sendEventQR(ctx, chatID, jwt, orgID, *event, create); {
 	case noCode:

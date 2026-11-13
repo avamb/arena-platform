@@ -333,7 +333,7 @@ func TestPlanNoticeOfAnotherOrganizationNamesItAndItsButtonExplains(t *testing.T
 	// The press while still in the other organization: the person is told where
 	// the request is.
 	b.planOtherOrg(ctx, 42, nil, &models.User{ID: 42}, id, "jwt", orgPrefix(there)+":"+n.IntakeId.String())
-	if all := sent(); len(all) != 4 || !strings.Contains(all[3].Text, "belongs to «Beta Events»") || !strings.Contains(all[3].Text, "Switch to it in the menu") {
+	if all := sent(); len(all) != 4 || !strings.Contains(all[3].Text, "belongs to «Beta Events»") || !strings.Contains(all[3].Text, "Change organization") {
 		t.Fatalf("answer = %+v", all)
 	}
 	stranger := orgPrefix(uuid.New()) + ":" + n.IntakeId.String()

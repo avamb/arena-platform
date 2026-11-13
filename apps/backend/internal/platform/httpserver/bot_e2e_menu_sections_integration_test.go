@@ -161,7 +161,7 @@ func TestBotE2E_MenuSectionsAndFirstSteps(t *testing.T) {
 		t.Errorf("the payments screen does not say how to connect:\n%s", ptext)
 	}
 	sdata = walk(owner, "владелец", "mn:set", "Настройки", [][2]string{
-		{"og:h", "Данные организации"}, {"mn:pay", "Оплата не подключена"}, {"team", "Сотрудники"}, {"pr:l", "Бренды"},
+		{"og:h", "Данные организации"}, {"mn:pay", "Оплата не подключена"}, {"team", "Команда"}, {"pr:l", "Бренды"},
 		{"mn:ven", "Площадки"}, {"ec:nt", "Список гостей"}, {"lang", "Выберите язык бота."},
 	})
 	if containsData(sdata, "org") {

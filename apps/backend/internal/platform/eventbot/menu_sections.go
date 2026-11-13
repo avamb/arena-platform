@@ -224,8 +224,9 @@ func (b *Bot) ordersSectionItems(ctx context.Context, loc string, id *Identity, 
 }
 
 // disputeSectionRow is the disputes button: hidden while the organization has
-// no dispute at all, with a counter while some wait for the organizer, plain
-// when the server does not answer (a failure never hides a function).
+// no dispute at all, otherwise always with the number that wait for the
+// organizer (0 when only finished ones are left), plain only when the server
+// does not answer (a failure never hides a function).
 func (b *Bot) disputeSectionRow(ctx context.Context, loc string, id *Identity, jwt string) []button {
 	row := b.disputeMenuRow(loc, id)
 	if row == nil || b.arena == nil || jwt == "" {
@@ -238,9 +239,7 @@ func (b *Bot) disputeSectionRow(ctx context.Context, loc string, id *Identity, j
 	if list.Total == 0 && list.OpenCount == 0 {
 		return nil
 	}
-	if list.OpenCount > 0 {
-		row[0].Text = b.texts.T(loc, "bot.mn.disputes_count_btn", map[string]any{"Count": list.OpenCount})
-	}
+	row[0].Text = b.texts.T(loc, "bot.mn.disputes_count_btn", map[string]any{"Count": list.OpenCount})
 	return row
 }
 
@@ -257,7 +256,7 @@ func (b *Bot) promoSectionItems(loc string, id *Identity) screenItems {
 		items.add("sp.invite", b.mnBtn(loc, "bot.inv.btn", "iv:new"))
 	}
 	items.add("sp.link", b.salesLinkMenuRow(loc, id))
-	if canViewSales(id) { // a platform superadmin sees it too: its screen names the admin console
+	if canViewSales(id) && !id.Superadmin { // a superadmin gets no web link, and the screen has no other action
 		items.add("sp.mail", b.mnBtn(loc, "bot.mn.mail_btn", "mn:mail"))
 	}
 	return items
@@ -300,7 +299,9 @@ func (b *Bot) settingsSectionItems(ctx context.Context, loc string, id *Identity
 		items.add("ss.team", b.mnBtn(loc, "bot.btn_team", "team"))
 	}
 	items.add("ss.promoter", b.promoterMenuRow(loc, id))
-	items.add("ss.venues", b.mnBtn(loc, "bot.mn.venues_btn", "mn:ven")) // every role: the screen says where it is done
+	if !id.Superadmin { // a superadmin gets no web link, and the screen has no other action
+		items.add("ss.venues", b.mnBtn(loc, "bot.mn.venues_btn", "mn:ven"))
+	}
 	items.add("ss.notif", b.mnBtn(loc, "bot.ec.notif_btn", "ec:nt"))
 	items.add("ss.lang", b.mnBtn(loc, "bot.btn_lang", "lang"))
 	if len(id.Memberships) > 1 {

@@ -396,3 +396,30 @@ func TestCardGroupTextsRenderInEveryLanguage(t *testing.T) {
 		}
 	}
 }
+
+// "Link for buyers" makes a new sales link only for a published event that is
+// not over; every other state reuses a link or shows the page address.
+func TestMayCreateBuyersLink(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		status, salesState string
+		want               bool
+	}{
+		{"published", "on_sale", true},
+		{"published", "upcoming", true},
+		{"published", "sold_out", true},
+		{"published", "", true},
+		{"published", "archived", false},
+		{"draft", "", false},
+		{"draft", "on_sale", false},
+		{"archived", "archived", false},
+		{"archived", "on_sale", false},
+		{"cancelled", "on_sale", false},
+		{"cancelled", "archived", false},
+	}
+	for _, c := range cases {
+		if got := mayCreateBuyersLink(c.status, c.salesState); got != c.want {
+			t.Errorf("status %q, sales state %q: got %v, want %v", c.status, c.salesState, got, c.want)
+		}
+	}
+}

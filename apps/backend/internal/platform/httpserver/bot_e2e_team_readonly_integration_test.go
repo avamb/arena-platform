@@ -103,7 +103,7 @@ func TestBotE2E_TeamScreen_OwnerManagesManagerReadsAgentRefused(t *testing.T) {
 	// ── the owner: every control ────────────────────────────────────────────
 	mk := tg.mark()
 	tg.push(e2eCallbackAs(ownerTG, "team"))
-	text := tg.waitSince(t, mk, "Сотрудники: ")
+	text := tg.waitSince(t, mk, "Команда: ")
 	if !strings.Contains(text, waitingEmail) || !strings.Contains(text, managerEmail) {
 		t.Errorf("the owner's screen must list the team:\n%s", text)
 	}
@@ -127,7 +127,7 @@ func TestBotE2E_TeamScreen_OwnerManagesManagerReadsAgentRefused(t *testing.T) {
 	}
 	mk = tg.mark()
 	tg.push(e2eCallbackAs(managerTG, "team"))
-	text = tg.waitSince(t, mk, "Сотрудники: ")
+	text = tg.waitSince(t, mk, "Команда: ")
 	for _, want := range []string{ownerEmail, waitingEmail, managerEmail, "приглашение отправлено", "Здесь вы видите команду"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the manager's Team screen lacks %q:\n%s", want, text)

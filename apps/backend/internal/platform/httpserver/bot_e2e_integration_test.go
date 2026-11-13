@@ -823,7 +823,7 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 
 	m = tg.mark()
 	tg.push(e2eCallbackAs(ownerTG, "team"))
-	teamScreen := tg.waitSince(t, m, "Сотрудники: ")
+	teamScreen := tg.waitSince(t, m, "Команда: ")
 	if !strings.Contains(teamScreen, managerEmail) || !strings.Contains(teamScreen, ownerEmail) || !strings.Contains(teamScreen, "(это вы)") || !strings.Contains(teamScreen, "Telegram ✓") {
 		t.Fatalf("team screen:\n%s", teamScreen)
 	}
@@ -871,7 +871,7 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 	m = tg.mark()
 	tg.push(e2eCallbackAs(ownerTG, "team:rm:"+managerUserID.String()+":yes"))
 	removed := tg.waitSince(t, m, "убран из организации")
-	if strings.Contains(removed[strings.Index(removed, "Сотрудники:"):], managerEmail) {
+	if strings.Contains(removed[strings.Index(removed, "Команда:"):], managerEmail) {
 		t.Fatalf("the removed manager is still listed:\n%s", removed)
 	}
 	var active int

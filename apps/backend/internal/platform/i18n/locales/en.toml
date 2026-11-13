@@ -1213,7 +1213,7 @@ other = "✔ “{{.Name}}”: the price holds{{if .Until}} until {{.Until}}{{end
 other = "{{.Name}} (the last one, until the session starts)"
 
 ["bot.wz.cancel_ask_create"]
-other = "Exit event creation? You can keep the draft and return to it with the “＋ Event” button, or delete it."
+other = "Exit event creation? You can keep the draft and return to it with the “➕ New event” button in the menu, or delete it."
 
 ["bot.wz.cancel_ask_edit"]
 other = "Exit the edit? The changes are not published. You can keep them as a draft or delete them."
@@ -1231,7 +1231,7 @@ other = "🗑 Delete the draft"
 other = "🗑 Delete the changes"
 
 ["bot.wz.draft_kept"]
-other = "We kept the draft. To return to it, press the “＋ Event” button."
+other = "We kept the draft. To return to it, press the “➕ New event” button in the menu."
 
 ["bot.wz.cal_hint"]
 other = "Select a day in the calendar or type the date."
@@ -1895,7 +1895,7 @@ other = "No data to export. There are no tickets."
 other = "We cannot prepare the file. Try again in a minute."
 
 ["bot.ec.csv_too_big_event"]
-other = "There are too many rows for one file (more than 50,000). Export one date at a time. Open the event, expand “Dates” and press ⬇ next to the date."
+other = "There are too many rows for one file (more than 50,000). Export one date at a time. Open the event, press “📊 Sales and orders”, then “🗓 Dates” and press ⬇ next to the date."
 
 ["bot.ec.csv_too_big_session"]
 other = "This date has too many rows for one file (more than 50,000). Write to support and we will prepare it for you."
@@ -2257,10 +2257,10 @@ other = "🚫 <b>You cannot delete «{{.Name}}».</b>\n\nIt has {{.Orders}} paid
 other = "DELETE"
 
 ["bot.evs.need_session"]
-other = "You cannot publish the event: it has no date. Add a date first (Edit)."
+other = "You cannot publish the event: it has no date. Add a date first with “✏️ Edit”."
 
 ["bot.evs.need_tier"]
-other = "You cannot publish the event: each date must have one or more ticket categories with a price. Correct it in Edit."
+other = "You cannot publish the event: each date must have one or more ticket categories with a price. Correct it with “✏️ Edit”."
 
 ["bot.evs.not_allowed"]
 other = "This change is not possible for the status of this event."
@@ -3084,7 +3084,7 @@ other = "🎟 Categories"
 other = "🎟 <b>{{.Name}}</b> · {{.When}}\nCategories: {{.Total}} · page {{.Page}}/{{.Pages}}"
 
 ["bot.cat.list_empty"]
-other = "This date has no categories. Add them in the event editor (Edit → Tickets)."
+other = "This date has no categories. Add them with “✏️ Edit”, then “📝 Name, description, poster” and “Prices and categories”."
 
 ["bot.cat.list_hint"]
 other = "Tap a category to close it, open it, or change its price, its sale window or its number of seats."
@@ -3153,10 +3153,10 @@ other = "💶 A free category: it has no price to change."
 other = "💶 A pay-what-you-want category. Change its price range in the admin console."
 
 ["bot.cat.note_chain"]
-other = "↪ This category gives its free seats to «{{.Name}}» automatically, by date or when its step sells out. To keep this chain, you can change only its price here. Change dates or steps in Edit → Tickets of the event."
+other = "↪ This category gives its free seats to «{{.Name}}» automatically, by date or when its step sells out. To keep this chain, you can change only its price here. Change dates or steps with “✏️ Edit”, then “📝 Name, description, poster” and “Prices and categories”."
 
 ["bot.cat.note_chain_target"]
-other = "↪ This category takes the free seats of the previous category automatically. To keep this chain, you can change only its price here. Change dates or steps in Edit → Tickets of the event."
+other = "↪ This category takes the free seats of the previous category automatically. To keep this chain, you can change only its price here. Change dates or steps with “✏️ Edit”, then “📝 Name, description, poster” and “Prices and categories”."
 
 ["bot.cat.note_seated"]
 other = "🪑 The seating plan sets the seats of this category. You cannot change their number here."
@@ -4030,7 +4030,7 @@ other = "🖼 <b>Materials</b> · {{.Event}}\n\nBuyers see these materials on th
 other = "You can see the materials. Only the owner and the manager can change them."
 
 ["bot.mt.gone_dialog"]
-other = "This screen is out of date. Open the event and press Materials again."
+other = "This screen is out of date. Open the event, press “✏️ Edit”, then press “🖼 Page materials” again."
 
 ["bot.mt.menu_btn"]
 other = "Materials"
@@ -4747,7 +4747,7 @@ other = "<b>{{.Name}}</b>\n{{.When}}"
 other = "This date has no seating plan. There are no seats for a layout."
 
 ["bot.sl.need_one"]
-other = "For the seat layout, I need an open category with seats on this date. Open or add a category in «Categories». Then go back here."
+other = "For the seat layout, I need an open category with seats on this date. Open or add a category in «🏷 Categories and prices». Then go back here."
 
 ["bot.sl.intro"]
 other = "🪑 <b>Seat layout</b>\nI will divide the seats of the venue between these categories. The best seats go to the category with the highest price. I change nothing until you press Apply. After that, you can cancel the change."
@@ -4903,13 +4903,13 @@ other = "Press Apply to create new categories ({{.Cats}}) and put the free seats
 other = "New categories:"
 
 ["bot.sl.old_empty"]
-other = "The category «{{.Name}}» has no seats now. If you do not need it, close it in «Categories». I did not close it."
+other = "The category «{{.Name}}» has no seats now. If you do not need it, close it in «🏷 Categories and prices». I did not close it."
 
 ["bot.sl.undo_hint_new"]
-other = "If you do not want this layout, press «Cancel change». The seats go back to their previous category. The new categories stay: close them in «Categories» if you do not need them. Seats that someone sold or held after the change stay as they are."
+other = "If you do not want this layout, press «Cancel change». The seats go back to their previous category. The new categories stay: close them in «🏷 Categories and prices» if you do not need them. Seats that someone sold or held after the change stay as they are."
 
 ["bot.sl.undone_new"]
-other = "The new categories stay. If you do not need them, close them in «Categories»."
+other = "The new categories stay. If you do not need them, close them in «🏷 Categories and prices»."
 
 ["bot.sl.err_tier_forbidden"]
 other = "New categories need more rights. An owner or administrator of the organization must do this. I did not change anything."
@@ -4918,10 +4918,10 @@ other = "New categories need more rights. An owner or administrator of the organ
 other = "A category with this name now exists on this date. I did not change anything. These are new names. Examine the layout and press Apply again."
 
 ["bot.sl.err_too_many_tiers"]
-other = "This date would have too many categories (15 at most). I did not change anything. Select fewer categories, or delete the categories you do not need in «Categories», and try again."
+other = "This date would have too many categories (15 at most). I did not change anything. Select fewer categories, or delete the categories you do not need in «🏷 Categories and prices», and try again."
 
 ["bot.sl.err_method_one"]
-other = "This method needs two categories on the date. Select a different method or add a category in «Categories»."
+other = "This method needs two categories on the date. Select a different method or add a category in «🏷 Categories and prices»."
 
 ["bot.sl.split_btn"]
 other = "🪑 Split seats by price"
@@ -5191,7 +5191,7 @@ other = "I removed the file. Files now: {{.Count}}. Send more files or press «D
 other = "This is about the organization «{{.Org}}»."
 
 ["bot.wz.plan_in_other_org"]
-other = "This request belongs to «{{.Org}}». Switch to it in the menu, then open the request again."
+other = "This request belongs to «{{.Org}}». Press «🔁 Change organization» in «⚙️ Settings» to switch to it. Then open the request again."
 
 ["bot.wz.venue_shared_note"]
 other = "Venues with ✓ belong to other organizers. The platform examined them. You can sell tickets there. Only the owner can change a venue."
@@ -5684,7 +5684,7 @@ other = "✔ Yes, stop"
 other = "⏸ The price does not go up now. It stays as it is."
 
 ["bot.sp.in_chain"]
-other = "This category sells in steps. To change the steps, open Edit, then Tickets."
+other = "This category sells in steps. To change the steps, press “✏️ Edit”, then “📝 Name, description, poster” and “Prices and categories”."
 
 ["bot.sp.ended_stopped"]
 other = "Smart price stopped on {{.When}}."
@@ -5741,7 +5741,7 @@ other = "Smart price is on, or the category sells in steps."
 other = "A different person changed the categories of this date at the same time, so we did not save anything. Open the category again and try again."
 
 ["bot.sp.err_schedule"]
-other = "This category has a price schedule. Remove its future price windows in Edit. Then turn smart price on."
+other = "This category has a price schedule. Remove its future price windows with “✏️ Edit”, then “📝 Name, description, poster” and “Prices and categories”. Then turn smart price on."
 
 ["bot.sp.err_places"]
 other = "There are not enough free tickets for these steps. Make each step smaller, or select a price that goes up by days."

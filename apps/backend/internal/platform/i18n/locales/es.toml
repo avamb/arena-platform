@@ -1041,7 +1041,7 @@ other = "✔ “{{.Name}}”: el precio se mantiene{{if .Until}} hasta {{.Until}
 other = "{{.Name}} (la última, hasta que empieza la sesión)"
 
 ["bot.wz.cancel_ask_create"]
-other = "¿Salir de la creación del evento? Puedes conservar el borrador y volver a él con el botón «＋ Evento», o eliminarlo."
+other = "¿Salir de la creación del evento? Puedes conservar el borrador y volver a él con el botón «➕ Nuevo evento» del menú, o eliminarlo."
 
 ["bot.wz.cancel_ask_edit"]
 other = "¿Salir de la edición? Los cambios aún no están publicados. Puedes conservarlos como borrador o eliminarlos."
@@ -1059,7 +1059,7 @@ other = "🗑 Eliminar el borrador"
 other = "🗑 Eliminar los cambios"
 
 ["bot.wz.draft_kept"]
-other = "El borrador está guardado. Vuelve a él con el botón «＋ Evento»."
+other = "El borrador está guardado. Vuelve a él con el botón «➕ Nuevo evento» del menú."
 
 ["bot.wz.cal_hint"]
 other = "Elige un día en el calendario o escribe la fecha."
@@ -1723,7 +1723,7 @@ other = "Aún no hay nada que exportar: no hay entradas."
 other = "No se pudo preparar el archivo. Inténtalo de nuevo en un minuto."
 
 ["bot.ec.csv_too_big_event"]
-other = "Hay demasiadas filas para un solo archivo (más de 50 000). Exporta una fecha cada vez: abre el evento, despliega «Fechas» y pulsa ⬇ junto a la fecha."
+other = "Hay demasiadas filas para un solo archivo (más de 50 000). Exporta una fecha cada vez: abre el evento, pulsa «📊 Ventas y pedidos», luego «🗓 Fechas» y pulsa ⬇ junto a la fecha."
 
 ["bot.ec.csv_too_big_session"]
 other = "Esta fecha tiene demasiadas filas para un solo archivo (más de 50 000). Escribe a soporte y lo prepararemos."
@@ -2085,10 +2085,10 @@ other = "🚫 <b>«{{.Name}}» no se puede eliminar.</b>\n\nTiene {{.Orders}} pe
 other = "ELIMINAR"
 
 ["bot.evs.need_session"]
-other = "Todavía no se puede publicar: el evento no tiene ninguna fecha. Añade primero una fecha («Editar»)."
+other = "Todavía no se puede publicar: el evento no tiene ninguna fecha. Añade primero una fecha con el botón «✏️ Editar»."
 
 ["bot.evs.need_tier"]
-other = "Todavía no se puede publicar: cada fecha necesita al menos una categoría de entradas con precio. Corrígelo en «Editar»."
+other = "Todavía no se puede publicar: cada fecha necesita al menos una categoría de entradas con precio. Corrígelo con el botón «✏️ Editar»."
 
 ["bot.evs.not_allowed"]
 other = "Este cambio no es posible con el evento en su estado actual."
@@ -2912,7 +2912,7 @@ other = "🎟 Categorías"
 other = "🎟 <b>{{.Name}}</b> · {{.When}}\nCategorías: {{.Total}} · pág. {{.Page}}/{{.Pages}}"
 
 ["bot.cat.list_empty"]
-other = "Esta fecha aún no tiene categorías. Añádelas en el editor del evento (Editar → Entradas)."
+other = "Esta fecha aún no tiene categorías. Añádelas así: «✏️ Editar», luego «📝 Nombre, descripción y cartel» y «Precios y categorías»."
 
 ["bot.cat.list_hint"]
 other = "Toca una categoría para cerrarla o abrirla, cambiar su precio, su ventana de venta o su número de plazas."
@@ -2981,10 +2981,10 @@ other = "💶 Una categoría gratuita: no tiene precio que cambiar."
 other = "💶 Una categoría de importe a elegir. Cambia su rango de importes en la consola de administración."
 
 ["bot.cat.note_chain"]
-other = "↪ Esta categoría pasa sola sus plazas libres a «{{.Name}}», por fecha o cuando se agota su tramo. Para que siga funcionando, aquí solo se puede cambiar su precio; las fechas y los tramos se cambian en Editar → Entradas del evento."
+other = "↪ Esta categoría pasa sola sus plazas libres a «{{.Name}}», por fecha o cuando se agota su tramo. Para que siga funcionando, aquí solo se puede cambiar su precio; las fechas y los tramos se cambian así: «✏️ Editar», luego «📝 Nombre, descripción y cartel» y «Precios y categorías»."
 
 ["bot.cat.note_chain_target"]
-other = "↪ Esta categoría recibe sola las plazas libres de la anterior. Para que siga funcionando, aquí solo se puede cambiar su precio; las fechas y los tramos se cambian en Editar → Entradas del evento."
+other = "↪ Esta categoría recibe sola las plazas libres de la anterior. Para que siga funcionando, aquí solo se puede cambiar su precio; las fechas y los tramos se cambian así: «✏️ Editar», luego «📝 Nombre, descripción y cartel» y «Precios y categorías»."
 
 ["bot.cat.note_seated"]
 other = "🪑 Las plazas de esta categoría salen del plano de la sala, así que su número no se cambia aquí."
@@ -3858,7 +3858,7 @@ other = "🖼 <b>Materiales</b> · {{.Event}}\n\nEsto es lo que ven los comprado
 other = "Puedes ver los materiales. Solo el propietario y el gestor pueden cambiarlos."
 
 ["bot.mt.gone_dialog"]
-other = "Esta pantalla ya no está al día. Abre el evento y pulsa Materiales otra vez."
+other = "Esta pantalla ya no está al día. Abre el evento, pulsa «✏️ Editar» y pulsa otra vez «🖼 Materiales de la página»."
 
 ["bot.mt.menu_btn"]
 other = "Materiales"
@@ -4575,7 +4575,7 @@ other = "<b>{{.Name}}</b>\n{{.When}}"
 other = "Esta sesión no tiene plano del recinto, así que no hay plazas que distribuir."
 
 ["bot.sl.need_one"]
-other = "Para distribuir el recinto necesito una categoría abierta con plazas en esta sesión. Abre o añade una en «Categorías» y vuelve."
+other = "Para distribuir el recinto necesito una categoría abierta con plazas en esta sesión. Abre o añade una en «🏷 Categorías y precios» y vuelve."
 
 ["bot.sl.intro"]
 other = "🪑 <b>Distribución de plazas</b>\nDividiré el recinto entre estas categorías: las mejores plazas van a la más cara. No cambia nada hasta que pulses «Aplicar», y después podrás deshacerlo."
@@ -4731,13 +4731,13 @@ other = "Pulsa «Aplicar» y se crearán categorías nuevas ({{.Cats}}), y las p
 other = "Categorías nuevas:"
 
 ["bot.sl.old_empty"]
-other = "La categoría «{{.Name}}» ya no tiene plazas. Si no la necesitas, ciérrala en «Categorías». No la he cerrado yo."
+other = "La categoría «{{.Name}}» ya no tiene plazas. Si no la necesitas, ciérrala en «🏷 Categorías y precios». No la he cerrado yo."
 
 ["bot.sl.undo_hint_new"]
-other = "Si no te gusta, pulsa «Deshacer». Las plazas vuelven a su categoría anterior. Las categorías nuevas se quedan: si no las necesitas, ciérralas en «Categorías». Las plazas que mientras tanto se hayan vendido o estén en reserva se quedan como están."
+other = "Si no te gusta, pulsa «Deshacer». Las plazas vuelven a su categoría anterior. Las categorías nuevas se quedan: si no las necesitas, ciérralas en «🏷 Categorías y precios». Las plazas que mientras tanto se hayan vendido o estén en reserva se quedan como están."
 
 ["bot.sl.undone_new"]
-other = "Las categorías nuevas se quedan. Si no las necesitas, ciérralas en «Categorías»."
+other = "Las categorías nuevas se quedan. Si no las necesitas, ciérralas en «🏷 Categorías y precios»."
 
 ["bot.sl.err_tier_forbidden"]
 other = "Para crear categorías hacen falta más permisos. Debe hacerlo un propietario o administrador de la organización. No he cambiado nada."
@@ -4746,10 +4746,10 @@ other = "Para crear categorías hacen falta más permisos. Debe hacerlo un propi
 other = "Ya existe una categoría con este nombre en esta sesión. No he cambiado nada. Estos son nombres nuevos. Revisa la distribución y pulsa «Aplicar» otra vez."
 
 ["bot.sl.err_too_many_tiers"]
-other = "Esta sesión tendría demasiadas categorías (15 como máximo). No he cambiado nada. Elige menos categorías o elimina las que no necesites en «Categorías» e inténtalo de nuevo."
+other = "Esta sesión tendría demasiadas categorías (15 como máximo). No he cambiado nada. Elige menos categorías o elimina las que no necesites en «🏷 Categorías y precios» e inténtalo de nuevo."
 
 ["bot.sl.err_method_one"]
-other = "Este método necesita dos categorías en la sesión. Elige otro método o añade una categoría en «Categorías»."
+other = "Este método necesita dos categorías en la sesión. Elige otro método o añade una categoría en «🏷 Categorías y precios»."
 
 ["bot.sl.split_btn"]
 other = "🪑 Dividir las plazas por precio"
@@ -5019,7 +5019,7 @@ other = "Quité el archivo. Archivos ahora: {{.Count}}. Envía más o pulsa «Li
 other = "Esto es sobre la organización «{{.Org}}»."
 
 ["bot.wz.plan_in_other_org"]
-other = "Esta solicitud pertenece a «{{.Org}}». Cambia a ella en el menú y abre la solicitud otra vez."
+other = "Esta solicitud pertenece a «{{.Org}}». Para cambiar a ella, pulsa «🔁 Cambiar de organización» en «⚙️ Ajustes». Luego abre la solicitud otra vez."
 
 ["bot.wz.venue_shared_note"]
 other = "Los recintos con ✓ son de otros organizadores y los ha comprobado la plataforma. Puedes vender entradas allí. Solo su propietario puede modificar un recinto."
@@ -5512,7 +5512,7 @@ other = "✔ Sí, detener"
 other = "⏸ El precio ya no sube. Se queda como está ahora."
 
 ["bot.sp.in_chain"]
-other = "Esta categoría ya se vende por tramos. Para cambiarlos, abre Editar y luego Entradas."
+other = "Esta categoría ya se vende por tramos. Para cambiarlos, pulsa «✏️ Editar», luego «📝 Nombre, descripción y cartel» y «Precios y categorías»."
 
 ["bot.sp.ended_stopped"]
 other = "El precio inteligente se detuvo el {{.When}}."
@@ -5569,7 +5569,7 @@ other = "El precio inteligente ya está activado o la categoría ya se vende por
 other = "Alguien cambió las categorías de esta fecha en ese mismo momento, así que no se guardó nada. Vuelve a abrir la categoría y repite."
 
 ["bot.sp.err_schedule"]
-other = "Esta categoría ya tiene un calendario de precios. Quita sus ventanas de precio futuras en Editar y luego activa el precio inteligente."
+other = "Esta categoría ya tiene un calendario de precios. Quita sus ventanas de precio futuras así: «✏️ Editar», luego «📝 Nombre, descripción y cartel» y «Precios y categorías». Luego activa el precio inteligente."
 
 ["bot.sp.err_places"]
 other = "No hay entradas libres suficientes para esos tramos. Haz el tramo más pequeño o elige la subida por días."

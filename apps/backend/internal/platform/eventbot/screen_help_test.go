@@ -160,7 +160,7 @@ func TestScreenHelp_LinesAreTheVisibleButtons(t *testing.T) {
 		{"settings, manager", b.settingsSectionItems(ctx, "en", menuIdentity("organizer", false, 1), "jwt"),
 			[]string{"ss.team", "ss.promoter", "ss.venues", "ss.notif", "ss.lang"}},
 		{"settings, operator", b.settingsSectionItems(ctx, "en", menuIdentity("agent", true, 1), "jwt"),
-			[]string{"ss.org", "ss.pay", "ss.promoter", "ss.venues", "ss.notif", "ss.lang"}},
+			[]string{"ss.org", "ss.pay", "ss.promoter", "ss.notif", "ss.lang"}}, // no Venues for a superadmin
 		{"shop, storefront open", b.shopHomeItems("en", &openapi.ShopSettings{Enabled: true}), []string{"sh.orders", "sh.close", "sh.settings", "sh.web"}},
 		{"shop, storefront closed", b.shopHomeItems("en", &openapi.ShopSettings{}), []string{"sh.orders", "sh.open", "sh.settings", "sh.web"}},
 		{"shop, orders only", b.shopHomeItems("en", nil), []string{"sh.orders", "sh.web"}},
@@ -301,8 +301,8 @@ func TestHandleMessage_MenuCommandForcesTheKeyboard(t *testing.T) {
 	}
 }
 
-// A platform superadmin has no browser link, yet Venues and Messages stay: their
-// screens say the work is done in the admin console.
+// A platform superadmin has no browser link, so Venues and Messages are not in
+// his menu. A hand-made press still gets the _super text.
 func TestSections_WebScreensForTheSuperadmin(t *testing.T) {
 	t.Parallel()
 	b := menuTestBot(t, menuStub{})
@@ -324,11 +324,17 @@ func TestSections_WebScreensForTheSuperadmin(t *testing.T) {
 			}
 		}
 	}
-	// every role that could see the two items sees them, the operator too
-	if d := rowData(b.promoSectionRows("en", super)); !strings.Contains(strings.Join(d, " "), "mn:mail") {
-		t.Errorf("the operator lost Messages: %v", d)
+	// the two items offer no action to a superadmin, so he does not see them, and the owner keeps them
+	if d := rowData(b.promoSectionRows("en", super)); strings.Contains(strings.Join(d, " "), "mn:mail") {
+		t.Errorf("the superadmin sees Messages: %v", d)
 	}
-	if d := rowData(b.settingsSectionRows(context.Background(), "en", super, "jwt")); !strings.Contains(strings.Join(d, " "), "mn:ven") {
-		t.Errorf("the operator lost Venues: %v", d)
+	if d := rowData(b.settingsSectionRows(context.Background(), "en", super, "jwt")); strings.Contains(strings.Join(d, " "), "mn:ven") {
+		t.Errorf("the superadmin sees Venues: %v", d)
+	}
+	if d := rowData(b.promoSectionRows("en", owner)); !strings.Contains(strings.Join(d, " "), "mn:mail") {
+		t.Errorf("the owner lost Messages: %v", d)
+	}
+	if d := rowData(b.settingsSectionRows(context.Background(), "en", owner, "jwt")); !strings.Contains(strings.Join(d, " "), "mn:ven") {
+		t.Errorf("the owner lost Venues: %v", d)
 	}
 }
