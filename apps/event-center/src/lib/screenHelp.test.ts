@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CATALOGS, LOCALES } from "@/lib/i18n";
 import { en, type MessageKey } from "@/lib/i18n/en";
-import { eventCardLayout, type ActionId, type ActionRights } from "@/lib/eventActions";
+import { eventCardLayout, type ItemId, type ItemRights } from "@/lib/eventActions";
 import { EVENT_STATUSES, statusActions, type StatusAction } from "@/lib/eventStatus";
 import { navGroups } from "@/lib/navMenu";
-import { ACTION_HELP, ITEM_HELP, STATUS_HELP, helpLineIds, screenHelp, type NavContext } from "@/lib/screenHelp";
+import { CARD_HELP, ITEM_HELP, STATUS_HELP, helpLineId, helpLineIds, screenHelp, type NavContext } from "@/lib/screenHelp";
 
-const ACTIONS: ActionId[] = ["edit", "sample", "orders", "csv", "guests", "funnel", "qr"];
+const ACTIONS: Exclude<ItemId, "status">[] = [
+  "edit", "sample", "orders", "csv", "guests", "funnel", "qr", "promo", "invitations", "links",
+  "totals", "pageStats", "poster", "sessions", "salesSwitch", "materials", "emailNote", "referral",
+];
 const STATUS: StatusAction[] = ["publish", "off", "archive", "delete"];
 
 function person(denied: string[] = []): NavContext {
@@ -18,9 +21,11 @@ const manager = person(["org.update", "billing.read", "membership.read"]);
 const noOrders = person(["order.read"]);
 const nobody = person(["order.read", "refund.read"]);
 
-function rights(can: (p: string) => boolean): ActionRights {
+/** The same flags the event screen computes from `access.can`. */
+function rights(can: (p: string) => boolean, status: string): ItemRights {
   const sales = can("order.read");
   const csv = sales && can("session.read");
+  const canStatus = { canPublish: can("event.publish"), canDelete: can("event.delete") };
   return {
     edit: can("event.update"),
     sample: can("session.read"),
@@ -29,11 +34,23 @@ function rights(can: (p: string) => boolean): ActionRights {
     guests: csv,
     funnel: can("report.read"),
     qr: can("sales_link.manage"),
+    promo: can("promo.read"),
+    invitations: can("complimentary.read"),
+    links: can("sales_link.read"),
+    totals: sales,
+    pageStats: can("event.read"),
+    poster: true,
+    sessions: sales || can("session.read"),
+    salesSwitch: can("session.read"),
+    materials: true,
+    emailNote: can("event.update"),
+    referral: can("promo.read"),
+    status: statusActions(status, canStatus).length > 0,
   };
 }
 
 function card(p: NavContext, status = "published") {
-  return { event: { status }, rights: rights(p.access.can), status: { canPublish: p.access.can("event.publish"), canDelete: p.access.can("event.delete") } };
+  return { event: { status }, rights: rights(p.access.can, status), status: { canPublish: p.access.can("event.publish"), canDelete: p.access.can("event.delete") } };
 }
 
 describe("screen help: every item has a line in every language", () => {
@@ -54,14 +71,15 @@ describe("screen help: every item has a line in every language", () => {
     expect(Object.keys(ITEM_HELP).sort()).toEqual(entries.map((e) => e.id).sort());
   });
 
-  it("every action of eventActions.ts and every status button has a description and a name", () => {
-    const seen = new Set<ActionId>();
-    const all = Object.fromEntries(ACTIONS.map((a) => [a, true])) as ActionRights;
+  it("every item of the event card (button or block) and every status button has a description and a name", () => {
+    const seen = new Set<ItemId>();
+    const all = Object.fromEntries([...ACTIONS, "status"].map((a) => [a, true])) as ItemRights;
     for (const status of [...EVENT_STATUSES, "published"]) {
-      for (const g of eventCardLayout({ status }, all).groups) g.actions.forEach((a) => seen.add(a));
+      for (const s of eventCardLayout({ status }, all).sections) s.items.forEach((a) => seen.add(a));
     }
-    expect([...seen].sort()).toEqual([...ACTIONS].sort());
-    for (const a of ACTIONS) for (const k of [ACTION_HELP[a].text, ACTION_HELP[a].label]) expect(texts(k).every((x) => x.trim() !== ""), `${a} ${k}`).toBe(true);
+    expect([...seen].sort()).toEqual([...ACTIONS, "status"].sort());
+    expect(Object.keys(CARD_HELP).sort()).toEqual([...ACTIONS].sort());
+    for (const a of ACTIONS) for (const k of [CARD_HELP[a].text, CARD_HELP[a].label]) expect(texts(k).every((x) => x.trim() !== ""), `${a} ${k}`).toBe(true);
 
     const buttons = new Set(EVENT_STATUSES.flatMap((s) => statusActions(s, { canPublish: true, canDelete: true })));
     expect([...buttons].sort()).toEqual([...STATUS].sort());
@@ -128,17 +146,29 @@ describe("screen help: lines follow what the person sees", () => {
     expect(helpLineIds(screenHelp("entrance", owner)!)).toEqual(["nav-scanner", "nav-guest-list"]);
   });
 
-  it("event card: groups and buttons in the order of the card, the status block last", () => {
+  it("event card: the five sections in the order of the card, the status block last", () => {
     const h = screenHelp("event", owner, card(owner))!;
-    expect(h.sections.map((s) => s.id)).toEqual(["link", "sales", "edit", "more"]);
+    expect(h.sections.map((s) => s.id)).toEqual(["link", "sales", "edit", "promo", "more"]);
+    expect(h.sections.map((s) => en[s.titleKey as MessageKey])).toEqual(["Link for buyers", "Sales and orders", "Edit", "Promotion", "More"]);
     expect(helpLineIds(h)).toEqual([
       "action-qr",
       "action-orders",
       "action-csv",
       "action-guests",
       "action-funnel",
+      "block-totals",
+      "block-pageStats",
       "action-edit",
+      "block-poster",
+      "block-sessions",
+      "block-salesSwitch",
+      "block-materials",
       "action-sample",
+      "block-emailNote",
+      "action-promo",
+      "action-invitations",
+      "action-links",
+      "block-referral",
       "status-off",
       "status-archive",
       "status-delete",
@@ -146,12 +176,19 @@ describe("screen help: lines follow what the person sees", () => {
     expect(h.back).toEqual(["nav.events", "screenHelp.step.selectEvent"]);
   });
 
+  it("every section title exists in every language", () => {
+    const h = screenHelp("event", owner, card(owner))!;
+    for (const s of h.sections) for (const l of LOCALES) expect(CATALOGS[l][s.titleKey as MessageKey]?.trim().length, `${l} ${s.id}`).toBeGreaterThan(0);
+    expect(CATALOGS.ru["event.group.promo"]).toBe("Продвижение");
+    expect(CATALOGS.es["event.group.promo"]).toBe("Promoción");
+  });
+
   it("event card of a draft: the status block comes first, an event that is over shows the sales first", () => {
     const draft = screenHelp("event", owner, card(owner, "draft"))!;
     expect(draft.sections[0].id).toBe("more");
     expect(draft.sections[0].lines.map((l) => l.id)).toEqual(["status-publish", "status-delete"]);
     const done = screenHelp("event", owner, card(owner, "archived"))!;
-    expect(done.sections.map((s) => s.id)).toEqual(["sales", "link", "edit", "more"]);
+    expect(done.sections.map((s) => s.id)).toEqual(["sales", "link", "edit", "promo", "more"]);
   });
 
   it("event card: a role without order.read has no orders, CSV and guests lines", () => {
@@ -168,10 +205,9 @@ describe("screen help: lines follow what the person sees", () => {
       for (const status of EVENT_STATUSES) {
         const c = card(p, status);
         const layout = eventCardLayout(c.event, c.rights);
-        const expected = [
-          ...layout.groups.flatMap((g) => g.actions.map((a) => `action-${a}`)),
-          ...statusActions(status, c.status).map((a) => `status-${a}`),
-        ].sort();
+        const expected = layout.sections
+          .flatMap((s) => s.items.flatMap((i) => (i === "status" ? statusActions(status, c.status).map((a) => `status-${a}`) : [helpLineId(i)])))
+          .sort();
         const h = screenHelp("event", p, c);
         expect(h ? helpLineIds(h).sort() : []).toEqual(expected);
       }

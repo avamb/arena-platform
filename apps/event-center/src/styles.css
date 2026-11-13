@@ -913,22 +913,64 @@ label {
   margin-block: 1rem;
 }
 
-/* Event card: small headed groups of actions (link for buyers, sales and orders, edit) and the "More" block. */
-.action-groups {
+/* Event card: five collapsible sections (link for buyers, sales and orders, edit, promotion, more). */
+.event-sections {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.5rem;
+  margin-block: 0.75rem;
 }
 
-.action-group .actions {
+.event-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-tile);
+  min-width: 0;
+}
+
+.event-section-head {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.event-section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: var(--tap);
+  padding: 0.5rem 1rem;
+  border: 0;
+  border-radius: var(--radius-tile);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.event-section-panel {
+  padding: 0 1rem 0.75rem;
+  min-width: 0;
+}
+
+.event-section-panel .actions {
   margin-block: 0.25rem 0.75rem;
 }
 
-.action-group-title {
-  margin-block: 0.75rem 0;
-  font-size: 1rem;
-  color: var(--muted);
-  overflow-wrap: anywhere;
+.event-section-panel[hidden] {
+  display: none;
+}
+
+.event-action {
+  display: contents;
+}
+
+.event-section-hint {
+  margin-block: 0.25rem 0.75rem;
 }
 
 .download {

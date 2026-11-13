@@ -268,25 +268,25 @@ test.describe("the sectioned menu on the three roles (live)", () => {
       await page.goto(`/o/${env.org_id}/events`);
       await page.getByTestId("event-row").first().getByRole("link", { name: env.event_name }).first().click();
       await expect(page.getByRole("heading", { level: 1, name: env.event_name })).toBeVisible();
-      const BUTTONS: [string, string][] = [
-        ["event-qr-link", "action-qr"],
-        ["event-orders-link", "action-orders"],
-        ["csv-event-sales", "action-csv"],
-        ["xlsx-event-guest-list", "action-guests"],
-        ["event-funnel-link", "action-funnel"],
-        ["event-edit-link", "action-edit"],
-        ["sample-ticket", "action-sample"],
-      ];
-      const onCard = await page.evaluate((buttons) => {
+      // Every item of the card (a button or a block) carries data-item-id, in the order of the page. The status
+      // block is told by its own buttons. All sections are open (signInAs), so every item is in the page.
+      const ACTIONS = ["edit", "sample", "orders", "csv", "guests", "funnel", "qr", "promo", "invitations", "links"];
+      const onCard = await page.evaluate((actions) => {
         const found: string[] = [];
-        for (const el of Array.from(document.querySelectorAll("[data-testid]"))) {
-          const hit = buttons.find(([testId]) => testId === el.getAttribute("data-testid"));
-          if (hit !== undefined) found.push(hit[1]);
+        for (const el of Array.from(document.querySelectorAll("[data-item-id], [data-testid^='event-status-']"))) {
+          const item = el.getAttribute("data-item-id");
+          if (item !== null) {
+            if (item !== "status") found.push(`${actions.includes(item) ? "action" : "block"}-${item}`);
+            continue;
+          }
           const m = /^event-status-(publish|off|archive|delete)$/.exec(el.getAttribute("data-testid") ?? "");
           if (m !== null) found.push(`status-${m[1]}`);
         }
         return found;
-      }, BUTTONS);
+      }, ACTIONS);
+      // The five sections, in the order of the bot's card, each one with a heading button.
+      const sectionOrder = (await page.getByTestId("event-sections").getAttribute("data-order")) ?? "";
+      expect(sectionOrder.split(" ").length).toBeGreaterThan(0);
 
       const cardHelp = page.getByTestId("screen-help-event");
       if (onCard.length === 0) {
@@ -298,6 +298,10 @@ test.describe("the sectioned menu on the three roles (live)", () => {
       await cardHelp.click();
       await expect(page.getByTestId("screen-help-text")).toBeVisible();
       expect(await lines(), "help of the event card").toEqual(onCard);
+      // One model drives the page and the help: the same five sections, with the same names, in the same order.
+      const helpTitles = await page.getByTestId("screen-help-text").locator("h3").allTextContents();
+      const pageTitles = (await page.locator("[data-testid^='event-section-toggle-']").allTextContents()).map((s) => s.replace(/[▴▾]/g, "").trim());
+      expect(helpTitles, "section names of the help").toEqual(pageTitles);
       await expect(page.getByTestId("screen-help-back")).toHaveText("To come back here: Events, then select the event.");
       await noOverflow(page, "the event card with the help open");
       await noA11yViolations(page);

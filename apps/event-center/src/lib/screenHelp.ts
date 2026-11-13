@@ -4,12 +4,13 @@
  *
  * There is no hand-written text per screen. The lines come from the same models that draw the screens: the items of
  * `navMenu.ts` (`navGroups`, the Menu sheet and the Promotion sheet) for the section screens, and the groups and
- * buttons of `eventActions.ts` (`eventCardLayout`) and `eventStatus.ts` (`statusActions`) for the event card. A role
- * does not get the line of an item it does not have, because the model does not hold the item for it. Each item has
- * ONE description key (`ITEM_HELP`, `ACTION_HELP`, `STATUS_HELP`), and the general Help page reads the same keys.
- * `screenHelp.test.ts` fails when an item or an action has no line in every language.
+ * sections of `eventActions.ts` (`eventCardLayout`: the five sections, the same model that draws the page) and
+ * `eventStatus.ts` (`statusActions`) for the event card. A role does not get the line of an item it does not have,
+ * because the model does not hold the item for it. Each item has ONE description key (`ITEM_HELP`, `CARD_HELP`,
+ * `STATUS_HELP`), and the general Help page reads the same keys.
+ * `screenHelp.test.ts` fails when an item of the card or a status button has no line in every language.
  */
-import { eventCardLayout, type ActionGroupId, type ActionId, type ActionRights } from "@/lib/eventActions";
+import { eventCardLayout, isAction, type ItemId, type ItemRights, type SectionId } from "@/lib/eventActions";
 import { statusActions, type StatusAction, type StatusRights } from "@/lib/eventStatus";
 import type { MessageKey } from "@/lib/i18n/en";
 import { navGroups, type NavGroup, type NavGroupId, type NavPerson } from "@/lib/navMenu";
@@ -40,8 +41,8 @@ export const ITEM_HELP: Record<string, MessageKey> = {
   "nav-help": "screenHelp.item.help",
 };
 
-/** The name of each button of the event card, and its description. */
-export const ACTION_HELP: Record<ActionId, { label: MessageKey; text: MessageKey }> = {
+/** The name of each item of the event card (a button or a block, not the status block) and its description. */
+export const CARD_HELP: Record<Exclude<ItemId, "status">, { label: MessageKey; text: MessageKey }> = {
   qr: { label: "links.button", text: "screenHelp.action.qr" },
   orders: { label: "event.orders", text: "screenHelp.action.orders" },
   csv: { label: "event.csvSales", text: "screenHelp.action.csv" },
@@ -49,6 +50,17 @@ export const ACTION_HELP: Record<ActionId, { label: MessageKey; text: MessageKey
   funnel: { label: "funnel.button", text: "screenHelp.action.funnel" },
   edit: { label: "event.edit", text: "screenHelp.action.edit" },
   sample: { label: "event.sample", text: "screenHelp.action.sample" },
+  promo: { label: "nav.promo", text: "screenHelp.action.promo" },
+  invitations: { label: "nav.invitations", text: "screenHelp.action.invitations" },
+  links: { label: "nav.links", text: "screenHelp.action.links" },
+  totals: { label: "event.totals", text: "screenHelp.block.totals" },
+  pageStats: { label: "pageStats.title", text: "screenHelp.block.pageStats" },
+  poster: { label: "poster.title", text: "screenHelp.block.poster" },
+  sessions: { label: "event.sessions", text: "screenHelp.block.sessions" },
+  salesSwitch: { label: "eventSales.title", text: "screenHelp.block.salesSwitch" },
+  materials: { label: "mat.title", text: "screenHelp.block.materials" },
+  emailNote: { label: "emailNote.title", text: "screenHelp.block.emailNote" },
+  referral: { label: "referral.title", text: "screenHelp.block.referral" },
 };
 
 /** The same for the buttons of the status block, the "More" group of the event card. */
@@ -59,10 +71,12 @@ export const STATUS_HELP: Record<StatusAction, { label: MessageKey; text: Messag
   delete: { label: "eventStatus.button.delete", text: "screenHelp.status.delete" },
 };
 
-const GROUP_TITLE: Record<ActionGroupId | "more", MessageKey> = {
+/** The name of each section of the event card. The page draws the same keys. */
+export const SECTION_TITLE: Record<SectionId, MessageKey> = {
   link: "event.group.link",
   sales: "event.group.sales",
   edit: "event.group.edit",
+  promo: "event.group.promo",
   more: "event.group.more",
 };
 
@@ -141,7 +155,7 @@ export interface NavContext {
 /** What the event card needs on top: the event and what the person may press, the same flags the card draws from. */
 export interface EventCardHelp {
   event: { status: string; sales_state?: string | null };
-  rights: ActionRights;
+  rights: ItemRights;
   status: StatusRights;
 }
 
@@ -161,25 +175,22 @@ function pathTo(group: NavGroup, entryId: string, labelKey: MessageKey, can: (p:
   }
 }
 
+/** The help line id of an item: `action-<id>` for a button, `block-<id>` for a block, `status-<action>` for a status button. */
+export function helpLineId(item: Exclude<ItemId, "status">): string {
+  return `${isAction(item) ? "action" : "block"}-${item}`;
+}
+
 function eventSections(card: EventCardHelp): HelpSection[] {
   const layout = eventCardLayout(card.event, card.rights);
-  const sections: HelpSection[] = layout.groups.map((g) => ({
-    id: g.id,
-    titleKey: GROUP_TITLE[g.id],
-    lines: g.actions.map((a) => ({ id: `action-${a}`, labelKey: ACTION_HELP[a].label, textKey: ACTION_HELP[a].text })),
+  return layout.sections.map((s) => ({
+    id: s.id,
+    titleKey: SECTION_TITLE[s.id],
+    lines: s.items.flatMap((item): HelpLine[] =>
+      item === "status"
+        ? statusActions(card.event.status, card.status).map((a) => ({ id: `status-${a}`, labelKey: STATUS_HELP[a].label, textKey: STATUS_HELP[a].text }))
+        : [{ id: helpLineId(item), labelKey: CARD_HELP[item].label, textKey: CARD_HELP[item].text }],
+    ),
   }));
-  const more = statusActions(card.event.status, card.status);
-  if (more.length > 0) {
-    const section: HelpSection = {
-      id: "more",
-      titleKey: GROUP_TITLE.more,
-      lines: more.map((a) => ({ id: `status-${a}`, labelKey: STATUS_HELP[a].label, textKey: STATUS_HELP[a].text })),
-    };
-    // A draft shows the status block before everything, any other event shows it last.
-    if (layout.statusFirst) sections.unshift(section);
-    else sections.push(section);
-  }
-  return sections;
 }
 
 /**

@@ -42,26 +42,42 @@ test.describe("event screen: Edit, sales switch, Save changes (mock)", () => {
     });
   }
 
-  test("the actions sit in groups, and the status block is last under More", async ({ page }) => {
-    await mockApi(page);
+  test("the card is five sections, only the first is open, and every block lives inside its section", async ({ page }) => {
+    await mockApi(page, undefined, { sections: "default" });
     await mockEventEdit(page, "org_admin", OWNER);
     await signIn(page);
     await page.goto(`/o/${ORG_A}/events/${EVENT}`);
-    const groups = page.getByTestId("event-action-groups");
-    await expect(groups).toBeVisible();
-    // Every group has its heading and its own buttons, none of them behind another tap.
-    await expect(page.getByTestId("event-actions-edit").getByRole("heading", { name: "Edit" })).toBeVisible();
-    await expect(page.getByTestId("event-actions-edit").getByTestId("event-edit-link")).toBeVisible();
-    const order = (await groups.getAttribute("data-order")) ?? "";
-    expect(order.split(" ").at(-1)).toBe("edit");
-    expect(order.split(" ")).not.toContain("more");
-    const more = page.getByTestId("event-more");
-    if ((await more.count()) > 0) {
-      await expect(more.getByRole("heading", { name: "More" })).toBeVisible();
-      // The status block comes after the groups in the page.
-      const box = async (id: string) => (await page.getByTestId(id).boundingBox())?.y ?? -1;
-      expect(await box("event-more")).toBeGreaterThan(await box("event-action-groups"));
-    }
+    const sections = page.getByTestId("event-sections");
+    await expect(sections).toBeVisible();
+    // The names and the order of the Telegram bot's card. The owner of the mock holds no link, promo or invitation rights.
+    const order = ((await sections.getAttribute("data-order")) ?? "").split(" ");
+    expect(order[0]).toBe("sales");
+    expect(order.at(-1)).toBe("more");
+    expect(order).toContain("edit");
+    const names: Record<string, string> = { link: "Link for buyers", sales: "Sales and orders", edit: "Edit", promo: "Promotion", more: "More" };
+    for (const id of order) await expect(page.getByTestId(`event-section-toggle-${id}`)).toContainText(names[id]);
+    // Only the first section is open: its buttons are visible, the blocks of the others are not even in the page.
+    await expect(page.getByTestId("event-section-toggle-sales")).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByTestId("event-section-toggle-edit")).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByTestId("event-orders-link")).toBeVisible();
+    await expect(page.getByTestId("event-edit-link")).toHaveCount(0);
+    await expect(page.getByTestId("event-status")).toHaveCount(0);
+
+    // At 375 px the five headings fit in one screen once everything is closed, with no horizontal overflow.
+    const height = page.viewportSize()?.height ?? 812;
+    await page.getByTestId("event-section-toggle-sales").click();
+    const bottoms = await page
+      .locator("[data-testid^='event-section-toggle-']")
+      .evaluateAll((els) => els.map((e) => e.getBoundingClientRect().bottom));
+    expect(bottoms).toHaveLength(order.length);
+    expect(Math.max(...bottoms)).toBeLessThanOrEqual(height);
+    // Pressing a heading opens the section: the Edit button and the sessions list are inside Edit.
+    await page.getByTestId("event-section-toggle-edit").click();
+    await expect(page.getByTestId("event-section-panel-edit").getByTestId("event-edit-link")).toBeVisible();
+    await expect(page.getByTestId("event-section-panel-edit").getByTestId("session-list")).toBeVisible();
+    await expect(page.getByTestId("event-section-panel-edit").getByTestId("event-sales-switch")).toBeVisible();
+    await page.getByTestId("event-section-toggle-more").click();
+    await expect(page.getByTestId("event-section-panel-more").getByTestId("event-status")).toBeVisible();
     const width = page.viewportSize()?.width ?? 375;
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
   });

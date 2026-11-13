@@ -6,6 +6,7 @@
  * ORG_B an agent. ORG_C answers 403, like a foreign organization.
  */
 import type { Page, Route } from "@playwright/test";
+import { openAllEventSections } from "./eventSections";
 
 export const API = "http://api.mock.test";
 export const ORG_A = "0193f01a-0000-7000-8000-00000000000a";
@@ -145,9 +146,11 @@ function forbidden(route: Route) {
 export async function mockApi(
   page: Page,
   auth: AuthState = newAuthState(),
-  opts: { superadmin?: boolean } = {},
+  opts: { superadmin?: boolean; sections?: "open" | "default" } = {},
 ): Promise<MockState> {
   const state: MockState = { requests: [] };
+  // The event card keeps its five sections closed but one. Specs of the blocks inside them find all open.
+  if (opts.sections !== "default") await openAllEventSections(page);
   await page.route(`${API}/**`, async (route) => {
     const req = route.request();
     const url = new URL(req.url());
