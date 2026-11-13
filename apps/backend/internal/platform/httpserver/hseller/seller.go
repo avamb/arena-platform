@@ -278,6 +278,37 @@ func (h *Handler) loadProfile(ctx context.Context, orgID uuid.UUID) (Profile, ge
 	return p, o, nil
 }
 
+// DataComplete reports whether the organization's seller data is done: the
+// organization-level profile is Complete and no channel lacks data of its own
+// (every channel is either shown or hidden by the operator). This is the rule
+// the bot's organization card applies to the same profile.
+func (p Profile) DataComplete() bool {
+	if !p.Complete {
+		return false
+	}
+	for _, ch := range p.Channels {
+		if !ch.SellerHidden && !ch.SellerShown {
+			return false
+		}
+	}
+	return true
+}
+
+// SellerDataComplete loads the organization's seller profile the way
+// GET .../seller-profile does and answers Profile.DataComplete. It writes
+// nothing and needs no caller in the context. An unknown organization is
+// pgx.ErrNoRows.
+func (h *Handler) SellerDataComplete(ctx context.Context, orgID uuid.UUID) (bool, error) {
+	if h.queries == nil {
+		return false, errors.New("hseller: database is not available")
+	}
+	p, _, err := h.loadProfile(ctx, orgID)
+	if err != nil {
+		return false, err
+	}
+	return p.DataComplete(), nil
+}
+
 // withEmailPlaceholder makes the organization-level list ignore the public
 // e-mail, which belongs to a channel.
 func withEmailPlaceholder(p sellerinfo.Profile) sellerinfo.Profile {

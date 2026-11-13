@@ -460,6 +460,14 @@ const (
 	EventItemVisibilityUnlisted EventItemVisibility = "unlisted"
 )
 
+// Defines values for GettingStartedStepKey.
+const (
+	GettingStartedStepKeyEvent     GettingStartedStepKey = "event"
+	GettingStartedStepKeyOrgData   GettingStartedStepKey = "org_data"
+	GettingStartedStepKeyPayments  GettingStartedStepKey = "payments"
+	GettingStartedStepKeySalesLink GettingStartedStepKey = "sales_link"
+)
+
 // Defines values for GrantMembershipRequestRole.
 const (
 	GrantMembershipRequestRoleAgent                     GrantMembershipRequestRole = "agent"
@@ -9913,6 +9921,40 @@ type GeoWorldCountryItem struct {
 	// Region One of europe, middle_east, asia, africa, north_america, latin_america, oceania.
 	Region string `json:"region"`
 }
+
+// GettingStarted The first steps of an organization that the caller may do, and
+// whether all of them are done.
+type GettingStarted struct {
+	// Complete True when every listed step is done. An empty list is complete.
+	Complete bool `json:"complete"`
+
+	// Steps The steps the caller holds the permission for in this
+	// organization, always in the order org_data, payments, event,
+	// sales_link. Never null.
+	Steps []GettingStartedStep `json:"steps"`
+}
+
+// GettingStartedResponse The answer of GET /v1/organizations/{org_id}/getting-started.
+type GettingStartedResponse struct {
+	// GettingStarted The first steps of the organization the caller may do.
+	GettingStarted GettingStarted `json:"getting_started"`
+}
+
+// GettingStartedStep One first step of an organization.
+type GettingStartedStep struct {
+	// Done True when the organization's data shows the step is done.
+	Done bool `json:"done"`
+
+	// Key The step: `org_data` (seller data complete), `payments` (a
+	// payment provider connected and accepted), `event` (an event
+	// created, a draft counts), `sales_link` (a sales link created).
+	Key GettingStartedStepKey `json:"key"`
+}
+
+// GettingStartedStepKey The step: `org_data` (seller data complete), `payments` (a
+// payment provider connected and accepted), `event` (an event
+// created, a draft counts), `sales_link` (a sales link created).
+type GettingStartedStepKey string
 
 // GrantMembershipRequest Request body for `POST /v1/organizations/{org_id}/members`
 // (feature #120). Binds an existing user to the organization in

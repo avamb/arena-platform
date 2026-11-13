@@ -301,11 +301,11 @@ test.describe("R1 read-only event center", () => {
     await page.getByTestId("language-select").selectOption("ru");
     await expect(page.getByRole("heading", { level: 1 })).toContainText("Мероприятия");
     await expect(page.locator("html")).toHaveAttribute("lang", "ru");
-    for (const name of ["Мероприятия", "Заказы", "Возвраты", "Сводка"]) {
+    for (const name of ["Мероприятия", "Заказы", "Вход"]) {
       const box = await page.getByRole("navigation", { name: "Главное меню" }).getByRole("link", { name }).boundingBox();
       expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TAP);
     }
-    const more = await page.getByRole("navigation", { name: "Все разделы" }).getByRole("link", { name: "Уведомления" }).boundingBox();
+    const more = await page.getByRole("navigation", { name: "Меню", exact: true }).getByRole("link", { name: "Мои уведомления" }).boundingBox();
     expect(more?.height ?? 0).toBeGreaterThanOrEqual(MIN_TAP);
   });
 

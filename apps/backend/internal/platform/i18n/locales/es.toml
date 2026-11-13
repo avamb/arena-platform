@@ -114,7 +114,7 @@ other = "¡Te damos la bienvenida! Una comprobación antes de empezar: escribe l
 other = "Eso no parece una dirección de e-mail. Escríbela como en la invitación, por ejemplo nombre@empresa.com"
 
 ["bot.invite_accepted"]
-other = "<b>¡Listo!</b> Ya estás conectado a <b>{{.Org}}</b> como {{.Role}}.\n\n<b>Cómo funciona</b>\n1. Pulsa «+ Evento» y escribe el nombre del evento. Si tienes el cartel, envíalo: leeré los datos.\n2. Responde a unas preguntas: fecha, recinto, entradas. Antes de publicar te muestro todo.\n3. Recibes el enlace para los compradores y una entrada de muestra. Puedes compartir el enlace enseguida.\n\nLas ventas están en «Mis eventos»{{if .Owner}}; a tus compañeros los invitas desde el mismo menú{{end}}. Todo está en el menú de abajo, y en «Ayuda» tienes esta guía siempre a mano."
+other = "<b>¡Listo!</b> Ya estás conectado a <b>{{.Org}}</b> como {{.Role}}.\n\n<b>Cómo funciona</b>\n1. Pulsa «➕ Nuevo evento» y escribe el nombre del evento. Si tienes el cartel, envíalo: leeré los datos.\n2. Responde a unas preguntas: fecha, recinto, entradas. Antes de publicar te muestro todo.\n3. Recibes el enlace para los compradores y una entrada de muestra. Puedes compartir el enlace enseguida.\n\nLas ventas están en «📅 Mis eventos»{{if .Owner}}; a tus compañeros los invitas en «⚙️ Ajustes»{{end}}. Todo está en el menú de abajo, y en «❓ Ayuda» tienes esta guía siempre a mano."
 
 ["bot.invite_accepted_notice"]
 other = "✅ {{.Email}} ha aceptado la invitación y se ha unido al bot: organización <b>{{.Org}}</b>, rol: {{.Role}}."
@@ -144,16 +144,16 @@ other = "gestor"
 other = "<b>{{.Org}}</b>\n¿Qué quieres hacer?"
 
 ["bot.btn_events"]
-other = "Mis eventos"
+other = "📅 Mis eventos"
 
 ["bot.btn_org"]
-other = "Organización"
+other = "🔁 Cambiar de organización"
 
 ["bot.btn_lang"]
-other = "Idioma"
+other = "🗣 Idioma"
 
 ["bot.btn_help"]
-other = "Ayuda"
+other = "❓ Ayuda"
 
 ["bot.btn_scanner"]
 other = "📲 Escáner de entradas"
@@ -180,7 +180,7 @@ other = "Anterior"
 other = "Siguiente"
 
 ["bot.help"]
-other = "<b>Qué puede hacer este bot</b>\n\n- <b>+ Evento</b>: crea un evento paso a paso y lo publica. Escribe el nombre o envía el cartel: leeré los datos y tú confirmas cada valor. Al final te envío el enlace para los compradores y una entrada de muestra.\n- <b>Mis eventos</b>: todos los eventos de tu organización, los próximos primero, con las plazas vendidas y libres y el dinero por fecha. En la ficha de un evento puedes editarlo, repetirlo como nuevo, ver una entrada de muestra y mover o cancelar una sesión: los compradores reciben un correo.\n- <b>Notificaciones</b>: de dónde llegan los avisos de ventas y devoluciones y cómo conectar tu chat.\n- <b>Equipo</b>: el propietario cambia el equipo, el gestor lo ve.\n- <b>Organización</b>: si trabajas para varias organizaciones, cambia entre ellas aquí.\n- <b>Escáner de entradas</b>: la aplicación para comprobar las entradas en la puerta, con enlaces a Google Play y App Store.\n- <b>Idioma</b>: inglés, ruso o español."
+other = "<b>Qué puede hacer este bot</b>\n\n- <b>➕ Nuevo evento</b>: crea un evento paso a paso y lo publica. Escribe el nombre o envía el cartel: leeré los datos y tú confirmas cada valor. Al final te envío el enlace para los compradores y una entrada de muestra.\n- <b>📅 Mis eventos</b>: todos los eventos de tu organización, los próximos primero, con las plazas vendidas y libres y el dinero por fecha. En la ficha de un evento puedes editarlo, repetirlo como nuevo, ver una entrada de muestra y mover o cancelar una sesión: los compradores reciben un correo.\n- <b>🧾 Pedidos y devoluciones</b>: los pedidos de tus compradores, las devoluciones de dinero y las disputas de pago.\n- <b>📣 Promoción</b>: códigos promocionales, entradas gratuitas, enlaces de venta con códigos QR y mensajes a los compradores.\n- <b>🚪 Entrada al evento</b>: la aplicación para comprobar las entradas en la puerta, con enlaces a Google Play y App Store. Ahí también está la lista de invitados de una sesión.\n- <b>🛍 Tienda</b>: los pedidos y las existencias de tu tienda, si tu organización tiene una.\n- <b>⚙️ Ajustes</b>: los datos de tu organización, los pagos de los compradores, el equipo, las marcas, los recintos y las notificaciones. Ahí también están el idioma (inglés, ruso o español) y el cambio entre organizaciones. El propietario cambia el equipo y el gestor lo ve.\n- <b>🌐 Abrir en el navegador</b>: abre el centro de eventos web con un solo enlace.\n\nEl bloque <b>Primeros pasos</b> al principio del menú muestra lo que debes hacer para empezar a vender."
 
 ["bot.events_empty"]
 other = "Aún no hay eventos. El primero aparecerá aquí en cuanto lo crees."
@@ -303,7 +303,7 @@ other = "Es posible que esta devolución ya haya empezado: el bot no recibió re
 other = "☰ Abrir el menú"
 
 ["bot.wz.new_event_btn"]
-other = "+ Evento"
+other = "➕ Nuevo evento"
 
 ["bot.wz.cancel_btn"]
 other = "Cancelar"
@@ -324,7 +324,7 @@ other = "Nombre"
 other = "Edad"
 
 ["bot.wz.ack_promoter"]
-other = "Promotor"
+other = "Marca"
 
 ["bot.wz.ack_promoter_org"]
 other = "tu organización"
@@ -456,25 +456,25 @@ other = "Ponle un nombre al evento, de hasta 200 caracteres."
 other = "¿Restricción de edad?"
 
 ["bot.wz.ask_promoter"]
-other = "¿A nombre de quién va el evento? El promotor es el nombre que los compradores ven como organizador: en la entrada, en el PDF y en la página propia del promotor. Normalmente es {{.Org}}. Para otro teatro o marca, elígelo o añade uno nuevo. Para el próximo evento puedes elegir otro."
+other = "¿Con qué marca vendes el evento? La marca es el nombre que los compradores ven como organizador: en la entrada, en el PDF y en la página propia de la marca. Normalmente es {{.Org}}. Para otro teatro u otro nombre, elige su marca o añade una nueva. Para el próximo evento puedes elegir otro."
 
 ["bot.wz.promoter_org"]
 other = "La propia organización"
 
 ["bot.wz.promoter_new"]
-other = "+ Nuevo promotor (marca)…"
+other = "+ Nueva marca…"
 
 ["bot.wz.ask_promoter_name"]
-other = "El nombre del promotor. Los compradores lo ven como organizador en la entrada, en el PDF y en la página del promotor."
+other = "El nombre de la marca. Los compradores lo ven como organizador en la entrada, en el PDF y en la página de la marca."
 
 ["bot.wz.err_promoter_name"]
-other = "Indica el nombre del promotor."
+other = "Indica el nombre de la marca."
 
 ["bot.wz.err_promoter_dup"]
-other = "Este promotor ya existe: elígelo de la lista."
+other = "Esta marca ya existe. Elígela de la lista."
 
 ["bot.wz.ask_promoter_legal"]
-other = "El identificador fiscal o de empresa del promotor, si lo hay. Puedes omitirlo."
+other = "El identificador fiscal o de empresa de la marca, si lo hay. Puedes omitirlo."
 
 ["bot.wz.ask_poster"]
 other = "Envía el cartel como archivo, para no perder calidad. Una foto normal también sirve, pero Telegram la comprime.\n\n<b>En el móvil:</b>\n1. Pulsa el clip 📎.\n2. Pulsa “Archivo”.\n3. Elige la imagen.\n\n<b>En el ordenador:</b>\n1. Pulsa el clip 📎.\n2. Elige la imagen.\n3. En la ventana de envío, marca “Enviar como documento”.\n\n<b>Requisitos:</b>\n• PNG o JPG, máximo 5 MB.\n• Formato 4:5 (1080×1350) o cuadrado.\n• Ancho mínimo: 1000 px.\n\nLa web recorta la parte de arriba y la de abajo del cartel en las tarjetas. Deja lo importante en el centro.\n\nSin cartel, la tarjeta del evento no se abre en la web. Puedes añadir el cartel más tarde."
@@ -735,7 +735,7 @@ other = "No, aún no publicar"
 other = "“{{.Name}}”, {{.Age}}{{.Promoter}}{{.Poster}}"
 
 ["bot.wz.summary_promoter"]
-other = ", promotor {{.Name}}"
+other = ", marca {{.Name}}"
 
 ["bot.wz.summary_no_poster"]
 other = ", sin cartel"
@@ -834,7 +834,7 @@ other = "El cartel no se guardó: añádelo más tarde."
 other = "No tienes permiso para esta acción: díselo al propietario de tu organización."
 
 ["bot.wz.edit_btn"]
-other = "Editar"
+other = "📝 Nombre, descripción y cartel"
 
 ["bot.wz.copy_btn"]
 other = "Repetir como nuevo"
@@ -897,7 +897,7 @@ other = "Qué se cambió allí desde que abriste la edición:\n{{.List}}"
 other = "{{.What}}: con cambios"
 
 ["bot.wz.elsewhere_unknown"]
-other = "El nombre, la descripción, el cartel, la edad y el promotor siguen como al abrirlos. Ha cambiado otra parte, por ejemplo las fechas o los precios."
+other = "El nombre, la descripción, el cartel, la edad y la marca siguen como al abrirlos. Ha cambiado otra parte, por ejemplo las fechas o los precios."
 
 ["bot.wz.preview_conflict_footer"]
 other = "«Guardar igualmente» escribe tu versión encima de sus cambios. Para empezar desde la nueva versión, pulsa «Cancelar», luego «Eliminar los cambios», y abre el evento de nuevo."
@@ -945,7 +945,7 @@ other = "Cartel"
 other = "Edad"
 
 ["bot.wz.edit_field_promoter"]
-other = "Promotor"
+other = "Marca"
 
 ["bot.wz.edit_field_currency"]
 other = "Moneda"
@@ -1005,7 +1005,7 @@ other = "Cartel"
 other = "Edad"
 
 ["bot.wz.edit_b_promoter"]
-other = "Promotor"
+other = "Marca"
 
 ["bot.wz.edit_b_currency"]
 other = "Moneda"
@@ -1041,7 +1041,7 @@ other = "✔ “{{.Name}}”: el precio se mantiene{{if .Until}} hasta {{.Until}
 other = "{{.Name}} (la última, hasta que empieza la sesión)"
 
 ["bot.wz.cancel_ask_create"]
-other = "¿Salir de la creación del evento? Puedes conservar el borrador y volver a él con el botón «＋ Evento», o eliminarlo."
+other = "¿Salir de la creación del evento? Puedes conservar el borrador y volver a él con el botón «➕ Nuevo evento» del menú, o eliminarlo."
 
 ["bot.wz.cancel_ask_edit"]
 other = "¿Salir de la edición? Los cambios aún no están publicados. Puedes conservarlos como borrador o eliminarlos."
@@ -1059,7 +1059,7 @@ other = "🗑 Eliminar el borrador"
 other = "🗑 Eliminar los cambios"
 
 ["bot.wz.draft_kept"]
-other = "El borrador está guardado. Vuelve a él con el botón «＋ Evento»."
+other = "El borrador está guardado. Vuelve a él con el botón «➕ Nuevo evento» del menú."
 
 ["bot.wz.cal_hint"]
 other = "Elige un día en el calendario o escribe la fecha."
@@ -1418,7 +1418,7 @@ other = "Continúa en la web (el enlace abre tu solicitud):\n{{.Url}}"
 other = "✅ ¡Gracias! La solicitud está enviada. La revisaremos y te escribiremos aquí y por e-mail."
 
 ["bot.onb.approved"]
-other = "🎉 ¡Tu solicitud está aprobada! La organización <b>{{.Org}}</b> está lista. Todo lo que necesitas para tus eventos se hace aquí, en el bot: pulsa el botón para abrir el menú. El e-mail con el enlace de contraseña es solo para el panel web, que necesitarás más adelante, así que por ahora puedes ignorarlo.\n\n📲 Las entradas se comprueban en la puerta con la aplicación escáner: usa el botón «Escáner de entradas» de abajo o del menú. Al crear un evento, indica la hora de apertura de la entrada: los asistentes llegarán antes y no habrá cola al escanear."
+other = "🎉 ¡Tu solicitud está aprobada! La organización <b>{{.Org}}</b> está lista. Todo lo que necesitas para tus eventos se hace aquí, en el bot: pulsa el botón para abrir el menú. El e-mail con el enlace de contraseña es solo para el panel web, que necesitarás más adelante, así que por ahora puedes ignorarlo.\n\n📲 Las entradas se comprueban en la puerta con la aplicación escáner: usa el botón «📲 Escáner de entradas» de abajo. También está en el menú, en «🚪 Entrada al evento». Al crear un evento, indica la hora de apertura de la entrada: los asistentes llegarán antes y no habrá cola al escanear."
 
 ["bot.onb.rejected"]
 other = "Lamentablemente no podemos abrir una organización con esta solicitud. Si crees que es un error, escríbenos por e-mail."
@@ -1627,7 +1627,7 @@ other = "Búsqueda: «{{.Query}}» — encontrados {{.N}}."
 other = "No se encontró nada para «{{.Query}}». Prueba otras palabras o borra la búsqueda."
 
 ["bot.ec.empty_run"]
-other = "No hay eventos en marcha. Pulsa «+ Evento» en el menú para crear uno o mira el archivo."
+other = "No hay eventos en marcha. Pulsa «➕ Nuevo evento» en el menú para crear uno o mira el archivo."
 
 ["bot.ec.empty_arc"]
 other = "El archivo está vacío."
@@ -1723,7 +1723,7 @@ other = "Aún no hay nada que exportar: no hay entradas."
 other = "No se pudo preparar el archivo. Inténtalo de nuevo en un minuto."
 
 ["bot.ec.csv_too_big_event"]
-other = "Hay demasiadas filas para un solo archivo (más de 50 000). Exporta una fecha cada vez: abre el evento, despliega «Fechas» y pulsa ⬇ junto a la fecha."
+other = "Hay demasiadas filas para un solo archivo (más de 50 000). Exporta una fecha cada vez: abre el evento, pulsa «📊 Ventas y pedidos», luego «🗓 Fechas» y pulsa ⬇ junto a la fecha."
 
 ["bot.ec.csv_too_big_session"]
 other = "Esta fecha tiene demasiadas filas para un solo archivo (más de 50 000). Escribe a soporte y lo prepararemos."
@@ -1735,7 +1735,7 @@ other = "No encontrado. Puede que se haya eliminado o que pertenezca a otra orga
 other = "Tu rol en esta organización no incluye las cifras de ventas."
 
 ["bot.ec.notif_btn"]
-other = "🔔 Notificaciones"
+other = "🔔 Mis notificaciones"
 
 ["bot.ec.notif_open_btn"]
 other = "Abrir {{.Bot}}"
@@ -1747,7 +1747,7 @@ other = "<b>Notificaciones</b>\n\nEste bot no envía avisos de ventas. Llegan de
 other = "<b>Notificaciones</b>\n\nEste bot no envía avisos de ventas. Llegan desde {{.Bot}}: un mensaje por cada pedido pagado y cada devolución, en segundos.\n\nSolo el propietario de la organización elige qué chats los reciben. Pídele que te añada al grupo o que conecte uno nuevo. Los mensajes incluyen los contactos del comprador."
 
 ["bot.ord.btn"]
-other = "Pedidos"
+other = "🧾 Pedidos"
 
 ["bot.ord.list_title"]
 other = "<b>Pedidos: {{.Org}}</b>{{.Scope}}\n{{.Tab}} · {{.Total}} · página {{.Page}} de {{.Pages}}.{{.Search}}\n{{.Legend}}\nPulsa un pedido para abrirlo. Para buscar, escribe un código de barras, un número de pedido, un e-mail, un teléfono o un nombre."
@@ -2085,10 +2085,10 @@ other = "🚫 <b>«{{.Name}}» no se puede eliminar.</b>\n\nTiene {{.Orders}} pe
 other = "ELIMINAR"
 
 ["bot.evs.need_session"]
-other = "Todavía no se puede publicar: el evento no tiene ninguna fecha. Añade primero una fecha («Editar»)."
+other = "Todavía no se puede publicar: el evento no tiene ninguna fecha. Añade primero una fecha con el botón «✏️ Editar»."
 
 ["bot.evs.need_tier"]
-other = "Todavía no se puede publicar: cada fecha necesita al menos una categoría de entradas con precio. Corrígelo en «Editar»."
+other = "Todavía no se puede publicar: cada fecha necesita al menos una categoría de entradas con precio. Corrígelo con el botón «✏️ Editar»."
 
 ["bot.evs.not_allowed"]
 other = "Este cambio no es posible con el evento en su estado actual."
@@ -2163,7 +2163,7 @@ other = "le cambiaste el rol después de invitarle."
 other = "es el único propietario."
 
 ["bot.inv.btn"]
-other = "🎟 Invitaciones"
+other = "🎟 Entradas gratuitas"
 
 ["bot.inv.hub"]
 other = "🎟 <b>Invitaciones</b> · {{.Org}}\n\nEntradas gratuitas para invitados: entradas reales con código de barras, que llegan a cada invitado por e-mail. Ocupan plazas de la categoría como las vendidas y puedes anular una más tarde.\n\nComo máximo {{.Max}} entradas por operación; para más, haz varias operaciones."
@@ -2316,7 +2316,7 @@ other = "La invitación de {{.Guest}} ya estaba anulada."
 other = "La invitación de {{.Guest}} ya se escaneó en la puerta, así que no se anuló. Queda marcada para revisión manual."
 
 ["bot.inv.private_only"]
-other = "Las direcciones de los invitados solo se muestran y se escriben en un chat privado con el bot. Abre Invitaciones allí."
+other = "Las direcciones de los invitados solo se muestran y se escriben en un chat privado con el bot. Abre «🎟 Entradas gratuitas» allí. Está en el menú, en «📣 Promoción»."
 
 ["bot.inv.seated_text"]
 other = "🎟 <b>{{.Name}}</b> · {{.When}}\n\nEsta fecha tiene plano de asientos, así que los asientos se eligen en el plano: los libres y los que te reservaste. Pulsa el botón y el plano se abre aquí, en Telegram."
@@ -2730,28 +2730,28 @@ other = "Este evento no tiene sesiones próximas para elegir."
 other = "Falta algo en el código. Vuelve y revisa los pasos."
 
 ["bot.prom.btn"]
-other = "🎭 Promotores"
+other = "🎭 Marcas (nombres en los eventos)"
 
 ["bot.prom.list_title"]
-other = "🎭 <b>Promotores</b> · {{.Org}} · {{.Total}} en total · pág. {{.Page}}/{{.Pages}}"
+other = "🎭 <b>Marcas</b> · {{.Org}} · {{.Total}} en total · pág. {{.Page}}/{{.Pages}}\nUna marca es el nombre con el que vendes las entradas."
 
 ["bot.prom.list_hint"]
-other = "Toca un promotor para ver y cambiar sus datos."
+other = "Toca una marca para ver y cambiar sus datos."
 
 ["bot.prom.empty"]
-other = "Aún no hay promotores. Un promotor es un socio cuyos eventos vendes. Pulsa «➕ Promotor» abajo para añadir uno, o añádelo al crear un evento."
+other = "Aún no hay marcas. Una marca es el nombre con el que vendes las entradas. Pulsa «➕ Marca» abajo para añadir una, o añádela al crear un evento."
 
 ["bot.prom.add_btn"]
-other = "➕ Promotor"
+other = "➕ Marca"
 
 ["bot.prom.new_ask"]
-other = "➕ <b>Nuevo promotor.</b> Escribe su nombre. Se imprime en las entradas como organizador. Dos promotores activos no pueden tener el mismo nombre."
+other = "➕ <b>Nueva marca.</b> Escribe su nombre. Se imprime en las entradas como organizador. Dos marcas activas no pueden tener el mismo nombre."
 
 ["bot.prom.new_cancel_btn"]
 other = "‹ Volver a la lista"
 
 ["bot.prom.created"]
-other = "✅ Promotor añadido. Puedes completar el resto de datos abajo."
+other = "✅ Marca añadida. Puedes completar el resto de datos abajo."
 
 ["bot.prom.card"]
 other = "🎭 <b>{{.Name}}</b>"
@@ -2805,22 +2805,22 @@ other = "✏ Enlace de la página"
 other = "🗄 Archivar"
 
 ["bot.prom.q_name"]
-other = "✏ <b>Nuevo nombre</b> del promotor. Se imprime en las entradas como organizador. Dos promotores activos no pueden tener el mismo nombre."
+other = "✏ <b>Nuevo nombre</b> de la marca. Se imprime en las entradas como organizador. Dos marcas activas no pueden tener el mismo nombre."
 
 ["bot.prom.q_address"]
-other = "✏ <b>Dirección</b> del promotor en un solo mensaje, hasta 300 caracteres."
+other = "✏ <b>Dirección</b> de la marca en un solo mensaje, hasta 300 caracteres."
 
 ["bot.prom.q_tax"]
-other = "✏ <b>Identificación fiscal</b> tal como figura en los documentos del promotor (NIF, IČO, EIN…), hasta 40 caracteres."
+other = "✏ <b>Identificación fiscal</b> tal como figura en los documentos de la marca (NIF, IČO, EIN…), hasta 40 caracteres."
 
 ["bot.prom.q_phone"]
 other = "✏ <b>Teléfono</b> con el prefijo del país, por ejemplo +420 123 456 789."
 
 ["bot.prom.q_email"]
-other = "✏ <b>E-mail</b> del promotor."
+other = "✏ <b>E-mail</b> de la marca."
 
 ["bot.prom.email_note"]
-other = "A esta dirección se invita a escribir a los compradores cuando se cambia o se cancela una fecha de los eventos del promotor, así que tiene que funcionar."
+other = "A esta dirección se invita a escribir a los compradores cuando se cambia o se cancela una fecha de los eventos de la marca, así que tiene que funcionar."
 
 ["bot.prom.q_website"]
 other = "✏ <b>Sitio web</b>, por ejemplo partner.example. Si no escribes https://, se añade solo."
@@ -2850,7 +2850,7 @@ other = "⚠ El nombre no puede estar vacío. Escríbelo de nuevo."
 other = "⚠ El nombre es demasiado largo (120 caracteres como máximo). Escribe uno más corto."
 
 ["bot.prom.err_name_taken"]
-other = "⚠ Otro promotor activo ya tiene ese nombre. Escribe otro."
+other = "⚠ Otra marca activa ya tiene ese nombre. Escribe otro."
 
 ["bot.prom.err_address_long"]
 other = "⚠ La dirección debe tener de 1 a 300 caracteres. Escríbela de nuevo."
@@ -2871,7 +2871,7 @@ other = "⚠ Un sitio web es una dirección como partner.example o https://partn
 other = "⚠ La dirección de la página tiene de 2 a 64 caracteres: letras latinas a–z, cifras y guiones sueltos, ni al principio ni al final. Escríbela de nuevo."
 
 ["bot.prom.err_slug_taken"]
-other = "⚠ Esa dirección ya la usa otro promotor u otra organización. Escribe otra."
+other = "⚠ Esa dirección ya la usa otra marca u otra organización. Escribe otra."
 
 ["bot.prom.slug_confirm"]
 other = "🔗 La dirección de la página va a cambiar:\n{{.Old}}\n→ {{.New}}\n\nLos enlaces que ya hayas repartido con la dirección antigua dejarán de abrirse. ¿Guardar la nueva dirección?"
@@ -2889,22 +2889,22 @@ other = "🗄 Sí, archivar"
 other = "🗄 {{.Name}} está archivado."
 
 ["bot.prom.gone"]
-other = "Este promotor ya no está en la lista (archivado o eliminado). Aquí tienes la lista tal como está ahora."
+other = "Esta marca ya no está en la lista (archivado o eliminado). Aquí tienes la lista tal como está ahora."
 
 ["bot.prom.event_line"]
-other = "🎭 Promotor: <b>{{.Name}}</b>"
+other = "🎭 Marca: <b>{{.Name}}</b>"
 
 ["bot.prom.event_line_org"]
-other = "🎭 Promotor: la propia organización"
+other = "🎭 Marca: la propia organización"
 
 ["bot.prom.event_btn"]
-other = "🎭 Promotor"
+other = "🎭 Marca"
 
 ["bot.prom.event_back_btn"]
 other = "‹ Al evento"
 
 ["bot.prom.event_org_note"]
-other = "«{{.Name}}» no tiene un promotor aparte: el promotor es la propia organización. Para elegir otro, edita el evento."
+other = "«{{.Name}}» no tiene una marca aparte: la organización vende con su propio nombre. Para elegir otra marca, edita el evento."
 ["bot.cat.btn"]
 other = "🎟 Categorías"
 
@@ -2912,7 +2912,7 @@ other = "🎟 Categorías"
 other = "🎟 <b>{{.Name}}</b> · {{.When}}\nCategorías: {{.Total}} · pág. {{.Page}}/{{.Pages}}"
 
 ["bot.cat.list_empty"]
-other = "Esta fecha aún no tiene categorías. Añádelas en el editor del evento (Editar → Entradas)."
+other = "Esta fecha aún no tiene categorías. Añádelas así: «✏️ Editar», luego «📝 Nombre, descripción y cartel» y «Precios y categorías»."
 
 ["bot.cat.list_hint"]
 other = "Toca una categoría para cerrarla o abrirla, cambiar su precio, su ventana de venta o su número de plazas."
@@ -2981,10 +2981,10 @@ other = "💶 Una categoría gratuita: no tiene precio que cambiar."
 other = "💶 Una categoría de importe a elegir. Cambia su rango de importes en la consola de administración."
 
 ["bot.cat.note_chain"]
-other = "↪ Esta categoría pasa sola sus plazas libres a «{{.Name}}», por fecha o cuando se agota su tramo. Para que siga funcionando, aquí solo se puede cambiar su precio; las fechas y los tramos se cambian en Editar → Entradas del evento."
+other = "↪ Esta categoría pasa sola sus plazas libres a «{{.Name}}», por fecha o cuando se agota su tramo. Para que siga funcionando, aquí solo se puede cambiar su precio; las fechas y los tramos se cambian así: «✏️ Editar», luego «📝 Nombre, descripción y cartel» y «Precios y categorías»."
 
 ["bot.cat.note_chain_target"]
-other = "↪ Esta categoría recibe sola las plazas libres de la anterior. Para que siga funcionando, aquí solo se puede cambiar su precio; las fechas y los tramos se cambian en Editar → Entradas del evento."
+other = "↪ Esta categoría recibe sola las plazas libres de la anterior. Para que siga funcionando, aquí solo se puede cambiar su precio; las fechas y los tramos se cambian así: «✏️ Editar», luego «📝 Nombre, descripción y cartel» y «Precios y categorías»."
 
 ["bot.cat.note_seated"]
 other = "🪑 Las plazas de esta categoría salen del plano de la sala, así que su número no se cambia aquí."
@@ -3849,7 +3849,7 @@ other = "← Volver a la ficha"
 other = "Las categorías que no están en la lista nueva quedaron cerradas. Las entradas vendidas siguen siendo válidas."
 
 ["bot.mt.btn"]
-other = "🖼 Materiales"
+other = "🖼 Materiales de la página"
 
 ["bot.mt.menu"]
 other = "🖼 <b>Materiales</b> · {{.Event}}\n\nEsto es lo que ven los compradores en la página del evento: fotos, vídeos, un mapa y enlaces a otros vendedores. Elige una parte."
@@ -3858,7 +3858,7 @@ other = "🖼 <b>Materiales</b> · {{.Event}}\n\nEsto es lo que ven los comprado
 other = "Puedes ver los materiales. Solo el propietario y el gestor pueden cambiarlos."
 
 ["bot.mt.gone_dialog"]
-other = "Esta pantalla ya no está al día. Abre el evento y pulsa Materiales otra vez."
+other = "Esta pantalla ya no está al día. Abre el evento, pulsa «✏️ Editar» y pulsa otra vez «🖼 Materiales de la página»."
 
 ["bot.mt.menu_btn"]
 other = "Materiales"
@@ -4294,7 +4294,7 @@ other = "El evento todavía no tiene página de venta, por eso el código lleva 
 other = "La sesión está cancelada o eliminada, por eso el código lleva a la página del evento (la dirección de arriba). Para que el código lleve a otra sesión, pulsa «Redirigir»."
 
 ["bot.ql.card_why_promoter"]
-other = "El promotor está en el archivo o no tiene página, por eso el código lleva a la página de la organización (la dirección de arriba). Restaura el promotor o pulsa «Redirigir»."
+other = "La marca está en el archivo o no tiene página, por eso el código lleva a la página de la organización (la dirección de arriba). Restaura la marca o pulsa «Redirigir»."
 
 ["bot.ql.card_why_no_address"]
 other = "No se pudo construir la dirección de la página de venta: la plataforma o la organización no tiene configurada la dirección de las páginas de venta. Redirigir no ayudará. Escribe a soporte."
@@ -4399,7 +4399,7 @@ other = "evento «{{.Name}}»"
 other = "una sesión del evento «{{.Name}}»"
 
 ["bot.ql.w_promoter"]
-other = "página del promotor"
+other = "página de la marca"
 
 ["bot.ql.w_org"]
 other = "página de la organización"
@@ -4485,7 +4485,7 @@ other = "El texto tiene un carácter oculto. Escríbelo de nuevo o pégalo como 
 other = "Este texto no sirvió. Revísalo y envíalo otra vez."
 
 ["bot.tf.event_btn"]
-other = "✉ Texto en el correo"
+other = "✉️ Texto en el correo"
 
 ["bot.tf.note_title"]
 other = "<b>Texto en el correo</b> · {{.Name}}"
@@ -4575,7 +4575,7 @@ other = "<b>{{.Name}}</b>\n{{.When}}"
 other = "Esta sesión no tiene plano del recinto, así que no hay plazas que distribuir."
 
 ["bot.sl.need_one"]
-other = "Para distribuir el recinto necesito una categoría abierta con plazas en esta sesión. Abre o añade una en «Categorías» y vuelve."
+other = "Para distribuir el recinto necesito una categoría abierta con plazas en esta sesión. Abre o añade una en «🏷 Categorías y precios» y vuelve."
 
 ["bot.sl.intro"]
 other = "🪑 <b>Distribución de plazas</b>\nDividiré el recinto entre estas categorías: las mejores plazas van a la más cara. No cambia nada hasta que pulses «Aplicar», y después podrás deshacerlo."
@@ -4731,13 +4731,13 @@ other = "Pulsa «Aplicar» y se crearán categorías nuevas ({{.Cats}}), y las p
 other = "Categorías nuevas:"
 
 ["bot.sl.old_empty"]
-other = "La categoría «{{.Name}}» ya no tiene plazas. Si no la necesitas, ciérrala en «Categorías». No la he cerrado yo."
+other = "La categoría «{{.Name}}» ya no tiene plazas. Si no la necesitas, ciérrala en «🏷 Categorías y precios». No la he cerrado yo."
 
 ["bot.sl.undo_hint_new"]
-other = "Si no te gusta, pulsa «Deshacer». Las plazas vuelven a su categoría anterior. Las categorías nuevas se quedan: si no las necesitas, ciérralas en «Categorías». Las plazas que mientras tanto se hayan vendido o estén en reserva se quedan como están."
+other = "Si no te gusta, pulsa «Deshacer». Las plazas vuelven a su categoría anterior. Las categorías nuevas se quedan: si no las necesitas, ciérralas en «🏷 Categorías y precios». Las plazas que mientras tanto se hayan vendido o estén en reserva se quedan como están."
 
 ["bot.sl.undone_new"]
-other = "Las categorías nuevas se quedan. Si no las necesitas, ciérralas en «Categorías»."
+other = "Las categorías nuevas se quedan. Si no las necesitas, ciérralas en «🏷 Categorías y precios»."
 
 ["bot.sl.err_tier_forbidden"]
 other = "Para crear categorías hacen falta más permisos. Debe hacerlo un propietario o administrador de la organización. No he cambiado nada."
@@ -4746,10 +4746,10 @@ other = "Para crear categorías hacen falta más permisos. Debe hacerlo un propi
 other = "Ya existe una categoría con este nombre en esta sesión. No he cambiado nada. Estos son nombres nuevos. Revisa la distribución y pulsa «Aplicar» otra vez."
 
 ["bot.sl.err_too_many_tiers"]
-other = "Esta sesión tendría demasiadas categorías (15 como máximo). No he cambiado nada. Elige menos categorías o elimina las que no necesites en «Categorías» e inténtalo de nuevo."
+other = "Esta sesión tendría demasiadas categorías (15 como máximo). No he cambiado nada. Elige menos categorías o elimina las que no necesites en «🏷 Categorías y precios» e inténtalo de nuevo."
 
 ["bot.sl.err_method_one"]
-other = "Este método necesita dos categorías en la sesión. Elige otro método o añade una categoría en «Categorías»."
+other = "Este método necesita dos categorías en la sesión. Elige otro método o añade una categoría en «🏷 Categorías y precios»."
 
 ["bot.sl.split_btn"]
 other = "🪑 Dividir las plazas por precio"
@@ -5031,7 +5031,7 @@ other = "Quité el archivo. Archivos ahora: {{.Count}}. Envía más o pulsa «Li
 other = "Esto es sobre la organización «{{.Org}}»."
 
 ["bot.wz.plan_in_other_org"]
-other = "Esta solicitud pertenece a «{{.Org}}». Cambia a ella en el menú y abre la solicitud otra vez."
+other = "Esta solicitud pertenece a «{{.Org}}». Para cambiar a ella, pulsa «🔁 Cambiar de organización» en «⚙️ Ajustes». Luego abre la solicitud otra vez."
 
 ["bot.wz.venue_shared_note"]
 other = "Los recintos con ✓ son de otros organizadores y los ha comprobado la plataforma. Puedes vender entradas allí. Solo su propietario puede modificar un recinto."
@@ -5524,7 +5524,7 @@ other = "✔ Sí, detener"
 other = "⏸ El precio ya no sube. Se queda como está ahora."
 
 ["bot.sp.in_chain"]
-other = "Esta categoría ya se vende por tramos. Para cambiarlos, abre Editar y luego Entradas."
+other = "Esta categoría ya se vende por tramos. Para cambiarlos, pulsa «✏️ Editar», luego «📝 Nombre, descripción y cartel» y «Precios y categorías»."
 
 ["bot.sp.ended_stopped"]
 other = "El precio inteligente se detuvo el {{.When}}."
@@ -5581,7 +5581,7 @@ other = "El precio inteligente ya está activado o la categoría ya se vende por
 other = "Alguien cambió las categorías de esta fecha en ese mismo momento, así que no se guardó nada. Vuelve a abrir la categoría y repite."
 
 ["bot.sp.err_schedule"]
-other = "Esta categoría ya tiene un calendario de precios. Quita sus ventanas de precio futuras en Editar y luego activa el precio inteligente."
+other = "Esta categoría ya tiene un calendario de precios. Quita sus ventanas de precio futuras así: «✏️ Editar», luego «📝 Nombre, descripción y cartel» y «Precios y categorías». Luego activa el precio inteligente."
 
 ["bot.sp.err_places"]
 other = "No hay entradas libres suficientes para esos tramos. Haz el tramo más pequeño o elige la subida por días."
@@ -5679,7 +5679,7 @@ other = "Esta sesión aún no tiene entradas activas. La lista de invitados est�
 other = "<b>{{.Name}}</b>, {{.When}}\nLista de invitados. Entradas en la lista: {{.Rows}}. El archivo tiene los contactos de los compradores: no lo reenvíes a personas ajenas."
 
 ["bot.gl.auto_hint"]
-other = "El bot puede enviarte esta lista por sí mismo: 24 horas antes del inicio, 3 horas antes y al abrir las puertas. Actívalo en «☰ Menú» y luego «🔔 Notificaciones»."
+other = "El bot puede enviarte esta lista por sí mismo: 24 horas antes del inicio, 3 horas antes y al abrir las puertas. Actívalo en «☰ Menú», «⚙️ Ajustes», «🔔 Mis notificaciones»."
 
 ["bot.gl.notif_text"]
 other = "<b>Lista de invitados</b>\nEste bot envía a este chat un archivo de Excel con la lista de invitados de cada sesión: 24 horas antes del inicio, 3 horas antes y al abrir las puertas. El archivo llega solo a ti, nunca a un grupo: tiene los contactos de los compradores."
@@ -5703,7 +5703,7 @@ other = "<b>{{.Name}}</b>, {{.When}}\nLista de invitados, 3 horas antes del inic
 other = "<b>{{.Name}}</b>, {{.When}}\nLista de invitados para la apertura de puertas. Entradas en la lista: {{.Rows}}."
 
 ["bot.gl.auto_stop"]
-other = "El archivo tiene los contactos de los compradores: no lo reenvíes a personas ajenas. Para dejar de recibirlo, abre «☰ Menú» y luego «🔔 Notificaciones»."
+other = "El archivo tiene los contactos de los compradores: no lo reenvíes a personas ajenas. Para dejar de recibirlo, abre «☰ Menú», «⚙️ Ajustes», «🔔 Mis notificaciones»."
 
 ["guestlist.sheet_name"]
 other = "Invitados"
@@ -5736,7 +5736,7 @@ other = "Recibes este correo porque activaste «Enviarme la lista de invitados»
 other = "Para dejar de recibir estos correos, desmarca «Enviarme la lista de invitados» en la sección «Notificaciones» del centro de eventos."
 
 ["bot.dp.btn"]
-other = "⚠️ Disputas"
+other = "⚠️ Disputas de pago"
 
 ["bot.dp.title"]
 other = "<b>Disputas · {{.Filter}}</b> ({{.Count}})"
@@ -6959,3 +6959,337 @@ other = "Cómo conectar este Telegram a tu organización:\n\n1. Abre el centro d
 
 ["bot.con.open_web_btn"]
 other = "🌐 Abrir el centro de eventos"
+
+# --- the sectioned main menu (eventbot/menu_sections.go) --------------------
+
+["bot.mn.orders_btn"]
+other = "🧾 Pedidos y devoluciones"
+
+["bot.mn.promo_btn"]
+other = "📣 Promoción"
+
+["bot.mn.door_btn"]
+other = "🚪 Entrada al evento"
+
+["bot.mn.settings_btn"]
+other = "⚙️ Ajustes"
+
+["bot.mn.disputes_count_btn"]
+other = "⚠️ Disputas de pago: {{.Count}}"
+
+["bot.mn.mail_btn"]
+other = "✉️ Mensajes a los compradores"
+
+["bot.mn.guests_btn"]
+other = "📋 Lista de invitados"
+
+["bot.mn.pay_btn"]
+other = "💳 Pagos de los compradores"
+
+["bot.mn.venues_btn"]
+other = "📍 Recintos"
+
+["bot.mn.orders_title"]
+other = "<b>Pedidos y devoluciones</b>\nMira los pedidos de tus compradores, devuelve dinero y responde a las disputas de pago."
+
+["bot.mn.promo_title"]
+other = "<b>Promoción</b>\nEstas herramientas te ayudan a vender más entradas."
+
+["bot.mn.door_title"]
+other = "<b>Entrada al evento</b>\nComprueba las entradas en la puerta y mira la lista de invitados."
+
+["bot.mn.settings_title"]
+other = "<b>Ajustes</b>\nTu organización, los pagos, el equipo y tus propios ajustes."
+
+["bot.mn.mail_text"]
+other = "<b>Mensajes a los compradores</b>\nArena puede enviar un recordatorio a un comprador que no pagó un pedido. Arena también puede enviar tus novedades a los compradores que aceptaron recibirlas. Lo configuras en el navegador."
+
+["bot.mn.mail_text_super"]
+other = "<b>Mensajes a los compradores</b>\nArena puede enviar un recordatorio a un comprador que no pagó un pedido. Arena también puede enviar tus novedades a los compradores que aceptaron recibirlas. El organizador lo configura en el centro web de eventos."
+
+["bot.mn.venues_text_super"]
+other = "<b>Recintos</b>\nAñades un recinto cuando añades un evento: el bot te lo pregunta. Un superadministrador ve todos los recintos y sus planos de asientos en la consola de administración."
+
+["bot.mn.venues_text"]
+other = "<b>Recintos</b>\nAñades un recinto cuando añades un evento: el bot te lo pregunta. Para ver todos los recintos y sus planos de asientos, abre el navegador."
+
+["bot.mn.guests_text"]
+other = "<b>Lista de invitados</b>\nLa lista de invitados pertenece a una sesión. Para abrirla:\n1. Pulsa «📅 Mis eventos» y elige un evento.\n2. Pulsa «📅 Sesiones: mover y cancelar» y elige una sesión.\n3. Pulsa «👥 Lista de invitados»."
+
+["bot.mn.pay_ok"]
+other = "<b>Pagos de los compradores</b>\n✅ Los pagos están conectados. Los compradores pueden pagar las entradas."
+
+["bot.mn.pay_off"]
+other = "<b>Pagos de los compradores</b>\nLos pagos no están conectados. Ya puedes añadir eventos. La venta de entradas empieza cuando Arena conecta tu proveedor de pagos. Para conectarlo, escribe al soporte de Arena."
+
+["bot.mn.pay_unknown"]
+other = "<b>Pagos de los compradores</b>\nNo puedo leer el estado de los pagos ahora. Inténtalo más tarde."
+
+["bot.mn.steps_title"]
+other = "<b>Primeros pasos</b>: {{.Done}} de {{.Total}} hechos"
+
+["bot.mn.step_org_data"]
+other = "Datos de la organización"
+
+["bot.mn.step_payments"]
+other = "Pagos de los compradores"
+
+["bot.mn.step_event"]
+other = "Primer evento"
+
+["bot.mn.step_sales_link"]
+other = "Enlace de venta"
+
+["bot.mn.step_org_data_btn"]
+other = "👉 Añadir los datos de la organización"
+
+["bot.mn.step_payments_btn"]
+other = "👉 Conectar los pagos"
+
+["bot.mn.step_event_btn"]
+other = "👉 Añadir el primer evento"
+
+["bot.mn.step_sales_link_btn"]
+other = "👉 Obtener un enlace de venta"
+
+["bot.ec.g.link_btn"]
+other = "🔗 Enlace para compradores"
+
+["bot.ec.g.sales_btn"]
+other = "📊 Ventas y pedidos"
+
+["bot.ec.g.edit_btn"]
+other = "✏️ Editar"
+
+["bot.ec.g.promo_btn"]
+other = "📣 Promoción"
+
+["bot.ec.g.more_btn"]
+other = "⚙️ Más"
+
+["bot.ec.g.cat_btn"]
+other = "🏷 Categorías y precios"
+
+["bot.ec.g.guests_btn"]
+other = "📋 Lista de invitados"
+
+["bot.ec.g.ql_btn"]
+other = "🔗 Enlaces y códigos QR"
+
+["bot.ec.g.link_more_btn"]
+other = "Más enlaces y códigos QR"
+
+["bot.ec.g.screen"]
+other = "<b>{{.Name}}</b>\n{{.Title}}\n\n{{.Text}}"
+
+["bot.ec.g.s_text"]
+other = "Consulta las ventas, los pedidos y los invitados de este evento. Aquí también puedes descargar los datos."
+
+["bot.ec.g.e_text"]
+other = "Cambia el nombre, las sesiones, los precios y la página de este evento."
+
+["bot.ec.g.p_text"]
+other = "Consigue más compradores con códigos promocionales, entradas gratuitas e invitaciones a amigos."
+
+["bot.ec.g.m_text"]
+other = "Copia el evento, retíralo de la venta, archívalo o elimínalo."
+
+["bot.ec.g.link_text"]
+other = "<b>{{.Name}}</b>\n\n🔗 Enlace para compradores:\n{{.URL}}\n\nEl código QR está en la imagen de abajo."
+
+["bot.ec.g.link_text_nocode"]
+other = "<b>{{.Name}}</b>\n\n🔗 Enlace para compradores:\n{{.URL}}\n\nEste evento no está a la venta ahora. Arena no ha creado un código QR para él."
+
+["bot.ec.g.link_text_noqr"]
+other = "<b>{{.Name}}</b>\n\n🔗 Enlace para compradores:\n{{.URL}}\n\nEl código QR no se ha cargado. Pulsa «Más enlaces y códigos QR»."
+
+["bot.ec.g.link_none"]
+other = "Este evento aún no tiene enlace para compradores. Publica primero el evento."
+
+# --- «¿Qué hay aquí?»: la ayuda de una pantalla (eventbot/screen_help.go) ---
+
+["bot.hp.btn"]
+other = "❓ ¿Qué hay aquí?"
+
+["bot.hp.title"]
+other = "<b>Qué hay aquí: {{.Screen}}</b>"
+
+["bot.hp.path"]
+other = "Para volver aquí: {{.Path}}."
+
+["bot.hp.path_sep"]
+other = ", luego "
+
+["bot.hp.p_event"]
+other = "elige el evento"
+
+["bot.hp.l_search"]
+other = "Escribe un nombre"
+
+["bot.hp.l_event"]
+other = "Botones de eventos"
+
+["bot.hp.i.el.filters"]
+other = "Cambia entre los eventos en venta y el archivo."
+
+["bot.hp.i.el.search"]
+other = "Escribe una parte del nombre para buscar un evento."
+
+["bot.hp.i.el.event"]
+other = "Abre la ficha de ese evento."
+
+["bot.hp.i.el.paging"]
+other = "Va a la página siguiente o a la anterior."
+
+["bot.hp.i.el.clear"]
+other = "Vuelve a mostrar todos los eventos."
+
+["bot.hp.i.ec.publish"]
+other = "Publica el evento para que los compradores puedan comprar entradas."
+
+["bot.hp.i.ec.link"]
+other = "Muestra el enlace y el código QR para los compradores."
+
+["bot.hp.i.ec.s"]
+other = "Muestra las ventas y los pedidos y permite descargar los datos."
+
+["bot.hp.i.ec.e"]
+other = "Cambia el nombre, las sesiones, los precios y la página del evento."
+
+["bot.hp.i.ec.p"]
+other = "Ayuda a vender más con códigos promocionales, entradas gratis y recomendaciones."
+
+["bot.hp.i.ec.m"]
+other = "Copia el evento, lo retira de la venta, lo archiva o lo elimina."
+
+["bot.hp.i.gs.summary"]
+other = "Muestra las entradas vendidas y el dinero de este evento."
+
+["bot.hp.i.gs.orders"]
+other = "Muestra los pedidos de este evento."
+
+["bot.hp.i.gs.guests"]
+other = "Envía la lista de invitados de este evento."
+
+["bot.hp.i.gs.csv"]
+other = "Descarga los datos de ventas en un archivo CSV."
+
+["bot.hp.i.gs.dates"]
+other = "Muestra cada sesión del evento con sus cifras."
+
+["bot.hp.i.ge.edit"]
+other = "Cambia el nombre, la descripción y el cartel."
+
+["bot.hp.i.ge.sessions"]
+other = "Cambia la fecha de una sesión o la cancela."
+
+["bot.hp.i.ge.cat"]
+other = "Cambia las categorías y los precios."
+
+["bot.hp.i.ge.materials"]
+other = "Añade imágenes, vídeos y enlaces a la página del evento."
+
+["bot.hp.i.ge.sample"]
+other = "Envía una entrada de muestra de este evento."
+
+["bot.hp.i.ge.text"]
+other = "Define el texto que los compradores leen en su e-mail."
+
+["bot.hp.i.ge.promoter"]
+other = "Elige la marca de este evento."
+
+["bot.hp.i.gp.promo"]
+other = "Añade y gestiona los códigos promocionales de este evento."
+
+["bot.hp.i.gp.invite"]
+other = "Envía entradas gratis a los invitados."
+
+["bot.hp.i.gp.links"]
+other = "Crea más enlaces y códigos QR para este evento y consulta sus estadísticas."
+
+["bot.hp.i.gp.referral"]
+other = "Configura la recompensa por recomendar este evento."
+
+["bot.hp.i.gm.copy"]
+other = "Crea un evento nuevo a partir de este."
+
+["bot.hp.i.gm.publish"]
+other = "Publica el evento para que los compradores puedan comprar entradas."
+
+["bot.hp.i.gm.off"]
+other = "Detiene la venta y las entradas vendidas siguen siendo válidas."
+
+["bot.hp.i.gm.archive"]
+other = "Mueve el evento al archivo."
+
+["bot.hp.i.gm.delete"]
+other = "Elimina el evento después de que lo confirmes."
+
+["bot.hp.i.so.orders"]
+other = "Muestra los pedidos de tus compradores."
+
+["bot.hp.i.so.refunds"]
+other = "Muestra las devoluciones que esperan tu acción."
+
+["bot.hp.i.so.disputes"]
+other = "Ayuda a responder a las disputas de pago de tus compradores."
+
+["bot.hp.i.sp.promo"]
+other = "Añade y gestiona códigos promocionales."
+
+["bot.hp.i.sp.invite"]
+other = "Envía entradas gratis a los invitados."
+
+["bot.hp.i.sp.link"]
+other = "Crea enlaces de venta y códigos QR y muestra sus estadísticas."
+
+["bot.hp.i.sp.mail"]
+other = "Explica cómo funcionan los mensajes a los compradores."
+
+["bot.hp.i.sd.scanner"]
+other = "Da la app que escanea las entradas en la puerta."
+
+["bot.hp.i.sd.guests"]
+other = "Explica cómo abrir la lista de invitados de una sesión."
+
+["bot.hp.i.ss.org"]
+other = "Cambia los datos de tu organización."
+
+["bot.hp.i.ss.pay"]
+other = "Muestra si los compradores pueden pagar las entradas."
+
+["bot.hp.i.ss.team"]
+other = "Muestra a las personas de tu equipo."
+
+["bot.hp.i.ss.team_add"]
+other = "Invita al primer miembro de tu equipo."
+
+["bot.hp.i.ss.promoter"]
+other = "Añade y cambia las marcas de tus eventos."
+
+["bot.hp.i.ss.venues"]
+other = "Explica cómo añadir y ver los recintos."
+
+["bot.hp.i.ss.notif"]
+other = "Elige las notificaciones que recibes."
+
+["bot.hp.i.ss.lang"]
+other = "Cambia el idioma del bot."
+
+["bot.hp.i.ss.switch"]
+other = "Cambia a otra organización."
+
+["bot.hp.i.sh.orders"]
+other = "Muestra los pedidos de tu tienda y ayuda a procesarlos."
+
+["bot.hp.i.sh.close"]
+other = "Cierra el escaparate para que los compradores no puedan pedir."
+
+["bot.hp.i.sh.open"]
+other = "Abre el escaparate para que los compradores puedan pedir."
+
+["bot.hp.i.sh.settings"]
+other = "Muestra los ajustes de tu tienda."
+
+["bot.hp.i.sh.web"]
+other = "Abre la tienda en el navegador."

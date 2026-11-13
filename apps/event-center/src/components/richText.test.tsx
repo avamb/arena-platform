@@ -435,7 +435,7 @@ describe("the screen Text in the letter", () => {
     expect(el.querySelector('[data-testid="email-note-error"]')?.textContent).toContain("There is no text to send");
     vi.mocked(sendEmailNoteTest).mockRejectedValueOnce(new ApiError(429, "event.email_note_test_rate_limited", "slow down"));
     await press(el.querySelector('[data-testid="email-note-test"]'));
-    expect(el.querySelector('[data-testid="email-note-error"]')?.textContent).toContain("Too many test letters");
+    expect(el.querySelector('[data-testid="email-note-error"]')?.textContent).toContain("Too many test e-mails");
     expect(el.querySelector('[data-testid="email-note-error"]')?.textContent).toContain("5 test e-mails for each hour");
     expect(el.querySelector('[data-testid="email-note-status"]')).toBeNull();
   });

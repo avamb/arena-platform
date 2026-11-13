@@ -136,8 +136,11 @@ func TestBotE2E_Disputes_OwnerSubmitsManagerOnlyReads(t *testing.T) {
 	// ── the owner ──────────────────────────────────────────────────────────
 	d1 := ecDriver{t, tg, ecOwnerTG}
 	d1.say("/start", "Что будем делать?")
-	if _, _, kb := tg.lastOf(ecOwnerTG); !dpHas(kb, "dp:l:open:1") {
-		t.Errorf("the main menu has no Disputes row: %v", kb)
+	// The disputes button sits in "Orders and refunds", with the number of
+	// disputes that wait for an answer.
+	d1.press("mn:ord", "Заказы и возвраты")
+	if mid, _, kb := tg.lastOf(ecOwnerTG); !dpHas(kb, "dp:l:open:1") || !strings.Contains(strings.Join(tg.labelsOf(mid), "|"), "Споры по оплате: 1") {
+		t.Errorf("the Orders and refunds screen has no Disputes row with the counter: %v %v", kb, tg.labelsOf(mid))
 	}
 	card = d1.press("dp:v:"+did, "Спор · заказ")
 	for _, want := range []string{orderLabel, "50 EUR", "по Мадриду", "Файлы пакета"} {

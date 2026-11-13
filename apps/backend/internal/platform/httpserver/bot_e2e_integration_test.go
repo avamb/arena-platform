@@ -765,7 +765,7 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 		t.Errorf("accepted message should name the role: %s", accepted)
 	}
 	// The first message also says what to do next, naming the button below.
-	if !strings.Contains(accepted, "Как это работает") || !strings.Contains(accepted, "+ Мероприятие") {
+	if !strings.Contains(accepted, "Как это работает") || !strings.Contains(accepted, "➕ Новое мероприятие") {
 		t.Errorf("accepted message should give the steps: %s", accepted)
 	}
 	tg.waitFor(t, "Что будем делать?")
@@ -823,7 +823,7 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 
 	m = tg.mark()
 	tg.push(e2eCallbackAs(ownerTG, "team"))
-	teamScreen := tg.waitSince(t, m, "Сотрудники: ")
+	teamScreen := tg.waitSince(t, m, "Команда: ")
 	if !strings.Contains(teamScreen, managerEmail) || !strings.Contains(teamScreen, ownerEmail) || !strings.Contains(teamScreen, "(это вы)") || !strings.Contains(teamScreen, "Telegram ✓") {
 		t.Fatalf("team screen:\n%s", teamScreen)
 	}
@@ -871,7 +871,7 @@ func TestBotE2E_InvitationToMyEvents(t *testing.T) {
 	m = tg.mark()
 	tg.push(e2eCallbackAs(ownerTG, "team:rm:"+managerUserID.String()+":yes"))
 	removed := tg.waitSince(t, m, "убран из организации")
-	if strings.Contains(removed[strings.Index(removed, "Сотрудники:"):], managerEmail) {
+	if strings.Contains(removed[strings.Index(removed, "Команда:"):], managerEmail) {
 		t.Fatalf("the removed manager is still listed:\n%s", removed)
 	}
 	var active int

@@ -32,6 +32,7 @@ import {
 } from "@/lib/billing";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
+import { ScreenHelp } from "@/components/ScreenHelp";
 import { useOrg } from "@/screens/OrgLayout";
 
 function Totals({ totals }: { totals: readonly BillingChargeTotal[] }) {
@@ -223,7 +224,10 @@ export function BillingScreen() {
 
   return (
     <article aria-labelledby="billing-title">
-      <h1 id="billing-title">{t("billing.title")}</h1>
+      <div className="screen-head">
+        <h1 id="billing-title">{t("billing.title")}</h1>
+        <ScreenHelp screenId="billing" />
+      </div>
       <BillingNav orgId={orgId} />
       <p className="muted">{t("billing.intro")}</p>
       <p className="notice" role="status" data-testid="billing-preliminary">

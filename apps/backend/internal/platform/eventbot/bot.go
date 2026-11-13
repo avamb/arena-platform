@@ -135,6 +135,9 @@ type Bot struct {
 	onb            *onbDialogs
 	onbForms       *onbFormCache
 
+	// linkLocks serializes "find or make the sales link of an event" per event
+	// (event_card_groups.go): a double press never makes two links.
+	linkLocks keyedMutex
 	// serial runs one account's updates one at a time, in order (serial.go).
 	serial *userSerial
 	// route handles one admitted update inside its sender's turn; tests
@@ -503,8 +506,10 @@ func (b *Bot) handleMessage(ctx context.Context, m *models.Message) {
 		}
 		if b.menuCommand(ctx, cmd, strings.TrimSpace(arg), from) {
 			// /menu and a plain /start leave every dialog themselves, and
-			// ask first when a refund waits for its confirmation.
-			b.openMenu(ctx, chatID, from, cmd == "/start")
+			// ask first when a refund waits for its confirmation. Both send the
+			// "☰ Menu" keyboard again (a deleted note, a client that lost it).
+			// The typed button itself never does.
+			b.openMenu(ctx, chatID, from, true)
 			return
 		}
 		// Every command ends every dialog (dialog_owners.go): a word typed
@@ -642,6 +647,10 @@ func (b *Bot) handleCallback(ctx context.Context, cq *models.CallbackQuery) {
 		b.planIntakeCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "pi:"))
 	case "ql":
 		b.salesLinkCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, "ql:"))
+	case menuSectionPrefix:
+		b.menuSectionCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, menuSectionPrefix+":"))
+	case helpPrefix:
+		b.helpCallback(ctx, chatID, msgID, from, strings.TrimPrefix(cq.Data, helpPrefix+":"))
 	case "home":
 		b.showHome(ctx, chatID, &msgID, from, "")
 	case menuCallback:
@@ -817,69 +826,9 @@ func (b *Bot) showHome(ctx context.Context, chatID int64, editMsgID *int, from *
 		b.showOrgChooserFor(ctx, chatID, editMsgID, id)
 		return
 	}
-	text := prefix + b.texts.T(id.Locale(), "bot.menu_title", map[string]any{"Org": Esc(id.Current.OrgName)}) + b.paymentsNote(ctx, id, jwt) + b.archivedNote(id)
-	b.reply(ctx, chatID, editMsgID, text, b.homeKeyboard(ctx, id, jwt))
-}
-
-// homeKeyboard is the main menu. An owner who is still alone in the
-// organization sees "+ Team member" (straight into the invite dialog)
-// instead of a "Team" screen that would list only themselves; once a
-// colleague exists the button opens the team screen.
-func (b *Bot) homeKeyboard(ctx context.Context, id *Identity, jwt string) *models.InlineKeyboardMarkup {
-	loc := id.Locale()
-	rows := [][]models.InlineKeyboardButton{
-		{{Text: b.texts.T(loc, "bot.wz.new_event_btn", nil), CallbackData: "wz:new"}},
-		{{Text: b.texts.T(loc, "bot.btn_events", nil), CallbackData: "el:new"}},
-	}
-	if canViewSales(id) {
-		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.ord.btn", nil), CallbackData: "or:new"}})
-	}
-	if row := b.shopMenuRow(loc, id); row != nil { // the shop (spec 61, stage M3)
-		rows = append(rows, row)
-	}
-	if row := b.queueMenuRow(loc, id); row != nil { // refunds (EC-23)
-		rows = append(rows, row)
-	}
-	if row := b.disputeMenuRow(loc, id); row != nil { // disputes (spec 51.3, DS-11)
-		rows = append(rows, row)
-	}
-	if canInvite(id) {
-		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.inv.btn", nil), CallbackData: "iv:new"}})
-	}
-	if row := b.promoMenuRow(loc, id); row != nil { // promo codes (EC-11)
-		rows = append(rows, row)
-	}
-	if row := b.promoterMenuRow(loc, id); row != nil { // promoters (EC-14)
-		rows = append(rows, row)
-	}
-	if row := b.salesLinkMenuRow(loc, id); row != nil { // links and QR codes (spec 43, QL-8)
-		rows = append(rows, row)
-	}
-	if row := b.orgDataMenuRow(loc, id); row != nil { // organization data (HP-4a)
-		rows = append(rows, row)
-	}
-	if isOwner(id) {
-		if b.ownerIsAlone(ctx, id, jwt) {
-			rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_team_add", nil), CallbackData: "team:invite"}})
-		} else {
-			rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_team", nil), CallbackData: "team"}})
-		}
-	} else if isTeamReader(id) { // the manager reads the team, never changes it (V-11)
-		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_team", nil), CallbackData: "team"}})
-	}
-	if len(id.Memberships) > 1 {
-		rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.btn_org", nil), CallbackData: "org"}})
-	}
-	if row := b.webMenuRow(loc, id); row != nil { // the web event center (spec 37 §4.3)
-		rows = append(rows, row)
-	}
-	rows = append(rows, []models.InlineKeyboardButton{{Text: b.texts.T(loc, "bot.ec.notif_btn", nil), CallbackData: "ec:nt"}})
-	rows = append(rows, b.scannerRow(loc))
-	rows = append(rows, []models.InlineKeyboardButton{
-		{Text: b.texts.T(loc, "bot.btn_lang", nil), CallbackData: "lang"},
-		{Text: b.texts.T(loc, "bot.btn_help", nil), CallbackData: "help"},
-	})
-	return &models.InlineKeyboardMarkup{InlineKeyboard: rows}
+	gs := b.firstSteps(ctx, id, jwt)
+	text := prefix + b.texts.T(id.Locale(), "bot.menu_title", map[string]any{"Org": Esc(id.Current.OrgName)}) + b.firstStepsText(id.Locale(), gs) + b.archivedNote(id)
+	b.reply(ctx, chatID, editMsgID, text, b.homeKeyboardFor(id, gs))
 }
 
 func (b *Bot) showHelp(ctx context.Context, chatID int64, editMsgID *int, from *models.User) {

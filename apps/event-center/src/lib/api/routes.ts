@@ -68,6 +68,8 @@ export const API = {
   // The organization switch for the team guest list (24 h and 3 h before every session).
   guestListSettings: { method: "GET", path: "/v1/organizations/{org_id}/guest-list-settings" },
   guestListSettingsSet: { method: "PUT", path: "/v1/organizations/{org_id}/guest-list-settings" },
+  // The "First steps" card of the events list: which first steps the caller may do and which are done.
+  gettingStarted: { method: "GET", path: "/v1/organizations/{org_id}/getting-started" },
   guestListSubscription: { method: "GET", path: "/v1/organizations/{org_id}/guest-list-subscription" },
   guestListSubscriptionSet: { method: "PUT", path: "/v1/organizations/{org_id}/guest-list-subscription" },
   // The search travels in the body, never in the URL: a buyer's e-mail or

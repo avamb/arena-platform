@@ -133,7 +133,7 @@ func TestBotE2E_WizardSeatedDate(t *testing.T) {
 	eventName := "Seated show " + suffix
 	owner.press("wz:new", "Как называется")
 	owner.say(eventName, "Возраст")
-	owner.press("wz:age:16+", "От чьего имени")
+	owner.press("wz:age:16+", "Под каким брендом")
 	owner.press("wz:prom:org", "афишу")
 	owner.press("wz:skip", "Дата сеанса 1")
 	owner.say("15.12.2099", "Вы написали")

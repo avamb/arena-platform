@@ -133,11 +133,12 @@ func TestBotE2E_LetterTextIsFormattedSavedTestedAndDeleted(t *testing.T) {
 	}
 	ids := eventID.String()
 
-	// The event card carries the button.
+	// The button is in the Edit group of the event card.
 	say("/events", "Идут")
 	press("event:"+ids+":1", eventName)
+	press("ec:g:"+ids+":e", "Измените название")
 	if !tg.waitButton(e2eLetterTextTelegramUser, "tf:n:"+ids, 3*time.Second) {
-		t.Fatal("the event card has no \"Text in the letter\" button")
+		t.Fatal("the Edit group of the event card has no \"Text in the e-mail\" button")
 	}
 
 	// The screen says what the letter does itself and that there is no text.

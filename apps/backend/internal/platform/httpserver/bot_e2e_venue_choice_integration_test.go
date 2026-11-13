@@ -206,7 +206,7 @@ func (r *vcRig) head(eventName string) {
 	r.t.Helper()
 	r.press("wz:new", "Как называется")
 	r.say(eventName, "Возраст")
-	r.press("wz:age:16+", "От чьего имени")
+	r.press("wz:age:16+", "Под каким брендом")
 	r.press("wz:prom:org", "афишу")
 	r.press("wz:skip", "Дата сеанса 1")
 	r.sayDate("15.12.2099", "2099-12-15", "Время начала")

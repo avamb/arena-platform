@@ -53,7 +53,7 @@ func TestHomeKeyboard_TeamRowByRole(t *testing.T) {
 	b := ecTestBot(t)
 	row := func(role string) string {
 		id := &Identity{Current: &Membership{Role: role}}
-		for _, r := range b.homeKeyboard(context.Background(), id, "").InlineKeyboard {
+		for _, r := range b.settingsSectionRows(context.Background(), "en", id, "") {
 			for _, btn := range r {
 				if btn.CallbackData == "team" || btn.CallbackData == "team:invite" {
 					return btn.CallbackData

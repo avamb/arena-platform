@@ -19,7 +19,8 @@ package eventbot
 //
 // The keyboard is sent with a short note, because a message carries either
 // an inline keyboard or a reply keyboard, never both. The bot remembers in
-// memory which chats got it (menuShown): /start always sends it, the main
+// memory which chats got it (menuShown): /start and /menu always send it (the
+// note may be deleted, or the client may have lost the keyboard), the main
 // menu sends it to a chat it does not know yet (after a restart, or to a
 // person linked before this button existed). Strangers never get it: they
 // see the organizer application instead.

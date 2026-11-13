@@ -8,6 +8,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { openAllEventSections } from "../eventSections";
 
 export type Role = "org_admin" | "organizer" | "agent";
 
@@ -98,7 +99,10 @@ export function richText(page: Page, testId: string) {
 }
 
 /** Signs in through the real login form, exactly as the organizer does. */
-export async function signInAs(page: Page, p: Person) {
+export async function signInAs(page: Page, p: Person, opts: { sections?: "open" | "default" } = {}) {
+  // The event card keeps its five sections closed but one. Specs of the blocks inside them find all open;
+  // a spec of the sections themselves passes `sections: "default"`.
+  if (opts.sections !== "default") await openAllEventSections(page);
   await page.goto("/login");
   await page.getByLabel("E-mail").fill(p.email);
   await page.getByLabel("Password").fill(p.password);

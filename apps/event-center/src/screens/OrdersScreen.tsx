@@ -4,6 +4,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { listOrders, type OrderTab } from "@/lib/api/endpoints";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import { useI18n, type MessageKey } from "@/lib/i18n";
+import { ScreenHelp } from "@/components/ScreenHelp";
 import { ORDER_STATUSES, orderTone } from "@/lib/orders";
 import { NO_DATES, datesBackwards, datesQuery, hasDates, type OrderDates } from "@/lib/orderCards";
 import { Badge, Empty, ErrorBox, Loading } from "@/components/ui";
@@ -74,7 +75,10 @@ export function OrdersScreen() {
 
   return (
     <section className="dense" aria-labelledby="orders-title">
-      <h1 id="orders-title">{t("orders.title")}</h1>
+      <div className="screen-head">
+        <h1 id="orders-title">{t("orders.title")}</h1>
+        <ScreenHelp screenId="orders" />
+      </div>
       <form className="search-card" role="search" onSubmit={onSearch}>
         <label htmlFor="orders-search">{t("orders.searchLabel")}</label>
         <div className="search-card-row">

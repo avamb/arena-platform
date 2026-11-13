@@ -1312,6 +1312,54 @@ components:
             value as staff, the sign-in routes enforce the rule on the server.
           example: false
 
+    GettingStartedResponse:
+      type: object
+      description: The answer of GET /v1/organizations/{org_id}/getting-started.
+      required:
+        - getting_started
+      properties:
+        getting_started:
+          description: The first steps of the organization the caller may do.
+          allOf:
+            - $ref: "#/components/schemas/GettingStarted"
+    GettingStarted:
+      type: object
+      description: |
+        The first steps of an organization that the caller may do, and
+        whether all of them are done.
+      required:
+        - complete
+        - steps
+      properties:
+        complete:
+          type: boolean
+          description: |
+            True when every listed step is done. An empty list is complete.
+        steps:
+          type: array
+          description: |
+            The steps the caller holds the permission for in this
+            organization, always in the order org_data, payments, event,
+            sales_link. Never null.
+          items:
+            $ref: "#/components/schemas/GettingStartedStep"
+    GettingStartedStep:
+      type: object
+      description: One first step of an organization.
+      required:
+        - key
+        - done
+      properties:
+        key:
+          type: string
+          enum: [org_data, payments, event, sales_link]
+          description: |
+            The step: `org_data` (seller data complete), `payments` (a
+            payment provider connected and accepted), `event` (an event
+            created, a draft counts), `sales_link` (a sales link created).
+        done:
+          type: boolean
+          description: True when the organization's data shows the step is done.
     OrgMeResponse:
       type: object
       description: |
@@ -33227,6 +33275,92 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "500":
           description: The membership or permission lookup failed (`org.membership_check_failed`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "503":
+          description: The permission checker is not wired (`dependency.org_access_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /v1/organizations/{org_id}/getting-started:
+    get:
+      operationId: getV1OrganizationsOrgIdGettingStarted
+      summary: Return which first steps of an organization are done
+      description: |
+        Returns the four first steps of an organization and whether each is
+        done, in a fixed order: `org_data`, `payments`, `event`,
+        `sales_link`. A step is listed only when the caller holds its
+        permission IN this organization, by the same per-organization
+        checker the route gates use: `org_data` needs `org.update`,
+        `payments` needs `payment_config.read`, `event` needs
+        `import.bil24_session` (the event wizard's import), `sales_link`
+        needs `sales_link.manage`.
+
+        The server decides every flag from the organization's data:
+        `org_data` is done when the seller data is complete (the rule of
+        GET .../seller-profile: no organization field is missing and every
+        sales page is shown or hidden by the operator); `payments` when an
+        active payment configuration was accepted by the provider; `event`
+        when the organization has an event (a draft counts); `sales_link`
+        when it has a sales link. `complete` is true when every listed step
+        is done, also when no step is listed. Read-only.
+
+        Who may call it: a user with an active membership in the
+        organization, an organization API key of that organization, and a
+        platform superadmin. Anyone else gets 403 `org.access_denied`.
+      tags: [v1, iam]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: org_id
+          in: path
+          required: true
+          description: UUID of the organization the caller asks about.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The first steps of the organization the caller may do.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GettingStartedResponse"
+        "400":
+          description: org_id is not a valid UUID.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "401":
+          description: Missing or invalid bearer token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "403":
+          description: |
+            The caller is not a member of this organization, or the API key
+            belongs to another organization (`org.access_denied`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "404":
+          description: The organization does not exist or was archived (`org.not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: |
+            The membership or permission lookup failed
+            (`org.membership_check_failed`), or the organization's data could
+            not be read (`getting_started.lookup_failed`).
           content:
             application/json:
               schema:

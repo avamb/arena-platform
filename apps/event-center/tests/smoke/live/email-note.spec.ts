@@ -149,7 +149,7 @@ test.describe("text in the letter (live)", () => {
     );
     await editor(page).fill("A text");
     await page.getByTestId("email-note-test").click();
-    await expect(page.getByTestId("email-note-error")).toContainText("Too many test letters");
+    await expect(page.getByTestId("email-note-error")).toContainText("Too many test e-mails");
   });
 
   test("agent: has no right to edit the event and does not see the screen", async ({ page }) => {
