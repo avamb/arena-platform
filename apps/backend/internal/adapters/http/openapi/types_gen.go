@@ -5510,6 +5510,9 @@ type BotVenuePlanNotice struct {
 	// CurrentDraft Number of the current draft, or null when the intake has no draft.
 	CurrentDraft *int32 `json:"current_draft"`
 
+	// DraftChanged True for a `returned` notice when the current draft was uploaded by an administrator (author `operator` or `operator_svg`) at or after the moment the administrator took the intake; false when the administrator returned the intake without a new draft and for every other kind of notice.
+	DraftChanged bool `json:"draft_changed"`
+
 	// Id Id of the notice.
 	Id openapi_types.UUID `json:"id"`
 

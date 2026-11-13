@@ -1090,14 +1090,18 @@ func (b *Bot) planNoticeSay(ctx context.Context, tg int64, locale string, link g
 	switch string(n.Kind) {
 	case "returned", "draft_ready":
 		key, vars := "bot.wz.plan_in_ready", map[string]any{"Venue": venue}
-		if note != "" {
+		switch {
+		case string(n.Kind) == "returned" && !n.DraftChanged:
+			// The administrator looked and sent it back without a new draft.
+			key, vars = "bot.wz.plan_in_examined", map[string]any{"Venue": venue, "Note": Esc(note)}
+		case note != "":
 			key, vars = "bot.wz.plan_in_returned", map[string]any{"Venue": venue, "Note": Esc(note)}
 		}
 		btn := piBtn(b.texts.T(loc, "bot.wz.plan_in_check_btn", nil), "rv", intake)
 		if known && !current {
 			btn = piBtn(b.texts.T(loc, "bot.wz.plan_in_check_btn", nil), "ro", orgPrefix(n.OrgId), intake)
 		}
-		b.send(ctx, tg, orgLine+b.texts.T(loc, key, vars), inline([]models.InlineKeyboardButton{btn}))
+		b.send(ctx, tg, orgLine+strings.TrimSpace(b.texts.T(loc, key, vars)), inline([]models.InlineKeyboardButton{btn}))
 	case "escalated":
 		// Nothing to press: the draft of the wizard stays paused, the request
 		// is with an administrator now.

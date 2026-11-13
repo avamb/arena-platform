@@ -5085,6 +5085,9 @@ other = "Схема зала «{{.Venue}}» готова. Сравните её 
 ["bot.wz.plan_in_returned"]
 other = "Администратор поправил схему зала «{{.Venue}}». Посмотрите, всё ли верно. {{.Note}}"
 
+["bot.wz.plan_in_examined"]
+other = "Администратор посмотрел схему зала «{{.Venue}}». Проверьте её ещё раз. {{.Note}}"
+
 ["bot.wz.plan_in_check_btn"]
 other = "Проверить схему"
 

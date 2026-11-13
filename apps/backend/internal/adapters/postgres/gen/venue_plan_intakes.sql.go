@@ -645,6 +645,9 @@ type VenuePlanNoticeClaim struct {
 	VenueName    string    `json:"venue_name"`
 	CurrentDraft *int32    `json:"current_draft"`
 	ChatIDs      []int64   `json:"chat_ids"`
+	// DraftChanged is true for a returned notice whose current draft an
+	// administrator uploaded after taking the intake.
+	DraftChanged bool `json:"draft_changed"`
 }
 
 const claimVenuePlanNotices = `-- name: ClaimVenuePlanNotices :many
@@ -663,7 +666,12 @@ SELECT c.id, c.intake_id, c.kind, c.note, c.created_at,
        i.org_id, i.venue_id, v.name, i.current_draft,
        COALESCE((SELECT array_agg(l.telegram_user_id ORDER BY l.telegram_user_id)
                  FROM   bot_telegram_links l
-                 WHERE  l.user_id = i.created_by AND l.revoked_at IS NULL), '{}'::bigint[])
+                 WHERE  l.user_id = i.created_by AND l.revoked_at IS NULL), '{}'::bigint[]),
+       (c.kind = 'returned' AND i.operator_claimed_at IS NOT NULL AND EXISTS (
+            SELECT 1 FROM venue_plan_drafts d
+            WHERE  d.intake_id = i.id AND d.n = i.current_draft
+              AND  d.author IN ('operator', 'operator_svg')
+              AND  d.created_at >= i.operator_claimed_at)) AS draft_changed
 FROM   claimed c
 JOIN   venue_plan_intakes i ON i.id = c.intake_id
 JOIN   venues v             ON v.id = i.venue_id
@@ -678,7 +686,7 @@ func (q *Queries) ClaimVenuePlanNotices(ctx context.Context, limit int32) ([]Ven
 	return collectRows(rows, err, func(row interface{ Scan(...any) error }) (VenuePlanNoticeClaim, error) {
 		var r VenuePlanNoticeClaim
 		err := row.Scan(&r.ID, &r.IntakeID, &r.Kind, &r.Note, &r.CreatedAt,
-			&r.OrgID, &r.VenueID, &r.VenueName, &r.CurrentDraft, &r.ChatIDs)
+			&r.OrgID, &r.VenueID, &r.VenueName, &r.CurrentDraft, &r.ChatIDs, &r.DraftChanged)
 		return r, err
 	})
 }

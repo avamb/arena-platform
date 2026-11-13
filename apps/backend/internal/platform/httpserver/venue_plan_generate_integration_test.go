@@ -74,10 +74,12 @@ type vpgStub struct {
 	mu      sync.Mutex
 	submits int
 	kinds   []string
-	badAuth int
-	submit  func(n int) (int, string)
-	job     func(poll int) (int, string)
-	polls   int
+	// profiles is the target_profile field of every POST /generate.
+	profiles []string
+	badAuth  int
+	submit   func(n int) (int, string)
+	job      func(poll int) (int, string)
+	polls    int
 }
 
 func newVPGStub(t *testing.T, s *vpgStub) *generator.Client {
@@ -97,6 +99,7 @@ func newVPGStub(t *testing.T, s *vpgStub) *generator.Client {
 			n := s.submits
 			_ = r.ParseMultipartForm(64 << 20)
 			s.kinds = append(s.kinds, r.FormValue("kinds"))
+			s.profiles = append(s.profiles, r.FormValue("target_profile"))
 			fn := s.submit
 			s.mu.Unlock()
 			status, body := http.StatusAccepted, fmt.Sprintf(`{"job_id":"job-%d","status":"queued","status_url":"/jobs/job-%d"}`, n, n)
@@ -321,6 +324,63 @@ func (e *vpiEnv) createReceived(t *testing.T, files ...vpiFile) string {
 		t.Fatalf("the create queued %d administrator notifications, want none", n)
 	}
 	return id
+}
+
+// vpgCategorySent runs one attempt for a fresh intake after setup changed it
+// and returns the category name of the target_profile the stub was sent.
+func vpgCategorySent(t *testing.T, e *vpiEnv, setup func(id string, author string)) string {
+	t.Helper()
+	id := e.createReceived(t, vpiFile{"hall.xlsx", vpgXLSX(t)})
+	var author string
+	if err := e.srv.pgxPool.QueryRow(context.Background(),
+		`SELECT created_by::text FROM venue_plan_intakes WHERE id = $1`, id).Scan(&author); err != nil {
+		t.Fatal(err)
+	}
+	setup(id, author)
+	svg := vpgAuthoringSVG(t)
+	s := &vpgStub{job: func(int) (int, string) { return 200, vpgDone("ok", sp("PASS"), &svg, vpgUsedFile) }}
+	e.runGenerate(t, newVPGStub(t, s), id)
+	if len(s.profiles) != 1 {
+		t.Fatalf("POST /generate sent %d times, want 1", len(s.profiles))
+	}
+	var p struct {
+		Category struct {
+			Name string `json:"name"`
+		} `json:"category"`
+	}
+	if err := json.Unmarshal([]byte(s.profiles[0]), &p); err != nil {
+		t.Fatalf("target_profile %q: %v", s.profiles[0], err)
+	}
+	return p.Category.Name
+}
+
+// The draft's category name follows the language of the intake's author.
+func TestVenuePlanGenerate_CategoryNameFollowsAuthorLanguage(t *testing.T) {
+	e := newVPIEnv(t)
+	link := func(author, locale string) {
+		e.exec(t, `INSERT INTO bot_telegram_links (telegram_user_id, user_id, locale) VALUES ($1, $2, $3)`,
+			time.Now().UnixNano(), author, locale)
+	}
+	t.Cleanup(func() {
+		e.exec(t, `DELETE FROM bot_telegram_links WHERE user_id IN (SELECT user_id FROM memberships WHERE org_id = $1)`, e.orgA)
+	})
+	// A bot intake of an author whose Telegram link speaks Russian.
+	if got := vpgCategorySent(t, e, func(id, author string) {
+		link(author, "ru")
+		e.exec(t, `UPDATE venue_plan_intakes SET channel = 'telegram_bot' WHERE id = $1`, id)
+	}); got != "Стандарт" {
+		t.Errorf("bot intake, link ru: %q, want Стандарт", got)
+	}
+	// A web intake: no link, preferred_locale is the default en.
+	if got := vpgCategorySent(t, e, func(string, string) {}); got != "Standard" {
+		t.Errorf("web intake, default locale: %q, want Standard", got)
+	}
+	// A web intake: preferred_locale es.
+	if got := vpgCategorySent(t, e, func(_, author string) {
+		e.exec(t, `UPDATE users SET preferred_locale = 'es' WHERE id = $1`, author)
+	}); got != "Estándar" {
+		t.Errorf("web intake, preferred_locale es: %q, want Estándar", got)
+	}
 }
 
 // (1) An Excel table: the generator answers PASS, the draft is in review for

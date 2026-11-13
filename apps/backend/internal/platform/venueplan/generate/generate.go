@@ -97,7 +97,7 @@ const (
 // Generator is the part of the generator client the handler needs
 // (*generator.Client): one short HTTP call each.
 type Generator interface {
-	Submit(ctx context.Context, files []generator.File) (string, error)
+	Submit(ctx context.Context, files []generator.File, opts ...generator.SubmitOption) (string, error)
 	Poll(ctx context.Context, jobID string) (generator.Result, bool, error)
 }
 
@@ -218,7 +218,10 @@ func (h *handler) submitStep(ctx context.Context, id uuid.UUID, p intake.Generat
 	files, genErr := h.read(ctx, picked)
 	var jobID string
 	if genErr == nil {
-		jobID, genErr = h.gen.Submit(ctx, files)
+		var name string
+		if name, genErr = h.categoryName(ctx, id); genErr == nil {
+			jobID, genErr = h.gen.Submit(ctx, files, generator.WithCategoryName(name))
+		}
 	}
 	if genErr != nil && ctx.Err() != nil {
 		// The worker stops: the same row runs again, the attempt is not spent.
@@ -430,6 +433,53 @@ func (h *handler) read(ctx context.Context, picked []Candidate) ([]generator.Fil
 		out = append(out, generator.File{Name: c.Name, Kind: c.Send, ContentType: c.ContentType, Data: data})
 	}
 	return out, nil
+}
+
+// categoryNames is the name of the one price category a generated draft
+// carries, by language of the organizer (any other language: en).
+var categoryNames = map[string]string{"en": "Standard", "ru": "Стандарт", "es": "Estándar"}
+
+// CategoryName returns the category name for a locale such as "ru" or
+// "ru-RU"; an unknown or empty locale gives the English name.
+func CategoryName(locale string) string {
+	l := strings.ToLower(strings.TrimSpace(locale))
+	if i := strings.IndexAny(l, "-_"); i > 0 {
+		l = l[:i]
+	}
+	if n, ok := categoryNames[l]; ok {
+		return n
+	}
+	return categoryNames["en"]
+}
+
+// categoryName picks the language of the intake's author: the language of the
+// author's live Telegram link for a bot intake, else the author's
+// preferred_locale, else the organization's default_locale, else en.
+func (h *handler) categoryName(ctx context.Context, id uuid.UUID) (string, error) {
+	var bot, user, org *string
+	err := h.pool.QueryRow(ctx, `
+		SELECT CASE WHEN i.channel = $2 THEN
+		         (SELECT NULLIF(btrim(l.locale), '') FROM bot_telegram_links l
+		           WHERE l.user_id = i.created_by AND l.revoked_at IS NULL
+		           ORDER BY l.updated_at DESC, l.telegram_user_id LIMIT 1) END,
+		       NULLIF(btrim(u.preferred_locale), ''),
+		       NULLIF(btrim(o.default_locale), '')
+		FROM venue_plan_intakes i
+		LEFT JOIN users u ON u.id = i.created_by
+		LEFT JOIN organizations o ON o.id = i.org_id
+		WHERE i.id = $1`, id, string(venueplan.ChannelTelegramBot)).Scan(&bot, &user, &org)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return CategoryName(""), nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("venue plan generate: author language: %w", err)
+	}
+	for _, l := range []*string{bot, user, org} {
+		if l != nil {
+			return CategoryName(*l), nil
+		}
+	}
+	return CategoryName(""), nil
 }
 
 // start moves received -> generating (a retry finds it generating already).

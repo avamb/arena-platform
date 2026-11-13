@@ -2139,7 +2139,7 @@ components:
             $ref: "#/components/schemas/BotWebLoginNotice"
     BotVenuePlanNotice:
       type: object
-      required: [id, kind, intake_id, org_id, venue_id, venue_name, current_draft, note, telegram_user_ids, created_at]
+      required: [id, kind, intake_id, org_id, venue_id, venue_name, current_draft, draft_changed, note, telegram_user_ids, created_at]
       description: A message about a hall plan intake that the bot must send to the person who sent the intake.
       properties:
         id:
@@ -2169,6 +2169,9 @@ components:
           type: [integer, "null"]
           format: int32
           description: Number of the current draft, or null when the intake has no draft.
+        draft_changed:
+          type: boolean
+          description: "True for a `returned` notice when the current draft was uploaded by an administrator (author `operator` or `operator_svg`) at or after the moment the administrator took the intake; false when the administrator returned the intake without a new draft and for every other kind of notice."
         note:
           type: [string, "null"]
           description: The administrator's note or reason for the organizer, or null when there is none.

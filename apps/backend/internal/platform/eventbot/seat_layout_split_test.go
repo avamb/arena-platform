@@ -33,7 +33,7 @@ func TestLoBuildPlanNew_EqualPriceGoesToTheOldCategoryAndTheRestAreNew(t *testin
 	res := splitSuggest(
 		[]openapi.SeatLayoutSlot{slotWith("c1", 9000, "#c0392b"), slotWith("c2", 6000, "#e67e22"), slotWith("c3", 3000, "#f1c40f")},
 		map[string]string{"s|1": "c1", "s|2": "c2", "s|3": "c3", "s|4": "c3"})
-	plan, err := loBuildPlanNew(res, []loTarget{old}, []string{"Stalls"}, catName)
+	plan, err := loBuildPlanNew(res, []loTarget{old}, nil, []string{"Stalls"}, catName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestLoBuildPlanNew_NamesAvoidTakenOnesAndEmptySlotsAreNotCreated(t *testing
 	res := splitSuggest(
 		[]openapi.SeatLayoutSlot{slotWith("c1", 9000, ""), named, slotWith("c3", 1000, "")},
 		map[string]string{"s|1": "c1", "s|2": "c2"}) // c3 gets no seat
-	plan, err := loBuildPlanNew(res, []loTarget{old}, []string{"Category 1", "gold"}, catName)
+	plan, err := loBuildPlanNew(res, []loTarget{old}, nil, []string{"Category 1", "gold"}, catName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestLoBuildPlanNew_NamesAvoidTakenOnesAndEmptySlotsAreNotCreated(t *testing
 	}
 	// A free slot name is kept, trimmed.
 	res2 := splitSuggest([]openapi.SeatLayoutSlot{named}, map[string]string{"s|1": "c2"})
-	p2, err := loBuildPlanNew(res2, []loTarget{old}, []string{"Category 1"}, catName)
+	p2, err := loBuildPlanNew(res2, []loTarget{old}, nil, []string{"Category 1"}, catName)
 	if err != nil || p2.Name[0] != "Gold" {
 		t.Errorf("name = %v err %v", p2.Name, err)
 	}
@@ -109,10 +109,10 @@ func TestLoBuildPlanNew_RefusesMoreThanFifteenCategories(t *testing.T) {
 	}
 	res := splitSuggest([]openapi.SeatLayoutSlot{slotWith("c1", 9, ""), slotWith("c2", 8, "")},
 		map[string]string{"s|1": "c1", "s|2": "c2"})
-	if _, err := loBuildPlanNew(res, nil, taken, catName); err != errLoTooManyTiers {
+	if _, err := loBuildPlanNew(res, nil, nil, taken, catName); err != errLoTooManyTiers {
 		t.Errorf("err = %v, want errLoTooManyTiers", err)
 	}
-	if _, err := loBuildPlanNew(res, nil, taken[:13], catName); err != nil {
+	if _, err := loBuildPlanNew(res, nil, nil, taken[:13], catName); err != nil {
 		t.Errorf("15 categories are allowed: %v", err)
 	}
 }
@@ -125,7 +125,7 @@ func TestLoFingerprint_CoversNewCategoriesNamesAndPrices(t *testing.T) {
 		s2 := slotWith("c2", price, "#112233")
 		s2.Name = &nm
 		res := splitSuggest([]openapi.SeatLayoutSlot{slotWith("c1", 9000, ""), s2}, map[string]string{"s|1": "c1", "s|2": "c2"})
-		p, err := loBuildPlanNew(res, []loTarget{old}, []string{"Stalls"}, catName)
+		p, err := loBuildPlanNew(res, []loTarget{old}, nil, []string{"Stalls"}, catName)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -222,7 +222,7 @@ func TestLoPreviewScreen_ShowsRevenuePerCategoryNewMarkAndRealisticEstimate(t *t
 			{SlotKey: "c2", Seats: 2, OpenSeats: 2, PriceAmount: 6000, RevenueMinor: 12000, Share: 0.67},
 		},
 	}
-	plan, err := loBuildPlanNew(res, []loTarget{old}, []string{"Stalls"}, catName)
+	plan, err := loBuildPlanNew(res, []loTarget{old}, nil, []string{"Stalls"}, catName)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestLoAppliedScreen_ListsCreatedCategoriesAndSaysWhenTheOldOneIsEmpty(t *te
 	// No slot at the old price: the old category gets no seat.
 	res := splitSuggest([]openapi.SeatLayoutSlot{slotWith("c1", 8000, ""), slotWith("c2", 4000, "")},
 		map[string]string{"s|1": "c1", "s|2": "c2"})
-	plan, err := loBuildPlanNew(res, []loTarget{old}, []string{"Stalls"}, catName)
+	plan, err := loBuildPlanNew(res, []loTarget{old}, nil, []string{"Stalls"}, catName)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -4919,6 +4919,9 @@ other = "El plano de «{{.Venue}}» está listo. Compáralo con tu propio plano.
 ["bot.wz.plan_in_returned"]
 other = "Un administrador ha corregido el plano de «{{.Venue}}». Comprueba que todo esté correcto. {{.Note}}"
 
+["bot.wz.plan_in_examined"]
+other = "Un administrador ha revisado el plano de «{{.Venue}}». Compruébalo de nuevo. {{.Note}}"
+
 ["bot.wz.plan_in_check_btn"]
 other = "Revisar el plano"
 

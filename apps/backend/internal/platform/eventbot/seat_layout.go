@@ -96,6 +96,43 @@ func loTargets(tiers []openapi.TicketTierItem) (targets []loTarget, closed int) 
 	return targets, closed
 }
 
+// loEmptyOpen picks the EMPTY open categories of the date: no seat of the plan
+// and no general-admission unit (the server reports such a category as kind
+// "ga", so loTargets drops it), open, with a fixed price. A split may put a
+// slot of the same price into one of them instead of creating a new category.
+// A real standing category owns GA units and is never returned. The dearest
+// first, as loTargets orders them.
+func loEmptyOpen(tiers []openapi.TicketTierItem) []loTarget {
+	var picked []openapi.TicketTierItem
+	for _, t := range tiers {
+		if t.SeatCount == nil || *t.SeatCount != 0 || t.GaUnitCount == nil || *t.GaUnitCount != 0 {
+			continue
+		}
+		if !categoryOpen(t) || string(t.PricingMode) != "fixed" || (t.IsAddon != nil && *t.IsAddon) {
+			continue
+		}
+		picked = append(picked, t)
+	}
+	sort.SliceStable(picked, func(i, j int) bool {
+		a, b := picked[i], picked[j]
+		pa, pb := categoryPriceNow(a), categoryPriceNow(b)
+		switch {
+		case pa != pb:
+			return pa > pb
+		case a.SortOrder != b.SortOrder:
+			return a.SortOrder < b.SortOrder
+		case a.Name != b.Name:
+			return a.Name < b.Name
+		}
+		return a.Id.String() < b.Id.String()
+	})
+	out := make([]loTarget, 0, len(picked))
+	for _, t := range picked {
+		out = append(out, loTarget{ID: t.Id, Name: t.Name, Price: categoryPriceNow(t)})
+	}
+	return out
+}
+
 // loAsked returns the parameters of the algorithm the person is asked about:
 // the enumerations and the switches that are not the common price/category
 // parameters, in the schema's order, at most loMaxAsked of them.
@@ -312,8 +349,10 @@ var errLoTooManyTiers = errors.New("too many categories on the date")
 // new category with the slot's price and colour, named by the slot or, when it
 // has no name, by catName(n) with the first n that no category of the date
 // (taken, every live category's name) or earlier new category uses, ignoring
-// case. A new category is sent only when a seat goes into it.
-func loBuildPlanNew(res openapi.SeatLayoutSuggestResponse, targets []loTarget, taken []string, catName func(n int) string) (loPlan, error) {
+// case. A new category is sent only when a seat goes into it. A slot that no
+// target matches next looks for an EMPTY open category of the same price
+// (empties, each used once) before a new one is made.
+func loBuildPlanNew(res openapi.SeatLayoutSuggestResponse, targets, empties []loTarget, taken []string, catName func(n int) string) (loPlan, error) {
 	slots := res.Layout.Slots
 	if len(slots) == 0 {
 		return loPlan{}, fmt.Errorf("the proposal has no categories")
@@ -333,12 +372,24 @@ func loBuildPlanNew(res openapi.SeatLayoutSuggestResponse, targets []loTarget, t
 		return loPlan{}, err
 	}
 	next := 1
+	emptyUsed := make([]bool, len(empties))
 	for i, s := range slots {
 		p.Price[i] = s.PriceAmount
 		var match *loTarget
 		for j := range targets {
 			if targets[j].Price == s.PriceAmount {
 				match = &targets[j]
+				break
+			}
+		}
+		if match != nil {
+			p.Tier[i], p.Name[i] = match.ID, match.Name
+			continue
+		}
+		for j := range empties {
+			if !emptyUsed[j] && empties[j].Price == s.PriceAmount {
+				emptyUsed[j] = true
+				match = &empties[j]
 				break
 			}
 		}
