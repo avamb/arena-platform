@@ -66,10 +66,16 @@ test.describe("5-1 event status (mock)", () => {
 
     await page.getByTestId("event-status-archive").click();
     await expect(page.getByTestId("event-archive-dialog")).toContainText("This step is permanent");
+    const orderBefore = await page.getByTestId("event-sections").getAttribute("data-order");
     await page.getByTestId("event-archive-dialog-submit").click();
     await expect(page.getByTestId("event-status-current")).toContainText("Archived");
     await expect(page.getByTestId("event-status-publish")).toHaveCount(0);
     await expect(page.getByTestId("event-status-off")).toHaveCount(0);
+    // The block has no further action for this person, yet it stays with its notice, in its open section, and the
+    // sections keep their order until the person leaves the card.
+    await expect(page.getByTestId("event-status-done")).toBeVisible();
+    await expect(page.getByTestId("event-section-more")).toHaveAttribute("data-open", "1");
+    await expect(page.getByTestId("event-sections")).toHaveAttribute("data-order", orderBefore ?? "");
   });
 
   test("delete: the word comes after the dry run, and a wrong word deletes nothing", async ({ page }) => {

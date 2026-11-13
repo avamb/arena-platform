@@ -271,6 +271,9 @@ test.describe("the sectioned menu on the three roles (live)", () => {
       // Every item of the card (a button or a block) carries data-item-id, in the order of the page. The status
       // block is told by its own buttons. All sections are open (signInAs), so every item is in the page.
       const ACTIONS = ["edit", "sample", "orders", "csv", "guests", "funnel", "qr", "promo", "invitations", "links"];
+      // The card settles first: the sample ticket button is drawn only after the sessions (the summary) loaded, and
+      // the page and the help read the same fact, so compare them only when that fact is known.
+      await expect(page.locator("[data-item-id='sample']"), "the card settled (sessions loaded)").toHaveCount(perms.includes("session.read") ? 1 : 0);
       const onCard = await page.evaluate((actions) => {
         const found: string[] = [];
         for (const el of Array.from(document.querySelectorAll("[data-item-id], [data-testid^='event-status-']"))) {

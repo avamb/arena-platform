@@ -43,6 +43,16 @@ describe("eventCardLayout", () => {
     expect(ids(eventCardLayout({ status: "draft", sales_state: "archived" }, ALL))[0]).toBe("more");
   });
 
+  it("orderBy keeps the order of the state before a status move; the status item stays while its flag is set", () => {
+    const before = { status: "published", sales_state: "on_sale" };
+    const after = { status: "archived", sales_state: "archived" };
+    expect(ids(eventCardLayout(after, ALL, before))).toEqual(ids(eventCardLayout(before, ALL)));
+    expect(ids(eventCardLayout(after, ALL))[0]).toBe("sales");
+    // Nothing left to press, but the flag keeps the section with the status block.
+    const l = eventCardLayout(after, { ...ALL, status: true }, before);
+    expect(l.sections.find((s) => s.id === "more")?.items).toEqual(["status"]);
+  });
+
   it("a draft whose person may not use the status block opens the next section", () => {
     const l = eventCardLayout({ status: "draft" }, { ...ALL, status: false });
     expect(ids(l)).toEqual(["link", "sales", "edit", "promo"]);

@@ -157,6 +157,8 @@ export interface EventCardHelp {
   event: { status: string; sales_state?: string | null };
   rights: ItemRights;
   status: StatusRights;
+  /** The state that fixes the order of the sections, when it differs from the event (after a status move). */
+  orderBy?: { status: string; sales_state?: string | null };
 }
 
 /** How a person gets to an item of the menu from any screen. */
@@ -181,7 +183,7 @@ export function helpLineId(item: Exclude<ItemId, "status">): string {
 }
 
 function eventSections(card: EventCardHelp): HelpSection[] {
-  const layout = eventCardLayout(card.event, card.rights);
+  const layout = eventCardLayout(card.event, card.rights, card.orderBy);
   return layout.sections.map((s) => ({
     id: s.id,
     titleKey: SECTION_TITLE[s.id],

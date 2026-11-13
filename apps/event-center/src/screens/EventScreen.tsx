@@ -1,6 +1,6 @@
 import { EventSalesSwitch } from "@/components/EventSalesSwitch";
 import { HelpPopover } from "@/components/HelpPopover";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ScreenHelp } from "@/components/ScreenHelp";
 import { EventSection, ScrollToAnchor, useSectionState } from "@/components/EventSection";
 import { eventCardLayout, isAction, sectionForAnchor, type ActionId, type ItemId, type ItemRights } from "@/lib/eventActions";
@@ -96,6 +96,9 @@ export function EventScreen() {
   const events = useEventsList(orgId);
   const hash = useRouterState({ select: (s) => s.location.hash });
   const sectionState = useSectionState(hash);
+  // After a status move the "More" section stays for this visit (its notice must be seen) and the sections keep the
+  // order the card had when the person acted. Set once, from the state before the first move.
+  const [moved, setMoved] = useState<{ status: string; sales_state?: string | null } | null>(null);
   const summary = useQuery({
     queryKey: ["eventSummary", orgId, eventId],
     queryFn: () => fetchEventSummary(orgId, eventId),
@@ -154,9 +157,9 @@ export function EventScreen() {
     materials: true,
     emailNote: access.can("event.update"),
     referral: canViewReferral(access.can),
-    status: hasStatus,
+    status: hasStatus || moved !== null,
   };
-  const layout = eventCardLayout(event, rights);
+  const layout = eventCardLayout(event, rights, moved ?? event);
   const btn = (id: ActionId) => (layout.primary === id ? "btn btn-primary" : "btn");
   const dl = (id: ActionId) => (layout.primary === id ? ("primary" as const) : undefined);
 
@@ -352,7 +355,10 @@ export function EventScreen() {
             status={event.status}
             canPublish={canPublish}
             canDelete={canDelete}
-            onMoved={(action) => flow.mark(`status_${action}`)}
+            onMoved={(action) => {
+              setMoved((prev) => prev ?? { status: event.status, sales_state: event.sales_state });
+              flow.mark(`status_${action}`);
+            }}
           />
         );
     }
@@ -404,7 +410,7 @@ export function EventScreen() {
       </p>
       <div className="screen-head">
         <h1 id="event-title">{event.name}</h1>
-        <ScreenHelp screenId="event" card={{ event, rights, status: { canPublish, canDelete } }} />
+        <ScreenHelp screenId="event" card={{ event, rights, status: { canPublish, canDelete }, orderBy: moved ?? event }} />
       </div>
       <p className="card-meta">
         <SalesStateBadge event={event} />

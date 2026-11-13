@@ -78,9 +78,17 @@ export function sectionOrder(event: { status: string; sales_state?: string | nul
   return ["link", "sales", "edit", "promo", "more"];
 }
 
-export function eventCardLayout(event: { status: string; sales_state?: string | null }, rights: ItemRights): EventCardLayout {
+/**
+ * `orderBy` is the event whose state fixes the ORDER of the sections. The screen passes the state the card had
+ * when the person made a status move, so the sections do not jump under the person after the move.
+ */
+export function eventCardLayout(
+  event: { status: string; sales_state?: string | null },
+  rights: ItemRights,
+  orderBy: { status: string; sales_state?: string | null } = event,
+): EventCardLayout {
   const draft = event.status === "draft";
-  const sections = sectionOrder(event)
+  const sections = sectionOrder(orderBy)
     .map((id) => ({ id, items: SECTION_ITEMS[id].filter((i) => rights[i]) }))
     .filter((s) => s.items.length > 0)
     .map((s, index) => ({ ...s, defaultOpen: index === 0 }));
