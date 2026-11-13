@@ -913,6 +913,24 @@ label {
   margin-block: 1rem;
 }
 
+/* Event card: small headed groups of actions (link for buyers, sales and orders, edit) and the "More" block. */
+.action-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.action-group .actions {
+  margin-block: 0.25rem 0.75rem;
+}
+
+.action-group-title {
+  margin-block: 0.75rem 0;
+  font-size: 1rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .download {
   display: inline-flex;
   flex-direction: column;

@@ -74,5 +74,47 @@ test.describe("events list on the three roles (live)", () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       await noA11yViolations(page);
     });
+
+    test(`${label} (${role}) sees the action groups of the event card in order, with no overflow`, async ({ page, request }) => {
+      const me = await orgMe(request, role);
+      const can = (p: string) => me.permissions.includes(p);
+      // What the server allowed, in the order of an event on sale: link, sales and orders, edit.
+      const expected: string[] = [];
+      if (can("sales_link.manage")) expected.push("link");
+      if (can("order.read") || can("report.read")) expected.push("sales");
+      if (can("event.update") || can("session.read")) expected.push("edit");
+
+      await signInAs(page, person(env, role));
+      await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
+      await page.getByTestId("event-row").first().getByRole("link", { name: env.event_name }).first().click();
+      await expect(page.getByRole("heading", { level: 1, name: env.event_name })).toBeVisible();
+
+      const groups = page.getByTestId("event-action-groups");
+      if (expected.length === 0) {
+        await expect(groups).toHaveCount(0);
+      } else {
+        await expect(groups).toHaveAttribute("data-order", expected.join(" "));
+        await expect(groups.getByRole("heading", { level: 2 })).toHaveCount(expected.length);
+      }
+      // A button the server did not allow is absent, each group by group.
+      await expect(page.getByTestId("event-edit-link")).toHaveCount(can("event.update") ? 1 : 0);
+      await expect(page.getByTestId("event-qr-link")).toHaveCount(can("sales_link.manage") ? 1 : 0);
+      await expect(page.getByTestId("event-funnel-link")).toHaveCount(can("report.read") ? 1 : 0);
+      await expect(page.getByTestId("event-actions-sales").getByRole("link", { name: "Orders of this event" })).toHaveCount(
+        can("order.read") ? 1 : 0,
+      );
+      // The status block of a published event is last, under "More" (only for a person who may move the event).
+      const more = page.getByTestId("event-more");
+      if (can("event.publish") || can("event.delete")) {
+        await expect(more.getByRole("heading", { level: 2, name: "More" })).toBeVisible();
+        await expect(more.getByTestId("event-status")).toBeVisible();
+      } else {
+        await expect(page.getByTestId("event-status")).toHaveCount(0);
+      }
+
+      const width = page.viewportSize()?.width ?? 375;
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      await noA11yViolations(page);
+    });
   }
 });

@@ -42,6 +42,30 @@ test.describe("event screen: Edit, sales switch, Save changes (mock)", () => {
     });
   }
 
+  test("the actions sit in groups, and the status block is last under More", async ({ page }) => {
+    await mockApi(page);
+    await mockEventEdit(page, "org_admin", OWNER);
+    await signIn(page);
+    await page.goto(`/o/${ORG_A}/events/${EVENT}`);
+    const groups = page.getByTestId("event-action-groups");
+    await expect(groups).toBeVisible();
+    // Every group has its heading and its own buttons, none of them behind another tap.
+    await expect(page.getByTestId("event-actions-edit").getByRole("heading", { name: "Edit" })).toBeVisible();
+    await expect(page.getByTestId("event-actions-edit").getByTestId("event-edit-link")).toBeVisible();
+    const order = (await groups.getAttribute("data-order")) ?? "";
+    expect(order.split(" ").at(-1)).toBe("edit");
+    expect(order.split(" ")).not.toContain("more");
+    const more = page.getByTestId("event-more");
+    if ((await more.count()) > 0) {
+      await expect(more.getByRole("heading", { name: "More" })).toBeVisible();
+      // The status block comes after the groups in the page.
+      const box = async (id: string) => (await page.getByTestId(id).boundingBox())?.y ?? -1;
+      expect(await box("event-more")).toBeGreaterThan(await box("event-action-groups"));
+    }
+    const width = page.viewportSize()?.width ?? 375;
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+  });
+
   test("without event.update there is no Edit button", async ({ page }) => {
     await mockApi(page);
     await mockEventEdit(page, "organizer", ["event.read", "order.read", "session.read"]);

@@ -1,6 +1,8 @@
 import { EventSalesSwitch } from "@/components/EventSalesSwitch";
 import { HelpPopover } from "@/components/HelpPopover";
-import { useEffect } from "react";
+import { Fragment, useEffect, type ReactNode } from "react";
+import { eventCardLayout, type ActionId } from "@/lib/eventActions";
+import { statusActions } from "@/lib/eventStatus";
 import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api/http";
@@ -124,88 +126,106 @@ export function EventScreen() {
   const sample = sampleSession(refs);
   const poster = posterCapabilities(access.can);
 
-  return (
-    <article aria-labelledby="event-title">
-      <p>
-        <Link to="/o/$orgId/events" params={{ orgId }}>
-          {t("common.back")}
-        </Link>
-      </p>
-      <h1 id="event-title">{event.name}</h1>
-      <p className="card-meta">
-        <SalesStateBadge event={event} />
-        {event.status === "draft" && <Badge tone="neutral">{t("events.draft")}</Badge>}
-        {event.promoter_name !== null && event.promoter_name !== undefined && (
-          <span>{t("event.promoter", { name: event.promoter_name })}</span>
-        )}
-      </p>
+  const canPublish = access.can("event.publish");
+  const canDelete = access.can("event.delete");
+  const layout = eventCardLayout(event, {
+    edit: access.can("event.update"),
+    sample: canSessions && sample !== undefined,
+    orders: canSales,
+    csv: canCsv,
+    guests: canCsv,
+    funnel: access.can("report.read"),
+    qr: access.can("sales_link.manage"),
+  });
+  const hasStatus = statusActions(event.status, { canPublish, canDelete }).length > 0;
+  const btn = (id: ActionId) => (layout.primary === id ? "btn btn-primary" : "btn");
+  const dl = (id: ActionId) => (layout.primary === id ? ("primary" as const) : undefined);
 
-      {/* Sales state of the sessions: Open / Coming soon / Sold out, at the top like in the old event center. */}
-      {canSessions && (
-        <EventSalesSwitch
-          orgId={orgId}
-          eventId={eventId}
-          canUpdate={access.can("session.update")}
-          sessions={refs.map((r) => ({ id: r.id, startAt: r.startAt, tz: r.tz, cancelled: r.cancelled }))}
-        />
-      )}
+  const buttons: Record<ActionId, ReactNode> = {
+    // The web editor: name, description, poster and the text of the buyer letters.
+    edit: (
+      <Link to="/o/$orgId/events/$eventId/edit" params={{ orgId, eventId }} className={btn("edit")} data-testid="event-edit-link">
+        {t("event.edit")}
+      </Link>
+    ),
+    csv: (
+      <DownloadButton
+        label="event.csvSales"
+        testId="csv-event-sales"
+        variant={dl("csv")}
+        fetchFile={() => downloadCsv(orgId, "eventSales", eventId, locale)}
+      />
+    ),
+    guests: (
+      <DownloadButton
+        label="guestList.downloadEvent"
+        testId="xlsx-event-guest-list"
+        variant={dl("guests")}
+        fetchFile={() => downloadEventGuestListXlsx(orgId, eventId, locale)}
+      />
+    ),
+    sample: (
+      <DownloadButton
+        label="event.sample"
+        testId="sample-ticket"
+        variant={dl("sample")}
+        fetchFile={() => downloadSampleTicket(orgId, sample?.id ?? "", locale)}
+      />
+    ),
+    orders: (
+      <Link to="/o/$orgId/orders" params={{ orgId }} search={{ event: eventId }} className={btn("orders")}>
+        {t("event.orders")}
+      </Link>
+    ),
+    // A7: how far buyers got, from the first look to the payment.
+    funnel: (
+      <Link to="/o/$orgId/events/$eventId/funnel" params={{ orgId, eventId }} className={btn("funnel")} data-testid="event-funnel-link">
+        {t("funnel.button")}
+      </Link>
+    ),
+    // QL-12: a short link and QR code that lead to this event.
+    qr: (
+      <Link to="/o/$orgId/links/new" params={{ orgId }} search={{ event: eventId }} className={btn("qr")} data-testid="event-qr-link">
+        {t("links.button")}
+      </Link>
+    ),
+  };
 
-      <div className="actions">
-        {/* The web editor: name, description, poster and the text of the buyer letters. */}
-        {access.can("event.update") && (
-          <Link to="/o/$orgId/events/$eventId/edit" params={{ orgId, eventId }} className="btn btn-primary" data-testid="event-edit-link">
-            {t("event.edit")}
-          </Link>
-        )}
-        {canCsv && (
-          <DownloadButton
-            label="event.csvSales"
-            testId="csv-event-sales"
-            fetchFile={() => downloadCsv(orgId, "eventSales", eventId, locale)}
-          />
-        )}
-        {canCsv && (
-          <DownloadButton
-            label="guestList.downloadEvent"
-            testId="xlsx-event-guest-list"
-            fetchFile={() => downloadEventGuestListXlsx(orgId, eventId, locale)}
-          />
-        )}
-        {canSessions && sample !== undefined && (
-          <DownloadButton
-            label="event.sample"
-            testId="sample-ticket"
-            fetchFile={() => downloadSampleTicket(orgId, sample.id, locale)}
-          />
-        )}
-        {canSales && (
-          <Link to="/o/$orgId/orders" params={{ orgId }} search={{ event: eventId }} className="btn">
-            {t("event.orders")}
-          </Link>
-        )}
-        {/* A7: how far buyers got, from the first look to the payment. */}
-        {access.can("report.read") && (
-          <Link to="/o/$orgId/events/$eventId/funnel" params={{ orgId, eventId }} className="btn" data-testid="event-funnel-link">
-            {t("funnel.button")}
-          </Link>
-        )}
-        {/* QL-12: a short link and QR code that lead to this event. */}
-        {access.can("sales_link.manage") && (
-          <Link to="/o/$orgId/links/new" params={{ orgId }} search={{ event: eventId }} className="btn" data-testid="event-qr-link">
-            {t("links.button")}
-          </Link>
-        )}
-      </div>
-
+  // The status block keeps its React state when it moves (a draft that was just published goes from first to last), so both
+  // parts sit in ONE keyed array.
+  const statusEl = (
+    <div key="status" className={layout.statusFirst ? undefined : "event-more"} data-testid={layout.statusFirst ? undefined : "event-more"}>
+      {!layout.statusFirst && hasStatus && <h2 className="action-group-title">{t("event.group.more")}</h2>}
       <EventStatusBlock
         orgId={orgId}
         eventId={eventId}
         eventName={event.name}
         status={event.status}
-        canPublish={access.can("event.publish")}
-        canDelete={access.can("event.delete")}
+        canPublish={canPublish}
+        canDelete={canDelete}
         onMoved={(action) => flow.mark(`status_${action}`)}
       />
+    </div>
+  );
+
+  const rest = (
+    <Fragment key="rest">
+      {layout.groups.length > 0 && (
+        <div className="action-groups" data-testid="event-action-groups" data-order={layout.groups.map((g) => g.id).join(" ")}>
+          {layout.groups.map((g) => (
+            <section key={g.id} className="action-group" aria-labelledby={`event-actions-${g.id}`} data-testid={`event-actions-${g.id}`}>
+              <h2 id={`event-actions-${g.id}`} className="action-group-title">
+                {t(`event.group.${g.id}`)}
+              </h2>
+              <div className="actions">
+                {g.actions.map((id) => (
+                  <Fragment key={id}>{buttons[id]}</Fragment>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
 
       <EventPoster
         key={`${orgId}:${eventId}`}
@@ -309,6 +329,36 @@ export function EventScreen() {
         publicUrl={event.public_url}
         can={access.can}
       />
+    </Fragment>
+  );
+
+  return (
+    <article aria-labelledby="event-title">
+      <p>
+        <Link to="/o/$orgId/events" params={{ orgId }}>
+          {t("common.back")}
+        </Link>
+      </p>
+      <h1 id="event-title">{event.name}</h1>
+      <p className="card-meta">
+        <SalesStateBadge event={event} />
+        {event.status === "draft" && <Badge tone="neutral">{t("events.draft")}</Badge>}
+        {event.promoter_name !== null && event.promoter_name !== undefined && (
+          <span>{t("event.promoter", { name: event.promoter_name })}</span>
+        )}
+      </p>
+
+      {/* Sales state of the sessions: Open / Coming soon / Sold out, at the top like in the old event center. */}
+      {canSessions && (
+        <EventSalesSwitch
+          orgId={orgId}
+          eventId={eventId}
+          canUpdate={access.can("session.update")}
+          sessions={refs.map((r) => ({ id: r.id, startAt: r.startAt, tz: r.tz, cancelled: r.cancelled }))}
+        />
+      )}
+
+      {layout.statusFirst ? [statusEl, rest] : [rest, statusEl]}
     </article>
   );
 }
