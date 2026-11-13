@@ -3215,6 +3215,49 @@ fieldset legend {
   display: none;
 }
 
+/* "What is here?" (ScreenHelp): the heading and the link share a row, the text takes the full width under them. */
+.screen-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0.75rem;
+  min-inline-size: 0;
+}
+.screen-head > h1 {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.screen-help {
+  display: contents;
+}
+.screen-help-btn {
+  min-inline-size: 0;
+}
+.screen-help-panel {
+  flex: 1 1 100%;
+  min-inline-size: 0;
+  padding: 0.6rem 0.75rem;
+  margin-block: 0.25rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.screen-help-title {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 0.9375rem;
+  color: var(--muted);
+}
+.screen-help-list {
+  margin: 0;
+  padding-inline-start: 1.1rem;
+}
+.screen-help-back {
+  margin: 0.5rem 0 0;
+  font-weight: 600;
+}
+
 /* The three-way sales switch (SessionSalesState): the state in force is filled, the other two stay quiet. */
 .seg {
   display: flex;

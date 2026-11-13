@@ -11,6 +11,7 @@ import { VenuePlanIntakeSlot } from "@/components/venuePlan/VenuePlanIntakeSlot"
 import { Badge, ErrorBox, Loading } from "@/components/ui";
 import { listSeatingPlanVersions, listVenueSeatingPlans, listVenues } from "@/lib/api/endpoints";
 import { useI18n } from "@/lib/i18n";
+import { ScreenHelp } from "@/components/ScreenHelp";
 import { mapLink, planSeats, usablePlans, type CardPlan } from "@/lib/venues/card";
 import { directoryVenueOf, type DirectoryVenue } from "@/lib/venues/directoryApi";
 import { isVerified } from "@/lib/venues/chooser";
@@ -137,7 +138,10 @@ export function VenuesScreen() {
   }
   return (
     <section data-testid="venues-screen">
-      <h1>{t("venues.title")}</h1>
+      <div className="screen-head">
+        <h1>{t("venues.title")}</h1>
+        <ScreenHelp screenId="venues" />
+      </div>
       {venueId === undefined || venueId === "" ? (
         <>
           <p className="muted">{t("venues.intro")}</p>

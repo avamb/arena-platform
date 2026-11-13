@@ -27,6 +27,7 @@ import {
   type SubscriberFilter,
 } from "@/lib/growth";
 import { useI18n } from "@/lib/i18n";
+import { ScreenHelp } from "@/components/ScreenHelp";
 import { DownloadButton, Empty, ErrorBox, Loading } from "@/components/ui";
 import { useOrg } from "@/screens/OrgLayout";
 
@@ -212,7 +213,10 @@ export function GrowthScreen() {
   const canSubscribers = access.can("order.read");
   return (
     <section aria-labelledby="growth-title">
-      <h1 id="growth-title">{t("growth.title")}</h1>
+      <div className="screen-head">
+        <h1 id="growth-title">{t("growth.title")}</h1>
+        <ScreenHelp screenId="growth" />
+      </div>
       {!canSettings && !canSubscribers && <p className="muted">{t("growth.noAccess")}</p>}
       {canSettings && <SettingsCard />}
       {canSubscribers && <SubscribersCard />}

@@ -377,6 +377,11 @@ function NavSheet({ mode, orgId, access, shopMode, orgCount, onLogout, onClose }
       >
         <div className="more-head">
           <h2 id="more-title">{t(title)}</h2>
+          {menu && (
+            <Link to="/o/$orgId/help" params={{ orgId }} className="btn btn-link" onClick={onClose} data-testid="screen-help-menu">
+              {t("screenHelp.link")}
+            </Link>
+          )}
           <button type="button" className="btn btn-link" onClick={onClose} data-testid={menu ? "more-close" : "promotion-close"}>
             {t("nav.close")}
           </button>

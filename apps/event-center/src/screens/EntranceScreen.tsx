@@ -8,6 +8,7 @@
 import { Link } from "@tanstack/react-router";
 import { GuestListSubscription } from "@/components/GuestListSubscription";
 import { useI18n } from "@/lib/i18n";
+import { ScreenHelp } from "@/components/ScreenHelp";
 import { useOrg } from "@/screens/OrgLayout";
 
 export const SCANNER_ANDROID_URL = "https://play.google.com/store/apps/details?id=com.arenasoldout.macs";
@@ -18,7 +19,10 @@ export function EntranceScreen() {
   const { orgId, access } = useOrg();
   return (
     <section aria-labelledby="entrance-title" data-testid="entrance">
-      <h1 id="entrance-title">{t("entrance.title")}</h1>
+      <div className="screen-head">
+        <h1 id="entrance-title">{t("entrance.title")}</h1>
+        <ScreenHelp screenId="entrance" />
+      </div>
       <p>{t("entrance.intro")}</p>
 
       <section className="card" id="scanner" aria-labelledby="entrance-scanner-title" data-testid="entrance-scanner">

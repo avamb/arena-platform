@@ -1,7 +1,8 @@
 import { EventSalesSwitch } from "@/components/EventSalesSwitch";
 import { HelpPopover } from "@/components/HelpPopover";
 import { Fragment, useEffect, type ReactNode } from "react";
-import { eventCardLayout, type ActionId } from "@/lib/eventActions";
+import { ScreenHelp } from "@/components/ScreenHelp";
+import { eventCardLayout, type ActionId, type ActionRights } from "@/lib/eventActions";
 import { statusActions } from "@/lib/eventStatus";
 import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
@@ -128,7 +129,7 @@ export function EventScreen() {
 
   const canPublish = access.can("event.publish");
   const canDelete = access.can("event.delete");
-  const layout = eventCardLayout(event, {
+  const rights: ActionRights = {
     edit: access.can("event.update"),
     sample: canSessions && sample !== undefined,
     orders: canSales,
@@ -136,7 +137,8 @@ export function EventScreen() {
     guests: canCsv,
     funnel: access.can("report.read"),
     qr: access.can("sales_link.manage"),
-  });
+  };
+  const layout = eventCardLayout(event, rights);
   const hasStatus = statusActions(event.status, { canPublish, canDelete }).length > 0;
   const btn = (id: ActionId) => (layout.primary === id ? "btn btn-primary" : "btn");
   const dl = (id: ActionId) => (layout.primary === id ? ("primary" as const) : undefined);
@@ -173,7 +175,7 @@ export function EventScreen() {
       />
     ),
     orders: (
-      <Link to="/o/$orgId/orders" params={{ orgId }} search={{ event: eventId }} className={btn("orders")}>
+      <Link to="/o/$orgId/orders" params={{ orgId }} search={{ event: eventId }} className={btn("orders")} data-testid="event-orders-link">
         {t("event.orders")}
       </Link>
     ),
@@ -339,7 +341,10 @@ export function EventScreen() {
           {t("common.back")}
         </Link>
       </p>
-      <h1 id="event-title">{event.name}</h1>
+      <div className="screen-head">
+        <h1 id="event-title">{event.name}</h1>
+        <ScreenHelp screenId="event" card={{ event, rights, status: { canPublish, canDelete } }} />
+      </div>
       <p className="card-meta">
         <SalesStateBadge event={event} />
         {event.status === "draft" && <Badge tone="neutral">{t("events.draft")}</Badge>}

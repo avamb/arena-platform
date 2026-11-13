@@ -10,6 +10,7 @@ import { organizationsOf, useMe } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import type { MessageKey } from "@/lib/i18n/en";
 import { navGroups, type NavGroupId } from "@/lib/navMenu";
+import { ITEM_HELP } from "@/lib/screenHelp";
 import { shopModeFor } from "@/lib/shopModule";
 import { useOrg } from "@/screens/OrgLayout";
 
@@ -40,7 +41,19 @@ export function HelpScreen() {
           return (
             <div key={g.id} data-testid={`help-section-${g.id}`}>
               <dt>{t(g.titleKey)}</dt>
-              <dd>{t(line)}</dd>
+              <dd>
+                {t(line)}
+                <ul className="help-items" data-testid={`help-items-${g.id}`}>
+                  {g.items.map((e) => {
+                    const text = ITEM_HELP[e.id];
+                    return text === undefined ? null : (
+                      <li key={e.id}>
+                        <strong>{t(e.labelKey)}</strong> {t(text)}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </dd>
             </div>
           );
         })}

@@ -235,6 +235,76 @@ test.describe("the sectioned menu on the three roles (live)", () => {
       }
     });
 
+    test(`${label} (${role}): "What is here?" lists exactly what the role sees on the events list and the event card`, async ({ page, request }) => {
+      const perms = await permissionsOf(request, role);
+      const groups = expectedGroups(perms);
+      await signInAs(page, person(env, role));
+      await expect(page).toHaveURL(new RegExp(`/o/${env.org_id}/events`));
+
+      const lines = async () =>
+        page.getByTestId("screen-help-line").evaluateAll((els) => els.map((e) => e.getAttribute("data-line-id") ?? ""));
+
+      // The events list: the Add event button (when allowed), the list and the summary, as the Menu sheet names them.
+      const help = page.getByTestId("screen-help-events");
+      await expect(help).toHaveText("What is here?");
+      await expect(page.getByTestId("screen-help-text")).toHaveCount(0);
+      await help.click();
+      await expect(page.getByTestId("screen-help-text")).toBeVisible();
+      expect(await lines(), "help of the events list").toEqual(
+        groups.filter(([id]) => id === "new" || id === "events").flatMap(([, items]) => items),
+      );
+      await expect(page.getByTestId("screen-help-back")).toHaveText("To come back here: Events.");
+      await noOverflow(page, "the events list with the help open");
+      await page.keyboard.press("Escape");
+      await expect(page.getByTestId("screen-help-text")).toHaveCount(0);
+      await expect(help, "the focus returns to the link").toBeFocused();
+
+      // The Menu sheet has its own link to the general Help page.
+      await openMenu(page);
+      await page.getByTestId("screen-help-menu").click();
+      await expect(page).toHaveURL(/\/help$/);
+
+      // The event card: the groups in the order of the card and one line per visible button.
+      await page.goto(`/o/${env.org_id}/events`);
+      await page.getByTestId("event-row").first().getByRole("link", { name: env.event_name }).first().click();
+      await expect(page.getByRole("heading", { level: 1, name: env.event_name })).toBeVisible();
+      const BUTTONS: [string, string][] = [
+        ["event-qr-link", "action-qr"],
+        ["event-orders-link", "action-orders"],
+        ["csv-event-sales", "action-csv"],
+        ["xlsx-event-guest-list", "action-guests"],
+        ["event-funnel-link", "action-funnel"],
+        ["event-edit-link", "action-edit"],
+        ["sample-ticket", "action-sample"],
+      ];
+      const onCard = await page.evaluate((buttons) => {
+        const found: string[] = [];
+        for (const el of Array.from(document.querySelectorAll("[data-testid]"))) {
+          const hit = buttons.find(([testId]) => testId === el.getAttribute("data-testid"));
+          if (hit !== undefined) found.push(hit[1]);
+          const m = /^event-status-(publish|off|archive|delete)$/.exec(el.getAttribute("data-testid") ?? "");
+          if (m !== null) found.push(`status-${m[1]}`);
+        }
+        return found;
+      }, BUTTONS);
+
+      const cardHelp = page.getByTestId("screen-help-event");
+      if (onCard.length === 0) {
+        // A role with no button on the card has nothing to be told about: no link.
+        await expect(cardHelp).toHaveCount(0);
+        return;
+      }
+      await expect(cardHelp).toHaveText("What is here?");
+      await cardHelp.click();
+      await expect(page.getByTestId("screen-help-text")).toBeVisible();
+      expect(await lines(), "help of the event card").toEqual(onCard);
+      await expect(page.getByTestId("screen-help-back")).toHaveText("To come back here: Events, then select the event.");
+      await noOverflow(page, "the event card with the help open");
+      await noA11yViolations(page);
+      await page.keyboard.press("Escape");
+      await expect(cardHelp).toBeFocused();
+    });
+
     test(`${label} (${role}): the First steps card follows the server`, async ({ page, request }) => {
       const perms = await permissionsOf(request, role);
       const gs = await stepsOf(request, role);

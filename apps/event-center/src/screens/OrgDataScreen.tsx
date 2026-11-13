@@ -21,6 +21,7 @@ import { ErrorBox, Loading } from "@/components/ui";
 import { fetchOrganization, fetchSellerProfile, listPaymentConfigs, patchSellerProfile } from "@/lib/api/endpoints";
 import type { SellerProfile } from "@/lib/api/types";
 import { useI18n } from "@/lib/i18n";
+import { ScreenHelp } from "@/components/ScreenHelp";
 import { missingKey, paymentsNotConnected } from "@/lib/orgData";
 import { useOrg } from "@/screens/OrgLayout";
 
@@ -62,7 +63,10 @@ function OrgDataBody({ orgId, canReadPayments }: { orgId: string; canReadPayment
   const failure = org.error ?? profile.error;
   return (
     <section aria-labelledby="org-data-title" className="org-data" data-testid="org-data">
-      <h1 id="org-data-title">{t("orgData.title")}</h1>
+      <div className="screen-head">
+        <h1 id="org-data-title">{t("orgData.title")}</h1>
+        <ScreenHelp screenId="orgData" />
+      </div>
       <p>{t("orgData.intro")}</p>
       {canReadPayments && <PaymentsSection configs={payments.data?.payment_configs} />}
       {failure !== null && failure !== undefined ? (
