@@ -63,7 +63,8 @@ class ExporterTests(unittest.TestCase):
     def test_structure_matches_the_import_contract(self):
         root = ET.fromstring(export_authoring_svg(self.model, self.profile))
         self.assertEqual(root.tag, f"{{{SVG}}}svg")
-        self.assertEqual(root.get("viewBox"), "0 0 9 10")
+        self.assertEqual(root.get("viewBox"), "0 0 200 224")
+        self.assertEqual((root.get("width"), root.get("height")), ("200", "224"))
         price = [g for g in root.findall(f"{{{SVG}}}g") if g.get("id") == "PriceCategory"]
         self.assertEqual(len(price), 1)
         self.assertEqual(price[0].get(f"{{{INK}}}label"), "#PriceCategory")
@@ -80,7 +81,7 @@ class ExporterTests(unittest.TestCase):
         self.assertEqual(len(seats), 25)
         self.assertEqual(len({c.get("id") for c in seats}), 25)
         for circle in seats:
-            self.assertEqual(circle.get("r"), "0.32")
+            self.assertEqual(circle.get("r"), "7.68")
             self.assertIn("fill:#00aaff", circle.get("style"))
             self.assertTrue(circle.find(f"{{{SVG}}}title").text)
 
@@ -95,9 +96,9 @@ class ExporterTests(unittest.TestCase):
         profile["canvas"] = {"width": 40, "height": 30}
         profile["seat_radius"] = 0.4
         root = ET.fromstring(export_authoring_svg(self.model, profile))
-        self.assertEqual(root.get("viewBox"), "0 0 40 30")
+        self.assertEqual(root.get("viewBox"), "0 0 960 720")
         circles = [c for c in root.iter(f"{{{SVG}}}circle") if c.get("id", "").startswith("seat-")]
-        self.assertEqual({c.get("r") for c in circles}, {"0.4"})
+        self.assertEqual({c.get("r") for c in circles}, {"9.6"})
         self.assertTrue(all("fill:#112233" in c.get("style") for c in circles))
         label = root.find(f"{{{SVG}}}g/{{{SVG}}}circle").get(f"{{{INK}}}label")
         self.assertEqual(label, "#Temp")
@@ -107,9 +108,10 @@ class ExporterTests(unittest.TestCase):
         profile["canvas"] = {"width": 40, "height": 30}
         profile["seat_radius"] = 0.4
         svg, info = build_authoring_svg(self.model, profile, canvas=(20, 15), radius=0.25)
-        self.assertEqual(info["viewBox"], "0 0 20 15")
-        self.assertEqual(info["seat_radius"], 0.25)
-        self.assertIn('r="0.25"', svg)
+        # The canvas and the radius are given in grid units: one step is 24 user units.
+        self.assertEqual(info["viewBox"], "0 0 480 360")
+        self.assertEqual(info["seat_radius"], 6.0)
+        self.assertIn('r="6"', svg)
 
     def test_canvas_limits(self):
         with self.assertRaises(ValueError):

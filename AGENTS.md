@@ -240,6 +240,7 @@ The Python generator service: hall model, HTTP contract, token, fixtures of the 
 * No client file and no profile bound to a client file's SHA-256 goes into the service
 * On the staging stand the generator is a standalone container (lead-parser, 1024 MB, /healthz)
 * What the generator really reads today: XLSX yes, vector PDF without row labels, images need a colour profile
+* The authoring SVG is in pixel-like units (seats 24 apart, outline 1); a guard quarantines an export with blots, tiny or overlapping seats
 
 ### [Testing and integration-test fixtures](docs/agents/testing-integration.md)
 

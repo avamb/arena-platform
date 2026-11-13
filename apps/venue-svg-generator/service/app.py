@@ -205,7 +205,8 @@ def _answer(model: dict[str, Any], target: dict[str, Any] | None, decor: dict[st
     png = render_preview_png(model, decor)
     return {
         "model": model,
-        "validation_status": model["validation"]["status"],
+        # An export that fails the visual guard (info.export_issue) is never PASS.
+        "validation_status": "QUARANTINE" if info.get("export_issue") else model["validation"]["status"],
         "authoring_svg": svg,
         "svg_info": info,
         "preview_png_base64": base64.b64encode(png).decode("ascii"),

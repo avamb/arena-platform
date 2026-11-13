@@ -10,7 +10,9 @@ contract it satisfies is the one `apps/backend/internal/domain/seating` reads
 - one group per (section, row) with `inkscape:label="#<section>"` and a `<title>`
   child holding the row name;
 - one `<circle>` per seat with a nested `<title>` holding the seat number, filled
-  with the category colour; coordinates are the worksheet grid cells;
+  with the category colour; coordinates are the worksheet grid cells scaled so that the
+  distance between neighbouring seats is `AUTHORING_GRID_STEP` user units (pixel-like canvas,
+  1 user unit = 1 px, `viewBox` = `width` x `height`);
 - a canvas (`viewBox`) of at most 2000 x 2000 and no `sbt:*` attributes.
 
 Only a model whose `validation.status` is PASS is exported. A seat without an
@@ -20,10 +22,13 @@ explicitly read number never reaches the SVG: it stays in the report.
 from __future__ import annotations
 
 import json
+import math
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
+
+from .neighbours import robust_step
 
 SVG = "http://www.w3.org/2000/svg"
 INK = "http://www.inkscape.org/namespaces/inkscape"
@@ -31,13 +36,19 @@ ET.register_namespace("", SVG)
 ET.register_namespace("inkscape", INK)
 
 SCHEMA_VERSION = "seating-json-v1"
+# Profile radius and swatch radius are SHARES of one step (the nearest-seat distance of the model).
 DEFAULT_RADIUS = 0.32
 SWATCH_RADIUS = 0.3
-DEFAULT_STROKE_WIDTH_PX = 3
+# The export is pixel-like: the distance between neighbouring seats is this many user units, so
+# every fixed-size drawing of the clients (outline 2, halo 3, radius 8) fits. 1 user unit = 1 px.
+AUTHORING_GRID_STEP = 24
+MAX_RADIUS_OF_STEP = 0.4
+# Outline in user units (= px): the profile value, never more than this share of the seat radius.
+DEFAULT_STROKE_WIDTH_PX = 1
+OUTLINE_CAP_OF_RADIUS = 0.25
 CANVAS_MARGIN = 2.0
-# The importer reads the viewBox first; width/height are only the intrinsic CSS
-# size, kept independent of the grid so a 29x60 grid is not a 29x60 pixel image.
-DISPLAY_WIDTH = 1160
+# Margin around the seats, in steps.
+MARGIN_STEPS = 1.0
 # Mirrors seating.MaxCanvasDimension.
 MAX_CANVAS = 2000.0
 
@@ -129,8 +140,21 @@ def seat_records(model: dict[str, Any]) -> list[dict[str, Any]]:
     return records
 
 
-def _display_height(width: float, height: float) -> int:
-    return max(1, round(DISPLAY_WIDTH * height / width))
+def nearest_seat_distance(points: list[tuple[float, float]]) -> float:
+    """The grid step of the model: the median nearest-neighbour distance (1.0 when unknown). See neighbours.py."""
+    return robust_step(points)
+
+
+def sig4(value: float) -> float:
+    return float(f"{value:.4g}")
+
+
+def outline_width(profile: dict[str, Any], radius: float) -> float:
+    """Outline width in user units (= px of the pixel-like canvas), capped at a quarter of the seat radius."""
+    wanted = profile.get("stroke_width_px", DEFAULT_STROKE_WIDTH_PX)
+    if wanted <= 0:
+        return 0.0
+    return sig4(min(float(wanted), radius * OUTLINE_CAP_OF_RADIUS))
 
 
 def _style(color: str, stroke_width: Any) -> str:
@@ -151,30 +175,46 @@ def build_authoring_svg(
     seat_radius = radius if radius is not None else profile.get("seat_radius", DEFAULT_RADIUS)
     if not _is_number(seat_radius) or seat_radius <= 0:
         raise ValueError("seat radius must be a positive number")
+    min_x = min(r["x"] for r in records)
+    min_y = min(r["y"] for r in records)
     max_x = max(r["x"] for r in records)
     max_y = max(r["y"] for r in records)
+    # Pixel-like canvas: one step (nearest-seat distance) becomes AUTHORING_GRID_STEP user units.
+    unit = nearest_seat_distance([(r["x"], r["y"]) for r in records])
+    radius_grid = min(float(seat_radius), MAX_RADIUS_OF_STEP) * unit  # the radius is a share of one step
+    margin_grid = MARGIN_STEPS * unit
+    off_x = max(0.0, margin_grid + radius_grid - min_x)
+    off_y = max(0.0, margin_grid + radius_grid - min_y)
     if canvas is not None:
-        width, height = _check_canvas(*canvas)
+        width_grid, height_grid = _check_canvas(*canvas)
     elif profile.get("canvas") is not None:
-        width, height = _check_canvas(profile["canvas"].get("width"), profile["canvas"].get("height"))
+        width_grid, height_grid = _check_canvas(profile["canvas"].get("width"), profile["canvas"].get("height"))
     else:
-        # Source grid coordinates stay untouched; the canvas only encloses them.
-        width = max(2.0, max_x + CANVAS_MARGIN)
-        height = max(2.0, max_y + CANVAS_MARGIN)
-        width, height = _check_canvas(width, height)
-    if max_x + seat_radius > width or max_y + seat_radius > height:
+        width_grid = max_x + off_x + radius_grid + margin_grid
+        height_grid = max_y + off_y + radius_grid + margin_grid
+    if max_x + off_x + radius_grid > width_grid or max_y + off_y + radius_grid > height_grid:
         raise ValueError("canvas does not enclose every seat")
+    scale = AUTHORING_GRID_STEP / unit
+    if max(width_grid, height_grid) * scale > MAX_CANVAS:
+        if canvas is not None or profile.get("canvas") is not None:
+            raise ValueError(f"The canvas is too large. The maximum of the importer is {MAX_CANVAS:g}.")
+        scale *= (MAX_CANVAS - 1) / (max(width_grid, height_grid) * scale)
+    width = math.ceil(width_grid * scale - 1e-9)
+    height = math.ceil(height_grid * scale - 1e-9)
+    seat_r = radius_grid * scale
+    swatch_r = min(SWATCH_RADIUS * unit, radius_grid) * scale
+    unit_px = scale * unit  # one step in user units (24 unless the hall was scaled down)
 
     category = profile["category"]
     name = str(category["name"])
     color = str(category["color"])
-    stroke_width = profile.get("stroke_width_px", DEFAULT_STROKE_WIDTH_PX)
+    stroke_width = outline_width(profile, seat_r)
 
     root = ET.Element(f"{{{SVG}}}svg", {
         "version": "1.1",
-        "width": str(DISPLAY_WIDTH),
-        "height": str(_display_height(width, height)),
-        "viewBox": f"0 0 {width:g} {height:g}",
+        "width": str(width),
+        "height": str(height),
+        "viewBox": f"0 0 {width} {height}",
         "preserveAspectRatio": "xMidYMid meet",
     })
     ET.SubElement(root, f"{{{SVG}}}title").text = "Seating plan (authoring export)"
@@ -186,8 +226,8 @@ def build_authoring_svg(
     price = ET.SubElement(root, f"{{{SVG}}}g", {"id": "PriceCategory", f"{{{INK}}}label": "#PriceCategory"})
     ET.SubElement(price, f"{{{SVG}}}circle", {
         "id": "category-placeholder", f"{{{INK}}}label": f"#{name}",
-        "cx": "1", "cy": "1", "r": f"{min(SWATCH_RADIUS, seat_radius):g}",
-        "style": _style(color, stroke_width),
+        "cx": f"{unit_px:g}", "cy": f"{unit_px:g}", "r": f"{swatch_r:g}",
+        "style": "display:none;" + _style(color, stroke_width),  # a carrier of the colour, not a seat to look at
     })
     # A price hint is optional: the bundled profile has none (no price is known yet).
     price_label = category.get("price_label")
@@ -199,13 +239,14 @@ def build_authoring_svg(
     for index, label in enumerate(profile.get("legend", []), 1):
         ET.SubElement(legend, f"{{{SVG}}}circle", {
             "id": safe_id(label), f"{{{INK}}}label": f"#{label}",
-            "cx": str(index), "cy": "2", "r": f"{min(SWATCH_RADIUS, seat_radius):g}",
+            "cx": f"{index * unit_px:g}", "cy": f"{2 * unit_px:g}", "r": f"{swatch_r:g}",
             "style": f"display:none;fill:#999999;stroke:#000000;stroke-width:{stroke_width:g}",
         })
 
     groups: dict[tuple[str, str], ET.Element] = {}
     group_ids: set[str] = set()
     seat_ids: set[str] = set()
+    info_seats: list[dict[str, Any]] = []
     for record in records:
         key = (record["section"], record["row"])
         group = groups.get(key)
@@ -223,23 +264,25 @@ def build_authoring_svg(
         if seat_id in seat_ids:
             raise ValueError(f"Two seats have the same XML id: {seat_id}")
         seat_ids.add(seat_id)
+        cx, cy = f"{(record['x'] + off_x) * scale:g}", f"{(record['y'] + off_y) * scale:g}"
         circle = ET.SubElement(group, f"{{{SVG}}}circle", {
-            "id": seat_id, "cx": f"{record['x']:g}", "cy": f"{record['y']:g}", "r": f"{seat_radius:g}",
+            "id": seat_id, "cx": cx, "cy": cy, "r": f"{seat_r:g}",
             "style": _style(color, stroke_width),
         })
         ET.SubElement(circle, f"{{{SVG}}}title").text = record["number"]
+        info_seats.append({
+            "section": record["section"], "row": record["row"], "number": record["number"],
+            "x": float(cx), "y": float(cy),
+        })
 
     svg = ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8") + "\n"
     info = {
         "seat_count": len(records),
         "group_count": len(groups),
         "category": name,
-        "viewBox": f"0 0 {width:g} {height:g}",
-        "seat_radius": seat_radius,
-        "seats": [
-            {"section": r["section"], "row": r["row"], "number": r["number"], "x": r["x"], "y": r["y"]}
-            for r in records
-        ],
+        "viewBox": f"0 0 {width} {height}",
+        "seat_radius": float(f"{seat_r:g}"),
+        "seats": info_seats,
     }
     return svg, info
 

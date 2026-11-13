@@ -47,7 +47,7 @@ var keyGoldenCases = []keyGoldenCase{
 	{
 		name:      "synthetic_authoring",
 		path:      []string{"..", "..", "..", "..", "venue-svg-generator", "arena_export", "testdata", "synthetic_authoring.svg"},
-		canonical: "e8f5d74e4c125034de8bbe4b69524463b48d0dadf2795c672dc51aa3f3e00eb5",
+		canonical: "574617c37fdf268fccf30c4b1baebfdf9dc8008155db9d6329b7ffd593a8e193",
 		seatKeys:  "0d9df3d467c341816637d40b2a08d441e7e8341fce28099a17da8a6021f83ac3",
 	},
 }

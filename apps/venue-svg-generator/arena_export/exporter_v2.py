@@ -15,32 +15,43 @@ What differs from v1:
   decor SVG;
 - the root carries `data-validation-status` and `data-lane`, and `<desc>` names the status.
 
+The canvas is pixel-like: the nearest-seat distance of the model (one step) becomes
+`AUTHORING_GRID_STEP` user units, 1 user unit = 1 px, `viewBox` = `0 0 width height` = the declared
+`width` and `height`. The client draws fixed-size outlines in user units, so a grid-unit canvas
+turned every seat into a blot. The seat radius is a profile value in model units, at most 0.4 of a
+step. The outline is the profile `stroke_width_px` (user units), at most a quarter of the radius.
+Fonts of decor are fractions of a step. A hall that would exceed the importer's 2000 limit is
+scaled down as a whole.
+
 The importer reads only the width and the height of the viewBox, so the origin is always `0 0`.
-When decor needs room at a negative coordinate (a stage on the top or the left of a hall whose
-seats start close to 0), every coordinate is shifted by `info["offset"]`. Otherwise the offset is 0
-and the seat coordinates are the model coordinates.
+Every coordinate is shifted by `info["offset"]` (in user units) so that the seats have at least one
+step of room around them and no decor lies at a negative coordinate; `info["scale"]` is the user
+units per unit of the model coordinates.
 """
 
 from __future__ import annotations
 
+import math
 import xml.etree.ElementTree as ET
 from collections import Counter
 from typing import Any, Optional
 
 from hall_model import clean_text, iter_sellable, iter_seats
 
+from . import outline_guard
 from .exporter import (
-    CANVAS_MARGIN,
+    AUTHORING_GRID_STEP,
     DEFAULT_RADIUS,
-    DEFAULT_STROKE_WIDTH_PX,
-    DISPLAY_WIDTH,
     INK,
+    MARGIN_STEPS,
     MAX_CANVAS,
+    MAX_RADIUS_OF_STEP,
     SVG,
     SWATCH_RADIUS,
-    _display_height,
     _is_number,
     _style,
+    nearest_seat_distance,
+    outline_width,
     safe_id,
     validate_profile,
 )
@@ -92,7 +103,6 @@ def build_authoring_svg_v2(
     category = profile["category"]
     cat_name = str(category["name"])
     color = str(category["color"])
-    stroke_width = profile.get("stroke_width_px", DEFAULT_STROKE_WIDTH_PX)
 
     sellable_ids = {id(seat) for _, _, seat in iter_sellable(model)}
     records: list[dict[str, Any]] = []
@@ -146,7 +156,14 @@ def build_authoring_svg_v2(
         info["reason"] = "no_identified_seats"
         return None, info
 
-    # --- layout in model units -------------------------------------------------------------
+    # --- layout in STEP units: one step = the nearest-seat distance of the model ----------------
+    unit = nearest_seat_distance([(r["x"], r["y"]) for r in records])
+    for r in records:
+        r["x"], r["y"] = r["x"] / unit, r["y"] / unit
+    for u in unavailable:
+        if u["pos"] is not None:
+            u["pos"] = (u["pos"][0] / unit, u["pos"][1] / unit)
+    seat_radius = min(float(seat_radius), MAX_RADIUS_OF_STEP)  # a share of one step
     rows: dict[tuple[str, str], list[dict]] = {}
     sections: dict[str, list[dict]] = {}
     for r in records:
@@ -192,17 +209,21 @@ def build_authoring_svg_v2(
         boxes.append((stage["x"], stage["y"], stage["x"] + stage["w"], stage["y"] + stage["h"]))
     dec_min_x = min(b[0] for b in boxes)
     dec_min_y = min(b[1] for b in boxes)
-    off_x = -dec_min_x if dec_min_x < 0 else 0.0
-    off_y = -dec_min_y if dec_min_y < 0 else 0.0
+    # At least one step of room around the seats, and nothing at a negative coordinate.
+    off_x = max(0.0, MARGIN_STEPS + seat_radius - min_x, -dec_min_x)
+    off_y = max(0.0, MARGIN_STEPS + seat_radius - min_y, -dec_min_y)
 
-    # The v1 canvas first, then room for decor on the right and at the bottom.
-    width = max(2.0, max_x + off_x + CANVAS_MARGIN, max(b[2] for b in boxes) + off_x + 0.4)
-    height = max(2.0, max_y + off_y + CANVAS_MARGIN, max(b[3] for b in boxes) + off_y + 0.4)
-    scale = 1.0
-    if width > MAX_CANVAS or height > MAX_CANVAS:
-        scale = MAX_CANVAS / max(width, height)
-        width, height = width * scale, height * scale
+    width = max(max_x + off_x + seat_radius + MARGIN_STEPS, max(b[2] for b in boxes) + off_x + 0.4)
+    height = max(max_y + off_y + seat_radius + MARGIN_STEPS, max(b[3] for b in boxes) + off_y + 0.4)
+    # Pixel-like canvas: one step is AUTHORING_GRID_STEP user units, 1 user unit = 1 px. A hall that
+    # would exceed the importer's limit is scaled down as a whole.
+    scale = float(AUTHORING_GRID_STEP)
+    if max(width, height) * scale > MAX_CANVAS:
+        scale = (MAX_CANVAS - 1) / max(width, height)
+    width_px = math.ceil(width * scale - 1e-9)
+    height_px = math.ceil(height * scale - 1e-9)
     radius = seat_radius * scale
+    stroke_width = outline_width(profile, radius)
 
     def px(v: float, off: float) -> float:
         return (v + off) * scale
@@ -219,31 +240,36 @@ def build_authoring_svg_v2(
     # --- SVG ---------------------------------------------------------------------------------
     root = ET.Element(f"{{{SVG}}}svg", {
         "version": "1.1",
-        "width": str(DISPLAY_WIDTH),
-        "height": str(_display_height(width, height)),
-        "viewBox": f"0 0 {width:g} {height:g}",
+        "width": str(width_px),
+        "height": str(height_px),
+        "viewBox": f"0 0 {width_px} {height_px}",
         "preserveAspectRatio": "xMidYMid meet",
         "data-validation-status": status,
         "data-lane": str(model.get("lane", "exact")),
     })
     ET.SubElement(root, f"{{{SVG}}}title").text = "Seating plan (authoring export)"
-    note = {
-        "PASS": "The validation status of the seating plan is PASS.",
-        "QUARANTINE": "The validation status of the seating plan is QUARANTINE. Check the seating plan before you sell.",
-        "SCHEMATIC": "This seating plan is schematic and not to scale. The validation status of the seating plan is "
-                     + status + ".",
-    }[marked]
-    ET.SubElement(root, f"{{{SVG}}}desc").text = (
-        "The venue SVG generator made this seating plan from seating-json-v2. "
-        "It has one temporary category. The organizer sets the prices in Arena. " + note
-    )
+
+    def describe(marked_as: str, status_as: str) -> str:
+        note = {
+            "PASS": "The validation status of the seating plan is PASS.",
+            "QUARANTINE": "The validation status of the seating plan is QUARANTINE. Check the seating plan before you sell.",
+            "SCHEMATIC": "This seating plan is schematic and not to scale. The validation status of the seating plan is "
+                         + status_as + ".",
+        }[marked_as]
+        return (
+            "The venue SVG generator made this seating plan from seating-json-v2. "
+            "It has one temporary category. The organizer sets the prices in Arena. " + note
+        )
+
+    desc_el = ET.SubElement(root, f"{{{SVG}}}desc")
+    desc_el.text = describe(marked, status)
 
     swatch_r = f"{min(SWATCH_RADIUS, seat_radius) * scale:g}"
     price = ET.SubElement(root, f"{{{SVG}}}g", {"id": "PriceCategory", f"{{{INK}}}label": "#PriceCategory"})
     ET.SubElement(price, f"{{{SVG}}}circle", {
         "id": "category-placeholder", f"{{{INK}}}label": f"#{cat_name}",
         "cx": f"{scale:g}", "cy": f"{scale:g}", "r": swatch_r,
-        "style": _style(color, stroke_width),
+        "style": "display:none;" + _style(color, stroke_width),  # a carrier of the colour, not a seat to look at
     })
     price_label = category.get("price_label")
     if price_label:
@@ -325,11 +351,22 @@ def build_authoring_svg_v2(
             "font-size": size(TITLE_SIZE), "style": f"fill:{DECOR_COLOR};stroke:none",
         }).text = text
 
+    # Visual guard: seat outlines must not swallow the seats. A failing export is QUARANTINE, never PASS.
+    guard_ok, guard = outline_guard.check(root)
+    info["outline_coverage"] = {"outline_share": guard["outline_share"], "seat_share": guard["seat_share"]}
+    if not guard_ok:
+        status = "QUARANTINE"
+        marked = _marked(model, status)
+        root.set("data-validation-status", status)
+        desc_el.text = describe(marked, status)
+        info["marked"] = marked
+        info["export_issue"] = guard["reasons"][0]
+        info["export_issues"] = guard["reasons"]
     svg = ET.tostring(root, encoding="utf-8", xml_declaration=True).decode("utf-8") + "\n"
     info.update({
-        "viewBox": f"0 0 {width:g} {height:g}",
+        "viewBox": f"0 0 {width_px} {height_px}",
         "seat_radius": float(f"{radius:g}"),
-        "scale": scale,
+        "scale": scale / unit,  # user units per unit of the model coordinates
         "offset": {"x": off_x * scale, "y": off_y * scale},
         "group_count": len(groups),
         "seats": info_seats,
