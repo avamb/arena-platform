@@ -2,11 +2,14 @@
 /** The sections of the event card: a button heading, a remembered choice, a hash that opens its section. */
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { EventSection, useSectionState } from "@/components/EventSection";
-import { SECTION_IDS, type SectionId } from "@/lib/eventActions";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ANCHOR_HOLD_MS, EventSection, ScrollToAnchor, useSectionState } from "@/components/EventSection";
+import { SECTION_IDS, sectionForAnchor, type SectionId } from "@/lib/eventActions";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+// jsdom has no scrollIntoView.
+if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
 
 const roots: Root[] = [];
 let mounts = 0;
@@ -35,8 +38,10 @@ function Card({ hash = "" }: { hash?: string }) {
         <EventSection key={id} id={id} title={id} open={state.isOpen(id, i === 0)} onToggle={() => state.toggle(id, i === 0)}>
           <Probe />
           <h2 id={`inner-${id}`}>inner</h2>
+          <span id={`event-item-${id}`} />
         </EventSection>
       ))}
+      <ScrollToAnchor hash={hash} open={sectionForAnchor(hash) !== null && state.isOpen(sectionForAnchor(hash)!, false)} />
     </div>
   );
 }
@@ -129,5 +134,97 @@ describe("EventSection", () => {
   it("an old anchor of a block opens the section that holds it", () => {
     mount("#event-totals");
     expect(toggle("sales").getAttribute("aria-expanded")).toBe("true");
+  });
+});
+
+describe("ScrollToAnchor hold", () => {
+  let resize: (() => void) | null = null;
+  let disconnected = 0;
+  let top = 0;
+  const scrolls: unknown[] = [];
+  const realRO = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+  const realScroll = Element.prototype.scrollIntoView;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    resize = null;
+    disconnected = 0;
+    top = 0;
+    scrolls.length = 0;
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+      constructor(cb: () => void) {
+        resize = cb;
+      }
+      observe() {}
+      disconnect() {
+        disconnected += 1;
+      }
+    };
+    Element.prototype.scrollIntoView = function (arg?: unknown) {
+      scrolls.push(arg);
+    };
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver = realRO;
+    Element.prototype.scrollIntoView = realScroll;
+  });
+
+  function mountAt(hash: string) {
+    mount(hash);
+    const target = document.getElementById("event-item-edit");
+    if (target) target.getBoundingClientRect = () => ({ top }) as DOMRect;
+  }
+  const relayout = (newTop: number) => {
+    top = newTop;
+    act(() => resize?.());
+  };
+
+  it("scrolls on open, instantly, and does nothing without a hash or for an unknown name", () => {
+    mountAt("#event-item-edit");
+    expect(scrolls.length).toBe(1);
+    expect(scrolls[0]).toMatchObject({ behavior: "auto" });
+    scrolls.length = 0;
+    mount("");
+    mount("#nothing-here");
+    expect(scrolls.length).toBe(0);
+  });
+
+  it("scrolls again when the layout moves the block, but not when it is in place", () => {
+    mountAt("#event-item-edit");
+    expect(scrolls.length).toBe(1);
+    relayout(0);
+    expect(scrolls.length).toBe(1);
+    relayout(600);
+    expect(scrolls.length).toBe(2);
+  });
+
+  it("stops after the person wheels", () => {
+    mountAt("#event-item-edit");
+    act(() => {
+      window.dispatchEvent(new Event("wheel"));
+    });
+    relayout(600);
+    expect(scrolls.length).toBe(1);
+    expect(disconnected).toBeGreaterThan(0);
+  });
+
+  it("stops after a key press", () => {
+    mountAt("#event-item-edit");
+    act(() => {
+      window.dispatchEvent(new Event("keydown"));
+    });
+    relayout(600);
+    expect(scrolls.length).toBe(1);
+  });
+
+  it("stops after the time window", () => {
+    mountAt("#event-item-edit");
+    act(() => {
+      vi.advanceTimersByTime(ANCHOR_HOLD_MS + 1);
+    });
+    relayout(600);
+    expect(scrolls.length).toBe(1);
+    expect(disconnected).toBeGreaterThan(0);
   });
 });

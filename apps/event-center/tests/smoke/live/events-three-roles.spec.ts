@@ -176,7 +176,7 @@ test.describe("events list on the three roles (live)", () => {
       // An address with a hash that points into the closed section opens it and brings the block into the view.
       await page.goto(`/o/${env.org_id}/events/${env.event_id}#event-item-materials`);
       await expect(page.getByTestId("event-section-toggle-edit")).toHaveAttribute("aria-expanded", "true");
-      await expect(page.getByTestId("materials-section")).toBeInViewport();
+      await expect(page.getByTestId("materials-section")).toBeInViewport({ timeout: 10_000 });
     });
   }
 });

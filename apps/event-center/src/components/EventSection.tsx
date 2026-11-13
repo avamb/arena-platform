@@ -44,7 +44,16 @@ export function useSectionState(hash: string): SectionState {
   return { isOpen, toggle };
 }
 
-/** Scrolls to the block an address hash names, once its section is open and the block is in the page. */
+/** How long the anchor scroll keeps the block in view while the layout above it still changes. */
+export const ANCHOR_HOLD_MS = 8000;
+const ANCHOR_TOLERANCE_PX = 2;
+
+/**
+ * Scrolls to the block an address hash names, once its section is open and the block is in the page, and keeps it
+ * there while the layout above it changes (blocks mount on the first open and load their data). The hold ends after
+ * ANCHOR_HOLD_MS, or at once when the person wheels, touches, presses a key or a pointer: it never fights the person.
+ * The scroll is instant (no smooth animation), so it also respects prefers-reduced-motion.
+ */
 export function ScrollToAnchor({ hash, open }: { hash: string; open: boolean }) {
   useEffect(() => {
     if (hash === "" || !open) return;
@@ -54,7 +63,29 @@ export function ScrollToAnchor({ hash, open }: { hash: string; open: boolean }) 
     } catch {
       // A hash that is not valid percent-encoding is used as it is.
     }
-    document.getElementById(name)?.scrollIntoView();
+    if (name === "") return;
+    let stopped = false;
+    const scroll = (force: boolean) => {
+      if (stopped) return;
+      const el = document.getElementById(name);
+      if (!el) return;
+      if (!force && Math.abs(el.getBoundingClientRect().top) <= ANCHOR_TOLERANCE_PX) return;
+      el.scrollIntoView({ behavior: "auto", block: "start" });
+    };
+    scroll(true);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => scroll(false));
+    observer?.observe(document.body);
+    const events = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stop = () => {
+      stopped = true;
+      observer?.disconnect();
+      if (timer !== undefined) clearTimeout(timer);
+      for (const e of events) window.removeEventListener(e, stop, true);
+    };
+    for (const e of events) window.addEventListener(e, stop, { capture: true, passive: true });
+    timer = setTimeout(stop, ANCHOR_HOLD_MS);
+    return stop;
   }, [hash, open]);
   return null;
 }
