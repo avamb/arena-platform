@@ -222,13 +222,24 @@ func count(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) int64 {
 	return n
 }
 
-func sideEffects(t *testing.T, pool *pgxpool.Pool) [5]int64 {
+// sideEffects counts side-effect rows that belong to THIS fixture only (its
+// organization, orders, tickets, sessions and events). Other packages write to
+// the same database in parallel, so a whole-table count would be flaky.
+func sideEffects(t *testing.T, pool *pgxpool.Pool, f *fixture) [5]int64 {
+	// Every id the fixture owns, as text, for tables keyed by a loose id column.
+	const ownIDs = `(
+  SELECT $1::uuid::text
+  UNION ALL SELECT id::text FROM orders WHERE org_id = $1
+  UNION ALL SELECT t.id::text FROM tickets t JOIN orders o ON o.id = t.order_id WHERE o.org_id = $1
+  UNION ALL SELECT id::text FROM events WHERE org_id = $1
+  UNION ALL SELECT s.id::text FROM sessions s JOIN events e ON e.id = s.event_id WHERE e.org_id = $1
+)`
 	return [5]int64{
-		count(t, pool, `SELECT count(*) FROM outbox_events`),
-		count(t, pool, `SELECT count(*) FROM outbox`),
-		count(t, pool, `SELECT count(*) FROM delivery_jobs`),
-		count(t, pool, `SELECT count(*) FROM worker_jobs`),
-		count(t, pool, `SELECT count(*) FROM billable_events`),
+		count(t, pool, `SELECT count(*) FROM outbox_events WHERE aggregate_id IN `+ownIDs, f.org),
+		count(t, pool, `SELECT count(*) FROM outbox WHERE aggregate_id::text IN `+ownIDs, f.org),
+		count(t, pool, `SELECT count(*) FROM delivery_jobs d JOIN tickets t ON t.id = d.ticket_id JOIN orders o ON o.id = t.order_id WHERE o.org_id = $1`, f.org),
+		count(t, pool, `SELECT count(*) FROM worker_jobs w WHERE EXISTS (SELECT 1 FROM `+ownIDs+` x(id) WHERE w.payload::text LIKE '%' || x.id || '%')`, f.org),
+		count(t, pool, `SELECT count(*) FROM billable_events WHERE org_id = $1`, f.org),
 	}
 }
 
@@ -245,7 +256,7 @@ func TestLegacyImport_DryRunApplyRerunAndSurfaces(t *testing.T) {
 	ctx := context.Background()
 	doc := f.export(t)
 	opt := legacytickets.Options{OrgID: f.org, OnlyFuture: true, Now: time.Now().UTC()}
-	effects := sideEffects(t, f.pool)
+	effects := sideEffects(t, f.pool, f)
 
 	// ── Dry run: plans, writes nothing.
 	rep, err := legacytickets.Run(ctx, f.pool, opt, doc)
@@ -367,7 +378,7 @@ SELECT count(*) FROM barcodes b
 	}
 
 	// Nothing was delivered, queued or billed.
-	if got := sideEffects(t, f.pool); got != effects {
+	if got := sideEffects(t, f.pool, f); got != effects {
 		t.Fatalf("side effects before %v after %v (outbox_events, outbox, delivery_jobs, worker_jobs, billable_events)", effects, got)
 	}
 	q := gen.New(f.pool)
