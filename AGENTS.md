@@ -777,7 +777,7 @@ Spec 64: intake states, private plan sources, approve, superadmin verification a
 * The venue chooser is ONE component for the screen Venues and the wizard
 * The web intake refuses a file before any request and keeps one Idempotency-Key per attempt
 * The admin queue of plans to verify is ONE request; no state parameter means every state, none means NULL
-* A draft SVG of an intake is read by seating.ImportAnySVG (authoring or sbt); the plan version route takes authoring only
+* A draft SVG of an intake is read by seating.ImportAnySVG, which tells THREE dialects apart (wire sbt, editor template, authoring); the plan version route takes authoring only
 * Only an ACTIVE plan is seen by the queue and by the bot; the library loader activates a plan after its version upload
 * The generator's answer is limited in the client before parsing (SVG 3 MB, preview 10 MB); half-set VENUE_GEN_* is a warning; the test fixture is a copy
 * A returned notice carries draft_changed; the bot says "corrected" only when it is true, else "examined"

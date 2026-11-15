@@ -646,7 +646,7 @@ func svgRowNames(rowNode *xmlNode) (label, secName, rowName string) {
 	if secName == "" {
 		secName = label
 	}
-	rowName = strings.TrimSpace(elementText(findDirectChild(rowNode, "title")))
+	rowName = NormalizeRowTitle(elementText(findDirectChild(rowNode, "title")))
 	return label, secName, rowName
 }
 
@@ -1024,4 +1024,19 @@ var knownNamespacePrefixes = map[string]string{
 	"http://www.inkscape.org/namespaces/inkscape":        "inkscape",
 	"http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd": "sodipodi",
 	"http://www.w3.org/2000/svg":                         "svg",
+}
+
+// rowWordRE matches the word "Ряд" (any letter case) followed by a
+// non-empty rest. The Forzum Editor writes a row title as "Ряд 7".
+var rowWordRE = regexp.MustCompile(`^(?i:ряд)\s+(\S.*)$`)
+
+// NormalizeRowTitle trims a row title and drops a leading "Ряд" word, so a
+// title "Ряд 7" gives the row name "7" and a ticket prints "Row: 7". A title
+// that is only "Ряд" stays as it is.
+func NormalizeRowTitle(title string) string {
+	t := strings.TrimSpace(title)
+	if m := rowWordRE.FindStringSubmatch(t); m != nil {
+		return strings.TrimSpace(m[1])
+	}
+	return t
 }
