@@ -652,11 +652,27 @@ func TestRestyle_TemplateSeatWithoutCategoryFails(t *testing.T) {
 
 func TestRestyle_PlainSBTIsNotATemplate(t *testing.T) {
 	src := inlineSBT("A", "")
-	if _, ok := adaptTemplate(src); ok {
+	if _, ok := seating.AdaptTemplate(src); ok {
 		t.Fatal("a session plan was taken for a template")
 	}
 	_, rep := Restyle(src, nil)
 	if rep.Dialect != "sbt" || len(rep.Adapted) != 0 {
 		t.Fatalf("dialect %q adapted %v", rep.Dialect, rep.Adapted)
+	}
+}
+
+// A row title "Ряд 7" is imported as row "7"; the merge guard must compare
+// the same names and not raise a false alarm.
+func TestRestyle_RowWordIsDroppedAndGuardStaysQuiet(t *testing.T) {
+	house, rep := Restyle(authoringPlan([][2]string{{"Parter", "Ряд 7"}, {"Balcony", "Ряд 8"}}), nil)
+	if house == nil || rep.Status == StatusFailed {
+		t.Fatalf("status %q reasons %v errors %v", rep.Status, rep.Reasons, rep.Errors)
+	}
+	rows := map[string]bool{}
+	for _, r := range rep.HouseRows {
+		rows[r.Row] = true
+	}
+	if !rows["7"] || !rows["8"] || len(rep.MergedNames) != 0 {
+		t.Fatalf("house rows %+v merged %v", rep.HouseRows, rep.MergedNames)
 	}
 }

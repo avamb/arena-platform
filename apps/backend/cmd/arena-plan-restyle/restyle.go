@@ -101,7 +101,7 @@ func Restyle(source, schemaRaw []byte) ([]byte, Report) {
 	if sbtSectRE.Match(source) {
 		rep.Dialect = "sbt"
 		imported := source
-		if adapted, ok := adaptTemplate(source); ok {
+		if adapted, ok := seating.AdaptTemplate(source); ok {
 			rep.Dialect = "sbt-template"
 			rep.Adapted = []string{"seat ids and states added for the importer", "categories named by ordinal"}
 			imported = adapted
@@ -1054,7 +1054,7 @@ func collectRawNames(root *rawEl, dialect string) rawNames {
 			if r := strings.TrimSpace(n.sbt("row")); r != "" {
 				row = r
 			} else if n.sbt("sect") == "" && n.name.Local == "g" {
-				if t := n.titleText(); t != "" {
+				if t := seating.NormalizeRowTitle(n.titleText()); t != "" {
 					row = t
 				}
 			}
@@ -1091,7 +1091,7 @@ func collectRawNames(root *rawEl, dialect string) rawNames {
 				sector = l
 			}
 			out.sectors[sector] = true
-			out.rows[[2]string{sector, n.titleText()}] = true
+			out.rows[[2]string{sector, seating.NormalizeRowTitle(n.titleText())}] = true
 			for _, k := range n.kids {
 				if k.name.Local == "circle" {
 					out.seats++
@@ -1175,159 +1175,6 @@ func mergeGuard(source []byte, dialect string, g seating.Geometry, partial bool)
 	reason := fmt.Sprintf("importer merged sectors or rows: %d sectors and %d rows in the source, %d and %d imported (names that differ only in non-Latin characters)",
 		len(raw.sectors), len(raw.rows), impSectors, impRows)
 	return reason, listedNames
-}
-
-// --- sbt template ---------------------------------------------------------
-
-// The Forzum Editor saves a TEMPLATE: seats carry sbt:seat and sbt:cat but no
-// sbt:id and no sbt:state, and categories have no name and no price.
-
-var ordinalNames = []string{"First", "Second", "Third", "Fourth", "Fifth", "Sixth", "Seventh", "Eighth",
-	"Ninth", "Tenth", "Eleventh", "Twelfth", "Thirteenth", "Fourteenth", "Fifteenth"}
-
-var (
-	seatPrefixRE  = regexp.MustCompile(`\s([\w.-]+):seat\s*=`)
-	indexPrefixRE = regexp.MustCompile(`\s([\w.-]+):index\s*=`)
-)
-
-func isTemplate(root *rawEl) bool {
-	hasSect, hasSeat, hasBoth := false, false, false
-	var walk func(n *rawEl)
-	walk = func(n *rawEl) {
-		if strings.TrimSpace(n.sbt("sect")) != "" {
-			hasSect = true
-		}
-		if n.name.Local == "circle" {
-			if n.sbt("seat") != "" {
-				hasSeat = true
-			}
-			if n.sbt("id") != "" && n.sbt("state") != "" {
-				hasBoth = true
-			}
-		}
-		for _, k := range n.kids {
-			walk(k)
-		}
-	}
-	walk(root)
-	return hasSect && hasSeat && !hasBoth
-}
-
-type insertion struct {
-	pos  int
-	text string
-}
-
-// adaptTemplate returns a copy of an sbt template with the attributes the
-// importer needs inserted into the start tags. Every other byte is kept. The
-// second result is false when source is not a template.
-func adaptTemplate(source []byte) ([]byte, bool) {
-	root, err := parseRaw(source)
-	if err != nil || !isTemplate(root) {
-		return nil, false
-	}
-	dec := xml.NewDecoder(bytes.NewReader(source))
-	dec.Strict = false
-	dec.Entity = xml.HTMLEntity
-	isSBT := func(a xml.Attr, local string) bool {
-		return a.Name.Local == local && (a.Name.Space == seating.SBTNamespaceURI || a.Name.Space == "sbt")
-	}
-	var edits []insertion
-	var stack []bool
-	sectDepth, nextID := 0, 1
-	for {
-		start := int(dec.InputOffset())
-		tok, err := dec.Token()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			return nil, false
-		}
-		end := int(dec.InputOffset())
-		switch t := tok.(type) {
-		case xml.StartElement:
-			own := false
-			has := map[string]bool{}
-			for _, a := range t.Attr {
-				if isSBT(a, "sect") && strings.TrimSpace(a.Value) != "" {
-					own = true
-				}
-				for _, l := range []string{"seat", "cat", "name", "price", "id", "state"} {
-					if isSBT(a, l) {
-						has[l] = true
-					}
-				}
-			}
-			if end > len(source) || start < 0 || start >= end {
-				return nil, false
-			}
-			tag := source[start:end]
-			nameEnd := bytes.IndexAny(tag, " \t\r\n/>")
-			if nameEnd < 0 {
-				return nil, false
-			}
-			switch {
-			case t.Name.Local == "circle" && sectDepth > 0 && has["seat"] && has["cat"]:
-				prefix := "sbt"
-				if m := seatPrefixRE.FindSubmatch(tag); m != nil {
-					prefix = string(m[1])
-				}
-				text := ""
-				if !has["id"] {
-					text += fmt.Sprintf(` %s:id="%d"`, prefix, nextID)
-				}
-				if !has["state"] {
-					text += fmt.Sprintf(` %s:state="1"`, prefix)
-				}
-				nextID++
-				if text != "" {
-					edits = append(edits, insertion{start + nameEnd, text})
-				}
-			case t.Name.Local == "category" && (t.Name.Space == seating.SBTNamespaceURI || t.Name.Space == "sbt"):
-				prefix := "sbt"
-				if m := indexPrefixRE.FindSubmatch(tag); m != nil {
-					prefix = string(m[1])
-				}
-				idx := 0
-				for _, a := range t.Attr {
-					if isSBT(a, "index") {
-						idx, _ = strconv.Atoi(strings.TrimSpace(a.Value))
-					}
-				}
-				text := ""
-				if !has["name"] && idx >= 1 && idx <= len(ordinalNames) {
-					text += fmt.Sprintf(` %s:name="%s"`, prefix, ordinalNames[idx-1])
-				}
-				if !has["price"] {
-					text += fmt.Sprintf(` %s:price="0"`, prefix)
-				}
-				if text != "" {
-					edits = append(edits, insertion{start + nameEnd, text})
-				}
-			}
-			if own {
-				sectDepth++
-			}
-			stack = append(stack, own)
-		case xml.EndElement:
-			if len(stack) > 0 {
-				if stack[len(stack)-1] {
-					sectDepth--
-				}
-				stack = stack[:len(stack)-1]
-			}
-		}
-	}
-	var out bytes.Buffer
-	last := 0
-	for _, e := range edits {
-		out.Write(source[last:e.pos])
-		out.WriteString(e.text)
-		last = e.pos
-	}
-	out.Write(source[last:])
-	return out.Bytes(), true
 }
 
 // --- label placement ------------------------------------------------------

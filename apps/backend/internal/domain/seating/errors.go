@@ -51,6 +51,11 @@ const (
 	ErrSBTSeatCategoryMissing = "sbt_seat_category_missing"
 	ErrSBTSeatsMissing        = "sbt_seats_missing"
 
+	// ErrMixedDialect: a plan with authoring row groups that still has
+	// seats carrying sbt:seat outside them (a half-converted working copy).
+	// Never imported partially.
+	ErrMixedDialect = "mixed_dialect"
+
 	// ErrNameKeyCollision: two different sector names (or two different
 	// row names of one section) still resolve to the same key after the
 	// key resolution of key_resolve.go added its hash suffix. Both

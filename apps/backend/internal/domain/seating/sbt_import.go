@@ -336,7 +336,7 @@ func parseSBTSections(root *xmlNode, catByIndex map[int]SBTCategory) ([]Section,
 			// instead of sbt:row (§13.3). Only consult it for groups
 			// that are not themselves the sector group, otherwise a
 			// sector's own <title> would be mistaken for a row name.
-			if t := strings.TrimSpace(elementText(findDirectChild(n, "title"))); t != "" {
+			if t := NormalizeRowTitle(elementText(findDirectChild(n, "title"))); t != "" {
 				rowName = t
 			}
 		}
