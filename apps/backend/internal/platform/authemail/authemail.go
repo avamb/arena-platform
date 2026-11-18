@@ -16,8 +16,8 @@
 // # Locales
 //
 // The verification email is rendered in the requested locale (currently "en"
-// and "ru"); all other locales fall back to English. The password emails of a
-// platform user are rendered in English. An organizer's password email lands
+// "ru" and "uk"); all other locales fall back to English. The password emails of
+// a platform user are rendered in English or Ukrainian (payload Locale). An organizer's password email lands
 // on the web event center and is rendered in the user's preferred_locale
 // (en, ru, es; organizer_password.go).
 //
@@ -113,6 +113,11 @@ type PasswordResetEmailPayload struct {
 	// OrgName names the inviting organization in a PurposeOrgInvitation email.
 	// Optional; the email reads generically when it is empty.
 	OrgName string `json:"org_name,omitempty"`
+	// Locale is the recipient's language for a platform user's letter (en
+	// default, uk). An organizer's letter ignores it and uses preferred_locale
+	// from the recipient lookup. Optional: jobs queued before it existed read
+	// as English.
+	Locale string `json:"locale,omitempty"`
 }
 
 // ─── handler ──────────────────────────────────────────────────────────────────
@@ -295,13 +300,13 @@ func (h *Handler) HandlePasswordResetEmail(ctx context.Context, payload []byte) 
 		// Onboarding lands on the SPA's welcome / choose-a-password page.
 		setupURL := h.appPublicURL + "/accept-invite?token=" + url.QueryEscape(p.Token) +
 			"&email=" + url.QueryEscape(p.Email)
-		subject, htmlBody, textBody = renderAccountSetupEmail(purpose, p.OrgName, setupURL, p.ExpiresAt)
+		subject, htmlBody, textBody = renderAccountSetupEmail(p.Locale, purpose, p.OrgName, setupURL, p.ExpiresAt)
 	default:
 		// Build the reset URL from canonical AppPublicURL — not from request headers.
 		// Send recipients to the SPA password form, which POSTs to the separately
 		// configured API URL.
 		resetURL := h.appPublicURL + "/reset-password?token=" + p.Token
-		subject, htmlBody, textBody = renderPasswordResetEmail(resetURL, p.ExpiresAt)
+		subject, htmlBody, textBody = renderPasswordResetEmail(p.Locale, resetURL, p.ExpiresAt)
 	}
 
 	h.logger.Info("authemail: sending password email",
@@ -345,6 +350,10 @@ func renderVerificationEmail(locale, verifyURL string, expiresAt time.Time) (sub
 		subject = "Подтвердите адрес электронной почты ArenaSoldOut.com"
 		htmlBody = fmt.Sprintf(verifyHTMLRu, expiry, safeURL, safeURL)
 		textBody = renderVerifyTextRu(verifyURL, expiry)
+	case "uk":
+		subject = "Підтвердіть адресу електронної пошти ArenaSoldOut.com"
+		htmlBody = fmt.Sprintf(verifyHTMLUk, expiry, safeURL, safeURL)
+		textBody = renderVerifyTextUk(verifyURL, expiry)
 	default: // "en" and all unsupported locales
 		subject = "Verify your ArenaSoldOut.com email address"
 		htmlBody = fmt.Sprintf(verifyHTMLEn, expiry, safeURL, safeURL)
@@ -355,9 +364,15 @@ func renderVerificationEmail(locale, verifyURL string, expiresAt time.Time) (sub
 
 // renderPasswordResetEmail returns subject, HTML body, and text body for a
 // password-reset email. Always rendered in English.
-func renderPasswordResetEmail(resetURL string, expiresAt time.Time) (subject, htmlBody, textBody string) {
+func renderPasswordResetEmail(locale, resetURL string, expiresAt time.Time) (subject, htmlBody, textBody string) {
 	safeURL := html.EscapeString(resetURL)
 	expiry := expiresAt.UTC().Format(time.RFC3339)
+	if normalizeLocale(locale) == "uk" {
+		subject = "Скидання пароля ArenaSoldOut.com"
+		htmlBody = fmt.Sprintf(resetHTMLUk, expiry, safeURL, safeURL)
+		textBody = renderResetTextUk(resetURL, expiry)
+		return
+	}
 	subject = "Reset your ArenaSoldOut.com password"
 	htmlBody = fmt.Sprintf(resetHTMLEn, expiry, safeURL, safeURL)
 	textBody = renderResetTextEn(resetURL, expiry)
@@ -367,9 +382,15 @@ func renderPasswordResetEmail(resetURL string, expiresAt time.Time) (subject, ht
 // renderAccountSetupEmail returns subject, HTML body, and text body for the
 // password-setup email of an administrator-created account or an organization
 // invitation. Always rendered in English, like the reset email.
-func renderAccountSetupEmail(purpose, orgName, setupURL string, expiresAt time.Time) (subject, htmlBody, textBody string) {
+func renderAccountSetupEmail(locale, purpose, orgName, setupURL string, expiresAt time.Time) (subject, htmlBody, textBody string) {
 	safeURL := html.EscapeString(setupURL)
 	expiry := expiresAt.UTC().Format(time.RFC3339)
+	if normalizeLocale(locale) == "uk" {
+		subject, intro := setupCopyUk(purpose, orgName)
+		htmlBody = fmt.Sprintf(setupHTMLUk, html.EscapeString(intro), expiry, safeURL, safeURL)
+		textBody = renderSetupTextUk(subject, intro, setupURL, expiry)
+		return subject, htmlBody, textBody
+	}
 	// Collapse all whitespace (incl. CR/LF) so a stored name can never break
 	// the Subject header or the plain-text layout.
 	orgName = strings.Join(strings.Fields(orgName), " ")
