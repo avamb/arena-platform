@@ -15,7 +15,8 @@
  *
  *   GET  /v1/venues/{venue_id}/seating-plans                (SEAT-A3 list)
  *   POST /v1/venues/{venue_id}/seating-plans                (SEAT-A3 create)
- *   PATCH  /v1/seating-plans/{id}          (archive via status="archived")
+ *   PATCH  /v1/seating-plans/{id}          (archive via status="archived",
+ *                                          activate via status="active")
  *   POST /v1/seating-plans/{id}/fork                        (SEAT-A3 fork)
  *   POST /v1/seating-plans/{id}/versions                    (SEAT-A3 upload)
  *   GET  /v1/seating-plans/{id}/versions      (AB-25c history + preview src)
@@ -1497,10 +1498,11 @@ export function GeometrySVG({ geometry }: { geometry: SeatingGeometry }) {
 // Fork / Archive actions
 // ---------------------------------------------------------------------------
 
-function PlanActions({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
+export function PlanActions({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
   const qc = useQueryClient();
   const [forkError, setForkError] = useState<ApiError | null>(null);
   const [archiveError, setArchiveError] = useState<ApiError | null>(null);
+  const [activateError, setActivateError] = useState<ApiError | null>(null);
   const [forkOrgID, setForkOrgID] = useState<string>(plan.owner_org_id);
 
   const fork = useMutation<SeatingPlanEnvelope, ApiError, void>({
@@ -1531,7 +1533,22 @@ function PlanActions({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
     onError: (err) => setArchiveError(err),
   });
 
+  const activate = useMutation<SeatingPlanEnvelope, ApiError, void>({
+    mutationFn: () =>
+      authedFetch<SeatingPlanEnvelope>({
+        method: "PATCH",
+        path: `/v1/seating-plans/${plan.id}`,
+        body: { status: "active" },
+      }),
+    onSuccess: () => {
+      setActivateError(null);
+      qc.invalidateQueries({ queryKey: ["seating-plans", "by-venue", venue.id] });
+    },
+    onError: (err) => setActivateError(err),
+  });
+
   const alreadyArchived = plan.status === "archived";
+  const isDraft = plan.status === "draft";
 
   return (
     <div style={sectionStyle}>
@@ -1557,6 +1574,17 @@ function PlanActions({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
         >
           {fork.isPending ? "Forking…" : "Fork"}
         </button>
+        {isDraft ? (
+          <button
+            type="button"
+            style={secondaryButtonStyle}
+            onClick={() => activate.mutate()}
+            disabled={activate.isPending}
+            data-testid={`venues-plan-activate-${plan.id}`}
+          >
+            {activate.isPending ? "Activating…" : "Activate"}
+          </button>
+        ) : null}
         <button
           type="button"
           style={dangerButtonStyle}
@@ -1585,6 +1613,16 @@ function PlanActions({ plan, venue }: { plan: SeatingPlan; venue: Venue }) {
         >
           <div style={errorCodeStyle}>{archiveError.code}</div>
           <div style={errorParaStyle}>{archiveError.message}</div>
+        </div>
+      ) : null}
+      {activateError !== null ? (
+        <div
+          style={errorBoxStyle}
+          role="alert"
+          data-testid={`venues-plan-activate-error-${plan.id}`}
+        >
+          <div style={errorCodeStyle}>{activateError.code}</div>
+          <div style={errorParaStyle}>{activateError.message}</div>
         </div>
       ) : null}
     </div>
