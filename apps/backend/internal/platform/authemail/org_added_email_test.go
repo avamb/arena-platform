@@ -26,6 +26,7 @@ func TestOrgAddedLetter_RendersInEveryLanguageWithTheEventCenterAndNoToken(t *te
 		{"en", "Hello!", "Theatre Nova"},
 		{"ru", "Здравствуйте!", "Театр Нова"},
 		{"es", "¡Hola!", "Teatro Nova"},
+		{"uk", "Вітаємо!", "Театр Нова"},
 		{"cs-CZ", "Hello!", "Divadlo Nova"}, // not a letter language: falls back to en
 	}
 	for _, tc := range cases {

@@ -401,6 +401,10 @@ func normalizeLocale(locale string) string {
 		// Only the bot invitation e-mail is translated so far; the other
 		// e-mails fall through to their English default.
 		return "es"
+	case "uk":
+		// Translated for the team letters (bot invitation, organizer
+		// password, org-added, onboarding); the rest fall through to English.
+		return "uk"
 	default:
 		return "en"
 	}

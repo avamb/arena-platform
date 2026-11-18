@@ -1140,6 +1140,7 @@ export const uk: Record<MessageKey, string> = {
   "team.locale.en": "Англійська",
   "team.locale.ru": "Російська",
   "team.locale.es": "Іспанська",
+  "team.locale.uk": "Українська",
   "team.invite.title": "Запросити людину",
   "team.invite.email": "E-mail людини",
   "team.invite.emailNote": "Введіть адресу e-mail, наприклад name@example.com. Ми надішлемо запрошення на неї.",
