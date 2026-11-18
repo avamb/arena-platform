@@ -2502,6 +2502,7 @@ export const es: Record<MessageKey, string> = {
   "seats.mode.sale": "Venta",
   "seats.brushes": "Pinceles",
   "seats.brush.free": "{free} de {total} libres",
+  "seats.brush.noSeats": "sin asientos: pinta asientos para añadirlos",
   "seats.brush.close": "Cerrar asientos",
   "seats.brush.close.hint": "No se venden hasta que los abras",
   "seats.brush.open": "Abrir asientos",

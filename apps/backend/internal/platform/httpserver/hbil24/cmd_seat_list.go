@@ -325,6 +325,9 @@ func (h *Handler) buildSeatListCategories(
 
 	out := make([]bil24compat.GetSeatListCategory, 0, len(tiers))
 	for _, t := range tiers {
+		if seatListPlaceless(admissionMode, t.ID, stats) {
+			continue
+		}
 		t = hcheckout.CapSaleWindow(t, salesEnd)
 		if salesstate.ValidManual(manual) {
 			t.IsOpen = false
@@ -340,6 +343,20 @@ func (h *Handler) buildSeatListCategories(
 		})
 	}
 	return out
+}
+
+// seatListPlaceless reports a category of a placed session (assigned_seats or
+// hybrid) that owns no place while the session has places: an extra price
+// category before the organizer paints seats into it. It has no seat on the
+// map and no GA place, so it is not listed; the hold gate refuses it too
+// (hcheckout.CheckGALinesSellable). A pure-GA session and a placed session
+// with no place at all keep every category and their ledger fallbacks.
+func seatListPlaceless(admissionMode string, tierID uuid.UUID, stats map[uuid.UUID]tierUnitStats) bool {
+	if admissionMode == admissionGA || len(stats) == 0 {
+		return false
+	}
+	_, ok := stats[tierID]
+	return !ok
 }
 
 // seatListLedgers loads the inventory ledger only when it is actually

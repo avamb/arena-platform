@@ -479,15 +479,40 @@ func sc1SeedHybridEvent(t *testing.T, st *harnessState, start, end time.Time) st
 	).Scan(&gaTierID); err != nil {
 		t.Fatalf("seed hybrid GA tier: %v", err)
 	}
-	// A seated tier with no ga_unit rows: it must NOT become a category, but it
-	// must still widen the action's maxPrice to 1500. price_amount is minor
-	// units (spec 20 §2.2): 150000 = CZK 1500.00 on the wire.
+	// A seated tier: it owns plan seats, no ga_unit rows. It must NOT become a
+	// category, but it must still widen the action's maxPrice to 1500.
+	// price_amount is minor units (spec 20 §2.2): 150000 = CZK 1500.00 on the
+	// wire. Its seats are closed, so the session availability stays the GA
+	// zone's 10.
+	var seatedTierID uuid.UUID
+	if err := st.Pool.QueryRow(ctx,
+		`INSERT INTO ticket_tiers (session_id, name, pricing_mode,
+		     price_amount, currency, sort_order)
+		 VALUES ($1, 'Balkon', 'fixed', 150000, 'CZK', 1)
+		 RETURNING id`, sessID,
+	).Scan(&seatedTierID); err != nil {
+		t.Fatalf("seed hybrid seated tier: %v", err)
+	}
+	if _, err := st.Pool.Exec(ctx,
+		`INSERT INTO session_seats
+		     (session_id, seat_key, sector_name, row_name, seat_number,
+		      tier_id, status, kind)
+		 SELECT $1, 'balkon|1|' || gs::text, 'Balkon', '1', gs::text,
+		        $2, 'unavailable', 'seat'
+		 FROM generate_series(1, 4) gs`,
+		sessID, seatedTierID,
+	); err != nil {
+		t.Fatalf("seed hybrid balcony seats: %v", err)
+	}
+	// A price category over the plan that owns no place yet (planExtra before
+	// the organizer paints seats into it): it sells nothing, so it must not
+	// widen maxPrice past 1500.
 	if _, err := st.Pool.Exec(ctx,
 		`INSERT INTO ticket_tiers (session_id, name, pricing_mode,
 		     price_amount, currency, sort_order)
-		 VALUES ($1, 'Balkon', 'fixed', 150000, 'CZK', 1)`, sessID,
+		 VALUES ($1, 'VIP', 'fixed', 250000, 'CZK', 2)`, sessID,
 	); err != nil {
-		t.Fatalf("seed hybrid seated tier: %v", err)
+		t.Fatalf("seed hybrid placeless tier: %v", err)
 	}
 	if _, err := st.Pool.Exec(ctx,
 		`INSERT INTO session_seats

@@ -2502,6 +2502,7 @@ export const ru: Record<MessageKey, string> = {
   "seats.mode.sale": "Продажа",
   "seats.brushes": "Кисти",
   "seats.brush.free": "свободно {free} из {total}",
+  "seats.brush.noSeats": "нет мест: закрасьте места, чтобы они появились",
   "seats.brush.close": "Закрыть места",
   "seats.brush.close.hint": "Не продаются, пока вы их не откроете",
   "seats.brush.open": "Открыть места",

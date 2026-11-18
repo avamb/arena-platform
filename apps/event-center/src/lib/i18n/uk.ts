@@ -2449,6 +2449,7 @@ export const uk: Record<MessageKey, string> = {
   "seats.mode.sale": "Продаж",
   "seats.brushes": "Пензлі",
   "seats.brush.free": "вільно {free} із {total}",
+  "seats.brush.noSeats": "немає місць: зафарбуйте місця, щоб вони з'явилися",
   "seats.brush.close": "Закрити місця",
   "seats.brush.close.hint": "Не в продажу, доки ви їх не відкриєте",
   "seats.brush.open": "Відкрити місця",

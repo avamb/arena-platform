@@ -2502,6 +2502,7 @@ export const en = {
   "seats.mode.sale": "Sale",
   "seats.brushes": "Brushes",
   "seats.brush.free": "{free} of {total} free",
+  "seats.brush.noSeats": "no seats: paint seats to add them",
   "seats.brush.close": "Close seats",
   "seats.brush.close.hint": "Not for sale until you open them",
   "seats.brush.open": "Open seats",

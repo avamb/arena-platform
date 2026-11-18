@@ -254,8 +254,9 @@ export function BrushPalette({
                   {formatMoney(tier.price, tier.currency, locale)}
                   {tier.pending === true
                     ? ` · ${t("seats.brush.pending")}`
-                    : tier.counts !== undefined &&
-                      ` · ${t("seats.brush.free", { free: formatNumber(tier.counts.free, locale), total: formatNumber(tier.counts.total, locale) })}`}
+                    : tier.counts === undefined || tier.counts.total === 0
+                      ? ` · ${t("seats.brush.noSeats")}`
+                      : ` · ${t("seats.brush.free", { free: formatNumber(tier.counts.free, locale), total: formatNumber(tier.counts.total, locale) })}`}
                   {!tier.open && ` · ${t("tier.closed")}`}
                 </span>
               </span>

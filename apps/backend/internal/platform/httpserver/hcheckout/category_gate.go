@@ -354,10 +354,25 @@ func CheckGALinesSellable(ctx context.Context, txq *gen.Queries, sessionID uuid.
 		return false, nil
 	}
 
+	// A category of a plan-bound session that owns no place yet (an extra
+	// price category nobody painted seats into) has nothing to sell. The
+	// allocation would come back short anyway; refusing here gives every
+	// path, the price quote included, the same "not on sale" answer.
+	var placeless map[uuid.UUID]bool
+	if len(order) > 0 {
+		var err error
+		if placeless, err = txq.ListPlacelessPlanTierIDsBySessions(ctx, []uuid.UUID{sessionID}); err != nil {
+			return fmt.Errorf("hcheckout: read categories without places: %w", err)
+		}
+	}
+
 	for _, id := range order {
 		t, err := load(id)
 		if err != nil {
 			return err
+		}
+		if placeless[id] {
+			return &CategoryNotSellableError{TierID: id, Reason: ErrCategoryNotOnSale, Now: now}
 		}
 		gateErr := CategorySellable(t, now)
 		if gateErr == nil {

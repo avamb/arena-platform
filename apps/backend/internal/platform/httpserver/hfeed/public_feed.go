@@ -262,6 +262,21 @@ func publicFeedTierAvailable(t gen.TicketTierRow, stats map[uuid.UUID]gaquota.St
 	return &n
 }
 
+// withoutPlacelessTiers drops the categories listed in placeless (see
+// gen.ListPlacelessPlanTierIDsBySessions), keeping the order of the rest.
+func withoutPlacelessTiers(tiers []gen.TicketTierRow, placeless map[uuid.UUID]bool) []gen.TicketTierRow {
+	if len(placeless) == 0 {
+		return tiers
+	}
+	out := make([]gen.TicketTierRow, 0, len(tiers))
+	for _, t := range tiers {
+		if !placeless[t.ID] {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // BuyerFieldItem describes a single buyer-form field that the widget should
 // render.  Emitted as buyer_fields:[{key,required,enabled}] in the session
 // payload so the widget can build the checkout form from the API response
@@ -892,6 +907,21 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 					)
 				}
 			}
+			// Categories of a plan-bound session that own no place yet (an
+			// extra price category before the organizer paints seats into it)
+			// are not offered: the buyer has nothing to take and the hold gate
+			// refuses them. One read for every session of the event. Non-fatal:
+			// a failure offers them as before and the hold still refuses.
+			var placelessTiers map[uuid.UUID]bool
+			if h.tierQueries != nil {
+				var placelessErr error
+				if placelessTiers, placelessErr = h.tierQueries.ListPlacelessPlanTierIDsBySessions(ctx, sessionIDs); placelessErr != nil {
+					h.logger.Error("public_feed: categories without places failed",
+						slog.String("event_id", eventID.String()),
+						slog.String("error", placelessErr.Error()),
+					)
+				}
+			}
 			for _, sess := range sessions {
 				// The same status rule the hold gate applies, and the
 				// organizer's sales state the gate also refuses on.
@@ -946,6 +976,7 @@ func (h *Handler) HandlePublicFeedEvent(w http.ResponseWriter, r *http.Request) 
 						)
 						// Non-fatal: return the session without tiers.
 					} else {
+						tiers = withoutPlacelessTiers(tiers, placelessTiers)
 						// AB-48: effective prices via the ONE resolver
 						// (non-fatal: a window lookup failure shows base).
 						effPrices, effErr := priceresolve.ForTiers(ctx, h.tierQueries, tiers, time.Now().UTC())
