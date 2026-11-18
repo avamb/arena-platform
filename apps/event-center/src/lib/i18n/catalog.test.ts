@@ -32,6 +32,13 @@ describe("catalogs", () => {
     }
   });
 
+  it("Ukrainian texts use no Russian-only letters and no «подія»", () => {
+    for (const [key, text] of Object.entries(CATALOGS.uk)) {
+      expect(/[ыэъё]/i.test(text), `${key}: «${text}»`).toBe(false);
+      expect(/под(ія|ії|ію|іє)|білет/i.test(text), `${key}: «${text}»`).toBe(false);
+    }
+  });
+
   it("English texts use American spelling and no semicolons", () => {
     for (const [key, text] of Object.entries(en)) {
       expect(text.replace(/{[a-zA-Z_]+}/g, "").includes("cancelled"), key).toBe(false);
@@ -49,6 +56,7 @@ describe("helpers", () => {
     expect(pickLocale(["fr-FR", "es-ES", "en"])).toBe("es");
     expect(pickLocale(["de"])).toBe("en");
     expect(pickLocale(["RU"])).toBe("ru");
+    expect(pickLocale(["uk-UA", "ru"])).toBe("uk");
   });
   it("translates", () => {
     expect(translate("ru", "figures.held", { count: 2 })).toBe("В брони: 2");

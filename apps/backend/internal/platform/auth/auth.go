@@ -887,7 +887,7 @@ func negotiateLocale(header string) string {
 				}
 			}
 		}
-		if tag != "en" && tag != "ru" {
+		if tag != "en" && tag != "ru" && tag != "uk" {
 			continue
 		}
 		if q > bestQ {
@@ -969,41 +969,51 @@ var authMessages = map[string]map[string]string{
 	"auth.missing_token": {
 		"en": "Authentication required: provide an Authorization header with a Bearer token.",
 		"ru": "Требуется аутентификация: укажите заголовок Authorization со схемой Bearer.",
+		"uk": "Потрібна автентифікація: вкажіть заголовок Authorization зі схемою Bearer.",
 	},
 	"auth.malformed_token": {
 		"en": "The provided bearer token is malformed.",
 		"ru": "Предоставленный токен Bearer имеет некорректный формат.",
+		"uk": "Наданий токен Bearer має некоректний формат.",
 	},
 	"auth.invalid_signature": {
 		"en": "The bearer token signature is invalid.",
 		"ru": "Подпись токена Bearer недействительна.",
+		"uk": "Підпис токена Bearer недійсний.",
 	},
 	"auth.token_expired": {
 		"en": "The bearer token has expired; request a fresh one.",
 		"ru": "Срок действия токена Bearer истёк, получите новый токен.",
+		"uk": "Термін дії токена Bearer минув, отримайте новий токен.",
 	},
 	"auth.token_not_yet_valid": {
 		"en": "The bearer token is not yet valid; retry after the not-before time.",
 		"ru": "Токен Bearer ещё не действителен; повторите запрос после наступления времени not-before.",
+		"uk": "Токен Bearer ще не дійсний; повторіть запит після настання часу not-before.",
 	},
 	"auth.unknown_issuer": {
 		"en": "The bearer token was issued by an unknown issuer.",
 		"ru": "Токен Bearer выпущен неизвестным эмитентом.",
+		"uk": "Токен Bearer видано невідомим емітентом.",
 	},
 	"auth.unknown_audience": {
 		"en": "The bearer token is not intended for this audience.",
 		"ru": "Токен Bearer выпущен не для этой аудитории.",
+		"uk": "Токен Bearer видано не для цієї аудиторії.",
 	},
 	"auth.unsupported_alg": {
 		"en": "The bearer token uses an unsupported signing algorithm.",
 		"ru": "Токен Bearer использует неподдерживаемый алгоритм подписи.",
+		"uk": "Токен Bearer використовує непідтримуваний алгоритм підпису.",
 	},
 	"auth.invalid_token": {
 		"en": "The bearer token is invalid.",
 		"ru": "Токен Bearer недействителен.",
+		"uk": "Токен Bearer недійсний.",
 	},
 	"auth.disabled": {
 		"en": "Authentication is disabled for this deployment.",
 		"ru": "Аутентификация отключена в этой среде.",
+		"uk": "Автентифікацію вимкнено в цьому середовищі.",
 	},
 }

@@ -8,7 +8,7 @@ import type { BotTeamMember } from "@/lib/api/types";
 import type { MessageKey } from "@/lib/i18n/en";
 
 /** The three languages a letter can be written in. */
-export const INVITE_LOCALES = ["en", "ru", "es"] as const;
+export const INVITE_LOCALES = ["en", "ru", "es", "uk"] as const;
 
 /** The state a row shows: one word, never colour only. */
 export type MemberState = "waiting" | "accepted" | "expired" | "telegram" | "added";

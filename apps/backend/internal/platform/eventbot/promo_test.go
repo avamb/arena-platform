@@ -541,7 +541,7 @@ func TestPromoCardAndUsageTexts(t *testing.T) {
 	for _, loc := range SupportedLocales {
 		entry := b.promoEntry(loc, 1, fixed, now)
 		for _, want := range []string{"FIVE&lt;EUR&gt;", "5,50", "EUR", "100", "31.12.2026", "09.10.2026", "16,50"} {
-			if loc != "ru" && loc != "es" {
+			if loc != "ru" && loc != "es" && loc != "uk" {
 				want = strings.ReplaceAll(want, "5,50", "5.50")
 				want = strings.ReplaceAll(want, "16,50", "16.50")
 			}

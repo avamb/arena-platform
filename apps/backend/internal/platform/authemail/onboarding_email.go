@@ -132,6 +132,7 @@ var eventCenterButton = map[string]string{
 	"en": "Open the event center",
 	"ru": "Открыть ивент-центр",
 	"es": "Abrir el centro de eventos",
+	"uk": "Відкрити івент-центр",
 }
 
 func normalizeOnboardingLocale(l string) string {
@@ -140,6 +141,8 @@ func normalizeOnboardingLocale(l string) string {
 		return "ru"
 	case "es":
 		return "es"
+	case "uk":
+		return "uk"
 	}
 	return "en"
 }
@@ -171,6 +174,16 @@ var onboardingTexts = map[string]map[string]onboardingText{
 		OnboardingKindApproved:      {"Ваша заявка в ArenaSoldOut.com одобрена", "Здравствуйте{name}, хорошие новости: заявка{org} одобрена, рабочее пространство готово. Если это ваш первый аккаунт в ArenaSoldOut.com, отдельным письмом придёт ссылка для создания пароля. После этого войдите и создайте первое мероприятие.", "Войти в ArenaSoldOut.com"},
 		OnboardingKindCode:          {"Код подтверждения ArenaSoldOut.com", "Здравствуйте{name}, введите этот код в чате Telegram, чтобы подтвердить адрес e-mail. Код действует 15 минут. Если вы не подавали заявку, просто проигнорируйте письмо.", ""},
 		OnboardingKindRejected:      {"О вашей заявке в ArenaSoldOut.com", "Здравствуйте{name}, спасибо за интерес к ArenaSoldOut.com. Сейчас мы не можем одобрить заявку{org}.{message} Если вы считаете, что это ошибка, просто ответьте на это письмо.", ""},
+	},
+	"uk": {
+		OnboardingKindConfirm:       {"Підтвердьте e-mail, щоб продовжити заявку в ArenaSoldOut.com", "Вітаємо{name}, дякуємо, що почали заявку на продаж квитків через ArenaSoldOut.com. Підтвердьте адресу кнопкою нижче. Заявку можна залишити й повернутися пізніше: відповіді збережено, а це посилання повертає вас до анкети.", "Підтвердити й продовжити"},
+		OnboardingKindResume:        {"Продовжити заявку в ArenaSoldOut.com", "Вітаємо{name}, ось посилання, щоб продовжити заявку. Ваші відповіді збережено.", "Продовжити заявку"},
+		OnboardingKindReminder:      {"Ваша заявка в ArenaSoldOut.com чекає на вас", "Вітаємо{name}, ви почали заявку на продаж квитків через ArenaSoldOut.com, але не завершили її. Відповіді збережено, лишилося кілька хвилин.", "Завершити заявку"},
+		OnboardingKindReceived:      {"Ми отримали вашу заявку в ArenaSoldOut.com", "Вітаємо{name}, ми отримали заявку{org}. Команда перевіряє кожного організатора вручну, зазвичай за один-два робочі дні. Ми напишемо вам, щойно буде рішення або запитання.", ""},
+		OnboardingKindInfoRequested: {"Потрібні уточнення щодо вашої заявки в ArenaSoldOut.com", "Вітаємо{name}, щоб продовжити із заявкою, нам потрібні уточнення:\n\n{message}\n\nВідкрийте анкету кнопкою нижче й оновіть позначені відповіді.", "Оновити заявку"},
+		OnboardingKindApproved:      {"Вашу заявку в ArenaSoldOut.com схвалено", "Вітаємо{name}, добра новина: заявку{org} схвалено, робочий простір готовий. Якщо це ваш перший акаунт в ArenaSoldOut.com, окремим листом прийде посилання для створення пароля. Після цього увійдіть і створіть перший захід.", "Увійти в ArenaSoldOut.com"},
+		OnboardingKindCode:          {"Код підтвердження ArenaSoldOut.com", "Вітаємо{name}, введіть цей код у чаті Telegram, щоб підтвердити адресу e-mail. Код діє 15 хвилин. Якщо ви не подавали заявку, просто проігноруйте лист.", ""},
+		OnboardingKindRejected:      {"Щодо вашої заявки в ArenaSoldOut.com", "Вітаємо{name}, дякуємо за інтерес до ArenaSoldOut.com. Зараз ми не можемо схвалити заявку{org}.{message} Якщо ви вважаєте, що це помилка, просто дайте відповідь на цей лист.", ""},
 	},
 	"es": {
 		OnboardingKindConfirm:       {"Confirma tu correo para continuar con tu solicitud en ArenaSoldOut.com", "Hola{name}, gracias por iniciar una solicitud para vender entradas con ArenaSoldOut.com. Confirma tu correo con el botón de abajo. Puedes dejarlo y volver más tarde: tus respuestas quedan guardadas y este enlace te devuelve al formulario.", "Confirmar y continuar"},

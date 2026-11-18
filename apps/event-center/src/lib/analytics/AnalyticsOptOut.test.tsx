@@ -13,10 +13,11 @@ function html(locale: (typeof LOCALES)[number], checked: boolean): string {
 
 describe("the opt-out toggle", () => {
   it("is labelled in every language of the event center", () => {
-    expect(LOCALES).toEqual(["en", "ru", "es"]);
+    expect(LOCALES).toEqual(["en", "ru", "es", "uk"]);
     expect(html("en", true)).toContain("Help us make the service better");
     expect(html("ru", true)).toContain("Помогать улучшать сервис");
     expect(html("es", true)).toContain("Ayudar a mejorar el servicio");
+    expect(html("uk", true)).toContain("Допомагати покращувати сервіс");
     for (const l of LOCALES) {
       expect(CATALOGS[l]["analytics.optOut.label"].trim().length).toBeGreaterThan(0);
       expect(CATALOGS[l]["analytics.optOut.hint"].trim().length).toBeGreaterThan(0);

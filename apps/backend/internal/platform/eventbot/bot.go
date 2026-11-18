@@ -919,6 +919,7 @@ func languageRow() *models.InlineKeyboardMarkup {
 		{Text: "English", CallbackData: "lang:en"},
 		{Text: "Русский", CallbackData: "lang:ru"},
 		{Text: "Español", CallbackData: "lang:es"},
+		{Text: "Українська", CallbackData: "lang:uk"},
 	}}}
 }
 

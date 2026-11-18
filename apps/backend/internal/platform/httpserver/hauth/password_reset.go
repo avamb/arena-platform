@@ -165,6 +165,7 @@ func (h *Handler) PasswordResetRequest(w http.ResponseWriter, r *http.Request) {
 		Email:     email,
 		Token:     token,
 		ExpiresAt: expiresAt,
+		Locale:    userRow.PreferredLocale,
 	}
 	jobID, enqErr := worker.EnqueueInTx(ctx, tx, authemail.JobTypePasswordResetEmail, jobPayload, 5)
 	if enqErr != nil {
