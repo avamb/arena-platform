@@ -18,6 +18,8 @@ import {
   buildCategoryByIndex,
   buildTierById,
   identifyGaTiers,
+  isPlacelessTier,
+  legendTiersOf,
   seatedTiersOf,
   tiersAreFree,
   planlessGaTiers,
@@ -441,6 +443,51 @@ describe('identifyGaTiers', () => {
     const cats = [{ ...makeCategoryPrice(0), tier_id: undefined }];
     // t1 is not in cats (tier_id undefined), so it's GA.
     expect(identifyGaTiers(tiers, cats)).toHaveLength(1);
+  });
+
+  it('a price category with no place of its own is not a GA card', () => {
+    // The server says: no quantity and nothing free (an extra price category
+    // of a seated date before the organizer paints seats into it).
+    const vip: Tier = { ...makeTier('vip', 'VIP', 7000, 'EUR'), capacity: null, available: null };
+    const closedVip: Tier = { ...makeTier('vip2', 'VIP 2', 7000, 'EUR'), capacity: null, available: 0 };
+    const standing: Tier = { ...makeTier('ga', 'Standing', 1500, 'EUR'), capacity: 50, available: 12 };
+    const soldOut: Tier = { ...makeTier('ga2', 'Standing 2', 1500, 'EUR'), capacity: 50, available: 0 };
+    const seated: Tier = { ...makeTier('seat', 'Parter', 4000, 'EUR'), capacity: null, available: null };
+    const cats = [{ ...makeCategoryPrice(1), tier_id: 'seat' }];
+    const ids = identifyGaTiers([seated, vip, closedVip, standing, soldOut], cats).map((t) => t.id);
+    expect(ids).toEqual(['ga', 'ga2']);
+  });
+});
+
+describe('isPlacelessTier', () => {
+  it('needs the server to say so: missing fields keep a tier', () => {
+    expect(isPlacelessTier(makeTier('t', 'T'))).toBe(false);
+    expect(isPlacelessTier({ ...makeTier('t', 'T'), capacity: null })).toBe(false);
+    expect(isPlacelessTier({ ...makeTier('t', 'T'), capacity: null, available: null })).toBe(true);
+    expect(isPlacelessTier({ ...makeTier('t', 'T'), capacity: 10, available: null })).toBe(false);
+  });
+});
+
+describe('legendTiersOf', () => {
+  const vip: Tier = { ...makeTier('vip', 'VIP', 7000, 'EUR'), capacity: null, available: null, sort_order: 3 };
+  const parter: Tier = { ...makeTier('parter', 'Parter', 4000, 'EUR'), capacity: null, available: null, sort_order: 1 };
+  const standing: Tier = { ...makeTier('ga', 'Standing', 1500, 'EUR'), capacity: 50, available: 50, sort_order: 2 };
+
+  it('lists every tier in sort order before the schema gave colours', () => {
+    expect(legendTiersOf([vip, standing, parter], new Map()).map((t) => t.id)).toEqual(['parter', 'ga', 'vip']);
+  });
+
+  it('leaves out a tier with no seat colour that owns no place', () => {
+    const colors = new Map([['parter', '#aa0000']]);
+    expect(legendTiersOf([vip, standing, parter], colors).map((t) => t.id)).toEqual(['parter', 'ga']);
+  });
+
+  it('keeps a painted extra category, which the schema gives its own colour', () => {
+    const colors = new Map([
+      ['parter', '#aa0000'],
+      ['vip', '#00aa00'],
+    ]);
+    expect(legendTiersOf([vip, standing, parter], colors).map((t) => t.id)).toEqual(['parter', 'ga', 'vip']);
   });
 });
 

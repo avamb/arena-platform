@@ -275,6 +275,11 @@ func (h *Handler) projectActionEvents(
 			entry["seatingPlanId"] = int64(0)
 		}
 
+		// A category of a placed session that owns no place yet (an extra
+		// price category before the organizer paints seats into it) sells
+		// nothing: it gives no "from" price and counts for nothing.
+		bySession[s.SessionID] = withoutPlacelessCategories(s, bySession[s.SessionID])
+
 		// The session's sales end closes every category with it: capping
 		// each category window lets the projections below apply the very
 		// rule the hold gate does.
@@ -345,6 +350,24 @@ func (h *Handler) projectActionEvents(
 			acc.hasPrice = true
 		}
 		out[s.EventID] = acc
+	}
+	return out
+}
+
+// withoutPlacelessCategories drops, on a session with a seating plan that has
+// places, every category owning neither a seat nor a GA place (see
+// gen.ListPlacelessPlanTierIDsBySessions). A pure-GA session and a placed
+// session with no place at all keep every category.
+func withoutPlacelessCategories(s gen.ActionEventRow, tiers []gen.ActionEventTierRow) []gen.ActionEventTierRow {
+	if (s.AdmissionMode != "assigned_seats" && s.AdmissionMode != "hybrid") || s.SeatsTotal <= 0 {
+		return tiers
+	}
+	out := tiers[:0:0]
+	for _, t := range tiers {
+		if t.GAUnitsTotal == 0 && t.SeatsTotal == 0 {
+			continue
+		}
+		out = append(out, t)
 	}
 	return out
 }

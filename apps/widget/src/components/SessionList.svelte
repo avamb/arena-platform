@@ -10,7 +10,7 @@
   import { doorsOpenLabel, sessionChipLabel } from '../lib/session-label.js';
   import { priceLabelBesideName } from '../lib/priceLabel.js';
   import { getCheckoutI18n } from '../lib/checkout.js';
-  import { isSessionCancelled } from '../lib/store.js';
+  import { isSessionCancelled, legendTiersOf } from '../lib/store.js';
   import { getSaleStateStrings, pausedSalesState } from '../lib/saleSubscribe.js';
 
   interface Props {
@@ -40,9 +40,7 @@
     selectedSession ? doorsOpenLabel(selectedSession.doors_open_at, locale, selectedSession.timezone) : '',
   );
 
-  const legendTiers = $derived(
-    selectedSession ? [...selectedSession.tiers].sort((a, b) => a.sort_order - b.sort_order) : [],
-  );
+  const legendTiers = $derived(selectedSession ? legendTiersOf(selectedSession.tiers, tierColors) : []);
 
 </script>
 

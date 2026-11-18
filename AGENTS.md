@@ -482,6 +482,7 @@ Places, categories, hold and quota lock order, plan geometry, seat layouts, venu
 * A section or row key is NOT always normalizeKey(name): hash suffix where names collide on a seat
 * A category has ONE colour for the organizer and the buyer: tier colour, else the home plan category's, else the palette
 * The bot's "Split seats by price" fills an EMPTY open category of the same price before creating a new one (loEmptyOpen)
+* A category of a plan-bound session that owns no place is never offered or sold (feed, gate, gateway, widget)
 
 ### [Events, sessions, promoters and sales channels](docs/agents/catalog-sessions-channels.md)
 
