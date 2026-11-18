@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// FormatMoney renders a minor-unit amount as "1 234,50 EUR" (ru) or
+// FormatMoney renders a minor-unit amount as "1 234,50 EUR" (ru, uk) or
 // "1,234.50 EUR" (en) or "1.234,50 EUR" (es). Integer arithmetic only: the
 // amount is money.
 func FormatMoney(minor int64, currency, locale string) string {
@@ -20,7 +20,7 @@ func FormatMoney(minor int64, currency, locale string) string {
 	if NormalizeLocale(locale) == "es" {
 		thousands, decimal = ".", ","
 	}
-	if NormalizeLocale(locale) == "ru" {
+	if l := NormalizeLocale(locale); l == "ru" || l == "uk" {
 		thousands, decimal = " ", ","
 	}
 	digits := fmt.Sprintf("%d", whole)
