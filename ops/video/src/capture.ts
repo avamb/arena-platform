@@ -132,7 +132,7 @@ async function main(): Promise<void> {
   const id = process.argv[2];
   if (!id) throw new Error("usage: npm run capture -- <scenario>");
   const sc = loadScenario(id);
-  const todo = sc.scenes.filter((s) => s.source.capture);
+  const todo = sc.scenes.filter((s) => s.source?.capture);
   if (todo.length === 0) {
     console.log("No scene has capture steps, nothing to do.");
     return;
@@ -158,7 +158,7 @@ async function main(): Promise<void> {
       console.log(`scene ${scene.id}`);
       await captureScene(browser, {
         id: scene.id,
-        steps: scene.source.capture!,
+        steps: scene.source!.capture!,
         viewport: sc.capture.viewport,
         outDir,
         baseUrl,

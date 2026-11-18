@@ -21,7 +21,8 @@ function wrapLines(words: string[]): string[] {
 
 /** Narrator text -> cue texts of at most two lines of 42 characters. Sentences start new cues. */
 export function splitCues(text: string): string[] {
-  const sentences = text.replace(/\s+/g, " ").trim().match(/[^.!?…]+[.!?…]*\s*/g) ?? [text];
+  // A sentence ends at . ! ? … followed by a space or the end; a dot inside "arenasoldout.com" does not end it.
+  const sentences = text.replace(/\s+/g, " ").trim().split(/(?<=[.!?…])\s+/).filter(Boolean);
   const cues: string[] = [];
   for (const s of sentences) {
     const lines = wrapLines(s.trim().split(" ").filter(Boolean));

@@ -1,0 +1,90 @@
+id: sell-01-short
+fps: 30
+languages: [ru]
+title:
+  ru: "Афиша → билеты, 30 секунд"
+
+# Short vertical version of sell-01 (section 6 of docs/video/01_first_video_script_ru.md).
+# It uses the pictures of sell-01.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16]
+background: "#4f46e5"
+
+scenes:
+  - id: p1-poster
+    narration:
+      ru: У вас есть афиша? Начните продавать билеты через несколько минут.
+    pause_after: 0.2
+    shots:
+      - image: ../sell-01/assets/poster_vecher_dzhaza_4x5.png
+        frame: phone
+        title: { ru: "Афиша → билеты" }
+        zoom: { from: 1.0, to: 1.12, x: 0.5, y: 0.45 }
+
+  - id: p2-bot
+    narration:
+      ru: Отправьте афишу боту Arena Sold Out. Он прочитает название, дату и цену. Вы подтверждаете кнопками и получаете ссылку для покупателей.
+    pause_after: 0.2
+    shots:
+      - image: ../sell-01/captures/r_03_sent.png
+        frame: phone
+        title: { ru: Бот читает афишу }
+      - image: ../sell-01/captures/r_04_read.png
+        frame: phone
+        title: { ru: Бот читает афишу }
+        weight: 2
+        highlight: { x: 0.02, y: 0.085, w: 0.75, h: 0.215 }
+      - image: ../sell-01/captures/r_16_price_q.png
+        frame: phone
+        title: { ru: Бот читает афишу }
+        highlight: { x: 0.02, y: 0.782, w: 0.75, h: 0.05 }
+      - image: ../sell-01/captures/r_20_done.png
+        frame: phone
+        title: { ru: Ссылка готова }
+        weight: 2
+        highlight: { x: 0.02, y: 0.165, w: 0.75, h: 0.065 }
+
+  - id: p3-buyer
+    narration:
+      ru: Покупатель платит картой, билет приходит ему на почту.
+    pause_after: 0.2
+    shots:
+      - image: ../sell-01/captures/b_03_cart.png
+        frame: phone
+        title: { ru: Оплата картой }
+      - image: ../sell-01/captures/b_05_stripe.png
+        frame: phone
+        title: { ru: Оплата картой }
+        zoom: { from: 1.5, to: 1.7, x: 0.05, y: 0.15 }
+      - graphic: placeholder
+        caption: { ru: "Билет на почте: письмо покупателю ещё не снято" }
+
+  - id: p4-money
+    narration:
+      ru: Деньги поступают напрямую на ваш счёт. О каждой продаже приходит сообщение в Telegram.
+    pause_after: 0.2
+    shots:
+      - graphic: flow
+        steps: { ru: [Покупатель, Stripe, Ваш счёт] }
+        caption: { ru: Деньги напрямую вам }
+      # Reconstruction (../sell-01/reconstructions/sale_message.html), not a screenshot.
+      - image: ../sell-01/captures/s_01_sale_reconstruction.png
+        frame: phone
+        title: { ru: Сообщение о продаже }
+        zoom: { from: 1.25, to: 1.35, x: 0.5, y: 0.1 }
+
+  - id: p5-cta
+    narration:
+      ru: Оставьте заявку на arenasoldout.com.
+    pause_after: 0.8
+    shots:
+      - graphic: cta
+        heading: { ru: Оставьте заявку }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"

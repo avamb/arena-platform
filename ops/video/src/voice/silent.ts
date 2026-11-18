@@ -43,6 +43,6 @@ export class SilentProvider implements VoiceProvider {
     fs.mkdirSync(this.dir, { recursive: true });
     const file = path.join(this.dir, `${hash}.wav`);
     fs.writeFileSync(file, silentWav(seconds));
-    return { file, durationSec: Math.round(seconds * RATE) / RATE };
+    return { file, durationSec: Math.round(seconds * RATE) / RATE, chars: 0, cached: false };
   }
 }

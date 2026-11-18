@@ -19,7 +19,8 @@ export class ElevenLabsProvider implements VoiceProvider {
     const { apiKey, voiceId, modelId, cacheDir } = this.opts;
     const hash = crypto.createHash("sha256").update(JSON.stringify([text, voiceId, modelId])).digest("hex").slice(0, 32);
     const file = path.join(cacheDir, `${hash}.mp3`);
-    if (!fs.existsSync(file)) {
+    const cached = fs.existsSync(file);
+    if (!cached) {
       fs.mkdirSync(cacheDir, { recursive: true });
       const url = `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`;
       const res = await fetch(url, {
@@ -39,6 +40,6 @@ export class ElevenLabsProvider implements VoiceProvider {
     const meta = await parseFile(file, { duration: true });
     const durationSec = meta.format.duration;
     if (!durationSec || durationSec <= 0) throw new Error(`elevenlabs: cannot read length of ${file}`);
-    return { file, durationSec };
+    return { file, durationSec, chars: cached ? 0 : text.length, cached };
   }
 }

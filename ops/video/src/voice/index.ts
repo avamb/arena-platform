@@ -8,6 +8,10 @@ export interface VoiceResult {
   /** absolute path of the audio file */
   file: string;
   durationSec: number;
+  /** characters sent to the provider by this call (0 for the cache and for the silent stub) */
+  chars: number;
+  /** the sound came from the cache, nothing was sent */
+  cached: boolean;
 }
 
 export interface VoiceProvider {
@@ -15,9 +19,9 @@ export interface VoiceProvider {
   synthesize(text: string, lang: string): Promise<VoiceResult>;
 }
 
-export function createVoiceProvider(voice: Scenario["voice"], silentDir: string): VoiceProvider {
+export function createVoiceProvider(voice: Scenario["voice"], silentDir: string, force?: "silent"): VoiceProvider {
   const hasKey = Boolean(process.env.ELEVENLABS_API_KEY);
-  const wanted = voice.provider === "auto" ? (hasKey ? "elevenlabs" : "silent") : voice.provider;
+  const wanted = force ?? (voice.provider === "auto" ? (hasKey ? "elevenlabs" : "silent") : voice.provider);
   if (wanted === "silent") return new SilentProvider(silentDir);
   const apiKey = process.env.ELEVENLABS_API_KEY;
   const voiceId = process.env[voice.elevenlabs.voice_id_env];

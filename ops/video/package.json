@@ -17,6 +17,7 @@
     "@remotion/renderer": "4.0.545",
     "music-metadata": "^11.0.0",
     "playwright": "^1.65.1",
+    "qrcode": "^1.5.4",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "remotion": "4.0.545",
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "tsx": "^4.23.15",

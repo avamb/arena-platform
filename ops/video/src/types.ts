@@ -37,6 +37,42 @@ export interface Cue {
   text: string;
 }
 
+export type FrameKind = "phone" | "browser" | "none";
+export type GraphicKind = "flow" | "cta" | "placeholder";
+
+export interface ScrollSpec {
+  from: number;
+  to: number;
+}
+
+/** One picture or graphic inside a scene; times are frames inside the scene. */
+export interface ManifestShot {
+  startFrame: number;
+  frames: number;
+  frame: FrameKind;
+  title?: string;
+  /** file name inside the Remotion public dir (a picture shot) */
+  image?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  clip?: string;
+  zoom?: ZoomSpec;
+  highlight?: HighlightSpec;
+  cursor?: CursorPoint[];
+  scroll?: ScrollSpec;
+  /** a graphic shot, drawn by the edit */
+  graphic?: GraphicKind;
+  steps?: string[];
+  caption?: string;
+  heading?: string;
+  lines?: string[];
+  /** PNG data URL made at build time */
+  qr?: string;
+  logo?: string;
+  logoWidth?: number;
+  logoHeight?: number;
+}
+
 export interface ManifestScene {
   id: string;
   startFrame: number;
@@ -46,16 +82,13 @@ export interface ManifestScene {
   voiceSec: number;
   pauseAfterSec: number;
   narration: string;
-  title?: string;
-  /** file names inside the Remotion public dir */
-  image: string;
-  imageWidth: number;
-  imageHeight: number;
-  clip?: string;
+  /** characters sent to the voice provider for this scene (0 for the silent stub) */
+  chars: number;
+  /** true if the sound came from the cache and nothing was sent */
+  cached: boolean;
+  /** file name inside the Remotion public dir */
   audio: string;
-  zoom?: ZoomSpec;
-  highlight?: HighlightSpec;
-  cursor?: CursorPoint[];
+  shots: ManifestShot[];
   cues: Cue[];
 }
 
@@ -66,6 +99,8 @@ export interface Manifest {
   fps: number;
   totalFrames: number;
   totalSeconds: number;
+  background: string;
+  formats: FrameFormat[];
   scenes: ManifestScene[];
 }
 

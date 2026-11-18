@@ -1,0 +1,59 @@
+<!doctype html>
+<!-- RECONSTRUCTION, not a screenshot. The text follows salesnotify.FormatSale
+     (apps/backend/internal/platform/salesnotify/messages.go). All values are the
+     invented example of the film. Render: 420 x 880 CSS px at double resolution. -->
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; width: 420px; height: 880px; font-family: "Segoe UI", Roboto, Arial, sans-serif;
+         background: linear-gradient(160deg, #cfe3a8 0%, #8fbf86 45%, #7fb08c 100%); position: relative; overflow: hidden; }
+  .top { position: absolute; left: 8px; right: 8px; top: 8px; height: 48px; background: #fff; border-radius: 24px;
+         display: flex; align-items: center; padding: 0 14px; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+  .back { font-size: 22px; margin-right: 12px; color: #222; }
+  .ava { width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(#6aa8f5, #3f7fe0); color: #fff;
+         display: flex; align-items: center; justify-content: center; font-weight: 600; margin-right: 14px; }
+  .name { font-weight: 600; font-size: 16px; line-height: 19px; }
+  .sub { color: #707579; font-size: 14px; line-height: 17px; }
+  .day { position: absolute; top: 76px; left: 0; right: 0; text-align: center; }
+  .day span { background: rgba(0,0,0,.28); color: #fff; font-size: 13px; padding: 3px 10px; border-radius: 12px; }
+  .msg { position: absolute; left: 50px; top: 118px; width: 330px; background: #fff; border-radius: 6px 14px 14px 14px;
+         padding: 8px 12px 22px; font-size: 16px; line-height: 21px; color: #111; box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+  .from { color: #3f8fd8; font-weight: 600; margin-bottom: 2px; }
+  .gap { height: 21px; }
+  .link { color: #3390ec; }
+  .time { position: absolute; right: 10px; bottom: 5px; font-size: 12px; color: #8a9096; }
+  .who { position: absolute; left: 8px; top: 470px; width: 34px; height: 34px; border-radius: 50%;
+         background: linear-gradient(#f7b25e, #ef7d3a); color: #fff; font-size: 13px; font-weight: 600;
+         display: flex; align-items: center; justify-content: center; }
+  .input { position: absolute; left: 8px; right: 8px; bottom: 12px; height: 48px; background: #fff; border-radius: 24px;
+           display: flex; align-items: center; padding: 0 18px; color: #a2acb4; font-size: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+</style>
+</head>
+<body>
+  <div class="top"><div class="back">←</div><div class="ava">LE</div>
+    <div><div class="name">Luna Events · продажи</div><div class="sub">3 участника</div></div></div>
+  <div class="day"><span>18 ноября</span></div>
+  <div class="msg">
+    <div class="from">ArenaSales</div>
+    <div>🎟 <b>New sale</b> — Luna Events</div>
+    <div class="gap"></div>
+    <div><b>Вечер джаза</b></div>
+    <div>📅 Sat 13 Feb 2027, 20:00</div>
+    <div>📍 Saal Aurora</div>
+    <div class="gap"></div>
+    <div>🧾 Order #1000002150 · widget (Arena Sold Out — страница продаж)</div>
+    <div>🎫 2 × Входной билет</div>
+    <div>💰 Total: <b>50.50 EUR</b></div>
+    <div class="gap"></div>
+    <div>👤 Анна Орлова</div>
+    <div>✉️ anna@example.com</div>
+    <div class="gap"></div>
+    <div>🤖 <span class="link">@EventsCentrBot</span> — create and edit your events from Telegram</div>
+    <div class="time">23:38</div>
+  </div>
+  <div class="who">AS</div>
+  <div class="input">Сообщение</div>
+</body>
+</html>

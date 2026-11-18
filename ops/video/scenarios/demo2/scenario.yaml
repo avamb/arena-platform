@@ -1,0 +1,78 @@
+id: demo2
+fps: 30
+languages: [ru, en]
+title:
+  ru: Проверка кадров, телефона и графики
+  en: Check of shots, phone frame and graphics
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9, 9x16, 4x5]
+background: "#4f46e5"
+
+# The pictures are the ones of the demo scenario; tall.png is three of them
+# cropped to their left part and put one under another (a page taller than a phone screen).
+scenes:
+  - id: buyer
+    narration:
+      ru: Покупатель открывает ссылку и выбирает билеты. Потом платит картой, а деньги идут напрямую вам. Всё это видно на телефоне и в браузере.
+      en: The buyer opens the link and chooses tickets. Then they pay by card and the money goes straight to you. All of it is seen on a phone and in a browser.
+    pause_after: 0.4
+    shots:
+      - image: assets/tall.png
+        frame: phone
+        title: { ru: Выбор билетов, en: Choosing tickets }
+        weight: 2
+        scroll: { from: 0, to: 1 }
+        highlight: { x: 0.05, y: 0.02, w: 0.6, h: 0.04 }
+      - image: ../demo/assets/02-new-event.png
+        frame: browser
+        title: { ru: Оплата картой, en: Card payment }
+        zoom: { from: 1.0, to: 1.2, x: 0.3, y: 0.3 }
+        cursor:
+          - { at: 0.2, x: 0.7, y: 0.5 }
+          - { at: 0.7, x: 0.4167, y: 0.222, click: true }
+      - graphic: flow
+        steps:
+          ru: [Покупатель, Stripe, Ваш счёт]
+          en: [Buyer, Stripe, Your account]
+        caption:
+          ru: Деньги идут напрямую вам
+          en: The money goes straight to you
+
+  - id: cta
+    narration:
+      ru: "Оставьте заявку: наведите камеру на код или напишите нашему боту."
+      en: "Send an application: point the camera at the code or write to our bot."
+    pause_after: 0.5
+    shots:
+      - graphic: cta
+        heading: { ru: Оставьте заявку, en: Send an application }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"
+
+  - id: placeholder
+    narration:
+      ru: Этот кадр ещё не снят.
+      en: This shot is not filmed yet.
+    shots:
+      - graphic: placeholder
+        caption:
+          ru: "Сканер билетов: съёмка на телефоне"
+          en: "Ticket scanner: filming on a phone"
+
+  - id: plain
+    source:
+      image: ../demo/assets/01-events.png
+    narration:
+      ru: Старый формат с одной картинкой работает как раньше.
+      en: The old one-picture format works as before.
+    title:
+      ru: Мероприятия
+      en: Events
+    zoom: { from: 1.0, to: 1.2, x: 0.5, y: 0.3 }
+    highlight: { x: 0.1944, y: 0.2378, w: 0.7778, h: 0.0711 }

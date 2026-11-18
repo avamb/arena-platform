@@ -12,6 +12,8 @@ const emptyManifest: Manifest = {
   fps: 30,
   totalFrames: 30,
   totalSeconds: 1,
+  background: "#4f46e5",
+  formats: ["16x9"],
   scenes: [],
 };
 

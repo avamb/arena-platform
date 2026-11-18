@@ -126,6 +126,92 @@ scenario contains a `value` for a password field.
 The length of a scene is the length of its voice file plus `pause_after`. Do
 not write a length in the scenario.
 
+### Shots, phone frame, graphics, formats
+
+A scene can show more than one picture while the narrator says one text. Use
+`shots` instead of `source`. The time of the scene is divided between the shots
+in proportion to `weight` (default 1). Each shot has its own `title`, `zoom`,
+`highlight` and `cursor`; the cursor time is a fraction of the shot.
+
+```yaml
+formats: [16x9, 9x16, 4x5]    # optional, default all three; a short video can ask for [9x16] only
+background: "#4f46e5"         # optional colour behind phone frames and graphics
+
+scenes:
+  - id: buyer
+    narration:
+      ru: Покупатель открывает ссылку, выбирает билеты и платит картой.
+    shots:
+      - image: captures/buyer/page.png
+        frame: phone            # phone | browser | none (default none)
+        title: { ru: Выбор билетов }
+        weight: 2
+        scroll: { from: 0, to: 0.4 }   # for a picture taller than the frame: part of the hidden height
+      - image: captures/buyer/pay.png
+        frame: phone
+        title: { ru: Оплата картой }
+      - graphic: flow           # drawn by the edit, no picture
+        steps: { ru: [Покупатель, Stripe, Ваш счёт] }
+        caption: { ru: Деньги идут напрямую вам }
+      - graphic: cta
+        heading: { ru: Оставьте заявку }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"
+        logo: assets/logo.png   # optional
+      - graphic: placeholder    # a scene that is not filmed yet; the frame says so
+        caption: { ru: "Сканер билетов: съёмка на телефоне" }
+```
+
+- `frame: phone` draws the picture in a phone body (round corners, dark edge)
+  on the `background` colour. In 16:9 the phone is in the centre and the shot
+  title is at its side; in 9:16 and 4:5 the phone fills the height that is left
+  between the title and the subtitles. Zoom, highlight and cursor stay in the
+  coordinates of the picture and are cut by the phone screen.
+- `frame: browser` draws a simple browser window (bar with three dots) around
+  a desktop picture and fits it whole in every format.
+- A QR code is made at build time from the `qr` text. No network.
+- `manifest.json` records for each scene the number of characters sent to the
+  voice provider and if the sound came from the cache; the build prints the
+  total of new characters.
+
+### Telegram bot capture
+
+`src/telegram.ts` drives ONE bot chat in Telegram Web (version K) in a phone
+size window. It uses a browser profile where a person signed in before
+(`.cache/tg-profile`, never committed) through `launchPersistentContext`,
+because Telegram Web keeps its session in IndexedDB and `storageState` does not
+carry it. Rules that the module enforces:
+
+- It opens only `https://web.telegram.org/k/#@<bot>`, where the bot name comes
+  from `VIDEO_TG_BOT`, and stops if the title of the open chat is not that bot
+  or if the page asks to sign in. It never signs in.
+- Before each screenshot it puts the public name (`VIDEO_TG_PUBLIC_TITLE`) in
+  the chat header, hides unread counters and can replace listed strings in the
+  messages (a staging host name with the public host name).
+- It takes screenshots at double resolution; it never screenshots the chat list.
+
+A film that needs the bot has its own capture script (`scripts/capture-<id>.ts`)
+because the steps change data on the stand (they create an event).
+
+### Film sell-01
+
+`scenarios/sell-01` is the 70-second selling film and `scenarios/sell-01-short`
+is its 30-second vertical version; the text and the storyboard are in
+`docs/video/01_first_video_script_ru.md`. The pictures in `captures/` are not
+committed. They were made on the staging stand on 2026-11-18 with scratch
+scripts (bot chat, buyer page up to the payment page, web event center), which
+are not in the repository because they contain test accounts. A committed
+`scripts/capture-sell-01.ts` on top of `src/telegram.ts` is not written yet.
+
+Before a screenshot the scripts replace text in the page: the test bot name
+with the public name, the staging host with the public host, the test
+organization name with the example name, and the data of the test buyer with
+the invented buyer of the script. `reconstructions/` holds pages drawn by hand
+for frames that could not be filmed; a shot made from them is marked in the
+scenario.
+
+To build without the paid voice: set `VIDEO_VOICE=silent`.
+
 ## Environment variables
 
 Keys, addresses and logins are never in the repository. The scripts read them
@@ -145,8 +231,8 @@ Capture rules:
   file. It refuses a host that has no `staging` label. There is no flag that
   switches this check off.
 - Only test data must be in the frame: the test organization ABH TEAM.
-- Capture of the Telegram bot through Telegram Web is not done yet. It needs a
-  test Telegram account and a saved browser session.
+- The one host that is not a staging host and is allowed is `web.telegram.org`,
+  and only through `src/telegram.ts` (see "Telegram bot capture").
 
 ## Voice
 

@@ -1,0 +1,151 @@
+id: sell-01
+fps: 30
+languages: [ru]
+title:
+  ru: "Афиша → продажа билетов"
+
+# Source text and storyboard: docs/video/01_first_video_script_ru.md.
+# Pictures in captures/ are made on the staging stand (see README, "Film sell-01")
+# and are not committed. A shot marked "placeholder" is not filmed yet.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9, 9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-poster
+    narration:
+      ru: У вас есть афиша. Через несколько минут по ней можно продавать билеты.
+    pause_after: 0.3
+    shots:
+      - image: assets/poster_vecher_dzhaza_4x5.png
+        frame: phone
+        title: { ru: "Афиша → продажа билетов за несколько минут" }
+        zoom: { from: 1.0, to: 1.12, x: 0.5, y: 0.45 }
+
+  - id: s2-bot
+    narration:
+      ru: Отправьте афишу боту Arena Sold Out в Telegram. Бот прочитает название, дату, площадку и цену. Вы подтверждаете каждое значение кнопкой и отвечаете на несколько коротких вопросов. Нажимаете «Опубликовать» и получаете страницу мероприятия и ссылку для покупателей.
+    pause_after: 0.3
+    shots:
+      - image: captures/r_03_sent.png
+        frame: phone
+        title: { ru: Афиша отправлена боту }
+        weight: 2
+      - image: captures/r_04_read.png
+        frame: phone
+        title: { ru: Бот читает афишу }
+        weight: 3
+        highlight: { x: 0.02, y: 0.085, w: 0.75, h: 0.215 }
+      - image: captures/r_08_date_q.png
+        frame: phone
+        title: { ru: Вы подтверждаете кнопкой }
+        weight: 2
+      - image: captures/r_16_price_q.png
+        frame: phone
+        title: { ru: Вы подтверждаете кнопкой }
+        weight: 2
+        highlight: { x: 0.02, y: 0.782, w: 0.75, h: 0.05 }
+      - image: captures/r_19_summary.png
+        frame: phone
+        title: { ru: Проверьте и опубликуйте }
+        weight: 2
+      - image: captures/r_20_done.png
+        frame: phone
+        title: { ru: Страница и ссылка готовы }
+        weight: 3
+        highlight: { x: 0.02, y: 0.165, w: 0.75, h: 0.065 }
+
+  - id: s3-buyer
+    narration:
+      ru: Покупатель открывает ссылку, выбирает билеты и платит картой. Билет приходит ему на почту.
+    pause_after: 2.6          # five shots need more time than the short text gives
+    shots:
+      - image: captures/b_01_page_full.png
+        frame: phone
+        title: { ru: Страница мероприятия }
+        weight: 2
+        scroll: { from: 0, to: 0.75 }
+      - image: captures/b_03_cart.png
+        frame: phone
+        title: { ru: Выбор билетов }
+        weight: 2
+      - image: captures/b_04_form.png
+        frame: phone
+        title: { ru: Оплата картой }
+        weight: 2
+      - image: captures/b_05_stripe.png
+        frame: phone
+        title: { ru: Оплата картой }
+        weight: 2
+        zoom: { from: 1.5, to: 1.7, x: 0.05, y: 0.15 }
+      - graphic: placeholder
+        caption: { ru: "Билет на почте: письмо покупателю ещё не снято" }
+        weight: 2
+
+  - id: s4-money
+    narration:
+      ru: Деньги поступают напрямую на ваш счёт в платёжной системе. О каждой продаже приходит сообщение в Telegram.
+    pause_after: 0.4
+    shots:
+      - graphic: flow
+        steps: { ru: [Покупатель, Stripe, Ваш счёт] }
+        caption: { ru: Деньги идут напрямую вам }
+      # Reconstruction (reconstructions/sale_message.html), not a screenshot.
+      - image: captures/s_01_sale_reconstruction.png
+        frame: phone
+        title: { ru: "Каждая продажа — сообщение в Telegram" }
+        zoom: { from: 1.25, to: 1.35, x: 0.5, y: 0.1 }
+
+  - id: s5-center
+    narration:
+      ru: Всё остальное есть в ивент-центре, в браузере или в том же боте, — заказы, возвраты, промокоды, бесплатные билеты, команда. Если дата изменилась, покупатели получат письмо и новый билет.
+    pause_after: 0.4
+    shots:
+      - image: captures/w_02_order.png
+        frame: browser
+        title: { ru: Заказы и возвраты }
+        weight: 3
+        highlight: { x: 0.297, y: 0.543, w: 0.097, h: 0.052 }
+      - image: captures/o_01_found.png
+        frame: phone
+        title: { ru: Те же заказы в боте }
+        weight: 2
+      - image: captures/w_03_promo.png
+        frame: browser
+        title: { ru: Промокоды }
+        weight: 2
+      - image: captures/w_04_inv.png
+        frame: browser
+        title: { ru: Бесплатные билеты }
+        weight: 2
+      - graphic: placeholder
+        caption: { ru: "Команда: экран приглашения ещё не снят" }
+        weight: 2
+      - image: captures/w_08_move_check.png
+        frame: browser
+        title: { ru: "Перенос даты: письмо и новый билет" }
+        weight: 4
+
+  - id: s6-entrance
+    narration:
+      ru: На входе билеты проверяет приложение-сканер на телефоне.
+    pause_after: 0.3
+    shots:
+      - graphic: placeholder
+        caption: { ru: "Сканер билетов: Android и iPhone. Съёмка на телефоне" }
+
+  - id: s7-cta
+    narration:
+      ru: Оставьте заявку на arenasoldout.com или в Telegram-боте.
+    pause_after: 0.8
+    shots:
+      - graphic: cta
+        heading: { ru: Оставьте заявку }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"
