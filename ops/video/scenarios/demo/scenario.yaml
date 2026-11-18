@@ -1,0 +1,62 @@
+id: demo
+fps: 30
+languages: [ru, en]
+title:
+  ru: Демонстрационный ролик
+  en: Demo video
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+scenes:
+  - id: events-list
+    source:
+      image: assets/01-events.png
+    narration:
+      ru: Все ваши мероприятия на одном экране. Название, дата, площадка, проданные билеты и статус.
+      en: All your events are on one screen. Name, date, venue, tickets sold and status.
+    title:
+      ru: Мероприятия
+      en: Events
+    zoom: { from: 1.0, to: 1.2, x: 0.5, y: 0.3 }
+    highlight: { x: 0.1944, y: 0.2378, w: 0.7778, h: 0.0711 }
+    cursor:
+      - { at: 0.2, x: 0.8, y: 0.8 }
+      - { at: 0.7, x: 0.896, y: 0.122, click: true }
+    pause_after: 0.4
+
+  - id: new-event
+    source:
+      image: assets/02-new-event.png
+    narration:
+      ru: Новое мероприятие создаётся за минуту. Введите название, дату, площадку и цену билета.
+      en: A new event is created in a minute. Enter the name, date, venue and ticket price.
+    title:
+      ru: Новое мероприятие
+      en: New event
+    zoom: { from: 1.0, to: 1.3, x: 0.3, y: 0.35 }
+    highlight: { x: 0.1944, y: 0.1956, w: 0.4444, h: 0.0533 }
+    cursor:
+      - { at: 0.15, x: 0.7, y: 0.5 }
+      - { at: 0.4, x: 0.4167, y: 0.222, click: true }
+      - { at: 0.85, x: 0.257, y: 0.649, click: true }
+    pause_after: 0.4
+
+  - id: sales
+    source:
+      image: assets/03-sales.png
+    narration:
+      ru: А потом смотрите продажи в реальном времени. Сколько билетов продано и какая выручка.
+      en: Then watch the sales in real time. How many tickets are sold and what the revenue is.
+    title:
+      ru: Продажи
+      en: Sales
+    zoom: { from: 1.0, to: 1.25, x: 0.35, y: 0.3 }
+    highlight: { x: 0.1944, y: 0.1667, w: 0.1667, h: 0.1333 }
+    cursor:
+      - { at: 0.2, x: 0.7, y: 0.7 }
+      - { at: 0.6, x: 0.278, y: 0.233 }
+    pause_after: 0.5

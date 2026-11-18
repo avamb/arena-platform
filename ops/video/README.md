@@ -1,0 +1,244 @@
+# ops/video: customer videos built from code
+
+This folder builds the customer videos of the platform (one selling video and a
+library of short how-to videos) from a scenario file. Nothing is recorded by
+hand: when the interface changes, capture the screens again and build again.
+
+The folder is a separate npm project. It does not import code from the rest of
+the repository and the rest of the repository does not import it.
+
+## Chain
+
+1. **Scenario** `scenarios/<id>/scenario.yaml`: scenes, picture source, narrator
+   text for each language, text on the screen.
+2. **Capture** (`npm run capture -- <id>`): Playwright does the steps of each
+   scene on the staging stand and saves a screenshot at double resolution and a
+   short screen recording. Not necessary for a scene that uses a ready picture.
+3. **Voice**: ElevenLabs, or a silent stub when there is no key.
+4. **Subtitles**: `.srt` and `.vtt` from the narrator text.
+5. **Edit** in Remotion: scene length from the voice length, zoom, highlight,
+   drawn cursor, titles, burned-in subtitles.
+6. **Render**: three files from one scenario, 16:9 (1920x1080), 9:16
+   (1080x1920) and 4:5 (1080x1350).
+
+## Commands
+
+Run all commands in `ops/video`.
+
+```powershell
+npm install
+npm run setup
+npm run build:video -- demo ru
+```
+
+- Run `npm install` inside `ops/video`. Do not use `npm --prefix ops/video install`
+  from the repository root: npm 10 then adds the repository itself to
+  `package.json` as a dependency (`"arena-new": "file:../.."`). Delete that line
+  if it appears.
+- `npm run setup` downloads the browser that Remotion renders with. It needs
+  the network one time. After that, a build of the `demo` scenario needs no
+  network and no keys.
+- `npm run build:video -- <scenario> <language>` makes the voice, the
+  subtitles and the three videos. Result: `out/<scenario>/<language>/`.
+- `npm run capture -- <scenario>` records the scenes that have `capture` steps.
+  Result: `scenarios/<scenario>/captures/` (not committed).
+- `npm run typecheck` checks the TypeScript code.
+
+Files of one build:
+
+```text
+out/demo/ru/demo_ru_16x9.mp4
+out/demo/ru/demo_ru_9x16.mp4
+out/demo/ru/demo_ru_4x5.mp4
+out/demo/ru/demo_ru.srt
+out/demo/ru/demo_ru.vtt
+out/demo/ru/manifest.json
+```
+
+`manifest.json` shows the timing of each scene and which voice provider made
+the sound. Read it to make sure that a build did not use the silent stub by
+mistake.
+
+## Scenario format
+
+One YAML file. All coordinates are fractions of the picture, from 0 to 1, with
+the origin at the top left corner. Thus one scenario is correct for all three
+frame sizes.
+
+```yaml
+id: demo                      # same as the folder name
+fps: 30
+languages: [ru, en]
+title:                        # shown in the file metadata, not in the frame
+  ru: Демонстрационный ролик
+  en: Demo video
+
+voice:
+  provider: auto              # auto | elevenlabs | silent
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID   # name of the variable, not the id
+    model_id: eleven_multilingual_v2
+
+capture:                      # necessary only if a scene has capture steps
+  base_url_env: VIDEO_BASE_URL
+  viewport: { width: 1440, height: 900 }   # or 390 x 844 for the phone frame
+  setup:                      # done one time before the scenes, not recorded
+    - goto: /login
+    - fill: { selector: "input[name=email]", value_env: VIDEO_LOGIN_EMAIL }
+    - fill: { selector: "input[name=password]", value_env: VIDEO_LOGIN_PASSWORD }
+    - click: "button[type=submit]"
+    - wait_for: "text=ABH TEAM"
+
+scenes:
+  - id: events-list
+    source:
+      image: assets/01-events.png        # ready picture, path from the scenario folder
+    narration:
+      ru: Все ваши мероприятия на одном экране.
+      en: All your events are on one screen.
+    title:                    # text on the screen, optional
+      ru: Мероприятия
+      en: Events
+    zoom: { from: 1.0, to: 1.25, x: 0.3, y: 0.4 }   # optional
+    highlight: { x: 0.1, y: 0.3, w: 0.4, h: 0.12 }  # optional frame around an element
+    cursor:                   # optional drawn cursor, time in fractions of the scene
+      - { at: 0.2, x: 0.8, y: 0.8 }
+      - { at: 0.6, x: 0.3, y: 0.36, click: true }
+    pause_after: 0.4          # seconds of silence after the narrator text
+
+  - id: new-event
+    source:
+      capture:                # Playwright steps, result captures/new-event.png and .webm
+        - goto: /o/{{env.VIDEO_ORG_ID}}/events
+        - click: "text=Новое мероприятие"
+        - wait_for: "h1"
+        - wait: 500
+      use: image              # image (default) or clip
+    narration:
+      ru: Новое мероприятие создаётся за минуту.
+```
+
+Capture steps: `goto`, `click`, `hover`, `fill` (`value` or `value_env`),
+`press`, `wait_for`, `wait` (milliseconds). A secret is given only by the name
+of an environment variable (`value_env`). The capture script stops if the
+scenario contains a `value` for a password field.
+
+The length of a scene is the length of its voice file plus `pause_after`. Do
+not write a length in the scenario.
+
+## Environment variables
+
+Keys, addresses and logins are never in the repository. The scripts read them
+from the environment, or from `ops/video/.env` (in `.gitignore`).
+
+| Variable | Used by | Meaning |
+|---|---|---|
+| `ELEVENLABS_API_KEY` | voice | Key of ElevenLabs. Without it the build uses the silent stub. |
+| `ELEVENLABS_VOICE_ID` | voice | Voice that reads the text. |
+| `VIDEO_BASE_URL` | capture | Address of the staging stand. |
+| `VIDEO_LOGIN_EMAIL`, `VIDEO_LOGIN_PASSWORD` | capture | Test user of the test organization. |
+| `VIDEO_ORG_ID` | capture | Identifier of the test organization. |
+
+Capture rules:
+
+- The capture script works only with a staging host, `localhost` or a local
+  file. It refuses a host that has no `staging` label. There is no flag that
+  switches this check off.
+- Only test data must be in the frame: the test organization ABH TEAM.
+- Capture of the Telegram bot through Telegram Web is not done yet. It needs a
+  test Telegram account and a saved browser session.
+
+## Voice
+
+Two providers with one interface (`src/voice/`):
+
+- `elevenlabs`: calls the API and keeps each answer in `.cache/voice/` under a
+  hash of the text, voice and model. A build that changes one scene pays for
+  one scene.
+- `silent`: no network. Makes a silent WAV file. Its length comes from the
+  number of words (2.5 words per second, not less than 1.5 seconds). The video
+  timing is thus near the timing with a real voice.
+
+`provider: auto` uses ElevenLabs when `ELEVENLABS_API_KEY` is set and the
+silent stub when it is not.
+
+## Subtitles
+
+The narrator text of each scene is divided into cues of not more than two
+lines of 42 characters. The time of a scene is divided between its cues in
+proportion to their length. The same cues are written to `.srt` and `.vtt` and
+burned into the video, thus the three always agree.
+
+With the silent stub and with the plain ElevenLabs call this timing is an
+estimate. See "Not done yet" for exact timing.
+
+## External services: what was checked
+
+Checked on 2026-11-18 on the official pages. Prices change: check again before
+you buy.
+
+### ElevenLabs
+
+- Call: `POST https://api.elevenlabs.io/v1/text-to-speech/{voice_id}`, header
+  `xi-api-key`, JSON body with `text`, `model_id` (default
+  `eleven_multilingual_v2`), optional `voice_settings` (`stability`,
+  `similarity_boost`, `style`, `speed`), `seed`, `previous_text` and
+  `next_text`. Query parameter `output_format`, default `mp3_44100_128`. The
+  answer is the audio file. Some output formats need a higher plan (44.1 kHz
+  PCM is listed for Pro).
+  Source: <https://elevenlabs.io/docs/api-reference/text-to-speech/convert>
+- A second call, `.../{voice_id}/with-timestamps`, returns `audio_base64` and
+  the start and end time of each character. This gives exact subtitle timing.
+  Source: <https://elevenlabs.io/docs/api-reference/text-to-speech/convert-with-timestamps>
+- Models that read Russian and English: `eleven_v4`, `eleven_v3`,
+  `eleven_multilingual_v2` (described as the most stable on long text),
+  `eleven_flash_v2_5` (lower price). The limit of one request is 5,000 to
+  40,000 characters, which is much more than one scene. `language_code` is not
+  supported by `eleven_multilingual_v2`.
+  Source: <https://elevenlabs.io/docs/models>
+- Price of the API: 0.08 USD for 1,000 characters for v4, v3 and Multilingual
+  v2; 0.04 USD for the Flash and Turbo models. Included each month for the
+  0.08 USD models: Free 10,000 characters, Starter (6 USD) 75,000, Creator
+  (22 USD) 275,000, Pro (99 USD) 1,238,000.
+  Source: <https://elevenlabs.io/pricing/api>
+- The plan table shows a commercial licence from the Starter plan. It does not
+  show one for the Free plan. Thus videos for customers need Starter or higher.
+  Source: <https://elevenlabs.io/pricing>
+- Estimate: a 70-second video is about 1,000 characters of Russian text, that
+  is about 0.08 USD for one full voicing. A library of 40 two-minute videos in
+  two languages is about 140,000 characters for one full pass. The Starter plan
+  is sufficient for the first videos; the full library with repeated takes
+  needs Creator for one or two months. This is an estimate from the prices
+  above, not a measured number.
+
+### Remotion licence
+
+- Remotion is not under an open-source licence. The free licence is for
+  individuals and for organizations of not more than 3 people. A larger company
+  must buy the company licence.
+  Source: <https://www.remotion.dev/docs/license/pricing>
+- People are counted for the whole organization, not only those who use
+  Remotion. Contractors who work with the Remotion project are counted. A
+  client who only gets the finished video is not counted.
+  Source: <https://www.remotion.dev/docs/license/faq>
+- Videos made with the free licence can be used for business. No account and
+  no key is necessary. Rendering on your own computer sends no telemetry
+  unless you switch it on.
+  Source: <https://www.remotion.dev/docs/license/faq>
+- Company licence: 25 USD for each seat each month for videos made by people;
+  0.01 USD for each render with a minimum of 100 USD each month for automatic
+  video products. Enterprise from 500 USD each month.
+  Source: <https://www.remotion.dev/docs/license/pricing>
+- Decision for the owner: if the organization has not more than 3 people
+  (contractors who work on these videos included), the free licence is
+  sufficient. If it has more, buy one seat (25 USD each month) before these
+  videos are published. This repository is public and AGPL; the Remotion
+  licence applies to who renders, not to who reads the code.
+
+## Not done yet
+
+- Capture of the Telegram bot (Telegram Web in the phone frame size).
+- Exact subtitle timing from the ElevenLabs `with-timestamps` call.
+- The OpenAI TTS provider as a spare.
+- Background music and a logo sting.
+- Upload to YouTube or Cloudflare Stream.

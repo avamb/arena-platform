@@ -1,0 +1,32 @@
+{
+  "name": "arena-video",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Customer videos built from code (see README.md)",
+  "scripts": {
+    "setup": "remotion browser ensure && playwright install chromium",
+    "build:video": "tsx src/build.ts",
+    "capture": "tsx src/capture.ts",
+    "assets:demo": "tsx scripts/make-demo-assets.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.545",
+    "@remotion/cli": "4.0.545",
+    "@remotion/renderer": "4.0.545",
+    "music-metadata": "^11.0.0",
+    "playwright": "^1.65.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "remotion": "4.0.545",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.0"
+  }
+}
