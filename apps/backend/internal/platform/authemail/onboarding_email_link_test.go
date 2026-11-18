@@ -40,7 +40,7 @@ func TestApprovedEmail_ButtonFollowsTheRecipient(t *testing.T) {
 		{"organizer en", true, testEventCenter, "en", testEventCenter, "Open the event center", testConsole},
 		{"organizer ru", true, testEventCenter, "ru", testEventCenter, "Открыть ивент-центр", testConsole},
 		{"organizer es", true, testEventCenter, "es", testEventCenter, "Abrir el centro de eventos", testConsole},
-		{"organizer uk", true, testEventCenter, "uk", testEventCenter, "Відкрити центр заходів", testConsole},
+		{"organizer uk", true, testEventCenter, "uk", testEventCenter, "Відкрити івент-центр", testConsole},
 		{"staff keeps the console", false, testEventCenter, "en", testConsole, "Sign in to ArenaSoldOut.com", testEventCenter},
 		{"organizer without event center", true, "", "en", testConsole, "Sign in to ArenaSoldOut.com", "events.arena"},
 	}

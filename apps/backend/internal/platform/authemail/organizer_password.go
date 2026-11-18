@@ -148,10 +148,10 @@ var organizerTexts = map[string]organizerLetterText{
 		inviteSubject:    "Запрошення до центру заходів ArenaSoldOut.com",
 		setupSubject:     "ArenaSoldOut.com: ваш вхід до центру заходів готовий",
 		inviteTitle:      "Ласкаво просимо до центру заходів ArenaSoldOut.com",
-		inviteIntroOrg:   "Організація «%s» запрошує вас до своєї команди в центрі заходів ArenaSoldOut.com.",
-		inviteIntro:      "Вас запросили до організації в центрі заходів ArenaSoldOut.com.",
+		inviteIntroOrg:   "Організація «%s» запрошує вас до своєї команди в івент-центрі ArenaSoldOut.com.",
+		inviteIntro:      "Вас запросили до організації в івент-центрі ArenaSoldOut.com.",
 		setupIntro:       "Ми створили для вас вхід до центру заходів ArenaSoldOut.com.",
-		whatIs:           "У центрі заходів ви бачите свої заходи, продажі та замовлення.",
+		whatIs:           "В івент-центрі ви бачите свої заходи, продажі та замовлення.",
 		setupSteps: []string{
 			"Натисніть кнопку «Задати пароль» нижче.",
 			"Придумайте пароль не коротший за 8 символів. Введіть його двічі.",

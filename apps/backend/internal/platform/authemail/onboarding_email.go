@@ -132,7 +132,7 @@ var eventCenterButton = map[string]string{
 	"en": "Open the event center",
 	"ru": "Открыть ивент-центр",
 	"es": "Abrir el centro de eventos",
-	"uk": "Відкрити центр заходів",
+	"uk": "Відкрити івент-центр",
 }
 
 func normalizeOnboardingLocale(l string) string {
