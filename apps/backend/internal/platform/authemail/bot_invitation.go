@@ -125,6 +125,31 @@ func renderBotInvitationEmail(locale, orgName, role, link string, expiresAt time
 			"Если вы не ждали этого письма, просто проигнорируйте его.",
 			"", "ArenaSoldOut.com — автоматическое сообщение",
 		}, "\n")
+	case "uk":
+		roleWord := "менеджера"
+		if role == "owner" {
+			roleWord = "власника"
+		}
+		if orgName != "" {
+			subject = orgName + ": запрошення до бота заходів ArenaSoldOut.com"
+		} else {
+			subject = "Запрошення до бота заходів ArenaSoldOut.com"
+		}
+		intro := "Вас запросили створювати заходи та переглядати продажі"
+		if orgName != "" {
+			intro += " організації «" + orgName + "»"
+		}
+		intro += " у Telegram-боті ArenaSoldOut.com (роль: " + roleWord + ")."
+		htmlBody = fmt.Sprintf(botInviteHTMLUk, html.EscapeString(intro), expiry, safeLink, safeLink)
+		textBody = strings.Join([]string{
+			subject, "",
+			intro,
+			"Відкрийте посилання в Telegram і натисніть «Start»:",
+			link, "",
+			"Посилання одноразове й дійсне до " + expiry + ".",
+			"Якщо ви не очікували цього листа, просто проігноруйте його.",
+			"", "ArenaSoldOut.com — автоматичне повідомлення",
+		}, "\n")
 	case "es":
 		roleWord := "gestor"
 		if role == "owner" {
@@ -230,6 +255,32 @@ const botInviteHTMLEs = `<!DOCTYPE html>
   </p>
   <hr>
   <p style="font-size:11px;color:#999">ArenaSoldOut.com &mdash; mensaje automático</p>
+</body>
+</html>`
+
+const botInviteHTMLUk = `<!DOCTYPE html>
+<html lang="uk">
+<head><meta charset="UTF-8"><title>Бот заходів ArenaSoldOut.com</title></head>
+<body style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:20px;color:#1a1a2e">
+  <h1 style="color:#1a1a2e">Бот заходів ArenaSoldOut.com</h1>
+  <p>%s</p>
+  <p>Відкрийте посилання в Telegram і натисніть <strong>Start</strong>.
+     Посилання одноразове й дійсне до <strong>%s</strong>.</p>
+  <p style="margin:24px 0">
+    <a href="%s"
+       style="background:#1a73e8;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;font-weight:bold;display:inline-block">
+      Відкрити бота
+    </a>
+  </p>
+  <p style="font-size:12px;color:#666">
+    Якщо кнопка не працює, скопіюйте й вставте це посилання в Telegram:<br>
+    <span style="word-break:break-all">%s</span>
+  </p>
+  <p style="font-size:11px;color:#999">
+    Якщо ви не очікували цього листа, просто проігноруйте його.
+  </p>
+  <hr>
+  <p style="font-size:11px;color:#999">ArenaSoldOut.com &mdash; автоматичне повідомлення</p>
 </body>
 </html>`
 

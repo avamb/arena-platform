@@ -1178,6 +1178,7 @@ export const en = {
   "team.locale.en": "English",
   "team.locale.ru": "Russian",
   "team.locale.es": "Spanish",
+  "team.locale.uk": "Ukrainian",
   "team.invite.title": "Invite a person",
   "team.invite.email": "E-mail of the person",
   "team.invite.emailNote": "Type the e-mail address, for example name@example.com. We will send the invitation to it.",

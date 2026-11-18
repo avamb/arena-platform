@@ -40,6 +40,7 @@ var monthNames = map[string][12]string{
 	"ru": {"январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"},
 	"en": {"January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"},
 	"es": {"enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"},
+	"uk": {"січень", "лютий", "березень", "квітень", "травень", "червень", "липень", "серпень", "вересень", "жовтень", "листопад", "грудень"},
 }
 
 // monthNamesGenitive is "20 октября" (ru); English and Spanish keep the same
@@ -48,23 +49,26 @@ var monthNamesGenitive = map[string][12]string{
 	"ru": {"января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"},
 	"en": monthNames["en"],
 	"es": monthNames["es"],
+	"uk": {"січня", "лютого", "березня", "квітня", "травня", "червня", "липня", "серпня", "вересня", "жовтня", "листопада", "грудня"},
 }
 
 var weekdayShort = map[string][7]string{ // Monday first
 	"ru": {"Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"},
 	"en": {"Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"},
 	"es": {"Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do"},
+	"uk": {"Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"},
 }
 
 var weekdayLong = map[string][7]string{ // Monday first
 	"ru": {"понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"},
 	"en": {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"},
 	"es": {"lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"},
+	"uk": {"понеділок", "вівторок", "середа", "четвер", "пʼятниця", "субота", "неділя"},
 }
 
 func dateLoc(loc string) string {
 	switch loc {
-	case "ru", "es":
+	case "ru", "es", "uk":
 		return loc
 	}
 	return "en"
@@ -93,7 +97,7 @@ var (
 	numericDate  = regexp.MustCompile(`^(\d{1,2})[\s./,\-]+(\d{1,2})(?:[\s./,\-]+(\d{2}|\d{4}))?$`)
 	compactDate  = regexp.MustCompile(`^(\d{2})(\d{2})(\d{2}|\d{4})$`)
 	yearFirst    = regexp.MustCompile(`^(\d{4})[\s./,\-]+(\d{1,2})[\s./,\-]+(\d{1,2})$`)
-	dayMonthWord = regexp.MustCompile(`^(\d{1,2})(?:-?(?:го|е|th|st|nd|rd))?\s+([a-zа-яё]+)\.?(?:\s+(\d{4}))?$`)
+	dayMonthWord = regexp.MustCompile(`^(\d{1,2})(?:-?(?:го|е|th|st|nd|rd))?\s+([a-zа-яёіїєґ]+)\.?(?:\s+(\d{4}))?$`)
 	monthWordDay = regexp.MustCompile(`^([a-z]+)\.?\s+(\d{1,2})(?:th|st|nd|rd)?(?:,?\s+(\d{4}))?$`)
 )
 
@@ -103,6 +107,8 @@ var monthPrefixes = map[string]int{
 	// Spanish: only the prefixes that differ from English (marzo, mayo, junio,
 	// julio, septiembre, octubre, noviembre and febrero share theirs).
 	"ene": 1, "abr": 4, "ago": 8, "set": 9, "dic": 12,
+	// Ukrainian: prefixes that differ from Russian (січ, лют, бер, кві, тра, чер, лип, сер, вер, жов, лис, гру).
+	"січ": 1, "лют": 2, "бер": 3, "кві": 4, "тра": 5, "чер": 6, "лип": 7, "сер": 8, "вер": 9, "жов": 10, "лис": 11, "гру": 12,
 }
 
 // spanishDe is the "de" of "20 de octubre de 2026"; it is dropped before a
@@ -129,11 +135,11 @@ func DateCandidates(raw string, today time.Time) []string {
 	}
 	day0 := time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, time.UTC)
 	switch s {
-	case "сегодня", "today", "hoy":
+	case "сегодня", "сьогодні", "today", "hoy":
 		return []string{day0.Format(isoLayout)}
 	case "завтра", "tomorrow", "mañana", "manana":
 		return []string{day0.AddDate(0, 0, 1).Format(isoLayout)}
-	case "послезавтра", "pasado mañana", "pasado manana":
+	case "послезавтра", "післязавтра", "pasado mañana", "pasado manana":
 		return []string{day0.AddDate(0, 0, 2).Format(isoLayout)}
 	}
 	s = spanishDe.ReplaceAllString(s, " ")

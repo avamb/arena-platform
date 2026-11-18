@@ -1178,6 +1178,7 @@ export const es: Record<MessageKey, string> = {
   "team.locale.en": "Inglés",
   "team.locale.ru": "Ruso",
   "team.locale.es": "Español",
+  "team.locale.uk": "Ucraniano",
   "team.invite.title": "Invitar a una persona",
   "team.invite.email": "Correo de la persona",
   "team.invite.emailNote": "Escribe la dirección así: nombre@ejemplo.com, y enviaremos la invitación allí.",

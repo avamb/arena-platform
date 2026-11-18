@@ -16,6 +16,8 @@ func botInviteWebLine(locale string) string {
 	switch normalizeLocale(locale) {
 	case "ru":
 		return "Работать можно и в браузере, в веб-ивент-центре. Войдите туда кнопкой «🌐 Открыть в браузере» в боте. Адрес:"
+	case "uk":
+		return "Працювати можна й у браузері, у веб-івент-центрі. Увійдіть туди кнопкою «🌐 Відкрити в браузері» в боті. Адреса:"
 	case "es":
 		return "También puedes trabajar en el navegador, en el centro de eventos web. Entra con el botón «🌐 Abrir en el navegador» del bot. Dirección:"
 	default:
