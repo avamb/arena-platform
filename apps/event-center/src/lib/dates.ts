@@ -83,6 +83,7 @@ export const MONTH_NAMES: Record<DateLocale, readonly string[]> = {
   ru: ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"],
   en: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
   es: ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"],
+  uk: ["січень", "лютий", "березень", "квітень", "травень", "червень", "липень", "серпень", "вересень", "жовтень", "листопад", "грудень"],
 };
 
 /** "20 октября". English and Spanish keep the same words. */
@@ -90,6 +91,7 @@ const MONTH_GENITIVE: Record<DateLocale, readonly string[]> = {
   ru: ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"],
   en: MONTH_NAMES.en,
   es: MONTH_NAMES.es,
+  uk: ["січня", "лютого", "березня", "квітня", "травня", "червня", "липня", "серпня", "вересня", "жовтня", "листопада", "грудня"],
 };
 
 /** Monday first. */
@@ -97,6 +99,7 @@ export const WEEKDAY_SHORT: Record<DateLocale, readonly string[]> = {
   ru: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"],
   en: ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"],
   es: ["Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do"],
+  uk: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"],
 };
 
 /** Monday first. */
@@ -104,6 +107,7 @@ const WEEKDAY_LONG: Record<DateLocale, readonly string[]> = {
   ru: ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"],
   en: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
   es: ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"],
+  uk: ["понеділок", "вівторок", "середа", "четвер", "пʼятниця", "субота", "неділя"],
 };
 
 /** 0 for Monday … 6 for Sunday. */

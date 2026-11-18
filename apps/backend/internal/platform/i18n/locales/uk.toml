@@ -1,0 +1,512 @@
+# uk.toml — Ukrainian message catalog for arena_new.
+#
+# Every key must match a key in en.toml. go-i18n/v2 falls back to English
+# (en.toml) for any missing message, so a partial catalog is safe.
+#
+# The Telegram bot keys (bot.*) live in a separate part of this catalog and
+# are checked against eventbot.MessageKeys (eventbot.SupportedLocales).
+#
+# Tone: polite "ви", like the Ukrainian e-mails of the product.
+# Glossary: захід (event), сеанс (session), квиток (ticket), замовлення
+# (order), покупець (buyer), категорія (category), майданчик (venue),
+# бронь (hold), повернення коштів (refund), промокод, організація.
+
+["server.welcome"]
+other = "Ласкаво просимо на платформу Arena!"
+
+["error.unauthorized"]
+other = "Спочатку увійдіть. Надішліть із запитом чинний Bearer-токен."
+
+["error.forbidden"]
+other = "У вас немає прав на цю дію. Попросіть доступ у власника організації."
+
+["error.not_found"]
+other = "Ми не знайшли цю сторінку. Перевірте адресу."
+
+["error.validation"]
+other = "У запиті є помилка в даних. Перевірте поля й надішліть запит знову."
+
+["error.internal"]
+other = "Щось пішло не так з нашого боку. Спробуйте ще раз за хвилину. Якщо не вийде, напишіть у підтримку."
+
+# ── Pricing breakdown labels (feature #163) ──────────────────────────────────
+# Used by GET /v1/checkout/{id}/price-breakdown to label each line item.
+
+["pricing.breakdown.promo_discount"]
+other = "Знижка за промокодом"
+
+["pricing.breakdown.platform_fee"]
+other = "Комісія платформи"
+
+["pricing.breakdown.provider_fee"]
+other = "Комісія платіжного провайдера"
+
+["pricing.breakdown.vat"]
+other = "ПДВ"
+
+# ── Bil24 compat gateway (feature #478, spec section 6) ──────────────────────
+
+["bil24.ok"]
+other = "OK"
+
+["bil24.seat_taken"]
+other = "Місце {{.sector}}-{{.row}}-{{.number}} уже зайняте. Оберіть інше місце."
+
+["bil24.category_sold_out"]
+other = "У категорії {{.name}} не вистачає квитків, залишилося: {{.available}}. Оберіть менше квитків або іншу категорію."
+
+["bil24.session_expired"]
+other = "Час очікування минув. Почніть купівлю заново."
+
+["bil24.sales_closed"]
+other = "Продаж квитків на цей сеанс завершено."
+
+["bil24.sales_soon"]
+other = "Продаж квитків на цей сеанс ще не розпочато."
+
+["bil24.session_sold_out"]
+other = "Квитки на цей сеанс розпродано."
+
+["bil24.addon_requires_main"]
+other = "Цей квиток продається лише разом з основним квитком на той самий сеанс."
+
+["bil24.subscription_invalid_email"]
+other = "Перевірте адресу електронної пошти й надішліть ще раз."
+
+["bil24.subscription_consent"]
+other = "Позначте згоду, щоб отримати лист."
+
+["bil24.subscription_sales_open"]
+other = "Продаж уже відкрито. Оновіть сторінку, щоб купити квитки."
+
+["bil24.subscription_not_soon"]
+other = "На цей сеанс не очікується відкриття продажу."
+
+["bil24.subscription_rate_limited"]
+other = "Забагато спроб. Спробуйте за годину."
+
+["bil24.promo_invalid"]
+other = "Цей промокод не діє. Перевірте код або купуйте без нього."
+
+["bil24.promo_not_found"]
+other = "Такого промокоду немає. Перевірте, як він написаний."
+
+["bil24.promo_expired"]
+other = "Термін дії цього промокоду минув."
+
+["bil24.promo_not_yet_valid"]
+other = "Цей промокод ще не діє."
+
+["bil24.promo_not_applicable"]
+other = "Цей промокод не діє на квитки у вашому кошику."
+
+["bil24.promo_min_order"]
+other = "Сума замовлення менша за мінімальну для цього промокоду. Додайте квитки, щоб він спрацював."
+
+["bil24.promo_wrong_session"]
+other = "Цей промокод не діє на цей захід."
+
+["bil24.promo_wrong_session_hint"]
+other = "Цей промокод діє на: {{.events}}. Оберіть квитки на цей захід, і знижка буде застосована."
+
+["bil24.promo_currency_mismatch"]
+other = "Цей промокод діє в іншій валюті."
+
+["bil24.promo_exhausted"]
+other = "У цього промокоду не лишилося використань."
+
+["bil24.promo_per_customer_limit"]
+other = "Ви вже використали цей промокод."
+
+["bil24.hold_expired"]
+other = "Бронь закінчилася. Оберіть квитки заново."
+
+["bil24.order_expired"]
+other = "Час на оплату цього замовлення вийшов. Оформіть нове замовлення."
+
+["bil24.open_order_exists"]
+other = "У вас уже є неоплачене замовлення на цей захід. Спочатку сплатіть або скасуйте його."
+
+["bil24.order_kind_changed"]
+other = "Платне замовлення не можна перетворити на запрошення і навпаки. Оберіть квитки заново."
+
+["bil24.order_not_found"]
+other = "Ми не знайшли це замовлення."
+
+["bil24.currency_mismatch"]
+other = "Валюта кошика не збігається з валютою сеансу. Очистьте кошик і оберіть квитки заново."
+
+["bil24.pricing_mode_unsupported"]
+other = "Шлюз не підтримує режим ціни цієї категорії."
+
+["bil24.line_wrong_session"]
+other = "Рядок замовлення належить до іншого сеансу."
+
+["bil24.order_cancelled"]
+other = "Це замовлення скасовано."
+
+["bil24.no_tickets_to_send"]
+other = "У цьому замовленні немає квитків для надсилання."
+
+["bil24.use_refund_ticket"]
+other = "Натомість оформіть повернення коштів за квиток."
+
+["bil24.unknown_command"]
+other = "Шлюз не знає цієї команди."
+
+["bil24.invalid_request"]
+other = "У запиті бракує даних або є помилка. Перевірте запит і надішліть його знову."
+
+["bil24.not_found"]
+other = "У цьому каналі продажу такого об'єкта немає."
+
+["bil24.unauthorized"]
+other = "Немає доступу. Перевірте токен шлюзу."
+
+["bil24.internal"]
+other = "Щось пішло не так з нашого боку. Спробуйте ще раз за хвилину."
+
+["bil24.sample_ticket"]
+other = "Це зразок квитка. Він не дає права на вхід."
+
+["contact.email.subject"]
+other = "Повідомлення від покупця: {{.Name}}"
+
+["contact.email.intro"]
+other = "Покупець написав вам через контактну форму на вашій сторінці продажу ArenaSoldOut.com."
+
+["contact.email.from"]
+other = "Від кого"
+
+["contact.email.page"]
+other = "Сторінка продажу"
+
+["contact.email.reply"]
+other = "Щоб відповісти покупцеві, дайте відповідь на цей лист. ArenaSoldOut.com не бачить вашої відповіді."
+
+["contact.email.footer"]
+other = "ArenaSoldOut.com надіслав це повідомлення, бо на вашій сторінці продажу ввімкнено контактну форму."
+
+# The sales-link PDF insert (spec 43, QL-13): the one line printed under the QR code.
+["salelinks.insert.scan_and_buy"]
+other = "Скануйте та купуйте квитки"
+
+# The seat layout allocator's own labels (layoutgen.*, read from the API's label keys).
+
+["layoutgen.algorithm.desirability"]
+other = "За близькістю до сцени"
+
+["layoutgen.algorithm.desirability.description"]
+other = "Що ближче до сцени та до центральної лінії, то краще місце. Увесь ряд іде в одну категорію."
+
+["layoutgen.param.share_template"]
+other = "Скільки місць отримує кожна категорія"
+
+["layoutgen.option.share_template.pyramid"]
+other = "Мало дорогих, багато дешевих"
+
+["layoutgen.option.share_template.equal"]
+other = "Порівну для кожної"
+
+["layoutgen.option.share_template.wide_middle"]
+other = "Більше посередині"
+
+["layoutgen.param.cheaper_row_edges"]
+other = "Дешевші краї ряду"
+
+["layoutgen.param.cheaper_row_edges.hint"]
+other = "Край довгого ряду ніколи не коштує дорожче за його середину."
+
+["shop.payment.description"]
+other = "{{.Org}}, замовлення {{.Number}}"
+
+["shop.payment.shipping"]
+other = "Доставка"
+
+# --- salesnotify.shop.*: Telegram announcements of the merchandise shop ---
+["salesnotify.shop.new_order"]
+other = "🛍 <b>Нове замовлення в магазині</b> — {{.Org}}"
+
+["salesnotify.shop.order_number"]
+other = "🧾 Замовлення №{{.Number}}"
+
+["salesnotify.shop.total"]
+other = "💰 Разом: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.delivery_none"]
+other = "📦 Без доставки (цифровий товар / послуга)"
+
+["salesnotify.shop.delivery_pickup"]
+other = "🏬 Доставка: самовивіз"
+
+["salesnotify.shop.delivery_shipping"]
+other = "🚚 Доставка: кур'єром"
+
+["salesnotify.shop.courier_form"]
+other = "📦 <b>Форма для кур'єра</b>"
+
+["salesnotify.shop.map_google"]
+other = "🗺 Google Maps: {{.Url}}"
+
+["salesnotify.shop.map_waze"]
+other = "🚗 Waze: {{.Url}}"
+
+["salesnotify.shop.items"]
+other = "🛒 <b>Товари</b>"
+
+["salesnotify.shop.items_more"]
+other = "… і ще позицій: {{.Count}}"
+
+["salesnotify.shop.item_line"]
+other = "{{.Qty}} × {{.Name}} — {{.Price}} за одиницю"
+
+["salesnotify.shop.shipping"]
+other = "🚚 Доставка: {{.Amount}}"
+
+["salesnotify.shop.discount"]
+other = "🏷 Знижка: -{{.Amount}}"
+
+["salesnotify.shop.note"]
+other = "📝 Примітка покупця: {{.Note}}"
+
+["salesnotify.shop.refund_title"]
+other = "↩️ <b>Повернення коштів у магазині</b> — {{.Org}}"
+
+["salesnotify.shop.refunded"]
+other = "💸 Повернено: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.refunded_so_far"]
+other = "💸 Повернено на цей момент: {{.Amount}} із {{.Total}}"
+
+["salesnotify.shop.sale_title"]
+other = "🛍 <b>Продаж у магазині</b> — {{.Org}}"
+
+["salesnotify.shop.sale_items"]
+other = "🛒 Товари ({{.Count}}): {{.List}}"
+
+["salesnotify.shop.sale_item"]
+other = "{{.Name}} ×{{.Qty}}"
+
+["salesnotify.shop.sale_refund_full"]
+other = "↩️ Кошти повернено повністю"
+
+["salesnotify.shop.sale_refund_part"]
+other = "↩️ Кошти повернено частково: {{.Amount}} із {{.Total}}"
+
+["salesnotify.shop.refund_do_not_ship"]
+other = "🛑 Не відправляйте, доки організатор не підтвердить, що слати: частину замовлення повернено."
+
+["salesnotify.shop.refund_stop_shipment"]
+other = "🛑 Не відправляйте. Зупиніть відправлення: усе замовлення повернено."
+
+["salesnotify.shop.refund_already_shipped"]
+other = "📮 Уже відправлено. Повернення коштів не зупиняє посилку."
+
+["salesnotify.shop.review_title"]
+other = "⚠️ <b>Замовлення в магазині потребує вашої уваги</b> — {{.Org}}"
+
+["salesnotify.shop.review_paid"]
+other = "💰 Сплачено: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_body"]
+other = "Оплата замовлення {{.Number}} надійшла після закінчення броні, товару вже не було в наявності. Перевірте замовлення в івент-центрі."
+
+["salesnotify.shop.review_unconfirmed_amount"]
+other = "⏳ Оплату ще не підтверджено: <b>{{.Amount}}</b>"
+
+["salesnotify.shop.review_unconfirmed_body"]
+other = "Оплату замовлення {{.Number}} не підтвердив платіжний провайдер, гроші могли не надійти. Не відправляйте й не віддавайте товар, доки оплату не підтверджено: щойно це станеться, ми повідомимо, що замовлення сплачено. Подробиці в івент-центрі."
+
+["shop.public.review_payment_unconfirmed"]
+other = "Ми перевіряємо вашу оплату й напишемо вам."
+
+["shop.public.review_late_payment_no_stock"]
+other = "Вашу оплату отримано. Ми перевіряємо наявність товару й напишемо вам."
+
+# --- salesnotify.shop.courier_*: the plain courier text of an order card ---
+["salesnotify.shop.courier_order"]
+other = "Замовлення №{{.Number}}"
+
+["salesnotify.shop.courier_pickup"]
+other = "Самовивіз"
+
+["salesnotify.shop.courier_none"]
+other = "Без доставки (цифровий товар / послуга)"
+
+["salesnotify.shop.courier_item"]
+other = "{{.Name}} × {{.Qty}}"
+
+["salesnotify.shop.courier_total"]
+other = "Разом: {{.Amount}}"
+
+["salesnotify.shop.courier_note"]
+other = "Примітка покупця: {{.Note}}"
+
+["salesnotify.shop.courier_map_google"]
+other = "Google Maps: {{.Url}}"
+
+["salesnotify.shop.courier_map_waze"]
+other = "Waze: {{.Url}}"
+
+["salesnotify.referral.title_refunded"]
+other = "↩️ <b>Приведи друга: друг отримав кошти назад</b> — {{.Org}}"
+
+["salesnotify.referral.title_disputed"]
+other = "⚠️ <b>Приведи друга: друг відкрив спір</b> — {{.Org}}"
+
+["salesnotify.referral.body_refunded"]
+other = "Друг, який скористався кодом <b>{{.Code}}</b>, отримав кошти назад за замовлення {{.Number}}. Кешбек {{.Amount}} уже виплачено тому, хто запросив, і його не можна повернути."
+
+["salesnotify.referral.body_disputed"]
+other = "Друг, який скористався кодом <b>{{.Code}}</b>, відкрив спір за замовленням {{.Number}}. Кешбек {{.Amount}} уже виплачено тому, хто запросив, і його не можна повернути."
+
+["salesnotify.referral.code_paused"]
+other = "Код <b>{{.Code}}</b> зупинено: нових знижок він не дає. Уже зроблені виплати лишаються як є."
+
+["salesnotify.referral.balance_title"]
+other = "💳 <b>Приведи друга: кешбек чекає на баланс Stripe</b> — {{.Org}}"
+
+["salesnotify.referral.balance_body"]
+other = "Щоб виплатити кешбек покупцям ({{.Count}}), на вашому балансі Stripe має бути доступно {{.Amount}}. Arena перевіряє баланс раз на кілька годин і платить, щойно кошти з'являться. Якщо їх не буде 30 днів, кешбек не виплачується, а покупцям ми пропонуємо звернутися до вас."
+
+["salesnotify.referral.pending_title"]
+other = "⏳ <b>Приведи друга: Stripe утримує кешбек</b> — {{.Org}}"
+
+["salesnotify.referral.pending_body"]
+other = "Stripe прийняв повернення кешбеку покупцям ({{.Count}}) на {{.Amount}}, але ще не виплатив його. Зазвичай це означає, що на балансі Stripe не вистачає коштів. Поповніть баланс: повернення, на яке немає коштів 45 днів, Stripe скасовує."
+
+["salesnotify.referral.unpaid_title"]
+other = "❌ <b>Приведи друга: кешбек не виплачено</b> — {{.Org}}"
+
+["salesnotify.referral.unpaid_body_balance"]
+other = "Кешбек {{.Amount}} за замовлення друга №{{.Number}} (код <b>{{.Code}}</b>) не виплачено: 30 днів на балансі Stripe не вистачало коштів. Покупцю, який привів друга, ми запропонували звернутися до вас. Розрахуйтеся з ним самі, наприклад дайте йому промокод."
+
+["salesnotify.referral.unpaid_body_provider"]
+other = "Кешбек {{.Amount}} за замовлення друга №{{.Number}} (код <b>{{.Code}}</b>) не виплачено: платіжний провайдер відмовив у поверненні коштів. Покупцю, який привів друга, ми запропонували звернутися до вас. Розрахуйтеся з ним самі, наприклад дайте йому промокод."
+
+["guestlist.sheet_name"]
+other = "Гості"
+
+["guestlist.email.subject"]
+other = "Список гостей: {{.Event}}, {{.When}}"
+
+["guestlist.email.greeting"]
+other = "Вітаємо!"
+
+["guestlist.email.attached"]
+other = "У вкладенні список гостей заходу «{{.Event}}» на {{.When}}. Квитків у списку: {{.Rows}}."
+
+["guestlist.email.slot_h24"]
+other = "Сеанс розпочнеться за 24 години."
+
+["guestlist.email.slot_h3"]
+other = "Сеанс розпочнеться за 3 години."
+
+["guestlist.email.slot_doors"]
+other = "Починається вхід на сеанс."
+
+["guestlist.email.slot_manual"]
+other = "Це свіжа копія списку."
+
+["guestlist.email.why"]
+other = "Ви отримуєте цей лист, бо ввімкнули «Надсилати мені список гостей» в івент-центрі. У файлі контакти покупців: не пересилайте його стороннім."
+
+["guestlist.email.stop"]
+other = "Щоб листи більше не надходили, зніміть позначку «Надсилати мені список гостей» у розділі «Сповіщення» івент-центру."
+
+# --- salesnotify delivery steps and the sales bot (spec 61 section 7b) ---
+["salesnotify.shop.step.waiting"]
+other = "⏳ Чекає на пакування"
+
+["salesnotify.shop.step.packed"]
+other = "📦 Запаковано"
+
+["salesnotify.shop.step.handed_over"]
+other = "🚚 Передано кур'єру"
+
+["salesnotify.shop.step.delivered"]
+other = "✅ Доставлено"
+
+["salesnotify.shop.step.failed"]
+other = "❌ Не доставлено"
+
+["salesnotify.shop.step_tracking"]
+other = "№ {{.Tracking}}"
+
+["salesnotify.shop.card_closed"]
+other = "🛑 Кошти за замовлення повернено: не відправляйте"
+
+["salesnotify.shop.reason.no_answer"]
+other = "Не відповідає на дзвінки"
+
+["salesnotify.shop.reason.not_home"]
+other = "Нікого немає вдома"
+
+["salesnotify.shop.reason.wrong_address"]
+other = "Хибна адреса"
+
+["salesnotify.shop.reason.refused"]
+other = "Відмовився отримувати"
+
+["salesnotify.shop.reason.other"]
+other = "Інше"
+
+["salesnotify.shop.btn_no_tracking"]
+other = "🚚 Без номера"
+
+["salesnotify.shop.btn_back"]
+other = "↩️ Назад"
+
+["salesnotify.shop.failed_title"]
+other = "❌ <b>Замовлення в магазині не доставлено</b> — {{.Org}}"
+
+["salesnotify.shop.failed_body"]
+other = "Замовлення №{{.Number}}: {{.Reason}}. Вирішіть в івент-центрі: повторна доставка чи повернення коштів."
+
+["salesnotify.shop.ask_tracking"]
+other = "🚚 Номер відправлення: дайте відповідь на це повідомлення з номером або натисніть «Без номера» під карткою."
+
+["salesnotify.shop.ask_reason"]
+other = "❌ Чому не доставлено? Дайте відповідь на це повідомлення з причиною."
+
+["salesnotify.bot.toast_done"]
+other = "Готово: {{.Step}}"
+
+["salesnotify.bot.toast_stale"]
+other = "Уже встановлено: {{.Step}}"
+
+["salesnotify.bot.toast_closed"]
+other = "Кошти за замовлення повернено: не відправляйте"
+
+["salesnotify.bot.toast_error"]
+other = "Не вийшло, спробуйте ще раз"
+
+["salesnotify.bot.toast_not_connected"]
+other = "Цей чат не підключено до доставок"
+
+["salesnotify.bot.prompt_expired"]
+other = "Це запитання застаріло: натисніть кнопку на картці ще раз."
+
+["salesnotify.bot.connected"]
+other = "✅ Чат підключено: {{.Org}}\nОтримує: {{.Kinds}}"
+
+["salesnotify.bot.connect_failed"]
+other = "Код не спрацював або його термін минув. Попросіть новий код в адмінці."
+
+["salesnotify.bot.connect_usage"]
+other = "Напишіть /connect і код з адмінки."
+
+["salesnotify.bot.connect_group_only"]
+other = "Підключити можна лише групу: додайте бота до групи й надішліть код там."
+
+["salesnotify.bot.operator"]
+other = "Платформа (усі організації)"
+
+["salesnotify.bot.kind.tickets"]
+other = "продаж квитків"
+
+["salesnotify.bot.kind.shop_sale"]
+other = "продажі в магазині (без даних покупців)"
+
+["salesnotify.bot.kind.shop_delivery"]
+other = "замовлення магазину для доставки"

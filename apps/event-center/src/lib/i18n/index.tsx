@@ -1,5 +1,5 @@
 /**
- * Languages of the event center: en, ru, es from day one. Hebrew joins
+ * Languages of the event center: en, ru, es from day one, uk since 2026-11-18. Hebrew joins
  * with its own catalog; `dir` already follows the language, so a
  * right-to-left catalog needs no layout change.
  */
@@ -7,14 +7,15 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { en, type MessageKey } from "@/lib/i18n/en";
 import { es } from "@/lib/i18n/es";
 import { ru } from "@/lib/i18n/ru";
+import { uk } from "@/lib/i18n/uk";
 
-export const LOCALES = ["en", "ru", "es"] as const;
+export const LOCALES = ["en", "ru", "es", "uk"] as const;
 export type Locale = (typeof LOCALES)[number];
 
-export const CATALOGS: Record<Locale, Record<MessageKey, string>> = { en, ru, es };
+export const CATALOGS: Record<Locale, Record<MessageKey, string>> = { en, ru, es, uk };
 
 /** Name of each language in that language, for the switcher. */
-export const LOCALE_NAMES: Record<Locale, string> = { en: "English", ru: "Русский", es: "Español" };
+export const LOCALE_NAMES: Record<Locale, string> = { en: "English", ru: "Русский", es: "Español", uk: "Українська" };
 
 const RTL_LOCALES: readonly string[] = ["he", "ar"];
 const STORAGE_KEY = "arena.events.locale";
