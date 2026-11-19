@@ -58,7 +58,7 @@ scenes:
   - id: p3-buyer
     narration:
       ru: Покупатель платит картой, билет приходит ему на почту.
-    pause_after: 1.2
+    pause_after: 1.5
     shots:
       - image: ../sell-01/captures/b_03_cart_close.png
         frame: phone
@@ -69,8 +69,11 @@ scenes:
         title: { ru: Оплата картой }
         scroll: { from: 0.9, to: 1.0 }
         highlight: { x: 0.04, y: 0.619, w: 0.92, h: 0.0311 }
-      - graphic: placeholder
-        caption: { ru: "Билет на почте: письмо покупателю ещё не снято" }
+      # The production letter template, rendered again in Russian with the data of the order.
+      - image: ../sell-01/captures/l_01_letter.png
+        frame: phone
+        title: { ru: Письмо с билетами }
+        scroll: { from: 0, to: 0.7 }
 
   - id: p4-money
     narration:

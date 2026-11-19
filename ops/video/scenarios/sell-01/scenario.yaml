@@ -69,7 +69,7 @@ scenes:
   - id: s3-buyer
     narration:
       ru: Покупатель открывает ссылку, выбирает билеты и платит картой. Билет приходит ему на почту.
-    pause_after: 4.0          # four close-ups need more time than the short text gives
+    pause_after: 5.5          # five close-ups need more time than the short text gives
     shots:
       - image: captures/b_01_page_full.png
         frame: phone
@@ -87,14 +87,23 @@ scenes:
         weight: 3
         scroll: { from: 0.9, to: 1.0 }
         highlight: { x: 0.04, y: 0.619, w: 0.92, h: 0.0311 }
-      - graphic: placeholder
-        caption: { ru: "Билет на почте: письмо покупателю ещё не снято" }
-        weight: 2
+      # The production letter template, rendered again in Russian with the data of the order.
+      - image: captures/l_01_letter.png
+        frame: phone
+        title: { ru: Письмо с билетами }
+        weight: 3
+        scroll: { from: 0, to: 0.7 }
+      # The first page of the real ticket PDF: brand and holder name replaced, seller footer cut.
+      - image: captures/t_01_ticket.png
+        frame: phone
+        title: { ru: Билет PDF }
+        weight: 3
+        scroll: { from: 0, to: 1.0 }
 
   - id: s4-money
     narration:
       ru: Деньги поступают напрямую на ваш счёт в Stripe. О каждой продаже приходит сообщение в Telegram.
-    pause_after: 1.5
+    pause_after: 2.5
     shots:
       # The payment page of the stand: test badge hidden, merchant name replaced.
       - image: captures/b_06_stripe_desktop.png
@@ -102,6 +111,12 @@ scenes:
         title: { ru: "Оплата через Stripe — деньги сразу на ваш счёт" }
         weight: 3
         zoom: { from: 1.0, to: 1.7, x: 0.15, y: 0.2 }
+      # The payouts list of the provider's cabinet (test mode): heading and rows only.
+      - image: captures/p_01_payouts.png
+        frame: browser
+        title: { ru: "Выплаты на ваш банковский счёт" }
+        weight: 2
+        zoom: { from: 1.0, to: 1.12, x: 0.5, y: 0.45 }
       # Reconstruction (reconstructions/sale_message.html), not a screenshot.
       - image: captures/s_01_sale_reconstruction.png
         frame: phone
@@ -136,9 +151,6 @@ scenes:
         title: { ru: Бесплатные билеты }
         weight: 2
         zoom: { from: 1.8, to: 2.0, x: 0.45, y: 0.35 }
-      - graphic: placeholder
-        caption: { ru: "Команда: экран приглашения ещё не снят" }
-        weight: 1
       - image: captures/w_08_move_check.png
         frame: browser
         title: { ru: "Перенос даты: письмо и новый билет" }
@@ -148,10 +160,24 @@ scenes:
   - id: s6-entrance
     narration:
       ru: На входе билеты проверяет приложение-сканер на телефоне.
-    pause_after: 0.3
+    pause_after: 3.5
     shots:
-      - graphic: placeholder
-        caption: { ru: "Сканер билетов: Android и iPhone. Съёмка на телефоне" }
+      # Owner's screenshots of the scanner app: browser part cut, holder name replaced.
+      - image: captures/m_01_scan_close.png
+        frame: phone
+        title: { ru: Сканер читает билет }
+        weight: 3
+        zoom: { from: 1.0, to: 1.1, x: 0.5, y: 0.27 }
+      - image: captures/m_02_checked_close.png
+        frame: phone
+        title: { ru: Вход отмечен }
+        weight: 3
+        scroll: { from: 0, to: 1.0 }
+        highlight: { x: 0.24, y: 0.425, w: 0.52, h: 0.045 }
+      - image: captures/m_03_macs_web.png
+        frame: browser
+        title: { ru: Контроль входа в браузере }
+        weight: 2
 
   - id: s7-cta
     narration:
