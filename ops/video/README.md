@@ -263,6 +263,36 @@ takes the top of the page instead.
 
 To build without the paid voice: set `VIDEO_VOICE=silent`.
 
+### Film onb-01
+
+`scenarios/onb-01` shows how a new organizer applies in the event-center bot
+and gets an organization. The pictures in `captures/<language>/` are not
+committed. They were made on the staging stand on 2026-11-19 with a separate
+test Telegram account and scratch scripts, one full pass for each language:
+`/start`, the language button, "Apply to become an organizer", all questions,
+the three agreements, "Send the application". A test operator of the stand
+approved the application through the operator API, and the approval message
+and the menu were filmed after that.
+
+The stand needs `ONBOARDING_ENABLED` on arena-api and
+`BOT_SELF_ONBOARDING_ENABLED` on arena-bot. The bot speaks the language of the
+button pressed on the welcome message; the link `?start=apply` uses the
+language of the Telegram account instead. The six-digit e-mail code was read
+from the job queue of the stand. Before the next pass the Telegram link of the
+account has to be deleted, the test organization renamed and the Telegram id
+taken off the approved application (limit: three applications a day for one
+Telegram account); the product has no screen for that.
+
+Before a screenshot the scripts replace the test bot name with the public
+name, the contact card (name, picture letters, phone number), the e-mail
+address and the Telegram name of the test account with the invented applicant
+of the film. Each picture gets 900 px of chat background under it, so that
+`scroll` can lift the lower part of the chat above the subtitles.
+
+The staging build of 2026-11-19 has the bot in English, Russian and Spanish.
+A fourth language needs its texts in the scenario and its pictures; see the
+comment at the top of the scenario.
+
 ## Environment variables
 
 Keys, addresses and logins are never in the repository. The scripts read them
