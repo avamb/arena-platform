@@ -45,7 +45,7 @@ function splitFrames(total: number, weights: number[]): number[] {
 
 async function buildShot(
   spec: ShotSpec,
-  o: { sceneId: string; index: number; lang: string; scenarioDir: string; publicDir: string; startFrame: number; frames: number },
+  o: { sceneId: string; index: number; lang: string; scenarioDir: string; publicDir: string; startFrame: number; frames: number; formats?: FrameFormat[] },
 ): Promise<ManifestShot> {
   const { lang } = o;
   // A field set for this language in per_language replaces the shot's own field as a whole.
@@ -64,9 +64,10 @@ async function buildShot(
   if (spec.perFormat) {
     shot.perFormat = {};
     for (const [fmt, ov] of Object.entries(spec.perFormat) as [FrameFormat, NonNullable<ShotSpec["perFormat"]>[FrameFormat]][]) {
+      if (o.formats && !o.formats.includes(fmt)) continue; // not rendered in this run: its picture is not needed
       const { image, address, ...rest } = ov!;
       const out: NonNullable<NonNullable<ManifestShot["perFormat"]>[FrameFormat]> = { ...rest };
-      if (address !== undefined) out.address = address[lang];
+      if (address?.[lang] !== undefined) out.address = address[lang];
       if (image) {
         const own = path.join(o.scenarioDir, path.dirname(image), lang, path.basename(image));
         const imgPath = fs.existsSync(own) ? own : path.join(o.scenarioDir, image);
@@ -175,6 +176,7 @@ async function main(): Promise<void> {
           publicDir,
           startFrame: off,
           frames: split[j]!,
+          formats,
         }),
       );
       off += split[j]!;

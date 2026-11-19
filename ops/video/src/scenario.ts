@@ -233,7 +233,7 @@ function parseShot(sh: unknown, w: string, languages: string[], dir: string): Sh
     const fields = ["image", "frame", "zoom", "highlight", "cursor", "scroll", "address"];
     for (const [fmt, v] of Object.entries(pf)) {
       const fw = `${w}.per_format.${fmt}`;
-      if (!(fmt in FORMATS)) fail(`${fw}: unknown format, use ${Object.keys(FORMATS).join(" | ")}`);
+      if (!Object.keys(FORMATS).includes(fmt)) fail(`${fw}: unknown format, use ${Object.keys(FORMATS).join(" | ")}`);
       if (!isObj(v)) fail(`${fw} must be a mapping`);
       for (const k of Object.keys(v)) {
         if (!fields.includes(k)) fail(`${fw}.${k}: unknown field, use ${fields.join(" | ")}`);
