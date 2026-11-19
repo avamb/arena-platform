@@ -59,7 +59,26 @@ async function buildShot(
     highlight: look.highlight,
     cursor: look.cursor,
     scroll: look.scroll,
+    address: spec.address?.[lang],
   };
+  if (spec.perFormat) {
+    shot.perFormat = {};
+    for (const [fmt, ov] of Object.entries(spec.perFormat) as [FrameFormat, NonNullable<ShotSpec["perFormat"]>[FrameFormat]][]) {
+      const { image, address, ...rest } = ov!;
+      const out: NonNullable<NonNullable<ManifestShot["perFormat"]>[FrameFormat]> = { ...rest };
+      if (address !== undefined) out.address = address[lang];
+      if (image) {
+        const own = path.join(o.scenarioDir, path.dirname(image), lang, path.basename(image));
+        const imgPath = fs.existsSync(own) ? own : path.join(o.scenarioDir, image);
+        if (!fs.existsSync(imgPath)) throw new Error(`scene ${o.sceneId}: picture ${imgPath} not found, run capture first`);
+        const size = pngSize(imgPath);
+        out.image = copyInto(o.publicDir, `img/${o.sceneId}_${o.index}_${fmt}.png`, imgPath);
+        out.imageWidth = size.w;
+        out.imageHeight = size.h;
+      }
+      shot.perFormat[fmt] = out;
+    }
+  }
   if (spec.image) {
     // A picture of one language lies in a folder named by the language next to the common picture.
     const own = path.join(o.scenarioDir, path.dirname(spec.image), lang, path.basename(spec.image));
@@ -109,6 +128,16 @@ async function main(): Promise<void> {
   if (!id || !lang) throw new Error("usage: npm run build:video -- <scenario> <language> [--voice silent]");
   const sc = loadScenario(id);
   if (!sc.languages.includes(lang)) throw new Error(`language ${lang} is not in the scenario (${sc.languages.join(", ")})`);
+
+  // VIDEO_FORMATS=16x9 (comma list) renders only these formats of the scenario
+  let formats = sc.formats as FrameFormat[];
+  if (process.env.VIDEO_FORMATS) {
+    formats = process.env.VIDEO_FORMATS.split(",").map((x) => x.trim()).filter(Boolean) as FrameFormat[];
+    for (const f of formats) {
+      if (!sc.formats.includes(f)) throw new Error(`VIDEO_FORMATS: ${f} is not a format of the scenario (${sc.formats.join(", ")})`);
+    }
+    if (formats.length === 0) throw new Error("VIDEO_FORMATS is empty");
+  }
 
   const outDir = path.join(ROOT, "out", id, lang);
   const workDir = path.join(outDir, ".work");
@@ -198,7 +227,7 @@ async function main(): Promise<void> {
     publicDir,
   });
 
-  for (const format of sc.formats as FrameFormat[]) {
+  for (const format of formats) {
     const { width, height } = FORMATS[format];
     const inputProps: VideoProps = {
       manifest,

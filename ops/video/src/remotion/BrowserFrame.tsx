@@ -1,10 +1,11 @@
 import React from "react";
-import type { Box } from "./layout.ts";
+import { FONT, type Box } from "./layout.ts";
 
 /** A simple browser window: bar with three dots, the picture below. Children are drawn in the content area. */
-export const BrowserFrame: React.FC<{ box: Box; barH: number; children: (content: Box) => React.ReactNode }> = ({
+export const BrowserFrame: React.FC<{ box: Box; barH: number; address?: string; children: (content: Box) => React.ReactNode }> = ({
   box,
   barH,
+  address,
   children,
 }) => {
   const dot = barH * 0.3;
@@ -40,7 +41,29 @@ export const BrowserFrame: React.FC<{ box: Box; barH: number; children: (content
         {["#ff5f57", "#febc2e", "#28c840"].map((c) => (
           <div key={c} style={{ width: dot, height: dot, borderRadius: "50%", background: c }} />
         ))}
-        <div style={{ marginLeft: barH * 0.4, height: barH * 0.5, flex: 1, maxWidth: "55%", borderRadius: barH * 0.25, background: "#fff" }} />
+        <div
+          style={{
+            marginLeft: barH * 0.4,
+            height: barH * 0.5,
+            flex: 1,
+            maxWidth: "55%",
+            borderRadius: barH * 0.25,
+            background: "#fff",
+            display: "flex",
+            alignItems: "center",
+            paddingLeft: barH * 0.25,
+            paddingRight: barH * 0.25,
+            boxSizing: "border-box",
+            overflow: "hidden",
+            fontFamily: FONT,
+            fontSize: barH * 0.3,
+            color: "#3c4043",
+            whiteSpace: "nowrap",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {address}
+        </div>
       </div>
       <div style={{ position: "absolute", left: 0, top: barH, width: box.w, height: box.h - barH, overflow: "hidden" }}>
         {children({ x: 0, y: 0, w: box.w, h: box.h - barH })}

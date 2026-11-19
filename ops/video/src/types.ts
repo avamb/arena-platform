@@ -60,6 +60,15 @@ export interface ManifestShot {
   highlight?: HighlightSpec;
   cursor?: CursorPoint[];
   scroll?: ScrollSpec;
+  /** text in the address pill of a browser frame */
+  address?: string;
+  /** per frame format: a field given here replaces the same field of the shot in that format */
+  perFormat?: Partial<
+    Record<
+      FrameFormat,
+      Partial<Pick<ManifestShot, "frame" | "image" | "imageWidth" | "imageHeight" | "zoom" | "highlight" | "cursor" | "scroll" | "address">>
+    >
+  >;
   /** a graphic shot, drawn by the edit */
   graphic?: GraphicKind;
   steps?: string[];

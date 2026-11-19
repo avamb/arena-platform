@@ -61,13 +61,16 @@ async function poll(what: string, read: () => string, tries = 30): Promise<strin
   throw new Error(`capture-onb-02: ${what} did not appear on the stand`);
 }
 
+/** ONB_VIEW=desktop: a browser window of 1280 x 720 for the 16:9 film; default is the phone size. */
+const DESKTOP = process.env.ONB_VIEW === "desktop";
+
 class Shots {
   constructor(private readonly dir: string, private readonly replace: [string, string][]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 
   /** Replaces stand data in texts and fields, hides the captcha box, then restores the fields. */
-  async take(page: Page, name: string, opts: { full?: boolean; clip?: string } = {}): Promise<void> {
+  async take(page: Page, name: string, opts: { full?: boolean; clip?: string; at?: string } = {}): Promise<void> {
     await page.evaluate((pairs) => {
       const swap = (s: string) => pairs.reduce((acc, [from, to]) => acc.split(from).join(to), s);
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -93,6 +96,18 @@ class Shots {
       });
     }
     await page.waitForTimeout(250);
+    if (DESKTOP) {
+      // Desktop pictures (file names d_*) are what the browser window shows: no cut, no whole page.
+      // A form block is moved under the fixed header of the site first; `at` moves another element there.
+      const anchor = opts.at ?? (opts.clip ? ((await page.locator(".onb-crumb").count()) ? ".onb-crumb" : "main h1") : undefined);
+      if (anchor) await page.locator(anchor).first().evaluate((e) => window.scrollTo(0, e.getBoundingClientRect().top + window.scrollY - 230));
+      else await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForTimeout(250);
+      await page.screenshot({ path: path.join(this.dir, `d_${name}.png`) });
+      await this.restore(page);
+      console.log(`  shot d_${name}`);
+      return;
+    }
     // clip: the block of the page that holds this element, whole, without the fixed header and the footer
     const clip = opts.clip
       ? await page.locator(opts.clip).last().evaluate((e) => {
@@ -103,6 +118,11 @@ class Shots {
         })
       : undefined;
     await page.screenshot({ path: path.join(this.dir, `${name}.png`), fullPage: !!clip || (opts.full ?? false), clip });
+    await this.restore(page);
+    console.log(`  shot ${name}`);
+  }
+
+  private async restore(page: Page): Promise<void> {
     await page.evaluate(() => {
       document.querySelectorAll<HTMLElement>("[data-video-hidden]").forEach((h) => { h.style.visibility = ""; delete h.dataset.videoHidden; });
       document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("[data-video-real]").forEach((i) => {
@@ -110,17 +130,16 @@ class Shots {
         delete i.dataset.videoReal;
       });
     });
-    console.log(`  shot ${name}`);
   }
 }
 
 async function newContext(lang: Lang): Promise<{ close: () => Promise<void>; ctx: BrowserContext }> {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({
-    viewport: { width: 390, height: 844 },
+    viewport: DESKTOP ? { width: 1280, height: 720 } : { width: 390, height: 844 },
     deviceScaleFactor: 2,
-    isMobile: true,
-    hasTouch: true,
+    isMobile: !DESKTOP,
+    hasTouch: !DESKTOP,
     locale: BROWSER_LOCALE[lang],
     timezoneId: "Europe/Madrid",
   });
@@ -194,6 +213,7 @@ async function form(lang: Lang, shots: Shots): Promise<void> {
     await page.fill("#onb-address_postal_code", "28004");
     await page.fill("#onb-address_city", "Madrid");
     await shots.take(page, "f_05_org", { clip: SECTION });
+    if (DESKTOP) await shots.take(page, "f_05_org_b", { at: "#onb-tax_id" });
     await page.click("form button[type=submit]");
 
     // Events

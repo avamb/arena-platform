@@ -182,6 +182,28 @@ scenes:
   space under the picture and use `scroll` (see `sell-01`, pictures `*_close.png`).
   A chat column is narrower than the screen, thus a zoom larger than 1.2 cuts
   its text at the sides.
+- A picture shot can look different in one format. `per_format` has the keys
+  `16x9`, `9x16`, `4x5`; each holds any of `image`, `frame`, `zoom`,
+  `highlight`, `cursor`, `scroll`, `address`. For that format the given field
+  replaces the shot's own field as a whole, and it also wins over `per_language`.
+  A picture of `per_format` follows the same `<lang>/` folder rule.
+  `address` is the text in the address bar of a `frame: browser` shot: a string,
+  or a mapping language to string.
+
+  ```yaml
+  - image: captures/site/page.png
+    frame: browser
+    address: arenasoldout.com/apply
+    per_format:
+      9x16:
+        frame: phone
+        image: captures/site/page_mobile.png
+        zoom: { from: 1, to: 1.3, y: 0.2 }
+  ```
+
+- `VIDEO_FORMATS=16x9` (a comma list) makes `build:video` render only these
+  formats of the scenario. A format that is not in the scenario is an error.
+  Not set: all formats of the scenario.
 - A QR code is made at build time from the `qr` text. No network.
 - `manifest.json` records for each scene the number of characters sent to the
   voice provider and if the sound came from the cache; the build prints the
@@ -260,6 +282,12 @@ and the local and stand hosts with the public hosts, and it hides the captcha
 box and the fixed bars. The picture `f_04_confirmed.png` of this build was a
 cut of the form block put on an empty phone-size background; the script now
 takes the top of the page instead.
+
+The 16:9 film shows desktop pictures in a browser window with a close-up
+(`per_format` in the scenario); 9:16 and 4:5 show the phone pictures. The
+desktop pictures have the names `d_*.png`. They come from a second run of the
+same scripts with `ONB_VIEW=desktop` (window 1280 x 720, new test addresses
+and organization names) and from `render-letter.ts ... desktop`.
 
 To build without the paid voice: set `VIDEO_VOICE=silent`.
 

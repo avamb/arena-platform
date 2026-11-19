@@ -9,6 +9,8 @@ title:
 # Pictures in captures/ are made by scripts/capture-onb-02.ts and scripts/render-letter.ts
 # (see README, "Film onb-02") and are not committed. Russian pictures lie in captures/,
 # English and Spanish in captures/en/ and captures/es/.
+# 16x9 shows desktop pictures (captures/d_*.png, ONB_VIEW=desktop) in a browser window with a close-up;
+# 9x16 and 4x5 show the phone pictures.
 # The applicant is invented: Carmen Ortega, Aurora Events, Madrid, carmen@example.com.
 
 voice:
@@ -32,11 +34,23 @@ scenes:
         frame: phone
         title: { ru: "arenasoldout.com → «Начать продавать»", en: "arenasoldout.com → Start selling", es: "arenasoldout.com → «Empieza a vender»" }
         weight: 2
+        per_format:
+          16x9:
+            image: captures/d_f_01_start.png
+            frame: browser
+            address: { ru: "arenasoldout.com/ru/start", en: "arenasoldout.com/start", es: "arenasoldout.com/es/start" }
+            zoom: { from: 1.0, to: 1.15, x: 0.2, y: 0.2 }
       - image: captures/f_02_contact.png
         frame: phone
         title: { ru: "Шаг 1: о вас", en: "Step 1: about you", es: "Paso 1: sobre ti" }
         weight: 3
         scroll: { from: 0, to: 0.75 }
+        per_format:
+          16x9:
+            image: captures/d_f_02_contact.png
+            frame: browser
+            address: { ru: "arenasoldout.com/ru/start", en: "arenasoldout.com/start", es: "arenasoldout.com/es/start" }
+            zoom: { from: 1.5, to: 1.6, x: 0.0, y: 0.32 }
 
   - id: s2-confirm
     narration:
@@ -51,11 +65,22 @@ scenes:
         title: { ru: "Письмо со ссылкой", en: "E-mail with the link", es: "Correo con el enlace" }
         weight: 3
         zoom: { from: 1.0, to: 1.12, x: 0.4, y: 0.45 }
+        per_format:
+          16x9:
+            image: captures/d_l_01_confirm.png
+            frame: browser
+            zoom: { from: 1.25, to: 1.4, x: 0.5, y: 0.25 }
       - image: captures/f_04_confirmed.png
         frame: phone
         title: { ru: "Почта подтверждена", en: "E-mail confirmed", es: "Correo confirmado" }
         weight: 2
         zoom: { from: 1.0, to: 1.15, x: 0.4, y: 0.25 }
+        per_format:
+          16x9:
+            image: captures/d_f_04_confirmed.png
+            frame: browser
+            address: { ru: "arenasoldout.com/ru/start/confirm", en: "arenasoldout.com/start/confirm", es: "arenasoldout.com/es/start/confirm" }
+            zoom: { from: 1.35, to: 1.5, x: 0.15, y: 0.3 }
 
   - id: s3-steps
     narration:
@@ -69,16 +94,34 @@ scenes:
         title: { ru: "Шаг 2: организация", en: "Step 2: your organization", es: "Paso 2: tu organización" }
         weight: 4
         scroll: { from: 0, to: 0.7 }
+        per_format:
+          16x9:
+            image: captures/d_f_05_org.png
+            frame: browser
+            address: { ru: "arenasoldout.com/ru/start", en: "arenasoldout.com/start", es: "arenasoldout.com/es/start" }
+            zoom: { from: 1.5, to: 1.6, x: 0.0, y: 0.32 }
       - image: captures/f_06_events.png
         frame: phone
         title: { ru: "Шаг 3: мероприятия", en: "Step 3: your events", es: "Paso 3: tus eventos" }
         weight: 3
         scroll: { from: 0, to: 0.45 }
+        per_format:
+          16x9:
+            image: captures/d_f_06_events.png
+            frame: browser
+            address: { ru: "arenasoldout.com/ru/start", en: "arenasoldout.com/start", es: "arenasoldout.com/es/start" }
+            zoom: { from: 1.5, to: 1.6, x: 0.0, y: 0.32 }
       - image: captures/f_07_payment.png
         frame: phone
         title: { ru: "Шаг 4: билеты и оплата", en: "Step 4: tickets and payment", es: "Paso 4: entradas y pagos" }
         weight: 3
         scroll: { from: 0, to: 0.45 }
+        per_format:
+          16x9:
+            image: captures/d_f_07_payment.png
+            frame: browser
+            address: { ru: "arenasoldout.com/ru/start", en: "arenasoldout.com/start", es: "arenasoldout.com/es/start" }
+            zoom: { from: 1.5, to: 1.6, x: 0.0, y: 0.32 }
 
   - id: s4-submit
     narration:
@@ -91,10 +134,22 @@ scenes:
         frame: phone
         title: { ru: "Шаг 5: согласия", en: "Step 5: agreements", es: "Paso 5: aceptaciones" }
         weight: 3
+        per_format:
+          16x9:
+            image: captures/d_f_08_consents.png
+            frame: browser
+            address: { ru: "arenasoldout.com/ru/start", en: "arenasoldout.com/start", es: "arenasoldout.com/es/start" }
+            zoom: { from: 1.5, to: 1.6, x: 0.0, y: 0.32 }
       - image: captures/f_09_thanks.png
         frame: phone
         title: { ru: "Заявка отправлена", en: "Application sent", es: "Solicitud enviada" }
         weight: 2
+        per_format:
+          16x9:
+            image: captures/d_f_09_thanks.png
+            frame: browser
+            address: { ru: "arenasoldout.com/ru/start/thanks", en: "arenasoldout.com/start/thanks", es: "arenasoldout.com/es/start/thanks" }
+            zoom: { from: 1.2, to: 1.3, x: 0.1, y: 0.45 }
 
   - id: s5-password
     narration:
@@ -109,14 +164,31 @@ scenes:
         title: { ru: "Письмо после одобрения", en: "E-mail after the approval", es: "Correo tras la aprobación" }
         weight: 3
         scroll: { from: 0, to: 0.9 }
+        per_format:
+          16x9:
+            image: captures/d_l_02_invite.png
+            frame: browser
+            zoom: { from: 1.25, to: 1.4, x: 0.5, y: 0.45 }
       - image: captures/p_02_password.png
         frame: phone
         title: { ru: "Задайте пароль", en: "Choose a password", es: "Elige una contraseña" }
         weight: 2
+        per_format:
+          16x9:
+            image: captures/d_p_02_password.png
+            frame: browser
+            address: "events.arenasoldout.com/accept-invite"
+            zoom: { from: 1.5, to: 1.65, x: 0.5, y: 0.25 }
       - image: captures/p_03_after_password.png
         frame: phone
         title: { ru: "Пароль сохранён", en: "Password saved", es: "Contraseña guardada" }
         weight: 2
+        per_format:
+          16x9:
+            image: captures/d_p_03_after_password.png
+            frame: browser
+            address: "events.arenasoldout.com/accept-invite"
+            zoom: { from: 1.5, to: 1.65, x: 0.5, y: 0.25 }
 
   - id: s6-center
     narration:
@@ -129,16 +201,34 @@ scenes:
         frame: phone
         title: { ru: "Вход в ивент-центр", en: "Sign in to the event center", es: "Acceso al centro de eventos" }
         weight: 2
+        per_format:
+          16x9:
+            image: captures/d_e_01_signin.png
+            frame: browser
+            address: "events.arenasoldout.com/login"
+            zoom: { from: 1.5, to: 1.65, x: 0.5, y: 0.15 }
       - image: captures/e_02_first.png
         frame: phone
         title: { ru: "Первые шаги", en: "First steps", es: "Primeros pasos" }
         weight: 4
         zoom: { from: 1.0, to: 1.12, x: 0.5, y: 0.6 }
+        per_format:
+          16x9:
+            image: captures/d_e_02_first.png
+            frame: browser
+            address: "events.arenasoldout.com"
+            zoom: { from: 1.3, to: 1.42, x: 0.5, y: 0.1 }
       - image: captures/e_02_first_full.png
         frame: phone
         title: { ru: "Создайте первое мероприятие", en: "Add your first event", es: "Crea tu primer evento" }
         weight: 3
         scroll: { from: 0.55, to: 1.0 }
+        per_format:
+          16x9:
+            image: captures/d_e_02_first.png
+            frame: browser
+            address: "events.arenasoldout.com"
+            zoom: { from: 1.42, to: 1.42, x: 0.5, y: 0.8 }
 
   - id: s7-cta
     narration:

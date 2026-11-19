@@ -37,6 +37,10 @@ export interface ShotSpec {
   scroll?: ScrollSpec;
   /** per language: a field given here replaces the same field of the shot when that language is built */
   perLanguage?: Record<string, Pick<ShotSpec, "zoom" | "highlight" | "cursor" | "scroll">>;
+  /** text in the address pill of a browser frame, per language */
+  address?: Record<string, string>;
+  /** per frame format: a field given here replaces the same field of the shot in that format */
+  perFormat?: Partial<Record<FrameFormat, Partial<Pick<ShotSpec, "image" | "frame" | "zoom" | "highlight" | "cursor" | "scroll" | "address">>>>;
   steps?: Record<string, string[]>;
   caption?: Record<string, string>;
   heading?: Record<string, string>;
@@ -211,6 +215,54 @@ function parseShot(sh: unknown, w: string, languages: string[], dir: string): Sh
       perLang[lang] = over;
     }
     shot.perLanguage = perLang;
+  }
+  const addr = (v: unknown, aw: string): Record<string, string> | undefined => {
+    if (v === undefined) return undefined;
+    if (typeof v === "string") return Object.fromEntries(languages.map((l) => [l, v]));
+    return langMap(v, aw);
+  };
+  if (sh.address !== undefined) {
+    if (hasGraphic) fail(`${w}.address is only for a picture shot`);
+    shot.address = addr(sh.address, `${w}.address`);
+  }
+  if (sh.per_format !== undefined) {
+    if (hasGraphic) fail(`${w}.per_format is only for a picture shot`);
+    const pf = sh.per_format;
+    if (!isObj(pf)) fail(`${w}.per_format must be a mapping of formats`);
+    const perFmt: NonNullable<ShotSpec["perFormat"]> = {};
+    const fields = ["image", "frame", "zoom", "highlight", "cursor", "scroll", "address"];
+    for (const [fmt, v] of Object.entries(pf)) {
+      const fw = `${w}.per_format.${fmt}`;
+      if (!(fmt in FORMATS)) fail(`${fw}: unknown format, use ${Object.keys(FORMATS).join(" | ")}`);
+      if (!isObj(v)) fail(`${fw} must be a mapping`);
+      for (const k of Object.keys(v)) {
+        if (!fields.includes(k)) fail(`${fw}.${k}: unknown field, use ${fields.join(" | ")}`);
+      }
+      const look = parseShotLook(v, fw);
+      const over: Partial<Pick<ShotSpec, "image" | "frame" | "zoom" | "highlight" | "cursor" | "scroll" | "address">> = {};
+      if (v.image !== undefined) {
+        if (typeof v.image !== "string") fail(`${fw}.image must be a path`);
+        over.image = v.image;
+      }
+      if (v.frame !== undefined) {
+        if (typeof v.frame !== "string" || !["phone", "browser", "none"].includes(v.frame)) {
+          fail(`${fw}.frame: phone | browser | none`);
+        }
+        over.frame = v.frame as FrameKind;
+      }
+      if (look.zoom !== undefined) over.zoom = look.zoom;
+      if (look.highlight !== undefined) over.highlight = look.highlight;
+      if (look.cursor !== undefined) over.cursor = look.cursor;
+      if (v.scroll !== undefined) {
+        const sc = v.scroll;
+        if (!isObj(sc)) fail(`${fw}.scroll must be a mapping`);
+        over.scroll = { from: frac(sc.from ?? 0, `${fw}.scroll.from`), to: frac(sc.to ?? 0, `${fw}.scroll.to`) };
+      }
+      const a = addr(v.address, `${fw}.address`);
+      if (a !== undefined) over.address = a;
+      perFmt[fmt as FrameFormat] = over;
+    }
+    shot.perFormat = perFmt;
   }
   if (hasImage) {
     if (typeof sh.image !== "string") fail(`${w}.image must be a path`);

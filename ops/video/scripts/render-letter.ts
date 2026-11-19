@@ -1,7 +1,9 @@
 /**
  * Draws a letter of the platform as a phone mail screen for a film.
  *
- *   npx tsx scripts/render-letter.ts <letter.json> <out.png>
+ *   npx tsx scripts/render-letter.ts <letter.json> <out.png> [desktop]
+ *
+ * With "desktop" the picture is a 1280 x 720 window with the letter in a column, for a browser frame.
  *
  * letter.json: { "lang": "ru", "subject": "...", "html": "<the HTML body of the real letter>" }
  * The body is the letter that the stand sent. The script removes tracking pictures, makes the links
@@ -40,7 +42,8 @@ function esc(s: string): string {
 }
 
 async function main(): Promise<void> {
-  const [src, out] = process.argv.slice(2);
+  const [src, out, mode] = process.argv.slice(2);
+  const desktop = mode === "desktop";
   if (!src || !out) throw new Error("usage: tsx scripts/render-letter.ts <letter.json> <out.png>");
   const l = JSON.parse(fs.readFileSync(src, "utf8")) as Letter;
   let subject = l.subject;
@@ -54,17 +57,18 @@ async function main(): Promise<void> {
     .who{font-size:14px;font-weight:600}.to{font-size:12.5px;color:#6b7280;margin-top:2px}
     .body{padding:4px 20px 28px;font-family:sans-serif;font-size:15px}
     .body h1{font-size:20px}
-  </style></head><body>
+    ${desktop ? "body{background:#f1f3f6}.sheet{width:760px;margin:22px auto;background:#fff;border-radius:12px;box-shadow:0 1px 4px rgba(0,0,0,.12);overflow:hidden}" : ""}
+  </style></head><body><div class="sheet">
   <div class="bar"><p class="subj">${esc(subject)}</p>
     <div class="from"><div class="av">A</div><div><div class="who">ArenaSoldOut</div>
     <div class="to">${TO_LABEL[l.lang] ?? "To"}: ${esc(l.to ?? "carmen@example.com")}</div></div></div></div>
-  <div class="body">${clean(l)}</div></body></html>`;
+  <div class="body">${clean(l)}</div></div></body></html>`;
   const browser = await chromium.launch();
   try {
-    const p = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+    const p = await browser.newPage({ viewport: desktop ? { width: 1280, height: 720 } : { width: 390, height: 844 }, deviceScaleFactor: 2 });
     await p.setContent(page, { waitUntil: "load" });
     fs.mkdirSync(path.dirname(out), { recursive: true });
-    await p.screenshot({ path: out, fullPage: true });
+    await p.screenshot({ path: out, fullPage: !desktop });
   } finally {
     await browser.close();
   }
