@@ -1,4 +1,4 @@
-id: how-05-bot
+id: bot-sales-link-and-qr
 fps: 30
 # To add a language: add it here, add its text to every narration, title and heading,
 # and put its pictures in captures/<language>/. Nothing else changes.
@@ -11,8 +11,8 @@ title:
 # Instruction film: where the event-center bot gives the link of an event and its QR code,
 # how to make a separate tracked code for a poster, and what the buyer sees.
 # Pictures are made on the staging stand with the test Telegram account in the organization
-# "Luna Events" (see README, "Films how-01 and how-05-bot") and are not committed.
-# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in onb-01.
+# "Luna Events" (see README, "Films bot-create-event-from-poster and bot-sales-link-and-qr") and are not committed.
+# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in apply-in-telegram-bot.
 # The QR pictures in the chat are replaced before the screenshot with a code of the public
 # site, because the real ones open the staging stand.
 

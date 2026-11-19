@@ -179,7 +179,7 @@ scenes:
   In 9:16 and 4:5 the phone screen has almost the full width and its lower part
   can be under the subtitles, thus keep the important element in the upper half
   of the phone screen: for a button at the bottom of a screenshot, add empty
-  space under the picture and use `scroll` (see `sell-01`, pictures `*_close.png`).
+  space under the picture and use `scroll` (see `sell-tickets-from-poster`, pictures `*_close.png`).
   A chat column is narrower than the screen, thus a zoom larger than 1.2 cuts
   its text at the sides.
 - A QR code is made at build time from the `qr` text. No network.
@@ -206,15 +206,15 @@ carry it. Rules that the module enforces:
 A film that needs the bot has its own capture script (`scripts/capture-<id>.ts`)
 because the steps change data on the stand (they create an event).
 
-### Film sell-01
+### Film sell-tickets-from-poster
 
-`scenarios/sell-01` is the 70-second selling film and `scenarios/sell-01-short`
+`scenarios/sell-tickets-from-poster` is the 70-second selling film and `scenarios/sell-tickets-from-poster-short`
 is its 30-second vertical version; the text and the storyboard are in
 `docs/video/01_first_video_script_ru.md`. The pictures in `captures/` are not
 committed. They were made on the staging stand on 2026-11-18 with scratch
 scripts (bot chat, buyer page up to the payment page, web event center), which
 are not in the repository because they contain test accounts. A committed
-`scripts/capture-sell-01.ts` on top of `src/telegram.ts` is not written yet.
+`scripts/capture-sell-tickets-from-poster.ts` on top of `src/telegram.ts` is not written yet.
 
 Before a screenshot the scripts replace text in the page: the test bot name
 with the public name, the staging host with the public host, the test
@@ -233,9 +233,9 @@ English in each film.
 
 To build without the paid voice: set `VIDEO_VOICE=silent`.
 
-### Film onb-01
+### Film apply-in-telegram-bot
 
-`scenarios/onb-01` shows how a new organizer applies in the event-center bot
+`scenarios/apply-in-telegram-bot` shows how a new organizer applies in the event-center bot
 and gets an organization. The pictures in `captures/<language>/` are not
 committed. They were made on the staging stand on 2026-11-19 with a separate
 test Telegram account and scratch scripts, one full pass for each language:
@@ -263,9 +263,9 @@ The staging build of 2026-11-19 has the bot in English, Russian and Spanish.
 A fourth language needs its texts in the scenario and its pictures; see the
 comment at the top of the scenario.
 
-### Films how-01 and how-05-bot
+### Films bot-create-event-from-poster and bot-sales-link-and-qr
 
-`scenarios/how-01` (an event from a poster) and `scenarios/how-05-bot` (sales
+`scenarios/bot-create-event-from-poster` (an event from a poster) and `scenarios/bot-sales-link-and-qr` (sales
 link and QR code) are instruction films about the event-center bot, in the
 vertical formats only. The pictures in `captures/<language>/` are not
 committed. They were made on the staging stand on 2026-11-19 with the test
@@ -273,11 +273,11 @@ Telegram account, which is the owner of the test organization "Luna Events",
 and scratch scripts. For each language the bot was set to that language
 (Settings, Language) and one full pass was made:
 
-- how-01: Menu, "New event", "Fill in from a poster", the poster sent as a
+- bot-create-event-from-poster: Menu, "New event", "Fill in from a poster", the poster sent as a
   file, each question answered with the first fitting button, "Publish". The
   venue "Saal Aurora" was added in the first pass; the bot refuses a second
   venue with the same name, thus the film chooses the venue from the list.
-- how-05-bot: Menu, "My events", the event, "Link for buyers", "More links
+- bot-sales-link-and-qr: Menu, "My events", the event, "Link for buyers", "More links
   and QR codes", the placement "Poster", a name for the location, then
   "Statistics" after one opening of the short link with a phone browser.
   A headless browser is counted as a robot and adds the line "Robots
@@ -416,7 +416,7 @@ Run `npm run covers` to make them.
 
 - `covers/cover.html` is the one template. `covers/covers.yaml` holds the texts and the subject images.
 - The script writes `out/covers/<film>/<film>_<lang>_<format>.png`.
-- Films: sell-01, onb-01, onb-02, how-01, how-05-bot. Languages: ru, en, es. Formats: 16x9, 9x16, 4x5.
+- Films: sell-tickets-from-poster, apply-in-telegram-bot, onb-02, bot-create-event-from-poster, bot-sales-link-and-qr. Languages: ru, en, es. Formats: 16x9, 9x16, 4x5.
 - Long lines get a smaller font by themselves, so they never leave the frame.
 - Subject images live in ignored folders. If a file is missing, the cover is made without it.
 - Fonts are system fonts (Impact, Inter, Segoe UI). Nothing is loaded from the network.

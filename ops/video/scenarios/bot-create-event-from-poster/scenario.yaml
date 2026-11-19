@@ -1,4 +1,4 @@
-id: how-01
+id: bot-create-event-from-poster
 fps: 30
 # To add a language: add it here, add its text to every narration, title and heading,
 # and put its pictures in captures/<language>/. Nothing else changes.
@@ -11,8 +11,8 @@ title:
 # Instruction film: an organizer sends a poster to the event-center bot, confirms what the bot
 # read, answers the short questions and publishes the event. Each step that a person does is shown.
 # Pictures are made on the staging stand with the test Telegram account in the organization
-# "Luna Events" (see README, "Films how-01 and how-05-bot") and are not committed.
-# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in onb-01.
+# "Luna Events" (see README, "Films bot-create-event-from-poster and bot-sales-link-and-qr") and are not committed.
+# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in apply-in-telegram-bot.
 # The venue "Saal Aurora" is already in the list of the organization, thus the film chooses it
 # from the list; the button "The venue is not in the list" is in the same picture.
 # Payments are not connected in this test organization: the film shows the buyer's page, not a purchase,
@@ -35,7 +35,7 @@ scenes:
       es: "¿Ya tienes el cartel? Envíalo al bot de Arena Sold Out. En unos minutos tendrás la página del evento, donde los compradores eligen sus entradas."
     pause_after: 0.4
     shots:
-      - image: ../sell-01/assets/poster_vecher_dzhaza_4x5.png
+      - image: ../sell-tickets-from-poster/assets/poster_vecher_dzhaza_4x5.png
         frame: phone
         title: { ru: "Из афиши — страница с билетами", en: "From a poster to a ticket page", es: "Del cartel a la página de entradas" }
         zoom: { from: 1.0, to: 1.1, x: 0.5, y: 0.45 }

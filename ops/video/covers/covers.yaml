@@ -7,16 +7,16 @@ formats:
   4x5: { width: 1080, height: 1350 }
 
 films:
-  sell-01:
+  sell-tickets-from-poster:
     # Poster inside a phone frame.
     item:
       default:
         kind: phone
         status: "#0b1230"
         src:
-          ru: scenarios/sell-01/assets/poster_vecher_dzhaza_4x5.png
-          en: scenarios/sell-01/assets/en/poster_vecher_dzhaza_4x5.png
-          es: scenarios/sell-01/assets/es/poster_vecher_dzhaza_4x5.png
+          ru: scenarios/sell-tickets-from-poster/assets/poster_vecher_dzhaza_4x5.png
+          en: scenarios/sell-tickets-from-poster/assets/en/poster_vecher_dzhaza_4x5.png
+          es: scenarios/sell-tickets-from-poster/assets/es/poster_vecher_dzhaza_4x5.png
     texts:
       ru:
         line1: "АФИША ГОТОВА?"
@@ -31,16 +31,16 @@ films:
         line2: "VENDE ENTRADAS"
         sub: "Empieza a vender en unos minutos. El dinero va directo a tu cuenta."
 
-  onb-01:
+  apply-in-telegram-bot:
     # Bot welcome screen with the apply button; the capture has an empty lower part, so crop it.
     item:
       default:
         kind: phone
         crop: { x: 0, y: 0, w: 1, h: 0.66 }
         src:
-          ru: scenarios/onb-01/captures/ru/a_00_welcome.png
-          en: scenarios/onb-01/captures/en/a_00_welcome.png
-          es: scenarios/onb-01/captures/es/a_00_welcome.png
+          ru: scenarios/apply-in-telegram-bot/captures/ru/a_00_welcome.png
+          en: scenarios/apply-in-telegram-bot/captures/en/a_00_welcome.png
+          es: scenarios/apply-in-telegram-bot/captures/es/a_00_welcome.png
     texts:
       ru:
         line1: "ЗАЯВКА ОРГАНИЗАТОРА"
@@ -88,16 +88,16 @@ films:
         line2: "SOLICITUD EN LA WEB"
         sub: "De la solicitud a tu centro de eventos."
 
-  how-01:
+  bot-create-event-from-poster:
     # The bot has read the poster; the capture has an empty lower part, so crop it.
     item:
       default:
         kind: phone
         crop: { x: 0, y: 0, w: 1, h: 0.66 }
         src:
-          ru: scenarios/how-01/captures/ru/h_03c_poster.png
-          en: scenarios/how-01/captures/en/h_03c_poster.png
-          es: scenarios/how-01/captures/es/h_03c_poster.png
+          ru: scenarios/bot-create-event-from-poster/captures/ru/h_03c_poster.png
+          en: scenarios/bot-create-event-from-poster/captures/en/h_03c_poster.png
+          es: scenarios/bot-create-event-from-poster/captures/es/h_03c_poster.png
     texts:
       ru:
         line1: "МЕРОПРИЯТИЕ"
@@ -112,16 +112,16 @@ films:
         line2: "DESDE UN CARTEL"
         sub: "Envía el cartel al bot: lee el nombre, la fecha y el precio."
 
-  how-05-bot:
+  bot-sales-link-and-qr:
     # The QR code that the bot sends; the capture has an empty lower part, so crop it.
     item:
       default:
         kind: phone
         crop: { x: 0, y: 0, w: 1, h: 0.66 }
         src:
-          ru: scenarios/how-05-bot/captures/ru/q_06_qr.png
-          en: scenarios/how-05-bot/captures/en/q_06_qr.png
-          es: scenarios/how-05-bot/captures/es/q_06_qr.png
+          ru: scenarios/bot-sales-link-and-qr/captures/ru/q_06_qr.png
+          en: scenarios/bot-sales-link-and-qr/captures/en/q_06_qr.png
+          es: scenarios/bot-sales-link-and-qr/captures/es/q_06_qr.png
     texts:
       ru:
         line1: "ССЫЛКА ПРОДАЖ"

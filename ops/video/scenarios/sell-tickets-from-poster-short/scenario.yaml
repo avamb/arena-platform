@@ -1,4 +1,4 @@
-id: sell-01-short
+id: sell-tickets-from-poster-short
 fps: 30
 languages: [ru, en, es]
 title:
@@ -6,8 +6,8 @@ title:
   en: "Poster → tickets, 30 seconds"
   es: "Cartel → entradas, 30 segundos"
 
-# Short vertical version of sell-01 (section 6 of docs/video/01_first_video_script_ru.md).
-# It uses the pictures of sell-01. zoom x,y is the point that the close-up looks at.
+# Short vertical version of sell-tickets-from-poster (section 6 of docs/video/01_first_video_script_ru.md).
+# It uses the pictures of sell-tickets-from-poster. zoom x,y is the point that the close-up looks at.
 
 voice:
   provider: auto
@@ -26,7 +26,7 @@ scenes:
       es: "¿Tienes un cartel? Empieza a vender entradas en unos minutos."
     pause_after: 0.2
     shots:
-      - image: ../sell-01/assets/poster_vecher_dzhaza_4x5.png
+      - image: ../sell-tickets-from-poster/assets/poster_vecher_dzhaza_4x5.png
         frame: phone
         title: { ru: "Афиша → билеты", en: "Poster → tickets", es: "Cartel → entradas" }
         zoom: { from: 1.0, to: 1.12, x: 0.5, y: 0.45 }
@@ -38,11 +38,11 @@ scenes:
       es: "Envía el cartel al bot de Arena Sold Out. Lee el nombre, la fecha y el precio. Confirmas con botones y recibes un enlace para los compradores."
     pause_after: 0.4
     shots:
-      - image: ../sell-01/captures/r_03_sent.png
+      - image: ../sell-tickets-from-poster/captures/r_03_sent.png
         frame: phone
         title: { ru: "Бот читает афишу", en: "The bot reads the poster", es: "El bot lee el cartel" }
         zoom: { from: 1.0, to: 1.2, x: 0.5, y: 0.8 }
-      - image: ../sell-01/captures/r_04_read.png
+      - image: ../sell-tickets-from-poster/captures/r_04_read.png
         frame: phone
         title: { ru: "Бот читает афишу", en: "The bot reads the poster", es: "El bot lee el cartel" }
         weight: 2
@@ -50,13 +50,13 @@ scenes:
         highlight: { x: 0.02, y: 0.085, w: 0.75, h: 0.215 }
         per_language:
           en: { highlight: { x: 0.02, y: 0.112, w: 0.75, h: 0.225 } }
-      - image: ../sell-01/captures/r_16_price_q_close.png
+      - image: ../sell-tickets-from-poster/captures/r_16_price_q_close.png
         frame: phone
         title: { ru: "Вы подтверждаете кнопкой", en: "You confirm with a button", es: "Confirmas con un botón" }
         weight: 2
         scroll: { from: 0.92, to: 1.0 }
         highlight: { x: 0.026, y: 0.586, w: 0.95, h: 0.0375 }
-      - image: ../sell-01/captures/r_20_done.png
+      - image: ../sell-tickets-from-poster/captures/r_20_done.png
         frame: phone
         title: { ru: "Ссылка готова", en: "The link is ready", es: "Enlace listo" }
         weight: 2
@@ -72,14 +72,14 @@ scenes:
       es: "El comprador paga con tarjeta y la entrada le llega por correo electrónico."
     pause_after: 1.5
     shots:
-      - image: ../sell-01/captures/b_03_cart_close.png
+      - image: ../sell-tickets-from-poster/captures/b_03_cart_close.png
         frame: phone
         scroll: { from: 0.9, to: 1.0 }
         # es: the widget has English parts in Spanish; the es pictures keep them out of the frame
         per_language:
           es: { scroll: { from: 0, to: 0 } }
         title: { ru: "Оплата картой", en: "Card payment", es: "Pago con tarjeta" }
-      - image: ../sell-01/captures/b_04_form_close.png
+      - image: ../sell-tickets-from-poster/captures/b_04_form_close.png
         frame: phone
         title: { ru: "Оплата картой", en: "Card payment", es: "Pago con tarjeta" }
         scroll: { from: 0.9, to: 1.0 }
@@ -87,7 +87,7 @@ scenes:
         per_language:
           es: { highlight: { x: 0.04, y: 0.522, w: 0.92, h: 0.032 } }
       # The production letter template, rendered again in Russian with the data of the order.
-      - image: ../sell-01/captures/l_01_letter.png
+      - image: ../sell-tickets-from-poster/captures/l_01_letter.png
         frame: phone
         title: { ru: "Письмо с билетами", en: "E-mail with tickets", es: "Correo con las entradas" }
         scroll: { from: 0, to: 0.7 }
@@ -100,11 +100,11 @@ scenes:
     pause_after: 0.6
     shots:
       # The payment page of the stand: test badge hidden, merchant name replaced.
-      - image: ../sell-01/captures/b_06_stripe_crop.png
+      - image: ../sell-tickets-from-poster/captures/b_06_stripe_crop.png
         frame: browser
         title: { ru: "Оплата через Stripe — деньги сразу на ваш счёт", en: "Payment through Stripe — money goes straight to your account", es: "Pago con Stripe: el dinero va directo a tu cuenta" }
-      # Reconstruction (../sell-01/reconstructions/sale_message.html), not a screenshot.
-      - image: ../sell-01/captures/s_01_sale_reconstruction.png
+      # Reconstruction (../sell-tickets-from-poster/reconstructions/sale_message.html), not a screenshot.
+      - image: ../sell-tickets-from-poster/captures/s_01_sale_reconstruction.png
         frame: phone
         title: { ru: "Сообщение о продаже", en: "Sale message", es: "Mensaje de venta" }
         zoom: { from: 1.15, to: 1.22, x: 0.5, y: 0.33 }

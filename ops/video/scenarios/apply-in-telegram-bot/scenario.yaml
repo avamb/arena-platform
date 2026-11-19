@@ -1,4 +1,4 @@
-id: onb-01
+id: apply-in-telegram-bot
 fps: 30
 # To add a language: add it here, add its text to every narration, title and heading,
 # and put its pictures in captures/<language>/. Nothing else changes.
@@ -9,7 +9,7 @@ title:
   es: "Solicitud de organizador en Telegram"
 
 # A new organizer applies in the event-center bot and gets an organization.
-# Pictures are made on the staging stand with a test Telegram account (see README, "Film onb-01")
+# Pictures are made on the staging stand with a test Telegram account (see README, "Film apply-in-telegram-bot")
 # and are not committed. Every picture lies in captures/<language>/ and is 840 x 2660:
 # the chat screen plus empty chat background under it, so that `scroll` can lift the
 # lower part of the chat above the subtitles. zoom x,y is the point the close-up looks at.
