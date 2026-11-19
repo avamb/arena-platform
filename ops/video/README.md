@@ -440,7 +440,7 @@ you buy.
 
 ## How-to films of the web event center (web-*)
 
-Four films show the organizer's web event center in a browser window. They have one format, 16x9.
+Ten films show the organizer's web event center in a browser window. They have one format, 16x9.
 
 | Film | Subject | Stage of the capture script |
 |---|---|---|
@@ -448,10 +448,16 @@ Four films show the organizer's web event center in a browser window. They have 
 | `web-payments-status` | the section "Payments from buyers" and its two notes | `pay` |
 | `web-organization-details` | organization data, contact e-mail, the seller block on the buyers' page | `org` |
 | `web-sales-link-and-qr` | a tracked sales link, its QR code and its scan count | `links` |
+| `web-promo-codes` | a new promo code and the cart of a buyer with the code | `promo` |
+| `web-orders-and-refund` | the orders list, the order card, sending tickets again, the refund screens | `order`, `refund` |
+| `web-invitations` | a free ticket for a named guest | `invite` |
+| `web-invite-manager` | an invitation of a manager to the team | `team` |
+| `web-change-price` | a new price of a category and the buyer page | `price` |
+| `web-move-or-cancel-session` | moving a date to a new day, cancelling it | `move`, `cancel` |
 
 1. Draw the poster of the invented event: `npx tsx scripts/make-web-posters.ts`.
 2. Take the pictures for each language, in this order: `npx tsx scripts/capture-web.ts <ru|en|es> event`,
-   then `org`, `links`, `pay`. The script signs in as the test organizer of film apply-on-website
+   then `org`, `links`, `pay`, `promo`, `order`, `refund`, `invite`, `team`, `price`, `move`, and `cancel` last. The script signs in as the test organizer of film apply-on-website
    (`VIDEO_ONB_EMAIL_<LANG>`, `VIDEO_ONB_ORG_<LANG>`, `VIDEO_ONB_PASSWORD`, `VIDEO_BASE_URL` in `.env`).
 3. Build: `npm run build:video -- web-create-event ru` and so on.
 
@@ -468,6 +474,14 @@ Rules of these pictures:
 - Stage `pay`: the web event center has no screen where an organizer selects a provider or types its keys.
   `WEB_PAY_CONNECTED=1` replaces the stand's answer "payment configs" with one accepted config, and the screen
   draws its own note "connected" (picture `p_05_connected`). Without the variable this picture is not taken.
+- Stage `order` makes a real FREE order on the stand: a promo code of 100 % (`GUEST100`), the buyer Carmen Ortega,
+  the mailbox of the test organizer. No card is typed and no payment page is opened. For a free order the
+  screen "Refund" answers that there is nothing to refund; the refund of a paid order is not filmed.
+- Stage `team` sends a real invitation letter of the stand to `marco@example.com`.
+- Stages `move` and `cancel` send real letters of the stand to the holders of tickets. Run them only for the
+  event of stage `event`, whose holders are the test addresses of these films. `WEB_STOP=move` and
+  `WEB_STOP=cancel` stop before the change is saved.
+- A half-hidden address on a screen (`a***@a***.com`) is replaced too: it keeps the first letters of the real mailbox.
 - The web event center has no logo of the organization, so `web-organization-details` does not show one.
 - Stage `org` writes the mailbox of the test organizer as the contact e-mail and as the e-mail of the sales page.
   The stand sends buyers' letters and messages of the page form to it; the pictures show `carmen@example.com`.
@@ -479,7 +493,7 @@ Run `npm run covers` to make them.
 
 - `covers/cover.html` is the one template. `covers/covers.yaml` holds the texts and the subject images.
 - The script writes `out/covers/<film>/<film>_<lang>_<format>.png`.
-- Films: sell-01, onb-01, apply-on-website, web-create-event, web-payments-status, web-organization-details, web-sales-link-and-qr. Languages: ru, en, es. Formats: 16x9, 9x16, 4x5.
+- Films: sell-01, onb-01, apply-on-website, web-create-event, web-payments-status, web-organization-details, web-sales-link-and-qr, web-promo-codes, web-orders-and-refund, web-invitations, web-invite-manager, web-change-price, web-move-or-cancel-session. Languages: ru, en, es. Formats: 16x9, 9x16, 4x5.
 - Long lines get a smaller font by themselves, so they never leave the frame.
 - Subject images live in ignored folders. If a file is missing, the cover is made without it.
 - Fonts are system fonts (Impact, Inter, Segoe UI). Nothing is loaded from the network.

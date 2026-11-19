@@ -208,3 +208,183 @@ films:
         line1: "ENLACE Y QR"
         line2: "PARA CADA CARTEL"
         sub: "Cada escaneo se cuenta y los pedidos quedan ligados al código."
+
+  web-orders-and-refund:
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.5 }
+        src:
+          ru: scenarios/web-orders-and-refund/captures/d_02_card.png
+          en: scenarios/web-orders-and-refund/captures/en/d_02_card.png
+          es: scenarios/web-orders-and-refund/captures/es/d_02_card.png
+      default:
+        kind: phone
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.88 }
+        src:
+          ru: scenarios/web-orders-and-refund/captures/d_02_card.png
+          en: scenarios/web-orders-and-refund/captures/en/d_02_card.png
+          es: scenarios/web-orders-and-refund/captures/es/d_02_card.png
+    texts:
+      ru:
+        line1: "ЗАКАЗЫ"
+        line2: "БИЛЕТЫ И ВОЗВРАТ"
+        sub: "Карточка заказа, повторная отправка билетов и возврат."
+      en:
+        line1: "ORDERS"
+        line2: "TICKETS AND REFUNDS"
+        sub: "The order card, sending tickets again and refunds."
+      es:
+        line1: "PEDIDOS"
+        line2: "ENTRADAS Y DEVOLUCIONES"
+        sub: "La ficha del pedido, reenviar entradas y devoluciones."
+
+  web-promo-codes:
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.5 }
+        src:
+          ru: scenarios/web-promo-codes/captures/r_05_card.png
+          en: scenarios/web-promo-codes/captures/en/r_05_card.png
+          es: scenarios/web-promo-codes/captures/es/r_05_card.png
+      default:
+        kind: phone
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.88 }
+        src:
+          ru: scenarios/web-promo-codes/captures/r_05_card.png
+          en: scenarios/web-promo-codes/captures/en/r_05_card.png
+          es: scenarios/web-promo-codes/captures/es/r_05_card.png
+    texts:
+      ru:
+        line1: "ПРОМОКОДЫ"
+        line2: "СКИДКА ПО КОДУ"
+        sub: "Создайте код, и покупатель применит его в корзине."
+      en:
+        line1: "PROMO CODES"
+        line2: "A DISCOUNT BY CODE"
+        sub: "Make a code, and the buyer uses it in the cart."
+      es:
+        line1: "CÓDIGOS PROMOCIONALES"
+        line2: "DESCUENTO CON CÓDIGO"
+        sub: "Crea un código y el comprador lo usa en el carrito."
+
+  web-invitations:
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.48, y: 0.08, w: 0.42, h: 0.5 }
+        src:
+          ru: scenarios/web-invitations/captures/i_04_guest.png
+          en: scenarios/web-invitations/captures/en/i_04_guest.png
+          es: scenarios/web-invitations/captures/es/i_04_guest.png
+      default:
+        kind: phone
+        crop: { x: 0.5, y: 0.08, w: 0.3, h: 0.7 }
+        src:
+          ru: scenarios/web-invitations/captures/i_04_guest.png
+          en: scenarios/web-invitations/captures/en/i_04_guest.png
+          es: scenarios/web-invitations/captures/es/i_04_guest.png
+    texts:
+      ru:
+        line1: "ПРИГЛАСИТЕЛЬНЫЕ"
+        line2: "БИЛЕТ ДЛЯ ГОСТЯ"
+        sub: "Бесплатный билет гостю, которого вы называете."
+      en:
+        line1: "INVITATIONS"
+        line2: "A TICKET FOR A GUEST"
+        sub: "A free ticket for a guest that you name."
+      es:
+        line1: "INVITACIONES"
+        line2: "UNA ENTRADA PARA UN INVITADO"
+        sub: "Una entrada gratuita para un invitado que tú indicas."
+
+  web-invite-manager:
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.5 }
+        src:
+          ru: scenarios/web-invite-manager/captures/m_04_invited.png
+          en: scenarios/web-invite-manager/captures/en/m_04_invited.png
+          es: scenarios/web-invite-manager/captures/es/m_04_invited.png
+      default:
+        kind: phone
+        crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.88 }
+        src:
+          ru: scenarios/web-invite-manager/captures/m_04_invited.png
+          en: scenarios/web-invite-manager/captures/en/m_04_invited.png
+          es: scenarios/web-invite-manager/captures/es/m_04_invited.png
+    texts:
+      ru:
+        line1: "КОМАНДА"
+        line2: "ПРИГЛАСИТЕ МЕНЕДЖЕРА"
+        sub: "Менеджер ведёт мероприятия, заказы и промокоды."
+      en:
+        line1: "TEAM"
+        line2: "INVITE A MANAGER"
+        sub: "A manager works with events, orders and promo codes."
+      es:
+        line1: "EQUIPO"
+        line2: "INVITA A UN GESTOR"
+        sub: "Un gestor lleva los eventos, los pedidos y los códigos."
+
+  web-change-price:
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.12, y: 0.1, w: 0.5, h: 0.5 }
+        src:
+          ru: scenarios/web-change-price/captures/c_03_new_price.png
+          en: scenarios/web-change-price/captures/en/c_03_new_price.png
+          es: scenarios/web-change-price/captures/es/c_03_new_price.png
+      default:
+        kind: phone
+        crop: { x: 0.13, y: 0.1, w: 0.42, h: 0.88 }
+        src:
+          ru: scenarios/web-change-price/captures/c_03_new_price.png
+          en: scenarios/web-change-price/captures/en/c_03_new_price.png
+          es: scenarios/web-change-price/captures/es/c_03_new_price.png
+    texts:
+      ru:
+        line1: "ЦЕНА БИЛЕТА"
+        line2: "ИЗМЕНИТЕ В ЛЮБОЙ МОМЕНТ"
+        sub: "Новая цена действует для новых покупок."
+      en:
+        line1: "TICKET PRICE"
+        line2: "CHANGE IT AT ANY TIME"
+        sub: "The new price applies to new purchases."
+      es:
+        line1: "PRECIO DE LA ENTRADA"
+        line2: "CÁMBIALO CUANDO QUIERAS"
+        sub: "El nuevo precio vale para las compras nuevas."
+
+  web-move-or-cancel-session:
+    item:
+      16x9:
+        kind: browser
+        crop: { x: 0.12, y: 0.12, w: 0.5, h: 0.6 }
+        src:
+          ru: scenarios/web-move-or-cancel-session/captures/v_02_move.png
+          en: scenarios/web-move-or-cancel-session/captures/en/v_02_move.png
+          es: scenarios/web-move-or-cancel-session/captures/es/v_02_move.png
+      default:
+        kind: phone
+        crop: { x: 0.13, y: 0.1, w: 0.42, h: 0.88 }
+        src:
+          ru: scenarios/web-move-or-cancel-session/captures/v_02_move.png
+          en: scenarios/web-move-or-cancel-session/captures/en/v_02_move.png
+          es: scenarios/web-move-or-cancel-session/captures/es/v_02_move.png
+    texts:
+      ru:
+        line1: "ПЕРЕНОС И ОТМЕНА"
+        line2: "СЕАНСА"
+        sub: "Покупатели получат письмо об изменении."
+      en:
+        line1: "MOVE OR CANCEL"
+        line2: "A DATE OF AN EVENT"
+        sub: "The buyers get a letter about the change."
+      es:
+        line1: "MOVER O CANCELAR"
+        line2: "UNA SESIÓN"
+        sub: "Los compradores reciben un correo sobre el cambio."

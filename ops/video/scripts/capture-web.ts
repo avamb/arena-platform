@@ -78,7 +78,8 @@ class Shots {
     if (at) await at.first().evaluate((e, off) => window.scrollTo(0, e.getBoundingClientRect().top + window.scrollY - off), offset);
     else if (at === undefined) await page.evaluate(() => window.scrollTo(0, 0));
     await page.evaluate((pairs) => {
-      const swap = (s: string) => pairs.reduce((acc, [from, to]) => acc.split(from).join(to), s).replace(/([a-z]+)-staging\./g, "$1.");
+      // a half-hidden address (a***@a***.com) keeps the first letters of the real mailbox
+      const swap = (s: string) => pairs.reduce((acc, [from, to]) => acc.split(from).join(to), s).replace(/([a-z]+)-staging\./g, "$1.").replace(/\w\*+@\w\*+\.[a-z]+/g, "c*****@e******.com");
       const kept: [Node, string][] = [];
       (window as unknown as { videoKept: [Node, string][] }).videoKept = kept;
       const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -141,6 +142,12 @@ async function signIn(lang: Lang): Promise<{ ctx: BrowserContext; page: Page; ap
 }
 
 const tid = (page: Page, id: string) => page.getByTestId(id);
+
+/** WEB_DEBUG=1: prints the test ids of the page, to write the next step of a stage. */
+async function ids(page: Page, label: string): Promise<void> {
+  if (!DEBUG) return;
+  console.log(`TESTIDS ${label}:`, await page.evaluate(() => Array.from(document.querySelectorAll("[data-testid]")).map((e) => e.getAttribute("data-testid")).join(" ")));
+}
 
 async function settle(page: Page, ms = 900): Promise<void> {
   await page.waitForLoadState("networkidle").catch(() => undefined);
@@ -465,6 +472,323 @@ async function pay(lang: Lang, shots: Shots): Promise<void> {
   }
 }
 
+const BUYER_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+
+/** A window of a buyer: no sign-in, an ordinary browser name. */
+async function buyerPage(ctx: BrowserContext, lang: Lang): Promise<{ page: Page; close: () => Promise<void> }> {
+  const buyer = readState(lang).buyer;
+  if (!buyer) throw new Error("capture-web: no sales page in the state file, run stage event first");
+  assertHostAllowed(buyer);
+  const bctx = await ctx.browser()!.newContext({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 2, locale: BROWSER_LOCALE[lang], timezoneId: "Europe/Madrid", userAgent: BUYER_UA });
+  await bctx.addInitScript("window.__name = (f) => f");
+  const page = await bctx.newPage();
+  await page.goto(buyer, { waitUntil: "networkidle" });
+  await page.waitForTimeout(3000);
+  return { page, close: () => bctx.close() };
+}
+
+/** The text of the ticket widget (it lives in a shadow tree, the page text does not have it). */
+async function widgetText(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const sr = document.querySelector("arena-tickets")?.shadowRoot;
+    if (!sr) return "";
+    return Array.from(sr.children).filter((c) => c.tagName !== "STYLE").map((c) => (c as HTMLElement).innerText || "").join(" ").split(/\s+/).join(" ");
+  });
+}
+
+/** Opens the promo code of this name, or creates it through the form. With `shots` the form is filmed. */
+async function promoCode(page: Page, app: string, org: string, code: string, percent: string, shots?: Shots): Promise<void> {
+  await page.goto(`${app}${org}/promo`, { waitUntil: "networkidle" });
+  await settle(page, 1200);
+  const row = tid(page, "promo-row").filter({ hasText: code });
+  if (await row.count()) {
+    await row.first().locator("a").first().click();
+    await page.waitForURL(/\/promo\/[0-9a-f-]{36}/);
+    await settle(page, 1200);
+    return;
+  }
+  if (shots) await shots.take(page, "r_01_list");
+  await tid(page, "promo-new").click();
+  await page.waitForURL(/\/promo\/new/);
+  await settle(page, 1000);
+  await tid(page, "promo-f-code").fill(code);
+  await tid(page, "promo-f-type-percent").check();
+  await tid(page, "promo-f-value").fill(percent);
+  await tid(page, "promo-f-scope-all").check();
+  if (shots) await shots.take(page, "r_02_form", tid(page, "promo-f-code"), 220);
+  if (shots) await shots.take(page, "r_03_limits", tid(page, "promo-f-total"), 260);
+  await tid(page, "promo-review").last().click();
+  await tid(page, "promo-create-go").waitFor({ timeout: 20000 });
+  await settle(page, 800);
+  if (shots) await shots.take(page, "r_04_review", tid(page, "promo-create-go"), 420);
+  await tid(page, "promo-create-go").click();
+  await page.waitForURL(/\/promo\/[0-9a-f-]{36}/, { timeout: 30000 });
+  await settle(page, 1500);
+}
+
+/** web-promo-codes: a new promo code, its card, then the cart of a buyer with the code applied. Nothing is bought. */
+async function promo(lang: Lang, shots: Shots): Promise<void> {
+  const { ctx, page, app, org, close } = await signIn(lang);
+  try {
+    await promoCode(page, app, org, "JAZZ20", "20", shots);
+    await shots.take(page, "r_05_card");
+    await page.goto(`${app}${org}/promo`, { waitUntil: "networkidle" });
+    await settle(page, 1200);
+    await shots.take(page, "r_06_list");
+    const b = await buyerPage(ctx, lang);
+    const widget = b.page.locator("arena-tickets");
+    await b.page.locator(".mini-cart-cta").click();
+    await b.page.waitForTimeout(1200);
+    await shots.take(b.page, "b_01_cart", widget, 120);
+    await b.page.locator(".promo-link").click();
+    await b.page.locator("#arena-promo-input").fill("JAZZ20");
+    await shots.take(b.page, "b_02_code", null);
+    await b.page.locator(".promo-apply").click();
+    await b.page.waitForTimeout(3000);
+    await shots.take(b.page, "b_03_applied", null);
+    if (DEBUG) console.log("WIDGET", await widgetText(b.page));
+    await b.close();
+  } finally {
+    await close();
+  }
+}
+
+/** web-orders-and-refund: a free order of an invented buyer (a 100 % promo code, no payment), the list, the card. */
+async function order(lang: Lang, shots: Shots): Promise<void> {
+  const { ctx, page, app, org, close } = await signIn(lang);
+  try {
+    if (!readState(lang).order) {
+      await promoCode(page, app, org, "GUEST100", "100");
+      const b = await buyerPage(ctx, lang);
+      await b.page.locator(".mini-cart-cta").click();
+      await b.page.locator(".promo-link").click();
+      await b.page.locator("#arena-promo-input").fill("GUEST100");
+      await b.page.locator(".promo-apply").click();
+      await b.page.waitForTimeout(3000);
+      await b.page.locator(".cta-btn").click();
+      await b.page.locator("#bf-email").fill(env(`VIDEO_ONB_EMAIL_${lang.toUpperCase()}`));
+      await b.page.locator("#bf-name").fill("Carmen Ortega");
+      if (DEBUG) console.log("FORM", await widgetText(b.page));
+      await b.page.locator("arena-tickets form button[type=submit]").click();
+      await b.page.waitForTimeout(8000);
+      console.log(`  after the order: ${new URL(b.page.url()).host}${new URL(b.page.url()).pathname.replace(/[0-9a-f-]{36}/g, "<id>")}`);
+      if (DEBUG) console.log("DONE", (await widgetText(b.page)) || (await b.page.evaluate(() => document.body.innerText)));
+      if (DEBUG) await b.page.screenshot({ path: path.join(ROOT, ".cache", `order-${lang}.png`) });
+      await b.close();
+      writeState(lang, { order: "made" });
+    }
+    await page.goto(`${app}${org}/orders`, { waitUntil: "networkidle" });
+    await settle(page, 1500);
+    await shots.take(page, "d_01_orders");
+    await tid(page, "order-card-open").first().click();
+    await page.waitForURL(/\/orders\/[0-9a-f-]{36}/);
+    await settle(page, 1800);
+    writeState(lang, { orderPath: new URL(page.url()).pathname });
+    await shots.take(page, "d_02_card");
+    await shots.take(page, "d_03_tickets", tid(page, "ticket-list"), 200);
+    await shots.take(page, "d_04_letters", tid(page, "order-letters"), 160);
+    await tid(page, "resend-open").click();
+    await settle(page, 1200);
+    await ids(page, "resend");
+    await shots.take(page, "d_05_resend", tid(page, "order-letters"), 160);
+    await tid(page, "resend-same").click();
+    await settle(page, 1500);
+    await ids(page, "resend-same");
+    await shots.take(page, "d_06_resend_same", tid(page, "resend-dialog"), 200);
+    const send = tid(page, "resend-send");
+    if (await send.count()) {
+      await send.click();
+      await settle(page, 3500);
+      await ids(page, "resent");
+      await shots.take(page, "d_07_resent", tid(page, "order-letters"), 160);
+    }
+  } finally {
+    await close();
+  }
+}
+
+/** web-orders-and-refund, the refund part: run it last, the ticket of the order stops to be valid. */
+async function refund(lang: Lang, shots: Shots): Promise<void> {
+  const { page, app, close } = await signIn(lang);
+  try {
+    const st = readState(lang);
+    if (!st.orderPath) throw new Error("capture-web: no order in the state file, run stage order first");
+    await page.goto(`${app}${st.orderPath}`, { waitUntil: "networkidle" });
+    await settle(page, 1800);
+    await tid(page, "refund-open").click();
+    await settle(page, 2000);
+    await ids(page, "refund");
+    if (DEBUG) console.log("REFUND", await tid(page, "refund-panel").innerText());
+    await shots.take(page, "f_01_refund", tid(page, "ticket-list"), 200);
+    await tid(page, "refund-close").click();
+    await tid(page, "extref-open").click();
+    await settle(page, 1500);
+    await ids(page, "extref");
+    if (DEBUG) console.log("EXTREF", await page.evaluate(() => document.querySelector("main")?.innerText.slice(0, 2500)));
+    await shots.take(page, "f_02_outside", tid(page, "ticket-list"), 200);
+  } finally {
+    await close();
+  }
+}
+
+/** The screen of the only date of the event of stage `event`. */
+async function openSession(page: Page, app: string, lang: Lang): Promise<void> {
+  const st = readState(lang);
+  if (!st.event) throw new Error("capture-web: no event in the state file, run stage event first");
+  if (!st.session) {
+    await page.goto(`${app}${st.event}`, { waitUntil: "networkidle" });
+    await settle(page, 1500);
+    await openSection(page, "edit");
+    const href = await page.locator('a[href*="/sessions/"]').first().getAttribute("href");
+    if (!href) throw new Error("capture-web: the event card has no link to its date");
+    writeState(lang, { session: href });
+  }
+  await page.goto(`${app}${readState(lang).session}`, { waitUntil: "networkidle" });
+  await settle(page, 1800);
+}
+
+/** web-invitations: a free ticket for a named guest, sent to the e-mail of the guest. */
+async function invite(lang: Lang, shots: Shots): Promise<void> {
+  const { page, app, org, close } = await signIn(lang);
+  try {
+    await page.goto(`${app}${org}/invitations`, { waitUntil: "networkidle" });
+    await settle(page, 1500);
+    await shots.take(page, "i_01_invitations");
+    await openSession(page, app, lang);
+    await shots.take(page, "i_02_session", tid(page, "session-invitations-link"), 300);
+    await tid(page, "session-invitations-link").click();
+    await page.waitForURL(/\/invitations$/);
+    await settle(page, 1800);
+    await tid(page, "inv-ga-more").first().click();
+    await tid(page, "inv-name").fill("Carmen Ortega");
+    await tid(page, "inv-email").fill(env(`VIDEO_ONB_EMAIL_${lang.toUpperCase()}`));
+    await tid(page, "inv-locale").selectOption({ label: lang.toUpperCase() }).catch(() => undefined);
+    await tid(page, "inv-delivery-guest_email").check();
+    await shots.take(page, "i_03_places", tid(page, "inv-ga"), 220);
+    await shots.take(page, "i_04_guest", tid(page, "inv-fields"), 160);
+    await shots.take(page, "i_05_delivery", tid(page, "inv-delivery"), 260);
+    await tid(page, "inv-submit").click();
+    await settle(page, 4000);
+    await ids(page, "invited");
+    await shots.take(page, "i_06_list", tid(page, "inv-list"), 220);
+    await page.goto(`${app}${org}/invitations`, { waitUntil: "networkidle" });
+    await settle(page, 1500);
+    await shots.take(page, "i_07_all", tid(page, "org-inv-list"), 220);
+  } finally {
+    await close();
+  }
+}
+
+/** web-invite-manager: an invitation of a manager to the team. The address is on example.com. */
+async function team(lang: Lang, shots: Shots): Promise<void> {
+  const { page, app, org, close } = await signIn(lang);
+  try {
+    await tid(page, "nav-more").click();
+    await settle(page, 700);
+    await tid(page, "nav-payments").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(400);
+    await shots.take(page, "m_01_menu", null);
+    await page.goto(`${app}${org}/team`, { waitUntil: "networkidle" });
+    await settle(page, 1500);
+    await shots.take(page, "m_02_team");
+    if (!(await tid(page, "team-member").filter({ hasText: "marco@example.com" }).count())) {
+      await tid(page, "team-invite-email").fill("marco@example.com");
+      await tid(page, "team-invite-locale").selectOption({ index: ["en", "ru", "es"].indexOf(lang) });
+      await shots.take(page, "m_03_form", tid(page, "team-invite-form"), 160);
+      await tid(page, "team-invite-submit").click();
+      await settle(page, 3500);
+      await ids(page, "team invited");
+    }
+    await shots.take(page, "m_04_invited");
+  } finally {
+    await close();
+  }
+}
+
+/** web-change-price: a new price of a category of one date, then the buyer page. */
+async function price(lang: Lang, shots: Shots): Promise<void> {
+  const { ctx, page, app, close } = await signIn(lang);
+  try {
+    await openSession(page, app, lang);
+    await shots.take(page, "c_01_session", tid(page, "tiers-table"), 260);
+    await tid(page, "tier-manage").first().click();
+    await settle(page, 1200);
+    await shots.take(page, "c_02_category", tid(page, "category-card"), 160);
+    await tid(page, "price-change").click();
+    await tid(page, "price-input").fill("30");
+    await shots.take(page, "c_03_new_price", tid(page, "category-price-block"), 300);
+    await tid(page, "price-check").click();
+    await settle(page, 2500);
+    await ids(page, "price check");
+    await shots.take(page, "c_04_confirm", tid(page, "category-price-block"), 300);
+    await tid(page, "price-save").click();
+    await settle(page, 3000);
+    await shots.take(page, "c_05_saved", tid(page, "category-card"), 160);
+    const b = await buyerPage(ctx, lang);
+    await shots.take(b.page, "c_06_buyer", b.page.locator("arena-tickets"), 260);
+    await b.close();
+  } finally {
+    await close();
+  }
+}
+
+const MOVE_DAY = "2027-02-20";
+const CANCEL_WORD: Record<Lang, string> = { ru: "ОТМЕНИТЬ СЕАНС", en: "CANCEL SESSION", es: "CANCELAR SESIÓN" };
+
+/** web-move-or-cancel-session, the move: a new day of the date. The holders of tickets (test addresses) get a letter. */
+async function move(lang: Lang, shots: Shots): Promise<void> {
+  const { page, app, close } = await signIn(lang);
+  try {
+    await openSession(page, app, lang);
+    await shots.take(page, "v_01_session", tid(page, "session-change"), 260);
+    await tid(page, "session-move-open").click();
+    await settle(page, 1200);
+    const panel = tid(page, "session-move");
+    for (let i = 0; i < 12 && !(await panel.getByTestId(`date-day-${MOVE_DAY}`).count()); i += 1) await panel.getByTestId("date-field-next").click();
+    await panel.getByTestId(`date-day-${MOVE_DAY}`).click();
+    const confirm = panel.getByTestId(`date-confirm-${MOVE_DAY}`);
+    if (await confirm.count()) await confirm.click();
+    await settle(page, 2500);
+    await ids(page, "move day");
+    await shots.take(page, "v_02_move", panel, 160);
+    if (DEBUG) console.log("MOVE", await tid(page, "session-change").innerText());
+    await shots.take(page, "v_03_check", tid(page, "session-change-message-box"), 160);
+    if (process.env.WEB_STOP === "move") return;
+    await tid(page, "dry-run-confirm").click();
+    await settle(page, 4000);
+    await ids(page, "moved");
+    if (DEBUG) console.log("MOVED", await tid(page, "session-change").innerText());
+    await shots.take(page, "v_04_moved");
+  } finally {
+    await close();
+  }
+}
+
+/** web-move-or-cancel-session, the cancellation. Run it last: the date stops to exist for buyers. */
+async function cancel(lang: Lang, shots: Shots): Promise<void> {
+  const { page, app, close } = await signIn(lang);
+  try {
+    await openSession(page, app, lang);
+    await tid(page, "session-cancel-open").click();
+    await settle(page, 2500);
+    await ids(page, "cancel");
+    if (DEBUG) console.log("CANCEL", await tid(page, "session-change").innerText());
+    await shots.take(page, "x_01_cancel", tid(page, "session-cancel"), 160);
+    if (process.env.WEB_STOP === "cancel") return;
+    await tid(page, "session-cancel-continue").click();
+    const dialog = tid(page, "confirm-word");
+    await dialog.waitFor();
+    await dialog.locator("input").fill(CANCEL_WORD[lang]);
+    await shots.take(page, "x_02_word", null);
+    await tid(page, "confirm-word-submit").click();
+    await settle(page, 5000);
+    await ids(page, "cancelled");
+    await shots.take(page, "x_03_cancelled");
+  } finally {
+    await close();
+  }
+}
+
 /** Deletes the event of the state file (a trial run): off sale, "Delete", the typed word. Only the test organizer's own event. */
 async function reset(lang: Lang): Promise<void> {
   const { page, app, close } = await signIn(lang);
@@ -497,14 +821,23 @@ async function reset(lang: Lang): Promise<void> {
   }
 }
 
+const FILMS: Record<string, string> = {
+  event: "web-create-event", card: "web-create-event", reset: "web-create-event",
+  org: "web-organization-details", links: "web-sales-link-and-qr", pay: "web-payments-status",
+  promo: "web-promo-codes", order: "web-orders-and-refund", refund: "web-orders-and-refund",
+  invite: "web-invitations", team: "web-invite-manager", price: "web-change-price",
+  move: "web-move-or-cancel-session", cancel: "web-move-or-cancel-session",
+};
+const STAGES = Object.keys(FILMS);
+
 async function main(): Promise<void> {
   loadEnv();
   const lang = process.argv[2] as Lang;
   const stage = process.argv[3];
-  if (!["ru", "en", "es"].includes(lang) || !["event", "card", "reset", "org", "links", "pay"].includes(stage)) {
+  if (!["ru", "en", "es"].includes(lang) || !STAGES.includes(stage)) {
     throw new Error("usage: tsx scripts/capture-web.ts <ru|en|es> <event|card|org|links|pay>");
   }
-  const film = { event: "web-create-event", card: "web-create-event", reset: "web-create-event", org: "web-organization-details", links: "web-sales-link-and-qr", pay: "web-payments-status" }[stage]!;
+  const film = FILMS[stage];
   const shots = new Shots(film, lang, [
     [env(`VIDEO_ONB_EMAIL_${lang.toUpperCase()}`), SHOWN.email],
     [env(`VIDEO_ONB_ORG_${lang.toUpperCase()}`), SHOWN.org],
@@ -516,6 +849,14 @@ async function main(): Promise<void> {
   else if (stage === "reset") await reset(lang);
   else if (stage === "org") await orgData(lang, shots);
   else if (stage === "links") await links(lang, shots);
+  else if (stage === "promo") await promo(lang, shots);
+  else if (stage === "order") await order(lang, shots);
+  else if (stage === "refund") await refund(lang, shots);
+  else if (stage === "invite") await invite(lang, shots);
+  else if (stage === "team") await team(lang, shots);
+  else if (stage === "price") await price(lang, shots);
+  else if (stage === "move") await move(lang, shots);
+  else if (stage === "cancel") await cancel(lang, shots);
   else await pay(lang, shots);
 }
 

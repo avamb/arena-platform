@@ -1,0 +1,97 @@
+id: web-invite-manager
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Команда: пригласить менеджера"
+  en: "Team: invite a manager"
+  es: "Equipo: invitar a un gestor"
+
+# Pictures in captures/ are made by scripts/capture-web.ts (stage `team`, see README, "How-to films of the web
+# event center") and are not committed. The invited address is invented: marco@example.com.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-where
+    narration:
+      ru: "С мероприятиями может работать не только владелец. Откройте «Меню» и выберите «Команда»."
+      en: "Not only the owner can work with the events. Open Menu and choose Team."
+      es: "No solo el propietario puede trabajar con los eventos. Abre «Menú» y elige «Equipo»."
+    pause_after: 0.4
+    shots:
+      - image: captures/m_01_menu.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Меню → Настройки → «Команда»", en: "Menu → Settings → Team", es: "Menú → Ajustes → «Equipo»" }
+        zoom: { from: 1.5, to: 1.7, x: 0.5, y: 0.5 }
+
+  - id: s2-team
+    narration:
+      ru: "На экране «Команда» видны все люди организации и состояние каждого приглашения."
+      en: "The screen Team shows all people of the organization and the state of each invitation."
+      es: "La pantalla «Equipo» muestra a todas las personas de la organización y el estado de cada invitación."
+    pause_after: 0.4
+    shots:
+      - image: captures/m_02_team.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Команда", en: "Team", es: "Equipo" }
+        zoom: { from: 1.5, to: 1.65, x: 0.5, y: 0.3 }
+
+  - id: s3-form
+    narration:
+      ru: "Напишите e-mail человека и выберите роль. Менеджер ведёт мероприятия, заказы, возвраты и промокоды. Команда и настройки оплаты остаются у владельца."
+      en: "Type the e-mail of the person and choose the role. A manager works with events, orders, refunds and promo codes. The team and the payment settings stay with the owner."
+      es: "Escribe el correo de la persona y elige el rol. Un gestor lleva los eventos, los pedidos, las devoluciones y los códigos promocionales. El equipo y los ajustes de pago siguen en manos del propietario."
+    pause_after: 0.4
+    shots:
+      - image: captures/m_03_form.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "E-mail и роль", en: "E-mail and role", es: "Correo y rol" }
+        zoom: { from: 1.5, to: 1.65, x: 0.5, y: 0.35 }
+
+  - id: s4-where-works
+    narration:
+      ru: "Выберите, где человек будет работать: в веб-ивент-центре или в Telegram-боте. Выберите язык письма и нажмите «Отправить приглашение»."
+      en: "Choose where the person will work: in the web event center or in the Telegram bot. Choose the language of the letter and press Send the invitation."
+      es: "Elige dónde trabajará la persona: en el centro de eventos web o en el bot de Telegram. Elige el idioma del correo y pulsa «Enviar la invitación»."
+    pause_after: 0.4
+    shots:
+      - image: captures/m_03_form.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Где работать и язык письма", en: "Where to work and the letter language", es: "Dónde trabajar e idioma del correo" }
+        zoom: { from: 1.5, to: 1.65, x: 0.5, y: 0.85 }
+
+  - id: s5-invited
+    narration:
+      ru: "Приглашение отправлено. Человек получает письмо со ссылкой и задаёт пароль. В списке его состояние — «Ждёт», пока он не войдёт."
+      en: "The invitation is sent. The person gets a letter with a link and sets a password. In the list the state is Waiting until the person signs in."
+      es: "La invitación está enviada. La persona recibe un correo con un enlace y elige una contraseña. En la lista su estado es de espera hasta que entra."
+    pause_after: 1.0
+    shots:
+      - image: captures/m_04_invited.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Приглашение отправлено", en: "Invitation sent", es: "Invitación enviada" }
+        zoom: { from: 1.5, to: 1.65, x: 0.5, y: 0.4 }
+
+  - id: s6-cta
+    narration:
+      ru: "Соберите свою команду в ивент-центре Arena Sold Out."
+      en: "Build your team in the Arena Sold Out event center."
+      es: "Forma tu equipo en el centro de eventos de Arena Sold Out."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Команда", en: "Team", es: "Equipo" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://arenasoldout.com"

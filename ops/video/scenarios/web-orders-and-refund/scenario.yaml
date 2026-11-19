@@ -1,0 +1,133 @@
+id: web-orders-and-refund
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Заказы: карточка заказа, повторная отправка билетов и возврат"
+  en: "Orders: the order card, sending tickets again and refunds"
+  es: "Pedidos: la ficha del pedido, reenviar entradas y devoluciones"
+
+# Pictures in captures/ are made by scripts/capture-web.ts (stages `order` and `refund`, see README, "How-to films
+# of the web event center") and are not committed.
+# The order is a free order of an invented buyer (a 100 % promo code): the test organization has no payment
+# provider. For such an order the screen answers that there is nothing to refund; the film shows this answer and
+# the form "Refund made outside Arena". The refund of a paid order is not filmed.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-list
+    narration:
+      ru: "Все заказы лежат в разделе «Заказы». Заказ можно найти по номеру, e-mail, телефону, имени или штрихкоду."
+      en: "All orders are in the section Orders. You can find an order by its number, e-mail, phone number, name or barcode."
+      es: "Todos los pedidos están en la sección «Pedidos». Puedes buscar un pedido por número, correo, teléfono, nombre o código de barras."
+    pause_after: 0.4
+    shots:
+      - image: captures/d_01_orders.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Раздел «Заказы»", en: "Section Orders", es: "Sección «Pedidos»" }
+        zoom: { from: 1.4, to: 1.55, x: 0.5, y: 0.4 }
+
+  - id: s2-card
+    narration:
+      ru: "Откройте заказ. В карточке видны покупатель, билеты, их статус и оплата."
+      en: "Open the order. The card shows the buyer, the tickets, their status and the payment."
+      es: "Abre el pedido. La ficha muestra al comprador, las entradas, su estado y el pago."
+    pause_after: 0.4
+    shots:
+      - image: captures/d_02_card.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Карточка заказа", en: "Order card", es: "Ficha del pedido" }
+        weight: 3
+        zoom: { from: 1.45, to: 1.6, x: 0.5, y: 0.35 }
+      - image: captures/d_03_tickets.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Билеты заказа", en: "Tickets of the order", es: "Entradas del pedido" }
+        weight: 2
+        zoom: { from: 1.45, to: 1.6, x: 0.5, y: 0.35 }
+
+  - id: s3-letters
+    narration:
+      ru: "Блок «Письма покупателю» показывает, что письмо с билетами отправлено, доставлено и прочитано."
+      en: "The block Letters to the buyer shows that the e-mail with tickets was sent, delivered and read."
+      es: "El bloque de correos al comprador muestra si el correo con las entradas se envió, se entregó y se leyó."
+    pause_after: 0.4
+    shots:
+      - image: captures/d_04_letters.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Письма покупателю", en: "Letters to the buyer", es: "Correos al comprador" }
+        zoom: { from: 1.45, to: 1.6, x: 0.5, y: 0.3 }
+
+  - id: s4-resend
+    narration:
+      ru: "Покупатель потерял билеты? Нажмите «Выслать билеты». Выберите тот же адрес или другой и отправьте письмо ещё раз."
+      en: "Did the buyer lose the tickets? Press Resend tickets. Choose the same address or a different one and send the e-mail again."
+      es: "¿El comprador perdió las entradas? Pulsa «Reenviar entradas». Elige la misma dirección u otra y envía el correo otra vez."
+    pause_after: 0.5
+    shots:
+      - image: captures/d_05_resend.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "«Выслать билеты»: куда отправить", en: "Resend tickets: where to send", es: "«Reenviar entradas»: adónde enviar" }
+        weight: 3
+        zoom: { from: 1.5, to: 1.65, x: 0.5, y: 0.55 }
+      - image: captures/d_06_resend_same.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Проверьте и отправьте", en: "Examine and send", es: "Revisa y envía" }
+        weight: 2
+        zoom: { from: 1.5, to: 1.65, x: 0.5, y: 0.75 }
+      - image: captures/d_07_resent.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Письмо отправлено", en: "E-mail sent", es: "Correo enviado" }
+        weight: 2
+        zoom: { from: 1.5, to: 1.65, x: 0.5, y: 0.75 }
+
+  - id: s5-refund
+    narration:
+      ru: "Возврат начинается кнопкой «Вернуть деньги». В этом примере заказ бесплатный, и Arena отвечает, что возвращать нечего."
+      en: "A refund starts with the button Refund. In this example the order is free, and Arena answers that there is nothing to refund."
+      es: "Una devolución empieza con el botón «Devolver el dinero». En este ejemplo el pedido es gratuito y Arena responde que no hay nada que devolver."
+    pause_after: 0.5
+    shots:
+      - image: captures/f_01_refund.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "«Вернуть деньги»", en: "Refund", es: "«Devolver el dinero»" }
+        zoom: { from: 1.45, to: 1.6, x: 0.5, y: 0.5 }
+
+  - id: s6-outside
+    narration:
+      ru: "Если вы вернули деньги сами в кабинете платёжной системы, запишите это в «Возврат вне платформы». Arena аннулирует билеты и вернёт места в продажу."
+      en: "If you returned the money in the account of your payment provider, record it in Refund made outside Arena. Arena cancels the tickets and puts the seats on sale again."
+      es: "Si devolviste el dinero tú mismo en la cuenta del proveedor de pagos, regístralo en «Devolución fuera de la plataforma». Arena anula las entradas y vuelve a poner las plazas a la venta."
+    pause_after: 1.0
+    shots:
+      - image: captures/f_02_outside.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Возврат вне платформы", en: "Refund made outside Arena", es: "Devolución fuera de la plataforma" }
+        zoom: { from: 1.4, to: 1.55, x: 0.6, y: 0.5 }
+
+  - id: s7-cta
+    narration:
+      ru: "Работайте с заказами в ивент-центре Arena Sold Out."
+      en: "Work with your orders in the Arena Sold Out event center."
+      es: "Gestiona tus pedidos en el centro de eventos de Arena Sold Out."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Заказы и возвраты", en: "Orders and refunds", es: "Pedidos y devoluciones" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://arenasoldout.com"

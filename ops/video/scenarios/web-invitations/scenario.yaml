@@ -1,0 +1,110 @@
+id: web-invitations
+fps: 30
+languages: [ru, en, es]
+title:
+  ru: "Пригласительные: выдать бесплатный билет гостю"
+  en: "Invitations: give a free ticket to a guest"
+  es: "Invitaciones: dar una entrada gratuita a un invitado"
+
+# Pictures in captures/ are made by scripts/capture-web.ts (stage `invite`, see README, "How-to films of the web
+# event center") and are not committed. The guest is invented: Carmen Ortega, carmen@example.com.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [16x9]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-what
+    narration:
+      ru: "Пригласительный — это бесплатный билет для гостя, которого вы называете. Пригласительные не считаются продажами."
+      en: "An invitation is a free ticket for a guest that you name. Invitations are not counted as sales."
+      es: "Una invitación es una entrada gratuita para un invitado que tú indicas. Las invitaciones no cuentan como ventas."
+    pause_after: 0.4
+    shots:
+      - image: captures/i_01_invitations.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Продвижение → «Бесплатные билеты»", en: "Promotion → Free tickets", es: "Promoción → «Entradas gratuitas»" }
+        zoom: { from: 1.4, to: 1.55, x: 0.5, y: 0.3 }
+
+  - id: s2-session
+    narration:
+      ru: "Откройте сеанс мероприятия и нажмите «Пригласить гостей на места»."
+      en: "Open the date of the event and press Invite guests to seats."
+      es: "Abre la sesión del evento y pulsa «Invitar a personas a asientos»."
+    pause_after: 0.4
+    shots:
+      - image: captures/i_02_session.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Сеанс → «Пригласить гостей на места»", en: "Date → Invite guests to seats", es: "Sesión → «Invitar a personas a asientos»" }
+        zoom: { from: 1.35, to: 1.5, x: 0.1, y: 0.4 }
+
+  - id: s3-guest
+    narration:
+      ru: "Укажите число мест и напишите имя гостя: оно печатается на билете. Добавьте e-mail гостя и язык письма."
+      en: "Set the number of seats and type the name of the guest: it is printed on the ticket. Add the e-mail of the guest and the language of the letter."
+      es: "Indica el número de plazas y escribe el nombre del invitado: se imprime en la entrada. Añade el correo del invitado y el idioma del correo."
+    pause_after: 0.4
+    shots:
+      - image: captures/i_03_places.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Места и гость", en: "Seats and guest", es: "Plazas e invitado" }
+        zoom: { from: 1.4, to: 1.55, x: 0.8, y: 0.45 }
+
+  - id: s4-delivery
+    narration:
+      ru: "Выберите, как билет попадёт к гостю: на его e-mail, на ваш e-mail или только PDF, который вы скачаете сами."
+      en: "Choose how the ticket gets to the guest: to the guest's e-mail, to your e-mail, or only a PDF that you download."
+      es: "Elige cómo llega la entrada al invitado: a su correo, a tu correo o solo un PDF que descargas tú."
+    pause_after: 0.4
+    shots:
+      - image: captures/i_05_delivery.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Как билет попадёт к гостю", en: "How the ticket gets to the guest", es: "Cómo llega la entrada al invitado" }
+        zoom: { from: 1.4, to: 1.55, x: 0.8, y: 0.5 }
+
+  - id: s5-done
+    narration:
+      ru: "Нажмите «Выдать пригласительные». Билет выдан, письмо гостю отправлено. Пригласительный можно отправить ещё раз или отменить."
+      en: "Press the button that issues the invitations. The ticket is issued and the letter to the guest is sent. You can send the invitation again or cancel it."
+      es: "Pulsa el botón que emite las invitaciones. La entrada está emitida y el correo al invitado enviado. Puedes reenviar la invitación o anularla."
+    pause_after: 0.5
+    shots:
+      - image: captures/i_06_list.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Пригласительные этого сеанса", en: "Invitations of this date", es: "Invitaciones de esta sesión" }
+        zoom: { from: 1.15, to: 1.25, x: 0.5, y: 0.8 }
+
+  - id: s6-all
+    narration:
+      ru: "Все пригласительные организации собраны в разделе «Бесплатные билеты»."
+      en: "All invitations of your organization are in the section Free tickets."
+      es: "Todas las invitaciones de tu organización están en la sección «Entradas gratuitas»."
+    pause_after: 1.0
+    shots:
+      - image: captures/i_07_all.png
+        frame: browser
+        address: "events.arenasoldout.com"
+        title: { ru: "Пригласительные организации", en: "Invitations of the organization", es: "Invitaciones de la organización" }
+        zoom: { from: 1.4, to: 1.55, x: 0.5, y: 0.7 }
+
+  - id: s7-cta
+    narration:
+      ru: "Пригласите гостей в ивент-центре Arena Sold Out."
+      en: "Invite your guests in the Arena Sold Out event center."
+      es: "Invita a tus invitados en el centro de eventos de Arena Sold Out."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Пригласительные", en: "Invitations", es: "Invitaciones" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://arenasoldout.com"
