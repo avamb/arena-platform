@@ -1,13 +1,15 @@
 /**
  * Pictures for the how-to films of the web event center (how-02 ... how-05-web), desktop window 1280 x 720.
  *
- *   npx tsx scripts/capture-how.ts <ru|en|es> <event|org|links|pay>
+ *   npx tsx scripts/capture-how.ts <ru|en|es> <event|org|links|pay|card|reset>
  *
  * Stages (run in this order, each signs in as the test organizer of that language):
  *   event   how-02: the wizard "New event" filled by hand, the event card, the poster, publication, the buyers' page
  *   org     how-04: "Organization data" (legal data, contact e-mail, public e-mail of the sales page), the seller block
  *   links   how-05-web: "Links and QR", a new link to the event of stage `event`, its card with the QR code
  *   pay     how-03: the section "Payments from buyers" of "Organization data"
+ *   card    how-02 again: only the pictures of the event card of the event that stage `event` created
+ *   reset   deletes the event that stage `event` created (a trial run)
  *
  * Environment (ops/video/.env, not committed):
  *   VIDEO_BASE_URL            web event center of the stand
@@ -221,7 +223,7 @@ async function event(lang: Lang, shots: Shots): Promise<void> {
   void org;
 }
 
-/** The event card: poster, publication, buyers' page. Also run alone by HOW_RESUME=1 for an event that exists. */
+/** The event card: poster, publication, buyers' page. Also run alone by the stage `card` for an event that exists. */
 async function card(lang: Lang, shots: Shots, page: Page, _app: string, ctx: BrowserContext): Promise<void> {
   const ev = EVENT[lang];
   // An event that is on sale already (a repeated run) goes back to draft first: the film shows the publication.

@@ -460,15 +460,17 @@ Rules of these pictures:
 - The script opens only staging hosts. It replaces the stand data in the page before each picture
   (mailbox, organization name, `-staging` in hosts) and puts the real text back after it.
 - Stage `event` creates a real event on the stand. `reset` deletes that event (off sale, "Delete", the typed word).
-  `card` repeats the pictures of the event card. `HOW_STOP=ready` stops before the event is created.
+  `card` repeats the pictures of the event card: it takes the event off sale first and publishes it again. `HOW_STOP=ready` stops before the event is created.
   `HOW_ONLY=<regexp>` takes only the pictures with such names.
-- Stage `links` creates a real link. `HOW_LINK_EXISTS=1` opens the link of an earlier run and does not create a second one.
+- Stage `links` creates a real link. `HOW_LINK_EXISTS=1` opens the first link of the list (the link of an earlier run) and does not create a second one.
   The QR code in the pictures is drawn for the short address on the public host, not for the address of the stand.
   The buyer's visit uses an ordinary browser name: the stand counts a headless browser as a bot, not as a scan.
 - Stage `pay`: the web event center has no screen where an organizer selects a provider or types its keys.
   `HOW_PAY_CONNECTED=1` replaces the stand's answer "payment configs" with one accepted config, and the screen
   draws its own note "connected" (picture `p_05_connected`). Without the variable this picture is not taken.
 - The web event center has no logo of the organization, so `how-04` does not show one.
+- Stage `org` writes the mailbox of the test organizer as the contact e-mail and as the e-mail of the sales page.
+  The stand sends buyers' letters and messages of the page form to it; the pictures show `carmen@example.com`.
 
 ## Covers
 

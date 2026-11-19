@@ -184,14 +184,14 @@ films:
     item:
       16x9:
         kind: browser
-        crop: { x: 0.1, y: 0.14, w: 0.5, h: 0.62 }
+        crop: { x: 0.1, y: 0.03, w: 0.5, h: 0.62 }
         src:
           ru: scenarios/how-05-web/captures/k_05_qr.png
           en: scenarios/how-05-web/captures/en/k_05_qr.png
           es: scenarios/how-05-web/captures/es/k_05_qr.png
       default:
         kind: phone
-        crop: { x: 0.13, y: 0.16, w: 0.32, h: 0.7 }
+        crop: { x: 0.13, y: 0.05, w: 0.32, h: 0.7 }
         src:
           ru: scenarios/how-05-web/captures/k_05_qr.png
           en: scenarios/how-05-web/captures/en/k_05_qr.png

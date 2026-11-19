@@ -71,9 +71,9 @@ scenes:
 
   - id: s4-contact
     narration:
-      ru: "Укажите e-mail для вопросов покупателей. Он печатается в каждом письме покупателю. Телефон покупателям не показывается. Нажмите «Сохранить»."
-      en: "Type the e-mail for questions from buyers. It is printed in each e-mail to a buyer. The phone number is not shown to buyers. Press Save."
-      es: "Indica el correo para las preguntas de los compradores. Aparece en cada correo al comprador. El teléfono no se muestra a los compradores. Pulsa «Guardar»."
+      ru: "Укажите e-mail для вопросов покупателей. Он печатается в каждом письме покупателю. Контактный телефон покупателям не показывается. Нажмите «Сохранить»."
+      en: "Type the e-mail for questions from buyers. It is printed in each e-mail to a buyer. The contact phone number is not shown to buyers. Press Save."
+      es: "Indica el correo para las preguntas de los compradores. Aparece en cada correo al comprador. El teléfono de contacto no se muestra a los compradores. Pulsa «Guardar»."
     pause_after: 0.4
     shots:
       - image: captures/o_05_contact.png
@@ -124,9 +124,9 @@ scenes:
 
   - id: s7-buyer
     narration:
-      ru: "Покупатель видит продавца внизу страницы мероприятия: название, номера, адрес и телефон страницы."
-      en: "The buyer sees the seller at the bottom of the event page: the name, the numbers, the address and the phone number of the page."
-      es: "El comprador ve al vendedor al final de la página del evento: el nombre, los números, la dirección y el teléfono de la página."
+      ru: "Покупатель видит продавца внизу страницы мероприятия: название, номера, адрес и публичный телефон страницы."
+      en: "The buyer sees the seller at the bottom of the event page: the name, the numbers, the address and the public phone number of the page."
+      es: "El comprador ve al vendedor al final de la página del evento: el nombre, los números, la dirección y el teléfono público de la página."
     pause_after: 1.0
     shots:
       - image: captures/s_01_seller.png
