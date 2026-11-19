@@ -1,7 +1,7 @@
 /**
- * Capture of the film onb-02: a new organizer applies on the website and signs in to the web event center.
+ * Capture of the film apply-on-website: a new organizer applies on the website and signs in to the web event center.
  *
- *   npx tsx scripts/capture-onb-02.ts <ru|en|es> <form|approve|login|signin>
+ *   npx tsx scripts/capture-apply-on-website.ts <ru|en|es> <form|approve|login|signin>
  *
  * form     the application form of the website (a LOCAL build of the site that calls the staging API),
  *          the confirmation link, all steps, the three consents, "application sent"
@@ -41,7 +41,7 @@ const SITE_PREFIX: Record<Lang, string> = { ru: "/ru", en: "", es: "/es" };
 
 function env(name: string): string {
   const v = process.env[name];
-  if (!v) throw new Error(`capture-onb-02: environment variable ${name} is not set`);
+  if (!v) throw new Error(`capture-apply-on-website: environment variable ${name} is not set`);
   return v;
 }
 
@@ -58,7 +58,7 @@ async function poll(what: string, read: () => string, tries = 30): Promise<strin
     if (v) return v;
     await new Promise((r) => setTimeout(r, 2000));
   }
-  throw new Error(`capture-onb-02: ${what} did not appear on the stand`);
+  throw new Error(`capture-apply-on-website: ${what} did not appear on the stand`);
 }
 
 /** ONB_VIEW=desktop: a browser window of 1280 x 720 for the 16:9 film; default is the phone size. */
@@ -252,17 +252,17 @@ async function approve(lang: Lang): Promise<void> {
   assertHostAllowed(api);
   const email = env(`VIDEO_ONB_EMAIL_${lang.toUpperCase()}`);
   const id = sql(`select id from onboarding_applications where applicant_email=${lit(email)} and status='pending_approval' order by created_at desc limit 1`);
-  if (!id) throw new Error("capture-onb-02: no application of this address waits for approval");
+  if (!id) throw new Error("capture-apply-on-website: no application of this address waits for approval");
   const login = await fetch(`${api}/v1/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: env("VIDEO_OPERATOR_EMAIL"), password: env("VIDEO_OPERATOR_PASSWORD") }),
   });
-  if (!login.ok) throw new Error(`capture-onb-02: operator sign-in answered ${login.status}`);
+  if (!login.ok) throw new Error(`capture-apply-on-website: operator sign-in answered ${login.status}`);
   const access = ((await login.json()) as { access_token?: string }).access_token;
   const res = await fetch(`${api}/v1/admin/onboarding/applications/${id}/approve`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json", "X-Admin-Reason": "video onb-02 test application" },
+    headers: { Authorization: `Bearer ${access}`, "Content-Type": "application/json", "X-Admin-Reason": "video apply-on-website test application" },
     body: "{}",
   });
   console.log(`  approve ${id}: ${res.status}`);
@@ -331,9 +331,9 @@ async function main(): Promise<void> {
   const lang = process.argv[2] as Lang;
   const stage = process.argv[3];
   if (!["ru", "en", "es"].includes(lang) || !["form", "approve", "login", "signin"].includes(stage)) {
-    throw new Error("usage: tsx scripts/capture-onb-02.ts <ru|en|es> <form|approve|login>");
+    throw new Error("usage: tsx scripts/capture-apply-on-website.ts <ru|en|es> <form|approve|login>");
   }
-  const dir = path.join(ROOT, "scenarios", "onb-02", "captures", lang === "ru" ? "" : lang);
+  const dir = path.join(ROOT, "scenarios", "apply-on-website", "captures", lang === "ru" ? "" : lang);
   fs.mkdirSync(path.join(ROOT, ".cache"), { recursive: true });
   const shots = new Shots(dir, [
     [env(`VIDEO_ONB_EMAIL_${lang.toUpperCase()}`), SHOWN.email],
@@ -341,7 +341,7 @@ async function main(): Promise<void> {
     [new URL(env("VIDEO_SITE_URL")).host, SHOWN.site],
     [new URL(env("VIDEO_BASE_URL")).host, SHOWN.app],
   ]);
-  console.log(`onb-02 ${lang} ${stage}`);
+  console.log(`apply-on-website ${lang} ${stage}`);
   if (stage === "form") await form(lang, shots);
   else if (stage === "approve") await approve(lang);
   else if (stage === "login") await login(lang, shots);

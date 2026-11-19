@@ -55,25 +55,24 @@ films:
         line2: "DIRECTAMENTE EN TELEGRAM"
         sub: "Unos minutos en el bot y ya estás en Arena Sold Out."
 
-  onb-02:
+  apply-on-website:
     # The site's "Start selling" application page: desktop window for 16x9, phone for the vertical formats.
-    # Captures live in another worktree (read only).
     item:
       16x9:
         kind: browser
         crop: { x: 0.04, y: 0.14, w: 0.62, h: 0.62 }
         src:
-          ru: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/d_f_01_start.png
-          en: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/en/d_f_01_start.png
-          es: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/es/d_f_01_start.png
+          ru: scenarios/apply-on-website/captures/d_f_01_start.png
+          en: scenarios/apply-on-website/captures/en/d_f_01_start.png
+          es: scenarios/apply-on-website/captures/es/d_f_01_start.png
       default:
         kind: phone
         status: "#ffffff"
         crop: { x: 0, y: 0, w: 1, h: 0.5 }
         src:
-          ru: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/f_01_start.png
-          en: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/en/f_01_start.png
-          es: C:/Projects/arena_new/.claude/worktrees/serene-fermat-bab452/ops/video/scenarios/onb-02/captures/es/f_01_start.png
+          ru: scenarios/apply-on-website/captures/f_01_start.png
+          en: scenarios/apply-on-website/captures/en/f_01_start.png
+          es: scenarios/apply-on-website/captures/es/f_01_start.png
     texts:
       ru:
         line1: "НАЧНИТЕ ПРОДАВАТЬ"
@@ -90,22 +89,22 @@ films:
 
   # The how-to films of the web event center: a desktop capture in a browser window for 16x9,
   # the middle column of the same capture (or the poster) in a phone frame for the vertical formats.
-  how-02:
+  web-create-event:
     item:
       16x9:
         kind: browser
         crop: { x: 0.27, y: 0.12, w: 0.46, h: 0.46 }
         src:
-          ru: scenarios/how-02/captures/w_03_name.png
-          en: scenarios/how-02/captures/en/w_03_name.png
-          es: scenarios/how-02/captures/es/w_03_name.png
+          ru: scenarios/web-create-event/captures/w_03_name.png
+          en: scenarios/web-create-event/captures/en/w_03_name.png
+          es: scenarios/web-create-event/captures/es/w_03_name.png
       default:
         kind: phone
         status: "#0b1230"
         src:
-          ru: scenarios/how-02/assets/poster_4x5.png
-          en: scenarios/how-02/assets/en/poster_4x5.png
-          es: scenarios/how-02/assets/es/poster_4x5.png
+          ru: scenarios/web-create-event/assets/poster_4x5.png
+          en: scenarios/web-create-event/assets/en/poster_4x5.png
+          es: scenarios/web-create-event/assets/es/poster_4x5.png
     texts:
       ru:
         line1: "МЕРОПРИЯТИЕ ВРУЧНУЮ"
@@ -120,22 +119,22 @@ films:
         line2: "DEL NOMBRE A LA VENTA"
         sub: "Nombre, fecha, recinto, entradas y cartel en el centro de eventos web."
 
-  how-03:
+  web-payments-status:
     item:
       16x9:
         kind: browser
         crop: { x: 0.27, y: 0.12, w: 0.46, h: 0.46 }
         src:
-          ru: scenarios/how-03/captures/p_03_not_connected.png
-          en: scenarios/how-03/captures/en/p_03_not_connected.png
-          es: scenarios/how-03/captures/es/p_03_not_connected.png
+          ru: scenarios/web-payments-status/captures/p_03_not_connected.png
+          en: scenarios/web-payments-status/captures/en/p_03_not_connected.png
+          es: scenarios/web-payments-status/captures/es/p_03_not_connected.png
       default:
         kind: phone
         crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.88 }
         src:
-          ru: scenarios/how-03/captures/p_03_not_connected.png
-          en: scenarios/how-03/captures/en/p_03_not_connected.png
-          es: scenarios/how-03/captures/es/p_03_not_connected.png
+          ru: scenarios/web-payments-status/captures/p_03_not_connected.png
+          en: scenarios/web-payments-status/captures/en/p_03_not_connected.png
+          es: scenarios/web-payments-status/captures/es/p_03_not_connected.png
     texts:
       ru:
         line1: "ПРИЁМ ОПЛАТЫ"
@@ -150,22 +149,22 @@ films:
         line2: "¿CONECTADO O NO?"
         sub: "Dónde verlo en el centro de eventos."
 
-  how-04:
+  web-organization-details:
     item:
       16x9:
         kind: browser
         crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.5 }
         src:
-          ru: scenarios/how-04/captures/o_03_legal.png
-          en: scenarios/how-04/captures/en/o_03_legal.png
-          es: scenarios/how-04/captures/es/o_03_legal.png
+          ru: scenarios/web-organization-details/captures/o_03_legal.png
+          en: scenarios/web-organization-details/captures/en/o_03_legal.png
+          es: scenarios/web-organization-details/captures/es/o_03_legal.png
       default:
         kind: phone
         crop: { x: 0.27, y: 0.1, w: 0.46, h: 0.88 }
         src:
-          ru: scenarios/how-04/captures/o_03_legal.png
-          en: scenarios/how-04/captures/en/o_03_legal.png
-          es: scenarios/how-04/captures/es/o_03_legal.png
+          ru: scenarios/web-organization-details/captures/o_03_legal.png
+          en: scenarios/web-organization-details/captures/en/o_03_legal.png
+          es: scenarios/web-organization-details/captures/es/o_03_legal.png
     texts:
       ru:
         line1: "ДАННЫЕ ОРГАНИЗАЦИИ"
@@ -180,22 +179,22 @@ films:
         line2: "LO QUE VE EL COMPRADOR"
         sub: "Datos legales y contactos: rellénalos una sola vez."
 
-  how-05-web:
+  web-sales-link-and-qr:
     item:
       16x9:
         kind: browser
         crop: { x: 0.1, y: 0.03, w: 0.5, h: 0.62 }
         src:
-          ru: scenarios/how-05-web/captures/k_05_qr.png
-          en: scenarios/how-05-web/captures/en/k_05_qr.png
-          es: scenarios/how-05-web/captures/es/k_05_qr.png
+          ru: scenarios/web-sales-link-and-qr/captures/k_05_qr.png
+          en: scenarios/web-sales-link-and-qr/captures/en/k_05_qr.png
+          es: scenarios/web-sales-link-and-qr/captures/es/k_05_qr.png
       default:
         kind: phone
         crop: { x: 0.13, y: 0.05, w: 0.32, h: 0.7 }
         src:
-          ru: scenarios/how-05-web/captures/k_05_qr.png
-          en: scenarios/how-05-web/captures/en/k_05_qr.png
-          es: scenarios/how-05-web/captures/es/k_05_qr.png
+          ru: scenarios/web-sales-link-and-qr/captures/k_05_qr.png
+          en: scenarios/web-sales-link-and-qr/captures/en/k_05_qr.png
+          es: scenarios/web-sales-link-and-qr/captures/es/k_05_qr.png
     texts:
       ru:
         line1: "ССЫЛКА И QR"

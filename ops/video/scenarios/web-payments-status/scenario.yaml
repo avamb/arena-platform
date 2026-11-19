@@ -1,4 +1,4 @@
-id: how-03
+id: web-payments-status
 fps: 30
 languages: [ru, en, es]
 title:
@@ -6,12 +6,12 @@ title:
   en: "Payments from buyers: where to see if they are connected"
   es: "Cobro de pagos: dónde ver si está conectado"
 
-# Pictures in captures/ are made by scripts/capture-how.ts (stage `pay`, see README, "How-to films of the web
+# Pictures in captures/ are made by scripts/capture-web.ts (stage `pay`, see README, "How-to films of the web
 # event center") and are not committed. Russian pictures lie in captures/, English and Spanish in captures/en/
 # and captures/es/.
 # The web event center has no screen where an organizer chooses a provider or types its keys: the film shows
 # only the section "Payments from buyers" and its two notes. The picture p_05_connected is the same screen of the
-# test organization with the answer "payment configs" replaced by one accepted config (HOW_PAY_CONNECTED=1):
+# test organization with the answer "payment configs" replaced by one accepted config (WEB_PAY_CONNECTED=1):
 # no test organizer of the stand that this script can sign in as has a provider connected.
 
 voice:

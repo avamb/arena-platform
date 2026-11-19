@@ -1,4 +1,4 @@
-id: how-04
+id: web-organization-details
 fps: 30
 languages: [ru, en, es]
 title:
@@ -6,7 +6,7 @@ title:
   en: "Organization data: what the buyer sees"
   es: "Datos de la organización: lo que ve el comprador"
 
-# Pictures in captures/ are made by scripts/capture-how.ts (stage `org`, see README, "How-to films of the web
+# Pictures in captures/ are made by scripts/capture-web.ts (stage `org`, see README, "How-to films of the web
 # event center") and are not committed. Russian pictures lie in captures/, English and Spanish in captures/en/
 # and captures/es/.
 # The web event center has no logo of the organization: the film shows the legal data, the contact e-mail,

@@ -1,10 +1,10 @@
 /**
  * Draws the poster of the invented event of the how-to films (a jazz evening of "Aurora Events" in Berlin).
  *
- *   npx tsx scripts/make-how-posters.ts
+ *   npx tsx scripts/make-web-posters.ts
  *
- * Writes scenarios/how-02/assets/poster_4x5.png (Russian) and assets/<en|es>/poster_4x5.png, 1080 x 1350.
- * The date, the hall and the price on the poster are the ones scripts/capture-how.ts types into the wizard.
+ * Writes scenarios/web-create-event/assets/poster_4x5.png (Russian) and assets/<en|es>/poster_4x5.png, 1080 x 1350.
+ * The date, the hall and the price on the poster are the ones scripts/capture-web.ts types into the wizard.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -42,7 +42,7 @@ async function main(): Promise<void> {
   try {
     const page = await browser.newPage({ viewport: { width: 1080, height: 1350 } });
     for (const lang of ["ru", "en", "es"] as const) {
-      const out = path.join(ROOT, "scenarios", "how-02", "assets", lang === "ru" ? "" : lang, "poster_4x5.png");
+      const out = path.join(ROOT, "scenarios", "web-create-event", "assets", lang === "ru" ? "" : lang, "poster_4x5.png");
       fs.mkdirSync(path.dirname(out), { recursive: true });
       await page.setContent(html(TEXT[lang]), { waitUntil: "load" });
       await page.screenshot({ path: out });

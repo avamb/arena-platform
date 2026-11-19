@@ -1,4 +1,4 @@
-id: how-02
+id: web-create-event
 fps: 30
 languages: [ru, en, es]
 title:
@@ -6,9 +6,9 @@ title:
   en: "How to add an event by hand"
   es: "Cómo crear un evento a mano"
 
-# Pictures in captures/ are made by scripts/capture-how.ts (stage `event`, see README, "How-to films of the web
+# Pictures in captures/ are made by scripts/capture-web.ts (stage `event`, see README, "How-to films of the web
 # event center") and are not committed. Russian pictures lie in captures/, English and Spanish in captures/en/
-# and captures/es/. The poster in assets/ is drawn by scripts/make-how-posters.ts.
+# and captures/es/. The poster in assets/ is drawn by scripts/make-web-posters.ts.
 # The organizer is invented: Aurora Events; the event is a jazz evening in Berlin.
 
 voice:

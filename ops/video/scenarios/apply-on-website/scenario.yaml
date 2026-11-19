@@ -1,4 +1,4 @@
-id: onb-02
+id: apply-on-website
 fps: 30
 languages: [ru, en, es]
 title:
@@ -6,8 +6,8 @@ title:
   en: "Application on the website and first sign-in to the event center"
   es: "Solicitud en la web y primer acceso al centro de eventos"
 
-# Pictures in captures/ are made by scripts/capture-onb-02.ts and scripts/render-letter.ts
-# (see README, "Film onb-02") and are not committed. Russian pictures lie in captures/,
+# Pictures in captures/ are made by scripts/capture-apply-on-website.ts and scripts/render-letter.ts
+# (see README, "Film apply-on-website") and are not committed. Russian pictures lie in captures/,
 # English and Spanish in captures/en/ and captures/es/.
 # 16x9 shows desktop pictures (captures/d_*.png, ONB_VIEW=desktop) in a browser window with a close-up;
 # 9x16 and 4x5 show the phone pictures.

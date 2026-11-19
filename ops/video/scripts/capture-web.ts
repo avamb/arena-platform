@@ -1,27 +1,27 @@
 /**
- * Pictures for the how-to films of the web event center (how-02 ... how-05-web), desktop window 1280 x 720.
+ * Pictures for the how-to films of the web event center (web-*), desktop window 1280 x 720.
  *
- *   npx tsx scripts/capture-how.ts <ru|en|es> <event|org|links|pay|card|reset>
+ *   npx tsx scripts/capture-web.ts <ru|en|es> <event|org|links|pay|card|reset>
  *
  * Stages (run in this order, each signs in as the test organizer of that language):
- *   event   how-02: the wizard "New event" filled by hand, the event card, the poster, publication, the buyers' page
- *   org     how-04: "Organization data" (legal data, contact e-mail, public e-mail of the sales page), the seller block
- *   links   how-05-web: "Links and QR", a new link to the event of stage `event`, its card with the QR code
- *   pay     how-03: the section "Payments from buyers" of "Organization data"
- *   card    how-02 again: only the pictures of the event card of the event that stage `event` created
+ *   event   web-create-event: the wizard "New event" filled by hand, the event card, the poster, publication, the buyers' page
+ *   org     web-organization-details: "Organization data" (legal data, contact e-mail, public e-mail of the sales page), the seller block
+ *   links   web-sales-link-and-qr: "Links and QR", a new link to the event of stage `event`, its card with the QR code
+ *   pay     web-payments-status: the section "Payments from buyers" of "Organization data"
+ *   card    web-create-event again: only the pictures of the event card of the event that stage `event` created
  *   reset   deletes the event that stage `event` created (a trial run)
  *
  * Environment (ops/video/.env, not committed):
  *   VIDEO_BASE_URL            web event center of the stand
- *   VIDEO_ONB_EMAIL_<LANG>    address of the test organizer (the accounts of film onb-02)
+ *   VIDEO_ONB_EMAIL_<LANG>    address of the test organizer (the accounts of film apply-on-website)
  *   VIDEO_ONB_ORG_<LANG>      organization name on the stand
  *   VIDEO_ONB_PASSWORD        password of these accounts
  *
  * Before a picture is taken the stand data is replaced in the page: the real mailbox with carmen@example.com,
  * the organization name with "Aurora Events", stand hosts with the public ones. Pictures go to
  * scenarios/<film>/captures/ (Russian) and captures/<language>/; they are not committed.
- * HOW_DEBUG=1 prints the text of the page at each picture. HOW_ONLY=<regexp> takes only the pictures with such names.
- * HOW_STOP=ready stops the stage `event` before the event is created.
+ * WEB_DEBUG=1 prints the text of the page at each picture. WEB_ONLY=<regexp> takes only the pictures with such names.
+ * WEB_STOP=ready stops the stage `event` before the event is created.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -34,15 +34,15 @@ type Lang = "ru" | "en" | "es";
 
 const SHOWN = { email: "carmen@example.com", org: "Aurora Events" };
 const BROWSER_LOCALE: Record<Lang, string> = { ru: "ru-RU", en: "en-GB", es: "es-ES" };
-const DEBUG = process.env.HOW_DEBUG === "1";
+const DEBUG = process.env.WEB_DEBUG === "1";
 
 /** The invented event of the films: a jazz evening in Berlin, 25 EUR. */
 const EVENT: Record<Lang, { name: string; text: string; category: string; poster: string }> = {
-  ru: { name: "Вечер джаза", text: "Живой джаз и хорошая компания.", category: "Входной билет", poster: "scenarios/how-02/assets/poster_4x5.png" },
-  en: { name: "Jazz Night", text: "Live jazz and good company.", category: "General admission", poster: "scenarios/how-02/assets/en/poster_4x5.png" },
-  es: { name: "Noche de jazz", text: "Jazz en directo y buena compañía.", category: "Entrada general", poster: "scenarios/how-02/assets/es/poster_4x5.png" },
+  ru: { name: "Вечер джаза", text: "Живой джаз и хорошая компания.", category: "Входной билет", poster: "scenarios/web-create-event/assets/poster_4x5.png" },
+  en: { name: "Jazz Night", text: "Live jazz and good company.", category: "General admission", poster: "scenarios/web-create-event/assets/en/poster_4x5.png" },
+  es: { name: "Noche de jazz", text: "Jazz en directo y buena compañía.", category: "Entrada general", poster: "scenarios/web-create-event/assets/es/poster_4x5.png" },
 };
-/** The day on the poster (scripts/make-how-posters.ts). */
+/** The day on the poster (scripts/make-web-posters.ts). */
 const EVENT_DAY = "2027-02-13";
 const VENUE = { name: "Aurora Club", country: "DE", city: "Berlin", timezone: "Europe/Berlin", address: "Musterstraße 12", capacity: "120" };
 const ORG_DATA = {
@@ -59,7 +59,7 @@ const ORG_DATA = {
 
 function env(name: string): string {
   const v = process.env[name];
-  if (!v) throw new Error(`capture-how: environment variable ${name} is not set`);
+  if (!v) throw new Error(`capture-web: environment variable ${name} is not set`);
   return v;
 }
 
@@ -74,7 +74,7 @@ class Shots {
 
   /** Puts `at` near the top of the window (or the page top), replaces stand data, takes the window picture, restores the fields. */
   async take(page: Page, name: string, at?: Locator | null, offset = 110): Promise<void> {
-    if (process.env.HOW_ONLY && !new RegExp(process.env.HOW_ONLY).test(name)) return;
+    if (process.env.WEB_ONLY && !new RegExp(process.env.WEB_ONLY).test(name)) return;
     if (at) await at.first().evaluate((e, off) => window.scrollTo(0, e.getBoundingClientRect().top + window.scrollY - off), offset);
     else if (at === undefined) await page.evaluate(() => window.scrollTo(0, 0));
     await page.evaluate((pairs) => {
@@ -110,7 +110,7 @@ class Shots {
 }
 
 function statePath(lang: Lang): string {
-  return path.join(ROOT, ".cache", `how-${lang}.json`);
+  return path.join(ROOT, ".cache", `web-${lang}.json`);
 }
 function readState(lang: Lang): Record<string, string> {
   return fs.existsSync(statePath(lang)) ? (JSON.parse(fs.readFileSync(statePath(lang), "utf8")) as Record<string, string>) : {};
@@ -136,7 +136,7 @@ async function signIn(lang: Lang): Promise<{ ctx: BrowserContext; page: Page; ap
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(1200);
   const org = /\/o\/[0-9a-f-]{36}/.exec(new URL(page.url()).pathname)?.[0];
-  if (!org) throw new Error("capture-how: the organization is not in the address after sign-in");
+  if (!org) throw new Error("capture-web: the organization is not in the address after sign-in");
   return { ctx, page, app, org, close: () => browser.close() };
 }
 
@@ -147,7 +147,7 @@ async function settle(page: Page, ms = 900): Promise<void> {
   await page.waitForTimeout(ms);
 }
 
-/** how-02: the wizard filled by hand, the card, the poster, the publication, the buyers' page. */
+/** web-create-event: the wizard filled by hand, the card, the poster, the publication, the buyers' page. */
 async function event(lang: Lang, shots: Shots): Promise<void> {
   const { ctx, page, app, org, close } = await signIn(lang);
   const ev = EVENT[lang];
@@ -208,8 +208,8 @@ async function event(lang: Lang, shots: Shots): Promise<void> {
     // "Good to know: a venue with this name exists" comes only on a repeated run of this script; a new organizer does not see it.
     await tid(page, "wizard-warnings").evaluateAll((els) => els.forEach((e) => { (e as HTMLElement).style.display = "none"; }));
     await shots.take(page, "w_08_ready", tid(page, "wizard-status"), 230);
-    if (await tid(page, "wizard-create").isDisabled()) throw new Error("capture-how: the wizard does not allow to create the event (see w_08_ready)");
-    if (process.env.HOW_STOP === "ready") return;
+    if (await tid(page, "wizard-create").isDisabled()) throw new Error("capture-web: the wizard does not allow to create the event (see w_08_ready)");
+    if (process.env.WEB_STOP === "ready") return;
 
     await tid(page, "wizard-create").click();
     await page.waitForURL(/\/events\/[0-9a-f-]{36}$/, { timeout: 40000 });
@@ -258,7 +258,7 @@ async function card(lang: Lang, shots: Shots, page: Page, _app: string, ctx: Bro
   await openSection(page, "edit");
   const buyer = await tid(page, "materials-public-link").getAttribute("href");
   await shots.take(page, "c_07_open_page", tid(page, "materials-public-link"), 300);
-  if (!buyer) throw new Error("capture-how: the card has no link to the sales page");
+  if (!buyer) throw new Error("capture-web: the card has no link to the sales page");
   writeState(lang, { buyer });
   const p2 = await ctx.newPage();
   assertHostAllowed(buyer);
@@ -286,7 +286,7 @@ async function resumeCard(lang: Lang, shots: Shots): Promise<void> {
   const { ctx, page, app, close } = await signIn(lang);
   try {
     const st = readState(lang);
-    if (!st.event) throw new Error("capture-how: no event in the state file, run stage event first");
+    if (!st.event) throw new Error("capture-web: no event in the state file, run stage event first");
     await page.goto(`${app}${st.event}`, { waitUntil: "networkidle" });
     await settle(page, 1500);
     await card(lang, shots, page, app, ctx);
@@ -295,7 +295,7 @@ async function resumeCard(lang: Lang, shots: Shots): Promise<void> {
   }
 }
 
-/** how-04: legal data, the contact e-mail, the public e-mail of the sales page, then the seller block of the buyers' page. */
+/** web-organization-details: legal data, the contact e-mail, the public e-mail of the sales page, then the seller block of the buyers' page. */
 async function orgData(lang: Lang, shots: Shots): Promise<void> {
   const { ctx, page, app, org, close } = await signIn(lang);
   const email = env(`VIDEO_ONB_EMAIL_${lang.toUpperCase()}`);
@@ -339,7 +339,7 @@ async function orgData(lang: Lang, shots: Shots): Promise<void> {
     await settle(page, 1500);
     await shots.take(page, "o_09_status", tid(page, "org-data-payments-section"), 150);
     const buyer = readState(lang).buyer;
-    if (!buyer) throw new Error("capture-how: no sales page in the state file, run stage event first");
+    if (!buyer) throw new Error("capture-web: no sales page in the state file, run stage event first");
     const p2 = await ctx.newPage();
     assertHostAllowed(buyer);
     await p2.goto(buyer, { waitUntil: "networkidle" });
@@ -358,12 +358,12 @@ async function orgData(lang: Lang, shots: Shots): Promise<void> {
 
 const LINK_LABEL: Record<Lang, string> = { ru: "Афиша у входа", en: "Poster at the entrance", es: "Cartel en la entrada" };
 
-/** how-05-web: the link section of the event card, a new tracked link, its QR code, the buyers' page behind it, the count. */
+/** web-sales-link-and-qr: the link section of the event card, a new tracked link, its QR code, the buyers' page behind it, the count. */
 async function links(lang: Lang, shots: Shots): Promise<void> {
   const { ctx, page, app, org, close } = await signIn(lang);
   try {
     const st = readState(lang);
-    if (!st.event) throw new Error("capture-how: no event in the state file, run stage event first");
+    if (!st.event) throw new Error("capture-web: no event in the state file, run stage event first");
     await page.goto(`${app}${st.event}`, { waitUntil: "networkidle" });
     await settle(page, 1500);
     await openSection(page, "link");
@@ -375,7 +375,7 @@ async function links(lang: Lang, shots: Shots): Promise<void> {
     await page.locator('[data-testid^="link-pl-"]').first().check();
     await tid(page, "link-f-label").fill(LINK_LABEL[lang]);
     await shots.take(page, "k_03_form", page.locator('[data-testid^="link-pl-"]').first(), 250);
-    if (process.env.HOW_LINK_EXISTS === "1") {
+    if (process.env.WEB_LINK_EXISTS === "1") {
       // a repeated run: the link of the first run is opened, a second one is not created
       await page.goto(`${app}${org}/links`, { waitUntil: "networkidle" });
       await settle(page, 1200);
@@ -396,7 +396,7 @@ async function links(lang: Lang, shots: Shots): Promise<void> {
     await shots.take(page, "k_04_link");
     await shots.take(page, "k_05_qr", tid(page, "link-qr"), 70);
     await shots.take(page, "k_06_address", tid(page, "link-short-url"), 260);
-    if (!process.env.HOW_ONLY || new RegExp(process.env.HOW_ONLY).test("k_07_buyer")) {
+    if (!process.env.WEB_ONLY || new RegExp(process.env.WEB_ONLY).test("k_07_buyer")) {
       // A buyer opens the short address. An ordinary browser name: the stand does not count a headless browser as a scan.
       const buyerCtx = await ctx.browser()!.newContext({
         viewport: { width: 1280, height: 720 },
@@ -432,7 +432,7 @@ async function links(lang: Lang, shots: Shots): Promise<void> {
   }
 }
 
-/** how-03: where the section "Payments from buyers" is and what it says. */
+/** web-payments-status: where the section "Payments from buyers" is and what it says. */
 async function pay(lang: Lang, shots: Shots): Promise<void> {
   const { ctx, page, app, org, close } = await signIn(lang);
   try {
@@ -447,7 +447,7 @@ async function pay(lang: Lang, shots: Shots): Promise<void> {
     await shots.take(page, "p_03_not_connected", tid(page, "org-data-payments-section"), 200);
     await shots.take(page, "p_04_org_data");
     await shots.take(page, "p_06_receipt", tid(page, "org-data-receipt"), 260);
-    if (process.env.HOW_PAY_CONNECTED === "1") {
+    if (process.env.WEB_PAY_CONNECTED === "1") {
       // The test organizations have no payment provider and no stand account with one is open to this script.
       // The answer of the stand to "payment configs" gets one accepted config, so the screen draws its own "connected" note.
       await ctx.route(/\/v1\/organizations\/[0-9a-f-]+\/payment-configs/, async (route) => {
@@ -502,9 +502,9 @@ async function main(): Promise<void> {
   const lang = process.argv[2] as Lang;
   const stage = process.argv[3];
   if (!["ru", "en", "es"].includes(lang) || !["event", "card", "reset", "org", "links", "pay"].includes(stage)) {
-    throw new Error("usage: tsx scripts/capture-how.ts <ru|en|es> <event|card|org|links|pay>");
+    throw new Error("usage: tsx scripts/capture-web.ts <ru|en|es> <event|card|org|links|pay>");
   }
-  const film = { event: "how-02", card: "how-02", reset: "how-02", org: "how-04", links: "how-05-web", pay: "how-03" }[stage]!;
+  const film = { event: "web-create-event", card: "web-create-event", reset: "web-create-event", org: "web-organization-details", links: "web-sales-link-and-qr", pay: "web-payments-status" }[stage]!;
   const shots = new Shots(film, lang, [
     [env(`VIDEO_ONB_EMAIL_${lang.toUpperCase()}`), SHOWN.email],
     [env(`VIDEO_ONB_ORG_${lang.toUpperCase()}`), SHOWN.org],

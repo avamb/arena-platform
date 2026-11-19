@@ -1,4 +1,4 @@
-id: how-05-web
+id: web-sales-link-and-qr
 fps: 30
 languages: [ru, en, es]
 title:
@@ -6,7 +6,7 @@ title:
   en: "Sales link and QR code of an event"
   es: "Enlace de venta y código QR de un evento"
 
-# Pictures in captures/ are made by scripts/capture-how.ts (stage `links`, see README, "How-to films of the web
+# Pictures in captures/ are made by scripts/capture-web.ts (stage `links`, see README, "How-to films of the web
 # event center") and are not committed. Russian pictures lie in captures/, English and Spanish in captures/en/
 # and captures/es/.
 # The QR code in the pictures is drawn by the script for the short address on the public host (the address
