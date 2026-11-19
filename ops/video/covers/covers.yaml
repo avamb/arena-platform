@@ -87,3 +87,51 @@ films:
         line1: "EMPIEZA A VENDER"
         line2: "SOLICITUD EN LA WEB"
         sub: "De la solicitud a tu centro de eventos."
+
+  how-01:
+    # The bot has read the poster; the capture has an empty lower part, so crop it.
+    item:
+      default:
+        kind: phone
+        crop: { x: 0, y: 0, w: 1, h: 0.66 }
+        src:
+          ru: scenarios/how-01/captures/ru/h_03c_poster.png
+          en: scenarios/how-01/captures/en/h_03c_poster.png
+          es: scenarios/how-01/captures/es/h_03c_poster.png
+    texts:
+      ru:
+        line1: "МЕРОПРИЯТИЕ"
+        line2: "ПО АФИШЕ"
+        sub: "Отправьте афишу боту: он прочитает название, дату и цену."
+      en:
+        line1: "AN EVENT"
+        line2: "FROM A POSTER"
+        sub: "Send the poster to the bot: it reads the name, the date and the price."
+      es:
+        line1: "UN EVENTO"
+        line2: "DESDE UN CARTEL"
+        sub: "Envía el cartel al bot: lee el nombre, la fecha y el precio."
+
+  how-05-bot:
+    # The QR code that the bot sends; the capture has an empty lower part, so crop it.
+    item:
+      default:
+        kind: phone
+        crop: { x: 0, y: 0, w: 1, h: 0.66 }
+        src:
+          ru: scenarios/how-05-bot/captures/ru/q_06_qr.png
+          en: scenarios/how-05-bot/captures/en/q_06_qr.png
+          es: scenarios/how-05-bot/captures/es/q_06_qr.png
+    texts:
+      ru:
+        line1: "ССЫЛКА ПРОДАЖ"
+        line2: "И QR-КОД"
+        sub: "Бот даёт ссылку и код для афиши и считает сканы."
+      en:
+        line1: "SALES LINK"
+        line2: "AND QR CODE"
+        sub: "The bot gives you a link and a code for the poster, and counts the scans."
+      es:
+        line1: "ENLACE DE VENTA"
+        line2: "Y CÓDIGO QR"
+        sub: "El bot te da un enlace y un código para el cartel, y cuenta los escaneos."

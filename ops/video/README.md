@@ -263,6 +263,35 @@ The staging build of 2026-11-19 has the bot in English, Russian and Spanish.
 A fourth language needs its texts in the scenario and its pictures; see the
 comment at the top of the scenario.
 
+### Films how-01 and how-05-bot
+
+`scenarios/how-01` (an event from a poster) and `scenarios/how-05-bot` (sales
+link and QR code) are instruction films about the event-center bot, in the
+vertical formats only. The pictures in `captures/<language>/` are not
+committed. They were made on the staging stand on 2026-11-19 with the test
+Telegram account, which is the owner of the test organization "Luna Events",
+and scratch scripts. For each language the bot was set to that language
+(Settings, Language) and one full pass was made:
+
+- how-01: Menu, "New event", "Fill in from a poster", the poster sent as a
+  file, each question answered with the first fitting button, "Publish". The
+  venue "Saal Aurora" was added in the first pass; the bot refuses a second
+  venue with the same name, thus the film chooses the venue from the list.
+- how-05-bot: Menu, "My events", the event, "Link for buyers", "More links
+  and QR codes", the placement "Poster", a name for the location, then
+  "Statistics" after one opening of the short link with a phone browser.
+  A headless browser is counted as a robot and adds the line "Robots
+  excluded" to the statistics.
+
+The buyer's page is the page of the event on the tickets site, opened with
+`?lang=<language>` in a phone-size browser. Payments are not connected in the
+test organization, thus the films do not show a purchase.
+
+Before a screenshot the scripts replace the test bot name, the staging hosts
+(tickets and short links) and the number at the end of the brand address with
+the public names. They also replace the QR pictures in the chat with a code
+of the public site, because the real codes open the staging stand.
+
 ## Environment variables
 
 Keys, addresses and logins are never in the repository. The scripts read them
@@ -387,7 +416,7 @@ Run `npm run covers` to make them.
 
 - `covers/cover.html` is the one template. `covers/covers.yaml` holds the texts and the subject images.
 - The script writes `out/covers/<film>/<film>_<lang>_<format>.png`.
-- Films: sell-01, onb-01, onb-02. Languages: ru, en, es. Formats: 16x9, 9x16, 4x5.
+- Films: sell-01, onb-01, onb-02, how-01, how-05-bot. Languages: ru, en, es. Formats: 16x9, 9x16, 4x5.
 - Long lines get a smaller font by themselves, so they never leave the frame.
 - Subject images live in ignored folders. If a file is missing, the cover is made without it.
 - Fonts are system fonts (Impact, Inter, Segoe UI). Nothing is loaded from the network.

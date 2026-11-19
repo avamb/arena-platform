@@ -1,0 +1,201 @@
+id: how-01
+fps: 30
+# To add a language: add it here, add its text to every narration, title and heading,
+# and put its pictures in captures/<language>/. Nothing else changes.
+languages: [ru, en, es]
+title:
+  ru: "Как создать мероприятие по афише"
+  en: "How to add an event from a poster"
+  es: "Cómo crear un evento desde un cartel"
+
+# Instruction film: an organizer sends a poster to the event-center bot, confirms what the bot
+# read, answers the short questions and publishes the event. Each step that a person does is shown.
+# Pictures are made on the staging stand with the test Telegram account in the organization
+# "Luna Events" (see README, "Films how-01 and how-05-bot") and are not committed.
+# Chat pictures are 840 x 2660 (chat screen plus empty chat background), as in onb-01.
+# The venue "Saal Aurora" is already in the list of the organization, thus the film chooses it
+# from the list; the button "The venue is not in the list" is in the same picture.
+# Payments are not connected in this test organization: the film shows the buyer's page, not a purchase,
+# and the bot screen "Payments from buyers", which says that Arena connects the payment provider.
+
+voice:
+  provider: auto
+  elevenlabs:
+    voice_id_env: ELEVENLABS_VOICE_ID
+    model_id: eleven_multilingual_v2
+
+formats: [9x16, 4x5]
+background: "#4f46e5"
+
+scenes:
+  - id: s1-result
+    narration:
+      ru: "Афиша готова? Отправьте её боту Arena Sold Out. Через несколько минут у вас будет страница мероприятия, где покупатели выбирают билеты. Вот все шаги."
+      en: "Is your poster ready? Send it to the Arena Sold Out bot. In a few minutes, you have an event page where buyers select tickets. Here are all the steps."
+      es: "¿Ya tienes el cartel? Envíalo al bot de Arena Sold Out. En unos minutos tendrás la página del evento, donde los compradores eligen sus entradas."
+    pause_after: 0.4
+    shots:
+      - image: ../sell-01/assets/poster_vecher_dzhaza_4x5.png
+        frame: phone
+        title: { ru: "Из афиши — страница с билетами", en: "From a poster to a ticket page", es: "Del cartel a la página de entradas" }
+        zoom: { from: 1.0, to: 1.1, x: 0.5, y: 0.45 }
+
+  - id: s2-poster
+    narration:
+      ru: "В меню бота нажмите «Новое мероприятие», потом «Заполнить по афише». Отправьте афишу файлом. Бот прочитает название, дату, время, площадку и цену."
+      en: "In the bot menu, press «New event», then «Fill in from a poster». Send the poster as a file. The bot reads the name, the date, the time, the venue and the price."
+      es: "En el menú del bot, pulsa «Nuevo evento» y luego «Rellenar desde un cartel». Envía el cartel como archivo. El bot lee el nombre, la fecha, la hora, el recinto y el precio."
+    pause_after: 0.6
+    shots:
+      - image: captures/h_00_menu.png
+        frame: phone
+        title: { ru: "Меню → «Новое мероприятие»", en: "Menu → «New event»", es: "Menú → «Nuevo evento»" }
+        weight: 2
+        scroll: { from: 0.6, to: 0.9 }
+      - image: captures/h_01_start.png
+        frame: phone
+        title: { ru: "«Заполнить по афише»", en: "«Fill in from a poster»", es: "«Rellenar desde un cartel»" }
+        weight: 2
+        scroll: { from: 0.7, to: 1.0 }
+      - image: captures/h_03c_poster.png
+        frame: phone
+        title: { ru: "Бот прочитал афишу", en: "The bot has read the poster", es: "El bot ha leído el cartel" }
+        weight: 4
+        scroll: { from: 0.3, to: 0.75 }
+
+  - id: s3-confirm
+    narration:
+      ru: "Дальше бот задаёт вопросы по одному. Если значение с афиши верное, нажмите кнопку «С афиши». Так вы подтверждаете название, возраст, дату и время начала."
+      en: "Then the bot asks one question at a time. If the value from the poster is correct, press the button «From the poster». In this way you approve the name, the age limit, the date and the start time."
+      es: "Después el bot hace las preguntas una a una. Si el dato del cartel es correcto, pulsa el botón «Del cartel». Así confirmas el nombre, la edad, la fecha y la hora."
+    pause_after: 0.6
+    shots:
+      - image: captures/h_03_sent.png
+        frame: phone
+        title: { ru: "Название — кнопкой «С афиши»", en: "Name — with the button «From the poster»", es: "El nombre, con el botón «Del cartel»" }
+        weight: 3
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/h_05.png
+        frame: phone
+        title: { ru: "Возраст", en: "Age limit", es: "Edad" }
+        weight: 2
+        scroll: { from: 0.7, to: 1.0 }
+      - image: captures/h_08.png
+        frame: phone
+        title: { ru: "Дата", en: "Date", es: "Fecha" }
+        weight: 2
+        scroll: { from: 0.5, to: 0.8 }
+      - image: captures/h_09.png
+        frame: phone
+        title: { ru: "Время начала", en: "Start time", es: "Hora de inicio" }
+        weight: 2
+        scroll: { from: 0.7, to: 1.0 }
+
+  - id: s4-where
+    narration:
+      ru: "Укажите, когда закрыть продажу и во сколько открыть вход. Потом выберите страну, город и площадку. Если площадки нет в списке, добавьте её. Схема зала не обязательна: без неё рассадка свободная."
+      en: "Tell the bot when ticket sales close and when the doors open. Then select the country, the city and the venue. If the venue is not in the list, add it. A seating plan is optional: without it, seating is free."
+      es: "Indica cuándo se cierra la venta y a qué hora se abren las puertas. Luego elige el país, la ciudad y el recinto. Si el recinto no está en la lista, añádelo. El plano de la sala es opcional."
+    pause_after: 0.6
+    shots:
+      - image: captures/h_10.png
+        frame: phone
+        title: { ru: "Когда закрыть продажу", en: "When sales close", es: "Cuándo se cierra la venta" }
+        weight: 2
+        scroll: { from: 0.7, to: 1.0 }
+      - image: captures/h_11.png
+        frame: phone
+        title: { ru: "Когда открыть вход", en: "When the doors open", es: "Apertura de puertas" }
+        weight: 2
+        scroll: { from: 0.7, to: 1.0 }
+      - image: captures/h_14.png
+        frame: phone
+        title: { ru: "Площадка", en: "Venue", es: "Recinto" }
+        weight: 3
+        scroll: { from: 0.7, to: 1.0 }
+      - image: captures/h_15.png
+        frame: phone
+        title: { ru: "Схема зала — по желанию", en: "Seating plan — optional", es: "Plano de la sala, opcional" }
+        weight: 2
+        scroll: { from: 0.7, to: 1.0 }
+      - image: captures/h_16.png
+        frame: phone
+        title: { ru: "Сколько мест продаём", en: "How many tickets are on sale", es: "Cuántas plazas se venden" }
+        weight: 2
+        scroll: { from: 0.7, to: 1.0 }
+
+  - id: s5-tickets
+    narration:
+      ru: "Теперь билеты: одна категория или несколько, название билета и цена. Цену бот тоже берёт с афиши."
+      en: "Now the tickets: one category or more, the name of the ticket and the price. The bot takes the price from the poster too."
+      es: "Ahora las entradas: una categoría o varias, el nombre y el precio. El precio también sale del cartel."
+    pause_after: 0.6
+    shots:
+      - image: captures/h_18.png
+        frame: phone
+        title: { ru: "Одна категория или несколько", en: "One category or more", es: "Una categoría o varias" }
+        weight: 2
+        scroll: { from: 0.7, to: 1.0 }
+      - image: captures/h_19.png
+        frame: phone
+        title: { ru: "Название билета", en: "Ticket name", es: "Nombre de la entrada" }
+        weight: 2
+        scroll: { from: 0.7, to: 1.0 }
+      - image: captures/h_20.png
+        frame: phone
+        title: { ru: "Цена — с афиши", en: "Price — from the poster", es: "El precio, del cartel" }
+        weight: 2
+        scroll: { from: 0.7, to: 1.0 }
+
+  - id: s6-publish
+    narration:
+      ru: "Добавьте описание, проверьте сводку и нажмите «Опубликовать». Бот пришлёт ссылку для покупателей и образец билета."
+      en: "Add a description, check the summary and press «Publish». The bot sends you the link for buyers and a sample ticket."
+      es: "Añade una descripción, revisa el resumen y pulsa «Publicar». El bot te envía el enlace para los compradores y una entrada de muestra."
+    pause_after: 1.0
+    shots:
+      - image: captures/h_22.png
+        frame: phone
+        title: { ru: "Описание", en: "Description", es: "Descripción" }
+        weight: 2
+        scroll: { from: 0.7, to: 1.0 }
+      - image: captures/h_25.png
+        frame: phone
+        title: { ru: "Сводка и «Опубликовать»", en: "Summary and «Publish»", es: "Resumen y «Publicar»" }
+        weight: 3
+        scroll: { from: 0.6, to: 1.0 }
+      - image: captures/h_29_done.png
+        frame: phone
+        title: { ru: "Ссылка и образец билета", en: "Link and sample ticket", es: "Enlace y entrada de muestra" }
+        weight: 3
+        scroll: { from: 0.4, to: 0.8 }
+
+  - id: s7-buyer
+    narration:
+      ru: "Покупатель открывает ссылку и видит страницу мероприятия: афишу, дату, площадку и цену билета. Продажа билетов начнётся после того, как Arena подключит вашу платёжную систему. Для этого напишите в поддержку."
+      en: "The buyer opens the link and sees the event page: the poster, the date, the venue and the ticket price. Ticket sales start after Arena connects your payment provider. To connect it, write to Arena support."
+      es: "El comprador abre el enlace y ve la página del evento: el cartel, la fecha, el recinto y el precio de la entrada. La venta de entradas empieza cuando Arena conecta tu proveedor de pagos. Para conectarlo, escribe al soporte de Arena."
+    pause_after: 1.0
+    shots:
+      - image: captures/p_01_full.png
+        frame: phone
+        title: { ru: "Что видит покупатель", en: "What the buyer sees", es: "Lo que ve el comprador" }
+        weight: 4
+        scroll: { from: 0, to: 0.45 }
+      - image: captures/y_01.png
+        frame: phone
+        title: { ru: "Приём оплаты подключает Arena", en: "Arena connects your payments", es: "Arena conecta tus pagos" }
+        weight: 3
+        scroll: { from: 0.6, to: 0.9 }
+
+  - id: s8-cta
+    narration:
+      ru: "Оставьте заявку на arenasoldout.com или в нашем Telegram-боте. Мы ждём вас."
+      en: "Apply at arenasoldout.com or in our Telegram bot. We look forward to working with you."
+      es: "Deja tu solicitud en arenasoldout.com o en nuestro bot de Telegram. Te esperamos."
+    pause_after: 2.0
+    shots:
+      - graphic: cta
+        heading: { ru: "Оставьте заявку", en: "Apply now", es: "Deja tu solicitud" }
+        lines: ["arenasoldout.com", "@EventsCentrBot"]
+        qr: "https://t.me/EventsCentrBot?start=apply"
