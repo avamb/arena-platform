@@ -88,9 +88,14 @@ scenes:
         title: { ru: "Страница мероприятия", en: "Event page", es: "Página del evento" }
         weight: 2
         scroll: { from: 0, to: 0.75 }
+        # es: the widget has English parts in Spanish; the es pictures and scroll keep them out of the frame
+        per_language:
+          es: { scroll: { from: 0, to: 0.2 } }
       - image: captures/b_03_cart_close.png
         frame: phone
         scroll: { from: 0.9, to: 1.0 }
+        per_language:
+          es: { scroll: { from: 0, to: 0 } }
         title: { ru: "Выбор билетов", en: "Ticket selection", es: "Elección de entradas" }
         weight: 2
       - image: captures/b_04_form_close.png
@@ -99,6 +104,8 @@ scenes:
         weight: 3
         scroll: { from: 0.9, to: 1.0 }
         highlight: { x: 0.04, y: 0.619, w: 0.92, h: 0.0311 }
+        per_language:
+          es: { highlight: { x: 0.04, y: 0.522, w: 0.92, h: 0.032 } }
       # The production letter template, rendered again in Russian with the data of the order.
       - image: captures/l_01_letter.png
         frame: phone

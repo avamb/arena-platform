@@ -75,12 +75,17 @@ scenes:
       - image: ../sell-01/captures/b_03_cart_close.png
         frame: phone
         scroll: { from: 0.9, to: 1.0 }
+        # es: the widget has English parts in Spanish; the es pictures keep them out of the frame
+        per_language:
+          es: { scroll: { from: 0, to: 0 } }
         title: { ru: "Оплата картой", en: "Card payment", es: "Pago con tarjeta" }
       - image: ../sell-01/captures/b_04_form_close.png
         frame: phone
         title: { ru: "Оплата картой", en: "Card payment", es: "Pago con tarjeta" }
         scroll: { from: 0.9, to: 1.0 }
         highlight: { x: 0.04, y: 0.619, w: 0.92, h: 0.0311 }
+        per_language:
+          es: { highlight: { x: 0.04, y: 0.522, w: 0.92, h: 0.032 } }
       # The production letter template, rendered again in Russian with the data of the order.
       - image: ../sell-01/captures/l_01_letter.png
         frame: phone
